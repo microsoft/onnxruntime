@@ -3,6 +3,7 @@ import numpy as np
 import os
 import sys
 import torch
+from onnx import TensorProto
 
 
 def get_device_index(device):
@@ -177,3 +178,28 @@ def import_module_from_file(file_path, module_name=None):
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
+
+def state_dict_model_key():
+    """Returns the model key name in the state dictionary"""
+
+    return 'model'
+
+def state_dict_optimizer_key():
+    """Returns the optimizer key name in the state dictionary"""
+
+    return 'optimizer'
+
+def state_dict_partition_info_key():
+    """Returns the partition info key name in the state dictionary"""
+
+    return 'partition_info'
+
+def state_dict_trainer_options_key():
+    """Returns the trainer options key name in the state dictionary"""
+
+    return 'trainer_options'
+
+def state_dict_full_precision_key():
+    """Returns the full precision key name in the state dictionary"""
+
+    return 'fp32'
