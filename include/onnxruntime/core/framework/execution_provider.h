@@ -23,6 +23,7 @@ class KernelRegistryManager;
 }  // namespace onnxruntime
 #endif
 
+#include "core/framework/provider_options.h"
 #include "core/framework/func_api.h"
 
 namespace onnxruntime {
@@ -110,7 +111,7 @@ class IExecutionProvider {
   /**
      Get execution provider's configuration options.
    */
-  virtual ProviderOptions GetProviderOptions() const;
+  virtual ProviderOptions GetProviderOptions() const { return {}; }
 
   /**
      Returns an opaque handle whose exact type varies based on the provider
