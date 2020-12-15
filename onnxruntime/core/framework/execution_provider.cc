@@ -51,6 +51,8 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 #endif
 }
 
+ProviderOptions IExecutionProvider::GetProviderOptions() const { return {}; }
+
 common::Status IExecutionProvider::Sync() const { return Status::OK(); };
 
 common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
