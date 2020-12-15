@@ -376,7 +376,6 @@ void MemoryInfo::GenerateMemoryProfile() {
   }
   memory_profile << "]" << std::endl;
   memory_profile.close();
-  MemoryInfoProfile::Clear();
 }
 
 }  // namespace onnxruntime
