@@ -10,7 +10,7 @@ from onnxruntime.training import amp, checkpoint, optim, orttrainer
 from orttraining_test_orttrainer_frontend import _load_pytorch_transformer_model
 from onnxruntime.capi._pybind_state import set_cuda_device_id, get_mpi_context_world_rank, get_mpi_context_world_size
 
-from checkpoint._test_helpers import create_orttrainer_and_save_checkpoint, create_orttrainer_and_load_checkpoint
+from checkpoint._test_helpers import distributed_setup, create_orttrainer_and_save_checkpoint, create_orttrainer_and_load_checkpoint
 from numpy.testing import assert_allclose
 
 def train(trainer, train_data, batcher_fn, total_batch_steps = 5, seed = 1):
@@ -19,19 +19,19 @@ def train(trainer, train_data, batcher_fn, total_batch_steps = 5, seed = 1):
         set_seed(seed)
         data, targets = batcher_fn(train_data, i*35)
         trainer.train_step(data, targets)
-def distributed_setup(save_function):
-    def setup():
-        world_rank = get_mpi_context_world_rank()
-        world_size = get_mpi_context_world_size()
-        device = 'cuda:' + str(world_rank)
-        os.environ['RANK'] = str(world_rank)
-        os.environ['WORLD_SIZE'] = str(world_size)
-        os.environ['MASTER_ADDR'] = '127.0.0.1'
-        os.environ['MASTER_PORT'] = '29500'
-        set_cuda_device_id(world_rank)
-        dist.init_process_group(backend='nccl', world_size=world_size, rank=world_rank)
-        save_function(world_rank, world_size, device)
-    return setup
+# def distributed_setup(save_function):
+#     def setup():
+#         world_rank = get_mpi_context_world_rank()
+#         world_size = get_mpi_context_world_size()
+#         device = 'cuda:' + str(world_rank)
+#         os.environ['RANK'] = str(world_rank)
+#         os.environ['WORLD_SIZE'] = str(world_size)
+#         os.environ['MASTER_ADDR'] = '127.0.0.1'
+#         os.environ['MASTER_PORT'] = '29500'
+#         set_cuda_device_id(world_rank)
+#         dist.init_process_group(backend='nccl', world_size=world_size, rank=world_rank)
+#         #save_function(world_rank, world_size, device)
+#     return setup
 
 # change to train 1 step to avoid saving and loading checkpoint
 # adapted from create_orttrainer_and_load_checkpoint method in checkpoint/_test_helpers.py 
@@ -66,10 +66,10 @@ def verify_model_state(trainer, init_model_state):
         for weight_name, tensor in weights.items():
             expected_tensor = init_model_state[fp_or_mp_key][weight_name]
             assert_allclose(tensor, expected_tensor, 1e-3, 1e-3)
-            #assert_allclose(tensor, expected_tensor)
 
 def verify_opt_state(trainer, init_opt_state):
     actual_opt_state = trainer._training_session.get_optimizer_state()
+    #print(actual_opt_state)
     for weight_name, weights in actual_opt_state.items():
         for opt_prefix, tensor in weights.items():
             expected_tensor = init_opt_state[weight_name][opt_prefix]
@@ -115,4 +115,60 @@ def test_backend_api(device = 'cuda'):
 
     verify_part_info(trainer)
 
-test_backend_api()
+@distributed_setup
+def test_zero(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb/'):
+    #print("in test_zero")
+    learning_rate = 1e-10
+    seed = 1
+    torch.manual_seed(seed)
+    set_seed(seed)
+    opts_dict = {
+                'device' : {'id' : device},
+                'mixed_precision':
+                {
+                    'enabled': True
+                },
+                'distributed' :
+                {
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
+                    }
+                },
+                'debug' : {'deterministic_compute': True}
+            }
+    
+    # generate model and optimizer value from a training instance
+    init_model_state, init_opt_state = generate_model_optimizer_from_training_instance(device, opts_dict)
+    opts = orttrainer.ORTTrainerOptions(opts_dict)
+    optim_config = optim.LambConfig(lr=learning_rate)
+    model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=opts)
+
+    #train(trainer, train_data, batcher_fn)
+    train(trainer, train_data, batcher_fn)
+
+    trainer._training_session.load_model_optimizer_state(init_model_state, init_opt_state, False)
+
+    # train one step
+    train(trainer, train_data, batcher_fn, 1)
+
+    actual_model_state = trainer._training_session.get_model_state(include_mixed_precision_weights=True)
+    #if world_rank == 0:
+    print(f"On rank {world_rank} ---------------------------------")
+    for k, v in actual_model_state.items():
+        print(f"{k}====")
+        for k2, v2 in v.items():
+            print(k2)
+    
+    verify_model_state(trainer, init_model_state)
+    
+    verify_opt_state(trainer, init_opt_state)
+
+    verify_part_info(trainer)
+
+#test_backend_api()
+test_zero(checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb/')

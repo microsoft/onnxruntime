@@ -259,6 +259,8 @@ class TrainingSession : public InferenceSession {
 
     // Mapped initialized names after weight partitioning for example MegatronTransformer
     std::unordered_map<std::string, std::string> weight_name_map_after_graph_transform{};
+
+    std::unordered_map<std::string, bool> partition_by_row;
   };
 
   /**
@@ -312,6 +314,8 @@ class TrainingSession : public InferenceSession {
   common::Status GetStateTensors(NameMLValMap& state_tensors);
 
   common::Status GetOptimizerState(std::unordered_map<std::string, NameMLValMap>& opt_state_tensors);
+
+  common::Status ReplaceZeroWeights(std::unordered_set<std::string> tensor_set);
 
   common::Status GetModelState(std::unordered_map<std::string, NameMLValMap>& model_state_tensors, bool include_mixed_precision_weights = false);
 
@@ -416,8 +420,7 @@ class TrainingSession : public InferenceSession {
 
   common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                 TrainingConfigurationResult& config_result_out, 
-                                                 std::unordered_map<std::string, bool>& partition_by_row);
+                                                 TrainingConfigurationResult& config_result_out);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
@@ -425,7 +428,6 @@ class TrainingSession : public InferenceSession {
                                   std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
                                   TrainingConfigurationResult& config_result_out,
-                                  std::unordered_map<std::string, bool>& partition_by_row,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
@@ -495,8 +497,8 @@ class TrainingSession : public InferenceSession {
   // names of additional initializers to be included in checkpoints
   std::unordered_map<std::string, std::string> updated_weight_names_map_;
   std::unordered_set<std::string> opt_state_initializer_names_;
-  std::unordered_set<std::string> mixed_precision_weight_initializer_names_;
-  std::unordered_map<std::string, std::vector<std::string>> weight_to_opt_mapping_;
+  std::unordered_map<std::string, std::string> weight_to_mixed_precision_map_;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping_;
   std::unordered_map<std::string, bool> partition_by_row_;
 
   bool is_mixed_precision_enabled_;

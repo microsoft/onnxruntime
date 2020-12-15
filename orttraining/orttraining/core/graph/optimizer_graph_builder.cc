@@ -241,7 +241,7 @@ Status OptimizerGraphBuilder::BuildOptimizerNode(
     const ArgDef* global_gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
-    std::unordered_map<std::string, std::vector<TensorProto>>& weight_to_opt_mapping,
+    std::unordered_map<std::string, std::unordered_map<std::string, TensorProto>>& weight_to_opt_mapping,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) {
   OptimizerBuilderConfig config;
@@ -272,7 +272,7 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
     const ArgDef* global_gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
-    std::unordered_map<std::string, std::vector<std::string>>& weight_to_opt_mapping) {
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping) {
   ORT_RETURN_IF_NOT(weight_argdefs.size() == gradient_argdefs.size());
   ORT_RETURN_IF_NOT(weight_argdefs.size() == opt_configs.size());
 
@@ -290,7 +290,7 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
   ORT_RETURN_IF_NOT(
       opt_builder, "Failed to get Optimizer builder for ", opt_configs[0].name);
 
-  std::unordered_map<std::string, std::vector<TensorProto>> weight_to_opt_obj_mapping;
+  std::unordered_map<std::string, std::unordered_map<std::string, TensorProto>> weight_to_opt_obj_mapping;
   ORT_RETURN_IF_ERROR(BuildOptimizerNode(
       opt_builder,
       weight_argdefs, gradient_argdefs,
@@ -300,10 +300,12 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
       output_weight_argdefs, output_gradient_argdefs));
 
   std::vector<TensorProto> initializers_vec;
-  for (auto& weight_map : weight_to_opt_obj_mapping) {
-    for (auto& opt_tensor : weight_map.second) {
-      TensorProto& initializer = (TensorProto&)opt_tensor;
+  for (const auto& weight_map : weight_to_opt_obj_mapping) {
+    weight_to_opt_mapping[weight_map.first] = {};
+    for (const auto& opt_tensor : weight_map.second) {
+      TensorProto& initializer = (TensorProto&)opt_tensor.second;
       initializers_vec.emplace_back(initializer);
+      weight_to_opt_mapping[weight_map.first][opt_tensor.first] = initializer.name();
     }
   }
   graph_defs.AddInitializers(initializers_vec);
@@ -311,13 +313,13 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
   weight_argdefs = std::move(output_weight_argdefs);
   gradient_argdefs = std::move(output_gradient_argdefs);
 
-  for (auto& weight_map : weight_to_opt_obj_mapping) {
-    weight_to_opt_mapping[weight_map.first] = {};
-    for (auto& opt_tensor : weight_map.second) {
-      TensorProto& initializer = (TensorProto&)opt_tensor;
-      weight_to_opt_mapping[weight_map.first].emplace_back(initializer.name());
-    }
-  }
+  // for (const auto& weight_map : weight_to_opt_obj_mapping) {
+  //   weight_to_opt_mapping[weight_map.first] = {};
+  //   for (const auto& opt_tensor : weight_map.second) {
+  //     TensorProto& initializer = (TensorProto&)opt_tensor.second;
+  //     weight_to_opt_mapping[weight_map.first][opt_tensor.first] = initializer.name();
+  //   }
+  // }
 
   return Status::OK();
 }
@@ -420,7 +422,7 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
 
 Status OptimizerGraphBuilder::Build(
     Graph& graph,
-    std::unordered_map<std::string, std::vector<std::string>>& weight_to_opt_mapping,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   if (weight_names_.empty()) {
     // nothing to do
@@ -479,7 +481,7 @@ Status OptimizerGraphBuilder::BuildInternal(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
-    std::unordered_map<std::string, std::vector<std::string>>& weight_to_opt_mapping,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);

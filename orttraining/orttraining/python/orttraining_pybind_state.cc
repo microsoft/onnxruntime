@@ -187,6 +187,38 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
 }
 #endif
 
+std::unordered_map<std::string, std::unordered_map<std::string, py::object>> ConvertORTTensorMapToNumpy(std::unordered_map<std::string, NameMLValMap> c_tensor_state, const DataTransferManager& data_transfer_manager) {
+  std::unordered_map<std::string, std::unordered_map<std::string, py::object>> py_tensor_state;
+  for (const auto& layer1_item: c_tensor_state) {
+    py_tensor_state[layer1_item.first] = {};
+    for (const auto& layer2_item: layer1_item.second) {
+      assert(layer2_item.second.IsTensor());
+      py::object obj;
+      const Tensor& rtensor = layer2_item.second.Get<Tensor>();
+      GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
+      py_tensor_state[layer1_item.first].insert({layer2_item.first, obj});
+    }
+  }
+  return py_tensor_state;
+}
+
+std::unordered_map<std::string, NameMLValMap> ConvertNumpyMapToORT(std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& py_tensor_state, const std::pair<common::Status, const InputDefList*>& px) {
+  std::unordered_map<std::string, NameMLValMap> c_state_tensors;
+  for (const auto& layer1_item: py_tensor_state) {
+    c_state_tensors[layer1_item.first] = {};
+    for (auto layer2_item : layer1_item.second) {
+      OrtValue ml_value;
+      if (!px.first.IsOK() || !px.second) {
+        throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+      }
+      CreateGenericMLValue(px.second, GetAllocator(), layer2_item.first, layer2_item.second, &ml_value);
+      ThrowIfPyErrOccured();
+      c_state_tensors[layer1_item.first].insert(std::make_pair(layer2_item.first, ml_value));
+    }
+  }
+  return c_state_tensors;
+}
+
 void addObjectMethodsForTraining(py::module& m) {
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
@@ -332,45 +364,13 @@ void addObjectMethodsForTraining(py::module& m) {
         std::unordered_map<std::string, NameMLValMap> model_state_tensors;
         ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetModelState(model_state_tensors, include_mixed_precision_weights));
         auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
-        //convert to numpy array
-        std::unordered_map<std::string, std::unordered_map<std::string, py::object>> py_model_state;
-        for (const auto& fp_or_mp_tensors: model_state_tensors) {
-          std::unordered_map<std::string, py::object> weight_tensor_map;
-          for (const auto& weight: fp_or_mp_tensors.second) {
-            if (weight.second.IsTensor()) {
-              py::object obj;
-              const Tensor& rtensor = weight.second.Get<Tensor>();
-              GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
-              weight_tensor_map.insert({weight.first, obj});
-            } else {
-              throw std::runtime_error("Non tensor type in session state tensors is not expected.");
-            }
-          }
-          py_model_state.insert({fp_or_mp_tensors.first, weight_tensor_map});
-        }
-        return py_model_state;
+        return ConvertORTTensorMapToNumpy(model_state_tensors, data_transfer_manager);
       })
       .def("get_optimizer_state", [](PyTrainingSession* sess) {
         std::unordered_map<std::string, NameMLValMap> opt_state_tensors;
         ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetOptimizerState(opt_state_tensors));
         auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
-        //convert to numpy array
-        std::unordered_map<std::string, std::unordered_map<std::string, py::object>> py_optimizer_tensors;
-        for (const auto& opts_per_weight: opt_state_tensors) {
-          std::unordered_map<std::string, py::object> weight_tensor_map;
-          for (const auto& opt : opts_per_weight.second) {
-            if (opt.second.IsTensor()) {
-              py::object obj;
-              const Tensor& rtensor = opt.second.Get<Tensor>();
-              GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
-              weight_tensor_map.insert({opt.first, obj});
-            } else {
-              throw std::runtime_error("Non tensor type in session state tensors is not expected.");
-            }
-          }
-          py_optimizer_tensors.insert({opts_per_weight.first, weight_tensor_map});
-        }
-        return py_optimizer_tensors;
+        return ConvertORTTensorMapToNumpy(opt_state_tensors, data_transfer_manager);
       })
       .def("get_partition_info_map", [](PyTrainingSession* sess) {
         std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>> part_info_map;
@@ -391,63 +391,12 @@ void addObjectMethodsForTraining(py::module& m) {
         }
         ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
       })
-      .def("load_model_optimizer_state", [](PyTrainingSession* sess, std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& model_state, std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& opt_state, bool strict) -> void {
-        std::unordered_map<std::string, NameMLValMap> model_state_tensors;
-        for (const auto& fp_or_mp_tensors: model_state) {
-          NameMLValMap model_tensors;
-          for (auto initializer : fp_or_mp_tensors.second) {
-            OrtValue ml_value;
-            auto px = sess->GetSessionHandle()->GetModelInputs();
-            if (!px.first.IsOK() || !px.second) {
-              throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
-            }
-            CreateGenericMLValue(px.second, GetAllocator(), initializer.first, initializer.second, &ml_value);
-            if (PyErr_Occurred()) {
-              PyObject *ptype, *pvalue, *ptraceback;
-              PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-              PyObject* pStr = PyObject_Str(ptype);
-              std::string sType = py::reinterpret_borrow<py::str>(pStr);
-              Py_XDECREF(pStr);
-              pStr = PyObject_Str(pvalue);
-              sType += ": ";
-              sType += py::reinterpret_borrow<py::str>(pStr);
-              Py_XDECREF(pStr);
-              throw std::runtime_error(sType);
-            }
-            model_tensors.insert(std::make_pair(initializer.first, ml_value));
-          }
-          model_state_tensors.insert(std::make_pair(fp_or_mp_tensors.first, model_tensors));
-        }
-        std::unordered_map<std::string, NameMLValMap> opt_tensors;
-        for (auto weight: opt_state) {
-            std::string weight_name = weight.first;
-            NameMLValMap opt_per_weight;
-            for (auto initializer : weight.second) {
-            OrtValue ml_value;
-            auto px = sess->GetSessionHandle()->GetModelInputs();
-            if (!px.first.IsOK() || !px.second) {
-              throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
-            }
-            CreateGenericMLValue(px.second, GetAllocator(), initializer.first, initializer.second, &ml_value);
-            if (PyErr_Occurred()) {
-              PyObject *ptype, *pvalue, *ptraceback;
-              PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-              PyObject* pStr = PyObject_Str(ptype);
-              std::string sType = py::reinterpret_borrow<py::str>(pStr);
-              Py_XDECREF(pStr);
-              pStr = PyObject_Str(pvalue);
-              sType += ": ";
-              sType += py::reinterpret_borrow<py::str>(pStr);
-              Py_XDECREF(pStr);
-              throw std::runtime_error(sType);
-            }
-            opt_per_weight.insert(std::make_pair(initializer.first, ml_value));
-          }
-          opt_tensors.insert(std::make_pair(weight_name, opt_per_weight));
-        }
-        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetModelOptState(model_state_tensors, opt_tensors, strict));
+      .def("load_model_optimizer_state", [](PyTrainingSession* sess, std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& model_state, 
+          std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& opt_state, bool strict) -> void {
+        const auto& px = sess->GetSessionHandle()->GetModelInputs();
+        const auto& model_state_tensors = ConvertNumpyMapToORT(model_state, px);
+        const auto& opt_state_tensors = ConvertNumpyMapToORT(opt_state, px);
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetModelOptState(model_state_tensors, opt_state_tensors, strict));
       })
       .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
         return static_cast<TrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
