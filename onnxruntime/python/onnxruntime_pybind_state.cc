@@ -22,6 +22,7 @@
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/platform/env.h"
+#include "python/dl_convertor.h"
 
 struct OrtStatus {
   OrtErrorCode code;
@@ -1086,6 +1087,18 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
+void dlpack_capsule_destructor(PyObject* data) {
+  DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
+  if (dlmanged_tensor) {
+    // the dlmanged_tensor has not been consumed, call deleter ourselves.
+    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
+  } else {
+    // the dlmanged_tensor has been consumed,
+    // PyCapsule_GetPointer has set an error indicator.
+    PyErr_Clear();
+  }
+}
+
 void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
@@ -1292,6 +1305,11 @@ void addObjectMethods(py::module& m, Environment& env) {
     GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif
         return obj;
+      })
+      .def("to_dlpack", [](OrtValue* ml_value) -> py::object {
+        DLManagedTensor* dlmanaged_tensor = ort_value_to_dlpack(*ml_value);
+        return py::reinterpret_steal<py::object>(
+            PyCapsule_New(dlmanaged_tensor, "dltensor", dlpack_capsule_destructor));
       });
 
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
