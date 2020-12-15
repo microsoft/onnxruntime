@@ -21,7 +21,7 @@ to compute the predictions.
 """
 import os
 if not os.path.exists('dense121.onnx'):
-    from tensorflow.keras.applications.densenet import DenseNet121
+    from keras.applications.densenet import DenseNet121
     model = DenseNet121(include_top=True, weights='imagenet')
 
     from keras2onnx import convert_keras
@@ -84,7 +84,7 @@ if ok:
 # Let's get more comprehensive results.
 
 if ok:
-    from tensorflow.keras.applications.densenet import decode_predictions
+    from keras.applications.densenet import decode_predictions
     decoded = decode_predictions(prob)
 
     import pandas

@@ -25,14 +25,16 @@ def rename_folder(root):
         full_into = os.path.join(r, into)
         print("rename %r" % full_src)
         os.rename(full_src, full_into)
-    
+
     return renamed
 
 
 def replace_files(root, renamed):
     subs = {r[1]: r[2] for r in renamed}
-    reg = re.compile("(\\\"[a-zA-Z0-9\.\/\?\:@\-_=#]+\.([a-zA-Z]){2,6}([a-zA-Z0-9\.\&\/\?\:@\-_=#])*\\\")")
-    
+    reg = re.compile(
+        "(\\\"[a-zA-Z0-9\\.\\/\\?\\:@\\-_=#]+\\.([a-zA-Z]){2,6}"
+        "([a-zA-Z0-9\\.\\&\\/\\?\\:@\\-_=#])*\\\")")
+
     for r, dirs, files in os.walk(root):
         for name in files:
             if os.path.splitext(name)[-1] != '.html':
