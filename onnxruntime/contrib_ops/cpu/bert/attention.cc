@@ -74,14 +74,14 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   int batch_size = static_cast<int>(dims[0]);
   int sequence_length = static_cast<int>(dims[1]);
   int hidden_size = static_cast<int>(dims[2]);
-  if (head_size_ < 0)
+  if (head_size_ < 0) {
     head_size_ = (int) hidden_size / num_heads_;
-  // This is not true for head-pruned transformers - e.g. FastFormers, 12 heads -> 7 heads
-  // if (hidden_size % num_heads_ != 0) {
-  //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-  //                          "Input 0 dimension 2 should be divisiable by value of the num_heads attribute.");
-  // }
-
+    // This is true in case the head size is not specified
+    if (hidden_size % num_heads_ != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "Input 0 dimension 2 should be divisiable by value of the num_heads attribute.");
+    }
+  }
   const auto& weights_dims = weights_shape.GetDims();
   if (weights_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ",
