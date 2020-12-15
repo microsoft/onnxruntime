@@ -9,7 +9,7 @@ from functools import partial
 import numpy as np
 
 import onnxruntime as ort
-from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
+from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions, _checkpoint_storage
 from .model_desc_validation import _ORTTrainerModelDesc
 
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
@@ -1209,3 +1209,85 @@ class ORTTrainer(object):
         # pass the populated states to the training session to populate the backend graph
         self._init_session(optimizer_state_dict)
 
+    def save_checkpoint(self, path, user_dict={}, pytorch_format=False):
+        """Persists ORTTrainer state dictionary on disk along with user_dict.
+
+        Saves the state_dict along with the user_dict to a file specified by path.
+
+        Args:
+            path: string representation to a file path or a python file-like object.
+                if file already exists at path, an exception is raised.
+            user_dict: custom data to be saved along with the state_dict. This data will be returned
+                to the user when load_checkpoint is called.
+            pytorch_format: boolean flag indicating whether or not to persist the optimizer states
+                on load_checkpoint, only model states will be loaded
+        """
+
+        # extract state_dict to be saved in the checkpoint
+        state_dict = self.state_dict()
+
+        # if user_dict is provided, serialize to bytes and convert to hex string.
+        # this helps in loading the types as they are given by the user since hdf5
+        # converts to numpy types otherwise
+        if bool(user_dict):
+            state_dict[_utils.state_dict_user_dict_key()] = _checkpoint_storage.to_serialized_hex(user_dict)
+
+        # if pytorch_format is True, only save the model states in the checkpoint file
+        if pytorch_format and _utils.state_dict_optimizer_key() in state_dict:
+            del state_dict[_utils.state_dict_optimizer_key()]
+
+        _checkpoint_storage.save(state_dict, path)
+
+    def _aggregation_required(self, loaded_trainer_options):
+        """Checks if aggregation is required for the loading the state_dict into the ORTTrainer"""
+
+        # There are three conditions that require aggregation for ZeRO:
+        # - Going from zero distributed run to a non distributed run
+        # - Going from one world size to another (weights need to be aggregated and then again sharded)
+        # - Going from mixed precision to full precision run (since fp32 states are sharded in mixed
+        #   precision and not in full precision)
+        if loaded_trainer_options['zero_stage'] > 0:
+            if self.options.distributed.deepspeed_zero_optimization.stage != loaded_trainer_options['zero_stage'] or \
+                self.options.distributed.world_size != loaded_trainer_options['world_size'] or \
+                    (loaded_trainer_options['mixed_precision'] and not self.options.mixed_precision.enabled):
+                return True
+        return False
+
+    def load_checkpoint(self, *paths, strict=True):
+        """Loads the saved checkpoint state dictionary into the ORTTrainer
+
+        Reads the saved checkpoint files specified by paths from disk and loads the state dictionary
+        onto the ORTTrainer.
+        Aggregates the checkpoint files if aggregation is required.
+
+        Args:
+            paths: one or more files represented as strings where the checkpoint is saved
+            strict: boolean flag to strictly enforce that the saved checkpoint state_dict
+                keys match the keys from ORTTrainer.state_dict
+        Returns:
+            dictionary that the user had saved when calling save_checkpoint
+        """
+        state_dict = {}
+
+        # check if aggregation is required
+        loaded_trainer_options = _checkpoint_storage.load(paths[0], key=_utils.state_dict_trainer_options_key())
+        if self._aggregation_required(loaded_trainer_options):
+            # if aggregation is required, aggregation logic must be run on the saved checkpoints
+            state_dict = checkpoint.aggregate_checkpoints(paths, pytorch_format=False)
+        else:
+            # if aggregation is not required, reorder the checkpoints in order of ascending rank,
+            # and load the checkpoint for the current ORTTrainer rank.
+            ordered_paths = checkpoint._order_paths(paths)
+            state_dict = _checkpoint_storage.load(ordered_paths[self.options.distributed.world_rank])
+            assert state_dict['trainer_options']['world_rank'] == (self.options.distributed.world_rank), \
+                "Loaded checkpoint rank does not match the trainer rank."
+
+        # extract user dict from the saved checkpoint
+        user_dict = {}
+        if _utils.state_dict_user_dict_key() in state_dict:
+            user_dict = _checkpoint_storage.from_serialized_hex(state_dict[_utils.state_dict_user_dict_key()])
+            del state_dict[_utils.state_dict_user_dict_key()]
+
+        self.load_state_dict(state_dict, strict=strict)
+
+        return user_dict

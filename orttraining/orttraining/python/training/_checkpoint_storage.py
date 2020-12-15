@@ -4,6 +4,7 @@
 
 import h5py
 from collections.abc import Mapping
+import pickle
 
 def _dfs_save(group, save_obj):
     """Recursively go over each level in the save_obj dictionary and save values to a hdf5 group"""
@@ -79,3 +80,13 @@ def load(path, key=None):
         _dfs_load(f, load_obj)
 
     return load_obj
+
+def to_serialized_hex(user_dict):
+    return pickle.dumps(user_dict).hex()
+
+def from_serialized_hex(serialized_hex):
+    try:
+        serialized_hex = serialized_hex.decode()
+    except AttributeError:
+        pass
+    return pickle.loads(bytes.fromhex(serialized_hex))

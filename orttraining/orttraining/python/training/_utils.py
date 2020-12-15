@@ -203,3 +203,21 @@ def state_dict_full_precision_key():
     """Returns the full precision key name in the state dictionary"""
 
     return 'fp32'
+
+def state_dict_original_dimension_key():
+    """Returns the original dimension key name in the state dictionary"""
+
+    return 'original_dim'
+
+def state_dict_sharded_optimizer_keys():
+    """Returns the optimizer key names that can be sharded in the state dictionary"""
+
+    return {
+        'Moment_1',
+        'Moment_2'
+    }
+
+def state_dict_user_dict_key():
+    """Returns the user dict key name in the state dictionary"""
+
+    return 'user_dict'
