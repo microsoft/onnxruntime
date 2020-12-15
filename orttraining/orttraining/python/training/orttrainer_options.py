@@ -133,10 +133,13 @@ class ORTTrainerOptions(object):
                         },
                         'sliced_axes' : {
                             'type': 'dict',
-                            'keysrules': {'type': 'string'},
-                            'valuesrules': {
-                                'type': 'integer',
-                                'default': 0
+                            'default': {},
+                            'schema': {
+                                'keysrules': {'type': 'string'},
+                                'valuesrules': {
+                                    'type': 'integer',
+                                    'default': 0
+                                }
                             }
                         },
                         'sliced_tensor_names' : {
@@ -391,7 +394,7 @@ class ORTTrainerOptions(object):
                                       if k not in ['_original_opts', '_validated_opts', '_main_class_name']))
 
     def _wrap(self, k, v):
-        not_wrapped_fields = ['sliced_schema']
+        not_wrapped_fields = ['sliced_schema', 'sliced_axes']
         if k in not_wrapped_fields or not isinstance(v, (tuple, list, set, frozenset, dict)):
             return v
 
@@ -537,7 +540,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'sliced_schema' : {
                 'type': 'dict',
-                'required': False,
+                'default': {},
                 'schema': {
                     # the keys in `sliced_schema` are strings.
                     'keysrules': {'type': 'string'},
@@ -551,10 +554,13 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'sliced_axes' : {
                 'type': 'dict',
-                'keysrules': {'type': 'string'},
-                'valuesrules': {
-                    'type': 'integer',
-                    'default': 0
+                'default': {},
+                'schema': {
+                    'keysrules': {'type': 'string'},
+                    'valuesrules': {
+                        'type': 'integer',
+                        'default': 0
+                    }
                 }
             },
             'sliced_tensor_names' : {
