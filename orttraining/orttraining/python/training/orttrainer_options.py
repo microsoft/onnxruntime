@@ -176,6 +176,10 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : False
                         },
+                        'optimized_model_filepath' : {
+                            'type' : 'str',
+                            'default' : ''
+                        }
                     }
                 },
                 '_internal_use' : {
@@ -273,6 +277,8 @@ class ORTTrainerOptions(object):
         debug.check_model_export (bool, default is False)
             compares PyTorch model outputs with ONNX model outputs in inference before the first
             train step to ensure successful model export
+        debug.optimized_model_filepath (str, default is empty)
+            outputs the optimized training graph to the path if nonempty.
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
@@ -530,6 +536,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': False
             },
+            'optimized_model_filepath' : {
+                'type' : 'str',
+                'default' : ''
+            }
         }
     },
     '_internal_use': {

@@ -649,6 +649,8 @@ class ORTTrainer(object):
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
+        if len(self.options.debug.optimized_model_filepath) > 0:
+            session_options.optimized_model_filepath = self.options.debug.optimized_model_filepath
         if (self.options.graph_transformer.attn_dropout_recompute or 
             self.options.graph_transformer.gelu_recompute or 
             self.options.graph_transformer.transformer_layer_recompute):
