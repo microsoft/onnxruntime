@@ -20,8 +20,7 @@ def get_ort_device_type(device):
         raise Exception('Unsupported device type: ' + device)
 
 
-def check_and_normalize_provider_args(
-        providers, provider_options, available_provider_names):
+def check_and_normalize_provider_args(providers, provider_options, available_provider_names):
     """
     Validates the 'providers' and 'provider_options' arguments and returns a
         normalized version.
@@ -51,9 +50,8 @@ def check_and_normalize_provider_args(
 
     def set_provider_options(name, options):
         if name not in available_provider_names:
-            raise ValueError(
-                "Specified provider '{}' is unavailable. Available providers: '{}'".format(
-                    name, ", ".join(available_provider_names)))
+            raise ValueError("Specified provider '{}' is unavailable. Available providers: '{}'".format(
+                name, ", ".join(available_provider_names)))
 
         if name in provider_name_to_options:
             warnings.warn("Duplicate provider '{}' encountered, ignoring.".format(name))
@@ -70,12 +68,10 @@ def check_and_normalize_provider_args(
             raise ValueError("'provider_options' should be a sequence.")
 
         if len(providers) != len(provider_options):
-            raise ValueError(
-                "'providers' and 'provider_options' should be the same length if both are given.")
+            raise ValueError("'providers' and 'provider_options' should be the same length if both are given.")
 
         if not all([isinstance(provider, str) for provider in providers]):
-            raise ValueError(
-                "Only string values for 'providers' are supported if 'provider_options' is given.")
+            raise ValueError("Only string values for 'providers' are supported if 'provider_options' is given.")
 
         if not all([isinstance(options_for_provider, dict) for options_for_provider in provider_options]):
             raise ValueError("'provider_options' values must be dicts.")
@@ -87,8 +83,8 @@ def check_and_normalize_provider_args(
         for provider in providers:
             if isinstance(provider, str):
                 set_provider_options(provider, dict())
-            elif (isinstance(provider, tuple) and len(provider) == 2 and
-                  isinstance(provider[0], str) and isinstance(provider[1], dict)):
+            elif isinstance(provider, tuple) and len(provider) == 2 and \
+                    isinstance(provider[0], str) and isinstance(provider[1], dict):
                 set_provider_options(provider[0], provider[1])
             else:
                 raise ValueError("'providers' values must be either strings or (string, dict) tuples.")

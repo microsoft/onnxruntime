@@ -711,7 +711,7 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), so, ['CPUExecutionProvider'])
         res = sess.run(["Y"], {"X": np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)})
         self.assertTrue(np.array_equal(res[0], np.array([[2.0, 2.0], [12.0, 12.0], [30.0, 30.0]], dtype=np.float32)))
-        
+
     def testRegisterCustomOpsLibrary(self):
         if sys.platform.startswith("win"):
             shared_library = 'custom_op_library.dll'
@@ -818,7 +818,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSharedAllocatorUsingCreateAndRegisterAllocator(self):
         # Create and register an arena based allocator
-        
+
         # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) (create an OrtArenaCfg like this template if you want to use non-default parameters)
         ort_memory_info = onnxrt.OrtMemoryInfo("Cpu", onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR, 0, onnxrt.OrtMemType.DEFAULT)
         # Use this option if using non-default OrtArenaCfg : onnxrt.create_and_register_allocator(ort_memory_info, ort_arena_cfg)
@@ -840,9 +840,7 @@ class TestInferenceSession(unittest.TestCase):
 
         valid_providers = ["a", "b", "c"]
 
-        def check_success(
-                providers, provider_options,
-                expected_providers, expected_provider_options):
+        def check_success(providers, provider_options, expected_providers, expected_provider_options):
             actual_providers, actual_provider_options = check_and_normalize_provider_args(
                 providers, provider_options, valid_providers)
             self.assertEqual(actual_providers, expected_providers)
