@@ -52,6 +52,8 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
   // Allocate temp scratch buffer in cpu space.
   AllocatorPtr allocator;
   allocator = Info().GetAllocator(0, OrtMemTypeCPU);
+  //bugbug
+  std::cout<<"#######total_recv_buffer_len is: "<<total_recv_buffer_len<<std::endl;
   auto data_buffer = allocator->Alloc(total_recv_buffer_len);
   BufferUniquePtr data_buffer_ptr(data_buffer, BufferDeleter(allocator));
 
@@ -65,6 +67,7 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
   BufferUniquePtr recv_buffer_ptr(recv_buffer, BufferDeleter(allocator));
 
   //bugbug
+  int input_count = total_recv_buffer_len / context->Input<Tensor>(1)->DataType()->Size();
   std::cout<<"##########VHDD start level is: "<<vhdd_start_level<<std::endl;
   if(training::MPIContext::GetInstance().GetLocalRank() == 0 ||
      adasum_reduce_algo_ == training::AdasumReductionType::CpuReduction) {
@@ -74,7 +77,12 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
                                                   .GetMPIGroup(training::WorkerGroupType::CrossNodeDataParallel)
                                                   .communicator, &rank);
     std::cout<<"##########cross node parallel rank: "<<rank<<std::endl;
-    
+    int input_count = total_recv_buffer_len / context->Input<Tensor>(1)->DataType()->Size();
+    MPI_Allreduce(MPI_IN_PLACE, data_buffer, input_count, training::GetMPIDataType(context->Input<Tensor>(1)->DataType()),
+                  MPI_SUM, training::MPIContext::GetInstance()
+                                               .GetMPIGroup(training::WorkerGroupType::CrossNodeDataParallel)
+                                               .communicator);
+
     // ORT_RETURN_IF_ERROR(adasum_reducer_->DispatchFusedAllreduce((void*)data_buffer, recv_buffer, tensor_element_counts,
     //                         vhdd_start_level, // start level
     //                         adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction
@@ -89,11 +97,6 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
     //                         context->Input<Tensor>(1)->DataType()));
      }
   if(adasum_reduce_algo_ == training::AdasumReductionType::GpuHierarchicalReduction) {
-    int input_count = total_recv_buffer_len / context->Input<Tensor>(1)->DataType()->Size();
-    MPI_Allreduce(MPI_IN_PLACE, data_buffer, input_count, training::GetMPIDataType(context->Input<Tensor>(1)->DataType()),
-                  MPI_SUM, training::MPIContext::GetInstance()
-                                               .GetMPIGroup(training::WorkerGroupType::CrossNodeDataParallel)
-                                               .communicator);
     std::cout<<"##########Broadcast result to ranks"<<std::endl;
     MPI_CHECK(MPI_Bcast(data_buffer, input_count, training::GetMPIDataType(context->Input<Tensor>(1)->DataType()),
                 0, /*local root rank*/
