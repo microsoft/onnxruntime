@@ -1,4 +1,3 @@
-#include "hip/hip_runtime.h"
 /**
 * Copyright (c) 2016-present, Facebook, Inc.
 *
@@ -18,7 +17,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
-
+#include "hip/hip_runtime.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/math/softmax_impl.cuh"
 #include "core/providers/rocm/math/softmax.h"
