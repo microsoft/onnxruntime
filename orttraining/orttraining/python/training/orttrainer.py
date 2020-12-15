@@ -568,7 +568,7 @@ class ORTTrainer(object):
 
         return onnx_model
 
-    def _create_ort_training_session(self, state_dict = {}):
+    def _create_ort_training_session(self, optimizer_state_dict={}):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
             if n not in [i.name for i in self._onnx_model.graph.initializer]]
@@ -638,8 +638,8 @@ class ORTTrainer(object):
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
         if bool(self._optim_state_dict):
             ort_parameters.set_optimizer_initial_state(self._optim_state_dict)
-        if bool(state_dict) and bool(state_dict[_utils.state_dict_optimizer_key()]):
-            ort_parameters.set_optimizer_initial_state(state_dict[_utils.state_dict_optimizer_key()])
+        if bool(optimizer_state_dict):
+            ort_parameters.set_optimizer_initial_state(optimizer_state_dict)
 
         ort_parameters.attn_dropout_recompute = self.options.graph_transformer.attn_dropout_recompute
         ort_parameters.gelu_recompute = self.options.graph_transformer.gelu_recompute
@@ -687,13 +687,13 @@ class ORTTrainer(object):
             if self.options._internal_use.extra_postprocess:
                 self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
 
-        state_dict = {}
+        optimizer_state_dict = {}
         if self._load_state_dict:
-            state_dict = self._load_state_dict()
+            optimizer_state_dict = self._load_state_dict()
 
-        self._init_session(state_dict)
+        self._init_session(optimizer_state_dict)
 
-    def _init_session(self, state_dict = {}):
+    def _init_session(self, optimizer_state_dict={}):
         if self._onnx_model is None:
             return
 
@@ -702,7 +702,7 @@ class ORTTrainer(object):
 
         # Create training session used by train_step
         # pass all optimizer states to the backend
-        self._create_ort_training_session(state_dict)
+        self._create_ort_training_session(optimizer_state_dict)
 
         # Update model description to update dtype when mixed precision is enabled
         # C++ backend modifies model's output dtype from float32 to float16 for mixed precision
@@ -888,9 +888,9 @@ class ORTTrainer(object):
         state_dict[_utils.state_dict_trainer_options_key()] = {}
         state_dict[_utils.state_dict_trainer_options_key()]['mixed_precision'] = self.options.mixed_precision.enabled
         state_dict[_utils.state_dict_trainer_options_key()]['zero_stage'] = \
-            self.options.distributed.deepspeed_zero_optimization.stage or 0
-        state_dict[_utils.state_dict_trainer_options_key()]['world_rank'] = self.options.distributed.world_rank or 0
-        state_dict[_utils.state_dict_trainer_options_key()]['world_size'] = self.options.distributed.world_size or 1
+            self.options.distributed.deepspeed_zero_optimization.stage
+        state_dict[_utils.state_dict_trainer_options_key()]['world_rank'] = self.options.distributed.world_rank
+        state_dict[_utils.state_dict_trainer_options_key()]['world_size'] = self.options.distributed.world_size
         state_dict[_utils.state_dict_trainer_options_key()]['optimizer_name'] = self.optim_config.name
 
     def state_dict(self, pytorch_format=False):
@@ -1178,7 +1178,7 @@ class ORTTrainer(object):
         # dictionary
         self._load_optimizer_states(current_state_dict, state_dict)
 
-        return current_state_dict
+        return current_state_dict[_utils.state_dict_optimizer_key()]
 
     def load_state_dict(self, state_dict, strict=True):
         """Loads state_dict containing model/optimizer states into ORTTrainer
