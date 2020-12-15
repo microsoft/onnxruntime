@@ -381,18 +381,23 @@ class ORTTrainerOptions(object):
 
         # Convert dict in object
         for k, v in self._validated_opts.items():
-            setattr(self, k, self._wrap(v))
+            setattr(self, k, self._wrap(k, v))
 
     def __repr__(self):
         return '{%s}' % str(', '.join("'%s': %s" % (k, repr(v))
                                       for (k, v) in self.__dict__.items()
                                       if k not in ['_original_opts', '_validated_opts', '_main_class_name']))
 
-    def _wrap(self, v):
+    def _wrap(self, k, v):
+        not_wrapped_fields = ['sliced_schema']
+        if k in not_wrapped_fields or not isinstance(v, (tuple, list, set, frozenset, dict)):
+            return v
+
         if isinstance(v, (tuple, list, set, frozenset)):
-            return type(v)([self._wrap(v) for v in v])
+            return type(v)([self._wrap(k, v) for v in v])
         else:
-            return _ORTTrainerOptionsInternal(self._main_class_name, v) if isinstance(v, dict) else v
+            # This is a dict type.
+            return _ORTTrainerOptionsInternal(self._main_class_name, v)
 
 
 class _ORTTrainerOptionsInternal(ORTTrainerOptions):
@@ -407,7 +412,7 @@ class _ORTTrainerOptionsInternal(ORTTrainerOptions):
 
         # Convert dict in object
         for k, v in dict(options).items():
-            setattr(self, k, self._wrap(v))
+            setattr(self, k, self._wrap(k, v))
 
 
 class ORTTrainerOptionsValidator(cerberus.Validator):
