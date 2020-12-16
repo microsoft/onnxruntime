@@ -1508,7 +1508,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetClipGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
   return std::vector<NodeDef>{
-      NodeDef("Sign", {I(0)}, {IA("Sign_Input")}),
+      NodeDef("Neg", {I(0)}, {IA("Neg_Input")}),
+      NodeDef("Sign", {IA("Neg_Input")}, {IA("Sign_Input")}),
       NodeDef("Mul", {GO(0), IA("Sign_Input")}, {GI(0)})
   };
 }
