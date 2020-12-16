@@ -21,8 +21,10 @@ scale *= TFinalScale(0.1f);
 // TGradNorm 
 if (g_norm != nullptr && TFinalScale(*g_norm) > scale) {
     const TFinalScale actual_g_norm = TFinalScale(*g_norm) / scale;
-    scale *= actual_g_norm / TFinalScale(0.1f);
+    scale *= (actual_g_norm / TFinalScale(0.1f));
     // scale = gnorm;
+} else {
+    scale *= TFinalScale(10.0f); 
 }
 return scale;
 }
