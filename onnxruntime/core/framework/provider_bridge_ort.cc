@@ -43,24 +43,7 @@ using Provider_TypeProto = ONNX_NAMESPACE::TypeProto;
 using Provider_ValueInfoProto = ONNX_NAMESPACE::ValueInfoProto;
 using Provider_ValueInfoProtos = google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::ValueInfoProto>;
 
-using Provider_ComputeCapability = ComputeCapability;
-using Provider_DataTransferManager = DataTransferManager;
-using Provider_IDataTransfer = IDataTransfer;
-using Provider_IndexedSubGraph = IndexedSubGraph;
-using Provider_IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
-using Provider_KernelDef = KernelDef;
-using Provider_KernelDefBuilder = KernelDefBuilder;
-using Provider_KernelRegistry = KernelRegistry;
-using Provider_Function = Function;
-using Provider_Graph = Graph;
-using Provider_GraphViewer = GraphViewer;
-using Provider_Model = Model;
-using Provider_Node = Node;
-using Provider_NodeArg = NodeArg;
-using Provider_NodeAttributes = NodeAttributes;
-using Provider_OpKernelContext = OpKernelContext;
-using Provider_OpKernelInfo = OpKernelInfo;
-using Provider_Tensor = Tensor;
+using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 }  // namespace onnxruntime
 
 #define PROVIDER_BRIDGE_ORT
@@ -104,10 +87,10 @@ struct Provider_TensorShapeProto_Dimension_Iterator_Impl : Provider_TensorShapeP
   google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension> v_;
 };
 
-struct Provider_NodeAttributes_Iterator_Impl : Provider_NodeAttributes_Iterator {
-  Provider_NodeAttributes_Iterator_Impl(NodeAttributes::const_iterator&& v) : v_{std::move(v)} {}
+struct NodeAttributes_Iterator_Impl : NodeAttributes_Iterator {
+  NodeAttributes_Iterator_Impl(NodeAttributes::const_iterator&& v) : v_{std::move(v)} {}
 
-  bool operator!=(const Provider_NodeAttributes_Iterator& p) const override { return v_ != static_cast<const Provider_NodeAttributes_Iterator_Impl*>(&p)->v_; }
+  bool operator!=(const NodeAttributes_Iterator& p) const override { return v_ != static_cast<const NodeAttributes_Iterator_Impl*>(&p)->v_; }
 
   void operator++() override { v_.operator++(); }
   const std::string& first() const override { return v_->first; }
@@ -116,24 +99,24 @@ struct Provider_NodeAttributes_Iterator_Impl : Provider_NodeAttributes_Iterator 
   NodeAttributes::const_iterator v_;
 };
 
-struct Provider_Node__NodeIterator_Impl : Provider_Node__NodeIterator {
-  Provider_Node__NodeIterator_Impl(Node::NodeConstIterator&& v) : v_{std::move(v)} {}
+struct Node__NodeIterator_Impl : Node__NodeIterator {
+  Node__NodeIterator_Impl(Node::NodeConstIterator&& v) : v_{std::move(v)} {}
 
-  bool operator!=(const Provider_Node__NodeIterator& p) const override { return v_ != static_cast<const Provider_Node__NodeIterator_Impl*>(&p)->v_; }
+  bool operator!=(const Node__NodeIterator& p) const override { return v_ != static_cast<const Node__NodeIterator_Impl*>(&p)->v_; }
 
   void operator++() override { v_.operator++(); }
-  const Provider_Node& operator*() override { return *v_; }
+  const Node& operator*() override { return *v_; }
 
   Node::NodeConstIterator v_;
 };
 
-struct Provider_Node__EdgeIterator_Impl : Provider_Node__EdgeIterator {
-  Provider_Node__EdgeIterator_Impl(Node::EdgeConstIterator&& v) : v_{std::move(v)} {}
+struct Node__EdgeIterator_Impl : Node__EdgeIterator {
+  Node__EdgeIterator_Impl(Node::EdgeConstIterator&& v) : v_{std::move(v)} {}
 
-  bool operator!=(const Provider_Node__EdgeIterator& p) const override { return v_ != static_cast<const Provider_Node__EdgeIterator_Impl*>(&p)->v_; }
+  bool operator!=(const Node__EdgeIterator& p) const override { return v_ != static_cast<const Node__EdgeIterator_Impl*>(&p)->v_; }
 
   void operator++() override { v_.operator++(); }
-  const Provider_Node& GetNode() const override { return v_->GetNode(); }
+  const Node& GetNode() const override { return v_->GetNode(); }
   int GetSrcArgIndex() const override { return v_->GetSrcArgIndex(); }
   int GetDstArgIndex() const override { return v_->GetDstArgIndex(); }
 
@@ -153,49 +136,6 @@ struct OpKernel_Translator : OpKernel {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernel_Translator);
 };
 
-struct Provider_IExecutionProvider_Router_Impl : Provider_IExecutionProvider_Router, IExecutionProvider {
-  Provider_IExecutionProvider_Router_Impl(Provider_IExecutionProvider* outer, const std::string& type) : IExecutionProvider(type), outer_(outer) {
-  }
-
-  virtual ~Provider_IExecutionProvider_Router_Impl() {}
-
-  std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const override { return IExecutionProvider::GetKernelRegistry(); }
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return outer_->Provider_GetKernelRegistry(); }
-
-  std::vector<std::unique_ptr<Provider_ComputeCapability>> Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
-                                                                                  const std::vector<const Provider_KernelRegistry*>& kernel_registries) const override {
-    return IExecutionProvider::GetCapability(graph, kernel_registries);
-  }
-
-  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
-                                                                const std::vector<const KernelRegistry*>& kernel_registries) const override {
-    return outer_->Provider_GetCapability(graph, kernel_registries);
-  }
-
-  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) override {
-    return outer_->Provider_Compile(fused_nodes, node_compute_funcs);
-  }
-
-  AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const override {
-    return IExecutionProvider::GetAllocator(id, mem_type);
-  }
-
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override {
-    return outer_->Provider_GetAllocator(id, mem_type);
-  }
-
-  std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const override { return IExecutionProvider::GetDataTransfer(); }
-  std::unique_ptr<IDataTransfer> GetDataTransfer() const override { return outer_->Provider_GetDataTransfer(); }
-
-  void Provider_InsertAllocator(AllocatorPtr allocator) override {
-    IExecutionProvider::InsertAllocator(allocator);
-  }
-
-  const logging::Logger* GetLogger() const override { return IExecutionProvider::GetLogger(); }
-
-  std::unique_ptr<Provider_IExecutionProvider> outer_;
-};
-
 struct ProviderHostImpl : ProviderHost {
   ProviderHostImpl() {
     DataTypeImpl_GetType_Tensor = &DataTypeImpl::GetType<Tensor>;
@@ -211,11 +151,6 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<CPUAllocator>(memory_info);
   };
 
-  std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(
-      Provider_IExecutionProvider* outer, const std::string& type) override {
-    return onnxruntime::make_unique<Provider_IExecutionProvider_Router_Impl>(outer, type);
-  };
-
 #ifdef USE_TENSORRT
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
     return onnxruntime::make_unique<CUDAAllocator>(device_id, name);
@@ -225,7 +160,7 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name);
   }
 
-  std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() override { return onnxruntime::make_unique<GPUDataTransfer>(); }
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return onnxruntime::make_unique<GPUDataTransfer>(); }
 
   void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) override {
     return cuda::Impl_Cast(input_data, output_data, count);
@@ -264,6 +199,23 @@ struct ProviderHostImpl : ProviderHost {
 
   // IAllocator
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
+
+  // IExecutionProvider
+  AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(id, mem_type); }
+  void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
+  std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
+                                                                                    const std::vector<const KernelRegistry*>& kernel_registries) override { return p->IExecutionProvider::GetCapability(graph_viewer, kernel_registries); }
+  common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    return p->IExecutionProvider::Compile(fused_nodes, node_compute_funcs);
+  }
+
+  common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::string& dll_path) override {
+    return p->IExecutionProvider::Compile(fused_nodes, dll_path);
+  }
+
+  common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    return p->IExecutionProvider::Compile(fused_nodes_and_graphs, node_compute_funcs);
+  }
 
   // Status
   std::string Status__ToString(const Status* p) override { return p->ToString(); }
@@ -400,62 +352,62 @@ struct ProviderHostImpl : ProviderHost {
 
   const Provider_ValueInfoProto& Provider_ValueInfoProtos__operator_array(const Provider_ValueInfoProtos* p, int index) override { return (*p)[index]; }
 
-  // Provider_ComputeCapability
-  std::unique_ptr<Provider_ComputeCapability> Provider_ComputeCapability__construct(std::unique_ptr<Provider_IndexedSubGraph> t_sub_graph) override { return onnxruntime::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
-  void Provider_ComputeCapability__operator_delete(Provider_ComputeCapability* p) override { delete p; }
-  std::unique_ptr<Provider_IndexedSubGraph>& Provider_ComputeCapability__SubGraph(Provider_ComputeCapability* p) override { return p->sub_graph; }
+  // ComputeCapability
+  std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return onnxruntime::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
+  void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
+  std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) override { return p->sub_graph; }
 
-  // Provider_DataTransferManager
-  Status Provider_DataTransferManager__CopyTensor(const Provider_DataTransferManager* p, const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) override { return p->CopyTensor(src, dst, exec_queue_id); }
+  // DataTransferManager
+  Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) override { return p->CopyTensor(src, dst, exec_queue_id); }
 
-  // Provider_IDataTransfer
-  void Provider_IDataTransfer__operator_delete(Provider_IDataTransfer* p) override { delete p; }
+  // IDataTransfer
+  void IDataTransfer__operator_delete(IDataTransfer* p) override { delete p; }
 
-  // Provider_IndexedSubGraph_MetaDef
-  std::unique_ptr<Provider_IndexedSubGraph_MetaDef> Provider_IndexedSubGraph_MetaDef__construct() override { return onnxruntime::make_unique<IndexedSubGraph::MetaDef>(); }
-  void Provider_IndexedSubGraph_MetaDef__operator_delete(Provider_IndexedSubGraph_MetaDef* p) override { delete p; }
+  // IndexedSubGraph_MetaDef
+  std::unique_ptr<IndexedSubGraph_MetaDef> IndexedSubGraph_MetaDef__construct() override { return onnxruntime::make_unique<IndexedSubGraph::MetaDef>(); }
+  void IndexedSubGraph_MetaDef__operator_delete(IndexedSubGraph_MetaDef* p) override { delete p; }
 
-  std::string& Provider_IndexedSubGraph_MetaDef__name(Provider_IndexedSubGraph_MetaDef* p) override { return p->name; }
-  std::string& Provider_IndexedSubGraph_MetaDef__domain(Provider_IndexedSubGraph_MetaDef* p) override { return p->domain; }
-  int& Provider_IndexedSubGraph_MetaDef__since_version(Provider_IndexedSubGraph_MetaDef* p) override { return p->since_version; }
-  ONNX_NAMESPACE::OperatorStatus& Provider_IndexedSubGraph_MetaDef__status(Provider_IndexedSubGraph_MetaDef* p) override { return p->status; }
-  std::vector<std::string>& Provider_IndexedSubGraph_MetaDef__inputs(Provider_IndexedSubGraph_MetaDef* p) override { return p->inputs; }
-  std::vector<std::string>& Provider_IndexedSubGraph_MetaDef__outputs(Provider_IndexedSubGraph_MetaDef* p) override { return p->outputs; }
-  Provider_NodeAttributes& Provider_IndexedSubGraph_MetaDef__attributes(Provider_IndexedSubGraph_MetaDef* p) override { return p->attributes; }
-  std::string& Provider_IndexedSubGraph_MetaDef__doc_string(Provider_IndexedSubGraph_MetaDef* p) override { return p->doc_string; }
+  std::string& IndexedSubGraph_MetaDef__name(IndexedSubGraph_MetaDef* p) override { return p->name; }
+  std::string& IndexedSubGraph_MetaDef__domain(IndexedSubGraph_MetaDef* p) override { return p->domain; }
+  int& IndexedSubGraph_MetaDef__since_version(IndexedSubGraph_MetaDef* p) override { return p->since_version; }
+  ONNX_NAMESPACE::OperatorStatus& IndexedSubGraph_MetaDef__status(IndexedSubGraph_MetaDef* p) override { return p->status; }
+  std::vector<std::string>& IndexedSubGraph_MetaDef__inputs(IndexedSubGraph_MetaDef* p) override { return p->inputs; }
+  std::vector<std::string>& IndexedSubGraph_MetaDef__outputs(IndexedSubGraph_MetaDef* p) override { return p->outputs; }
+  NodeAttributes& IndexedSubGraph_MetaDef__attributes(IndexedSubGraph_MetaDef* p) override { return p->attributes; }
+  std::string& IndexedSubGraph_MetaDef__doc_string(IndexedSubGraph_MetaDef* p) override { return p->doc_string; }
 
-  // Provider_IndexedSubGraph
-  std::unique_ptr<Provider_IndexedSubGraph> Provider_IndexedSubGraph__construct() override { return onnxruntime::make_unique<IndexedSubGraph>(); }
-  void Provider_IndexedSubGraph__operator_delete(Provider_IndexedSubGraph* p) override { delete p; }
+  // IndexedSubGraph
+  std::unique_ptr<IndexedSubGraph> IndexedSubGraph__construct() override { return onnxruntime::make_unique<IndexedSubGraph>(); }
+  void IndexedSubGraph__operator_delete(IndexedSubGraph* p) override { delete p; }
 
-  std::vector<onnxruntime::NodeIndex>& Provider_IndexedSubGraph__Nodes(Provider_IndexedSubGraph* p) override { return p->nodes; }
+  std::vector<onnxruntime::NodeIndex>& IndexedSubGraph__Nodes(IndexedSubGraph* p) override { return p->nodes; }
 
-  void Provider_IndexedSubGraph__SetMetaDef(Provider_IndexedSubGraph* p, std::unique_ptr<Provider_IndexedSubGraph_MetaDef>&& meta_def_) override { return p->SetMetaDef(std::move(meta_def_)); }
-  const Provider_IndexedSubGraph_MetaDef* Provider_IndexedSubGraph__GetMetaDef(const Provider_IndexedSubGraph* p) override { return p->GetMetaDef(); }
+  void IndexedSubGraph__SetMetaDef(IndexedSubGraph* p, std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) override { return p->SetMetaDef(std::move(meta_def_)); }
+  const IndexedSubGraph_MetaDef* IndexedSubGraph__GetMetaDef(const IndexedSubGraph* p) override { return p->GetMetaDef(); }
 
-  // Provider_KernelDef
-  void Provider_KernelDef__operator_delete(Provider_KernelDef* p) override { delete p; }
+  // KernelDef
+  void KernelDef__operator_delete(KernelDef* p) override { delete p; }
 
-  // Provider_KernelDefBuilder
-  std::unique_ptr<Provider_KernelDefBuilder> Provider_KernelDefBuilder__construct() override { return onnxruntime::make_unique<KernelDefBuilder>(); }
-  void Provider_KernelDefBuilder__operator_delete(Provider_KernelDefBuilder* p) override { delete p; }
+  // KernelDefBuilder
+  std::unique_ptr<KernelDefBuilder> KernelDefBuilder__construct() override { return onnxruntime::make_unique<KernelDefBuilder>(); }
+  void KernelDefBuilder__operator_delete(KernelDefBuilder* p) override { delete p; }
 
-  void Provider_KernelDefBuilder__SetName(Provider_KernelDefBuilder* p, const char* op_name) override { p->SetName(op_name); }
-  void Provider_KernelDefBuilder__SetDomain(Provider_KernelDefBuilder* p, const char* domain) override { p->SetDomain(domain); }
-  void Provider_KernelDefBuilder__SinceVersion(Provider_KernelDefBuilder* p, int since_version) override { p->SinceVersion(since_version); }
-  void Provider_KernelDefBuilder__Provider(Provider_KernelDefBuilder* p, const char* provider_type) override { p->Provider(provider_type); }
-  void Provider_KernelDefBuilder__TypeConstraint(Provider_KernelDefBuilder* p, const char* arg_name, MLDataType supported_type) override { p->TypeConstraint(arg_name, supported_type); }
-  void Provider_KernelDefBuilder__TypeConstraint(Provider_KernelDefBuilder* p, const char* arg_name, const std::vector<MLDataType>& supported_types) override { p->TypeConstraint(arg_name, supported_types); }
-  void Provider_KernelDefBuilder__InputMemoryType(Provider_KernelDefBuilder* p, OrtMemType type, int input_index) override { p->InputMemoryType(type, input_index); }
-  void Provider_KernelDefBuilder__OutputMemoryType(Provider_KernelDefBuilder* p, OrtMemType type, int input_index) override { p->OutputMemoryType(type, input_index); }
-  void Provider_KernelDefBuilder__ExecQueueId(Provider_KernelDefBuilder* p, int queue_id) override { p->ExecQueueId(queue_id); }
+  void KernelDefBuilder__SetName(KernelDefBuilder* p, const char* op_name) override { p->SetName(op_name); }
+  void KernelDefBuilder__SetDomain(KernelDefBuilder* p, const char* domain) override { p->SetDomain(domain); }
+  void KernelDefBuilder__SinceVersion(KernelDefBuilder* p, int since_version) override { p->SinceVersion(since_version); }
+  void KernelDefBuilder__Provider(KernelDefBuilder* p, const char* provider_type) override { p->Provider(provider_type); }
+  void KernelDefBuilder__TypeConstraint(KernelDefBuilder* p, const char* arg_name, MLDataType supported_type) override { p->TypeConstraint(arg_name, supported_type); }
+  void KernelDefBuilder__TypeConstraint(KernelDefBuilder* p, const char* arg_name, const std::vector<MLDataType>& supported_types) override { p->TypeConstraint(arg_name, supported_types); }
+  void KernelDefBuilder__InputMemoryType(KernelDefBuilder* p, OrtMemType type, int input_index) override { p->InputMemoryType(type, input_index); }
+  void KernelDefBuilder__OutputMemoryType(KernelDefBuilder* p, OrtMemType type, int input_index) override { p->OutputMemoryType(type, input_index); }
+  void KernelDefBuilder__ExecQueueId(KernelDefBuilder* p, int queue_id) override { p->ExecQueueId(queue_id); }
 
-  std::unique_ptr<Provider_KernelDef> Provider_KernelDefBuilder__Build(Provider_KernelDefBuilder* p) override { return p->Build(); }
+  std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) override { return p->Build(); }
 
-  // Provider_KernelRegistry
-  std::shared_ptr<Provider_KernelRegistry> Provider_KernelRegistry__construct() override { return std::make_shared<KernelRegistry>(); }
-  void Provider_KernelRegistry__operator_delete(Provider_KernelRegistry* p) override { delete p; }
-  Status Provider_KernelRegistry__Register(Provider_KernelRegistry* p, Provider_KernelCreateInfo&& create_info) override {
+  // KernelRegistry
+  std::shared_ptr<KernelRegistry> KernelRegistry__construct() override { return std::make_shared<KernelRegistry>(); }
+  void KernelRegistry__operator_delete(KernelRegistry* p) override { delete p; }
+  Status KernelRegistry__Register(KernelRegistry* p, Provider_KernelCreateInfo&& create_info) override {
     KernelCreateInfo info_real(std::move(create_info.kernel_def),
                                [kernel_create_func = create_info.kernel_create_func](const OpKernelInfo& info) -> OpKernel* {
                                  return new OpKernel_Translator(info, kernel_create_func(info));
@@ -463,146 +415,146 @@ struct ProviderHostImpl : ProviderHost {
     return p->Register(std::move(info_real));
   }
 
-  // Provider_Function
-  const Provider_Graph& Provider_Function__Body(const Provider_Function* p) override { return p->Body(); }
+  // Function
+  const Graph& Function__Body(const Function* p) override { return p->Body(); }
 
-  // Provider_Node
-  const std::string& Provider_Node__Name(const Provider_Node* p) noexcept override { return p->Name(); }
-  const std::string& Provider_Node__Description(const Provider_Node* p) noexcept override { return p->Description(); }
-  const std::string& Provider_Node__Domain(const Provider_Node* p) noexcept override { return p->Domain(); }
-  const std::string& Provider_Node__OpType(const Provider_Node* p) noexcept override { return p->OpType(); }
+  // Node
+  const std::string& Node__Name(const Node* p) noexcept override { return p->Name(); }
+  const std::string& Node__Description(const Node* p) noexcept override { return p->Description(); }
+  const std::string& Node__Domain(const Node* p) noexcept override { return p->Domain(); }
+  const std::string& Node__OpType(const Node* p) noexcept override { return p->OpType(); }
 
-  const Provider_Function* Provider_Node__GetFunctionBody(const Provider_Node* p) noexcept override { return p->GetFunctionBody(); }
+  const Function* Node__GetFunctionBody(const Node* p) noexcept override { return p->GetFunctionBody(); }
 
-  ConstPointerContainer<std::vector<Provider_NodeArg*>> Provider_Node__ImplicitInputDefs(const Provider_Node* p) noexcept override { return p->ImplicitInputDefs(); }
-  ConstPointerContainer<std::vector<Provider_NodeArg*>> Provider_Node__InputDefs(const Provider_Node* p) noexcept override { return p->InputDefs(); }
-  ConstPointerContainer<std::vector<Provider_NodeArg*>> Provider_Node__OutputDefs(const Provider_Node* p) noexcept override { return p->OutputDefs(); }
+  ConstPointerContainer<std::vector<NodeArg*>> Node__ImplicitInputDefs(const Node* p) noexcept override { return p->ImplicitInputDefs(); }
+  ConstPointerContainer<std::vector<NodeArg*>> Node__InputDefs(const Node* p) noexcept override { return p->InputDefs(); }
+  ConstPointerContainer<std::vector<NodeArg*>> Node__OutputDefs(const Node* p) noexcept override { return p->OutputDefs(); }
 
-  NodeIndex Provider_Node__Index(const Provider_Node* p) noexcept override { return p->Index(); }
+  NodeIndex Node__Index(const Node* p) noexcept override { return p->Index(); }
 
-  void Provider_Node__ToProto(const Provider_Node* p, Provider_NodeProto& proto, bool update_subgraphs = false) override { p->ToProto(proto, update_subgraphs); }
+  void Node__ToProto(const Node* p, Provider_NodeProto& proto, bool update_subgraphs = false) override { p->ToProto(proto, update_subgraphs); }
 
-  const Provider_NodeAttributes& Provider_Node__GetAttributes(const Provider_Node* p) noexcept override { return p->GetAttributes(); }
-  size_t Provider_Node__GetInputEdgesCount(const Provider_Node* p) noexcept override { return p->GetInputEdgesCount(); }
-  size_t Provider_Node__GetOutputEdgesCount(const Provider_Node* p) noexcept override { return p->GetOutputEdgesCount(); }
+  const NodeAttributes& Node__GetAttributes(const Node* p) noexcept override { return p->GetAttributes(); }
+  size_t Node__GetInputEdgesCount(const Node* p) noexcept override { return p->GetInputEdgesCount(); }
+  size_t Node__GetOutputEdgesCount(const Node* p) noexcept override { return p->GetOutputEdgesCount(); }
 
-  std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__InputNodesBegin(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__NodeIterator_Impl>(p->InputNodesBegin()); }
-  std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__InputNodesEnd(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__NodeIterator_Impl>(p->InputNodesEnd()); }
+  std::unique_ptr<Node__NodeIterator> Node__InputNodesBegin(const Node* p) noexcept override { return onnxruntime::make_unique<Node__NodeIterator_Impl>(p->InputNodesBegin()); }
+  std::unique_ptr<Node__NodeIterator> Node__InputNodesEnd(const Node* p) noexcept override { return onnxruntime::make_unique<Node__NodeIterator_Impl>(p->InputNodesEnd()); }
 
-  std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__OutputNodesBegin(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__NodeIterator_Impl>(p->OutputNodesBegin()); }
-  std::unique_ptr<Provider_Node__NodeIterator> Provider_Node__OutputNodesEnd(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__NodeIterator_Impl>(p->OutputNodesEnd()); }
+  std::unique_ptr<Node__NodeIterator> Node__OutputNodesBegin(const Node* p) noexcept override { return onnxruntime::make_unique<Node__NodeIterator_Impl>(p->OutputNodesBegin()); }
+  std::unique_ptr<Node__NodeIterator> Node__OutputNodesEnd(const Node* p) noexcept override { return onnxruntime::make_unique<Node__NodeIterator_Impl>(p->OutputNodesEnd()); }
 
-  std::unique_ptr<Provider_Node__EdgeIterator> Provider_Node__OutputEdgesBegin(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__EdgeIterator_Impl>(p->OutputEdgesBegin()); }
-  std::unique_ptr<Provider_Node__EdgeIterator> Provider_Node__OutputEdgesEnd(const Provider_Node* p) noexcept override { return onnxruntime::make_unique<Provider_Node__EdgeIterator_Impl>(p->OutputEdgesEnd()); }
+  std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesBegin(const Node* p) noexcept override { return onnxruntime::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesBegin()); }
+  std::unique_ptr<Node__EdgeIterator> Node__OutputEdgesEnd(const Node* p) noexcept override { return onnxruntime::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesEnd()); }
 
-  void Provider_Node__ForEachDef(const Provider_Node* p, std::function<void(const Provider_NodeArg&, bool is_input)> func, bool include_missing_optional_defs) override { p->ForEachDef(func, std::move(include_missing_optional_defs)); }
+  void Node__ForEachDef(const Node* p, std::function<void(const NodeArg&, bool is_input)> func, bool include_missing_optional_defs) override { p->ForEachDef(func, std::move(include_missing_optional_defs)); }
 
-  // Provider_NodeArg
-  const std::string& Provider_NodeArg__Name(const Provider_NodeArg* p) noexcept override { return p->Name(); }
-  const Provider_TensorShapeProto* Provider_NodeArg__Shape(const Provider_NodeArg* p) override { return p->Shape(); }
-  ONNX_NAMESPACE::DataType Provider_NodeArg__Type(const Provider_NodeArg* p) noexcept override { return p->Type(); }
-  const Provider_NodeArgInfo& Provider_NodeArg__ToProto(const Provider_NodeArg* p) noexcept override { return p->ToProto(); }
-  bool Provider_NodeArg__Exists(const Provider_NodeArg* p) const noexcept override { return p->Exists(); }
-  const Provider_TypeProto* Provider_NodeArg__TypeAsProto(const Provider_NodeArg* p) noexcept override { return p->TypeAsProto(); }
+  // NodeArg
+  const std::string& NodeArg__Name(const NodeArg* p) noexcept override { return p->Name(); }
+  const Provider_TensorShapeProto* NodeArg__Shape(const NodeArg* p) override { return p->Shape(); }
+  ONNX_NAMESPACE::DataType NodeArg__Type(const NodeArg* p) noexcept override { return p->Type(); }
+  const Provider_NodeArgInfo& NodeArg__ToProto(const NodeArg* p) noexcept override { return p->ToProto(); }
+  bool NodeArg__Exists(const NodeArg* p) const noexcept override { return p->Exists(); }
+  const Provider_TypeProto* NodeArg__TypeAsProto(const NodeArg* p) noexcept override { return p->TypeAsProto(); }
 
-  // Provider_NodeAttributes
-  std::unique_ptr<Provider_NodeAttributes> Provider_NodeAttributes__construct() override { return onnxruntime::make_unique<NodeAttributes>(); }
-  void Provider_NodeAttributes__operator_delete(Provider_NodeAttributes* p) noexcept override { delete p; }
-  size_t Provider_NodeAttributes__size(const Provider_NodeAttributes* p) override { return p->size(); }
-  void Provider_NodeAttributes__clear(Provider_NodeAttributes* p) noexcept override { return p->clear(); }
-  size_t Provider_NodeAttributes__count(const Provider_NodeAttributes* p, const std::string& keyval) override { return p->count(keyval); }
-  Provider_AttributeProto& Provider_NodeAttributes__operator_array(Provider_NodeAttributes* p, const std::string& string) override { return (*p)[string]; }
-  const Provider_AttributeProto& Provider_NodeAttributes__at(const Provider_NodeAttributes* p, const std::string& string) override { return p->at(string); }
-  void Provider_NodeAttributes__operator_assign(Provider_NodeAttributes* p, const Provider_NodeAttributes& v) override { *p = v; }
+  // NodeAttributes
+  std::unique_ptr<NodeAttributes> NodeAttributes__construct() override { return onnxruntime::make_unique<NodeAttributes>(); }
+  void NodeAttributes__operator_delete(NodeAttributes* p) noexcept override { delete p; }
+  size_t NodeAttributes__size(const NodeAttributes* p) override { return p->size(); }
+  void NodeAttributes__clear(NodeAttributes* p) noexcept override { return p->clear(); }
+  size_t NodeAttributes__count(const NodeAttributes* p, const std::string& keyval) override { return p->count(keyval); }
+  Provider_AttributeProto& NodeAttributes__operator_array(NodeAttributes* p, const std::string& string) override { return (*p)[string]; }
+  const Provider_AttributeProto& NodeAttributes__at(const NodeAttributes* p, const std::string& string) override { return p->at(string); }
+  void NodeAttributes__operator_assign(NodeAttributes* p, const NodeAttributes& v) override { *p = v; }
 
-  std::unique_ptr<Provider_NodeAttributes_Iterator> Provider_NodeAttributes__begin(const Provider_NodeAttributes* p) override {
-    return onnxruntime::make_unique<Provider_NodeAttributes_Iterator_Impl>(p->begin());
+  std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__begin(const NodeAttributes* p) override {
+    return onnxruntime::make_unique<NodeAttributes_Iterator_Impl>(p->begin());
   }
-  std::unique_ptr<Provider_NodeAttributes_Iterator> Provider_NodeAttributes__end(const Provider_NodeAttributes* p) override {
-    return onnxruntime::make_unique<Provider_NodeAttributes_Iterator_Impl>(p->end());
+  std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__end(const NodeAttributes* p) override {
+    return onnxruntime::make_unique<NodeAttributes_Iterator_Impl>(p->end());
   }
-  std::unique_ptr<Provider_NodeAttributes_Iterator> Provider_NodeAttributes__find(const Provider_NodeAttributes* p, const std::string& key) override {
-    return onnxruntime::make_unique<Provider_NodeAttributes_Iterator_Impl>(p->find(key));
+  std::unique_ptr<NodeAttributes_Iterator> NodeAttributes__find(const NodeAttributes* p, const std::string& key) override {
+    return onnxruntime::make_unique<NodeAttributes_Iterator_Impl>(p->find(key));
   }
-  void Provider_NodeAttributes__insert(Provider_NodeAttributes* p, const Provider_NodeAttributes& v) override { return p->insert(v.begin(), v.end()); }
+  void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) override { return p->insert(v.begin(), v.end()); }
 
-  // Provider_Model
-  void Provider_Model__operator_delete(Provider_Model* p) override { delete p; }
-  Provider_Graph& Provider_Model__MainGraph(Provider_Model* p) override { return p->MainGraph(); }
-  std::unique_ptr<Provider_ModelProto> Provider_Model__ToProto(Provider_Model* p) override { return onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToProto()); }
+  // Model
+  void Model__operator_delete(Model* p) override { delete p; }
+  Graph& Model__MainGraph(Model* p) override { return p->MainGraph(); }
+  std::unique_ptr<Provider_ModelProto> Model__ToProto(Model* p) override { return onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToProto()); }
 
-  // Provider_Graph
-  std::unique_ptr<Provider_GraphViewer> Provider_Graph__CreateGraphViewer(const Provider_Graph* p) override { return onnxruntime::make_unique<GraphViewer>(*p); }
-  std::unique_ptr<Provider_GraphProto> Provider_Graph__ToGraphProto(const Provider_Graph* p) override { return onnxruntime::make_unique<ONNX_NAMESPACE::GraphProto>(p->ToGraphProto()); }
+  // Graph
+  std::unique_ptr<GraphViewer> Graph__CreateGraphViewer(const Graph* p) override { return onnxruntime::make_unique<GraphViewer>(*p); }
+  std::unique_ptr<Provider_GraphProto> Graph__ToGraphProto(const Graph* p) override { return onnxruntime::make_unique<ONNX_NAMESPACE::GraphProto>(p->ToGraphProto()); }
 
-  Provider_NodeArg& Provider_Graph__GetOrCreateNodeArg(Provider_Graph* p, const std::string& name, const Provider_TypeProto* p_arg_type) override { return p->GetOrCreateNodeArg(name, p_arg_type); }
+  NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const Provider_TypeProto* p_arg_type) override { return p->GetOrCreateNodeArg(name, p_arg_type); }
 
-  Status Provider_Graph__Resolve(Provider_Graph* p) override { return p->Resolve(); }
-  void Provider_Graph__AddInitializedTensor(Provider_Graph* p, const Provider_TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
-  Provider_Node& Provider_Graph__AddNode(Provider_Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const std::vector<Provider_NodeArg*>& input_args, const std::vector<Provider_NodeArg*>& output_args, const Provider_NodeAttributes* attributes, const std::string& domain) override {
+  Status Graph__Resolve(Graph* p) override { return p->Resolve(); }
+  void Graph__AddInitializedTensor(Graph* p, const Provider_TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
+  Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const std::vector<NodeArg*>& input_args, const std::vector<NodeArg*>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
 
-  const std::vector<const Provider_NodeArg*>& Provider_Graph__GetOutputs(const Provider_Graph* p) noexcept override { return p->GetOutputs(); }
-  void Provider_Graph__SetOutputs(Provider_Graph* p, const std::vector<const Provider_NodeArg*>& outputs) override { p->SetOutputs(outputs); }
+  const std::vector<const NodeArg*>& Graph__GetOutputs(const Graph* p) noexcept override { return p->GetOutputs(); }
+  void Graph__SetOutputs(Graph* p, const std::vector<const NodeArg*>& outputs) override { p->SetOutputs(outputs); }
 
-  const std::vector<const Provider_NodeArg*>& Provider_Graph__GetInputs(const Provider_Graph* p) noexcept override { return p->GetInputs(); }
-  bool Provider_Graph__GetInitializedTensor(const Provider_Graph* p, const std::string& tensor_name, const Provider_TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
+  const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept override { return p->GetInputs(); }
+  bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const Provider_TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
 
-  // Provider_GraphViewer
-  void Provider_GraphViewer__operator_delete(Provider_GraphViewer* p) override { delete p; }
-  std::unique_ptr<Provider_Model> Provider_GraphViewer__CreateModel(const Provider_GraphViewer* graph_viewer, const logging::Logger& logger) override {
+  // GraphViewer
+  void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
+  std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
     return onnxruntime::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
                                            IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
                                            std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
   }
 
-  const std::string& Provider_GraphViewer__Name(const Provider_GraphViewer* p) noexcept override { return p->Name(); }
+  const std::string& GraphViewer__Name(const GraphViewer* p) noexcept override { return p->Name(); }
 
-  const Provider_Node* Provider_GraphViewer__GetNode(const Provider_GraphViewer* p, NodeIndex node_index) override { return p->GetNode(node_index); }
-  const Provider_NodeArg* Provider_GraphViewer__GetNodeArg(const Provider_GraphViewer* p, const std::string& name) override { return p->GetNodeArg(name); }
+  const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) override { return p->GetNode(node_index); }
+  const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) override { return p->GetNodeArg(name); }
 
-  bool Provider_GraphViewer__IsSubgraph(const Provider_GraphViewer* p) override { return p->IsSubgraph(); }
-  bool Provider_GraphViewer__IsConstantInitializer(const Provider_GraphViewer* p, const std::string& name, bool check_outer_scope) override { return p->IsConstantInitializer(name, check_outer_scope); }
-  int Provider_GraphViewer__NumberOfNodes(const Provider_GraphViewer* p) noexcept override { return p->NumberOfNodes(); }
-  int Provider_GraphViewer__MaxNodeIndex(const Provider_GraphViewer* p) noexcept override { return p->MaxNodeIndex(); }
+  bool GraphViewer__IsSubgraph(const GraphViewer* p) override { return p->IsSubgraph(); }
+  bool GraphViewer__IsConstantInitializer(const GraphViewer* p, const std::string& name, bool check_outer_scope) override { return p->IsConstantInitializer(name, check_outer_scope); }
+  int GraphViewer__NumberOfNodes(const GraphViewer* p) noexcept override { return p->NumberOfNodes(); }
+  int GraphViewer__MaxNodeIndex(const GraphViewer* p) noexcept override { return p->MaxNodeIndex(); }
 
-  const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetInputs(const Provider_GraphViewer* p) noexcept override { return p->GetInputs(); }
-  const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetOutputs(const Provider_GraphViewer* p) noexcept override { return p->GetOutputs(); }
-  const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetValueInfo(const Provider_GraphViewer* p) noexcept override { return p->GetValueInfo(); }
+  const std::vector<const NodeArg*>& GraphViewer__GetInputs(const GraphViewer* p) noexcept override { return p->GetInputs(); }
+  const std::vector<const NodeArg*>& GraphViewer__GetOutputs(const GraphViewer* p) noexcept override { return p->GetOutputs(); }
+  const std::vector<const NodeArg*>& GraphViewer__GetValueInfo(const GraphViewer* p) noexcept override { return p->GetValueInfo(); }
 
-  const Provider_InitializedTensorSet& Provider_GraphViewer__GetAllInitializedTensors(const Provider_GraphViewer* p) override { return p->GetAllInitializedTensors(); }
-  bool Provider_GraphViewer__GetInitializedTensor(const Provider_GraphViewer* p, const std::string& tensor_name, const Provider_TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
+  const Provider_InitializedTensorSet& GraphViewer__GetAllInitializedTensors(const GraphViewer* p) override { return p->GetAllInitializedTensors(); }
+  bool GraphViewer__GetInitializedTensor(const GraphViewer* p, const std::string& tensor_name, const Provider_TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
 
-  const std::unordered_map<std::string, int>& Provider_GraphViewer__DomainToVersionMap(const Provider_GraphViewer* p) override { return p->DomainToVersionMap(); }
+  const std::unordered_map<std::string, int>& GraphViewer__DomainToVersionMap(const GraphViewer* p) override { return p->DomainToVersionMap(); }
 
-  const std::vector<NodeIndex>& Provider_GraphViewer__GetNodesInTopologicalOrder(const Provider_GraphViewer* p) override { return p->GetNodesInTopologicalOrder(); }
-  const std::vector<const Provider_NodeArg*>& Provider_GraphViewer__GetInputsIncludingInitializers(const Provider_GraphViewer* p) noexcept override { return p->GetInputsIncludingInitializers(); }
+  const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) override { return p->GetNodesInTopologicalOrder(); }
+  const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept override { return p->GetInputsIncludingInitializers(); }
 
   // Provider_OpKernel_Base
-  const Provider_OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) override { return reinterpret_cast<const OpKernel*>(p)->Info(); }
+  const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) override { return reinterpret_cast<const OpKernel*>(p)->Info(); }
 
-  // Provider_OpKernelContext
-  const Provider_Tensor* Provider_OpKernelContext__Input_Tensor(const Provider_OpKernelContext* p, int index) override { return p->Input<Tensor>(index); }
-  Provider_Tensor* Provider_OpKernelContext__Output(Provider_OpKernelContext* p, int index, const TensorShape& shape) override { return p->Output(index, shape); }
+  // OpKernelContext
+  const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) override { return p->Input<Tensor>(index); }
+  Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) override { return p->Output(index, shape); }
 
-  // Provider_OpKernelInfo
-  Status Provider_OpKernelInfo__GetAttr_int64(const Provider_OpKernelInfo* p, const std::string& name, int64_t* value) override { return p->GetAttr(name, value); }
-  Status Provider_OpKernelInfo__GetAttr_float(const Provider_OpKernelInfo* p, const std::string& name, float* value) override { return p->GetAttr(name, value); }
+  // OpKernelInfo
+  Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) override { return p->GetAttr(name, value); }
+  Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) override { return p->GetAttr(name, value); }
 
-  const Provider_DataTransferManager& Provider_OpKernelInfo__GetDataTransferManager(const Provider_OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
-  int Provider_OpKernelInfo__GetKernelDef_ExecQueueId(const Provider_OpKernelInfo* p) noexcept override { return p->GetKernelDef().ExecQueueId(); }
+  const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
+  int OpKernelInfo__GetKernelDef_ExecQueueId(const OpKernelInfo* p) noexcept override { return p->GetKernelDef().ExecQueueId(); }
 
-  // Provider_Tensor
-  float* Provider_Tensor__MutableData_float(Provider_Tensor* p) override { return p->MutableData<float>(); }
-  const float* Provider_Tensor__Data_float(const Provider_Tensor* p) override { return p->Data<float>(); }
+  // Tensor
+  float* Tensor__MutableData_float(Tensor* p) override { return p->MutableData<float>(); }
+  const float* Tensor__Data_float(const Tensor* p) override { return p->Data<float>(); }
 
-  void* Provider_Tensor__MutableDataRaw(Provider_Tensor* p) noexcept override { return p->MutableDataRaw(); }
-  const void* Provider_Tensor__DataRaw(const Provider_Tensor* p) const noexcept override { return p->DataRaw(); }
+  void* Tensor__MutableDataRaw(Tensor* p) noexcept override { return p->MutableDataRaw(); }
+  const void* Tensor__DataRaw(const Tensor* p) const noexcept override { return p->DataRaw(); }
 
-  const TensorShape& Provider_Tensor__Shape(const Provider_Tensor* p) override { return p->Shape(); }
-  size_t Provider_Tensor__SizeInBytes(const Provider_Tensor* p) override { return p->SizeInBytes(); }
-  const OrtMemoryInfo& Provider_Tensor__Location(const Provider_Tensor* p) override { return p->Location(); }
+  const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
+  size_t Tensor__SizeInBytes(const Tensor* p) override { return p->SizeInBytes(); }
+  const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
 
 } provider_host_;
 
@@ -700,35 +652,23 @@ void UnloadSharedProviders() {
   s_library_shared.Unload();
 }
 
-// This class translates the IExecutionProviderFactory interface to work with the interface providers implement
-struct IExecutionProviderFactory_Translator : IExecutionProviderFactory {
-  IExecutionProviderFactory_Translator(std::shared_ptr<Provider_IExecutionProviderFactory> p) : p_{p} {}
-
-  std::unique_ptr<IExecutionProvider> CreateProvider() override {
-    auto provider = p_->CreateProvider();
-    return std::unique_ptr<IExecutionProvider>(static_cast<Provider_IExecutionProvider_Router_Impl*>(provider.release()->p_));
-  }
-
-  std::shared_ptr<Provider_IExecutionProviderFactory> p_;
-};
-
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena) {
   if (auto provider = s_library_dnnl.Get())
-    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(use_arena));
+    return provider->CreateExecutionProviderFactory(use_arena);
 
   return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
   if (auto provider = s_library_tensorrt.Get())
-    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(device_id));
+    return provider->CreateExecutionProviderFactory(device_id);
 
   return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* provider_options) {
   if (auto provider = s_library_openvino.Get())
-    return std::make_shared<IExecutionProviderFactory_Translator>(provider->CreateExecutionProviderFactory(provider_options));
+    return provider->CreateExecutionProviderFactory(provider_options);
 
   return nullptr;
 }

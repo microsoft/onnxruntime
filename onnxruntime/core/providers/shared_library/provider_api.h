@@ -7,6 +7,7 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
+#define PROVIDER_BRIDGE_PROVIDER 1
 
 #include <vector>
 #include <string>
@@ -19,6 +20,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/tensor_shape.h"
+#include "core/providers/providers.h"
 
 namespace onnxruntime {
 namespace logging {
@@ -53,30 +55,30 @@ struct Provider_TypeProto;
 struct Provider_ValueInfoProto;
 struct Provider_ValueInfoProtos;  // RepeatedPtrField
 
-// OnnxRuntime Types (all of these are actually just Provider_<type> -> <type>)
+// OnnxRuntime Types (these are the internal types)
 struct CPUIDInfo;
 namespace logging {
 struct Logger;
 struct Capture;
 }  // namespace logging
-struct Provider_ComputeCapability;
-struct Provider_DataTransferManager;
-struct Provider_IDataTransfer;
-struct Provider_IndexedSubGraph;
-struct Provider_IndexedSubGraph_MetaDef;
-struct Provider_KernelDef;
-struct Provider_KernelDefBuilder;
-struct Provider_KernelRegistry;
-struct Provider_Function;
-struct Provider_Graph;
-struct Provider_GraphViewer;
-struct Provider_Model;
-struct Provider_Node;
-struct Provider_NodeArg;
-struct Provider_NodeAttributes;
-struct Provider_OpKernelContext;
-struct Provider_OpKernelInfo;
-struct Provider_Tensor;
+struct ComputeCapability;
+struct DataTransferManager;
+struct IDataTransfer;
+struct IndexedSubGraph;
+struct IndexedSubGraph_MetaDef;
+struct KernelDef;
+struct KernelDefBuilder;
+struct KernelRegistry;
+struct Function;
+struct Graph;
+struct GraphViewer;
+struct Model;
+struct Node;
+struct NodeArg;
+struct NodeAttributes;
+struct OpKernelContext;
+struct OpKernelInfo;
+struct Tensor;
 }  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
@@ -141,6 +143,7 @@ enum OperatorStatus : int {
 
 }  // namespace ONNX_NAMESPACE
 
+#include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
 
 namespace onnxruntime {
@@ -199,7 +202,7 @@ std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info)
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
-std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer();
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
@@ -229,18 +232,18 @@ constexpr T roundUpPow2(T a) {
 #define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \
   provider##_##name##_##domain##_ver##ver
 
-#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                                                                       \
-  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                                                                            \
-  template <>                                                                                                                                    \
-  Provider_KernelCreateInfo                                                                                                                      \
-  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {                                                        \
-    return Provider_KernelCreateInfo(                                                                                                            \
-        builder.SetName(#name)                                                                                                                   \
-            .SetDomain(domain)                                                                                                                   \
-            .SinceVersion(ver)                                                                                                                   \
-            .Provider(provider)                                                                                                                  \
-            .Build(),                                                                                                                            \
-        static_cast<Provider_KernelCreatePtrFn>([](const Provider_OpKernelInfo& info) -> Provider_OpKernel* { return new __VA_ARGS__(info); })); \
+#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                                                              \
+  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                                                                   \
+  template <>                                                                                                                           \
+  Provider_KernelCreateInfo                                                                                                             \
+  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {                                               \
+    return Provider_KernelCreateInfo(                                                                                                   \
+        builder.SetName(#name)                                                                                                          \
+            .SetDomain(domain)                                                                                                          \
+            .SinceVersion(ver)                                                                                                          \
+            .Provider(provider)                                                                                                         \
+            .Build(),                                                                                                                   \
+        static_cast<Provider_KernelCreatePtrFn>([](const OpKernelInfo& info) -> Provider_OpKernel* { return new __VA_ARGS__(info); })); \
   }
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
