@@ -888,11 +888,19 @@ class ORTTrainer():
             # if the gradient is usable.
             self.output_desc_with_all_fp_16_or_fp32_gradients_finite = [
                 *self.model_desc_.outputs_,
+                IODescription("Moment_1_reduceall", [], torch.float),
+                IODescription("Moment_2_reduceall", [], torch.float),
+                IODescription("Weight_reduceall", [], torch.float),
+                IODescription("Gradient_reduceall", [], torch.float),
                 IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float),
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool),]
         else:
             self.output_desc_with_all_fp_16_or_fp32_gradients_finite = [
                 *self.model_desc_.outputs_,
+                IODescription("Moment_1_reduceall", [], torch.float),
+                IODescription("Moment_2_reduceall", [], torch.float),
+                IODescription("Weight_reduceall", [], torch.float),
+                IODescription("Gradient_reduceall", [], torch.float),
                 IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float)
                 ]
 
@@ -1197,35 +1205,94 @@ class ORTTrainer():
         #     raise RuntimeError(
         #         "the first output of a model to run with fully optimized ORT backend assumed to be loss and must be a scalar.")
 
+# class LossScaler():
+#     def __init__(self, loss_scale_input_name, is_dynamic_scale,
+#                  loss_scale=float(1 << 16),
+#                  up_scale_window=2000,
+#                  min_loss_scale=1.0, max_loss_scale=float(1 << 24)):
+#         super(LossScaler, self).__init__()
+#         self.loss_scale_input_name_ = loss_scale_input_name
+#         self.is_dynamic_scale_ = is_dynamic_scale
+#         self.initial_loss_scale_ = loss_scale
+#         self.up_scale_window_ = up_scale_window
+#         self.min_loss_scale_ = min_loss_scale
+#         self.max_loss_scale_ = max_loss_scale
+#         self.loss_scale_ = loss_scale
+#         self.stable_steps_ = 0
+
+#     def update_loss_scale(self, is_all_finite):
+#         if not self.is_dynamic_scale_:
+#             return
+
+#         if is_all_finite:
+#             self.stable_steps_ += 1
+
+#             if self.stable_steps_ >= self.up_scale_window_:
+#                 self.loss_scale_ = min(self.max_loss_scale_, self.loss_scale_ * 2)
+#                 self.stable_steps_ = 0
+#         else:
+#             self.loss_scale_ = max(self.min_loss_scale_, self.loss_scale_ / 2)
+#             self.stable_steps_ = 0
+
+#     def reset(self):
+#         self.loss_scale_ = self.initial_loss_scale_
+#         self.stable_steps_ = 0
+
+
 class LossScaler():
-    def __init__(self, loss_scale_input_name, is_dynamic_scale,
-                 loss_scale=float(1 << 16),
-                 up_scale_window=2000,
-                 min_loss_scale=1.0, max_loss_scale=float(1 << 24)):
-        super(LossScaler, self).__init__()
+    def __init__(self, loss_scale_input_name, init_scale=2.**15, scale_factor=2., scale_window=2000,
+        tolerance=0.05, threshold=None, min_loss_scale=1e-4
+    ):
         self.loss_scale_input_name_ = loss_scale_input_name
-        self.is_dynamic_scale_ = is_dynamic_scale
-        self.initial_loss_scale_ = loss_scale
-        self.up_scale_window_ = up_scale_window
-        self.min_loss_scale_ = min_loss_scale
-        self.max_loss_scale_ = max_loss_scale
-        self.loss_scale_ = loss_scale
-        self.stable_steps_ = 0
+        self.loss_scale_ = init_scale
+        self.scale_factor = scale_factor
+        self.scale_window = scale_window
+        self.tolerance = tolerance
+        self.threshold = threshold
+        self._iter = 0
+        self._last_overflow_iter = -1
+        self._last_rescale_iter = -1
+        self._overflows_since_rescale = 0
+        self.min_loss_scale = min_loss_scale
 
-    def update_loss_scale(self, is_all_finite):
-        if not self.is_dynamic_scale_:
-            return
+    # def scale(self, outputs):
+    #     return self.loss_scale_ * outputs
 
-        if is_all_finite:
-            self.stable_steps_ += 1
+    def update(self):
+        if (self._iter - self._last_overflow_iter) % self.scale_window == 0:
+            self.loss_scale_ *= self.scale_factor
+            self._last_rescale_iter = self._iter
+        self._iter += 1
 
-            if self.stable_steps_ >= self.up_scale_window_:
-                self.loss_scale_ = min(self.max_loss_scale_, self.loss_scale_ * 2)
-                self.stable_steps_ = 0
-        else:
-            self.loss_scale_ = max(self.min_loss_scale_, self.loss_scale_ / 2)
-            self.stable_steps_ = 0
+    def _decrease_loss_scale(self):
+        self.loss_scale_ /= self.scale_factor
+        if self.threshold is not None:
+            self.loss_scale_ = max(self.loss_scale_, self.threshold)
 
-    def reset(self):
-        self.loss_scale_ = self.initial_loss_scale_
-        self.stable_steps_ = 0
+    def check_overflow(self, grad_norm):
+        # detect inf and nan
+        if grad_norm == float('inf') or grad_norm != grad_norm:
+            # overflow has occured
+            prev_scale = self.loss_scale_
+            iter_since_rescale = self._iter - self._last_rescale_iter
+
+            self._last_overflow_iter = self._iter
+            self._overflows_since_rescale += 1
+            pct_overflow = self._overflows_since_rescale / float(iter_since_rescale)
+            if pct_overflow >= self.tolerance:
+                self._decrease_loss_scale()
+                self._last_rescale_iter = self._iter
+                self._overflows_since_rescale = 0
+
+            if self.loss_scale_ <= self.min_loss_scale:
+                # Use FloatingPointError as an uncommon error that parent
+                # functions can safely catch to stop training.
+                self.loss_scale_ = prev_scale
+                raise FloatingPointError((
+                    'Minimum loss scale reached ({}). Your loss is probably exploding. '
+                    'Try lowering the learning rate, using gradient clipping or '
+                    'increasing the batch size.'
+                ).format(self.min_loss_scale))
+
+            self._iter += 1
+            raise OverflowError('setting loss scale to: ' + str(self.loss_scale_))
