@@ -218,10 +218,12 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   auto scale_divisor = total_num_accumulations;
   //If Adasum GPU hierarchical reduce is used, then divide gradients by local size.
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
-    scale_divisor *= opt_graph_config_.local_size;
+    //bugbug
+    //scale_divisor *= opt_graph_config_.local_size;
+    scale_divisor *= opt_graph_config_.data_parallel_group_size;
   }
 
-  const float scale = 1.0f / scale_divisor;
+  const float scale = 1.0f / (float)scale_divisor;
   // Only fuse if using hierarchical reduce.
   const bool fuse_scaling_outputs = opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction ? true: false;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
