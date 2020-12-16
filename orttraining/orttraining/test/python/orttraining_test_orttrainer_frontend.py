@@ -83,11 +83,19 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'world_rank': 0,
             'world_size': 1,
             'local_rank': 0,
+            'data_parallel_size': 1,
+            'horizontal_parallel_size': 1,
+            'pipeline_parallel_size': 1,
+            'num_pipeline_micro_batches':1,
+            'pipeline_cut_info_string': '',
             'allreduce_post_accumulation': False,
             'deepspeed_zero_optimization': {
                 'stage' : 0,
             },
-            'enable_adasum': False
+            'enable_adasum': False,
+            'sliced_schema' : {},
+            'sliced_axes' : {},
+            'sliced_tensor_names': []
         },
         'lr_scheduler': None,
         'mixed_precision': {

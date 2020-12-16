@@ -557,10 +557,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': {},
                 'schema': {
                     'keysrules': {'type': 'string'},
-                    'valuesrules': {
-                        'type': 'integer',
-                        'default': 0
-                    }
+                    'valuesrules': { 'type': 'integer' }
                 }
             },
             'sliced_tensor_names' : {
