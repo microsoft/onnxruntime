@@ -103,7 +103,7 @@ void Recv::ReceiveData(
   }
   assert(tensor_offset_in_bytes == aggregated_aligned_tensor_bytes);
 
-#if defined(USE_CCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
 #else
   AddDeferredReleaseCPUPtr(buffer.release());
 #endif

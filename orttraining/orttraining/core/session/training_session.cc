@@ -1008,9 +1008,9 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
       for (auto& drop_ratio : dropout_eval_feeds_) {
         OrtValue feed_value;
         // We allocate on CPU first, copy will be taken care of downstream.
-        const auto* cpu_ep = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider);
-        const auto cpu_allocator = cpu_ep->GetAllocator(0, OrtMemTypeDefault);
-        feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
+        OrtMemoryInfo cpu_location(onnxruntime::CPU, OrtArenaAllocator);
+        AllocatorPtr bfc_arena  = GetSessionState().GetAllocator(cpu_location);
+        feed_value = onnxruntime::MakeScalarMLValue<float>(bfc_arena, 0.f, true /*is_1d*/);
         // Bind new feed to graph input.
         new_feeds.emplace_back(drop_ratio, feed_value);
       }
@@ -1022,9 +1022,9 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
         // Set training_mode input to false
         OrtValue training_mode_feed_value;
         // We allocate on CPU first, copy will be taken care of downstream.
-        const auto* cpu_ep = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider);
-        const auto cpu_allocator = cpu_ep->GetAllocator(0, OrtMemTypeDefault);
-        training_mode_feed_value = onnxruntime::MakeScalarMLValue<bool>(cpu_allocator, false, true /*is_1d*/);
+        OrtMemoryInfo cpu_location(onnxruntime::CPU, OrtArenaAllocator);
+        AllocatorPtr bfc_arena  = GetSessionState().GetAllocator(cpu_location);
+        training_mode_feed_value = onnxruntime::MakeScalarMLValue<bool>(bfc_arena, false, true /*is_1d*/);
         new_feeds.emplace_back(training_mode_string_, training_mode_feed_value);
       }
     }
@@ -1519,9 +1519,9 @@ void PipelineTrainingSession::CreatePipelineEvents(
       ORT_ENFORCE(event_name != name, "Two variables cannot have the same name.");
     }
 
-    const auto* cpu_ep = GetSessionState().GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider);
-    const auto cpu_allocator = cpu_ep->GetAllocator(0, OrtMemTypeDefault);
-    auto event = onnxruntime::MakeScalarMLValue<int64_t>(cpu_allocator, event_value, false);
+    OrtMemoryInfo cpu_location(onnxruntime::CPU, OrtArenaAllocator);
+    AllocatorPtr bfc_arena  = GetSessionState().GetAllocator(cpu_location);
+    auto event = onnxruntime::MakeScalarMLValue<int64_t>(bfc_arena, event_value, false);
 
     // Add the created event to the list.
     io_binding.BindInput(event_name, event);
