@@ -14,6 +14,10 @@
 namespace onnxruntime {
 namespace training {
 
+const std::vector<std::string> MOMENTS_PREFIXES({"Moment_1", "Moment_2"});
+const std::string LAMB_STEP_TENSOR_NAME = "Step";
+const std::string ADAM_UC_PREFIX = "Update_Count";
+
 template <class T>
 ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
