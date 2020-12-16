@@ -202,7 +202,7 @@ def state_dict_trainer_options_key():
 def state_dict_full_precision_key():
     """Returns the full precision key name in the state dictionary"""
 
-    return 'fp32'
+    return 'full_precision'
 
 def state_dict_original_dimension_key():
     """Returns the original dimension key name in the state dictionary"""

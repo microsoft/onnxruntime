@@ -59,7 +59,7 @@ def _get_load_state_dict_strict_error_arguments():
 
     training_session_state_dict = {
         'model': {
-            'fp32': {
+            'full_precision': {
                 'a': np.arange(5),
                 'b': np.arange(7)
             }
@@ -77,20 +77,20 @@ def _get_load_state_dict_strict_error_arguments():
 
     # input state dictionaries
     precision_key_missing = {'model': {}, 'optimizer': {}}
-    precision_key_unexpected = {'model': {'fp32': {}, 'fp16': {}}, 'optimizer': {}}
-    model_state_key_missing = {'model': {'fp32': {}}, 'optimizer': {}}
-    model_state_key_unexpected = {'model': {'fp32': {'a': 2, 'b': 3, 'c': 4}}, 'optimizer': {}}
-    optimizer_model_state_key_missing = {'model': {'fp32': {'a': 2, 'b': 3}}, 'optimizer': {}}
-    optimizer_model_state_key_unexpected = {'model': {'fp32': {'a': 2, 'b': 3}}, 'optimizer': \
+    precision_key_unexpected = {'model': {'full_precision': {}, 'mixed_precision': {}}, 'optimizer': {}}
+    model_state_key_missing = {'model': {'full_precision': {}}, 'optimizer': {}}
+    model_state_key_unexpected = {'model': {'full_precision': {'a': 2, 'b': 3, 'c': 4}}, 'optimizer': {}}
+    optimizer_model_state_key_missing = {'model': {'full_precision': {'a': 2, 'b': 3}}, 'optimizer': {}}
+    optimizer_model_state_key_unexpected = {'model': {'full_precision': {'a': 2, 'b': 3}}, 'optimizer': \
         {'a': {}, 'shared_optimizer_state': {}, 'b': {}}}
-    optimizer_state_key_missing = {'model': {'fp32': {'a': 2, 'b': 3}}, 'optimizer': \
+    optimizer_state_key_missing = {'model': {'full_precision': {'a': 2, 'b': 3}}, 'optimizer': \
         {'a': {}, 'shared_optimizer_state': {'step': np.arange(5)}}}
-    optimizer_state_key_unexpected = {'model': {'fp32': {'a': 2, 'b': 3}}, 'optimizer': \
+    optimizer_state_key_unexpected = {'model': {'full_precision': {'a': 2, 'b': 3}}, 'optimizer': \
         {'a': {'Moment_1': np.arange(5), 'Moment_2': np.arange(7)}, 'shared_optimizer_state': {'step': np.arange(5), 'another_step': np.arange(1)}}}
 
     input_arguments = [
-        (training_session_state_dict, precision_key_missing, ['fp32']),
-        (training_session_state_dict, precision_key_unexpected, ['fp16']),
+        (training_session_state_dict, precision_key_missing, ['full_precision']),
+        (training_session_state_dict, precision_key_unexpected, ['mixed_precision']),
         (training_session_state_dict, model_state_key_missing, ['a', 'b']),
         (training_session_state_dict, model_state_key_unexpected, ['c']),
         (training_session_state_dict, optimizer_model_state_key_missing, ['a', 'shared_optimizer_state']),
@@ -126,7 +126,7 @@ def test_training_session_provides_empty_model_states(onnx_model_mock):
 def test_training_session_provides_model_states(onnx_model_mock):
     trainer = _create_trainer()
     model_states = {
-        'fp32': {
+        'full_precision': {
             'a': np.arange(5),
             'b': np.arange(7)
         }
@@ -136,14 +136,14 @@ def test_training_session_provides_model_states(onnx_model_mock):
     trainer._onnx_model = onnx_model_mock()
 
     state_dict = trainer.state_dict()
-    assert (state_dict['model']['fp32']['a'] == np.arange(5)).all()
-    assert (state_dict['model']['fp32']['b'] == np.arange(7)).all()
+    assert (state_dict['model']['full_precision']['a'] == np.arange(5)).all()
+    assert (state_dict['model']['full_precision']['b'] == np.arange(7)).all()
 
 @patch('onnx.ModelProto')
 def test_training_session_provides_model_states_pytorch_format(onnx_model_mock):
     trainer = _create_trainer()
     model_states = {
-        'fp32': {
+        'full_precision': {
             'a': np.arange(5),
             'b': np.arange(7)
         }
@@ -160,7 +160,7 @@ def test_training_session_provides_model_states_pytorch_format(onnx_model_mock):
 def test_onnx_graph_provides_frozen_model_states(onnx_model_mock):
     trainer = _create_trainer()
     model_states = {
-        'fp32': {
+        'full_precision': {
             'a': np.arange(5),
             'b': np.arange(7)
         }
@@ -176,11 +176,11 @@ def test_onnx_graph_provides_frozen_model_states(onnx_model_mock):
     ]
 
     state_dict = trainer.state_dict()
-    assert (state_dict['model']['fp32']['a'] == np.arange(5)).all()
-    assert (state_dict['model']['fp32']['b'] == np.arange(7)).all()
-    assert (state_dict['model']['fp32']['a_frozen_weight'] == np.array([1, 2, 3], dtype=np.float32)).all()
-    assert 'a_non_fronzen_weight' not in state_dict['model']['fp32']
-    assert (state_dict['model']['fp32']['a_float16_weight'] == np.array([7, 8, 9], dtype=np.float32)).all()
+    assert (state_dict['model']['full_precision']['a'] == np.arange(5)).all()
+    assert (state_dict['model']['full_precision']['b'] == np.arange(7)).all()
+    assert (state_dict['model']['full_precision']['a_frozen_weight'] == np.array([1, 2, 3], dtype=np.float32)).all()
+    assert 'a_non_fronzen_weight' not in state_dict['model']['full_precision']
+    assert (state_dict['model']['full_precision']['a_float16_weight'] == np.array([7, 8, 9], dtype=np.float32)).all()
 
 @patch('onnx.ModelProto')
 def test_training_session_provides_empty_optimizer_states(onnx_model_mock):
@@ -217,7 +217,7 @@ def test_training_session_provides_optimizer_states(onnx_model_mock):
 def test_training_session_provides_optimizer_states_pytorch_format(onnx_model_mock):
     trainer = _create_trainer()
     model_states = {
-        'fp32': {
+        'full_precision': {
             'a': np.arange(5),
             'b': np.arange(7)
         }
@@ -267,7 +267,7 @@ def test_training_session_provides_partition_info_map(onnx_model_mock):
 def test_training_session_provides_all_states(onnx_model_mock):
     trainer = _create_trainer(zero_enabled=True)
     model_states = {
-        'fp32': {
+        'full_precision': {
             'a': np.arange(5),
             'b': np.arange(7)
         }
@@ -291,8 +291,8 @@ def test_training_session_provides_all_states(onnx_model_mock):
     trainer._onnx_model = onnx_model_mock()
 
     state_dict = trainer.state_dict()
-    assert (state_dict['model']['fp32']['a'] == np.arange(5)).all()
-    assert (state_dict['model']['fp32']['b'] == np.arange(7)).all()
+    assert (state_dict['model']['full_precision']['a'] == np.arange(5)).all()
+    assert (state_dict['model']['full_precision']['b'] == np.arange(7)).all()
     assert (state_dict['optimizer']['model_weight']['Moment_1'] == np.arange(5)).all()
     assert (state_dict['optimizer']['model_weight']['Moment_2'] == np.arange(7)).all()
     assert (state_dict['optimizer']['shared_optimizer_state']['step'] == np.arange(1)).all()
@@ -302,7 +302,7 @@ def test_load_state_dict_holds_when_training_session_not_initialized():
     trainer = _create_trainer()
     state_dict = {
         'model': {
-            'fp32': {
+            'full_precision': {
                 'a': np.arange(5),
                 'b': np.arange(7)
             }
@@ -371,7 +371,7 @@ def test_load_state_dict_loads_the_states_and_inits_training_session(onnx_model_
     trainer = _create_trainer()
     training_session_state_dict = {
         'model': {
-            'fp32': {
+            'full_precision': {
                 'a': np.arange(5),
                 'b': np.arange(7)
             }
@@ -389,7 +389,7 @@ def test_load_state_dict_loads_the_states_and_inits_training_session(onnx_model_
 
     input_state_dict = {
         'model': {
-            'fp32': {
+            'full_precision': {
                 'a': np.array([1, 2]),
                 'b': np.array([3, 4])
             }
@@ -602,7 +602,7 @@ def test_checkpoint_aggregation(load_mock):
 
     state_dict1 = {
         'model': {
-            'fp32': {
+            'full_precision': {
                 'sharded': np.array([1, 2, 3]),
                 'non_sharded': np.array([11, 22, 33])
             }
@@ -633,7 +633,7 @@ def test_checkpoint_aggregation(load_mock):
 
     state_dict2 = {
         'model': {
-            'fp32': {
+            'full_precision': {
                 'sharded': np.array([4, 5, 6]),
                 'non_sharded': np.array([11, 22, 33])
             }
@@ -665,8 +665,8 @@ def test_checkpoint_aggregation(load_mock):
     load_mock.side_effect = [trainer_options1, trainer_options2, state_dict1, state_dict2]
     state_dict = checkpoint.aggregate_checkpoints(['abc', 'def'], pytorch_format=False)
 
-    assert (state_dict['model']['fp32']['sharded'] == np.array([[1, 2, 3], [4, 5, 6]])).all()
-    assert (state_dict['model']['fp32']['non_sharded'] == np.array([11, 22, 33])).all()
+    assert (state_dict['model']['full_precision']['sharded'] == np.array([[1, 2, 3], [4, 5, 6]])).all()
+    assert (state_dict['model']['full_precision']['non_sharded'] == np.array([11, 22, 33])).all()
     assert (state_dict['optimizer']['sharded']['Moment_1'] == np.array([[9, 8, 7], [6, 5, 4]])).all()
     assert (state_dict['optimizer']['sharded']['Moment_2'] == np.array([[99, 88, 77], [66, 55, 44]])).all()
     assert (state_dict['optimizer']['sharded']['Step'] == np.array([5])).all()

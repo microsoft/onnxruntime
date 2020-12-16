@@ -910,7 +910,7 @@ class ORTTrainer(object):
                 type: dict,
                 schema:
                 {
-                    "fp32":
+                    "full_precision":
                     {
                         type: dict,
                         schema:
