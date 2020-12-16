@@ -22,10 +22,7 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
       for (int i = 0; i < num_tensors; i++) {
         const Tensor* x_tensor = context->Input<Tensor>(i + 1);
         Tensor* y_tensor = context->Output(i, x_tensor->Shape());
-        if (x_tensor->DataRaw() != y_tensor->DataRaw()) {
-          CUDA_CALL(cudaMemcpy(y_tensor->MutableDataRaw(), x_tensor->DataRaw(),
-                            x_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
-        }
+        CopyTensor(*x_tensor, *y_tensor);
       }
       std::cout<<"#######not finite, skip doing adasum allreduce"<<std::endl;
       return Status::OK();
@@ -110,12 +107,9 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
   // }
 //bugbug
   for (int i = 0; i < num_tensors; i++) {
-    Tensor* y_tensor = context->Output(i, context->Input<Tensor>(i + 1)->Shape());
-    if (context->Input<Tensor>(i + 1)->DataRaw() != y_tensor->DataRaw()) {
-      std::cout<<"#####copying data to output in adasum kernel"<<std::endl;
-      CUDA_CALL(cudaMemcpy(y_tensor->MutableDataRaw(), context->Input<Tensor>(i + 1)->DataRaw(),
-                        tensor_sizes[i], cudaMemcpyDeviceToDevice));
-    }
+    auto x_tensor = context->Input<Tensor>(i + 1);
+    Tensor* y_tensor = context->Output(i, x_tensor->Shape());
+    CopyTensor(*x_tensor, *y_tensor);
   }
 
   return Status::OK();
