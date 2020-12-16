@@ -35,6 +35,10 @@ namespace MyCaffe.data
 
         #region Disposable
 
+        /// <summary>
+        /// Dispose if disposing, or ignore if already disposed.
+        /// </summary>
+        /// <param name="disposing">Specifies whether or not we are disposing.</param>
         protected virtual void Dispose(bool disposing)
         {
             if (_disposed)
@@ -54,6 +58,8 @@ namespace MyCaffe.data
         public void Dispose()
         {
             Dispose(true);
+            // Suppress finalization.
+            GC.SuppressFinalize(this);
         }
 
         #endregion
