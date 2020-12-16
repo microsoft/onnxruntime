@@ -1,6 +1,6 @@
 jobs:
 - job: Android_CI
-  
+
   pool:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 120
@@ -19,8 +19,6 @@ jobs:
       displayName: CPU EP, Build and Test on Android Emulator
     - script: /bin/bash tools/ci_build/github/android/run_nnapi_code_coverage.sh $(pwd)
       displayName: NNAPI EP, Build, Test and Get Code Coverage on Android Emulator
-    - script: python -m pip install -q mysql-connector-python
-      displayName: 'Install mysql-connector-python'
 
     - template: templates/set-version-number-variables-step.yml
 
@@ -46,6 +44,9 @@ jobs:
       inputs:
         artifactName: 'coverage_rpt.txt'
         targetPath: '$(Build.BinariesDirectory)/coverage_rpt.txt'
+
+    - script: python -m pip install -q mysql-connector-python
+      displayName: 'Install mysql-connector-python'
 
     - task: PythonScript@0
       displayName: Post Code Coverage To Dash Board
