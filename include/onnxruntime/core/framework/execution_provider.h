@@ -3,22 +3,30 @@
 
 #pragma once
 
+#ifndef PROVIDER_BRIDGE_PROVIDER
+#include <map>
 #include <unordered_map>
-#include "gsl/gsl"
+#include <unordered_set>
 
-#include "core/common/logging/logging.h"
 #include "core/common/status.h"
-#include "core/framework/data_transfer.h"
-#include "core/framework/func_api.h"
-#include "core/framework/provider_options.h"
+#include "core/common/logging/logging.h"
 #include "core/framework/tensor.h"
+#include "core/framework/data_transfer.h"
 
 namespace onnxruntime {
+
 class GraphViewer;
 class Node;
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
+}  // namespace onnxruntime
+#endif
+
+#include "core/framework/provider_options.h"
+#include "core/framework/func_api.h"
+
+namespace onnxruntime {
 
 /**
    Logical device representation.
@@ -93,7 +101,7 @@ class IExecutionProvider {
      3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const { return nullptr; }
 
   /**
      Get the device id of current execution provider
@@ -103,7 +111,7 @@ class IExecutionProvider {
   /**
      Get execution provider's configuration options.
    */
-  virtual ProviderOptions GetProviderOptions() const;
+  virtual ProviderOptions GetProviderOptions() const { return {}; }
 
   /**
      Returns an opaque handle whose exact type varies based on the provider
@@ -127,7 +135,7 @@ class IExecutionProvider {
      Currently this is primarily used by the IOBinding object to ensure that all
      inputs have been copied to the device before execution begins.
   */
-  virtual common::Status Sync() const;
+  virtual common::Status Sync() const { return Status::OK(); }
 
   /**
      Called when InferenceSession::Run started
@@ -135,7 +143,7 @@ class IExecutionProvider {
      Run may not be finished on device This function should be regarded as the
      point after which a new Run would start to submit commands from CPU
   */
-  virtual common::Status OnRunStart();
+  virtual common::Status OnRunStart() { return Status::OK(); }
 
   /**
      Called when InferenceSession::Run ended
@@ -143,14 +151,14 @@ class IExecutionProvider {
      may not be finished on device This function should be regarded as the point
      that all commands of current Run has been submmited by CPU
   */
-  virtual common::Status OnRunEnd();
+  virtual common::Status OnRunEnd() { return Status::OK(); }
 
   /**
      Called when session creation is complete
      This provides an opportunity for execution providers to optionally synchronize and
      clean up its temporary resources to reduce memory and ensure the first run is fast.
   */
-  virtual common::Status OnSessionInitializationEnd();
+  virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);

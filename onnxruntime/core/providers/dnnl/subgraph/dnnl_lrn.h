@@ -14,7 +14,7 @@ class DnnlLrn : public DnnlKernel {
  public:
   DnnlLrn(const DnnlNode& node,
           DNNLExecutionProvider* provider,
-          const Provider_NodeAttributes& attributes,
+          const NodeAttributes& attributes,
           const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
@@ -75,7 +75,7 @@ class DnnlLrn : public DnnlKernel {
           dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
       if (!gpu_available_) {
         src_mem_ = parents_[0].get()->primitive_dst_mem_;
-      } else { // gpu_available_
+      } else {  // gpu_available_
         src_mem_gpu_ = parents_[0].get()->primitive_dst_mem_;
       }
       x_shape = parents_[0].get()->primitive_dst_shape_;
@@ -116,7 +116,7 @@ class DnnlLrn : public DnnlKernel {
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), gpu_engine));
     }
@@ -127,7 +127,7 @@ class DnnlLrn : public DnnlKernel {
       net.push_back(*lrn_fwd_);
       net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
                           {DNNL_ARG_DST, *primitive_dst_mem_}});
-    } else { // gpu_available_
+    } else {  // gpu_available_
       net.push_back(*lrn_fwd_);
       net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
                           {DNNL_ARG_DST, *primitive_dst_mem_}});
@@ -163,7 +163,7 @@ class DnnlLrn : public DnnlKernel {
         } else {
           primitive_dst_mem_->set_data_handle(dst_data);
         }
-      } else { // gpu_available_
+      } else {  // gpu_available_
         reorder_dst_mem_to_->set_data_handle(dst_data);
       }
     }
@@ -172,7 +172,7 @@ class DnnlLrn : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const Provider_NodeAttributes& attributes,
+  void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "size");
     if (attr != attributes.end() &&
