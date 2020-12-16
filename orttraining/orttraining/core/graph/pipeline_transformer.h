@@ -22,7 +22,7 @@ Status TransformGraphForPipeline(
 // TODO(jufranc): when adapting this code to partition training graphs, add
 // a boolean is_training as parameter.
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
-    std::map<Node*, int>& op_to_stage,
+    std::map<const Node*, int>& op_to_stage,
     int pipeline_stage_id,
     int num_stages,
     std::vector<int32_t>& rank_ids);
@@ -35,10 +35,10 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
 //   - op_to_stage keeps the output of this function, where op_to_stage[node_ptr]
 // is the pipeline stage ID of the pointed node.
 //   - num_stages is the total number of stages.
-Status GetDeviceAssignmentMap(Graph& graph,
+Status GetDeviceAssignmentMap(const Graph& graph,
     const std::map<std::string, int>& id_to_stage,
-    std::map<Node*, int>& op_to_stage,
-    int num_stages);
+    std::map<const Node*, int>& op_to_stage,
+    const int num_stages);
 
 // Second of two functions to obtain a mapping between operators and stage ids.
 // This version in particular converts a list of graph cuts (i.e., CutInfo)
@@ -50,10 +50,10 @@ Status GetDeviceAssignmentMap(Graph& graph,
 //   - op_to_stage keeps the output of this function, where op_to_stage[node_ptr]
 // is the pipeline stage ID of the pointed node.
 //   - num_stages is the total number of stages.
-Status GetDeviceAssignmentMap(Graph& graph,
+Status GetDeviceAssignmentMap(const Graph& graph,
     const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cuts,
-    std::map<Node*, int>& op_to_stage,
-    int num_stages);
+    std::map<const Node*, int>& op_to_stage,
+    const int num_stages);
 
 }  // namespace training
 }  // namespace onnxruntime

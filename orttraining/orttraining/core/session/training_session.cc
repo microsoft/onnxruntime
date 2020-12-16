@@ -176,7 +176,7 @@ Status TrainingSession::ConfigureForTraining(
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
     ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
     int n_stages = config.distributed_config.pipeline_parallel_size;
-    std::map<Node*, int> op_to_stage;
+    std::map<const Node*, int> op_to_stage;
     const auto& cut_list = config.pipeline_config.value().cut_list;
     if (cut_list.size() > 0) {
       ORT_RETURN_IF_ERROR(

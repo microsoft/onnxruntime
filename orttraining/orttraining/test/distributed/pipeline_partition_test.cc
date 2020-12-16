@@ -39,7 +39,7 @@ TEST(PipelinePartition, DropoutGraph2stages) {
                              << status.ErrorMessage();
   auto& graph = pModel->MainGraph();
 
-  std::map<Node*, int> op_to_stage = {};
+  std::map<const Node*, int> op_to_stage = {};
   status = GetDeviceAssignmentMap(graph, input_map, op_to_stage, num_stages);
   EXPECT_TRUE(status.IsOK()) << "Failed to get stage map. Error: "
                              << status.ErrorMessage();
@@ -47,7 +47,7 @@ TEST(PipelinePartition, DropoutGraph2stages) {
   // instead of querying the distributed run context.
   std::vector<int32_t> rank_ids(num_stages);
   for (int i = 0; i < num_stages; ++i) {
-    rank_ids[i] = i;
+    rank_ids.at(i) = i;
   }
   status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage,
                                              pipeline_stage_id, num_stages,
@@ -77,9 +77,9 @@ void LoadAndPartitionWithCuts(const PathString& model_path,
     // instead of querying the distributed run context.
     std::vector<int32_t> rank_ids(num_stages);
     for (int i = 0; i < num_stages; ++i) {
-      rank_ids[i] = i;
+      rank_ids.at(i) = i;
     }
-    std::map<Node*, int> op_to_stage = {};
+    std::map<const Node*, int> op_to_stage = {};
     status = GetDeviceAssignmentMap(graph, cuts, op_to_stage, num_stages);
 
     EXPECT_TRUE(status.IsOK()) << "Failed to get stage map. Error: "
