@@ -885,7 +885,7 @@ std::set<const NodeArg*> GetAllNodeArgs(const Graph& graph) {
   return initial_node_args;
 }
 
-common::Status AddMetaTensors(int current_stage, int next_stage,
+common::Status AddMetaTensors(const int current_stage, const int next_stage,
                               Graph& graph,
                               std::vector<std::string>& new_input_names,
                               std::vector<std::string>& new_output_names,
@@ -893,7 +893,7 @@ common::Status AddMetaTensors(int current_stage, int next_stage,
                               std::vector<NodeArg*>& send_output_args,
                               std::vector<NodeArg*>& recv_input_args,
                               std::vector<NodeArg*>& recv_output_args,
-                              std::vector<int>& stage_to_rank) {
+                              const std::vector<int>& stage_to_rank) {
   std::string cut_index_str = std::to_string(current_stage);
 
   ORT_RETURN_IF_ERROR(
@@ -937,6 +937,130 @@ common::Status AddMetaTensors(int current_stage, int next_stage,
   return Status::OK();
 }
 
+void SendProducedTensors(ONNX_NAMESPACE::AttributeProto& element_types,
+                         const std::set<const NodeArg*>& tensors_sent_in_forward,
+                         std::vector<NodeArg*>& send_input_args,
+                         std::vector<NodeArg*>& recv_output_args,
+                         const std::map<const NodeArg*, std::vector<NodeArg*>>& tensor_replicas,
+                         const int next_stage) {
+  for (const NodeArg* arg : tensors_sent_in_forward) {
+    send_input_args.push_back(const_cast<NodeArg *>(arg));
+
+    // The tensor replica has been created in advance. We query it now
+    // because it will be one of the outputs of the receive node in this
+    // stage. We also need to add it to the graph.
+    NodeArg* new_receive_output = tensor_replicas.at(arg).at(next_stage);
+    recv_output_args.push_back(new_receive_output);
+
+    auto dtype = arg->TypeAsProto()->tensor_type().elem_type();
+    element_types.add_ints(static_cast<int64_t>(dtype));
+  }
+}
+
+void SendForwardedTensors(ONNX_NAMESPACE::AttributeProto& element_types,
+                          std::vector<NodeArg*>& send_input_args,
+                          std::vector<NodeArg*>& recv_output_args,
+                          const std::map<const NodeArg*, std::vector<NodeArg*>>& tensor_replicas,
+                          std::vector<std::pair<const NodeArg*, std::pair<int, int>>>& forwarded_tensors,
+                          const int current_stage,
+                          const int next_stage) {
+  
+  for (auto& forwarding_entry : forwarded_tensors) {
+    const NodeArg* tensor = forwarding_entry.first;
+    auto& range = forwarding_entry.second;
+    int start = range.first;
+    int end = range.second; 
+
+    if (start != current_stage) {
+      continue; 
+    }
+
+    if (start == end) {
+      continue; // Nothing else to do.
+    }
+
+    NodeArg* replica = tensor_replicas.at(tensor).at(current_stage);
+    NodeArg* next_replica = tensor_replicas.at(tensor).at(next_stage);
+    
+    ORT_ENFORCE(replica != nullptr && next_replica != nullptr,
+                "Couldn't find replicas of tensor " + tensor->Name());
+    if (!std::count(send_input_args.begin(), send_input_args.end(), replica)) {
+      send_input_args.push_back(replica);
+      recv_output_args.push_back(next_replica);
+      auto dtype = tensor->TypeAsProto()->tensor_type().elem_type();
+      element_types.add_ints(static_cast<int64_t>(dtype));
+    } 
+
+    if (start < end) {
+      // Forwarding in forward stage of pipeline
+      range.first = start + 1;
+    } 
+    // TODO(jufranc): Forwarding in backward stage of pipeline.
+    // else if (start > end) {
+    //   range.first = start - 1;
+    // } 
+  }
+}
+
+void UpdateInputsOfConsumers(Graph& graph,
+                             std::map<const NodeArg*, std::vector<NodeArg*>>& tensor_replicas,
+                             const std::map<const Node*, int>& op_to_stage,
+                             const int next_stage) {
+  for (auto& it : tensor_replicas) {
+    const NodeArg* tensor = it.first; 
+    auto& replicas = it.second;
+    auto consumers = graph.GetMutableConsumerNodes(tensor->Name());
+    for (Node* consumer : consumers) {
+      const auto found_stage = op_to_stage.find(consumer);
+      if (found_stage->second != next_stage) {
+        continue;
+      }
+      NodeArg* replica = replicas.at(next_stage);
+      if (replica == nullptr) {
+        continue;
+      }
+      for (auto& input : consumer->MutableInputDefs()) {
+        if (input->Name() == tensor->Name()) {
+          input = replica;
+          break;
+        }
+      }
+    }
+  }
+}
+
+// Checks whether the tensor is produced and consumed in the forward stage of
+// the computation.
+bool IsForwardComputation(const int producer_stage, const int consumer_stage) {
+  return producer_stage < consumer_stage;
+};
+
+// Checks whether the tensor is produced and consumed in the backward stage of
+// the computation. 
+bool IsBackwardComputation(const int producer_stage, const int consumer_stage) {
+  return producer_stage > consumer_stage;
+};
+
+// We create all the tensor replicas in advance using this function.
+void CreateTensorReplica(Graph& graph,
+                         std::map<const NodeArg*, std::vector<NodeArg*>>& tensor_replicas, 
+                         const NodeArg* tensor,
+                         int consumer_stage) {
+  auto type_proto = tensor->TypeAsProto();
+  ORT_ENFORCE(type_proto->value_case() == TypeProto::kTensorType,
+              "Only tensors are supported in training.");
+
+  NodeArg& new_receive_output = CreateNodeArg(graph, *tensor);
+  const auto* old_shape = tensor->Shape();
+  if (old_shape != nullptr) {
+    new_receive_output.SetShape(*old_shape);
+  }
+  // Add value info for this newly added receive_output, for shape propagation
+  // when training this partition.
+  graph.AddValueInfo(&new_receive_output);
+  tensor_replicas.at(tensor).at(consumer_stage) = &new_receive_output;
+}
+
 // Splits the graph into disconnected subgraphs, each subgraph representing the
 // a pipeline stage.
 //
@@ -956,6 +1080,8 @@ common::Status AddMetaTensors(int current_stage, int next_stage,
 //   - receive_nodes: a container for the Recv nodes we add to the graph. E.g.,
 // receive_nodes[i] represents the receiving of tensors from stage i in stage 
 // i+1 and belongs to the partition i+1.
+//   - stage_to_rank: a mapping between stage id and rank id. This is needed
+// because one stage may be composed of 2 ranks (due to horizontal parallelism).
 //
 // The algorithm used here can be divided into four major steps:
 //   1. We collect all tensors that need be sent from stage to stage.
@@ -975,12 +1101,12 @@ common::Status AddMetaTensors(int current_stage, int next_stage,
 // of such tensors.
 //     e) Finally, create the Send and Receive nodes.
 common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
-                                                std::map<const Node*, int>& op_to_stage,
-                                                int num_stages,
-                                                std::vector<std::pair<int, int>>& messages,
+                                                const std::map<const Node*, int>& op_to_stage,
+                                                const int num_stages,
+                                                const std::vector<std::pair<int, int>>& messages,
                                                 std::vector<Node*>& send_nodes,
                                                 std::vector<Node*>& receive_nodes,
-                                                std::vector<int>& stage_to_rank) {
+                                                const std::vector<int>& stage_to_rank) {
   
   // forward_messages stores all the tensors that will be sent by any stage.
   // For example, forward_messages[s] is a set of all the tensors sent by stage
@@ -1000,36 +1126,11 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
   // All the tensors that are produced and consumed in the original graph.
   auto initial_node_args = GetAllNodeArgs(graph);
 
-  // We create all the tensor replicas in advance using this fuction.
   // A tensor produced in stage r and consumed in stage r', such that r' > r,
   // will have a replica in all stages r'', such that r'' > r and r'' < r'.
   // tensor_replicas[t][r] contains a pointer to the the replica of t in stage r,
   // if it exists, or to itself if r is the stage of the producer of r.
   std::map<const NodeArg*, std::vector<NodeArg*>> tensor_replicas;
-  auto create_tensor_replica = [&tensor_replicas, &graph](const NodeArg* tensor,
-                                                          int consumer_stage) {
-    NodeArg& new_receive_output = CreateNodeArg(graph, *tensor);
-    const auto* old_shape = tensor->Shape();
-    if (old_shape != nullptr) {
-      new_receive_output.SetShape(*old_shape);
-    }
-    // Add value info for this newly added receive_output, for shape propagation
-    // when training this partition.
-    graph.AddValueInfo(&new_receive_output);
-    tensor_replicas.at(tensor).at(consumer_stage) = &new_receive_output;
-  };
-
-  // Checks whether the tensor is produced and consumed in the forward stage of
-  // the computation.
-  auto is_forward = [](const int producer_stage, const int consumer_stage) {
-    return producer_stage < consumer_stage;
-  };
-
-  // Checks whether the tensor is produced and consumed in the backward stage of
-  // the computation. 
-  auto is_backward = [](const int producer_stage, const int consumer_stage) {
-    return producer_stage > consumer_stage;
-  };
 
   // Find tensors that need to be sent and forwarded.
   for (const NodeArg* node_arg : initial_node_args) {
@@ -1069,13 +1170,13 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
       // consumed by a forward operator. So, at this point, either both producer
       // and consumer are forward or both are backward. Either way, we want
       // to know where are the last consumers of a tensor.
-      if (is_forward(producer_stage, consumer_stage)) {
+      if (IsForwardComputation(producer_stage, consumer_stage)) {
         last_consumer_stage_forward = std::max(last_consumer_stage_forward, consumer_stage);
       } 
-      ORT_ENFORCE(!is_backward(producer_stage, consumer_stage),
+      ORT_ENFORCE(!IsBackwardComputation(producer_stage, consumer_stage),
         "Forwarding backward tensors not supported yet: ", producer_stage, "->", consumer_stage);
       // TODO(jufranc): we will need something like the following, where
-      // else if (is_backward(producer_stage, consumer_stage)) {
+      // else if (IsBackwardComputation(producer_stage, consumer_stage)) {
       //  last_consumer_stage_backward is init to INT_MAX, for training graphs.
       //  last_consumer_stage_backward = std::min(last_consumer_stage_backward, consumer_stage);
       // }
@@ -1096,17 +1197,18 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
     // tensors need to be forwarded, and their producer-consumer stage range.
     // The replica of the tensor in the producer stage, is the tensor itself.
     replicas.at(producer_stage) = const_cast<NodeArg *>(node_arg);
-    if (is_forward(producer_stage, last_consumer_stage_forward)) {
+    if (IsForwardComputation(producer_stage, last_consumer_stage_forward)) {
       for (int r = producer_stage + 1; r <= last_consumer_stage_forward; ++r) {
-        create_tensor_replica(node_arg, r);
+        CreateTensorReplica(graph, tensor_replicas, node_arg, r);
       }
       if (last_consumer_stage_forward - producer_stage > 1) {
         forwarded_tensors.push_back({node_arg, 
                                     {producer_stage, last_consumer_stage_forward}});
       }
     }
-    // TODO(jufranc): take care of is_backward case.
-    ORT_ENFORCE(last_consumer_stage_forward == -1 || !is_backward(producer_stage, last_consumer_stage_forward),
+    // TODO(jufranc): take care of IsBackwardComputation case.
+    ORT_ENFORCE(last_consumer_stage_forward == -1 || 
+      !IsBackwardComputation(producer_stage, last_consumer_stage_forward),
       "Backward tensors (", node_arg->Name(), ") cannot be replicated yet" );
   }
 
@@ -1146,78 +1248,16 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
     // auto& tensors_sent = current_stage + 1 == next_stage ? tensors_sent_in_forward : tensors_sent_in_backward;
 
     // Take care of tensors that need to be sent from one device to the other.
-    for (const NodeArg* arg : tensors_sent_in_forward) {
-      send_input_args.push_back(const_cast<NodeArg *>(arg));
-
-      // The tensor replica has been created in advance. We query it now
-      // because it will be one of the outputs of the receive node in this
-      // stage. We also need to add it to the graph.
-      NodeArg* new_receive_output = tensor_replicas.at(arg).at(next_stage);
-      recv_output_args.push_back(new_receive_output);
-
-      auto dtype = arg->TypeAsProto()->tensor_type().elem_type();
-      element_types.add_ints(static_cast<int64_t>(dtype));
-    }
+    SendProducedTensors(element_types, tensors_sent_in_forward, send_input_args,
+                        recv_output_args, tensor_replicas, next_stage);
 
     // Take care of tensors that need to be forwarded.
-    for (auto& forwarding_entry : forwarded_tensors) {
-      const NodeArg* tensor = forwarding_entry.first;
-      auto& range = forwarding_entry.second;
-      int start = range.first;
-      int end = range.second; 
-
-      if (start != current_stage) {
-        continue; 
-      }
-
-      if (start == end) {
-        continue; // Nothing else to do.
-      }
-
-      NodeArg* replica = tensor_replicas.at(tensor).at(current_stage);
-      NodeArg* next_replica = tensor_replicas.at(tensor).at(next_stage);
-      
-      ORT_ENFORCE(replica != nullptr && next_replica != nullptr,
-                  "Couldn't find replicas of tensor " + tensor->Name());
-      if (!std::count(send_input_args.begin(), send_input_args.end(), replica)) {
-        send_input_args.push_back(replica);
-        recv_output_args.push_back(next_replica);
-        auto dtype = tensor->TypeAsProto()->tensor_type().elem_type();
-        element_types.add_ints(static_cast<int64_t>(dtype));
-      } 
-
-      if (start < end) {
-        // Forwarding in forward stage of pipeline
-        range.first = start + 1;
-      } 
-      // TODO(jufranc): Forwarding in backward stage of pipeline.
-      // else if (start > end) {
-      //   range.first = start - 1;
-      // } 
-    }
+    SendForwardedTensors(element_types, send_input_args, recv_output_args,
+                         tensor_replicas, forwarded_tensors, current_stage,
+                         next_stage);
 
     // Update the inputs of the next_stage consumers with the right replicas.
-    for (auto& it : tensor_replicas) {
-      const NodeArg* tensor = it.first; 
-      auto& replicas = it.second;
-      auto consumers = graph.GetMutableConsumerNodes(tensor->Name());
-      for (Node* consumer : consumers) {
-        const auto found_stage = op_to_stage.find(consumer);
-        if (found_stage->second != next_stage) {
-          continue;
-        }
-        NodeArg* replica = replicas.at(next_stage);
-        if (replica == nullptr) {
-          continue;
-        }
-        for (auto& input : consumer->MutableInputDefs()) {
-          if (input->Name() == tensor->Name()) {
-            input = replica;
-            break;
-          }
-        }
-      }
-    }
+    UpdateInputsOfConsumers(graph, tensor_replicas, op_to_stage, next_stage);
 
     const int num_attributes = 2;  // two attributes: tag and element_types
     NodeAttributes attributes;
@@ -1537,13 +1577,13 @@ Status GetDeviceAssignmentMap(const Graph& graph,
     return Status::OK();
   };
 
-  int ncuts = static_cast<int>(cuts.size());
+  const int num_cuts = static_cast<int>(cuts.size());
   // all_consumers[i] is the vector of consumers of cut i.
-  std::vector<std::vector<const Node*>> all_consumers(ncuts, std::vector<const Node*>());
+  std::vector<std::vector<const Node*>> all_consumers(num_cuts, std::vector<const Node*>());
   // all_producers[i] is the vector of producers of cut i.
-  std::vector<std::vector<const Node*>> all_producers(ncuts, std::vector<const Node*>());
+  std::vector<std::vector<const Node*>> all_producers(num_cuts, std::vector<const Node*>());
 
-  for (int cut_id = 0; cut_id < ncuts; ++cut_id) {
+  for (int cut_id = 0; cut_id < num_cuts; ++cut_id) {
     auto& cut = cuts.at(cut_id);
     // Find all consumers of this cut.
     auto& consumers = all_consumers.at(cut_id);
@@ -1571,7 +1611,7 @@ Status GetDeviceAssignmentMap(const Graph& graph,
   std::vector<int> stages(num_nodes, -1);
   { // Stage 0
     std::vector<bool> stop_visit(num_nodes, false);
-    for (int cid = 0; cid < ncuts; ++cid) {
+    for (int cid = 0; cid < num_cuts; ++cid) {
       auto& consumers = all_consumers.at(cid);
       for (auto consumer : consumers) {
         stop_visit.at(consumer->Index()) = true;
@@ -1582,7 +1622,7 @@ Status GetDeviceAssignmentMap(const Graph& graph,
   }
   
   // Stages 1 .. N-1
-  for (int cid = 0; cid < ncuts; ++cid) {
+  for (int cid = 0; cid < num_cuts; ++cid) {
     std::vector<bool> stop_visit(num_nodes, false);
     
     auto& producers = all_producers.at(cid);
@@ -1590,7 +1630,7 @@ Status GetDeviceAssignmentMap(const Graph& graph,
       stop_visit.at(producer->Index()) = true;
     }
 
-    for (int i = cid + 1; i < ncuts; ++i) {
+    for (int i = cid + 1; i < num_cuts; ++i) {
       auto& consumers = all_consumers.at(i);
       for (auto consumer : consumers) {
         stop_visit.at(consumer->Index()) = true;
@@ -1601,7 +1641,7 @@ Status GetDeviceAssignmentMap(const Graph& graph,
       visit_and_assign(all_consumers.at(cid), cid + 1, stop_visit, stages));
   }
 
-  ORT_RETURN_IF_ERROR(VerifyAssignment(stages, ncuts + 1, graph));
+  ORT_RETURN_IF_ERROR(VerifyAssignment(stages, num_cuts + 1, graph));
 
   for (size_t i = 0, t = graph.NumberOfNodes(); i < t; ++i) {
     op_to_stage.emplace(graph.GetNode(i), stages.at(i));

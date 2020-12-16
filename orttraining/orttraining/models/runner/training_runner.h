@@ -170,6 +170,9 @@ class TrainingRunner {
     // a stage identifier. We identify operators using the name of any of
     // their outputs. All operators in the graph must be in the domain of this
     // map.
+    // For example, op_id_to_stage["MatMul0"] being 5 means the operator node
+    // called "MatMul0" locates on the 6th stage. Note that stage ID is 0-based
+    // index.
     std::map<std::string, int> op_id_to_stage;
 
     // model_paths[i] is the name of the pipeline stage for i-th process.
