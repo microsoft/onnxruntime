@@ -142,28 +142,28 @@ static Status AddNcclAllReduceForGradientsWithGroups(
 #endif
 
 //bugbug
-// static Status AddAdasumAllReduceForGradients(
-//     std::vector<ArgDef>& gradient_argdefs,
-//     GraphAugmenter::GraphDefs& graph_defs,
-//     AdasumReductionType adasum_reduction_type,
-//     ArgDef& global_grad_norm_finite_argdef) {
-//   std::vector<ArgDef> adasum_output_argdefs;
-//   std::vector<ArgDef> adasum_input_argdefs = gradient_argdefs;
-//   adasum_input_argdefs.insert(adasum_input_argdefs.begin(),global_grad_norm_finite_argdef);
-//   for (size_t i = 0; i < gradient_argdefs.size(); i++) {
-//     adasum_output_argdefs.emplace_back(ArgDef(gradient_argdefs[i].name + "Adasum_Out", gradient_argdefs[i].type_proto));
-//   }
+static Status AddAdasumAllReduceForGradients(
+    std::vector<ArgDef>& gradient_argdefs,
+    GraphAugmenter::GraphDefs& graph_defs,
+    AdasumReductionType adasum_reduction_type,
+    ArgDef& global_grad_norm_finite_argdef) {
+  std::vector<ArgDef> adasum_output_argdefs;
+  std::vector<ArgDef> adasum_input_argdefs = gradient_argdefs;
+  adasum_input_argdefs.insert(adasum_input_argdefs.begin(),global_grad_norm_finite_argdef);
+  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
+    adasum_output_argdefs.emplace_back(ArgDef(gradient_argdefs[i].name + "Adasum_Out", gradient_argdefs[i].type_proto));
+  }
 
-//   // Add Adasum Allreduce node.
-//   graph_defs.AddNodeDefs({NodeDef(OpDef{"AdasumAllReduce", kMSDomain, 1},
-//                                   adasum_input_argdefs,
-//                                   adasum_output_argdefs,
-//                                   {ONNX_NAMESPACE::MakeAttribute("reduce_algo",
-//                                     static_cast<int64_t>(adasum_reduction_type))},
-//                                   "AdasumAllReduce")});
-//   gradient_argdefs = std::move(adasum_output_argdefs);
-//   return Status::OK();
-// }
+  // Add Adasum Allreduce node.
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"AdasumAllReduce", kMSDomain, 1},
+                                  adasum_input_argdefs,
+                                  adasum_output_argdefs,
+                                  {ONNX_NAMESPACE::MakeAttribute("reduce_algo",
+                                    static_cast<int64_t>(adasum_reduction_type))},
+                                  "AdasumAllReduce")});
+  gradient_argdefs = std::move(adasum_output_argdefs);
+  return Status::OK();
+}
 
 //bugbug
 static Status AddReducedGradientScalingNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
@@ -266,10 +266,10 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
       optimizer_state_initializer_names));
 
   // Perform allreduce on deltas after step() for Adasum
-  // ORT_RETURN_IF_ERROR(AddAdasumAllReduceForGradients(gradient_argdefs,
-  //                                                    graph_defs,
-  //                                                    opt_graph_config_.adasum_reduction_type,
-  //                                                    global_grad_norm_finite_argdef));
+  ORT_RETURN_IF_ERROR(AddAdasumAllReduceForGradients(gradient_argdefs,
+                                                     graph_defs,
+                                                     opt_graph_config_.adasum_reduction_type,
+                                                     global_grad_norm_finite_argdef));
   // bugbug
   // //check if allreduced deltas are finite
   // ArgDef adasum_global_grad_finite_argdef;
