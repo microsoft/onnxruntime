@@ -126,9 +126,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_cache_enable_ = false;
   std::string cache_path_;
   nvinfer1::IRuntime* runtime_ = nullptr;
-
   OrtMutex tensorrt_mu_;
   int device_id_;
+  AllocatorPtr allocator_;
+  mutable int subgraph_id_ = 0;
+
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>> contexts_;
@@ -139,7 +141,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
-  std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index,
+  std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
                                                const GraphViewer& graph) const;
 
   /**
@@ -153,7 +155,5 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                         const GraphViewer& graph, bool* early_termination) const;
 
   void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const;
-
-  AllocatorPtr allocator_;
 };
 }  // namespace onnxruntime

@@ -259,6 +259,7 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
   }
   return true;
 }
+
 }  // namespace
 
 namespace google {
@@ -500,7 +501,7 @@ void ToGraphProtoInternal(const GraphViewer& graph, Provider_GraphProto& graph_p
   }
 }
 
-std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const GraphViewer& graph) const {
+std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.first.size());
@@ -605,7 +606,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   // Assign inputs and outputs to subgraph's meta_def
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
-  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(kernels_index++);
+  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(subgraph_id_++);
   meta_def->domain() = kMSDomain;
 
   for (const auto& input : inputs) {
@@ -771,11 +772,11 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     std::unordered_map<int, std::string> index_to_node_map;
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
     std::unordered_set<int> non_trt_node_index(node_index.begin(), node_index.end());
-    int counter = 0, id = 0;
+    int id = 0;
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
         // Construct subgraph from node list
-        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
+        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);
 
         // Create node to inputs/outputs/index maps
         const auto& meta_def = sub_graph->GetMetaDef();
@@ -901,10 +902,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  int counter = 0, number_of_trt_nodes = 0;
+  int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
-      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
+      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       number_of_trt_nodes += group.first.size();
     }
