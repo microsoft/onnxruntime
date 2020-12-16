@@ -125,13 +125,15 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     };
     opt.weight_int_attributes_generator = [&parameters](const std::string& weight_name) {
       const auto it = parameters.optimizer_int_attributes_map.find(weight_name);
+  
       ORT_ENFORCE(
           it != parameters.optimizer_int_attributes_map.end(),
           "Failed to find int attribute map for weight ", weight_name);
       return it->second;
     };
     opt.use_mixed_precision_moments = parameters.use_fp16_moments;
-    opt.do_all_reduce_in_mixed_precision_type = true;
+    opt.do_all_reduce_in_mixed_precision_type = false;
+
     // TODO: this mapping is temporary.
     // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
     // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
