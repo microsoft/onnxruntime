@@ -87,8 +87,6 @@ Status AdamOptimizerBuilder::Build(
         const std::string gradient_moment_name = moments_prefix + "_" + weight_name;
 
         TensorProto moment_tensor_proto;
-        //bugbug
-        std::cout<<"########trying to copy proto in AdamOptimizerBuilder::Build"<<std::endl;
         TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
 
         // Update moment initializer with init value
