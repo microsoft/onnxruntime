@@ -36,6 +36,7 @@
 #include "core/session/IOBinding.h"
 #include "core/session/device_allocator.h"
 #include "core/session/allocator_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
 #include "test/capturing_sink.h"
@@ -55,7 +56,7 @@ using namespace onnxruntime::concurrency;
 namespace {
 struct KernelRegistryAndStatus {
   std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
-  Status st;
+  onnxruntime::Status st;
 };
 }  // namespace
 namespace onnxruntime {

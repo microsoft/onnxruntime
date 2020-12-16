@@ -43,19 +43,13 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   return result;
 #else
+  // We have saved hashes to lookup static kernels in an ORT format model so the default behavior is to return an
+  // empty vector to leave that in place. An EP that compiles nodes can override this in a minimal build.
   ORT_UNUSED_PARAMETER(graph);
   ORT_UNUSED_PARAMETER(kernel_registries);
-  ORT_NOT_IMPLEMENTED("IExecutionProvider::GetCapability is not supported in this build.");
+  return result;
 #endif
 }
-
-common::Status IExecutionProvider::Sync() const { return Status::OK(); };
-
-common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
-
-common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
-
-common::Status IExecutionProvider::OnSessionInitializationEnd() { return Status::OK(); }
 
 // Update allocator in the provider if already present; ignore if not.
 void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
@@ -79,6 +73,7 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   allocator_list_.push_back(allocator);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
@@ -88,9 +83,13 @@ common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>
                                            std::string& /*dll_path*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
 }
+#endif
 
-std::shared_ptr<KernelRegistry> IExecutionProvider::GetKernelRegistry() const {
-  return nullptr;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
+                                           std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
 }
+#endif
 
 }  // namespace onnxruntime

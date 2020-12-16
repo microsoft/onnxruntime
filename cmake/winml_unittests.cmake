@@ -55,6 +55,11 @@ function(add_winml_test)
   target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
   target_compile_options(${_UT_TARGET} PRIVATE /wd5205)  # workaround cppwinrt SDK bug https://github.com/microsoft/cppwinrt/issues/584
 
+  # if building inbox
+  if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+    target_compile_definitions(${_UT_TARGET} PRIVATE "BUILD_INBOX=1")
+  endif()
+
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
     WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>

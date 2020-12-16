@@ -11,26 +11,22 @@
 #include "core/framework/bfc_arena.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
-#include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
+#include "core/providers/rocm/rocm_execution_provider_info.h"
+#include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
 
 const int CPU_ALLOCATOR_DEVICE_ID = 0;
 
-// Information needed to construct HIP execution providers.
-struct ROCMExecutionProviderInfo {
-  OrtDevice::DeviceId device_id{0};
-  size_t hip_mem_limit{std::numeric_limits<size_t>::max()};
-  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
-};
-
 // Logical device representation.
 class ROCMExecutionProvider : public IExecutionProvider {
  public:
   explicit ROCMExecutionProvider(const ROCMExecutionProviderInfo& info);
   virtual ~ROCMExecutionProvider();
+
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
   Status Sync() const override;
 
@@ -53,24 +49,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   template <typename T>
   const T* GetConstOnes(size_t count) {
-    if (std::is_same<T, float>::value) {
-      if (!constant_ones_float_) {
-        constant_ones_float_ = rocm::CreateConstantOnes<float>();
-      }
-      return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
-    } else if (std::is_same<T, double>::value) {
-      if (!constant_ones_double_) {
-        constant_ones_double_ = rocm::CreateConstantOnes<double>();
-      }
-      return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
-    } else if (std::is_same<T, half>::value) {
-      if (!constant_ones_half_) {
-        constant_ones_half_ = rocm::CreateConstantOnes<half>();
-      }
-      return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
-    } else {
-      return nullptr;
-    }
+    return GetPerThreadContext().template GetConstOnes<T>(count);
   }
 
   void AddDeferredReleaseCPUPtr(void* p);
@@ -80,7 +59,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
@@ -90,15 +69,16 @@ class ROCMExecutionProvider : public IExecutionProvider {
       const onnxruntime::GraphViewer& graph,
       const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
-  int GetDeviceId() const override { return device_id_; }
+  int GetDeviceId() const override { return info_.device_id; }
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
-  void UpdateProviderOptionsInfo();
+
+  ProviderOptions GetProviderOptions() const override {
+    return ROCMExecutionProviderInfo::ToProviderOptions(info_);
+  }
 
  private:
-  OrtDevice::DeviceId device_id_;
+  ROCMExecutionProviderInfo info_;
   hipDeviceProp_t device_prop_;
-  size_t hip_mem_limit_;
-  ArenaExtendStrategy arena_extend_strategy_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
@@ -108,13 +88,9 @@ class ROCMExecutionProvider : public IExecutionProvider {
   std::unordered_map<hipEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
   OrtMutex deferred_release_cpu_ptr_mutex_;
 
-  std::unique_ptr<rocm::IConstantBuffer<float>> constant_ones_float_;
-  std::unique_ptr<rocm::IConstantBuffer<double>> constant_ones_double_;
-  std::unique_ptr<rocm::IConstantBuffer<half>> constant_ones_half_;
-
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id);
+    PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy);
     ~PerThreadContext();
 
     rocblas_handle RocblasHandle() const {
@@ -129,6 +105,32 @@ class ROCMExecutionProvider : public IExecutionProvider {
       return current_deferred_release_event_;
     }
 
+    template <typename T>
+    const T* GetConstOnes(size_t count) {
+      if (std::is_same<T, float>::value) {
+        if (!constant_ones_float_) {
+          constant_ones_float_ = rocm::CreateConstantOnes<float>();
+        }
+        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
+      } else if (std::is_same<T, double>::value) {
+        if (!constant_ones_double_) {
+          constant_ones_double_ = rocm::CreateConstantOnes<double>();
+        }
+        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
+      } else if (std::is_same<T, half>::value) {
+        if (!constant_ones_half_) {
+          constant_ones_half_ = rocm::CreateConstantOnes<half>();
+        }
+        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
+      } else {
+        return nullptr;
+      }
+    }
+
+    AllocatorPtr GetAllocator() const {
+      return allocator_;
+    }
+
    private:
     rocblas_handle rocblas_handle_ = nullptr;
     miopenHandle_t miopen_handle_ = nullptr;
@@ -137,6 +139,12 @@ class ROCMExecutionProvider : public IExecutionProvider {
     // note that hipEvent will be assigned at OnRunEnd() when PerThreadContext destory
     // so the ownership is passed to deferred_release_cpu_ptr_
     hipEvent_t current_deferred_release_event_ = nullptr;
+
+    std::unique_ptr<rocm::IConstantBuffer<float>> constant_ones_float_;
+    std::unique_ptr<rocm::IConstantBuffer<double>> constant_ones_double_;
+    std::unique_ptr<rocm::IConstantBuffer<half>> constant_ones_half_;
+
+    AllocatorPtr allocator_;
   };
 
   using PerThreadContextMap = std::unordered_map<const ROCMExecutionProvider*, std::weak_ptr<PerThreadContext>>;

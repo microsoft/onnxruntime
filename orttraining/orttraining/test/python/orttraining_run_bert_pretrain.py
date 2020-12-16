@@ -93,6 +93,7 @@ def create_pretraining_dataset(input_file, max_pred_length, args):
 class pretraining_dataset(Dataset):
 
     def __init__(self, input_file, max_pred_length):
+        logger.info("pretraining_dataset: %s, max_pred_length: %d", input_file, max_pred_length)
         self.input_file = input_file
         self.max_pred_length = max_pred_length
         f = h5py.File(input_file, "r")

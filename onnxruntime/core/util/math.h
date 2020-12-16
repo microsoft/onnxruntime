@@ -20,11 +20,16 @@
 // still keep it simple, so all platforms would be able to support it fairly
 // easily.
 
-
+#ifdef USE_MKLML_FOR_BLAS
+// when USE_MKLML is defined, use MKLML cblas for GEMM
+#include "mkl_cblas.h"
+#define CBLAS_ENUM_DEFINED_H
+#else
 // We include the cblas header here so that we can obtain the macros from cblas.
 extern "C" {
 #include "core/framework/cblas.h"
 }
+#endif
 
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
@@ -170,23 +175,6 @@ void Axpy(int N, const float* alpha, const T* x, T* y, Provider* provider);
 
 template <typename T, int order>
 struct Im2col {
-  void operator()(
-      const T* data_im,
-      int64_t channels,
-      int64_t height,
-      int64_t width,
-      int64_t kernel_h,
-      int64_t kernel_w,
-      int64_t dilation_h,
-      int64_t dilation_w,
-      int64_t pad_t,
-      int64_t pad_l,
-      int64_t pad_b,
-      int64_t pad_r,
-      int64_t stride_h,
-      int64_t stride_w,
-      T* data_col,
-      T padding_value = 0);
 };
 
 template <typename T>
@@ -208,30 +196,27 @@ struct Im2col<T, StorageOrder::NCHW> {
       int64_t stride_w,
       T* data_col,
       T padding_value = 0);
+  void operator()(
+      const T* data_im,
+      const int64_t* input_shape,
+      const int64_t* output_shape,
+      int64_t channels_col,
+      const int64_t* kernel_shape,
+      const int64_t* stride,
+      const int64_t* dilation,
+      const int64_t* pad,
+      int64_t rank,
+      T* data_col,
+      bool accumulate_output = false,
+      T padding_value = 0);
 };
 
 template <typename T>
 struct Im2col<T, StorageOrder::NHWC> {
   void operator()(
       const T* data_im,
-      int64_t channels,
-      int64_t height,
-      int64_t width,
-      int64_t kernel_h,
-      int64_t kernel_w,
-      int64_t dilation_h,
-      int64_t dilation_w,
-      int64_t pad_t,
-      int64_t pad_l,
-      int64_t pad_b,
-      int64_t pad_r,
-      int64_t stride_h,
-      int64_t stride_w,
-      T* data_col,
-      T padding_value = 0);
-  void operator()(
-      const T* data_im,
-      int64_t channels,
+      int64_t group_channels,
+      int64_t input_channels,
       int64_t input_h,
       int64_t input_w,
       int64_t kernel_h,
@@ -247,22 +232,18 @@ struct Im2col<T, StorageOrder::NHWC> {
       int64_t output_count,
       T* data_col,
       T padding_value = 0);
-};
-
-template <typename T, int order>
-struct Im2colNd {
   void operator()(
-      const T* data_img,
-      const int64_t* im_shape,
+      const T* data_im,
+      int64_t group_channels,
+      int64_t input_channels,
+      const int64_t* input_shape,
       const int64_t* output_shape,
-      int64_t channels_col,
       const int64_t* kernel_shape,
       const int64_t* stride,
       const int64_t* dilation,
       const int64_t* pad,
-      int64_t N,
+      int64_t rank,
       T* data_col,
-      bool accumulate_output = false,
       T padding_value = 0);
 };
 

@@ -12,6 +12,10 @@ namespace onnxruntime {
 namespace test {
 TEST(AllocatorTest, CUDAAllocatorTest) {
   OrtDevice::DeviceId cuda_device_id = 0;
+
+  // ensure CUDA device is avaliable.
+  CUDA_CALL_THROW(cudaSetDevice(cuda_device_id));
+
   AllocatorCreationInfo default_memory_info(
       {[](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, cuda_device_id});
 

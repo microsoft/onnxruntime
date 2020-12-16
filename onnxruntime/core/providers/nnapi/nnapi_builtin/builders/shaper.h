@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include <string>
@@ -127,8 +130,6 @@ class Shaper {
   std::unordered_map<std::string, Shape> shape_map_;
   std::vector<std::function<Status(Shaper&)>> shape_ops_;
 };
-
-std::string Shape2String(const Shaper::Shape& shape);
 
 }  // namespace nnapi
 }  // namespace onnxruntime

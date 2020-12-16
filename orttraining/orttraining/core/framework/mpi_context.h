@@ -1,6 +1,6 @@
 #pragma once
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 #include <mpi.h>
 #endif
 
@@ -27,7 +27,7 @@ class MPIContext {
 
     MPIContext(MPIContext const&) = delete;
     void operator=(MPIContext const&) = delete;
-    
+
     // within ~MPIContext() we need to check for _WIN32 before calling shutdown_mpi().
     ~MPIContext();
 
@@ -36,7 +36,7 @@ class MPIContext {
     int GetWorldSize() const { return world_size_; }
     int GetLocalSize() const { return local_size_; }
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
     // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
     // in case of _WIN32 we cannot call shutdown_mpi() in MPIContext destructor because of DllMain's restriction
     // shutdown_mpi shall be called specifically in user code.
@@ -46,7 +46,7 @@ class MPIContext {
   private:
     MPIContext();
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
     void setup_mpi();
 #endif
     int world_rank_;

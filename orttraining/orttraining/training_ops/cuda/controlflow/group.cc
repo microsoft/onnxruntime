@@ -18,5 +18,15 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     onnxruntime::contrib::Group);
 
+ONNX_OPERATOR_KERNEL_EX(
+    PassThrough,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .VariadicAlias(0, 0),  // outputs and inputs are mapped one to one
+    onnxruntime::contrib::PassThrough);
+
 }  // namespace cuda
 }  // namespace onnxruntime

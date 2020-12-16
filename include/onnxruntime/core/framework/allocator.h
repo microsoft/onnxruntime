@@ -9,12 +9,23 @@
 #include "ortdevice.h"
 #include "ortmemoryinfo.h"
 
+// This configures the arena based allocator used by ORT
+// See docs/C_API.md for details on what these mean and how to choose these values
+struct OrtArenaCfg {
+  size_t max_mem;                // use 0 to allow ORT to choose the default
+  int arena_extend_strategy;     // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int initial_chunk_size_bytes;  // use -1 to allow ORT to choose the default
+  int max_dead_bytes_per_chunk;  // use -1 to allow ORT to choose the default
+};
+
 namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
 constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
 constexpr const char* MIGRAPHX = "MIGraphX";
 constexpr const char* MIGRAPHX_PINNED = "MIGraphXPinned";
+
+constexpr size_t kAllocAlignment = 256;
 
 // forward declaration
 class SessionState;
