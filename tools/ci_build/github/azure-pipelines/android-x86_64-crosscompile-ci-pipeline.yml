@@ -44,9 +44,12 @@ jobs:
       inputs:
         artifactName: 'coverage_rpt.txt'
         targetPath: '$(Build.BinariesDirectory)/coverage_rpt.txt'
-
-    - script: python -m pip install -q mysql-connector-python
-      displayName: 'Install mysql-connector-python'
+    - task: CmdLine@2
+      inputs:
+        script: |
+          set -e
+          sudo apt-get install -y python3-pip
+          sudo python3 -m pip install mysql-connector-python
 
     - task: PythonScript@0
       displayName: Post Code Coverage To Dash Board
