@@ -34,17 +34,17 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
   //   vhdd_start_level = training::DistributedRunContext::GetInstance()
   //                                                      .GroupSize(training::WorkerGroupType::NodeLocalDataParallel);
   // }
-  std::vector<int> tensor_element_counts;
-  std::vector<size_t> tensor_offsets;
-  std::vector<size_t> tensor_sizes;
+  // std::vector<int> tensor_element_counts;
+  // std::vector<size_t> tensor_offsets;
+  // std::vector<size_t> tensor_sizes;
 
-  int64_t total_recv_buffer_len = 0;
+  // int64_t total_recv_buffer_len = 0;
 
-  ComputeTensorSizeAndBufferLength(context,
-                                   tensor_element_counts,
-                                   tensor_offsets,
-                                   tensor_sizes,
-                                   total_recv_buffer_len);
+  // ComputeTensorSizeAndBufferLength(context,
+  //                                  tensor_element_counts,
+  //                                  tensor_offsets,
+  //                                  tensor_sizes,
+  //                                  total_recv_buffer_len);
 
   // // Allocate temp scratch buffer in cpu space.
   // AllocatorPtr allocator;
@@ -106,11 +106,11 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
   //                     tensor_sizes[i], cudaMemcpyHostToDevice));
   // }
 //bugbug
-  for (int i = 0; i < num_tensors; i++) {
-    auto x_tensor = context->Input<Tensor>(i + 1);
-    Tensor* y_tensor = context->Output(i, x_tensor->Shape());
-    CopyTensor(*x_tensor, *y_tensor);
-  }
+  // for (int i = 0; i < num_tensors; i++) {
+  //   auto x_tensor = context->Input<Tensor>(i + 1);
+  //   Tensor* y_tensor = context->Output(i, x_tensor->Shape());
+  //   CopyTensor(*x_tensor, *y_tensor);
+  // }
 
   return Status::OK();
 }
