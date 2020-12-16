@@ -185,6 +185,45 @@ static std::vector<ArgDef> AddViewForParameter(
   return view_outputs;
 }
 
+void PartitionOptimizerState(
+    const int64_t partition_offset,
+    const int64_t partition_size,
+    NameMLValMap& initial_states) {
+  for (const auto& moments_prefix : MOMENTS_PREFIXES) {
+    const auto initial_state_it = initial_states.find(moments_prefix);
+    if (initial_state_it != initial_states.end()) {
+      auto* init_tensor = initial_state_it->second.GetMutable<Tensor>();
+
+      OrtValue partitioned;
+      TensorShape shape({partition_size});
+      auto element_type = init_tensor->DataType();
+      const OrtMemoryInfo& info = init_tensor->Location();
+      std::unique_ptr<Tensor> p_tensor;
+
+      if (utils::IsPrimitiveDataType<float>(element_type)) {
+        float* data_buffer = init_tensor->MutableData<float>();
+        p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+                                                    shape,
+                                                    data_buffer + partition_offset,
+                                                    info);
+      } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
+        MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
+        p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+                                                    shape,
+                                                    data_buffer + partition_offset,
+                                                    info);
+
+      } else {
+        ORT_THROW("Unsupported type: ", element_type, "for initial optimizer moments.");
+      }
+      partitioned.Init(p_tensor.release(),
+                       DataTypeImpl::GetType<Tensor>(),
+                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+      initial_states[moments_prefix] = std::move(partitioned);
+    }
+  }
+}
+
 static Status AddParameterPartition(
     Graph& graph,
     GraphAugmenter::GraphDefs& graph_defs,
@@ -223,11 +262,21 @@ static Status AddParameterPartition(
   weight_argdefs.insert(weight_argdefs.end(), weight_views.begin(), weight_views.end());
   gradient_argdefs.insert(gradient_argdefs.end(), gradient_views.begin(), gradient_views.end());
 
+  const auto& initial_states = opt_config.initial_states;
   // Update Optimizer node configs.
   ORT_ENFORCE(weight_views.size() == gradient_views.size());
   for (size_t i = 0; i < weight_views.size(); i++) {
     OptimizerNodeConfig new_config = opt_config;
     new_config.enabled = enabled[i];
+
+    // Partition initial optimizer state
+    if (enabled[i] && !initial_states.empty()) {
+      ORT_ENFORCE(view_shapes.size() == 3, "Invalid view_shapes vector passed for partitioning.");
+      int64_t partition_offset = view_shapes[0].GetDims()[0];
+      int64_t partition_size = view_shapes[1].GetDims()[0];
+      new_config.initial_states = opt_config.initial_states;
+      PartitionOptimizerState(partition_offset, partition_size, new_config.initial_states);
+    }
 
     if (opt_config.mixed_precision_weight_arg != nullptr) {
       new_config.mixed_precision_weight_arg = &graph.GetOrCreateNodeArg(mixed_precision_weight_views[i].name, mixed_precision_weight_views[i].type_proto);

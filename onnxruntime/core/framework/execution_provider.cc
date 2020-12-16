@@ -51,14 +51,6 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 #endif
 }
 
-common::Status IExecutionProvider::Sync() const { return Status::OK(); };
-
-common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
-
-common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
-
-common::Status IExecutionProvider::OnSessionInitializationEnd() { return Status::OK(); }
-
 // Update allocator in the provider if already present; ignore if not.
 void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
@@ -99,9 +91,5 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
 }
 #endif
-
-std::shared_ptr<KernelRegistry> IExecutionProvider::GetKernelRegistry() const {
-  return nullptr;
-}
 
 }  // namespace onnxruntime

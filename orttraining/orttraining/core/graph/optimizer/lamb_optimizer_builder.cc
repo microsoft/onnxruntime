@@ -63,24 +63,23 @@ Status LambOptimizerBuilder::Build(
 
   // Update count, which should be 1 at the first training iteration.
   // At the end of each Lamb call, the update count may be increased by one.
-  const std::string step_tensor_name = "Step";  // per weight optimizer requires a per weight update count
   // Add step as an initializer.
   TensorProto step_tensor_proto;
   const auto& shared_optim_state = config.shared_optimizer_states;
-  const auto step_state_it = shared_optim_state.find(step_tensor_name);
+  const auto step_state_it = shared_optim_state.find(LAMB_STEP_TENSOR_NAME);
   if (step_state_it != shared_optim_state.end()) {
     const auto& init_tensor = step_state_it->second.Get<Tensor>();
     ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
-    step_tensor_proto = utils::TensorToTensorProto(init_tensor, step_tensor_name);
+    step_tensor_proto = utils::TensorToTensorProto(init_tensor, LAMB_STEP_TENSOR_NAME);
   } else {
-    step_tensor_proto = CreateTensorProto<int64_t>(step_tensor_name, 1);
+    step_tensor_proto = CreateTensorProto<int64_t>(LAMB_STEP_TENSOR_NAME, 1);
   }
   new_external_initializers.emplace_back(step_tensor_proto);
-  input_argdefs.emplace_back(ArgDef(step_tensor_name));
+  input_argdefs.emplace_back(ArgDef(LAMB_STEP_TENSOR_NAME));
 
   // Add the first output, which is the updated step.
   TypeProto* step_type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  output_argdefs.emplace_back(ArgDef(step_tensor_name + "_Out", step_type_proto));
+  output_argdefs.emplace_back(ArgDef(LAMB_STEP_TENSOR_NAME + "_Out", step_type_proto));
 
   // Lamb optimizer's attributes.
   std::vector<float> alpha;
@@ -205,8 +204,7 @@ Status LambOptimizerBuilder::Build(
                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
 
       // m1 & m2 & m1_new & m2_new
-      const std::vector<std::string> moments_prefixes({"Moment_1", "Moment_2"});
-      for (const auto& moment_prefix : moments_prefixes) {
+      for (const auto& moment_prefix : MOMENTS_PREFIXES) {
         const std::string gradient_moment_name = moment_prefix + "_" + weight_name;
 
         // Construct type of momentum tensor.
