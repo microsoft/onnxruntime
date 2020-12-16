@@ -123,9 +123,9 @@ def _order_paths(paths):
 
     return ordered_paths
 
-def _add_or_update_sharded_key(state_key, state_value, state_sub_dict,
+def _add_or_update_sharded_key_for_zero(state_key, state_value, state_sub_dict,
                                model_state_key, original_dim, sharded_states_original_dims):
-    """Add or update the record for the sharded_key state_key in the state_sub_dict"""
+    """Add or update the record for the sharded state_key in the state_sub_dict"""
 
     # record the original dimension for this state
     sharded_states_original_dims[model_state_key] = original_dim
@@ -140,8 +140,8 @@ def _add_or_update_sharded_key(state_key, state_value, state_sub_dict,
         # create a new entry for this state in the state_dict
         state_sub_dict[state_key] = state_value
 
-def _add_or_validate_unsharded_key(state_key, state_value, state_sub_dict, mismatch_error_string):
-    """Add or validate the record for the unsharded_key state_key in the state_sub_dict"""
+def _add_or_validate_unsharded_key_for_zero(state_key, state_value, state_sub_dict, mismatch_error_string):
+    """Add or validate the record for the unsharded state_key in the state_sub_dict"""
 
     if state_key in state_sub_dict:
         # state_dict already contains a record for this unsharded state.
@@ -173,12 +173,12 @@ def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state
     for model_state_key, model_state_value in rank_state_dict[model][full_precision].items():
         if model_state_key in rank_state_dict[partition_info]:
             # this model state is sharded since a record exists in the partition_info subdict
-            _add_or_update_sharded_key(model_state_key, model_state_value,
+            _add_or_update_sharded_key_for_zero(model_state_key, model_state_value,
                 state_dict[model][full_precision], model_state_key,
                 rank_state_dict[partition_info][model_state_key][original_dim], sharded_states_original_dims)
         else:
             # this model state is not sharded since a record for it does not exist in the partition_info subdict
-            _add_or_validate_unsharded_key(model_state_key, model_state_value,
+            _add_or_validate_unsharded_key_for_zero(model_state_key, model_state_value,
                 state_dict[model][full_precision], "Value mismatch for model state {}".format(model_state_key))
 
 def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict):
@@ -204,13 +204,13 @@ def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, s
 
             if optimizer_key in sharded_optimizer_keys and model_state_key in rank_state_dict[partition_info]:
                 # this optimizer state is sharded since a record exists in the partition_info subdict
-                _add_or_update_sharded_key(optimizer_key, optimizer_value,
+                _add_or_update_sharded_key_for_zero(optimizer_key, optimizer_value,
                     state_dict[optimizer][model_state_key], model_state_key,
                     rank_state_dict[partition_info][model_state_key][original_dim], sharded_states_original_dims)
             else:
                 # this optimizer state is not sharded since a record for it does not exist in the partition_info subdict
                 # or this optimizer key is not one of the sharded optimizer keys
-                _add_or_validate_unsharded_key(optimizer_key, optimizer_value,
+                _add_or_validate_unsharded_key_for_zero(optimizer_key, optimizer_value,
                     state_dict[optimizer][model_state_key],
                     "Value mismatch for model state {} and optimizer state {}".format(model_state_key, optimizer_key))
 
