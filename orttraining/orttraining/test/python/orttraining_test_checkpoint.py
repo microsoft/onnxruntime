@@ -56,6 +56,7 @@ ngpus = torch.cuda.device_count()
 save_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_save_checkpoint.py')
 load_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_load_checkpoint.py')
 aggregate_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_checkpoint_aggregation.py')
+optim_state_file = os.path.join('checkpoint', 'orttraining_test_load_optimizer_state.py')
 
 single_node_full_precision_path = os.path.join(checkpoint_dir, 'single_node', 'full_precision')
 single_node_mixed_precision_path = os.path.join(checkpoint_dir, 'single_node', 'mixed_precision')
@@ -124,5 +125,11 @@ _single_run(aggregate_checkpoint_file, 'test_aggregation_from_distributed_zero_f
 _single_run(aggregate_checkpoint_file, 'test_aggregation_from_distributed_zero_mixed_precision_adam', distributed_zero_mixed_precision_adam_path)
 _single_run(aggregate_checkpoint_file, 'test_aggregation_from_distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
 _single_run(aggregate_checkpoint_file, 'test_aggregation_from_distributed_zero_full_precision_lamb', distributed_zero_full_precision_lamb_path)
+
+# optimizer state loading into model-parallel tests
+_distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_full_precision_adam', distributed_zero_full_precision_adam_path)
+_distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_mixed_precision_adam', distributed_zero_mixed_precision_adam_path)
+_distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
+_distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_full_precision_lamb', distributed_zero_full_precision_lamb_path)
 
 shutil.rmtree(checkpoint_dir)
