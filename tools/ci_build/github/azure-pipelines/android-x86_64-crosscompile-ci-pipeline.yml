@@ -44,6 +44,9 @@ jobs:
       inputs:
         artifactName: 'coverage_rpt.txt'
         targetPath: '$(Build.BinariesDirectory)/coverage_rpt.txt'
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.x'
     - task: CmdLine@2
       inputs:
         script: |
