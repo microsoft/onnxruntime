@@ -363,13 +363,27 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   // ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   //// todo : make this scale optional.
   //const float scale = 1.0f ; // / total_num_accumulations;
-  ArgDef scale = AddAllReduceForSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs);
+
+  bool divide_sample_after_all_reduce = true;
+  ArgDef scale;
+
+  ArgDef grad_multi_factor = AddAllReduceForSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs);
+  if (divide_sample_after_all_reduce == true) {
+    scale = ArgDef(nodearg_name_generator("one"), graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    graph_defs.AddInitializers({CreateTensorProto<float>(scale.name, 1.0f, {})});
+  } else {
+    scale = grad_multi_factor;
+  }
 
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                               opt_graph_config_.AllReduceDataType(), false));
 
   // add Reducescatter for gradients
   ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
+
+  if (divide_sample_after_all_reduce == true) {
+    ORT_RETURN_IF_ERROR(ScaleGradWithSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs, grad_multi_factor));
+  } 
 
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;

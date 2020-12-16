@@ -234,23 +234,24 @@ ArgDef OptimizerGraphBuilder::AddAllReduceForSampleCount(
   TypeProto* temp_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[0]);
   ORT_ENFORCE(temp_type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT 
     || temp_type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  if (temp_type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    std::cout<< "don't need convert float to fp16 since, gradient_defs are fp32"<< std::endl;
-    return reciprocal_of_sample_size_count_argdef;
-  } 
-  
-  std::cout << "convert reciprocal_of_sample_size_count from fp32 to fp16" << std::endl;
-  TypeProto* fp16_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[0]);
-  fp16_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  ArgDef fp16_reciprocal_of_sample_size_count_argdef = ArgDef(nodearg_name_generator("reciprocal_of_sample_size_count"), fp16_type_proto);
-  graph_defs.AddNodeDefs({NodeDef(OpDef{"Cast"},
-                            {reciprocal_of_sample_size_count_argdef},
-                            {fp16_reciprocal_of_sample_size_count_argdef},
-                            std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16))}),
-                            nodearg_name_generator("reciprocal_of_sample_size_count_fp16"))});
-  return fp16_reciprocal_of_sample_size_count_argdef;
-  
+  // if (temp_type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  //   std::cout<< "don't need convert float to fp16 since, gradient_defs are fp32"<< std::endl;
 
+  // whatever type gradients are, we can pass either fp16 or fp32 scale per MixedPrecisionScale op defined.
+    return reciprocal_of_sample_size_count_argdef;
+  
+  
+  // TypeProto* fp16_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[0]);
+  // fp16_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  // ArgDef fp16_reciprocal_of_sample_size_count_argdef = ArgDef(nodearg_name_generator("reciprocal_of_sample_size_count"), fp16_type_proto);
+  // graph_defs.AddNodeDefs({NodeDef(OpDef{"Cast"},
+  //                           {reciprocal_of_sample_size_count_argdef},
+  //                           {fp16_reciprocal_of_sample_size_count_argdef},
+  //                           std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16))}),
+  //                           nodearg_name_generator("reciprocal_of_sample_size_count_fp16"))});
+  // return fp16_reciprocal_of_sample_size_count_argdef;
+  
+  // return reciprocal_of_sample_size_count_argdef;
 
   // for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
   //   ArgDef& gradient_argdef = gradient_argdefs[i];
@@ -267,6 +268,45 @@ ArgDef OptimizerGraphBuilder::AddAllReduceForSampleCount(
   // }
 }
 
+Status OptimizerGraphBuilder::ScaleGradWithSampleCount(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+    GraphAugmenter::GraphDefs& graph_defs,
+    ArgDef scale_argdef) {
+
+  ArgDef scale =  scale_argdef;
+  TypeProto* temp_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[0]);
+  ORT_ENFORCE(temp_type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT 
+    || temp_type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  if (temp_type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    std::cout<< "don't need convert float to fp16 since, gradient_defs are fp32"<< std::endl;
+  } else {
+    TypeProto* fp16_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[0]);
+    fp16_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    scale = ArgDef(nodearg_name_generator("grad_multi_factor_cast"), fp16_type_proto);
+    graph_defs.AddNodeDefs({NodeDef(OpDef{"Cast"},
+                              {scale_argdef},
+                              {scale},
+                              std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16))}),
+                              nodearg_name_generator("grad_multi_factor_cast_node_name"))});
+  }
+
+  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+    ArgDef& gradient_argdef = gradient_argdefs[i];
+    TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
+    ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_scaled_after_allreduce"), scaled_gradient_type_proto);
+  
+    graph_defs.AddNodeDefs({NodeDef(OpDef{"Mul"},
+                                    {gradient_argdef, scale},
+                                    {scaled_gradient_argdef},
+                                    NodeAttributes(),
+                                    scaled_gradient_argdef.name)});
+
+    gradient_argdef = scaled_gradient_argdef;
+  }
+
+  return Status::OK();
+}
 
 ArgDef AddGradientAccumulationNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
                                     std::vector<ArgDef>& gradient_argdefs,               // update argdefs in place
@@ -580,12 +620,27 @@ Status OptimizerGraphBuilder::BuildInternal(
     return graph.GenerateNodeArgName(base_name);
   };
 
+  bool divide_sample_after_all_reduce = false;
   // const bool is_gradient_accumulation_enabled = opt_graph_config_.gradient_accumulation_steps > 1;
   // add gradient scaling
   ArgDef fused_gradient_argdef;
-  ArgDef scale = AddAllReduceForSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs);
+  ArgDef scale;
+
+  ArgDef grad_multi_factor = AddAllReduceForSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs);
+  if (divide_sample_after_all_reduce == true) {
+    scale = ArgDef(nodearg_name_generator("one"), graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    graph_defs.AddInitializers({CreateTensorProto<float>(scale.name, 1.0f, {})});
+  } else {
+    scale = grad_multi_factor;
+  }
+
+  
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                               opt_graph_config_.AllReduceDataType(), false));
+
+  if (divide_sample_after_all_reduce == true) {
+    ORT_RETURN_IF_ERROR(ScaleGradWithSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs, grad_multi_factor));
+  } 
   // if (is_gradient_accumulation_enabled) {
   //     //We did not divide by acc step, instead, we divide by total sample across all accumulation batches.
   //   // todo : make this scale optional.

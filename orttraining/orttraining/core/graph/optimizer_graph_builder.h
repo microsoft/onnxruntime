@@ -109,6 +109,12 @@ class OptimizerGraphBuilder {
     std::vector<ArgDef>& gradient_argdefs,
     GraphAugmenter::GraphDefs& graph_defs);
 
+  Status ScaleGradWithSampleCount(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+    GraphAugmenter::GraphDefs& graph_defs,
+    ArgDef scale_argdef);
+
   Status AddGradientNorm(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const std::vector<ArgDef>& grad_argdefs,

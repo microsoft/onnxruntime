@@ -144,8 +144,18 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   };
 
   const int64_t horovod_reduce_op = opt_graph_config_.horovod_reduce_op;
+  
+  bool divide_sample_after_all_reduce = true;
+  ArgDef scale;
 
-  ArgDef scale = AddAllReduceForSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs);
+  ArgDef grad_multi_factor = AddAllReduceForSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs);
+  if (divide_sample_after_all_reduce == true) {
+    scale = ArgDef(nodearg_name_generator("one"), graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    graph_defs.AddInitializers({CreateTensorProto<float>(scale.name, 1.0f, {})});
+  } else {
+    scale = grad_multi_factor;
+  }
+
   // add gradient scaling
   std::vector<ArgDef> output_gradient_argdef;
   // const auto total_num_accumulations =
@@ -160,6 +170,9 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   // add Allreduce for gradients
   if (opt_graph_config_.use_nccl) {
     ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, output_gradient_argdef, graph_defs));
+    if (divide_sample_after_all_reduce == true) {
+      ORT_RETURN_IF_ERROR(ScaleGradWithSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs, grad_multi_factor));
+    } 
   } else {
     ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
   }
