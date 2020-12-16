@@ -98,6 +98,7 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(IoBinding);
+ORT_DEFINE_RELEASE(ArenaCfg);
 
 /*! \class Ort::Float16_t
   * \brief it is a structure that represents float16 data.
@@ -322,7 +323,9 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);
   SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
-  OrtStatus* OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions* options, OrtCUDAProviderOptions* cuda_options);
+
+  SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);
+  SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -346,7 +349,7 @@ struct Session : Base<OrtSession> {
   // Run that will allocate the output values
   std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                          const char* const* output_names, size_t output_count);
-  // Run for when there is a list of prealloated outputs
+  // Run for when there is a list of preallocated outputs
   void Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
            const char* const* output_names, Value* output_values, size_t output_count);
 
@@ -547,6 +550,23 @@ struct IoBinding : public Base<OrtIoBinding> {
   std::vector<Value> GetOutputValues(Allocator&) const;
   void ClearBoundInputs();
   void ClearBoundOutputs();
+};
+
+/*! \struct Ort::ArenaCfg
+  * \brief it is a structure that represents the configuration of an arena based allocator
+  * \details Please see docs/C_API.md for details
+  */
+struct ArenaCfg : Base<OrtArenaCfg> {
+  explicit ArenaCfg(std::nullptr_t) {}
+  /**
+  * \param max_mem - use 0 to allow ORT to choose the default
+  * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
+  * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
+  * \return an instance of ArenaCfg
+  * See docs/C_API.md for details on what the following parameters mean and how to choose these values
+  */
+  ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);
 };
 
 //

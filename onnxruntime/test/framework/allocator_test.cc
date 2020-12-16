@@ -87,9 +87,9 @@ TEST(AllocatorTest, TestOverflowChecks) {
   EXPECT_TRUE(IAllocator::CalcMemSizeForArrayWithAlignment<0>(num_elements, element_size, &size));
   EXPECT_FALSE(IAllocator::CalcMemSizeForArrayWithAlignment<0>(num_elements + 1, element_size, &size));
 
-  // we need to add 63 to apply the alignment mask, so num_elements * element_size must be 64 short of the max
-  EXPECT_TRUE(IAllocator::CalcMemSizeForArrayWithAlignment<64>(num_elements - (64 / element_size), element_size, &size));
-  EXPECT_FALSE(IAllocator::CalcMemSizeForArrayWithAlignment<64>(num_elements, element_size, &size));
+  // we need to add kAllocAlignment-1 bytes to apply the alignment mask, so num_elements * element_size must be kAllocAlignment-bytes short of the max
+  EXPECT_TRUE(IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(num_elements - (kAllocAlignment / element_size), element_size, &size));
+  EXPECT_FALSE(IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(num_elements, element_size, &size));
 
   element_size = std::numeric_limits<size_t>::max() / 8;
   num_elements = 8;
@@ -97,9 +97,9 @@ TEST(AllocatorTest, TestOverflowChecks) {
   EXPECT_TRUE(IAllocator::CalcMemSizeForArrayWithAlignment<0>(num_elements, element_size, &size));
   EXPECT_FALSE(IAllocator::CalcMemSizeForArrayWithAlignment<0>(num_elements + 1, element_size, &size));
 
-  // we need to add 63 to apply the alignment mask, so num_elements * element_size must be 64 short of the max
-  EXPECT_TRUE(IAllocator::CalcMemSizeForArrayWithAlignment<64>(num_elements, element_size - (64 / num_elements), &size));
-  EXPECT_FALSE(IAllocator::CalcMemSizeForArrayWithAlignment<64>(num_elements, element_size, &size));
+  // we need to add kAllocAlignment-1 bytes to apply the alignment mask, so num_elements * element_size must be kAllocAlignment-bytes short of the max
+  EXPECT_TRUE(IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(num_elements, element_size - (kAllocAlignment / num_elements), &size));
+  EXPECT_FALSE(IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(num_elements, element_size, &size));
 }
 }  // namespace test
 }  // namespace onnxruntime

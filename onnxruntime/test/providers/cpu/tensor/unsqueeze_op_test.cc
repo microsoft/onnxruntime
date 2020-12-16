@@ -82,7 +82,7 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{4}, true); //set as initializer to enable shape inference
     test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-    // nGraph and TensorRT does not support negative axis.
+    // TensorRT does not support negative axis.
     test.Run(OpTester::ExpectResult::kExpectFailure,
              "[ShapeInferenceError] values in 'axes' are beyond the bounds of the computed output shape",
              {kTensorrtExecutionProvider}); //TensorRT expects 'axes' attribute
@@ -95,18 +95,17 @@ TEST(TensorOpTest, UnsqueezeNegAxis_3) {
     test.AddAttribute("axes", std::vector<int64_t>{-4, 1, -6});
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-    // nGraph and TensorRT does not support negative axis.
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+    // TensorRT does not support negative axis.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   }
   {
     OpTester test("Unsqueeze", 13);  // use latest opset with axis input
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{-4, 1, -6});
     test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-    // nGraph and TensorRT does not support negative axis.
+    // TensorRT does not support negative axis.
     // TODO: TensorRT, OpenVINO dont support "axes" input in opset 13, re-enable after
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, 
-              kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", { kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
   }
 }
 

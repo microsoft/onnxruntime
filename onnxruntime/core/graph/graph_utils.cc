@@ -547,7 +547,7 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
   return true;
 }
 
-const Node* FirstChildByType(Node& node, const std::string& child_type) {
+const Node* FirstChildByType(const Node& node, const std::string& child_type) {
   for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
     if ((*it).OpType().compare(child_type) == 0) {
       return &(*it);
@@ -556,7 +556,7 @@ const Node* FirstChildByType(Node& node, const std::string& child_type) {
   return nullptr;
 }
 
-const Node* FirstParentByType(Node& node, const std::string& parent_type) {
+const Node* FirstParentByType(const Node& node, const std::string& parent_type) {
   for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
     if ((*it).OpType().compare(parent_type) == 0) {
       return &(*it);

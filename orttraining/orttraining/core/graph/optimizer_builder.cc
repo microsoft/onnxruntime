@@ -16,5 +16,15 @@ void OptimizerBuilderRegistry::RegisterBuilders() {
   GetInstance().Register<SGDOptimizerBuilder>("SGDOptimizer");
 }
 
+Status IsMatchingTypeAndShape(
+    const onnxruntime::Tensor& tensor,
+    const int32_t element_type,
+    const std::vector<int64_t>& expected_shape) {
+  ORT_RETURN_IF_NOT(tensor.GetElementType() == element_type);
+  const std::vector<int64_t>& tensor_shape = tensor.Shape().GetDims();
+  ORT_RETURN_IF_NOT(tensor_shape == expected_shape);          
+  return Status::OK();
+}
+
 }  // namespace training
 }  // namespace onnxruntime

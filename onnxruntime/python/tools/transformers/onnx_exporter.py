@@ -247,9 +247,7 @@ def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_
     transformers_module = __import__("transformers", fromlist=[model_class_name])
     model_class = getattr(transformers_module, model_class_name)
 
-    use_cdn = False if model_name == 't5-11b' else True
-
-    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir, use_cdn=use_cdn)
+    return model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
 def load_pt_model(model_name, model_class, cache_dir):
@@ -396,7 +394,7 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
 
     example_inputs = filter_inputs(example_inputs, input_names)
 
-    example_outputs = model(example_inputs, training=False)
+    example_outputs = model(example_inputs, training=False).to_tuple()
 
     # Flatten is needed for gpt2 and distilgpt2.
     example_outputs_flatten = flatten(example_outputs)

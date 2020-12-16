@@ -191,8 +191,11 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
 
     // Execute the kernel.
     ORT_TRY {
-      if (p_op_kernel->KernelDef().AllocateInputsContiguously())
-        utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context);
+#ifdef ENABLE_TRAINING
+      if (p_op_kernel->KernelDef().AllocateInputsContiguously()) {
+        ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
+      }
+#endif
 
       status = p_op_kernel->Compute(&op_kernel_context);
     }

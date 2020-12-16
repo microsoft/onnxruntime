@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -40,6 +41,9 @@ final class OnnxRuntime {
   /** The API handle. */
   static long ortApiHandle;
 
+  /** The available runtime providers */
+  static EnumSet<OrtProvider> providers;
+
   private OnnxRuntime() {}
 
   /* Computes and initializes OS_ARCH_STR (such as linux-x64) */
@@ -59,10 +63,15 @@ final class OnnxRuntime {
     }
     String detectedArch = null;
     String arch = System.getProperty("os.arch", "generic").toLowerCase(Locale.ENGLISH);
-    if (arch.indexOf("amd64") == 0 || arch.indexOf("x86_64") == 0) {
+    if (arch.startsWith("amd64") || arch.startsWith("x86_64")) {
       detectedArch = "x64";
-    } else if (arch.indexOf("x86") == 0) {
+    } else if (arch.startsWith("x86")) {
+      // 32-bit x86 is not supported by the Java API
       detectedArch = "x86";
+    } else if (arch.startsWith("aarch64")) {
+      detectedArch = "aarch64";
+    } else if (arch.startsWith("ppc64")) {
+      detectedArch = "ppc64";
     } else if (isAndroid()) {
       detectedArch = arch;
     } else {
@@ -85,6 +94,7 @@ final class OnnxRuntime {
       load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
       load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_3);
+      providers = initialiseProviders(ortApiHandle);
       loaded = true;
     } finally {
       if (!isAndroid()) {
@@ -198,10 +208,40 @@ final class OnnxRuntime {
   }
 
   /**
+   * Extracts the providers array from the C API, converts it into an EnumSet.
+   *
+   * <p>Throws IllegalArgumentException if a provider isn't recognised (note this exception should
+   * only happen during development of ONNX Runtime, if it happens at any other point, file an issue
+   * on Github).
+   *
+   * @param ortApiHandle The API Handle.
+   * @return The enum set.
+   */
+  private static EnumSet<OrtProvider> initialiseProviders(long ortApiHandle) {
+    String[] providersArray = getAvailableProviders(ortApiHandle);
+
+    EnumSet<OrtProvider> providers = EnumSet.noneOf(OrtProvider.class);
+
+    for (String provider : providersArray) {
+      providers.add(OrtProvider.mapFromName(provider));
+    }
+
+    return providers;
+  }
+
+  /**
    * Get a reference to the API struct.
    *
    * @param apiVersionNumber The API version to use.
    * @return A pointer to the API struct.
    */
   private static native long initialiseAPIBase(int apiVersionNumber);
+
+  /**
+   * Gets the array of available providers.
+   *
+   * @param ortApiHandle The API handle
+   * @return The array of providers
+   */
+  private static native String[] getAvailableProviders(long ortApiHandle);
 }

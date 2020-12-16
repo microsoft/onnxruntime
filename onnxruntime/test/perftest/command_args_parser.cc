@@ -33,8 +33,8 @@ namespace perftest {
       "\t-A: Disable memory arena\n"
       "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|dnnl|tensorrt|ngraph|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'ngraph', 'openvino', 'nuphar', 'dml' or 'acl'. "
+      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
+      "'openvino', 'nuphar', 'dml' or 'acl'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -86,8 +86,6 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kCudaExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kNGraphExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
           test_config.run_config.optimization_level = ORT_DISABLE_ALL;

@@ -83,6 +83,7 @@ class WinMLTelemetryHelper {
   }
 
   void LogWinMLShutDown();
+  void LogWinMLSuspended();
   void LogRuntimeError(HRESULT hr, std::string message, PCSTR file, PCSTR function, int line);
   void LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line);
   void LogRegisterOperatorKernel(

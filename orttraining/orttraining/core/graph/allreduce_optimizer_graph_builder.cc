@@ -117,10 +117,12 @@ static Status AddNcclAllReduceForGradients(
 AllreduceOptimizerGraphBuilder::AllreduceOptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
-    const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs)
+    const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
+    std::unordered_map<std::string, std::string>& updated_weight_names_map)
     : OptimizerGraphBuilder(opt_builder_registry,
                             opt_graph_config,
-                            weight_names_to_opt_configs) {
+                            weight_names_to_opt_configs,
+                            updated_weight_names_map) {
   ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1,
               "Allreduce optimizer graph builder can only be used for distributed training.");
   if (opt_graph_config.use_nccl) {
