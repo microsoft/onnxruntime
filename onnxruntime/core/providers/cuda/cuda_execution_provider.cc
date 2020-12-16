@@ -1,15 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "cuda_common.h"
-#include "cuda_execution_provider.h"
-#include "cuda_fence.h"
-#include "cuda_allocator.h"
-#include "core/framework/kernel_registry.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
+
 #include "core/framework/compute_capability.h"
 #include "core/framework/fallback_cpu_capability.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/memcpy.h"
+#include "core/framework/provider_options_utils.h"
 #include "core/graph/graph_utils.h"
+#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_fence.h"
+#include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -93,41 +95,14 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
-/*
- * This method should be called within the constructor,
- * so that the configuration of provider related setting can be updated 
- * and kept at IExecutionProvider level.
- */
-void CUDAExecutionProvider::UpdateProviderOptionsInfo() {
-  UnorderedMapStringToString options;
-
-  options["device_id"] = std::to_string(device_id_);
-  options["cuda_mem_limit"] = std::to_string(cuda_mem_limit_);
-  std::string strategy;
-  if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo) {
-    strategy = "kNextPowerOfTwo";
-  } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
-    strategy = "kSameAsRequested";
-  } else {
-    strategy = "unknown";
-  }
-  options["arena_extend_strategy"] = strategy;
-
-  IExecutionProvider::SetProviderOptions(options);
-}
-
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
-      device_id_(info.device_id),
-      cuda_mem_limit_(info.cuda_mem_limit),
-      arena_extend_strategy_(info.arena_extend_strategy),
-      cudnn_conv_algo_(info.cudnn_conv_algo),
-      do_copy_in_default_stream_(info.do_copy_in_default_stream) {
-  CUDA_CALL_THROW(cudaSetDevice(device_id_));
+      info_{info} {
+  CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
   CUDA_CALL_THROW(cudaDeviceSynchronize());
-  CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, device_id_));
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, info_.device_id));
 
   size_t free = 0;
   size_t total = 0;
@@ -137,10 +112,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       [](OrtDevice::DeviceId device_id) {
         return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
       },
-      device_id_,
+      info_.device_id,
       true,
-      {cuda_mem_limit_,
-       static_cast<int>(arena_extend_strategy_),
+      {info_.cuda_mem_limit,
+       static_cast<int>(info_.arena_extend_strategy),
        -1, -1});
 
   InsertAllocator(CreateAllocator(default_memory_info));
@@ -164,8 +139,6 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       CPU_ALLOCATOR_DEVICE_ID);
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
-
-  UpdateProviderOptionsInfo();
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
@@ -215,7 +188,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
+      context = std::make_shared<PerThreadContext>(info_.device_id, info_.cuda_mem_limit, info_.arena_extend_strategy);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -1816,18 +1789,43 @@ static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node) {
     auto attr_name = attr.first;
     auto attr_value = attr.second;
 
-    //cudnn only supports symmetric padding
+    // cudnn only supports symmetric padding, so drop the node down to CPU if the padding provided is asymmetric
     // TODO: Check if we can adopt a similar approach to deal with asymmetric pads in 'ConvTranspose'
     // as we did for 'Conv' to circumvent the cudnn limitation
-    if ("pads" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
+    if ("pads" == attr_name &&
+        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
       auto& pads = attr_value.ints();
       int pads_size = pads.size();
       ORT_ENFORCE(pads_size % 2 == 0);
       int rank = pads_size / 2;
       for (int i = 0; i < rank; i++) {
         if (pads.Get(i) != pads.Get(i + rank)) {
+          LOGS_DEFAULT(WARNING) << "Dropping the ConvTranspose node: " << node.Name()
+                                << " to CPU because it requires asymmetric padding which the CUDA EP"
+                                << " currently does not support";
           return true;
         }
+      }
+    }
+
+    if ("auto_pad" == attr_name &&
+        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING == attr_value.type()) {
+      auto& auto_pad_attr = attr_value.s();
+      ORT_ENFORCE(auto_pad_attr == "SAME_UPPER" || auto_pad_attr == "SAME_LOWER" ||
+                      auto_pad_attr == "VALID" || auto_pad_attr == "NOTSET",
+                  "auto_pad must be either NOTSET, VALID, SAME_UPPER, SAME_LOWER");
+
+      // If auto_pad is SAME_UPPER or SAME_LOWER, pads will be computed dynamically at runtime
+      // based on the provided input shape. This may or may not lead to symmetric padding.
+      // If it turns out to be asymmetric padding, CuDNN will return a cryptic unfriendly error message.
+      // So drop down the node to CPU if auto_pad is SAME_UPPER or SAME_LOWER even if it may lead to
+      // symmetric padding.
+      // TODO: Remove this after we have supported asymmetric padding in the CUDA ConvTranspose kernel
+      if (auto_pad_attr == "SAME_UPPER" || auto_pad_attr == "SAME_LOWER") {
+        LOGS_DEFAULT(WARNING) << "Dropping the ConvTranspose node: " << node.Name()
+                              << " to CPU because it uses the auto_pad attribute which may lead to asymmetric padding which"
+                              << " the CUDA EP currently does not support";
+        return true;
       }
     }
   }
@@ -1854,7 +1852,7 @@ static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>(do_copy_in_default_stream_);
+  return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>(info_.do_copy_in_default_stream);
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -1921,7 +1919,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // For CUDA EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferedNodes(graph, Type(), kernel_registries, candidates);
+  std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {

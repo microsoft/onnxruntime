@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_fwd.h"
 #include "core/framework/kernel_registry.h"
 
 using namespace onnxruntime::common;

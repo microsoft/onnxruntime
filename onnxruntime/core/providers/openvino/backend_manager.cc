@@ -26,7 +26,7 @@ void BackendManager::ReleaseGlobalContext() {
   g_global_context.reset();
 }
 
-BackendManager::BackendManager(const Provider_Node* fused_node, const logging::Logger& logger) {
+BackendManager::BackendManager(const Node* fused_node, const logging::Logger& logger) {
   auto prec_str = GetGlobalContext().precision_str;
   if (prec_str == "FP32") {
     subgraph_context_.precision = InferenceEngine::Precision::FP32;
@@ -123,7 +123,7 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::Provider_ModelP
   return has_batched_inputs;
 }
 
-bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Provider_Node* fused_node) const {
+bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const {
   bool has_sym_dims = false;
   auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
   for (auto input : graph_inputs) {
@@ -145,13 +145,13 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Provider_Node*
 }
 
 std::unique_ptr<ONNX_NAMESPACE::Provider_ModelProto>
-BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Provider_Node* fused_node,
+BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node,
                                            const logging::Logger& logger) const {
   const auto* node_function = fused_node->GetFunctionBody();
   const std::string& name = fused_node->Name();
   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", name);
 
-  const onnxruntime::Provider_Graph& node_subgraph = node_function->Body();
+  const onnxruntime::Graph& node_subgraph = node_function->Body();
   auto model = node_subgraph.CreateGraphViewer()->CreateModel(logger);
 
   auto model_proto = model->ToProto();

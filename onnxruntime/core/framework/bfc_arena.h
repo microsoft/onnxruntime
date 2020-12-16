@@ -25,6 +25,7 @@ limitations under the License.
 #include "core/common/logging/severity.h"
 #include "core/platform/ort_mutex.h"
 #include "core/framework/arena.h"
+#include "core/framework/arena_extend_strategy.h"
 #include "core/common/safeint.h"
 #include "onnxruntime_config.h"
 
@@ -38,11 +39,6 @@ namespace onnxruntime {
 #pragma GCC diagnostic ignored "-Wnull-dereference"
 #endif
 #endif
-
-enum class ArenaExtendStrategy : int32_t {
-  kNextPowerOfTwo = 0,
-  kSameAsRequested,
-};
 
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's

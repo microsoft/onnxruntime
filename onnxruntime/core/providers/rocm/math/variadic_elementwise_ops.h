@@ -6,7 +6,7 @@
 #include <functional>
 #include <vector>
 
-#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/rocm_kernel.h"
 
 namespace onnxruntime {
 namespace rocm {
