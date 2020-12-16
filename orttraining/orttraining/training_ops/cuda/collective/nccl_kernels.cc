@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/collective/nccl_kernels.h"
-#include "orttraining/training_ops/cpu/controlflow/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -11,8 +10,6 @@ NcclAllReduce::NcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
 Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
-  ORT_ENFORCE(context->InputCount() > 0 && context->InputCount() < kAliasRangeLimit);
-
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
 
@@ -42,8 +39,6 @@ NcclAllGather::NcclAllGather(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
 Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
-  ORT_ENFORCE(context->InputCount() > 0 && context->InputCount() < kAliasRangeLimit);
-
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
   const int rank = nccl_->Rank(group_type_);
@@ -102,8 +97,6 @@ NcclReduceScatter::NcclReduceScatter(const OpKernelInfo& info) : NcclKernel(info
 }
 
 Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
-  ORT_ENFORCE(context->InputCount() > 0 && context->InputCount() < kAliasRangeLimit);
-
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
   const int rank = nccl_->Rank(group_type_);
