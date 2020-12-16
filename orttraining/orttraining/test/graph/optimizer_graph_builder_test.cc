@@ -225,9 +225,9 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
 
   MLValue mlValue;
   std::vector<float> init_value(num_ele);
-  std::generate(init_value.begin(), init_value.end(), [n = 0]() mutable { return static_cast<float>(++n); });
+  std::iota(init_value.begin(), init_value.end(), static_cast<float>(0));
 
-  for (auto& param_prefix : MOMENTS_PREFIXES) {
+  for (const auto& param_prefix : MOMENTS_PREFIXES) {
     TrainingUtil::CreateCpuMLValue<float>(param_dims, init_value, &mlValue);
     initial_states.insert(std::make_pair(param_prefix, std::move(mlValue)));
   }
@@ -240,9 +240,9 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   std::vector<int64_t> expected_shape = {partition_size};
 
   for (const auto& state : initial_states) {
-    auto& init_tensor = state.second.Get<Tensor>();
-    auto& shape = init_tensor.Shape().GetDims();
-    ASSERT_TRUE(shape == expected_shape);
+    const auto& init_tensor = state.second.Get<Tensor>();
+    const auto& shape = init_tensor.Shape().GetDims();
+    ASSERT_EQ(shape, expected_shape);
     const std::vector<float> found(init_tensor.Data<float>(),
                                    init_tensor.Data<float>() + partition_size);
     ASSERT_EQ(expected_vec, found);

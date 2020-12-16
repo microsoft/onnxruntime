@@ -191,7 +191,7 @@ void PartitionOptimizerState(
     NameMLValMap& initial_states) {
   for (const auto& moments_prefix : MOMENTS_PREFIXES) {
     const auto initial_state_it = initial_states.find(moments_prefix);
-    if (initial_state_it != initial_states.end()) {      
+    if (initial_state_it != initial_states.end()) {
       auto* init_tensor = initial_state_it->second.GetMutable<Tensor>();
 
       OrtValue partitioned;
@@ -214,8 +214,7 @@ void PartitionOptimizerState(
                                                     info);
 
       } else {
-        ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported type: ", element_type,
-                        "for initial optimizer moments.");
+        ORT_THROW("Unsupported type: ", element_type, "for initial optimizer moments.");
       }
       partitioned.Init(p_tensor.release(),
                        DataTypeImpl::GetType<Tensor>(),
