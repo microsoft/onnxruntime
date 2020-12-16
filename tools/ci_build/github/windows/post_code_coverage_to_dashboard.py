@@ -32,8 +32,8 @@ def parse_txt_report(report_file):
         for line in report.readlines():
             if 'TOTAL' in line:
                 fields = line.strip().split()
-                data['lines_valid'] = fields[1]
-                data['lines_covered'] = fields[2]
+                data['lines_valid'] = int(fields[1])
+                data['lines_covered'] = int(fields[2])
                 data['coverage'] = float(fields[3].strip('%'))/100
                 break
     return data
@@ -58,7 +58,8 @@ def write_to_db(coverage_data, build_config, args):
         user='ort@onnxruntimedashboard',
         password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD'),
         host='onnxruntimedashboard.mysql.database.azure.com',
-        database='onnxruntime')
+        database='onnxruntime',
+        use_pure=True)
 
     try:
         cursor = cnx.cursor()
