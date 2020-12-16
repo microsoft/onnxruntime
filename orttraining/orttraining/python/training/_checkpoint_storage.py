@@ -82,9 +82,13 @@ def load(path, key=None):
     return load_obj
 
 def to_serialized_hex(user_dict):
+    """Serialize the user_dict and convert the serialized bytes to a hex string and return"""
+
     return pickle.dumps(user_dict).hex()
 
 def from_serialized_hex(serialized_hex):
+    """Convert serialized_hex to bytes and deserialize it and return"""
+
     try:
         serialized_hex = serialized_hex.decode()
     except AttributeError:

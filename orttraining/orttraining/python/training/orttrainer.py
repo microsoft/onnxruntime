@@ -1161,6 +1161,19 @@ class ORTTrainer(object):
             else:
                 warnings.warn("Missing key: optimizer in state_dict", UserWarning)
 
+        def _check_optimizer_mismatch(state_dict):
+            """Assert that the loaded optimizer has the same config as the current training session config"""
+
+            # the state_dict optimizer_name can be a byte string (if coming from checkpoint file)
+            # or can be a regular string (coming from user)
+            optimizer_name = state_dict[_utils.state_dict_trainer_options_key()]['optimizer_name']
+            try:
+                optimizer_name = optimizer_name.decode()
+            except AttributeError:
+                pass
+            assert self.optim_config.name == optimizer_name, \
+                "Optimizer mismatch: expected {}, got {}".format(self.optim_config.name, optimizer_name)
+
         # extract state dict from the current training session. this is to persist the states between
         # two training sessions.
         # for example, if user provided only the model states, the optimizer states from the current
@@ -1170,6 +1183,9 @@ class ORTTrainer(object):
             current_state_dict = self.state_dict()
             if strict:
                 _check_key_mismatch(current_state_dict, state_dict)
+
+        # check optimizer config names are the same for current session and the sessino being loaded
+        _check_optimizer_mismatch(state_dict)
 
         # load the model states from the input state dictionary into the onnx graph
         self._load_model_states(state_dict, strict)
@@ -1209,7 +1225,7 @@ class ORTTrainer(object):
         # pass the populated states to the training session to populate the backend graph
         self._init_session(optimizer_state_dict)
 
-    def save_checkpoint(self, path, user_dict={}, pytorch_format=False):
+    def save_checkpoint(self, path, user_dict={}, include_optimizer_states=True):
         """Persists ORTTrainer state dictionary on disk along with user_dict.
 
         Saves the state_dict along with the user_dict to a file specified by path.
@@ -1219,8 +1235,8 @@ class ORTTrainer(object):
                 if file already exists at path, an exception is raised.
             user_dict: custom data to be saved along with the state_dict. This data will be returned
                 to the user when load_checkpoint is called.
-            pytorch_format: boolean flag indicating whether or not to persist the optimizer states
-                on load_checkpoint, only model states will be loaded
+            include_optimizer_states: boolean flag indicating whether or not to persist the optimizer states.
+                on load_checkpoint, only model states will be loaded if include_optimizer_states==True
         """
 
         # extract state_dict to be saved in the checkpoint
@@ -1232,26 +1248,18 @@ class ORTTrainer(object):
         if bool(user_dict):
             state_dict[_utils.state_dict_user_dict_key()] = _checkpoint_storage.to_serialized_hex(user_dict)
 
-        # if pytorch_format is True, only save the model states in the checkpoint file
-        if pytorch_format and _utils.state_dict_optimizer_key() in state_dict:
-            del state_dict[_utils.state_dict_optimizer_key()]
+        # if include_optimizer_states is False, only save the model states in the checkpoint file
+        if not include_optimizer_states:
+            if _utils.state_dict_optimizer_key() in state_dict:
+                del state_dict[_utils.state_dict_optimizer_key()]
 
         _checkpoint_storage.save(state_dict, path)
 
     def _aggregation_required(self, loaded_trainer_options):
         """Checks if aggregation is required for the loading the state_dict into the ORTTrainer"""
 
-        # There are three conditions that require aggregation for ZeRO:
-        # - Going from zero distributed run to a non distributed run
-        # - Going from one world size to another (weights need to be aggregated and then again sharded)
-        # - Going from mixed precision to full precision run (since fp32 states are sharded in mixed
-        #   precision and not in full precision)
-        if loaded_trainer_options['zero_stage'] > 0:
-            if self.options.distributed.deepspeed_zero_optimization.stage != loaded_trainer_options['zero_stage'] or \
-                self.options.distributed.world_size != loaded_trainer_options['world_size'] or \
-                    (loaded_trainer_options['mixed_precision'] and not self.options.mixed_precision.enabled):
-                return True
-        return False
+        # To load states in the backend, aggregation is required for every ZeRO checkpoint
+        return loaded_trainer_options['zero_stage'] > 0
 
     def load_checkpoint(self, *paths, strict=True):
         """Loads the saved checkpoint state dictionary into the ORTTrainer

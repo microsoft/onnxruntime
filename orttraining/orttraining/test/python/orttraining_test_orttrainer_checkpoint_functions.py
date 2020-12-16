@@ -321,7 +321,27 @@ def test_load_state_dict_holds_when_training_session_not_initialized():
     state_dict = trainer.load_state_dict(state_dict)
     assert trainer._load_state_dict
 
-@pytest.mark.parametrize("state_dict, input_state_dict, error_key", [({'optimizer':{}}, {'optimizer':{}}, 'model'), ({'model':{}}, {'model':{}}, 'optimizer')])
+@pytest.mark.parametrize("state_dict, input_state_dict, error_key", [
+    ({
+        'optimizer':{},
+    },
+    {
+        'optimizer':{},
+        'trainer_options': {
+            'optimizer_name': 'LambOptimizer'
+        }
+    },
+    'model'),
+    ({
+        'model':{}
+    },
+    {
+        'model':{},
+        'trainer_options': {
+            'optimizer_name': 'LambOptimizer'
+        }
+    },
+    'optimizer')])
 def test_load_state_dict_warns_when_model_optimizer_key_missing(state_dict, input_state_dict, error_key):
     trainer = _create_trainer()
     trainer._training_session = _training_session_mock({}, {}, {})
@@ -382,6 +402,9 @@ def test_load_state_dict_loads_the_states_and_inits_training_session(onnx_model_
             'shared_optimizer_state': {
                 'step': np.array([9])
             }
+        },
+        'trainer_options': {
+            'optimizer_name': 'LambOptimizer'
         }
     }
     trainer._training_session = _training_session_mock({}, {}, {})
@@ -427,7 +450,7 @@ def test_save_checkpoint_calls_checkpoint_storage_save(save_mock):
     assert save_args[1] == 'abc'
 
 @patch('onnxruntime.training._checkpoint_storage.save')
-def test_save_checkpoint_pytorch_format(save_mock):
+def test_save_checkpoint_exclude_optimizer_states(save_mock):
     trainer = _create_trainer()
     state_dict = {
         'model': {},
@@ -435,7 +458,7 @@ def test_save_checkpoint_pytorch_format(save_mock):
     }
     trainer.state_dict = Mock(return_value=state_dict)
 
-    trainer.save_checkpoint('abc', pytorch_format=True)
+    trainer.save_checkpoint('abc', include_optimizer_states=False)
 
     save_args, _ = save_mock.call_args
     assert 'model' in save_args[0]

@@ -123,6 +123,34 @@ def _order_paths(paths):
 
     return ordered_paths
 
+def _add_or_update_sharded_key(state_key, state_value, state_sub_dict,
+                               model_state_key, original_dim, sharded_states_original_dims):
+    """Add or update the record for the sharded_key state_key in the state_sub_dict"""
+
+    # record the original dimension for this state
+    sharded_states_original_dims[model_state_key] = original_dim
+
+    if state_key in state_sub_dict:
+        # state_dict already contains a record for this state
+        # since this state is sharded, concatenate the state value to
+        # the record in the state_dict
+        state_sub_dict[state_key] = \
+            np.concatenate((state_sub_dict[state_key], state_value))
+    else:
+        # create a new entry for this state in the state_dict
+        state_sub_dict[state_key] = state_value
+
+def _add_or_validate_unsharded_key(state_key, state_value, state_sub_dict, mismatch_error_string):
+    """Add or validate the record for the unsharded_key state_key in the state_sub_dict"""
+
+    if state_key in state_sub_dict:
+        # state_dict already contains a record for this unsharded state.
+        # assert that all values are the same for this previously loaded state
+        assert (state_sub_dict[state_key] == state_value).all(), mismatch_error_string
+    else:
+        # create a new entry for this state in the state_sub_dict
+        state_sub_dict[state_key] = state_value
+
 def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict):
     """Aggregates all model states from the rank_state_dict into state_dict"""
 
@@ -145,29 +173,13 @@ def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state
     for model_state_key, model_state_value in rank_state_dict[model][full_precision].items():
         if model_state_key in rank_state_dict[partition_info]:
             # this model state is sharded since a record exists in the partition_info subdict
-            # record the original dimension for this model state
-            sharded_states_original_dims[model_state_key] = \
-                rank_state_dict[partition_info][model_state_key][original_dim]
-
-            if model_state_key in state_dict[model][full_precision]:
-                # state_dict already contains a record for this model state
-                # since this model state is sharded, concatenate the model state value to
-                # the record in the state_dict
-                state_dict[model][full_precision][model_state_key] = \
-                    np.concatenate((state_dict[model][full_precision][model_state_key], model_state_value))
-            else:
-                # create a new entry for this model state in the state_dict
-                state_dict[model][full_precision][model_state_key] = model_state_value
+            _add_or_update_sharded_key(model_state_key, model_state_value,
+                state_dict[model][full_precision], model_state_key,
+                rank_state_dict[partition_info][model_state_key][original_dim], sharded_states_original_dims)
         else:
             # this model state is not sharded since a record for it does not exist in the partition_info subdict
-            if model_state_key in state_dict[model][full_precision]:
-                # state_dict already contains a record for this unsharded state.
-                # assert that all values are the same for this previously loaded model state
-                assert (state_dict[model][full_precision][model_state_key] == model_state_value).all(), \
-                    "Value mismatch for model state {}".format(model_state_key)
-            else:
-                # create a new entry for this model state in the state_dict
-                state_dict[model][full_precision][model_state_key] = model_state_value
+            _add_or_validate_unsharded_key(model_state_key, model_state_value,
+                state_dict[model][full_precision], "Value mismatch for model state {}".format(model_state_key))
 
 def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict):
     """Aggregates all optimizer states from the rank_state_dict into state_dict"""
@@ -192,30 +204,15 @@ def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, s
 
             if optimizer_key in sharded_optimizer_keys and model_state_key in rank_state_dict[partition_info]:
                 # this optimizer state is sharded since a record exists in the partition_info subdict
-                # record the original dimension for this optimizer state
-                sharded_states_original_dims[model_state_key] = \
-                    rank_state_dict[partition_info][model_state_key][original_dim]
-
-                if optimizer_key in state_dict[optimizer][model_state_key]:
-                    # state_dict already contains a record for this optimizer state
-                    # since this optimizer state is sharded, concatenate the optimizer state value
-                    # to the record in the state_dict
-                    state_dict[optimizer][model_state_key][optimizer_key] = \
-                        np.concatenate((state_dict[optimizer][model_state_key][optimizer_key], optimizer_value))
-                else:
-                    # create a new entry for this optimizer state in the state_dict
-                    state_dict[optimizer][model_state_key][optimizer_key] = optimizer_value
+                _add_or_update_sharded_key(optimizer_key, optimizer_value,
+                    state_dict[optimizer][model_state_key], model_state_key,
+                    rank_state_dict[partition_info][model_state_key][original_dim], sharded_states_original_dims)
             else:
                 # this optimizer state is not sharded since a record for it does not exist in the partition_info subdict
                 # or this optimizer key is not one of the sharded optimizer keys
-                if optimizer_key in state_dict[optimizer][model_state_key]:
-                    # state_dict already contains a record for this unsharded state.
-                    # assert that all values are the same for this previously loaded optimizr state
-                    assert (state_dict[optimizer][model_state_key][optimizer_key] == optimizer_value).all(), \
-                        "Value mismatch for model state {} and optimizer state {}".format(model_state_key, optimizer_key)
-                else:
-                    # create a new entry for this optimizer state in the state_dict
-                    state_dict[optimizer][model_state_key][optimizer_key] =  optimizer_value
+                _add_or_validate_unsharded_key(optimizer_key, optimizer_value,
+                    state_dict[optimizer][model_state_key],
+                    "Value mismatch for model state {} and optimizer state {}".format(model_state_key, optimizer_key))
 
 def _reshape_states(sharded_states_original_dims, state_dict):
     """Reshape model and optimizer states in the state_dict according to dimensions in sharded_states_original_dims"""
@@ -254,11 +251,13 @@ def aggregate_checkpoints(paths, pytorch_format=True):
     """Aggregate checkpoint files and return a single state dictionary
 
     Aggregates checkpoint files specified by paths and laods the checkpoint file one at a time merging
-    them into a single state dictionary
+    them into a single state dictionary.
+    The checkpoint files represented by paths must be saved through ORTTrainer.save_checkpoint() function.
+    The schema of the state_dict returned will be in the same as the one returned by ORTTrainer.state_dict()
 
     Args:
         paths: list of more than one file represented as strings where the checkpoint is saved
-        pytorch_format: boolean flag to select either ONNX Runtime or PyTorch state schema
+        pytorch_format: boolean flag to select either ONNX Runtime or PyTorch state schema of the returned state_dict
     Returns:
         state_dict that can be loaded into an ORTTrainer or into a PyTorch model
     """
@@ -281,18 +280,18 @@ def aggregate_checkpoints(paths, pytorch_format=True):
         # aggregate all model states
         _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict)
 
-        # aggregate all optimizer states if pytorch_format is False
         if not pytorch_format:
+            # aggregate all optimizer states if pytorch_format is False
             _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict)
 
-        # entry for trainer_options in the state_dict to perform other sanity checks
-        if _utils.state_dict_trainer_options_key() not in state_dict:
-            _aggregate_trainer_options(rank_state_dict, state_dict)
+            # entry for trainer_options in the state_dict to perform other sanity checks
+            if _utils.state_dict_trainer_options_key() not in state_dict:
+                _aggregate_trainer_options(rank_state_dict, state_dict)
 
-        # entry for user_dict in the state_dict if not already present
-        if _utils.state_dict_user_dict_key() not in state_dict and \
-            _utils.state_dict_user_dict_key() in rank_state_dict:
-            state_dict[_utils.state_dict_user_dict_key()] = rank_state_dict[_utils.state_dict_user_dict_key()]
+            # entry for user_dict in the state_dict if not already present
+            if _utils.state_dict_user_dict_key() not in state_dict and \
+                _utils.state_dict_user_dict_key() in rank_state_dict:
+                state_dict[_utils.state_dict_user_dict_key()] = rank_state_dict[_utils.state_dict_user_dict_key()]
 
     # reshape all the sharded tensors based on the original dimensions stored in sharded_states_original_dims
     _reshape_states(sharded_states_original_dims, state_dict)
