@@ -5,10 +5,7 @@ import subprocess
 import copy
 import numpy as np
 import torch
-<<<<<<< 546f9b5a2b9297112a576b647fc51b1c65918013
 import onnx
-=======
->>>>>>> added e2e test for adasum python frontend
 
 from onnxruntime.training import optim
 
