@@ -231,7 +231,9 @@ void NcclService::Initialize() {
   //   Other devices
   int mpi_rank;
   int mpi_size;
+  std::cout << "NcclService::Initialize" << std::endl;
   MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank));
+  std::cout << "NcclService::Initialize done" << std::endl;
   MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &mpi_size));
 
   // Set device this NCCL communicator runs on.

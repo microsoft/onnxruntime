@@ -126,7 +126,10 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
   // Same-rank communication is not allowed because we currently don't have async Send/Recv.
   int world_rank;
+
+  std::cout << "[send.cc] cuda" << std::endl;
   MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
+  std::cout << "[send.cc] cuda done" << std::endl;
   ORT_ENFORCE(world_rank != dst, "Sending data to rank ", dst, " on the rank ", world_rank, ".");
 
 #ifdef ENABLE_NVTX_PROFILE

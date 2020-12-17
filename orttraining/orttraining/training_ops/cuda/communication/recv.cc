@@ -153,7 +153,9 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
   // Start communication
   int world_rank;
+  std::cout << "[recv.cc] cuda" << std::endl;
   MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
+  std::cout << "[recv.cc] cuda done" << std::endl;
   ORT_ENFORCE(world_rank != src, "Receive data from rank ", src, " on the rank ", world_rank, ".");
 
   const int num_tensors = static_cast<int>(element_types_.size());
