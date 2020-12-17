@@ -15,6 +15,7 @@
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/get_execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
@@ -431,27 +432,6 @@ static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime
   OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
 }
 
-// ordered by default priority from highest to lowest. kCpuExecutionProvider should always be last.
-static const std::vector<std::string>& GetAllProviders() {
-  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider,
-                                                   kMIGraphXExecutionProvider, kRocmExecutionProvider,
-                                                   kOpenVINOExecutionProvider, kDnnlExecutionProvider,
-                                                   kNupharExecutionProvider, kVitisAIExecutionProvider,
-                                                   kNnapiExecutionProvider,
-                                                   kArmNNExecutionProvider, kAclExecutionProvider,
-                                                   kDmlExecutionProvider, kCpuExecutionProvider};
-  return all_providers;
-}
-
-static const std::vector<std::string>& GetAvailableProviders() {
-  auto InitializeProviders = []() {
-    std::vector<std::string> available_providers(std::begin(providers_available), std::end(providers_available));
-    return available_providers;
-  };
-  static std::vector<std::string> available_providers = InitializeProviders();
-  return available_providers;
-}
-
 #ifdef USE_CUDA
 
 static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
@@ -703,7 +683,7 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
 
   if (provider_types.empty()) {
     // use default registration priority.
-    RegisterExecutionProviders(sess, GetAllProviders(), provider_options_map);
+    RegisterExecutionProviders(sess, GetAllExecutionProviderNames(), provider_options_map);
   } else {
     RegisterExecutionProviders(sess, provider_types, provider_options_map);
   }
@@ -758,13 +738,15 @@ void addGlobalMethods(py::module& m, Environment& env) {
       },
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
   m.def(
-      "get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); },
+      "get_all_providers", []() -> const std::vector<std::string>& { return GetAllExecutionProviderNames(); },
       "Return list of Execution Providers that this version of Onnxruntime can support. "
-      "The order of elements represents the default priority order of Execution Providers"
-      " from highest to lowest.");
+      "The order of elements represents the default priority order of Execution Providers "
+      "from highest to lowest.");
   m.def(
-      "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); },
-      "Return list of available Execution Providers available in this installed version of Onnxruntime.");
+      "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableExecutionProviderNames(); },
+      "Return list of available Execution Providers available in this installed version of Onnxruntime. "
+      "The order of elements represents the default priority order of Execution Providers "
+      "from highest to lowest.");
   m.def(
       "enable_telemetry_events", []() -> void { platform_env.GetTelemetryProvider().EnableTelemetryEvents(); },
       "Enables platform-specific telemetry collection where applicable.");
