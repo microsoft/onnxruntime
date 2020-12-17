@@ -22,10 +22,10 @@ Status TransformGraphForPipeline(
 // TODO(jufranc): when adapting this code to partition training graphs, add
 // a boolean is_training as parameter.
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
-    std::map<const Node*, int>& op_to_stage,
-    int pipeline_stage_id,
-    int num_stages,
-    std::vector<int32_t>& rank_ids);
+    const std::map<const Node*, int>& op_to_stage,
+    const int pipeline_stage_id,
+    const int num_stages,
+    const std::vector<int32_t>& rank_ids);
 
 // First of two functions to obtain a mapping between operators and stage ids.
 // Input:

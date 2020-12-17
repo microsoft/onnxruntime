@@ -937,6 +937,10 @@ common::Status AddMetaTensors(const int current_stage, const int next_stage,
   return Status::OK();
 }
 
+// Given the set of tensors sent (tensors_sent_in_forward) in one particular
+// stage, add them as inputs of the send operator of that stage (send_input_args)
+// and as outputs of the receive operator (recv_output_args) of the next stage.
+// Note that the received tensor will be a replica, i.e., stored in tensor_replicas.
 void SendProducedTensors(ONNX_NAMESPACE::AttributeProto& element_types,
                          const std::set<const NodeArg*>& tensors_sent_in_forward,
                          std::vector<NodeArg*>& send_input_args,
@@ -957,6 +961,19 @@ void SendProducedTensors(ONNX_NAMESPACE::AttributeProto& element_types,
   }
 }
 
+// Sends tensors that need to be copied from stage to stage, from the stage of
+// their producer to the stage of their last consumer. In particular,
+// current_stage produces or receives the tensors it sends.
+// The forwarded tensor is added as input of the send operator of current_stage
+// (send_input_args) and as output of the receive operator of next_stage
+// (recv_output_args). Note that the sent/received tensors will be a replicas,
+// i.e., stored in tensor_replicas.
+// forwarded_tensors contans tensors that need to be sent from one device to the
+// other. For example,
+// forwarded_tensors[i] = {t, {stage of producer - s0, stage of the last consumer - s1}}
+// means that a tensor t, is produced in stage s0 and consumed for the last
+// time in stage s1, where s1 > s0 + 1. This tensor will be copied from stage
+// to stage until s1.
 void SendForwardedTensors(ONNX_NAMESPACE::AttributeProto& element_types,
                           std::vector<NodeArg*>& send_input_args,
                           std::vector<NodeArg*>& recv_output_args,
@@ -1002,6 +1019,8 @@ void SendForwardedTensors(ONNX_NAMESPACE::AttributeProto& element_types,
   }
 }
 
+// Whenever a tensor is sent to a different stage, this function updates the
+// inputs of the consumers of that tensor that are assigned to that stage.
 void UpdateInputsOfConsumers(Graph& graph,
                              std::map<const NodeArg*, std::vector<NodeArg*>>& tensor_replicas,
                              const std::map<const Node*, int>& op_to_stage,
@@ -1306,12 +1325,12 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
 // `pipeline_stage_id` partition. At this point, they don't have outgoing
 // edges either.
 void GenerateSubgraph(Graph& graph, const int num_stages,
-                      std::map<const Node*, int>& op_to_stage,
+                      const std::map<const Node*, int>& op_to_stage,
                       int pipeline_stage_id,
                       std::vector<Node*>& send_nodes,
                       std::vector<Node*>& recv_nodes,
                       const std::vector<NodeIndex>& node_topology_list,
-                      std::set<NodeArg*>& visited_outputs) {
+                      std::set<const NodeArg*>& visited_outputs) {
 
   for (int s = 0; s < num_stages - 1; ++s) {
     if (s == pipeline_stage_id) {
@@ -1327,7 +1346,7 @@ void GenerateSubgraph(Graph& graph, const int num_stages,
   // Collect all outputs of this partition too.
   for (auto it = node_topology_list.rbegin(); it != node_topology_list.rend(); ++it) {
     NodeIndex ni = *it;
-    auto found = op_to_stage.find(graph.GetNode(ni));
+    const auto found = op_to_stage.find(graph.GetNode(ni));
     ORT_ENFORCE(found != op_to_stage.end(),
                 "Found an operator without stage.");
     
@@ -1335,8 +1354,8 @@ void GenerateSubgraph(Graph& graph, const int num_stages,
       graph.RemoveNode(ni);
     } else {
       auto* node = graph.GetNode(ni);
-      auto& consumers = node->MutableOutputDefs();
-      for (auto consumer : consumers) {
+      const auto& consumers = node->OutputDefs();
+      for (const auto consumer : consumers) {
         if (graph.IsOutput(consumer)) {
           visited_outputs.insert(consumer);
         }
@@ -1358,10 +1377,10 @@ void GenerateSubgraph(Graph& graph, const int num_stages,
 }
 
 Status ApplyPipelinePartitionToMainGraph(Graph& graph,
-                                         std::map<const Node*, int>& op_to_stage,
-                                         int pipeline_stage_id,
-                                         int num_stages,
-                                         std::vector<int32_t>& rank_ids) {
+                                         const std::map<const Node*, int>& op_to_stage,
+                                         const int pipeline_stage_id,
+                                         const int num_stages,
+                                         const std::vector<int32_t>& rank_ids) {
 
   // TODO(jufranc): in order to support more general pipeline shapes, we need to
   // do some analysis on the graph and assignment of operators to stages, to 
@@ -1410,7 +1429,7 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   // Take care of weights that are shared accross stages.
   ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));
 
-  std::set<NodeArg*> visited_outputs;
+  std::set<const NodeArg*> visited_outputs;
   GenerateSubgraph(graph, num_stages, op_to_stage, pipeline_stage_id,
                    send_nodes, recv_nodes, node_topology_list, visited_outputs);
 
