@@ -21,7 +21,7 @@ Status AdamOptimizerBuilder::Build(
 
   // gradient clipping is disabled by default for Adam.
   bool enable_grad_clipping = config.enable_grad_clipping.has_value() ? *config.enable_grad_clipping : false;
-  
+
   std::vector<ArgDef> m1_reduceall_input_args;
   std::vector<ArgDef> m2_reduceall_input_args;
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
@@ -115,7 +115,7 @@ Status AdamOptimizerBuilder::Build(
         ArgDef out_def = ArgDef(gradient_moment_name + "_Out", moment_type_proto);
         output_args.push_back(out_def);
 
-        if (moments_prefix.compare("Moment_1_") == 0 ){
+        if (moments_prefix.compare("Moment_1") == 0 ){
           m1_reduceall_input_args.push_back(out_def);
         } else {
           m2_reduceall_input_args.push_back(out_def);
