@@ -77,7 +77,7 @@ Status LambOptimizerBuilder::Build(
     step_tensor_proto = CreateTensorProto<int64_t>(LAMB_STEP_TENSOR_NAME, 1);
   }
   new_external_initializers.emplace_back(step_tensor_proto);
-  weight_to_opt_mapping[onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY][step_tensor_name] = step_tensor_name;
+  weight_to_opt_mapping[onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY][LAMB_STEP_TENSOR_NAME] = LAMB_STEP_TENSOR_NAME;
   input_argdefs.emplace_back(ArgDef(LAMB_STEP_TENSOR_NAME));
 
   // Add the first output, which is the updated step.

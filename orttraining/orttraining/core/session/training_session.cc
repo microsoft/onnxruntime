@@ -944,7 +944,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
     fp_weights[weight_sharded_pair.first] = it->second;
     fp_weights.erase(it);
   }
-  model_state_tensors["fp32"] = fp_weights;
+  model_state_tensors["full_precision"] = fp_weights;
   if (include_mixed_precision_weights) {
     std::unordered_set<std::string> mp_tensor_names{};
     std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
@@ -962,7 +962,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
       mp_weights[weight_fp16_pair.first] = it->second;
       mp_weights.erase(it);
     }
-    model_state_tensors["fp16"] = mp_weights;
+    model_state_tensors["mixed_precision"] = mp_weights;
   }
   return Status::OK();
 }

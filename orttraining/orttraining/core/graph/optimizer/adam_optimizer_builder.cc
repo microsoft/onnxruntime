@@ -55,7 +55,7 @@ Status AdamOptimizerBuilder::Build(
 
       // Add uc tensorproto as initializers
       new_external_initializers.emplace_back(uc_tensor_proto);
-      weight_to_opt_mapping[weight_name][uc_prefix] = update_count_string;
+      weight_to_opt_mapping[weight_name][ADAM_UC_PREFIX] = update_count_string;
 
       std::vector<ArgDef> input_args;
       input_args.push_back(ArgDef(opt_configs[i].lr_feed_name, CreateLearningRateTypeProto(graph_defs)));
