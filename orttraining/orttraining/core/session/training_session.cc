@@ -186,27 +186,22 @@ Status TrainingSession::PartitionGraphForPipeline(
   ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
   const int n_stages = distributed_config.value().pipeline_parallel_size;
   std::map<const Node*, int> op_to_stage;
-  const auto& cut_list = config.pipeline_config.value().cut_list;
+  const auto& cut_list = pipeline_config.value().cut_list;
   if (cut_list.size() > 0) {
     ORT_RETURN_IF_ERROR(
       GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
   } else {
-    const auto& id_to_stage = config.pipeline_config.value().op_id_to_stage;
+    const auto& id_to_stage = pipeline_config.value().op_id_to_stage;
     ORT_RETURN_IF_ERROR(
       GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
   }
 
-  for (auto& output_node_arg : model_->MainGraph().GetOutputs()) {
-    std::string name = output_node_arg->Name();
-    pipeline_context_.expected_output_names.push_back(name);
-  }
-
-  auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel);
+  auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel);
   ORT_RETURN_IF_ERROR(
     ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
                                       pipeline_stage_id, n_stages, ranks));
 
-  if (config.pipeline_config.value().partitioned_model_path.has_value()) {
+  if (pipeline_config.value().partitioned_model_path.has_value()) {
     // Save the partitioned file out.
     // To avoid writing conflict, only the ranks in first pipeline group write the partition file out.
     if (DistributedRunContext::GroupId(WorkerGroupType::PipelineParallel) == 0) {
@@ -296,50 +291,12 @@ Status TrainingSession::ConfigureForTraining(
 
   const int32_t pipeline_stage_id = config.pipeline_config.has_value() ? DistributedRunContext::RankInGroup(WorkerGroupType::PipelineParallel) : -1;
 
-<<<<<<< 64f1ca70c27451df724b4ba287eeddf585c771ae
-  if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
-    // Apply online pipeline partition to graph obj. This needs to be done first before any graph
-    // transportation which may alter node_arg and invalidate cut_list info from the original graph.
-    ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
-    int n_stages = config.distributed_config.pipeline_parallel_size;
-    std::map<const Node*, int> op_to_stage;
-    const auto& cut_list = config.pipeline_config.value().cut_list;
-    if (cut_list.size() > 0) {
-      ORT_RETURN_IF_ERROR(
-        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
-    } else {
-      const auto& id_to_stage = config.pipeline_config.value().op_id_to_stage;
-      ORT_RETURN_IF_ERROR(
-        GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
-    }
-
-    for (auto& output_node_arg : model_->MainGraph().GetOutputs()) {
-      std::string name = output_node_arg->Name();
-      pipeline_context_.expected_output_names.push_back(name);
-    }
-
-    auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel);
-    ORT_RETURN_IF_ERROR(
-      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
-                                        pipeline_stage_id, n_stages, ranks));
-
-    if (config.pipeline_config.value().partitioned_model_path.has_value()) {
-      // Save the partitioned file out.
-      // To avoid writing conflict, only the ranks in first pipeline group write the partition file out.
-      if (DistributedRunContext::GroupId(WorkerGroupType::PipelineParallel) == 0) {
-        ORT_IGNORE_RETURN_VALUE(Save(
-            config.pipeline_config.value().partitioned_model_path.value(), SaveOption::NO_RELOAD));
-      }
-    }
-  }
-=======
   ORT_RETURN_IF_ERROR(PartitionGraphForPipeline(
       pipeline_stage_id,
       config.pipeline_config,
       config.distributed_config,
       config.weight_names_to_train,
       filtered_config_weight_names_to_train));
->>>>>>> Clean TrainingSession and PipelineTrainingSession
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
@@ -1310,15 +1267,29 @@ Status PipelineTrainingSession::PartitionGraphForPipeline(
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
     ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
 
+    // Recording the original graph-level outputs before conducting pipeline partition.
+    // It's for maintaining the same output schema at each pipeline stage.
     for (auto& output_node_arg : model_->MainGraph().GetOutputs()) {
       std::string name = output_node_arg->Name();
       pipeline_context_.expected_output_names.push_back(name);
     }
 
-    ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
-                                                          pipeline_config.value().cut_list,
-                                                          pipeline_stage_id,
-                                                          distributed_config.value().pipeline_parallel_size));
+    const int n_stages = distributed_config.value().pipeline_parallel_size;
+    std::map<const Node*, int> op_to_stage;
+    const auto& cut_list = pipeline_config.value().cut_list;
+    if (cut_list.size() > 0) {
+      ORT_RETURN_IF_ERROR(
+        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
+    } else {
+      const auto& id_to_stage = pipeline_config.value().op_id_to_stage;
+      ORT_RETURN_IF_ERROR(
+        GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
+    }
+
+    auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel);
+    ORT_RETURN_IF_ERROR(
+      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
+                                        pipeline_stage_id, n_stages, ranks));
 
     if (pipeline_config.value().partitioned_model_path.has_value()) {
       // Save the partitioned file out.
