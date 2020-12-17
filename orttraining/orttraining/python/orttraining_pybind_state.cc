@@ -76,10 +76,17 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size, "horizontal_parallel_size: ", parameters.horizontal_parallel_size, ", world_size: ", parameters.world_size);
   ORT_ENFORCE(parameters.pipeline_parallel_size <= parameters.world_size, "pipeline_parallel_size: ", parameters.pipeline_parallel_size, ", world_size: ", parameters.world_size);
 
+  // When DxHxP != the total number of ranks, we try adjusting D so that DxHxP == the total number of ranks.
   if (parameters.world_size != parameters.data_parallel_size * parameters.horizontal_parallel_size * parameters.pipeline_parallel_size) {
+    ORT_ENFORCE(parameters.world_size % parameters.horizontal_parallel_size * parameters.pipeline_parallel_size == 0,
+                "D, H, P sizes are incorrect. To enable automatic correction, total number of ranks must be a multiple of HxP.");
+
+    auto new_data_parallel_size = parameters.world_size / (parameters.horizontal_parallel_size * parameters.pipeline_parallel_size);
+    parameters.data_parallel_size = new_data_parallel_size;
+
     const std::string msg = "Cannot distribute " + std::to_string(parameters.world_size) + " ranks for distributed computation with D=" + std::to_string(parameters.data_parallel_size) +
-                            ", H=" + std::to_string(parameters.horizontal_parallel_size) + ", P=" + std::to_string(parameters.pipeline_parallel_size);
-    throw std::runtime_error(msg);
+                            ", H=" + std::to_string(parameters.horizontal_parallel_size) + ", P=" + std::to_string(parameters.pipeline_parallel_size) ", so D is automatically changed to " + std::to_string(new_data_parallel_size);
+    LOGS(*(sess->GetLogger()), WARNING) << msg;
   }
 
   training::PipelineTrainingSession::TrainingConfiguration config{};
@@ -115,17 +122,17 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     assert(!parameters.pipeline_cut_info_string.empty());
 
     auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
-        std::vector<std::string> result;
-        size_t pos = 0;
-        while ((pos = input_str.find(delimiter)) != std::string::npos) {
-          std::string token = input_str.substr(0, pos);
-          result.emplace_back(token);
-          input_str.erase(0, pos + delimiter.length());
-        }
-        // push the last split of substring into result.
-        result.emplace_back(input_str);
-        return result;
-      };
+      std::vector<std::string> result;
+      size_t pos = 0;
+      while ((pos = input_str.find(delimiter)) != std::string::npos) {
+        std::string token = input_str.substr(0, pos);
+        result.emplace_back(token);
+        input_str.erase(0, pos + delimiter.length());
+      }
+      // push the last split of substring into result.
+      result.emplace_back(input_str);
+      return result;
+    };
 
     auto process_cut_info = [&](std::string& cut_info_string) {
       std::vector<PipelineTrainingSession::TrainingConfiguration::CutInfo> cut_list;
@@ -135,7 +142,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
       const std::string producer_consumer_delimiter = "-";
 
       auto cut_info_groups = process_with_delimiter(cut_info_string, group_delimiter);
-      for(auto& cut_info_group : cut_info_groups){
+      for (auto& cut_info_group : cut_info_groups) {
         PipelineTrainingSession::TrainingConfiguration::CutInfo cut_info;
         auto cut_edges = process_with_delimiter(cut_info_group, edge_delimiter);
         for (auto& cut_edge : cut_edges) {
@@ -152,7 +159,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
           }
         }
         cut_list.emplace_back(cut_info);
-
       }
       return cut_list;
     };
