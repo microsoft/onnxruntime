@@ -113,13 +113,14 @@ def _order_paths(paths):
     """Reorders the given paths in ascending order of rank and return the ordered list"""
 
     trainer_options_path_tuples = []
+    world_rank = _utils.state_dict_trainer_options_world_rank_key()
 
     for path in paths:
         trainer_options_path_tuples.append((_checkpoint_storage.load(path,
             key=_utils.state_dict_trainer_options_key()), path))
 
     ordered_paths = [path for _, path in sorted(trainer_options_path_tuples,
-        key=lambda trainer_options_path_pair: trainer_options_path_pair[0]['world_rank'])]
+        key=lambda trainer_options_path_pair: trainer_options_path_pair[0][world_rank])]
 
     return ordered_paths
 
@@ -239,13 +240,19 @@ def _aggregate_trainer_options(rank_state_dict, state_dict):
 
     state_dict[_utils.state_dict_trainer_options_key()] = {}
 
-    state_dict[_utils.state_dict_trainer_options_key()]['mixed_precision'] = \
-        rank_state_dict[_utils.state_dict_trainer_options_key()]['mixed_precision']
-    state_dict[_utils.state_dict_trainer_options_key()]['zero_stage'] = 0
-    state_dict[_utils.state_dict_trainer_options_key()]['world_rank'] = 0
-    state_dict[_utils.state_dict_trainer_options_key()]['world_size'] = 1
-    state_dict[_utils.state_dict_trainer_options_key()]['optimizer_name'] = \
-        rank_state_dict[_utils.state_dict_trainer_options_key()]['optimizer_name']
+    mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
+    zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
+    world_rank = _utils.state_dict_trainer_options_world_rank_key()
+    world_size = _utils.state_dict_trainer_options_world_size_key()
+    optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+
+    state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = \
+        rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
+    state_dict[_utils.state_dict_trainer_options_key()][zero_stage] = 0
+    state_dict[_utils.state_dict_trainer_options_key()][world_rank] = 0
+    state_dict[_utils.state_dict_trainer_options_key()][world_size] = 1
+    state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = \
+        rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
 
 def aggregate_checkpoints(paths, pytorch_format=True):
     """Aggregate checkpoint files and return a single state dictionary
@@ -267,15 +274,16 @@ def aggregate_checkpoints(paths, pytorch_format=True):
 
     state_dict = {}
     sharded_states_original_dims = {}
+    world_rank = _utils.state_dict_trainer_options_world_rank_key()
 
     for rank, path in enumerate(ordered_paths):
         rank_state_dict = _checkpoint_storage.load(path)
 
         assert _utils.state_dict_partition_info_key() in rank_state_dict, "Missing information: partition_info"
         assert _utils.state_dict_trainer_options_key() in rank_state_dict, "Missing information: trainer_options"
-        assert rank == rank_state_dict[_utils.state_dict_trainer_options_key()]['world_rank'], \
+        assert rank == rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank], \
             "Unexpected rank in file at path {}. Expected {}, got {}".\
-                format(path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()]['world_rank'])
+                format(path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank])
 
         # aggregate all model states
         _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict)

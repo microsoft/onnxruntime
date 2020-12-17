@@ -221,3 +221,28 @@ def state_dict_user_dict_key():
     """Returns the user dict key name in the state dictionary"""
 
     return 'user_dict'
+
+def state_dict_trainer_options_mixed_precision_key():
+    """Returns the trainer options mixed precision key name in the state dictionary"""
+
+    return 'mixed_precision'
+
+def state_dict_trainer_options_zero_stage_key():
+    """Returns the trainer options zero_stage key name in the state dictionary"""
+
+    return 'zero_stage'
+
+def state_dict_trainer_options_world_rank_key():
+    """Returns the trainer options world_rank key name in the state dictionary"""
+
+    return 'world_rank'
+
+def state_dict_trainer_options_world_size_key():
+    """Returns the trainer options world_size key name in the state dictionary"""
+
+    return 'world_size'
+
+def state_dict_trainer_options_optimizer_name_key():
+    """Returns the trainer options optimizer_name key name in the state dictionary"""
+
+    return 'optimizer_name'

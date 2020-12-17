@@ -885,13 +885,19 @@ class ORTTrainer(object):
     def _extract_trainer_options(self, state_dict):
         """Extract relevant trainer configuration and load it into the state_dict"""
 
+        mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
+        zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
+        world_rank = _utils.state_dict_trainer_options_world_rank_key()
+        world_size = _utils.state_dict_trainer_options_world_size_key()
+        optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+
         state_dict[_utils.state_dict_trainer_options_key()] = {}
-        state_dict[_utils.state_dict_trainer_options_key()]['mixed_precision'] = self.options.mixed_precision.enabled
-        state_dict[_utils.state_dict_trainer_options_key()]['zero_stage'] = \
+        state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = self.options.mixed_precision.enabled
+        state_dict[_utils.state_dict_trainer_options_key()][zero_stage] = \
             self.options.distributed.deepspeed_zero_optimization.stage
-        state_dict[_utils.state_dict_trainer_options_key()]['world_rank'] = self.options.distributed.world_rank
-        state_dict[_utils.state_dict_trainer_options_key()]['world_size'] = self.options.distributed.world_size
-        state_dict[_utils.state_dict_trainer_options_key()]['optimizer_name'] = self.optim_config.name
+        state_dict[_utils.state_dict_trainer_options_key()][world_rank] = self.options.distributed.world_rank
+        state_dict[_utils.state_dict_trainer_options_key()][world_size] = self.options.distributed.world_size
+        state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = self.optim_config.name
 
     def state_dict(self, pytorch_format=False):
         """Returns a dictionary with model, and optionally, optimizer states
@@ -1081,8 +1087,25 @@ class ORTTrainer(object):
     def _load_optimizer_states(self, current_state_dict, state_dict):
         """Load the optimizer states onto the training session state dictionary"""
 
+        def _check_optimizer_mismatch(state_dict):
+            """Assert that the loaded optimizer has the same config as the current training session config"""
+
+            # the state_dict optimizer_name can be a byte string (if coming from checkpoint file)
+            # or can be a regular string (coming from user)
+            optimizer_name = \
+                state_dict[_utils.state_dict_trainer_options_key()][_utils.state_dict_trainer_options_optimizer_name_key()]
+            try:
+                optimizer_name = optimizer_name.decode()
+            except AttributeError:
+                pass
+            assert self.optim_config.name == optimizer_name, \
+                "Optimizer mismatch: expected {}, got {}".format(self.optim_config.name, optimizer_name)
+
         if _utils.state_dict_optimizer_key() not in state_dict:
             return
+
+        # check optimizer config names are the same for current session and the sessino being loaded
+        _check_optimizer_mismatch(state_dict)
 
         # create an entry for the optimizer in the training session state dictionary
         if _utils.state_dict_optimizer_key() not in current_state_dict:
@@ -1161,19 +1184,6 @@ class ORTTrainer(object):
             else:
                 warnings.warn("Missing key: optimizer in state_dict", UserWarning)
 
-        def _check_optimizer_mismatch(state_dict):
-            """Assert that the loaded optimizer has the same config as the current training session config"""
-
-            # the state_dict optimizer_name can be a byte string (if coming from checkpoint file)
-            # or can be a regular string (coming from user)
-            optimizer_name = state_dict[_utils.state_dict_trainer_options_key()]['optimizer_name']
-            try:
-                optimizer_name = optimizer_name.decode()
-            except AttributeError:
-                pass
-            assert self.optim_config.name == optimizer_name, \
-                "Optimizer mismatch: expected {}, got {}".format(self.optim_config.name, optimizer_name)
-
         # extract state dict from the current training session. this is to persist the states between
         # two training sessions.
         # for example, if user provided only the model states, the optimizer states from the current
@@ -1183,9 +1193,6 @@ class ORTTrainer(object):
             current_state_dict = self.state_dict()
             if strict:
                 _check_key_mismatch(current_state_dict, state_dict)
-
-        # check optimizer config names are the same for current session and the sessino being loaded
-        _check_optimizer_mismatch(state_dict)
 
         # load the model states from the input state dictionary into the onnx graph
         self._load_model_states(state_dict, strict)
@@ -1259,7 +1266,7 @@ class ORTTrainer(object):
         """Checks if aggregation is required for the loading the state_dict into the ORTTrainer"""
 
         # To load states in the backend, aggregation is required for every ZeRO checkpoint
-        return loaded_trainer_options['zero_stage'] > 0
+        return loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0
 
     def load_checkpoint(self, *paths, strict=True):
         """Loads the saved checkpoint state dictionary into the ORTTrainer
@@ -1286,9 +1293,7 @@ class ORTTrainer(object):
             # if aggregation is not required, reorder the checkpoints in order of ascending rank,
             # and load the checkpoint for the current ORTTrainer rank.
             ordered_paths = checkpoint._order_paths(paths)
-            state_dict = _checkpoint_storage.load(ordered_paths[self.options.distributed.world_rank])
-            assert state_dict['trainer_options']['world_rank'] == (self.options.distributed.world_rank), \
-                "Loaded checkpoint rank does not match the trainer rank."
+            state_dict = _checkpoint_storage.load(ordered_paths[0])
 
         # extract user dict from the saved checkpoint
         user_dict = {}
