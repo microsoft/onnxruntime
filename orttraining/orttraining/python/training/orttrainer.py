@@ -805,7 +805,7 @@ class ORTTrainer(object):
             iobinding = self._eval_io_binding
 
         # Get the list of session input because unused inputs can be removed.
-        input_nodes = self._training_session.get_inputs())
+        input_nodes = self._training_session.get_inputs()
         print("*"*10)
         for input_node in input_nodes:
             print(node.name)
