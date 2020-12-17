@@ -458,6 +458,7 @@ static Status HandleAutoPad(const Shape& input_shape,
                             vector<int32_t>& onnx_pads,
                             int32_t& nnapi_padding_code,
                             bool& use_auto_pad) {
+  use_auto_pad = false;
   if (auto_pad_type != AutoPadType::NOTSET) {
     ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
                                         onnx_pads, onnx_strides, onnx_dilations,
@@ -558,7 +559,7 @@ static Status GetConvOpQuantizationScaleAndZeroPoint(
   // We need to copy the 1d scales array for per-channel quantization
   const auto& scale_tensor = *initializers.at(input_defs[4]->Name());
   const auto* scales = GetTensorFloatData(scale_tensor);
-  size_t scales_size = scale_tensor.dims()[0];
+  size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
   vector<float> scales_vec(scales_size, 0.0f);
   memcpy(scales_vec.data(), scales, sizeof(float) * scales_size);
   w_scales = onnxruntime::make_optional(std::move(scales_vec));
