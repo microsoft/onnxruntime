@@ -129,9 +129,11 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
     }
 
     // Assign inputs and outputs to subgraph's meta_def
+    uint64_t model_hash;
+    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-    meta_def->name = "InternalTestingEP_" + std::to_string(metadef_id_++);
-    meta_def->domain = kMSDomain;
+    meta_def->name = "InternalTestingEP_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
+    meta_def->domain = "InternalTesting";
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
 
