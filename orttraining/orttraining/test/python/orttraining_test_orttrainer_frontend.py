@@ -1440,5 +1440,9 @@ def testORTTrainerUnusedInput():
     model_desc = {'inputs': [('x', [1]), ('y', [1])], 'outputs': [('loss', [], True)]}
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config)
+
     # Run just one step to make sure there are no iobinding errors for the unused input.
-    trainer.train_step(torch.FloatTensor([1.0]), torch.FloatTensor([1.0]))
+    try:
+        trainer.train_step(torch.FloatTensor([1.0]), torch.FloatTensor([1.0]))
+    except RuntimeError:
+        self.fail("RuntimeError doing train_step with unused input.")
