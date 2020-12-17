@@ -1584,6 +1584,8 @@ Status GetDeviceAssignmentMap(const Graph& graph,
           q.insert(std::end(q), producer);
         }
       }
+
+      // Add all outgoing edges to the queue.
       const auto& node_outputs = current->OutputDefs();
       for (const NodeArg* arg : node_outputs) {
         if (arg == nullptr || !arg->HasTensorOrScalarShape() || !arg->Exists())
