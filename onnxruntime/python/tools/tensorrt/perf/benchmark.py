@@ -111,7 +111,7 @@ def get_latency_result(runtimes, batch_size):
     }
 
 
-def get_ort_session_inputs_and_outptus(name, session, ort_input):
+def get_ort_session_inputs_and_outputs(name, session, ort_input):
 
     sess_inputs = {}
     sess_outputs = None
@@ -160,7 +160,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
         repeat_times += 1 # add warn-up run
 
     for ort_input in ort_inputs:
-        sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
+        sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
             logger.info("ORT session inputs:")
             logger.info(sess_inputs)
@@ -189,7 +189,7 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
 
     ort_outputs = []
     for ort_input in ort_inputs:
-        sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
+        sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
             logger.info("ORT session inputs:")
             logger.info(sess_inputs)
@@ -1185,7 +1185,6 @@ def read_success_from_file(success_file):
            success_results.append(row)
 
     success_json = json.loads(json.dumps(success_results, indent=4))
-    #success_json = json.loads(success_json)
     return success_json
 
 def add_status_dict(status_dict, model_name, ep, status): 

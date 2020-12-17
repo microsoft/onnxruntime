@@ -22,14 +22,14 @@ cleanup_files() {
     rm -f $FLOAT_16
 }
 
-download_symbolic_shape() {
+download_files() {
     sudo wget -c $SYMBOLIC_SHAPE_INFER_LINK
     sudo wget -c $FLOAT_16_LINK
 }
 
 update_files() {
     cleanup_files
-    download_symbolic_shape
+    download_files
 }
 
 # many models 
@@ -43,7 +43,7 @@ fi
 # ONNX model zoo
 if [ "$1" == "onnx-zoo-models" ]
 then
-    MODEL_LIST="/home/hcsuser/perf/model_list.json"
+    MODEL_LIST="model_list.json"
     update_files
     python3 benchmark_wrapper.py -d $DEFAULT_DIR -r validate -m $MODEL_LIST -o result/"$1"
     python3 benchmark_wrapper.py -d $DEFAULT_DIR -r benchmark -i random -t 10 -m $MODEL_LIST -o result/"$1"
@@ -52,7 +52,7 @@ fi
 # 1P models 
 if [ "$1" == "partner-models" ]
 then
-    MODEL_LIST="/home/hcsuser/perf/partner_model_list.json"
+    MODEL_LIST="partner_model_list.json"
     update_files
     python3 benchmark_wrapper.py -d $DEFAULT_DIR -r validate -m $MODEL_LIST -o result/"$1"
     python3 benchmark_wrapper.py -d $DEFAULT_DIR -r benchmark -i random -t 10 -m $MODEL_LIST -o result/"$1"
