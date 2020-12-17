@@ -190,11 +190,11 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
   OptimizerGraphBuilder optimizer_graph_builder(GetOptimizerBuilderRegistry(), config, weight_names_to_opt_configs, updated_weight_names_map, weight_partition_info);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> opt_initializer_names_map;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names_map, opt_graph_outputs));
 
   const ONNX_NAMESPACE::TensorProto* tensor;
-  for (auto& weight_item : opt_initializer_names) {
+  for (auto& weight_item : opt_initializer_names_map) {
     for (auto& opt_item : weight_item.second) {
       ASSERT_TRUE(graph.GetInitializedTensor(opt_item.second, tensor));
       ASSERT_TRUE(tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT || tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64);

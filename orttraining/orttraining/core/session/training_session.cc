@@ -913,7 +913,6 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
       opt_names.emplace(opt_pair.second);
     }
     NameMLValMap curr_opt_tensors;
-    //std::unordered_map<std::string, std::string> opt_names(weight_map.second.begin(), weight_map.second.end());
     const auto& weight_name = weight_map.first;
     GetSessionState().GetInitializedTensors(opt_names, allow_missing, curr_opt_tensors);
     opt_state_tensors[weight_name] = {};
@@ -921,7 +920,6 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
     for (const auto& opt_pair: weight_map.second) {
       const auto& opt_prefix = opt_pair.first;
       const auto& opt_name = opt_pair.second;
-      //const std::string pre_fix_only = opt_name.substr(0, opt_name.find(weight_name) - 1);
       opt_state_tensors[weight_name][opt_prefix] = curr_opt_tensors[opt_name];
     }
   }
@@ -943,12 +941,11 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   // Change key from sharded_name to weight_name
   for (const auto& weight_sharded_pair: updated_weight_names_map_) {
     const auto& it = fp_weights.find(weight_sharded_pair.second);
-    if (it != fp_weights.end()) {
-      fp_weights[weight_sharded_pair.first] = it->second;
-      fp_weights.erase(it);
-    }
+    ORT_ENFORCE(it != fp_weights.end(), "Cannot find weight: " + weight_sharded_pair.second + " in updated_weight_names_map_");
+    fp_weights[weight_sharded_pair.first] = it->second;
+    fp_weights.erase(it);
   }
-  model_state_tensors["full_precision"] = fp_weights;
+  model_state_tensors["fp32"] = fp_weights;
   if (include_mixed_precision_weights) {
     std::unordered_set<std::string> mp_tensor_names{};
     std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
@@ -962,27 +959,22 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
     // Change key from fp16_name to weight_name
     for (const auto& weight_fp16_pair: weight_to_mixed_precision_map_) {
       const auto& it = mp_weights.find(weight_fp16_pair.second);
-      if (it != mp_weights.end()) {
-        mp_weights[weight_fp16_pair.first] = it->second;
-        mp_weights.erase(it);
-      }
+      ORT_ENFORCE(it != mp_weights.end(), "Cannot find weight: " + weight_fp16_pair.second + " in weight_to_mixed_precision_map_");
+      mp_weights[weight_fp16_pair.first] = it->second;
+      mp_weights.erase(it);
     }
-    model_state_tensors["mixed_precision"] = mp_weights;
+    model_state_tensors["fp16"] = mp_weights;
   }
   return Status::OK();
 }
 
-// use dimension of fp32 weights
 common::Status TrainingSession::GetPartitionInfoMap(std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>>& part_info_map) {
-  bool allow_missing = (opt_graph_config_.deepspeed_zero.stage != 0);
   std::unordered_set<std::string> fp_tensor_names{};
   fp_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
   NameMLValMap fp_weights;
-  GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
   for (const auto& weight : weight_partition_info_) {
     const auto& weight_name = weight.first;
-    //part_info_map[weight_name]["original_dimension"] = weight_partition_info_[weight_name].original_dimension;
     std::transform(weight_partition_info_[weight_name].original_dimension.begin(), weight_partition_info_[weight_name].original_dimension.end(),
                   std::inserter(part_info_map[weight_name]["original_dimension"], part_info_map[weight_name]["original_dimension"].end()),
                   [](const int64_t& dim) { return (int)dim; });

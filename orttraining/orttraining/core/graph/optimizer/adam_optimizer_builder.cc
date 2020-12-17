@@ -27,7 +27,6 @@ Status AdamOptimizerBuilder::Build(
     const std::string& gradient_name = gradient_argdefs[i].name;
     const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
     const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
-    //std::vector<ONNX_NAMESPACE::TensorProto> curr_optimizers_set;
     weight_to_opt_mapping[weight_name] = {};
 
     // Return either the input gradient/weight/mixed-precision-weight or updated gradient/weight/mixed-precision-weight.
@@ -54,7 +53,6 @@ Status AdamOptimizerBuilder::Build(
       }
 
       // Add uc tensorproto as initializers
-      //curr_optimizers_set[uc_prefix] = uc_tensor_proto;
       weight_to_opt_mapping[weight_name][uc_prefix] = uc_tensor_proto;
 
       std::vector<ArgDef> input_args;
@@ -107,7 +105,6 @@ Status AdamOptimizerBuilder::Build(
 
         moment_type_proto->mutable_tensor_type()->set_elem_type(element_type);
 
-        //curr_optimizers_set[moments_prefix] = moment_tensor_proto;
         weight_to_opt_mapping[weight_name][moments_prefix] = moment_tensor_proto;
 
         input_args.push_back(ArgDef(gradient_moment_name, moment_type_proto));

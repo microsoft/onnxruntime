@@ -233,7 +233,6 @@ Status LambOptimizerBuilder::Build(
         moment_type_proto->mutable_tensor_type()->set_elem_type(element_type);
 
         // Store momentum tensor to initializer list.
-        //weight_to_opt_mapping[weight_name][moment_prefix] = std::move(moment_tensor_proto);
         weight_to_opt_mapping[weight_name][moment_prefix] = moment_tensor_proto;
 
         // Add momentums to the input and output list of the Lamb node.

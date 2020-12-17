@@ -7,7 +7,6 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/framework/random_seed.h"
-//#include "orttraining/core/session/training_session.h"
 #include <deque>
 
 using namespace ONNX_NAMESPACE;
@@ -131,9 +130,11 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   if (rank == 2 && utils::HasDimValue(shape->dim(0)) && utils::HasDimValue(shape->dim(1))) {
     row_count = shape->dim(0).dim_value();
     column_count = shape->dim(1).dim_value();
+    weight_partition_info_[input_arg.Name()].original_dimension = std::vector<int64_t>{row_count, column_count};
   } else if (rank == 1) {
     row_count = 1;
     column_count = shape->dim(0).dim_value();
+    weight_partition_info_[input_arg.Name()].original_dimension = std::vector<int64_t>{column_count};
   } else {
     LOGS_DEFAULT(WARNING) << "Initializer tensor's rank is " << rank << " (expected to be 1 or 2).";
     return false;
@@ -199,9 +200,11 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   if (rank == 2 && utils::HasDimValue(shape->dim(0)) && utils::HasDimValue(shape->dim(1))) {
     row_count = shape->dim(0).dim_value();
     column_count = shape->dim(1).dim_value();
+    weight_partition_info_[input_arg.Name()].original_dimension = std::vector<int64_t>{row_count, column_count};
   } else if (rank == 1) {
     row_count = shape->dim(0).dim_value();
     column_count = 1;
+    weight_partition_info_[input_arg.Name()].original_dimension = std::vector<int64_t>{row_count};
   } else {
     LOGS_DEFAULT(WARNING) << "Initializer tensor's rank is more than " << rank
                           << " (expected to be 1 or 2).";

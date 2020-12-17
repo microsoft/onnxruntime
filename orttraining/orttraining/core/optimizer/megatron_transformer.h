@@ -14,7 +14,7 @@ class MegatronTransformer : public GraphTransformer {
   MegatronTransformer(int32_t horizontal_parallel_rank, int32_t horizontal_parallel_size,
                       std::unordered_map<std::string, std::string>& updated_weight_names,
                       std::unordered_set<std::string>& weights_to_train,
-                      std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info,
+                      std::unordered_map<std::string, training::TrainingSession::PartitionInfo>& weight_partition_info,
                       const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("MegatronTransformer", compatible_execution_providers),
         horizontal_parallel_rank_(horizontal_parallel_rank),

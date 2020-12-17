@@ -313,14 +313,6 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
   weight_argdefs = std::move(output_weight_argdefs);
   gradient_argdefs = std::move(output_gradient_argdefs);
 
-  // for (const auto& weight_map : weight_to_opt_obj_mapping) {
-  //   weight_to_opt_mapping[weight_map.first] = {};
-  //   for (const auto& opt_tensor : weight_map.second) {
-  //     TensorProto& initializer = (TensorProto&)opt_tensor.second;
-  //     weight_to_opt_mapping[weight_map.first][opt_tensor.first] = initializer.name();
-  //   }
-  // }
-
   return Status::OK();
 }
 

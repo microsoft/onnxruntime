@@ -102,6 +102,44 @@ def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir, 
 
     return checkpoint.experimental_state_dict(trainer), model
 
+def generate_model_optimizer_from_training_instance(device, trainer_opts, use_lamb=True):
+    """Instantiate and load checkpoint into trainer
+
+    - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple transformer model
+    - Runs train_step on the trainer so the trainer onnx graph is initialized
+    - Returns the trainer state_dict and the pytorch model
+    """
+    seed = 1
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # PyTorch transformer model setup
+    learning_rate = 1e-10
+    optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
+    model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
+
+    _train(trainer, train_data, batcher_fn)
+
+    model_state = trainer._training_session.get_model_state(include_mixed_precision_weights=False)
+    opt_state = trainer._training_session.get_optimizer_state()
+
+    return model_state, opt_state
+
+def create_initialized_orttrainer(device, trainer_opts, use_lamb=True):
+    seed = 1
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    learning_rate = 1e-10
+    optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
+    model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
+
+    _train(trainer, train_data, batcher_fn)
+
+    return trainer
+
 def split_state_dict(state_dict):
     """Given a flat state dictionary, split it into optimizer, fp32_param, fp16_param hierarchical dictionary and return"""
 

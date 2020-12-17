@@ -208,9 +208,7 @@ std::unordered_map<std::string, NameMLValMap> ConvertNumpyMapToORT(std::unordere
     c_state_tensors[layer1_item.first] = {};
     for (auto layer2_item : layer1_item.second) {
       OrtValue ml_value;
-      if (!px.first.IsOK() || !px.second) {
-        throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
-      }
+      assert(px.second.IsTensor());
       CreateGenericMLValue(px.second, GetAllocator(), layer2_item.first, layer2_item.second, &ml_value);
       ThrowIfPyErrOccured();
       c_state_tensors[layer1_item.first].insert(std::make_pair(layer2_item.first, ml_value));
