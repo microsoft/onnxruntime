@@ -1445,4 +1445,4 @@ def testORTTrainerUnusedInput():
     try:
         trainer.train_step(torch.FloatTensor([1.0]), torch.FloatTensor([1.0]))
     except RuntimeError:
-        self.fail("RuntimeError doing train_step with unused input.")
+        pytest.fail("RuntimeError doing train_step with unused input.")
