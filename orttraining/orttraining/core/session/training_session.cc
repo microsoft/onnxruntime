@@ -168,7 +168,6 @@ void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>&
   }
 }
 
-
 const std::string TrainingSession::training_mode_string_ = "training_mode";
 
 Status TrainingSession::PartitionGraphForPipeline(
@@ -189,17 +188,17 @@ Status TrainingSession::PartitionGraphForPipeline(
   const auto& cut_list = pipeline_config.value().cut_list;
   if (cut_list.size() > 0) {
     ORT_RETURN_IF_ERROR(
-      GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
+        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
   } else {
     const auto& id_to_stage = pipeline_config.value().op_id_to_stage;
     ORT_RETURN_IF_ERROR(
-      GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
+        GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
   }
 
   auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel);
   ORT_RETURN_IF_ERROR(
-    ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
-                                      pipeline_stage_id, n_stages, ranks));
+      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
+                                        pipeline_stage_id, n_stages, ranks));
 
   if (pipeline_config.value().partitioned_model_path.has_value()) {
     // Save the partitioned file out.
@@ -966,7 +965,7 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
         OrtValue feed_value;
         // We allocate on CPU first, copy will be taken care of downstream.
         OrtMemoryInfo cpu_location(onnxruntime::CPU, OrtArenaAllocator);
-        AllocatorPtr bfc_arena  = GetSessionState().GetAllocator(cpu_location);
+        AllocatorPtr bfc_arena = GetSessionState().GetAllocator(cpu_location);
         feed_value = onnxruntime::MakeScalarMLValue<float>(bfc_arena, 0.f, true /*is_1d*/);
         // Bind new feed to graph input.
         new_feeds.emplace_back(drop_ratio, feed_value);
@@ -980,7 +979,7 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
         OrtValue training_mode_feed_value;
         // We allocate on CPU first, copy will be taken care of downstream.
         OrtMemoryInfo cpu_location(onnxruntime::CPU, OrtArenaAllocator);
-        AllocatorPtr bfc_arena  = GetSessionState().GetAllocator(cpu_location);
+        AllocatorPtr bfc_arena = GetSessionState().GetAllocator(cpu_location);
         training_mode_feed_value = onnxruntime::MakeScalarMLValue<bool>(bfc_arena, false, true /*is_1d*/);
         new_feeds.emplace_back(training_mode_string_, training_mode_feed_value);
       }
@@ -1279,17 +1278,17 @@ Status PipelineTrainingSession::PartitionGraphForPipeline(
     const auto& cut_list = pipeline_config.value().cut_list;
     if (cut_list.size() > 0) {
       ORT_RETURN_IF_ERROR(
-        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
+          GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
     } else {
       const auto& id_to_stage = pipeline_config.value().op_id_to_stage;
       ORT_RETURN_IF_ERROR(
-        GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
+          GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
     }
 
     auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel);
     ORT_RETURN_IF_ERROR(
-      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
-                                        pipeline_stage_id, n_stages, ranks));
+        ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
+                                          pipeline_stage_id, n_stages, ranks));
 
     if (pipeline_config.value().partitioned_model_path.has_value()) {
       // Save the partitioned file out.
@@ -1491,7 +1490,7 @@ void PipelineTrainingSession::CreatePipelineEvents(
     }
 
     OrtMemoryInfo cpu_location(onnxruntime::CPU, OrtArenaAllocator);
-    AllocatorPtr bfc_arena  = GetSessionState().GetAllocator(cpu_location);
+    AllocatorPtr bfc_arena = GetSessionState().GetAllocator(cpu_location);
     auto event = onnxruntime::MakeScalarMLValue<int64_t>(bfc_arena, event_value, false);
 
     // Add the created event to the list.

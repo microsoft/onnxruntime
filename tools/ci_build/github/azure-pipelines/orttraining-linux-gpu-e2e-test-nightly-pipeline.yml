@@ -60,6 +60,21 @@ jobs:
   - script: |
       docker run \
         --gpus all \
+        --shm-size=1024m \
+        --rm \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume /bert_data:/bert_data \
+        --volume /bert_ort:/bert_ort \
+        onnxruntime_e2e_test_image \
+          /build/RelWithDebInfo/run_distributed_training_tests.py \
+            --cwd /build/RelWithDebInfo
+    displayName: 'Run run_distributed_training_tests.py'
+    condition: succeededOrFailed() # ensure all tests are run
+    timeoutInMinutes: 10
+
+  - script: |
+      docker run \
+        --gpus all \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
