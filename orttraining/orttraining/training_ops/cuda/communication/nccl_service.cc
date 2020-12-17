@@ -229,6 +229,15 @@ void NcclService::Initialize() {
   //   GPUs
   //   CPUs
   //   Other devices
+
+  // Make sure MPI is initialized.
+  int is_mpi_initialized = 0;
+  MPI_CHECK(MPI_Initialized(&is_mpi_initialized));
+  if (!is_mpi_initialized) {
+    int mpi_threads_provided = 0;
+    MPI_CHECK(MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided));
+  }
+
   int mpi_rank;
   int mpi_size;
   std::cout << "NcclService::Initialize" << std::endl;
@@ -360,6 +369,12 @@ void NcclService::Terminate() {
   {
     std::unique_lock<std::mutex> lock(mutex_);
     cv_.wait(lock, [this] { return schedule_.empty() || total_time_ > 0 && time_ == 0; });
+  }
+
+  int is_mpi_finalized = 0;
+  MPI_CHECK(MPI_Finalized(&is_mpi_finalized));
+  if (!is_mpi_finalized) {
+    MPI_CHECK(MPI_Finalize());
   }
 
   CUDA_CALL(cudaStreamDestroy(stream_));
