@@ -97,4 +97,18 @@ inline bool TryParse(const std::string& str, std::string& value) {
   return true;
 }
 
+inline bool TryParse(const std::string& str, bool& value) {
+  if (str == "0" || str == "False" || str == "false") {
+    value = false;
+    return true;
+  }
+
+  if (str == "1" || str == "True" || str == "true") {
+    value = true;
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace onnxruntime

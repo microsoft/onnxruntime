@@ -808,10 +808,10 @@ class TestInferenceSession(unittest.TestCase):
             # 1. if there are intermittent failure in this test, something is wrong
             # 2. it's easier to repro on slower GPU (like M60, Geforce 1070)
 
-            # to repro #4829, uncomment the line below to run copy in a separate stream
-            #onnxrt.capi._pybind_state.set_do_copy_in_default_stream(False)
+            # to repro #4829, set the CUDA EP do_copy_in_default_stream option to False
+            providers = [("CUDAExecutionProvider", {"do_copy_in_default_stream": True}), "CPUExecutionProvider"]
 
-            session = onnxrt.InferenceSession(get_name("issue4829.onnx"))
+            session = onnxrt.InferenceSession(get_name("issue4829.onnx"), providers=providers)
             shape = np.array([2,2], dtype=np.int64)
             for iteration in range(100000):
                 result = session.run(output_names=['output'], input_feed={'shape': shape})

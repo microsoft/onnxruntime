@@ -179,13 +179,13 @@ class ORTTrainer(object):
             # When input model is already ONNX (and not exported from Pytorch within ORTTrainer),
             # append 'dtype' from ONNX into model description's
             for idx_i, i_desc in enumerate(self.model_desc.inputs):
-               dtype = None
-               for onnx_input in self._onnx_model.graph.input:
-                  if onnx_input.name == i_desc.name:
-                     dtype = _utils.dtype_onnx_to_torch(onnx_input.type.tensor_type.elem_type)
-                     self.model_desc.add_type_to_input_description(idx_i, dtype)
-                     break
-               assert dtype is not None, f"ONNX model with unknown input type ({i_desc.name})"
+                dtype = None
+                for onnx_input in self._onnx_model.graph.input:
+                    if onnx_input.name == i_desc.name:
+                        dtype = _utils.dtype_onnx_to_torch(onnx_input.type.tensor_type.elem_type)
+                        self.model_desc.add_type_to_input_description(idx_i, dtype)
+                        break
+                assert dtype is not None, f"ONNX model with unknown input type ({i_desc.name})"
             for idx_o, o_desc in enumerate(self.model_desc.outputs):
                 dtype = None
                 for onnx_output in self._onnx_model.graph.output:
@@ -194,13 +194,6 @@ class ORTTrainer(object):
                         self.model_desc.add_type_to_output_description(idx_o, dtype)
                         break
                 assert dtype is not None, f"ONNX model with unknown output type ({o_desc.name})"
-
-        # Set GPU device and memory limit
-        if 'cuda' in self.options.device.id.lower():
-            mem_limit = self.options.device.mem_limit
-            if  mem_limit > 0:
-                ort.set_cuda_mem_limit(self.options.device.mem_limit)
-            ort.set_cuda_device_id(_utils.get_device_index(self.options.device.id))
 
         # TODO: Subject to change after checkpoint redesign
         self._state_dict = {}
@@ -649,18 +642,38 @@ class ORTTrainer(object):
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
-        if (self.options.graph_transformer.attn_dropout_recompute or 
-            self.options.graph_transformer.gelu_recompute or 
+        if (self.options.graph_transformer.attn_dropout_recompute or
+            self.options.graph_transformer.gelu_recompute or
             self.options.graph_transformer.transformer_layer_recompute):
             session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 
         # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
         # for example, load_state_dict will be called before returing the function, and it calls _init_session again
         del self._training_session
+
+        # Set provider-specific options if needed
+        def get_providers():
+            providers = ort.get_available_providers()
+
+            if 'cuda' in self.options.device.id.lower():
+                cuda_ep_options = {"device_id": _utils.get_device_index(self.options.device.id)}
+                if self.options.device.mem_limit > 0:
+                    cuda_ep_options["cuda_mem_limit"] = self.options.device.mem_limit
+
+                cuda_ep_name = "CUDAExecutionProvider"
+
+                if cuda_ep_name not in providers:
+                    raise RuntimeError(
+                        "ORTTrainer options specify a CUDA device but the {} provider is unavailable.".format(
+                            cuda_ep_name))
+
+                providers[providers.index(cuda_ep_name)] = (cuda_ep_name, cuda_ep_options)
+
+            return providers
+
         # TrainingSession
-        self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),
-                                                     ort_parameters,
-                                                     session_options)
+        self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters,
+                                                     session_options, get_providers())
 
         # I/O bindings
         self._train_io_binding = self._training_session.io_binding()
