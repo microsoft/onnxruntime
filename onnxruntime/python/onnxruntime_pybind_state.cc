@@ -15,7 +15,7 @@
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
-#include "core/framework/get_execution_providers.h"
+#include "core/providers/get_execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"

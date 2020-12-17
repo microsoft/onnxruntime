@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/get_execution_providers.h"
+#include "core/providers/get_execution_providers.h"
 
 #include <algorithm>
 #include <iterator>
