@@ -132,7 +132,7 @@ bool HasValidBinaryOpQuantizedInputs(const Node& node) {
 }
 
 bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const Node& node,
-                                const std::vector<size_t>& indices) {
+                                const std::vector<size_t>& indices, const OpSupportCheckParams& params) {
   const auto& op_type = node.OpType();
   bool is_qlinear_conv = (op_type == "QLinearConv");
   const auto input_defs(node.InputDefs());
@@ -158,6 +158,12 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
       // We only support per-channel quantization for u8s8
       // For all other cases, the scales should be a scalar
       if (is_conv_u8s8_weight) {
+        if (params.android_sdk_ver < 29) {
+          LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization on Android API 28-, "
+                                << "system API level: " << params.android_sdk_ver;
+          return false;
+        }
+
         int64_t scales_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
         const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
         if (weight_tensor.dims()[0] != scales_dim) {

@@ -107,7 +107,7 @@ bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type);
 bool HasValidBinaryOpQuantizedInputs(const Node& node);
 // Check if a qlinear op has valid scales for given indices
 bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const Node& node,
-                                const std::vector<size_t>& indices);
+                                const std::vector<size_t>& indices, const OpSupportCheckParams& params);
 // Check if a qlinear op has valid zero points for given indices
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
                                     const std::vector<size_t>& indices);

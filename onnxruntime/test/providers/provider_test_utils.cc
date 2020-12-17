@@ -93,7 +93,7 @@ void Check<uint8_t>(const OpTester::Data& expected_data,
   if (provider_type == kNnapiExecutionProvider) {
     double threshold = 1.0;
     for (int i = 0; i < size; ++i) {
-      ASSERT_NEAR(expected[i], output[i], threshold) << "i:" << i
+      EXPECT_NEAR(expected[i], output[i], threshold) << "i:" << i
                                                      << ", provider_type: " << provider_type;
     }
   } else {
