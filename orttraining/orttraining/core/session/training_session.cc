@@ -156,6 +156,7 @@ void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>&
   }
 }
 
+
 const std::string TrainingSession::training_mode_string_ = "training_mode";
 
 Status TrainingSession::ConfigureForTraining(
@@ -191,11 +192,22 @@ Status TrainingSession::ConfigureForTraining(
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
     ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
+    int n_stages = config.distributed_config.pipeline_parallel_size;
+    std::map<const Node*, int> op_to_stage;
+    const auto& cut_list = config.pipeline_config.value().cut_list;
+    if (cut_list.size() > 0) {
+      ORT_RETURN_IF_ERROR(
+        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
+    } else {
+      const auto& id_to_stage = config.pipeline_config.value().op_id_to_stage;
+      ORT_RETURN_IF_ERROR(
+        GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
+    }
 
-    ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
-                                                          config.pipeline_config.value().cut_list,
-                                                          pipeline_stage_id,
-                                                          config.distributed_config.pipeline_parallel_size));
+    auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel);
+    ORT_RETURN_IF_ERROR(
+      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
+                                        pipeline_stage_id, n_stages, ranks));
 
     if (config.pipeline_config.value().partitioned_model_path.has_value()) {
       // Save the partitioned file out.

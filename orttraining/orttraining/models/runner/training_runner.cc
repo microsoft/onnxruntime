@@ -175,6 +175,7 @@ Status TrainingRunner::Initialize() {
     pipe.do_partition = params_.pipeline_stage_paths.empty() ? true : false;
     pipe.fetch_names = params_.fetch_names;
     pipe.cut_list = params_.pipeline_partition_cut_list;
+    pipe.op_id_to_stage = params_.op_id_to_stage;
     pipe.partitioned_model_path = params_.pipeline_partitioned_model_path;
     // Do not assign value to config.pipeline_config if pipeline is not used.
     config.pipeline_config = pipe;
