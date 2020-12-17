@@ -808,7 +808,7 @@ class ORTTrainer(object):
         input_nodes = self._training_session.get_inputs()
         print("*"*10)
         for input_node in input_nodes:
-            print(node.name)
+            print(input_node.name)
 
         # Bind input tensors
         for input, input_desc in zip(inputs, inputs_desc):
