@@ -167,7 +167,6 @@ class ORTTrainer(object):
         if self.options.mixed_precision.enabled and not self.options.mixed_precision.loss_scaler:
             # TODO: Move this to model_desc_validation.py
             self.options.mixed_precision.loss_scaler = amp.loss_scaler.DynamicLossScaler()
-
         # Post processing ONNX model given as input
         if self._onnx_model:
             if self.options._internal_use.enable_internal_postprocess:
@@ -651,8 +650,12 @@ class ORTTrainer(object):
         ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel_size
         ort_parameters.num_pipeline_micro_batches = self.options.distributed.num_pipeline_micro_batches
         ort_parameters.pipeline_cut_info_string = self.options.distributed.pipeline_cut_info_string
-        ort_parameters.sliced_schema = self.options.distributed.sliced_schema
-        ort_parameters.sliced_axes = self.options.distributed.sliced_axes
+        # We have special handling for dictionary-typed option.
+        # sliced_schema._validated_opts is the original dictionary while sliced_schema is a _ORTTrainerOptionsInternal.
+        ort_parameters.sliced_schema = self.options.distributed.sliced_schema._validated_opts
+        # We have special handling for dictionary-typed option.
+        # sliced_axes._validated_opts is the original dictionary while sliced_schema is a _ORTTrainerOptionsInternal.
+        ort_parameters.sliced_axes = self.options.distributed.sliced_axes._validated_opts
         ort_parameters.sliced_tensor_names = self.options.distributed.sliced_tensor_names
 
         # SessionOptions

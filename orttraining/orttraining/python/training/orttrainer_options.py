@@ -386,23 +386,18 @@ class ORTTrainerOptions(object):
 
         # Convert dict in object
         for k, v in self._validated_opts.items():
-            setattr(self, k, self._wrap(k, v))
+            setattr(self, k, self._wrap(v))
 
     def __repr__(self):
         return '{%s}' % str(', '.join("'%s': %s" % (k, repr(v))
                                       for (k, v) in self.__dict__.items()
                                       if k not in ['_original_opts', '_validated_opts', '_main_class_name']))
 
-    def _wrap(self, k, v):
-        not_wrapped_fields = ['sliced_schema', 'sliced_axes']
-        if k in not_wrapped_fields or not isinstance(v, (tuple, list, set, frozenset, dict)):
-            return v
-
+    def _wrap(self, v):
         if isinstance(v, (tuple, list, set, frozenset)):
-            return type(v)([self._wrap(k, v) for v in v])
+            return type(v)([self._wrap(i) for i in v])
         else:
-            # This is a dict type.
-            return _ORTTrainerOptionsInternal(self._main_class_name, v)
+            return _ORTTrainerOptionsInternal(self._main_class_name, v) if isinstance(v, dict) else v
 
 
 class _ORTTrainerOptionsInternal(ORTTrainerOptions):
@@ -414,10 +409,13 @@ class _ORTTrainerOptionsInternal(ORTTrainerOptions):
     def __init__(self, main_class_name, options):
         # Used for logging purposes
         self._main_class_name = main_class_name
-
+        # We don't call super().__init__(options) here but still called it "_validated_opts"
+        # instead of "_original_opts" because it has been validated in the top-level
+        # ORTTrainerOptions's constructor.
+        self._validated_opts = dict(options)
         # Convert dict in object
         for k, v in dict(options).items():
-            setattr(self, k, self._wrap(k, v))
+            setattr(self, k, self._wrap(v))
 
 
 class ORTTrainerOptionsValidator(cerberus.Validator):
@@ -521,8 +519,8 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': False
             },
-            'deepspeed_zero_optimization' : {
-                'type' : 'dict',
+            'deepspeed_zero_optimization': {
+                'type': 'dict',
                 'default_setter': lambda _: {},
                 'required': False,
                 'schema': {
@@ -538,29 +536,22 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': False
             },
-            'sliced_schema' : {
+            'sliced_schema': {
                 'type': 'dict',
                 'default': {},
-                'schema': {
-                    # the keys in `sliced_schema` are strings.
-                    'keysrules': {'type': 'string'},
-                    # the values in `sliced_schema` are lists of integers.
-                    'valuesrules': {
-                        'type': 'list',
-                        'schema': {'type': 'integer'}
-                    }
-                },
-                'default_setter': lambda _: {}
-            },
-            'sliced_axes' : {
-                'type': 'dict',
-                'default': {},
-                'schema': {
-                    'keysrules': {'type': 'string'},
-                    'valuesrules': { 'type': 'integer' }
+                'keysrules': {'type': 'string'},
+                'valuesrules': {
+                    'type': 'list',
+                    'schema': {'type': 'integer'}
                 }
             },
-            'sliced_tensor_names' : {
+            'sliced_axes': {
+                'type': 'dict',
+                'default': {},
+                'keysrules': {'type': 'string'},
+                'valuesrules': {'type': 'integer'}
+            },
+            'sliced_tensor_names': {
                 'type': 'list',
                 'schema': {'type': 'string'},
                 'default': []
@@ -625,11 +616,11 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': True
             },
-            'invertible_layer_norm_gradient' : {
+            'invertible_layer_norm_gradient': {
                 'type': 'boolean',
                 'default': False
             },
-            'run_symbolic_shape_infer' : {
+            'run_symbolic_shape_infer': {
                 'type': 'boolean',
                 'default': False
             }
@@ -666,13 +657,13 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'onnx_opset_version': {
                 'type': 'integer',
-                'min' : 12,
-                'max' : 12,
+                'min': 12,
+                'max': 12,
                 'default': 12
             },
-            'enable_onnx_contrib_ops' : {
-                'type' : 'boolean',
-                'default' : True
+            'enable_onnx_contrib_ops': {
+                'type': 'boolean',
+                'default': True
             }
         }
     }
