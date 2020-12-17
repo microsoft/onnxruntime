@@ -159,7 +159,7 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
       // For all other cases, the scales should be a scalar
       if (is_conv_u8s8_weight) {
         if (params.android_sdk_ver < 29) {
-          LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization on Android API 28-, "
+          LOGS_DEFAULT(VERBOSE) << op_type << " only supports per-channel quantization on Android API 29+, "
                                 << "system API level: " << params.android_sdk_ver;
           return false;
         }
@@ -174,7 +174,8 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
         }
       } else {
         if (!scale_tensor.dims().empty() && scale_tensor.dims()[0] != 1) {
-          LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization";
+          LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization, "
+                                << " for now, only u8s8 QlinearConv supports per-channel quantization on API 29+";
           return false;
         }
       }
