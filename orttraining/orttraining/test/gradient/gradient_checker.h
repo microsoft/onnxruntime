@@ -130,7 +130,8 @@ class GradientChecker {
                                              std::vector<std::vector<Y_T>>* y_datas,
                                              std::vector<std::vector<JAC_T>>* jacobian_ts,
                                              const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
-                                             bool add_shape = true);
+                                             bool add_shape = true,
+                                             std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
 
   Status ComputeNumericJacobianTranspose(const training::OpDef& op_def,
                                          const std::vector<TensorInfo>& x_infos,
@@ -150,8 +151,8 @@ class GradientChecker {
                                       JAC_T* max_error,
                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
                                       bool check_not_have_gradient = true,
-                                      bool check_not_have_shape_inferencing = false);
-  std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers_;
+                                      bool check_not_have_shape_inferencing = false,
+                                      std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
 };
 }  // namespace test
 }  // namespace onnxruntime

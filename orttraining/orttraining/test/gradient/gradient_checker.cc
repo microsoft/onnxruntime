@@ -111,7 +111,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
     std::vector<std::vector<Y_T>>* y_datas,
     std::vector<std::vector<JAC_T>>* jacobian_ts,
     const std::vector<AttributeProto>& attributes,
-    bool add_shape) {
+    bool add_shape,
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* nullptr*/) {
   size_t y_num = y_infos.size();
   size_t x_num = x_infos.size();
 
@@ -169,7 +170,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       // corresponding to which input (dy1, dy2..etc) and which value of the input (dy_flattened_vector[c]]
       // to pertrub to 1.
 
-      op_session.Run(y_idx, static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, execution_providers_);
+      op_session.Run(y_idx, static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, execution_providers);
       auto gradients = op_session.GetFetches();
 
       for (int x_idx = 0, grad_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
@@ -447,7 +448,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     JAC_T* max_error,
     const std::vector<AttributeProto>& attributes,
     bool check_not_have_gradient,
-    bool check_not_have_shape_inferencing) {
+    bool check_not_have_shape_inferencing,
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* nullptr */) {
   // Initialize numeric Jacobian to zeros.
   std::vector<std::vector<JAC_T>> jacobian_ns;
   InitJacobians(x_infos, y_infos, &jacobian_ns);
@@ -481,7 +483,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
         continue;
       // Compute theoretical Jacobian.
       ORT_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose(
-          op_def, x_infos_gradient_variation, y_infos, x_datas, y_datas, &jacobian_ts, attributes, add_shape));
+          op_def, x_infos_gradient_variation, y_infos, x_datas, y_datas, &jacobian_ts, attributes, add_shape, execution_providers));
       // We have numeric jacobians regardless of has_gradient (computed once).
       // We only have theoretical jacobians for those has_gradient.
       // Theoretical jacobians are 0 for those not has_gradient.
@@ -531,7 +533,6 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     bool check_not_have_shape_inferencing /* = false*/,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
 
-  execution_providers_ = execution_providers;
   // TODO: Consider varying mean and variance
   float scale = 5.f;
   float mean = 0.f;
@@ -561,7 +562,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
 
   // Compute gradient error.
   return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error,
-                                      attributes, check_not_have_gradient, check_not_have_shape_inferencing);
+                                      attributes, check_not_have_gradient, check_not_have_shape_inferencing, execution_providers);
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
@@ -576,8 +577,6 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     bool check_not_have_shape_inferencing /* = false*/,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
 
-  execution_providers_ = execution_providers;
-
   // Generate dummy placeholders with zero for y_datas
   std::vector<std::vector<Y_T>> y_datas(y_infos.size());
   for (size_t i = 0; i < y_infos.size(); i++) {
@@ -586,7 +585,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
 
   // Compute gradient error.
   return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error,
-                                      attributes, check_not_have_gradient, check_not_have_shape_inferencing);
+                                      attributes, check_not_have_gradient, check_not_have_shape_inferencing, execution_providers);
 }
 
 #define INSTANTIATE_GRAD_ERR_TYPE(X_T, Y_T, JAC_T) \

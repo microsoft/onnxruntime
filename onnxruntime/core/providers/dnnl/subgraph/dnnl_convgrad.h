@@ -67,9 +67,9 @@ class DnnlConvGrad : public DnnlKernel {
                         std::vector<std::unordered_map<int, dnnl::memory>>& net_args) override {
     dnnl::engine cpu_engine;
     dnnl::engine engine_to_use;
-    std::unordered_map<dnnl::engine::kind, dnnl::engine>::const_iterator iter = dnnl_engine.find(dnnl::engine::kind::cpu);
+    const auto iter = dnnl_engine.find(dnnl::engine::kind::cpu);
     if (iter != dnnl_engine.end()) {
-      cpu_engine = (dnnl::engine)iter->second;
+      cpu_engine = iter->second;
       engine_to_use = cpu_engine;
     }
 #if 0  // TODO update convgrad for gpu
@@ -77,7 +77,7 @@ class DnnlConvGrad : public DnnlKernel {
     dnnl::engine gpu_engine;
     iter = dnnl_engine.find(dnnl::engine::kind::gpu);
     if (iter != dnnl_engine.end()) {
-      gpu_engine = (dnnl::engine)(iter->second);
+      gpu_engine = iter->second;
       gpu_available_ = true;
       engine_to_use = gpu_engine;
       LOGS_DEFAULT(INFO) << "gpu engine found" << std::endl;

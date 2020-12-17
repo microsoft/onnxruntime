@@ -192,10 +192,7 @@ class DnnlReluGrad : public DnnlKernel {
       primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_bwd_pd_.get()->diff_src_desc(), engine_to_use));
     }
 
-    relugrad_bwd_ = onnxruntime::make_unique<dnnl::eltwise_backward>(
-        dnnl::eltwise_backward(*relu_bwd_pd_));
-
-    net.push_back(*relugrad_bwd_);
+    net.push_back(dnnl::eltwise_backward(*relu_bwd_pd_));
 
     net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
                         {DNNL_ARG_DIFF_DST, *diff_dst_mem_},
@@ -251,7 +248,6 @@ class DnnlReluGrad : public DnnlKernel {
 
   std::unique_ptr<dnnl::eltwise_backward::desc> relu_bwd_desc_;
   std::unique_ptr<dnnl::eltwise_backward::primitive_desc> relu_bwd_pd_;
-  std::unique_ptr<dnnl::primitive> relugrad_bwd_;
 };  // namespace ort_dnnl
 }  // namespace ort_dnnl
 }  // namespace onnxruntime

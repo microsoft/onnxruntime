@@ -30,9 +30,9 @@ class DnnlMaxPoolGrad : public DnnlKernel {
                         std::vector<std::unordered_map<int, dnnl::memory>>& net_args) override {
     dnnl::engine cpu_engine;
     dnnl::engine engine_to_use;
-    std::unordered_map<dnnl::engine::kind, dnnl::engine>::const_iterator iter = dnnl_engine.find(dnnl::engine::kind::cpu);
+    const auto iter = dnnl_engine.find(dnnl::engine::kind::cpu);
     if (iter != dnnl_engine.end()) {
-      cpu_engine = (dnnl::engine)iter->second;
+      cpu_engine = iter->second;
       engine_to_use = cpu_engine;
     }
 #if 0  // TODO update maxpoolgrad for gpu
