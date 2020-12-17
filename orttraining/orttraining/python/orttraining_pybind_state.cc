@@ -85,7 +85,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     parameters.data_parallel_size = new_data_parallel_size;
 
     const std::string msg = "Cannot distribute " + std::to_string(parameters.world_size) + " ranks for distributed computation with D=" + std::to_string(parameters.data_parallel_size) +
-                            ", H=" + std::to_string(parameters.horizontal_parallel_size) + ", P=" + std::to_string(parameters.pipeline_parallel_size) ", so D is automatically changed to " + std::to_string(new_data_parallel_size);
+                            ", H=" + std::to_string(parameters.horizontal_parallel_size) + ", P=" + std::to_string(parameters.pipeline_parallel_size) + ", so D is automatically changed to " + std::to_string(new_data_parallel_size);
     LOGS(*(sess->GetLogger()), WARNING) << msg;
   }
 
