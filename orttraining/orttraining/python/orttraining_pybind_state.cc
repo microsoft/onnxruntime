@@ -389,13 +389,6 @@ void addObjectMethodsForTraining(py::module& m) {
         }
         ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));
       })
-      .def("load_model_optimizer_state", [](PyTrainingSession* sess, std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& model_state, 
-          std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& opt_state, bool strict) -> void {
-        const auto& px = sess->GetSessionHandle()->GetModelInputs();
-        const auto& model_state_tensors = ConvertNumpyMapToORT(model_state, px);
-        const auto& opt_state_tensors = ConvertNumpyMapToORT(opt_state, px);
-        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetModelOptState(model_state_tensors, opt_state_tensors, strict));
-      })
       .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
         return static_cast<TrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });

@@ -88,7 +88,8 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
     const ArgDef* global_gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
-    std::unordered_map<std::string, std::unordered_map<std::string, TensorProto>>& weight_to_opt_mapping,
+    std::vector<TensorProto>& new_initializers,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) {
   OptimizerBuilderConfig config;
@@ -106,6 +107,7 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
   config.shared_optimizer_states = opt_graph_config_.shared_optimizer_states;
   ORT_RETURN_IF_ERROR(opt_builder->Build(
       config, graph_defs,
+      new_initializers,
       weight_to_opt_mapping,
       output_weight_argdefs, output_gradient_argdefs));
 

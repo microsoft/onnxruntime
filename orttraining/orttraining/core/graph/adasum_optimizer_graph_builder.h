@@ -50,7 +50,8 @@ class AdasumOptimizerGraphBuilder : public AllreduceOptimizerGraphBuilder {
       const ArgDef* global_gradient_norm_finite_argdef,
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
-      std::unordered_map<std::string, std::unordered_map<std::string, TensorProto>>& weight_to_opt_mapping,
+      std::vector<TensorProto>& new_initializers,
+      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) override;
 };

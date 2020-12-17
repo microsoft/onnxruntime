@@ -95,11 +95,12 @@ class OptimizerBuilder {
    * @param config The input config for optimizer builder
    * @param[out] graph_defs The GraphDefs corresponding to the graph (possibly
    *             a subgraph) that the component is to be added to.
-   * @param[out] weight_to_opt_mapping Mapping between weight to corresponding optimizer states. 
-   *             Includes all initializers that should be
+   * @param[out] new_initializers Any initializers that should be
    *             placed in the parent graph, if there is one.
    *             Other initializers are treated as local to the current
-   *             (sub)graph. These are new / external states added for optimizer.
+   *             (sub)graph. 
+   * @param[out] weight_to_opt_mapping Mapping between weight to 
+   *             their new optimizer states in new_initializers.
    * @param[out] output_weight_argdefs The output weight ArgDef. All optimizers
                  should have this output.
    * @param[out] output_gradient_argdefs The output gradient ArgDef. All optimizers
@@ -110,7 +111,8 @@ class OptimizerBuilder {
   virtual Status Build(
       const OptimizerBuilderConfig& config,
       GraphAugmenter::GraphDefs& graph_defs,
-      std::unordered_map<std::string, std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto>>& weight_to_opt_mapping,
+      std::vector<TensorProto>& new_initializers,
+      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) const = 0;
 

@@ -241,7 +241,8 @@ Status OptimizerGraphBuilder::BuildOptimizerNode(
     const ArgDef* global_gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
-    std::unordered_map<std::string, std::unordered_map<std::string, TensorProto>>& weight_to_opt_mapping,
+    std::vector<TensorProto>& new_initializers,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) {
   OptimizerBuilderConfig config;
@@ -258,6 +259,7 @@ Status OptimizerGraphBuilder::BuildOptimizerNode(
   config.shared_optimizer_states = opt_graph_config_.shared_optimizer_states;
   ORT_RETURN_IF_ERROR(opt_builder->Build(
       config, graph_defs,
+      new_initializers,
       weight_to_opt_mapping,
       output_weight_argdefs, output_gradient_argdefs));
 
@@ -290,25 +292,17 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
   ORT_RETURN_IF_NOT(
       opt_builder, "Failed to get Optimizer builder for ", opt_configs[0].name);
 
-  std::unordered_map<std::string, std::unordered_map<std::string, TensorProto>> weight_to_opt_obj_mapping;
+  std::vector<TensorProto> new_initializers;
   ORT_RETURN_IF_ERROR(BuildOptimizerNode(
       opt_builder,
       weight_argdefs, gradient_argdefs,
       global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
       opt_configs, graph_defs,
-      weight_to_opt_obj_mapping,
+      new_initializers,
+      weight_to_opt_mapping,
       output_weight_argdefs, output_gradient_argdefs));
 
-  std::vector<TensorProto> initializers_vec;
-  for (const auto& weight_map : weight_to_opt_obj_mapping) {
-    weight_to_opt_mapping[weight_map.first] = {};
-    for (const auto& opt_tensor : weight_map.second) {
-      TensorProto& initializer = (TensorProto&)opt_tensor.second;
-      initializers_vec.emplace_back(initializer);
-      weight_to_opt_mapping[weight_map.first][opt_tensor.first] = initializer.name();
-    }
-  }
-  graph_defs.AddInitializers(initializers_vec);
+  graph_defs.AddInitializers(new_initializers);
 
   weight_argdefs = std::move(output_weight_argdefs);
   gradient_argdefs = std::move(output_gradient_argdefs);
