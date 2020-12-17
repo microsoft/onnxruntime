@@ -804,7 +804,7 @@ class ORTTrainer(object):
         else:
             iobinding = self._eval_io_binding
 
-        print(self._training_session.get_inputs(self))
+        print("x"*10, ": ", self._training_session.get_inputs())
         # Bind input tensors
         for input, input_desc in zip(inputs, inputs_desc):
             device_index = _utils.get_device_index_from_input(input)
