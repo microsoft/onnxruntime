@@ -14,7 +14,7 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
 
   const Tensor* is_gradient_finite = context->Input<Tensor>(0);
   // Get tensor count
-  const int num_tensors = context->InputCount() - 1;
+  const int num_tensors = context->OutputCount();
 
   if (is_gradient_finite) {
     const bool is_finite = *(is_gradient_finite->template Data<bool>());
@@ -106,11 +106,20 @@ Status AdasumAllReduce::ComputeInternal(OpKernelContext* context) const {
   //                     tensor_sizes[i], cudaMemcpyHostToDevice));
   // }
 //bugbug
-  // for (int i = 0; i < num_tensors; i++) {
-  //   auto x_tensor = context->Input<Tensor>(i + 1);
-  //   Tensor* y_tensor = context->Output(i, x_tensor->Shape());
-  //   CopyTensor(*x_tensor, *y_tensor);
-  // }
+  for (int i = 0; i < num_tensors; i++) {
+    auto x_tensor = context->Input<Tensor>(i + 1);
+    Tensor* y_tensor = context->Output(i, x_tensor->Shape());
+    if(x_tensor->Location().device.Type() == OrtDevice::GPU) {
+      std::cout<<"######x tensor is on GPU"<<std::endl;
+    }
+    if(y_tensor->Location().device.Type() == OrtDevice::GPU) {
+      std::cout<<"######y tensor is on GPU"<<std::endl;
+    }
+    if(x_tensor->DataRaw() != y_tensor->DataRaw()) {
+      std::cout<<"######x and y are not sharing same buffer!"<<std::endl;
+    }
+    CopyTensor(*x_tensor, *y_tensor);
+  }
 
   return Status::OK();
 }
