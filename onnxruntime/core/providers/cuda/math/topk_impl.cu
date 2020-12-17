@@ -422,7 +422,7 @@ Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t
   auto aligned_K = ALIGN(K);
   auto aligned_dimension = ALIGN(dimension);
   if (aligned_dimension <= GridDim::maxThreadsPerBlock) {
-    BitonicTopK<CudaT><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<CudaT>)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, std::numeric_limits<CudaT>::lowest(), std::numeric_limits<CudaT>::max());
+    BitonicTopK<CudaT><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<CudaT>)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
   } else if (K <= BT*16 || 0 == sorted) {
     auto XPT = static_cast<int64_t>(ceil(static_cast<double>(dimension) / GridDim::maxThreadsPerBlock));
     if (BT*2 >= K || 0 == sorted) {
