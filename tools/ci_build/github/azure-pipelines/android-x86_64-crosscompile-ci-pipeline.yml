@@ -52,8 +52,7 @@ jobs:
         script: |
           set -e
           sudo apt-get install -y python3-pip
-          sudo python3 -m pip install mysql-connector-python
-
+          python3 -m pip install mysql-connector-python
     - task: PythonScript@0
       displayName: Post Code Coverage To Dash Board
       inputs:
