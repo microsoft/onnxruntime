@@ -721,25 +721,29 @@ TEST(QLinearConvTest, Conv2D_U8S8_Groups_PerChannel) {
 }
 
 TEST(QLinearConvTest, Conv2D_U8S8_Depthwise) {
-  QLinearConvOpTester<uint8_t, int8_t> test;
-  test.GenerateRandomInput({1, 24, 25, 25}, .03f, 12);
-  test.GenerateRandomWeights({24, 1, 5, 5}, .10f, 0);
-  test.GenerateRandomBias();
-  test.SetPads({2, 2, 2, 2});
-  test.SetGroups(24);
-  test.SetOutputScaleAndZeroPoint(.76f, 88);
-  test.Run();
+  for (int64_t channels : std::initializer_list<int64_t>{7, 8, 9, 16, 25}) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, channels, 25, 25}, .03f, 12);
+    test.GenerateRandomWeights({channels, 1, 5, 5}, .10f, 0);
+    test.GenerateRandomBias();
+    test.SetPads({2, 2, 2, 2});
+    test.SetGroups(channels);
+    test.SetOutputScaleAndZeroPoint(.76f, 88);
+    test.Run();
+  }
 }
 
 TEST(QLinearConvTest, Conv2D_U8U8_Depthwise) {
-  QLinearConvOpTester<uint8_t, uint8_t> test;
-  test.GenerateRandomInput({1, 30, 25, 25}, .03f, 12);
-  test.GenerateRandomWeights({30, 1, 3, 3}, .10f, 167);
-  test.GenerateRandomBias();
-  test.SetPads({2, 0, 2, 0});
-  test.SetGroups(30);
-  test.SetOutputScaleAndZeroPoint(.76f, 88);
-  test.Run();
+  for (int64_t channels : std::initializer_list<int64_t>{3, 8, 13, 24, 31}) {
+    QLinearConvOpTester<uint8_t, uint8_t> test;
+    test.GenerateRandomInput({1, channels, 25, 25}, .03f, 12);
+    test.GenerateRandomWeights({channels, 1, 3, 3}, .10f, 167);
+    test.GenerateRandomBias();
+    test.SetPads({2, 0, 2, 0});
+    test.SetGroups(channels);
+    test.SetOutputScaleAndZeroPoint(.76f, 88);
+    test.Run();
+  }
 }
 
 TEST(QLinearConvTest, Conv2D_U8S8_DepthwisePointwise) {
