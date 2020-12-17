@@ -73,12 +73,12 @@ def write_to_db(coverage_data, build_config, args):
 
         # insert current record
         insert_query = ('INSERT INTO onnxruntime.test_coverage '
-                        '(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, OS,
-                        Arch, BuildConfig, ReportURL) '
+                        '''(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, OS,
+                          Arch, BuildConfig, ReportURL) '''
                         'VALUES (Now(), "%s", %f, %d, %d, "%s", "%s", "%s", "%s") '
                         'ON DUPLICATE KEY UPDATE '
-                        'UploadTime=Now(), Coverage=%f, LinesCovered=%d, TotalLines=%d,
-                        OS="%s", Arch="%s", BuildConfig="%s", ReportURL="%s";'
+                        '''UploadTime=Now(), Coverage=%f, LinesCovered=%d, TotalLines=%d,
+                          OS="%s", Arch="%s", BuildConfig="%s", ReportURL="%s"; '''
                         ) % (args.commit_hash,
                              coverage_data['coverage'],
                              coverage_data['lines_covered'],
