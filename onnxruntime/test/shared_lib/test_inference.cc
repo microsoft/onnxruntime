@@ -1171,19 +1171,19 @@ TEST(CApiTest, get_available_providers) {
   int len = 0;
   char** providers;
   ASSERT_EQ(g_ort->GetAvailableProviders(&providers, &len), nullptr);
-  ASSERT_TRUE(len > 0);
-  ASSERT_EQ(strcmp(providers[0], "CPUExecutionProvider"), 0);
+  ASSERT_GT(len, 0);
+  ASSERT_STREQ(providers[len-1], "CPUExecutionProvider");
   ASSERT_EQ(g_ort->ReleaseAvailableProviders(providers, len), nullptr);
 }
 
 TEST(CApiTest, get_available_providers_cpp) {
   std::vector<std::string> providers = Ort::GetAvailableProviders();
-  ASSERT_TRUE(providers.size() > 0);
-  ASSERT_TRUE(providers[0] == std::string("CPUExecutionProvider"));
+  ASSERT_FALSE(providers.empty());
+  ASSERT_EQ(providers.back(), "CPUExecutionProvider");
 
 #ifdef USE_CUDA
   // CUDA EP will exist in the list but its position may vary based on other EPs included in the build
-  ASSERT_TRUE(std::find(providers.begin(), providers.end(), std::string("CUDAExecutionProvider")) != providers.end());
+  ASSERT_TRUE(std::find(providers.begin(), providers.end(), "CUDAExecutionProvider") != providers.end());
 #endif
 }
 
