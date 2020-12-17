@@ -16,10 +16,13 @@ constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   ROCMExecutionProviderInfo info{};
 
-  // TODO validate info.device_id
-  ReadProviderOption(options, provider_option_names::kDeviceId, info.device_id);
-  ReadProviderOption(options, provider_option_names::kMemLimit, info.hip_mem_limit);
-  ReadProviderOption(options, provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
+  ORT_THROW_IF_ERROR(
+      ProviderOptionsParser{}
+          // TODO validate info.device_id
+          .AddAssignmentToReference(provider_option_names::kDeviceId, info.device_id)
+          .AddAssignmentToReference(provider_option_names::kMemLimit, info.hip_mem_limit)
+          .AddAssignmentToReference(provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy)
+          .Parse(options));
 
   return info;
 }

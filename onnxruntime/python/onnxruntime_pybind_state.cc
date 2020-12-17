@@ -590,9 +590,10 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
       const auto it = provider_options_map.find(type);
-      if (it != provider_options_map.end()) {
-        ReadProviderOption(it->second, "nuphar_settings", nuphar_settings);
-      }
+      ORT_THROW_IF_ERROR(
+          ProviderOptionsParser{}
+              .AddAssignmentToReference("nuphar_settings", nuphar_settings)
+              .Parse(it->second));
 
       RegisterExecutionProvider(
           sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));

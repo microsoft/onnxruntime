@@ -12,18 +12,18 @@ namespace {
 template <typename T>
 void TestSuccessfulParse(const std::string& input, const T& expected_value) {
   T value;
-  ASSERT_TRUE(TryParse(input, value));
+  ASSERT_TRUE(TryParseString(input, value));
   EXPECT_EQ(value, expected_value);
 }
 
 template <typename T>
 void TestFailedParse(const std::string& input) {
   T value;
-  EXPECT_FALSE(TryParse(input, value));
+  EXPECT_FALSE(TryParseString(input, value));
 }
 }  // namespace
 
-TEST(StringUtilsTest, TryParse) {
+TEST(StringUtilsTest, TryParseString) {
   TestSuccessfulParse("-1", -1);
   TestSuccessfulParse("42", 42u);
   TestSuccessfulParse("2.5", 2.5f);
@@ -40,13 +40,13 @@ TEST(StringUtilsTest, TryParse) {
   TestFailedParse<int32_t>("1 ");
 }
 
-TEST(StringUtilsTest, TryParseString) {
+TEST(StringUtilsTest, TryParseStringAsString) {
   // when parsing a string as a string, allow leading and trailing whitespace
   const std::string s = "  this is a string! ";
   TestSuccessfulParse(s, s);
 }
 
-TEST(StringUtilsTest, TryParseBool) {
+TEST(StringUtilsTest, TryParseStringAsBool) {
   TestSuccessfulParse("True", true);
   TestSuccessfulParse("1", true);
   TestSuccessfulParse("False", false);
@@ -79,12 +79,12 @@ std::istream& operator>>(std::istream& is, S& s) {
 }
 }  // namespace
 
-TEST(StringUtilsTest, MakeStringAndTryParseCustomType) {
+TEST(StringUtilsTest, MakeStringAndTryParseStringWithCustomType) {
   S s;
   s.i = 42;
   const auto str = MakeString(s);
   S parsed_s;
-  ASSERT_TRUE(TryParse(str, parsed_s));
+  ASSERT_TRUE(TryParseString(str, parsed_s));
   ASSERT_EQ(parsed_s, s);
 }
 

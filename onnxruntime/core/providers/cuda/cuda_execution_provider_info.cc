@@ -19,31 +19,39 @@ constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
 CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   CUDAExecutionProviderInfo info{};
 
-  if (ReadProviderOption(options, provider_option_names::kDeviceId, info.device_id)) {
-    int num_devices = 0;
-    CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
-    ORT_ENFORCE(
-        0 <= info.device_id && info.device_id < num_devices,
-        "Invalid ", provider_option_names::kDeviceId, " value: ", info.device_id,
-        ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
-  }
-  ReadProviderOption(options, provider_option_names::kMemLimit, info.cuda_mem_limit);
-  ReadProviderOption(options, provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
-  {
-    int cudnn_conv_algo_val;
-    if (ReadProviderOption(options, provider_option_names::kCudnnConvAlgo, cudnn_conv_algo_val)) {
-      switch (cudnn_conv_algo_val) {
-        case OrtCudnnConvAlgoSearch::EXHAUSTIVE:
-        case OrtCudnnConvAlgoSearch::HEURISTIC:
-        case OrtCudnnConvAlgoSearch::DEFAULT:
-          break;
-        default:
-          ORT_THROW("Invalid ", provider_option_names::kCudnnConvAlgo, " value: ", cudnn_conv_algo_val);
-      }
-      info.cudnn_conv_algo = static_cast<OrtCudnnConvAlgoSearch>(cudnn_conv_algo_val);
-    }
-  }
-  ReadProviderOption(options, provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream);
+  ORT_THROW_IF_ERROR(
+      ProviderOptionsParser{}
+          .AddValueParser(
+              provider_option_names::kDeviceId,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseString(value_str, info.cuda_mem_limit));
+                int num_devices{};
+                ORT_RETURN_IF_NOT(
+                    CUDA_CALL(cudaGetDeviceCount(&num_devices)),
+                    "cudaGetDeviceCount() failed.");
+                ORT_RETURN_IF_NOT(
+                    0 <= info.device_id && info.device_id < num_devices,
+                    "Invalid device ID: ", info.device_id,
+                    ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
+                return Status::OK();
+              })
+          .AddAssignmentToReference(provider_option_names::kMemLimit, info.cuda_mem_limit)
+          .AddAssignmentToReference(provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy)
+          .AddValueParser(
+              provider_option_names::kCudnnConvAlgo,
+              [&info](const std::string& value_str) -> Status {
+                int cudnn_conv_algo_val{};
+                ORT_RETURN_IF_ERROR(ParseString(value_str, cudnn_conv_algo_val));
+                ORT_RETURN_IF_NOT(
+                    cudnn_conv_algo_val == OrtCudnnConvAlgoSearch::EXHAUSTIVE ||
+                        cudnn_conv_algo_val == OrtCudnnConvAlgoSearch::HEURISTIC ||
+                        cudnn_conv_algo_val == OrtCudnnConvAlgoSearch::DEFAULT,
+                    "Invalid OrtCudnnConvAlgoSearch value: ", cudnn_conv_algo_val);
+                info.cudnn_conv_algo = static_cast<OrtCudnnConvAlgoSearch>(cudnn_conv_algo_val);
+                return Status::OK();
+              })
+          .AddAssignmentToReference(provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
+          .Parse(options));
 
   return info;
 }
