@@ -1432,7 +1432,7 @@ def testORTTrainerOptionsDisabledAdasumFlag(test_input):
 def testORTTrainerUnusedInput():
     class UnusedInputModel(torch.nn.Module):
         def __init__(self):
-            super(Net, self).__init__()
+            super(UnusedInputModel, self).__init__()
         def forward(self, x, y):
             return torch.mean(x)
 
