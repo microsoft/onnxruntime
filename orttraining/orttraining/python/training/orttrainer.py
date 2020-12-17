@@ -804,7 +804,7 @@ class ORTTrainer(object):
         else:
             iobinding = self._eval_io_binding
 
-        # Get the list of rhe actual session inputs because unused inputs can be removed.
+        # Get the list of the actual session inputs because unused inputs can be removed.
         input_nodes = self._training_session.get_inputs()
         input_node_names = [input_node.name for input_node in input_nodes]
 
