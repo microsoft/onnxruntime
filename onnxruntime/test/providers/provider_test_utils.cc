@@ -69,6 +69,42 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor,
 }
 
 template <>
+void Check<uint8_t>(const OpTester::Data& expected_data,
+                    const Tensor& output_tensor,
+                    const std::string& provider_type) {
+  auto& expected_tensor = expected_data.data_.Get<Tensor>();
+  auto* expected = expected_tensor.template Data<uint8_t>();
+  auto* output = output_tensor.template Data<uint8_t>();
+  auto size = output_tensor.Shape().Size();
+
+  if (expected_data.sort_output_) {
+    // if order can be jumbled in the output of an operator, sort both the
+    // expected and output buffers prior to
+    // comparison this is a "best-effort" algo and should satisfy the
+    // requirement for the few ops that do require this
+    // support without investing in a more sophisticated infrastructure for the
+    // same
+    sort_expected_and_actual_buffers<uint8_t>(expected, output, size);
+  }
+
+  // NNAPI's rounding is a bit different than CPU provider
+  // Often the result is within +/-1 of result of CPU provider
+  // Add 1 as threshold which is the smallest possbile for uint8_t
+  if (provider_type == kNnapiExecutionProvider) {
+    double threshold = 1.0;
+    for (int i = 0; i < size; ++i) {
+      ASSERT_NEAR(expected[i], output[i], threshold) << "i:" << i
+                                                     << ", provider_type: " << provider_type;
+    }
+  } else {
+    for (int i = 0; i < size; ++i) {
+      EXPECT_EQ(expected[i], output[i]) << "i:" << i
+                                        << ", provider_type: " << provider_type;
+    }
+  }
+}
+
+template <>
 void Check<double>(const OpTester::Data& expected_data,
                    const Tensor& output_tensor,
                    const std::string& provider_type) {
@@ -747,8 +783,7 @@ void OpTester::Run(
         kAclExecutionProvider,
         kArmNNExecutionProvider,
         kNnapiExecutionProvider,
-        kRocmExecutionProvider
-    };
+        kRocmExecutionProvider};
 
     bool has_run = false;
 
@@ -844,8 +879,7 @@ void OpTester::Run(
               }
             }
 
-            if (!valid)
-            {
+            if (!valid) {
               std::cerr << "No kernel registered from EP: " << provider_type << "for node: " << node.OpType() << std::endl;
               break;
             }

@@ -87,7 +87,17 @@ enum class QLinearOpType : uint8_t {
   // QLinearReduceMean,
 };
 
+enum class ConvType : uint8_t {
+  Regular,
+  Depthwise,
+  Grouped,
+};
+
 QLinearOpType GetQLinearOpType(const onnxruntime::Node& node);
+
+// Return the type of the conv ops,
+// This function assumes the input is a 2d conv node
+ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& initializers);
 
 // This qlinear op is an operator takes 2 input and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, ...
