@@ -248,12 +248,25 @@ static Status ModifyParametersForOptimizerPartitioning(
     std::vector<ArgDef>& gradient_argdefs,
     const std::vector<size_t>& megatron_partitioned_weight_grad_index,
     std::vector<bool>& is_grad_for_global_norm,
+    ArgDef& padded_weight_argdef,
+    ArgDef& padded_gradient_argdef,
     std::unordered_map<std::string, std::string>& updated_weight_names_map) {
   ORT_ENFORCE(weight_argdefs.size() == gradient_argdefs.size());
   ORT_ENFORCE(weight_argdefs.size() == opt_configs.size());
 
+  const auto elem_type = gradient_argdefs[0].type_proto->tensor_type().elem_type();
+  size_t element_size = 0;
+  if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+    element_size = 4;
+  } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+    element_size = 2;
+  } else {
+    ORT_ENFORCE(false, "Unsupported datatype in gradient tensor");
+  }
+
   // Compute total element count to reduce.
   int64_t total_count = 0;
+  int64_t total_bytes = 0;
   for (size_t i = 0; i < weight_argdefs.size(); i++) {
     ArgDef weight_argdef = weight_argdefs[i];
     ORT_ENFORCE(weight_argdef.type_proto != nullptr);
@@ -262,10 +275,16 @@ static Status ModifyParametersForOptimizerPartitioning(
 
     ArgDef gradient_argdef = gradient_argdefs[i];
     ORT_ENFORCE(gradient_argdef.type_proto != nullptr);
+    ORT_ENFORCE(gradient_argdef.type_proto->tensor_type().elem_type() == elem_type);
     const auto& gradient_shape_proto = gradient_argdef.type_proto->tensor_type().shape();
     const TensorShape& gradient_shape = utils::GetTensorShapeFromTensorShapeProto(gradient_shape_proto);
 
     ORT_ENFORCE(weight_shape == gradient_shape);
+
+    size_t bytes = 0;
+    ORT_ENFORCE(IAllocator::CalcMemSizeForArrayWithAlignment<256>(weight_shape.Size(), element_size, &bytes));
+
+    total_bytes += bytes;
     total_count += weight_shape.Size();
   }
 
@@ -273,18 +292,21 @@ static Status ModifyParametersForOptimizerPartitioning(
   // Note: the alignment here needs to be kept in-sync with the alignment in nccl_kernels.cc
   const int data_parallel_group_rank = opt_graph_config.data_parallel_group_rank;
   const int data_parallel_group_size = opt_graph_config.data_parallel_group_size;
-  const int64_t alignment = data_parallel_group_size * 32;
-  const int64_t padded_count = total_count + alignment - (total_count % alignment);
-  const int64_t rank_count = padded_count / data_parallel_group_size;
-  const int64_t rank_start = data_parallel_group_rank * rank_count;
-  const int64_t rank_end = rank_start + rank_count;
+  const size_t alignment = data_parallel_group_size * 32;
+  const size_t padded_buffer_bytes = ((total_bytes + alignment - 1) / alignment) * alignment;
+
+  const size_t rank_bytes = padded_buffer_bytes / data_parallel_group_size;
+  // const size_t rank_count = rank_bytes / element_size;
+
+  const size_t rank_start = data_parallel_group_rank * rank_bytes;
+  const size_t rank_end = rank_start + rank_bytes;
 
   std::vector<OptimizerNodeConfig> new_opt_configs;
   std::vector<ArgDef> new_weight_argdefs;
   std::vector<ArgDef> new_gradient_argdefs;
 
   bool is_dp_group_id_zero = DistributedRunContext::RankInGroup(WorkerGroupType::HorizontalParallel) == 0;
-  int64_t offset = 0;
+  size_t offset = 0;
   for (size_t i = 0; i < weight_argdefs.size(); i++) {
     bool is_shared_weight = false;
     if (std::find(megatron_partitioned_weight_grad_index.begin(), megatron_partitioned_weight_grad_index.end(), i) ==
@@ -298,15 +320,18 @@ static Status ModifyParametersForOptimizerPartitioning(
 
     const auto& tensor_shape_proto = weight_argdef.type_proto->tensor_type().shape();
     const TensorShape& tensor_shape = utils::GetTensorShapeFromTensorShapeProto(tensor_shape_proto);
-    const int64_t tensor_count = tensor_shape.Size();
+    const size_t tensor_count = tensor_shape.Size();
 
-    if (offset < rank_end && offset + tensor_count > rank_start) {
+    size_t tensor_bytes = 0;
+    ORT_ENFORCE(IAllocator::CalcMemSizeForArrayWithAlignment<256>(tensor_count, element_size, &tensor_bytes));
+
+    if (offset < rank_end && offset + tensor_bytes > rank_start) {
       // Parameter is handled by this rank.  There are 4 cases:
       // 1. parameter is fully handled by this rank
       // 2. parameter is split between previous rank and this rank
       // 3. parameter is split between this rank and next rank
       // 4. parameter is split between previous rank, this rank, and next rank
-      if (offset >= rank_start && offset + tensor_count <= rank_end) {
+      if (offset >= rank_start && offset + tensor_bytes <= rank_end) {
         new_opt_configs.push_back(opt_config);
         new_weight_argdefs.push_back(weight_argdef);
         new_gradient_argdefs.push_back(gradient_argdef);
@@ -318,13 +343,23 @@ static Status ModifyParametersForOptimizerPartitioning(
         } else {
           is_grad_for_global_norm.push_back(false);
         }
-      } else if (offset < rank_start && offset + tensor_count <= rank_end) {
-        int64_t size_for_previous_rank = rank_start - offset;
-        int64_t size_for_current_rank = offset + tensor_count - rank_start;
+      } else if (offset < rank_start && offset + tensor_bytes <= rank_end) {
+        int64_t bytes_for_previous_rank = rank_start - offset;
+        // int64_t bytes_for_current_rank = offset + tensor_bytes - rank_start;
+
+        int64_t size_for_previous_rank = std::min(bytes_for_previous_rank / element_size, tensor_count);
+        int64_t size_for_current_rank = tensor_count - size_for_previous_rank;
+
+        if (size_for_current_rank == 0) {
+          std::cout << "size_for_current_rank is zero\n";
+        }
+
+        // !!!! todo: some optimization here, can skip View
         std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
         std::vector<bool> enabled = {false, true};
         AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                             new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+        
         is_grad_for_global_norm.push_back(false);
         if (is_shared_weight && is_dp_group_id_zero) {
           is_grad_for_global_norm.push_back(true);
@@ -333,13 +368,21 @@ static Status ModifyParametersForOptimizerPartitioning(
         } else {
           is_grad_for_global_norm.push_back(false);
         }
-      } else if (offset >= rank_start && offset + tensor_count > rank_end) {
-        int64_t size_for_current_rank = rank_end - offset;
-        int64_t size_for_next_rank = offset + tensor_count - rank_end;
+      } else if (offset >= rank_start && offset + tensor_bytes > rank_end) {
+        int64_t bytes_for_current_rank = rank_end - offset;
+        // int64_t bytes_for_next_rank = offset + tensor_bytes - rank_end;
+
+        int64_t size_for_current_rank = std::min(bytes_for_current_rank / element_size, tensor_count);
+        int64_t size_for_next_rank = tensor_count - size_for_current_rank;
+
+        if (size_for_current_rank == 0) {
+          std::cout << "size_for_next_rank is zero\n";
+        }
+
         std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
         std::vector<bool> enabled = {true, false};
         AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                             new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
         if (is_shared_weight && is_dp_group_id_zero) {
           is_grad_for_global_norm.push_back(true);
         } else if (!is_shared_weight) {
@@ -348,10 +391,19 @@ static Status ModifyParametersForOptimizerPartitioning(
           is_grad_for_global_norm.push_back(false);
         }
         is_grad_for_global_norm.push_back(false);
-      } else {  // offset < rank_start && offset + tensor_count > rank_end
-        int64_t size_for_previous_rank = rank_start - offset;
-        int64_t size_for_current_rank = rank_end - rank_start;
-        int64_t size_for_next_rank = offset + tensor_count - rank_end;
+      } else {  // offset < rank_start && offset + tensor_bytes > rank_end
+        int64_t bytes_for_previous_rank = rank_start - offset;
+        int64_t bytes_for_current_rank = rank_end - rank_start;
+        // int64_t bytes_for_next_rank = offset + tensor_bytes - rank_end;
+
+        int64_t size_for_previous_rank = std::min(bytes_for_previous_rank / element_size, tensor_count);
+        int64_t size_for_current_rank = std::min(bytes_for_current_rank / element_size, tensor_count - size_for_previous_rank);
+        int64_t size_for_next_rank = tensor_count - size_for_previous_rank - size_for_current_rank;
+
+        if (size_for_next_rank == 0) {
+          std::cout << "else size_for_next_rank is zero\n";
+        }
+
         std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
         std::vector<bool> enabled = {false, true, false};
         AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
@@ -375,7 +427,50 @@ static Status ModifyParametersForOptimizerPartitioning(
       new_weight_argdefs.push_back(weight_argdef);
       new_gradient_argdefs.push_back(gradient_argdef);
     }
-    offset += tensor_count;
+
+    offset += tensor_bytes;
+  }
+
+  // weight padding
+  const size_t padding_bytes = padded_buffer_bytes - total_bytes;
+  const int64_t padding_size = padding_bytes / element_size;
+
+  std::cout << "padded_buffer_bytes " << padded_buffer_bytes << " total_bytes " << total_bytes << "\n";
+  std::cout << "padding_bytes " << padding_bytes << " padding_size " << padding_size << "\n";
+
+  if (padding_size > 0) {
+    ArgDef weight_padding_argdef("contiguous_weight_buffer_padding",
+                                 graph_defs.CreateTypeProto({padding_size}, ONNX_NAMESPACE::TensorProto_DataType(elem_type)));
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+      graph_defs.AddInitializers({CreateTensorProto<float>(weight_padding_argdef.name, 0.0f, {padding_size})});
+    } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+      graph_defs.AddInitializers({CreateTensorProto<MLFloat16>(weight_padding_argdef.name, MLFloat16(0.0f), {padding_size})});
+    }
+
+    // gradient padding
+    ArgDef padding_size_argdef("gradient_padding_size",
+                               graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_INT64));
+    graph_defs.AddInitializers({CreateTensorProto<int64_t>(padding_size_argdef.name, {padding_size}, {1})});
+    ArgDef gradient_padding_argdef("contiguous_gradient_buffer_padding",
+                                   graph_defs.CreateTypeProto({padding_size}, ONNX_NAMESPACE::TensorProto_DataType(elem_type)));
+
+    TensorProto zero_scaler;
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+      zero_scaler = ONNX_NAMESPACE::ToTensor<float>(0.f);
+    } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+      zero_scaler = ONNX_NAMESPACE::ToTensor<MLFloat16>(MLFloat16(0.f));
+    }
+
+    // gradient padding have to be an activation tensor, so use ConstantOfShape instead of initializer
+    graph_defs.AddNodeDefs({NodeDef("ConstantOfShape",
+                                    {padding_size_argdef},
+                                    {gradient_padding_argdef},
+                                    {ONNX_NAMESPACE::MakeAttribute("value", zero_scaler)},
+                                    gradient_padding_argdef.name)});
+
+    padded_weight_argdef = weight_padding_argdef;
+    padded_gradient_argdef = gradient_padding_argdef;
   }
 
   // Update outputs.
@@ -427,9 +522,10 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
 
   std::vector<bool> is_grad_for_global_norm;
   // handle optimizer partitioning
+  ArgDef padded_weight_argdef, padded_gradient_argdef;
   ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
-      graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs, 
-      megatron_partitioned_weight_grad_index_, is_grad_for_global_norm, updated_weight_names_map_));
+      graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs,
+      megatron_partitioned_weight_grad_index_, is_grad_for_global_norm, padded_weight_argdef, padded_gradient_argdef, updated_weight_names_map_));
 
   // add gradient scaling
   ArgDef fused_gradient_argdef;
@@ -453,7 +549,13 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
                                               opt_graph_config_.AllReduceDataType(), false));
 
   // add Reducescatter for gradients
-  ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
+  if (padded_gradient_argdef.Exists()) {
+    gradient_argdefs.push_back(padded_gradient_argdef);
+    ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
+    gradient_argdefs.pop_back();
+  } else {
+    ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
+  }
 
   if (divide_sample_after_all_reduce == true) {
     ORT_RETURN_IF_ERROR(ScaleGradWithSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs, grad_multi_factor));
@@ -503,7 +605,13 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
       optimizer_state_initializer_names));
 
   // add Allgather for weights
-  ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
+  if (padded_weight_argdef.Exists()) {
+    weight_argdefs.push_back(padded_weight_argdef);
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
+    weight_argdefs.pop_back();
+  } else {
+    ORT_RETURN_IF_ERROR(AddNcclAllGatherForWeights(weight_argdefs, graph_defs));
+  }
 
   return Status::OK();
 }

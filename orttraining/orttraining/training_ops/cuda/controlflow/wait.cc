@@ -18,7 +18,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* CPU variable */
+        .InputMemoryType<OrtMemTypeCPUInput>(0) /* CPU variable */
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .VariadicAlias(1, 0),  // outputs and inputs are mapped one to one, with input offset by 1
@@ -32,7 +32,7 @@ Status WaitEvent::ComputeInternal(OpKernelContext* ctx) const {
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator range(
-    "Batch-" + tag + " Wait-" + std::to_string(event_id), profile::Color::Blue);
+      "Batch-" + tag + " Wait-" + std::to_string(event_id), profile::Color::Blue);
   range.Begin();
 #endif
 
