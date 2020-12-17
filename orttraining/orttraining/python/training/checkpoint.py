@@ -275,6 +275,15 @@ def aggregate_checkpoints(paths, pytorch_format=True):
     state_dict = {}
     sharded_states_original_dims = {}
     world_rank = _utils.state_dict_trainer_options_world_rank_key()
+    mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
+    zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
+    world_size = _utils.state_dict_trainer_options_world_size_key()
+    optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+
+    loaded_mixed_precision = None
+    loaded_world_size = None
+    loaded_zero_stage = None
+    loaded_optimizer_name = None
 
     for rank, path in enumerate(ordered_paths):
         rank_state_dict = _checkpoint_storage.load(path)
@@ -284,6 +293,26 @@ def aggregate_checkpoints(paths, pytorch_format=True):
         assert rank == rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank], \
             "Unexpected rank in file at path {}. Expected {}, got {}".\
                 format(path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank])
+        if loaded_mixed_precision is None:
+            loaded_mixed_precision = rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
+        else:
+            assert loaded_mixed_precision == rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision], \
+                "Mixed precision state mismatch among checkpoint files. File: {}".format(path)
+        if loaded_world_size is None:
+            loaded_world_size = rank_state_dict[_utils.state_dict_trainer_options_key()][world_size]
+        else:
+            assert loaded_world_size == rank_state_dict[_utils.state_dict_trainer_options_key()][world_size], \
+                "World size state mismatch among checkpoint files. File: {}".format(path)
+        if loaded_zero_stage is None:
+            loaded_zero_stage = rank_state_dict[_utils.state_dict_trainer_options_key()][zero_stage]
+        else:
+            assert loaded_zero_stage == rank_state_dict[_utils.state_dict_trainer_options_key()][zero_stage], \
+                "Zero stage mismatch among checkpoint files. File: {}".format(path)
+        if loaded_optimizer_name is None:
+            loaded_optimizer_name = rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
+        else:
+            assert loaded_optimizer_name == rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name], \
+                "Optimizer name mismatch among checkpoint files. File: {}".format(path)
 
         # aggregate all model states
         _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict)

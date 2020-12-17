@@ -503,7 +503,7 @@ def test_load_checkpoint(aggregate_checkpoints_mock, load_mock):
     }
     trainer.load_state_dict = Mock()
 
-    load_mock.side_effect = [trainer_options, trainer_options, state_dict]
+    load_mock.side_effect = [trainer_options, state_dict]
     trainer.load_checkpoint('abc')
 
     args_list = load_mock.call_args_list
@@ -511,9 +511,6 @@ def test_load_checkpoint(aggregate_checkpoints_mock, load_mock):
     assert load_args[0] == 'abc'
     assert load_kwargs['key'] == 'trainer_options'
     load_args, load_kwargs = args_list[1]
-    assert load_args[0] == 'abc'
-    assert load_kwargs['key'] == 'trainer_options'
-    load_args, load_kwargs = args_list[2]
     assert load_args[0] == 'abc'
     assert 'key' not in load_kwargs
     assert not aggregate_checkpoints_mock.called
@@ -578,7 +575,7 @@ def test_load_checkpoint_user_dict(aggregate_checkpoints_mock, load_mock):
     }
     trainer.load_state_dict = Mock()
 
-    load_mock.side_effect = [trainer_options, trainer_options, state_dict]
+    load_mock.side_effect = [trainer_options, state_dict]
     user_dict = trainer.load_checkpoint('abc')
 
     assert torch.all(torch.eq(user_dict['array'], torch.tensor(np.arange(5))))

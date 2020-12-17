@@ -1290,10 +1290,9 @@ class ORTTrainer(object):
             # if aggregation is required, aggregation logic must be run on the saved checkpoints
             state_dict = checkpoint.aggregate_checkpoints(paths, pytorch_format=False)
         else:
-            # if aggregation is not required, reorder the checkpoints in order of ascending rank,
-            # and load the checkpoint for the current ORTTrainer rank.
-            ordered_paths = checkpoint._order_paths(paths)
-            state_dict = _checkpoint_storage.load(ordered_paths[0])
+            # if aggregation is not required, there must only be a single file that needs to be loaded
+            assert len(paths) == 1, "Expected number of files to load: 1, got {}".format(len(paths))
+            state_dict = _checkpoint_storage.load(paths[0])
 
         # extract user dict from the saved checkpoint
         user_dict = {}
