@@ -970,8 +970,8 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
 common::Status TrainingSession::GetPartitionInfoMap(std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>>& part_info_map) {
   for (const auto& weight : weight_partition_info_) {
     const auto& weight_name = weight.first;
-    std::transform(weight_partition_info_[weight_name].original_dimension.begin(), weight_partition_info_[weight_name].original_dimension.end(),
-                  std::inserter(part_info_map[weight_name]["original_dimension"], part_info_map[weight_name]["original_dimension"].end()),
+    std::transform(weight_partition_info_[weight_name].original_dim.begin(), weight_partition_info_[weight_name].original_dim.end(),
+                  std::inserter(part_info_map[weight_name]["original_dim"], part_info_map[weight_name]["original_dim"].end()),
                   [](const int64_t& dim) { return (int)dim; });
     part_info_map[weight_name]["megatron_row_partition"] = std::vector<int>{weight_partition_info_[weight_name].megatron_row_partition};
   }

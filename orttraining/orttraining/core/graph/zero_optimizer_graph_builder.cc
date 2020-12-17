@@ -350,31 +350,31 @@ static Status ModifyParametersForOptimizerPartitioning(
         new_opt_configs.push_back(opt_config);
         new_weight_argdefs.push_back(weight_argdef);
         new_gradient_argdefs.push_back(gradient_argdef);
-      } else if (offset < rank_start && offset + tensor_count <= rank_end) {
-        int64_t size_for_previous_rank = rank_start - offset;
-        int64_t size_for_current_rank = offset + tensor_count - rank_start;
-        std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
-        std::vector<bool> enabled = {false, true};
-        weight_partition_info[weight_argdef.name].original_dimension = tensor_shape.GetDims();
-        AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
-      } else if (offset >= rank_start && offset + tensor_count > rank_end) {
-        int64_t size_for_current_rank = rank_end - offset;
-        int64_t size_for_next_rank = offset + tensor_count - rank_end;
-        std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
-        std::vector<bool> enabled = {true, false};
-        weight_partition_info[weight_argdef.name].original_dimension = tensor_shape.GetDims();
-        AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
-      } else {  // offset < rank_start && offset + tensor_count > rank_end
-        int64_t size_for_previous_rank = rank_start - offset;
-        int64_t size_for_current_rank = rank_end - rank_start;
-        int64_t size_for_next_rank = offset + tensor_count - rank_end;
-        std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
-        std::vector<bool> enabled = {false, true, false};
-        weight_partition_info[weight_argdef.name].original_dimension = tensor_shape.GetDims();
-        AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+      } else {
+        weight_partition_info[weight_argdef.name].original_dim = tensor_shape.GetDims();
+        if (offset < rank_start && offset + tensor_count <= rank_end) {
+          int64_t size_for_previous_rank = rank_start - offset;
+          int64_t size_for_current_rank = offset + tensor_count - rank_start;
+          std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
+          std::vector<bool> enabled = {false, true};
+          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
+                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+        } else if (offset >= rank_start && offset + tensor_count > rank_end) {
+          int64_t size_for_current_rank = rank_end - offset;
+          int64_t size_for_next_rank = offset + tensor_count - rank_end;
+          std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
+          std::vector<bool> enabled = {true, false};
+          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
+                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+        } else {  // offset < rank_start && offset + tensor_count > rank_end
+          int64_t size_for_previous_rank = rank_start - offset;
+          int64_t size_for_current_rank = rank_end - rank_start;
+          int64_t size_for_next_rank = offset + tensor_count - rank_end;
+          std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
+          std::vector<bool> enabled = {false, true, false};
+          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
+                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+        }
       }
     } else {
       // Parameter is handled by a different rank.

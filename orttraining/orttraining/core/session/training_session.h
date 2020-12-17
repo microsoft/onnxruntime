@@ -32,7 +32,7 @@ class TrainingSession : public InferenceSession {
    * Partition information of each paritioned weight
    */
   struct PartitionInfo {
-    std::vector<int64_t> original_dimension;
+    std::vector<int64_t> original_dim;
     bool megatron_row_partition;
   };
 
