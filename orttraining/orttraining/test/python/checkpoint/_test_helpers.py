@@ -12,6 +12,8 @@ from onnxruntime.capi._pybind_state import set_cuda_device_id, get_mpi_context_w
 
 from _test_commons import generate_dummy_optim_state
 
+from numpy.testing import assert_allclose, assert_array_equal
+
 global_fp16_fp32_atol = 1e-3
 
 def _train(trainer, train_data, batcher_fn, total_batch_steps = 5, seed = 1):
@@ -139,6 +141,55 @@ def create_initialized_orttrainer(device, trainer_opts, use_lamb=True):
     _train(trainer, train_data, batcher_fn)
 
     return trainer
+
+def verify_model_state(trainer, expected_state_dict, is_mixedprecision):
+    actual_model_state = trainer._training_session.get_model_state(include_mixed_precision_weights=True)
+    
+    assert len(expected_state_dict['fp32_param']) == len(actual_model_state['full_precision']), \
+        "expected and actual should have same number of tensors"
+    for weight_name, tensor in expected_state_dict['fp32_param'].items():
+        if not weight_name in actual_model_state['full_precision']:
+            assert '_view_' in weight_name, \
+                "only zero shared weight may not match name"
+            shape = expected_state_dict['fp32_param'][weight_name].shape
+            weight_name = weight_name.split('_view_')[0]
+        assert_allclose(tensor, actual_model_state['full_precision'][weight_name])
+
+    if is_mixedprecision:
+        assert 'mixed_precision' in actual_model_state.keys(), "missing 'mixed_precision' key in mixed precision run"
+        assert len(expected_state_dict['fp16_param']) == len(actual_model_state['mixed_precision']), \
+            "expected and actual should have same number of tensors"
+        for weight_name, tensor in expected_state_dict['fp16_param'].items():
+            weight_name = weight_name.split('_fp16')[0]
+            assert_allclose(tensor, actual_model_state['mixed_precision'][weight_name], atol=global_fp16_fp32_atol)
+
+def verify_opt_state(trainer, expected_state_dict):
+    actual_opt_state = trainer._training_session.get_optimizer_state()
+    opt_count = 0
+    for weight_name, weights in actual_opt_state.items():
+        for opt_prefix, tensor in weights.items():
+            full_opt_name = opt_prefix + "_" + weight_name
+            if full_opt_name in expected_state_dict['optimizer']:
+                expected_tensor = expected_state_dict['optimizer'][full_opt_name]
+            else:
+                assert opt_prefix == "Step"
+                expected_tensor = expected_state_dict['optimizer'][opt_prefix]
+            assert_allclose(tensor, expected_tensor)
+        opt_count += len(weights)
+    assert opt_count == len(expected_state_dict['optimizer'])
+
+def verify_part_info(trainer, expected_state_dict, is_zero_run):
+    part_info = trainer._training_session.get_partition_info_map()
+    for weight_name, weight_info in part_info.items():
+        for info, value in weight_info.items():
+            assert isinstance(value, list), "get_partition_info_map should return list"
+            assert isinstance(value[0], int), "get_partition_info_map should return list of int"
+            if is_zero_run:
+                if info == "megatron_row_partition":
+                    assert value[0] == 0, "megatron_row_partition is 0 (false) if megatron optimization is not on"
+                if info == "original_dim":
+                    assert len(value) > 0, "original_dim should not be empty if zero run"
+                    assert_array_equal(part_info[weight_name]['original_dim'], expected_state_dict['fp16_param'][weight_name + '_fp16'].shape)
 
 def split_state_dict(state_dict):
     """Given a flat state dictionary, split it into optimizer, fp32_param, fp16_param hierarchical dictionary and return"""

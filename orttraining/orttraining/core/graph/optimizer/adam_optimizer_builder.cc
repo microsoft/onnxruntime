@@ -160,7 +160,7 @@ Status AdamOptimizerBuilder::Build(
                                       BuildAttributeProto(opt_configs[i]),
                                       OptimizerNodeName(weight_name))});
     }
-    
+
     output_weight_argdefs.push_back(output_weight_argdef);
     output_gradient_argdefs.push_back(output_gradient_argdef);
   }

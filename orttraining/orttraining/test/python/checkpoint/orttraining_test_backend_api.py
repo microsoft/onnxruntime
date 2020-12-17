@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+################################################################################
+# Refer to orttraining_test_checkpoint.py for an overview about Checkpoint tests
+################################################################################
+
 import os
 import pytest
 import pickle
@@ -11,62 +19,35 @@ from onnxruntime.training import amp, checkpoint, optim, orttrainer
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from _test_helpers import _train, distributed_setup, generate_model_optimizer_from_training_instance, create_initialized_orttrainer 
-from numpy.testing import assert_allclose
+from _test_helpers import _train, distributed_setup, generate_model_optimizer_from_training_instance, \
+    create_initialized_orttrainer, split_state_dict, global_fp16_fp32_atol, verify_model_state, verify_opt_state, verify_part_info
 
-def verify_model_state(trainer, init_model_state):
-    actual_model_state = trainer._training_session.get_model_state(include_mixed_precision_weights=False)
-    for fp_or_mp_key, weights in actual_model_state.items():
-        for weight_name, tensor in weights.items():
-            expected_tensor = init_model_state[fp_or_mp_key][weight_name]
-            assert_allclose(tensor, expected_tensor, 1e-3, 1e-3)
-
-def verify_opt_state(trainer, init_opt_state):
-    actual_opt_state = trainer._training_session.get_optimizer_state()
-    #print(actual_opt_state)
-    for weight_name, weights in actual_opt_state.items():
-        for opt_prefix, tensor in weights.items():
-            expected_tensor = init_opt_state[weight_name][opt_prefix]
-            if tensor.dtype == "int64":
-                assert expected_tensor[0] == tensor[0], "step should increment by 1"
-            else: 
-                assert_allclose(tensor, expected_tensor, 1e-1, 1e-2)
-
-def verify_part_info(trainer, is_zero_run):
-    part_info = trainer._training_session.get_partition_info_map()
-    for weight_name, weight_info in part_info.items():
-        for info, value in weight_info.items():
-            assert isinstance(value, list), "get_partition_info_map should return list"
-            assert isinstance(value[0], int), "get_partition_info_map should return list of int"
-            if is_zero_run:
-                if info == "megatron_row_partition":
-                    assert value[0] == 0, "megatron_row_partition is 0 (false) if megatron optimization is not on"
-                if info == "original_dimension":
-                    assert len(value) > 0, "original_dimension should not be empty if zero run"
-
-def test_backend_api(device = 'cuda'):
+def test_single_node_full_precision_lamb(device = 'cuda', checkpoint_dir=''):
     opts_dict = {'device' : {'id' : device},
             'debug' : {'deterministic_compute': True}}
+    is_mixed_precision_run = False
+    is_zero_run = False
     
-    # generate model and optimizer value from a training instance
-    init_model_state, init_opt_state = generate_model_optimizer_from_training_instance(device, opts_dict)
-
     trainer = create_initialized_orttrainer(device, opts_dict, True)
 
-    verify_model_state(trainer, init_model_state)
-    
-    verify_opt_state(trainer, init_opt_state)
+    expected_state_dict = trainer._training_session.get_state()
+    expected_state_dict = split_state_dict(expected_state_dict)
 
-    verify_part_info(trainer, False)
+    verify_model_state(trainer, expected_state_dict, is_mixed_precision_run)
+    
+    verify_opt_state(trainer, expected_state_dict)
+
+    verify_part_info(trainer, expected_state_dict, is_zero_run)
 
 @distributed_setup
-def test_zero(world_rank, world_size, device, checkpoint_dir):
-#def test_zero(world_rank, world_size, device):
+def test_distributed_zero_mixed_precision_lamb(world_rank, world_size, device, checkpoint_dir):
+    is_mixed_precision_run = True
+    is_zero_run = True
     opts_dict = {
                 'device' : {'id' : device},
                 'mixed_precision':
                 {
-                    'enabled': True
+                    'enabled': is_mixed_precision_run
                 },
                 'distributed' :
                 {
@@ -81,26 +62,31 @@ def test_zero(world_rank, world_size, device, checkpoint_dir):
                 'debug' : {'deterministic_compute': True}
             }
     
-    # generate model and optimizer value from a training instance
-    init_model_state, init_opt_state = generate_model_optimizer_from_training_instance(device, opts_dict)
-
     trainer = create_initialized_orttrainer(device, opts_dict, True)
 
-    actual_model_state = trainer._training_session.get_model_state(include_mixed_precision_weights=True)
-    print(f"On rank {world_rank} ---------------------------------")
-    for k, v in actual_model_state.items():
-        print(f"{k}====")
-        for k2, v2 in v.items():
-            print(k2)
-    
-    verify_model_state(trainer, init_model_state)
-    
-    verify_opt_state(trainer, init_opt_state)
+    expected_state_dict = trainer._training_session.get_state()
+    expected_state_dict = split_state_dict(expected_state_dict)
 
-    part_info = trainer._training_session.get_partition_info_map()
-    print(f"On rank {world_rank} ---------------------------------")
-    print(part_info)
-    verify_part_info(trainer, True)
+    verify_model_state(trainer, expected_state_dict, is_mixed_precision_run)
+    
+    verify_opt_state(trainer, expected_state_dict)
 
-#test_backend_api()
-test_zero(checkpoint_dir='')
+    verify_part_info(trainer, expected_state_dict, is_zero_run)
+
+# To run single node test locally, from build directory
+# python3 checkpoint/orttraining_test_backend_api.py
+# test_single_node_full_precision_lamb() 
+
+# To run distributed test locally, from build directory
+# mpirun -n 4 -x NCCL_DEBUG=INFO python3 checkpoint/orttraining_test_backend_api.py
+#test_distributed_zero_mixed_precision_lamb(checkpoint_dir='')
+
+function_map = {
+    'test_single_node_full_precision_lamb': test_single_node_full_precision_lamb,
+    'test_distributed_zero_mixed_precision_lamb': test_distributed_zero_mixed_precision_lamb
+}
+parser = argparse.ArgumentParser(description='Test saved states of trainers to loaded states')
+parser.add_argument('--scenario', choices=function_map.keys(), help='training scenario to test saved and loaded states', required=True)
+parser.add_argument('--checkpoint_dir', help='path to the saved states directory', required=True)
+args = parser.parse_args()
+function_map[args.scenario](checkpoint_dir=args.checkpoint_dir)
