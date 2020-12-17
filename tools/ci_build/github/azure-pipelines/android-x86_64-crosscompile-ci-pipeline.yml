@@ -43,7 +43,7 @@ jobs:
       displayName: 'Download code coverage report'
       inputs:
         artifactName: 'coverage_rpt.txt'
-        targetPath: '$(Build.BinariesDirectory)/coverage_rpt.txt'
+        targetPath: '$(Build.BinariesDirectory)'
     - task: UsePythonVersion@0
       inputs:
         versionSpec: '3.x'
