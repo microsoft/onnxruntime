@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef DEBUG  // disable for debug builds because some of these tests are slow
+#ifdef NDEBUG  // disable for debug builds because some of these tests are slow
 
 #include <algorithm>
 #include <bitset>
@@ -908,7 +908,7 @@ TEST(GradientCheckerTest, ConvGrad) {
                                           false);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
-    //conv_with_dialation
+    //conv_with_dilation
   {
     TensorShape x_shape({2, 1, 7, 5});
     TensorShape w_shape({1, 1, 3, 3});
@@ -1005,7 +1005,7 @@ TEST(GradientCheckerTest, ConvGradDnnl) {
   }
 
 
-      //conv_with_dialation
+      //conv_with_dilation
   {
     TensorShape x_shape({2, 1, 5, 5});
     TensorShape w_shape({1, 1, 3, 3});
@@ -1023,7 +1023,7 @@ TEST(GradientCheckerTest, ConvGradDnnl) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
 
-      //conv_with_dialation
+      //conv_with_dilation
   {
     TensorShape x_shape({2, 1, 7, 5});
     TensorShape w_shape({1, 1, 3, 3});

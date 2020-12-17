@@ -126,12 +126,15 @@ class DnnlPool : public DnnlKernel {
         algo = dnnl::algorithm::pooling_avg_include_padding;
       }
     }
-    fwd_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::desc>(
-#ifndef ENABLE_TRAINING
-        dnnl::pooling_forward::desc(dnnl::prop_kind::forward_inference, algo, 
+
+#ifdef ENABLE_TRAINING
+    auto prop_kind = dnnl::prop_kind::forward;
 #else
-        dnnl::pooling_forward::desc(dnnl::prop_kind::forward, algo,
-#endif // ENABLE_TRAINING
+    auto prop_kind = dnnl::prop_kind::forward_inference;
+#endif  // ENABLE_TRAINING
+
+    fwd_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::desc>(
+        dnnl::pooling_forward::desc(prop_kind, algo,
                                     *src_md_, *primitive_dst_md_,
                                     strides_mkl, kernel_mkl,
                                     padding_left_mkl, padding_right_mkl));

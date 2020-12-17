@@ -91,12 +91,12 @@ class DNNLExecutionProvider : public IExecutionProvider {
   // Note if the a DnnlKernel already exists this will replace the existing kernel with the
   // new kernel. This was done so the latest kernel is always placed in the map.
   void SetForwardKernel(onnxruntime::NodeIndex key, std::shared_ptr<ort_dnnl::DnnlKernel> kernel) {
-    fwd_kernal_map_[key] = kernel;
+    fwd_kernel_map_[key] = kernel;
   }
 
-  // Fetch the kerenel using the NodeIndex
-  std::shared_ptr<ort_dnnl::DnnlKernel> GetForwardKernal(onnxruntime::NodeIndex key) {
-    return fwd_kernal_map_.at(key);
+  // Fetch the kernel using the NodeIndex
+  std::shared_ptr<ort_dnnl::DnnlKernel> GetForwardKernel(onnxruntime::NodeIndex key) {
+    return fwd_kernel_map_.at(key);
   }
 
   std::stack<std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_conv_stack;
@@ -116,11 +116,11 @@ class DNNLExecutionProvider : public IExecutionProvider {
 
 #ifdef ENABLE_TRAINING
   // map used to hold and lookup forward DnnlKernels. This should only be needed in when
-  // running in training mode.The backward Kernels need access the forward kernals; typically
+  // running in training mode.The backward Kernels need access the forward kernels; typically
   // to obtain the forward primitive description but it may be need for other items like
   // accessing workspace memory.
-  std::map<onnxruntime::NodeIndex, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_kernal_map_;
-#endif // ENABLE_TRAINING
+  std::map<onnxruntime::NodeIndex, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_kernel_map_;
+#endif  // ENABLE_TRAINING
   // SUBGRAPH
  private:
   static int GetOnnxOpSet(const GraphViewer& graph_viewer) {
@@ -175,7 +175,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
 #else
       if (node->OutputDefs().size() > 1)
         supported = false;
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
     }
     return supported;
   }
@@ -208,7 +208,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
 #else
   std::set<std::string> dnnl_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
                                      "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
 
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;
 };

@@ -263,14 +263,14 @@ class DnnlConvGrad : public DnnlKernel {
 
     conv_bwd_data_desc_ = onnxruntime::make_unique<dnnl::convolution_backward_data::desc>(
         dnnl::convolution_backward_data::desc(
-          dnnl::algorithm::convolution_direct,
-          *primitive_dst_md_,
-          *weights_md_,
-          *diff_dst_md_,
-          conv_strides,
-          conv_dilations,
-          conv_padding_left,
-          conv_padding_right));
+            dnnl::algorithm::convolution_direct,
+            *primitive_dst_md_,
+            *weights_md_,
+            *diff_dst_md_,
+            conv_strides,
+            conv_dilations,
+            conv_padding_left,
+            conv_padding_right));
 
     conv_bwd_data_pd_ = onnxruntime::make_unique<dnnl::convolution_backward_data::primitive_desc>(
         dnnl::convolution_backward_data::primitive_desc(
@@ -291,8 +291,6 @@ class DnnlConvGrad : public DnnlKernel {
     conv_bwd_weights_pd_ = onnxruntime::make_unique<dnnl::convolution_backward_weights::primitive_desc>(
         dnnl::convolution_backward_weights::primitive_desc(
             *conv_bwd_weights_desc_, engine_to_use, *(conv_fwd_->GetPrimitiveDesc())));
-
-
 
     diff_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
         dnnl::memory(conv_bwd_weights_pd_.get()->diff_dst_desc(), engine_to_use, nullptr));
@@ -341,9 +339,9 @@ class DnnlConvGrad : public DnnlKernel {
                         {DNNL_ARG_DIFF_BIAS, *diff_bias_mem_},
                         {DNNL_ARG_DIFF_WEIGHTS, *diff_weights_mem_}});
 
-   if (mklnode_ptr_->output_index >= 0) {
+    if (mklnode_ptr_->output_index >= 0) {
       dnnl::memory::data_type t = DnnnType<T>();
-     InitDstReorderOutput(engine_to_use, t, net, net_args);
+      InitDstReorderOutput(engine_to_use, t, net, net_args);
     }
   }
 
@@ -353,7 +351,6 @@ class DnnlConvGrad : public DnnlKernel {
     ORT_RETURN_IF_ERROR(primitive_created_status_);
 
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
-
 
     const OrtValue* dy_input_tensor = ort.KernelContext_GetInput(context, input_index);
     const T* dy_data = const_cast<T*>(ort.GetTensorData<T>(dy_input_tensor));
@@ -477,7 +474,6 @@ class DnnlConvGrad : public DnnlKernel {
 
   std::unique_ptr<dnnl::memory::desc> filter_md_;
   std::unique_ptr<dnnl::memory::desc> bias_md_;
-
 
   // input tensors
   std::unique_ptr<dnnl::memory> diff_dst_mem_;

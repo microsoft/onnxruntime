@@ -259,36 +259,25 @@ class DnnlConv : public DnnlKernel {
     dnnl::memory::dims conv_zero_padding = {0, 0};
 
 #ifdef ENABLE_TRAINING
-    if (!bias_dims_mkl.empty()) {
-      fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
-          dnnl::convolution_forward::desc(
-              dnnl::prop_kind::forward_training, dnnl::algorithm::convolution_direct, *src_md_,
-              *filter_md_, *bias_md_, *primitive_dst_md_,
-              strides_mkl, dilations_mkl, padding_left_mkl,
-              padding_right_mkl));
-    } else {
-      fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
-          dnnl::convolution_forward::desc(
-              dnnl::prop_kind::forward_training, dnnl::algorithm::convolution_direct, *src_md_,
-              *filter_md_, *primitive_dst_md_, strides_mkl,
-              dilations_mkl, padding_left_mkl, padding_right_mkl));
-    }
+    auto prop_kind = dnnl::prop_kind::forward_training;
 #else
+    auto prop_kind = dnnl::prop_kind::forward_inference;
+#endif  // ENABLE_TRAINING
+
     if (!bias_dims_mkl.empty()) {
       fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
           dnnl::convolution_forward::desc(
-              dnnl::prop_kind::forward_inference, dnnl::algorithm::convolution_direct, *src_md_,
+              prop_kind, dnnl::algorithm::convolution_direct, *src_md_,
               *filter_md_, *bias_md_, *primitive_dst_md_,
               strides_mkl, dilations_mkl, padding_left_mkl,
               padding_right_mkl));
     } else {
       fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
           dnnl::convolution_forward::desc(
-              dnnl::prop_kind::forward_inference, dnnl::algorithm::convolution_direct, *src_md_,
+              prop_kind, dnnl::algorithm::convolution_direct, *src_md_,
               *filter_md_, *primitive_dst_md_, strides_mkl,
               dilations_mkl, padding_left_mkl, padding_right_mkl));
     }
-#endif  //ENABLE_TRAINING
 
     if (fuse_relu_) {
       dnnl::primitive_attr attr;
@@ -462,9 +451,9 @@ class DnnlConv : public DnnlKernel {
     auto xdim = tensor_shape.size();
 
     TensorShape W(xshape, xdim);
+    const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
 
     const int group_mkl = static_cast<int>(group_);
-    const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
 
     dnnl::memory::dims filter_dims_mkl;
     if (group_mkl == 1) {
@@ -538,9 +527,9 @@ class DnnlConv : public DnnlKernel {
 #ifdef USE_DNNL_GPU_OCL
       std::lock_guard<OrtMutex> lock(provider_->GetMutex());
       filter_mem_gpu_->set_ocl_mem_object(filter_dst_mem->get_ocl_mem_object());
-#endif // USE_DNNL_GPU_OCL
+#endif  // USE_DNNL_GPU_OCL
     }
-#else // ENABLE_TRAINING
+#else  // ENABLE_TRAINING
     if (!gpu_available_) {
       filter_data = static_cast<T*>(filter_dst_mem_->get_data_handle());
       filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
@@ -548,9 +537,9 @@ class DnnlConv : public DnnlKernel {
 #ifdef USE_DNNL_GPU_OCL
       std::lock_guard<OrtMutex> lock(provider_->GetMutex());
       filter_mem_gpu_->set_ocl_mem_object(filter_dst_mem_->get_ocl_mem_object());
-#endif // USE_DNNL_GPU_OCL
+#endif  // USE_DNNL_GPU_OCL
     }
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
 
     if (bias_data != nullptr) {
       bias_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(bias_data)));
@@ -599,10 +588,10 @@ class DnnlConv : public DnnlKernel {
     return Status::OK();
   }
 #ifdef ENABLE_TRAINING
-  std::shared_ptr <dnnl::convolution_forward::primitive_desc> GetPrimitiveDesc() {
+  std::shared_ptr<dnnl::convolution_forward::primitive_desc> GetPrimitiveDesc() {
     return conv_fwd_pd_;
   }
-#endif
+#endif  // ENABLE_TRAINING
 
  private:
   void ReadAttributes(const NodeAttributes& attributes,
@@ -668,7 +657,7 @@ class DnnlConv : public DnnlKernel {
   dnnl::memory::format_tag filter_format_;
 #ifdef ENABLE_TRAINING
   std::shared_ptr<dnnl::memory> filter_dst_mem_;
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
 
   std::shared_ptr<dnnl::memory> src_mem_from_;
   std::unique_ptr<dnnl::memory> src_mem_to_;

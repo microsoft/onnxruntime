@@ -98,7 +98,6 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
     std::string name = "output" + std::to_string(data_index);
     op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), (*y_datas)[data_index]);
   }
-  //op_session.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, execution_providers_);
   op_session.Run();
   return op_session.GetFetches();
 }

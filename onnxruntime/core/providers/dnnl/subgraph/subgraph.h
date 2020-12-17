@@ -11,14 +11,14 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-// When training recode extra node information to enable finding the
+// When training record extra node information to enable finding the
 // forward node from the backward node.
 #ifdef ENABLE_TRAINING
 struct InputNode {
   onnxruntime::NodeIndex index;
   std::string op_type;
 };
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
 
 struct DnnlNode {
   std::string name;
@@ -29,15 +29,15 @@ struct DnnlNode {
   std::string weight_name;
   std::string output_name;
 #ifdef ENABLE_TRAINING
-  int num_outputs = 0; // how many outputs
+  int num_outputs = 0;  // how many outputs
   std::vector<std::string> output_names;
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
   std::vector<size_t> parent_nodes;  // index to parents in vector mklnodes
 
 #ifdef ENABLE_TRAINING
   onnxruntime::NodeIndex onnx_index; // the index of the onnx runtime node
   std::vector<InputNode> input_nodes;  // index and node name of the onnx runtime input nodes to this node
-#endif //ENABLE_TRAINING
+#endif  //ENABLE_TRAINING
 
   std::string ToString() const {
     std::string key;

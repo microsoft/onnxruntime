@@ -19,7 +19,7 @@
 #include "core/providers/dnnl/subgraph/dnnl_convgrad.h"
 #include "core/providers/dnnl/subgraph/dnnl_relugrad.h"
 #include "core/providers/dnnl/subgraph/dnnl_maxpoolgrad.h"
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -77,7 +77,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         kernel = std::make_shared<DnnlConv<T>>(dnnl_node, params.provider, *params.attributes, os.str());
 #ifdef ENABLE_TRAINING
         params.provider->fwd_conv_stack.emplace(kernel);
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -98,11 +98,11 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::shared_ptr<DnnlRelu<T>> kernel;
         kernel = std::make_shared<DnnlRelu<T>>(dnnl_node, params.provider, *params.attributes, os.str());
 #ifdef ENABLE_TRAINING
-        // TODO only need to populate the fwd_kernal_map map if training
+        // TODO only need to populate the fwd_kernel_map map if training
         // figure out way to read the training_mode parameter from
         // onnxruntime\core\framwork\run_options.h
         params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -152,7 +152,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, *params.attributes, os.str());
 #ifdef ENABLE_TRAINING
         params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -225,11 +225,12 @@ class SubgraphPrimitive : public PrimitiveBase {
         kernel = std::make_shared<DnnlReluGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
 
         // walk the input_nodes for this ReluGrad dnnl_node find the node index of the Relu input_node
-        // use that index to obtain the Relu kernel pointer from the fwd_kernal_map.
+        // use that index to obtain the Relu kernel pointer from the fwd_kernel_map.
         for (auto iter = dnnl_node.input_nodes.begin(); iter != dnnl_node.input_nodes.end(); ++iter) {
           if (iter->op_type == "Relu") {
-            auto fwd_kernel = params.provider->GetForwardKernal(iter->index);
+            auto fwd_kernel = params.provider->GetForwardKernel(iter->index);
             kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlRelu<T>>(fwd_kernel));
+            break;
           }
         }
 
@@ -245,8 +246,9 @@ class SubgraphPrimitive : public PrimitiveBase {
 
         for (auto iter = dnnl_node.input_nodes.begin(); iter != dnnl_node.input_nodes.end(); ++iter) {
           if (iter->op_type == "MaxPool") {
-            auto fwd_kernel = params.provider->GetForwardKernal(iter->index);
+            auto fwd_kernel = params.provider->GetForwardKernel(iter->index);
             kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlPool<T>>(fwd_kernel));
+            break;
           }
         }
 
@@ -255,7 +257,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         }
         context_.kernels.push_back(kernel);
       }
-#endif //ENABLE_TRAINING
+#endif  //ENABLE_TRAINING
     }
   }
 
@@ -333,14 +335,14 @@ Status DnnlFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* c
     // each call. Since the SubgraphPrimitivePool stashes the nodes based on the thread_local memory it results in a new
     // stash being created per-call from the training loop.  In theory the thread_local memory should be freed when the calling
     // thread is destroyed but this was not being seen when actually running the code.  Instead of relying on the thread_local
-    // memory being freed we name a new SubgraphPrimive instead of using the SubgraphPrimitivePool when the code is built for
+    // memory being freed we name a new SubgraphPrimitive instead of using the SubgraphPrimitivePool when the code is built for
     // training. (If the training running is updated to use a thread pool instead of a new thread each run we may be able to
     // revert back to the SubgraphPrimitivePool.)
 #ifdef ENABLE_TRAINING
     std::unique_ptr<SubgraphPrimitive<T>> primitive = onnxruntime::make_unique<SubgraphPrimitive<T>>(api, context, params_);
 #else
     SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
-#endif // ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
 
     primitive->UpdateProvider(params_);
     status = primitive->Compute(api, context);

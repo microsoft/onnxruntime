@@ -332,7 +332,6 @@ class DnnlMaxPoolGrad : public DnnlKernel {
       ORT_ENFORCE(strides_.size() == kernel_shape_.size());
     }
   }
-  
 
  private:
   size_t src_size_;
@@ -384,7 +383,6 @@ class DnnlMaxPoolGrad : public DnnlKernel {
     }
     return fmt;
   }
-
 
   //These functions are no longer used to calculate output size, but are kept in case they are needed in the future.
   std::vector<int64_t> SetOutputSize(const TensorShape& input_shape,
@@ -455,7 +453,7 @@ class DnnlMaxPoolGrad : public DnnlKernel {
       }
     } else {
       *out_size = static_cast<int64_t>(
-          static_cast<float>(((in_size - 1) * stride) - (*pad_head + *pad_tail) + kernel ));
+          static_cast<float>(((in_size - 1) * stride) - (*pad_head + *pad_tail) + kernel));
     }
   }
 
