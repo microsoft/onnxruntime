@@ -13,7 +13,7 @@ import onnxruntime
 from onnx import helper, TensorProto
 from onnx import onnx_pb as onnx_proto
 
-from .quant_utils import QuantType
+from .quant_utils import QuantType, write_calibration_table
 from .registry import QLinearOpsRegistry
 
 import abc
@@ -56,81 +56,8 @@ class ONNXCalibrater:
     def set_data_reader(self, data_reader):
         self.data_reader = data_reader
 
-    def write_calibration_table(self):
-        import json
-        import flatbuffers
-        import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
-        import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
-
-        print(self.calibration_cache)
-
-        with open("calibration.json", 'w') as file:
-            file.write(json.dumps(self.calibration_cache)) # use `json.loads` to do the reverse
-
-
-        # Serialize data using FlatBuffers
-        builder = flatbuffers.Builder(1024)
-        key_value_list = []
-        for key in sorted(self.calibration_cache.keys()):
-            values = self.calibration_cache[key]
-            value = str(max(abs(values[0]), abs(values[1]))) 
-
-            flat_key = builder.CreateString(key)
-            flat_value = builder.CreateString(value)
-
-            KeyValue.KeyValueStart(builder)
-            KeyValue.KeyValueAddKey(builder, flat_key)
-            KeyValue.KeyValueAddValue(builder, flat_value)
-            key_value = KeyValue.KeyValueEnd(builder)
-
-            key_value_list.append(key_value)
-
-        
-        TrtTable.TrtTableStartDictVector(builder, len(key_value_list))
-        for key_value in key_value_list:
-            builder.PrependUOffsetTRelative(key_value)
-        main_dict = builder.EndVector(len(key_value_list))
-
-        TrtTable.TrtTableStart(builder)
-        TrtTable.TrtTableAddDict(builder, main_dict)
-        cal_table = TrtTable.TrtTableEnd(builder)
-
-        builder.Finish(cal_table)
-        buf = builder.Output()
-
-        with open("calibration.flatbuffers", 'wb') as file:
-            file.write(buf)
-
-        # Deserialize data (for validation)
-        if False:
-            cal_table = TrtTable.TrtTable.GetRootAsTrtTable(buf, 0)
-            dict_len = cal_table.DictLength()
-            for i in range(dict_len):
-                key_value = cal_table.Dict(i)
-                print(key_value.Key())
-                print(key_value.Value())
-
-
-
-        # write plain text 
-        with open("calibration.cache", 'w') as file:
-            for key in sorted(self.calibration_cache.keys()):
-                value = self.calibration_cache[key]
-                s = key + ' ' + str(max(abs(value[0]), abs(value[1]))) 
-                file.write(s)
-                file.write('\n')
-
-    def get_value_info_by_type(self, value_info_proto, type_list):
-
-        value_info_set = set()
-
-        for value_info in value_info_proto:
-            elem_type = value_info.type.tensor_type.elem_type
-
-            if elem_type in type_list:
-                value_info_set.add(value_info.name)
-
-        return value_info_set 
+    def get_calibration_cache(self):
+        return self.calibration_cache
 
     def augment_graph(self, augment_all_ops=False):
         '''
@@ -222,11 +149,7 @@ class ONNXCalibrater:
         intermediate_outputs = []
 
         while True:
-            if getattr(self.data_reader, "get_batch", None) and callable(self.data_reader.get_batch):
-                inputs = self.data_reader.get_batch()
-            else:
-                inputs = self.data_reader.get_next()
-
+            inputs = self.data_reader.get_next()
             if not inputs:
                 break
             intermediate_outputs.append(session.run(None, inputs))
@@ -411,35 +334,9 @@ def generate_calibration_table(model_path, augmented_model_path, data_reader, ca
         os.remove(augmented_model_path)
         print("remove previously generated %s and start to generate a new one." % (augmented_model_path))
 
-
-    calibrator = None 
-
-    # If no dataset is provided upfront, the dataset will be fetched by data reader itself and 
-    # therefore no need to handle batch processing at this moment. Just make the loop to run only once.
-    total_data_size = len(os.listdir(calibration_dataset)) if calibration_dataset else stride
-
-
-    # Some machines don't have sufficient memory to hold all dataset at once. So handle it by batch/stride.
-    # For each stride, data_reader can handle them with batch or serial processing depends on data reader implementation 
-    for i in range(0, total_data_size, stride):
-        print(calibration_dataset)
-        if calibration_dataset:
-            print("Total data size %s\nStart to process data from index %s with stride %s ..." % (str(total_data_size), str(i), str(stride)))
-            data_reader.set_start_index(i)
-            data_reader.set_size_limit(stride)
-            data_reader.set_batch_size(batch_size)
-            data_reader.set_preprocess_flag(True)
-
-        if not calibrator:
-            calibrator = get_calibrator(model_path, data_reader, augmented_model_path=augmented_model_path)
-        else:
-            calibrator.set_data_reader(data_reader)
-
-        calculate_calibration_data(model_path, calibrator, augmented_model_path=augmented_model_path)
-
-    if calibrator:
-        calibrator.write_calibration_table()
-
+    calibrator = get_calibrator(model_path, data_reader, augmented_model_path=augmented_model_path)
+    calculate_calibration_data(model_path, calibrator, augmented_model_path=augmented_model_path)
+    write_calibration_table(calibrator.get_calibration_cache())
     print('calibration table generated and saved.')
 
 def calibrate(model_path,

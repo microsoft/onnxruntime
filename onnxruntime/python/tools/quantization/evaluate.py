@@ -93,14 +93,14 @@ class YoloV3Evaluator:
         # If you decide to run batch inference, please make sure all input images must be re-sized to the same shape.
         # Which means the bounding boxes from groun truth annotation must to be adjusted accordingly, otherwise you will get very low mAP results. 
         # Here we simply choose to run serial inference.
-        if False:
+        if self.data_reader.get_batch_size() > 1:
             # batch inference
             print("Doing batch inference...")
 
             image_id_list = []
             image_id_batch = []
             while True:
-                inputs = self.data_reader.get_batch()
+                inputs = self.data_reader.get_next()
                 if not inputs:
                     break
                 image_id_list = inputs["image_id"]
@@ -229,59 +229,41 @@ class YoloV3VisionEvaluator(YoloV3Evaluator):
         session = onnxruntime.InferenceSession(self.model_path, providers=self.providers)
         outputs = []
 
-        if self.data_reader.support_batch_inference(session.get_inputs()[0].shape):
-            # batch inference
-            print("Doing batch inference...")
+        image_id_list = []
+        image_id_batch = []
+        image_size_list = []
+        image_size_batch = []
+        while True:
+            inputs = self.data_reader.get_next()
+            if not inputs:
+                break
+            image_size_list = inputs["image_size"]
+            image_id_list = inputs["image_id"]
+            del inputs["image_size"]
+            del inputs["image_id"]
 
-            image_id_list = []
-            image_id_batch = []
-            image_size_list = []
-            image_size_batch = []
-            while True:
-                inputs = self.data_reader.get_batch()
-                if not inputs:
-                    break
-                image_size_list = inputs["image_size"]
-                image_id_list = inputs["image_id"]
-                del inputs["image_size"]
-                del inputs["image_id"]
-                image_size_batch.append(image_size_list)
-                image_id_batch.append(image_id_list)
-                outputs.append(session.run(None, inputs))
+            # in the case of batch size is 1
+            if type(image_id_list) == int:
+                image_size_list = [image_size_list]
+                image_id_list = [image_id_list]
 
-            for i in range(len(outputs)):
-                output = outputs[i]
-                for batch_i in range(self.data_reader.get_batch_size()):
-                    batch_idx = output[0][:,0] == batch_i
-                    bboxes = output[1][batch_idx,:]
-                    scores = output[2][batch_idx,:]
 
-                    if batch_i > len(image_size_batch[i])-1 or batch_i > len(image_id_batch[i])-1:
-                        continue
+            image_size_batch.append(image_size_list)
+            image_id_batch.append(image_id_list)
+            outputs.append(session.run(None, inputs))
 
-                    image_height = image_size_batch[i][batch_i][0]
-                    image_width= image_size_batch[i][batch_i][1]
-                    image_id = image_id_batch[i][batch_i]
-                    self.set_bbox_prediction(bboxes, scores, image_height, image_width, image_id)
-        else:
-            # serial inference
-            while True:
-                inputs = self.data_reader.get_next()
-                if not inputs:
-                    break
+        for i in range(len(outputs)):
+            output = outputs[i]
+            for batch_i in range(self.data_reader.get_batch_size()):
+                batch_idx = output[0][:,0] == batch_i
+                bboxes = output[1][batch_idx,:]
+                scores = output[2][batch_idx,:]
 
-                image_id = inputs["image_id"]
-                image_width = inputs["image_width"]
-                image_height = inputs["image_height"]
-                del inputs["image_id"]
-                del inputs["image_width"]
-                del inputs["image_height"]
+                if batch_i > len(image_size_batch[i])-1 or batch_i > len(image_id_batch[i])-1:
+                    continue
 
-                output = session.run(None, inputs)
-                outputs.append(output)
-
-                bboxes = output[1]
-                scores = output[2]
-                
+                image_height = image_size_batch[i][batch_i][0]
+                image_width= image_size_batch[i][batch_i][1]
+                image_id = image_id_batch[i][batch_i]
                 self.set_bbox_prediction(bboxes, scores, image_height, image_width, image_id)
 

@@ -3,43 +3,32 @@ from onnxruntime.quantization import get_calibrator, YoloV3DataReader, YoloV3Vis
 from dataset_utils import *
 
 def get_prediction_evaluation(model_path, validation_dataset, providers):
-    image_list = os.listdir(validation_dataset)
-    stride = 1000 
-    
-    evaluator = None
-    results = []
-
     # Some machines don't have sufficient memory to hold all dataset at once. So handle it by batch/stride.
     # For each stride, data_reader can handle them with batch or serial processing depends on data reader implementation 
-    for i in range(0, len(image_list), stride):
-        print("Total %s images\nStart to process from %s with stride %s ..." % (str(len(image_list)), str(i), str(stride)))
-        dr = YoloV3DataReader(validation_dataset, model_path=model_path, start_index=i, size_limit=stride, batch_size=20, is_evaluation=True)
-        evaluator = YoloV3Evaluator(model_path, dr, providers=providers)
+    data_reader = YoloV3DataReader(validation_dataset, stride=1000, batch_size=1, model_path=model_path, is_evaluation=True)
+    evaluator = YoloV3Evaluator(model_path, data_reader, providers=providers)
 
-        # dr = YoloV3VisionDataReader(validation_dataset, width=512, height=288, model_path=model_path, start_index=i, size_limit=stride, batch_size=20, is_evaluation=True)
-        # evaluator = YoloV3VisionEvaluator(model_path, dr, width=512, height=288, providers=providers)
+    # data_reader = YoloV3VisionDataReader(validation_dataset, width=608, height=384, stride=1000, batch_size=1, model_path=model_path, is_evaluation=True)
+    # evaluator = YoloV3VisionEvaluator(model_path, data_reader, width=608, height=384, providers=providers)
 
-        # dr = YoloV3VisionDataReader(validation_dataset, width=608, height=384, model_path=model_path, start_index=i, size_limit=stride, batch_size=20, is_evaluation=True)
-        # evaluator = YoloV3VisionEvaluator(model_path, dr, width=608, height=384, providers=providers)
+    evaluator.predict()
+    result = evaluator.get_result()
 
-        evaluator.predict()
-        results += evaluator.get_result()
-
-    print("Total %s bounding boxes." % (len(results)))
-        
-    if evaluator:
-        annotations = './annotations/instances_val2017.json'
-        # annotations = './annotations/instances_val2017_person.json'
-        print(results)
-        evaluator.evaluate(results, annotations)
+    annotations = './annotations/instances_val2017.json'
+    # annotations = './annotations/instances_val2017_person.json'
+    print(result)
+    evaluator.evaluate(result, annotations)
 
 
 def get_calibration_table(model_path, augmented_model_path, calibration_dataset):
-    data_reader = YoloV3DataReader(calibration_dataset, model_path=augmented_model_path)
-    # data_reader = YoloV3VisionDataReader(calibration_dataset, width=512, height=288, model_path=augmented_model_path)
-    # data_reader = YoloV3VisionDataReader(calibration_dataset, width=608, height=384, model_path=augmented_model_path)
+    # Some machines don't have sufficient memory to hold all dataset at once. So handle it by batch/stride.
+    # For each stride, data_reader can handle them with batch or serial processing depends on data reader implementation 
+    data_reader = YoloV3DataReader(calibration_dataset, stride=1000, batch_size=1, model_path=augmented_model_path)
 
-    generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=calibration_dataset, stride=1000, batch_size=20)
+    # data_reader = YoloV3VisionDataReader(calibration_dataset, width=512, height=288, stride=1000, batch_size=20, model_path=augmented_model_path)
+    # data_reader = YoloV3VisionDataReader(calibration_dataset, width=608, height=384, stride=1000, batch_size=20, model_path=augmented_model_path)
+
+    generate_calibration_table(model_path, augmented_model_path, data_reader)
 
 
 if __name__ == '__main__':
