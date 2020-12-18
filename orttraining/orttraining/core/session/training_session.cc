@@ -925,7 +925,7 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
   // Change key from sharded_name to weight_name using partition_info
   for (const auto& weight : weight_partition_info_) {
     const auto& it = opt_state_tensors.find(weight.second.view_name);
-    ORT_ENFORCE(it != opt_state_tensors.end(), "Cannot find weight: " + weight.second.view_name + " in updated_weight_names_map_");
+    ORT_ENFORCE(it != opt_state_tensors.end(), "Cannot find weight: " + weight.second.view_name + " in weight_partition_info_");
     opt_state_tensors[weight.first] = it->second;
     opt_state_tensors.erase(it);
   }
