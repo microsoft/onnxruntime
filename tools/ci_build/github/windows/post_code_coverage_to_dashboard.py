@@ -5,8 +5,9 @@
 
 # command line arguments
 # --report_url=<string>
-# --report_file=<string, local file path>
+# --report_file=<string, local file path, TXT/JSON file>
 # --commit_hash=<string, full git commit hash>
+# --build_config=<string, JSON format specifying os, arch and config>
 
 import argparse
 import mysql.connector
@@ -20,9 +21,9 @@ def parse_arguments():
         description="ONNXRuntime test coverge report uploader for dashboard")
     parser.add_argument("--report_url", help="URL to the LLVM json report")
     parser.add_argument(
-        "--report_file", help="Path to the local JSON or TXT report", required=True)
+        "--report_file", help="Path to the local JSON/TXT report", required=True)
     parser.add_argument("--commit_hash", help="Full Git commit hash", required=True)
-    parser.add_argument("--build_config", help="Build configuration, OS, Arch and config, in JSON format")
+    parser.add_argument("--build_config", help="Build configuration, os, arch and config, in JSON format")
     return parser.parse_args()
 
 
@@ -58,8 +59,7 @@ def write_to_db(coverage_data, build_config, args):
         user='ort@onnxruntimedashboard',
         password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD'),
         host='onnxruntimedashboard.mysql.database.azure.com',
-        database='onnxruntime',
-        use_pure=True)
+        database='onnxruntime')
 
     try:
         cursor = cnx.cursor()
@@ -85,14 +85,14 @@ def write_to_db(coverage_data, build_config, args):
                              coverage_data['lines_valid'],
                              build_config.get('os', 'win'),
                              build_config.get('arch', 'x64'),
-                             build_config.get('buld_config', 'default'),
+                             build_config.get('config', 'default'),
                              args.report_url,
                              coverage_data['coverage'],
                              coverage_data['lines_covered'],
                              coverage_data['lines_valid'],
                              build_config.get('os', 'win'),
                              build_config.get('arch', 'x64'),
-                             build_config.get('buld_config', 'default'),
+                             build_config.get('config', 'default'),
                              args.report_url
                              )
         cursor.execute(insert_query)
