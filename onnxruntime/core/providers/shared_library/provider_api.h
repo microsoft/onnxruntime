@@ -73,6 +73,7 @@ struct Function;
 struct Graph;
 struct GraphViewer;
 struct Model;
+struct Path;//slx
 struct Node;
 struct NodeArg;
 struct NodeAttributes;
