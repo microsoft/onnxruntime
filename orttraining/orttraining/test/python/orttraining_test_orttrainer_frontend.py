@@ -1406,3 +1406,25 @@ def testORTTrainerRunSymbolicShapeInfer():
     # Compare losses
     _test_helpers.assert_model_outputs(new_loss, expected_loss)
     _test_helpers.assert_model_outputs(legacy_loss, expected_loss)
+
+@pytest.mark.parametrize("test_input", [
+    ({
+      'distributed': {'enable_adasum': True},
+    })
+])
+def testORTTrainerOptionsEnabledAdasumFlag(test_input):
+    ''' Test the enabled_adasum flag values when set enabled'''
+
+    actual_values = orttrainer_options.ORTTrainerOptions(test_input)
+    assert actual_values.distributed.enable_adasum == True
+
+@pytest.mark.parametrize("test_input", [
+    ({
+      'distributed': {'enable_adasum': False},
+    })
+])
+def testORTTrainerOptionsDisabledAdasumFlag(test_input):
+    ''' Test the enabled_adasum flag values when set disabled'''
+
+    actual_values = orttrainer_options.ORTTrainerOptions(test_input)
+    assert actual_values.distributed.enable_adasum == False

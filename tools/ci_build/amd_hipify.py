@@ -235,8 +235,8 @@ provider_excluded_files = [
 
 training_ops_excluded_files = [
                     'activation/activations_grad.cc',
-                    'collective/horovod_kernels.cc',
-                    'collective/horovod_kernels.h',
+                    'collective/adasum_kernels.cc',
+                    'collective/adasum_kernels.h',
                     'collective/nccl_common.cc',
                     'collective/ready_event.cc',
                     'collective/ready_event.h',

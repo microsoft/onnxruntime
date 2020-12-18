@@ -10,7 +10,7 @@
 #include "core/framework/ml_value.h"
 #include "core/providers/providers.h"
 #include "orttraining/core/framework/checkpoint_registry.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/data_loader.h"
@@ -94,7 +94,7 @@ class TrainingRunner {
     // Whether to partition the optimizer state across nodes for distributed training.
     ZeROConfig deepspeed_zero{};
     // Use Adasum for allreduce.
-    bool use_adasum = false;
+    bool enable_adasum = false;
     // Use Gist on CPU.
     bool use_gist = false;
     // Whether we collect execution profile trace during this run.
@@ -134,12 +134,12 @@ class TrainingRunner {
 
     AdasumReductionType GetAdasumReductionType() const {
       // TODO support more algos when they become available.
-      if (!use_adasum) {
+      if (!enable_adasum) {
         return AdasumReductionType::None;
       } else if (!UseCuda()) {
         return AdasumReductionType::CpuReduction;
       } else {
-        return AdasumReductionType::GpuHierarchical;
+        return AdasumReductionType::GpuHierarchicalReduction;
       }
     }
 
