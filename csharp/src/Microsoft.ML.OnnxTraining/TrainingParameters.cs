@@ -1,4 +1,8 @@
-﻿using Microsoft.ML.OnnxRuntime;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) SignalPop LLC. All rights reserved.
+// Licensed under the MIT License.
+
+using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
@@ -9,10 +13,14 @@ using System.Text;
 namespace Microsoft.ML.OnnxTraining
 {
     /// <summary>
-    /// Holds the training parameters used by the training runner.
+    /// Holds the training parameters used by the TrainingSession.
     /// </summary>
-    public class TrainingParameters : SafeHandle
+    public class TrainingParameters : IDisposable
     {
+        /// <summary>
+        /// A pointer to a underlying native instance of OrtTrainingParameters
+        /// </summary>
+        protected IntPtr _nativeHandle;
         private OrtDataGetBatchCallback m_fnGetTrainingData;
         private OrtDataGetBatchCallback m_fnGetTestingData;
         private OrtErrorFunctionCallback m_fnErrorFunction;
@@ -21,36 +29,86 @@ namespace Microsoft.ML.OnnxTraining
         public event EventHandler<EvaluationFunctionArgs> OnEvaluationFunction;
         public event EventHandler<DataBatchArgs> OnGetTrainingDataBatch;
         public event EventHandler<DataBatchArgs> OnGetTestingDataBatch;
-        DisposableList<IDisposable> m_rgCleanUpList = new DisposableList<IDisposable>();
+        private DisposableList<IDisposable> m_rgCleanUpList = new DisposableList<IDisposable>();
+        private List<int> m_rgInputShape = null;
+        private List<int> m_rgOutputShape = null;
+        private bool _disposed = false;
 
         /// <summary>
         /// Constructs a default TrainingParameters
         /// </summary>
         public TrainingParameters()
-            : base(IntPtr.Zero, true)
         {
             m_fnGetTrainingData = getTrainingDataFn;
             m_fnGetTestingData = getTestingDataFn;
             m_fnErrorFunction = errorFn;
             m_fnEvaluateFunction = evaluationFn;
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtCreateTrainingParameters(out handle));
+            Init();
         }
 
-        public IntPtr Handle
+        private void Init()
         {
-            get { return handle; }
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtCreateTrainingParameters(out _nativeHandle));
         }
 
-        public override bool IsInvalid
+        /// <summary>
+        /// Finalizer. to cleanup training parameters in case it runs
+        /// and the user forgets to Dispose() of the training parameters.
+        /// </summary>
+        ~TrainingParameters()
         {
-            get { return handle == IntPtr.Zero; }
+            Dispose(false);
         }
+
+        #region Disposable
+
+        /// <summary>
+        /// Release all resources.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            // Suppress finalization.
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
+        /// <param name="disposing">true if invoked from Dispose() method</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
+
+            // dispose managed state (managed objects).
+            if (disposing)
+            {
+                m_rgCleanUpList.Dispose();
+            }
+
+            // cleanup unmanaged resources
+            if (_nativeHandle != IntPtr.Zero)
+            {
+                NativeMethodsTraining.OrtReleaseTrainingParameters(_nativeHandle);
+                _nativeHandle = IntPtr.Zero;
+            }
+            _disposed = true;
+        }
+
+        #endregion
+
 
         #region Public Properties
 
+        public IntPtr Handle
+        {
+            get { return _nativeHandle; }
+        }
+
         public void SetTrainingParameter(OrtTrainingStringParameter key, string strVal)
         {
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetParameter_string(handle, key, NativeMethods.GetPlatformSerializedString(strVal)));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetParameter_string(_nativeHandle, key, NativeMethods.GetPlatformSerializedString(strVal)));
         }
 
         public string GetTrainingParameter(OrtTrainingStringParameter key)
@@ -58,7 +116,7 @@ namespace Microsoft.ML.OnnxTraining
             string str = null;
             var allocator = OrtAllocator.DefaultInstance;
             IntPtr valHandle = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetParameter_string(handle, key, allocator.Pointer, out valHandle));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetParameter_string(_nativeHandle, key, allocator.Pointer, out valHandle));
 
             using (var ortAllocation = new OrtMemoryAllocation(allocator, valHandle, 0))
             {
@@ -69,13 +127,13 @@ namespace Microsoft.ML.OnnxTraining
 
         public void SetTrainingParameter(OrtTrainingBooleanParameter key, bool bVal)
         {
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetParameter_bool(handle, key, bVal));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetParameter_bool(_nativeHandle, key, bVal));
         }
 
         public bool GetTrainingParameter(OrtTrainingBooleanParameter key)
         {
             UIntPtr val = UIntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetParameter_bool(handle, key, out val));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetParameter_bool(_nativeHandle, key, out val));
 
             if ((ulong)val == 0)
                 return false;
@@ -85,20 +143,20 @@ namespace Microsoft.ML.OnnxTraining
 
         public void SetTrainingParameter(OrtTrainingLongParameter key, long lVal)
         {
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetParameter_long(handle, key, lVal));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetParameter_long(_nativeHandle, key, lVal));
         }
 
         public long GetTrainingParameter(OrtTrainingLongParameter key)
         {
             UIntPtr val = UIntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetParameter_long(handle, key, out val));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetParameter_long(_nativeHandle, key, out val));
 
             return (long)val;
         }
 
         public void SetTrainingParameter(OrtTrainingNumericParameter key, double dfVal)
         {
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetNumericParameter(handle, key, dfVal));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetNumericParameter(_nativeHandle, key, dfVal));
         }
 
         public double GetTrainingParameter(OrtTrainingNumericParameter key)
@@ -106,7 +164,7 @@ namespace Microsoft.ML.OnnxTraining
             string str = null;
             var allocator = OrtAllocator.DefaultInstance;
             IntPtr valHandle = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetNumericParameter(handle, key, allocator.Pointer, out valHandle));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetNumericParameter(_nativeHandle, key, allocator.Pointer, out valHandle));
 
             using (var ortAllocation = new OrtMemoryAllocation(allocator, valHandle, 0))
             {
@@ -117,13 +175,13 @@ namespace Microsoft.ML.OnnxTraining
 
         public void SetTrainingOptimizer(OrtTrainingOptimizer opt)
         {
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetTrainingOptimizer(handle, opt));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetTrainingOptimizer(_nativeHandle, opt));
         }
 
         public OrtTrainingOptimizer GetTrainingOptimizer()
         {
             UIntPtr val = UIntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetTrainingOptimizer(handle, out val));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetTrainingOptimizer(_nativeHandle, out val));
 
             switch (((OrtTrainingOptimizer)(int)val))
             {
@@ -137,13 +195,13 @@ namespace Microsoft.ML.OnnxTraining
 
         public void SetTrainingLossFunction(OrtTrainingLossFunction loss)
         {
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetTrainingLossFunction(handle, loss));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetTrainingLossFunction(_nativeHandle, loss));
         }
 
         public OrtTrainingLossFunction GetTrainingLossFunction()
         {
             UIntPtr val = UIntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetTrainingLossFunction(handle, out val));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtGetTrainingLossFunction(_nativeHandle, out val));
 
             switch (((OrtTrainingLossFunction)(int)val))
             {
@@ -155,7 +213,11 @@ namespace Microsoft.ML.OnnxTraining
             }
         }
 
-        public void errorFn(UIntPtr count, IntPtr colVal)
+        #endregion
+
+        #region Public Methods
+
+        public void errorFn(IntPtr colVal)
         {
             if (OnErrorFunction == null)
                 return;
@@ -193,36 +255,54 @@ namespace Microsoft.ML.OnnxTraining
 
         public void SetupTrainingParameters()
         {
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetupTrainingParameters(handle, m_fnErrorFunction, m_fnEvaluateFunction));
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetupTrainingParameters(_nativeHandle, m_fnErrorFunction, m_fnEvaluateFunction));
         }
 
-        public void getTrainingDataFn(UIntPtr batch_size, UIntPtr count, IntPtr colVal)
-        {
-            if (OnGetTrainingDataBatch == null)
-                return;
-
-            int nBatchSize = (int)batch_size;
-            int nCount = (int)count;
-            DataBatchArgs args = new DataBatchArgs(nBatchSize);
-            OnGetTrainingDataBatch(this, args);
-            handleGetDataFn(args, nCount, colVal);
-        }
-
-        public void getTestingDataFn(UIntPtr batch_size, UIntPtr count, IntPtr colVal)
+        public void getTrainingDataFn(long nBatchSize, IntPtr hVal, IntPtr hInputShape, IntPtr hOutputShape)
         {
             if (OnGetTestingDataBatch == null)
                 return;
 
-            int nBatchSize = (int)batch_size;
-            int nCount = (int)count;
-            DataBatchArgs args = new DataBatchArgs(nBatchSize);
-            OnGetTestingDataBatch(this, args);
-            handleGetDataFn(args, nCount, colVal);
+            if (m_rgInputShape == null)
+            {
+                OrtShape shape = new OrtShape(hInputShape);
+                m_rgInputShape = shape.GetShape();
+            }
+
+            if (m_rgOutputShape == null)
+            {
+                OrtShape shape = new OrtShape(hOutputShape);
+                m_rgOutputShape = shape.GetShape();
+            }
+            DataBatchArgs args = new DataBatchArgs(nBatchSize, m_rgInputShape, m_rgOutputShape);
+            OnGetTrainingDataBatch(this, args);
+            handleGetDataFn(args, hVal);
         }
 
-        private void handleGetDataFn(DataBatchArgs args, int nCount, IntPtr colVal)
+        public void getTestingDataFn(long nBatchSize, IntPtr hVal, IntPtr hInputShape, IntPtr hOutputShape)
         {
-            OrtValueCollection col = new OrtValueCollection(colVal);
+            if (OnGetTestingDataBatch == null)
+                return;
+
+            if (m_rgInputShape == null)
+            {
+                OrtShape shape = new OrtShape(hInputShape);
+                m_rgInputShape = shape.GetShape();
+            }
+
+            if (m_rgOutputShape == null)
+            {
+                OrtShape shape = new OrtShape(hOutputShape);
+                m_rgOutputShape = shape.GetShape();
+            }
+            DataBatchArgs args = new DataBatchArgs(nBatchSize, m_rgInputShape, m_rgOutputShape);
+            OnGetTestingDataBatch(this, args);
+            handleGetDataFn(args, hVal);
+        }
+
+        private void handleGetDataFn(DataBatchArgs args, IntPtr hcol)
+        {
+            OrtValueCollection col = new OrtValueCollection(hcol);
 
             for (int i = 0; i < args.Values.Count; i++)
             {
@@ -248,18 +328,7 @@ namespace Microsoft.ML.OnnxTraining
                 strFeedNames += ";";
             }
 
-            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetupTrainingData(handle, m_fnGetTrainingData, m_fnGetTestingData, NativeMethods.GetPlatformSerializedString(strFeedNames)));
-        }
-
-        #endregion
-
-        #region SafeHandle
-
-        protected override bool ReleaseHandle()
-        {
-            NativeMethodsTraining.OrtReleaseTrainingParameters(handle);
-            handle = IntPtr.Zero;
-            return true;
+            NativeApiStatus.VerifySuccess(NativeMethodsTraining.OrtSetupTrainingData(_nativeHandle, m_fnGetTrainingData, m_fnGetTestingData, NativeMethods.GetPlatformSerializedString(strFeedNames)));
         }
 
         #endregion
@@ -317,10 +386,14 @@ namespace Microsoft.ML.OnnxTraining
     {
         int m_nBatchSize;
         List<NamedOnnxValue> m_rgValues = new List<NamedOnnxValue>();
+        List<int> m_rgInputShape;
+        List<int> m_rgOutputShape;
 
-        public DataBatchArgs(int nBatchSize)
+        public DataBatchArgs(long nBatchSize, List<int> rgInputShape, List<int> rgOutputShape)
         {
-            m_nBatchSize = nBatchSize;
+            m_nBatchSize = (int)nBatchSize;
+            m_rgInputShape = rgInputShape;
+            m_rgOutputShape = rgOutputShape;
         }
 
         public List<NamedOnnxValue> Values
@@ -331,6 +404,16 @@ namespace Microsoft.ML.OnnxTraining
         public int BatchSize
         {
             get { return m_nBatchSize; }
+        }
+
+        public List<int> InputShape
+        {
+            get { return m_rgInputShape; }
+        }
+
+        public List<int> OutputShape
+        {
+            get { return m_rgOutputShape; }
         }
     }
 }
