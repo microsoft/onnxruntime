@@ -1094,6 +1094,10 @@ class ORTTrainer(object):
             # or can be a regular string (coming from user)
             optimizer_name = \
                 state_dict[_utils.state_dict_trainer_options_key()][_utils.state_dict_trainer_options_optimizer_name_key()]
+
+            # optimizer_name can be either a regular string or a byte string.
+            # if it is a byte string, convert to regular string using decode()
+            # if it is a regular string, do nothing to it
             try:
                 optimizer_name = optimizer_name.decode()
             except AttributeError:
