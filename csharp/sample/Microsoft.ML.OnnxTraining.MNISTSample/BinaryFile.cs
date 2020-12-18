@@ -19,9 +19,9 @@ namespace MyCaffe.data
     /// </summary>
     public class BinaryFile : IDisposable
     {
-        FileStream m_file;
-        BinaryReader m_reader;
-        bool _disposed = false;
+        private FileStream _file;
+        private BinaryReader _reader;
+        private bool _disposed = false;
 
         /// <summary>
         /// The constructor.
@@ -29,8 +29,17 @@ namespace MyCaffe.data
         /// <param name="strFile">Specifies the filename.</param>
         public BinaryFile(string strFile)
         {
-            m_file = File.Open(strFile, FileMode.Open, FileAccess.Read, FileShare.Read);
-            m_reader = new BinaryReader(m_file);
+            _file = File.Open(strFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+            _reader = new BinaryReader(_file);
+        }
+
+        /// <summary>
+        /// Finalizer. to cleanup session in case it runs
+        /// and the user forgets to Dispose() of the session
+        /// </summary>
+        ~BinaryFile()
+        {
+            Dispose(false);
         }
 
         #region Disposable
@@ -47,7 +56,7 @@ namespace MyCaffe.data
             // dispose managed state (managed objects).
             if (disposing)
             {
-                m_reader.Close();
+                _reader.Close();
                 _disposed = true;
             }
         }
@@ -67,9 +76,10 @@ namespace MyCaffe.data
         /// <summary>
         /// Returns the binary reader used.
         /// </summary>
+        /// <value></value>
         public BinaryReader Reader
         {
-            get { return m_reader; }
+            get { return _reader; }
         }
 
         /// <summary>
@@ -78,7 +88,7 @@ namespace MyCaffe.data
         /// <returns>The endian swapped UINT32 is returned.</returns>
         public UInt32 ReadUInt32()
         {
-            UInt32 nVal = m_reader.ReadUInt32();
+            UInt32 nVal = _reader.ReadUInt32();
 
             return swap_endian(nVal);
         }
@@ -90,7 +100,7 @@ namespace MyCaffe.data
         /// <returns>The bytes read are returned in an array.</returns>
         public byte[] ReadBytes(int nCount)
         {
-            return m_reader.ReadBytes(nCount);
+            return _reader.ReadBytes(nCount);
         }
 
         private UInt32 swap_endian(UInt32 nVal)
