@@ -523,7 +523,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   info.device_id = cuda_device_id;
                   info.cuda_mem_limit = cuda_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
-                  info.cudnn_conv_algo = cudnn_conv_algo_search;
+                  info.cudnn_conv_algo_search = cudnn_conv_algo_search;
                   info.do_copy_in_default_stream = do_copy_in_default_stream;
                   return info;
                 }();
@@ -822,7 +822,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
                   info.device_id = cuda_device_id;
                   info.cuda_mem_limit = cuda_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
-                  info.cudnn_conv_algo = cudnn_conv_algo_search;
+                  info.cudnn_conv_algo_search = cudnn_conv_algo_search;
                   info.do_copy_in_default_stream = do_copy_in_default_stream;
                   return info;
                 }()),
@@ -894,7 +894,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
   });
   // TODO remove deprecated global config
   m.def("set_cudnn_conv_algo_search", [](const OrtCudnnConvAlgoSearch algo) {
-    LogDeprecationWarning("set_cudnn_conv_algo_search", "CUDA execution provider option \"cudnn_conv_algo\"");
+    LogDeprecationWarning("set_cudnn_conv_algo_search", "CUDA execution provider option \"cudnn_conv_algo_search\"");
 #ifdef USE_ROCM
     ORT_UNUSED_PARAMETER(algo);
     ORT_THROW("set_cudnn_conv_algo_search is not supported in ROCM");

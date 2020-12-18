@@ -10,6 +10,14 @@
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {
+namespace rocm {
+namespace provider_option_names {
+constexpr const char* kDeviceId = "device_id";
+constexpr const char* kMemLimit = "hip_mem_limit";
+constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
+}  // namespace provider_option_names
+}  // namespace rocm
+
 // Information needed to construct HIP execution providers.
 struct ROCMExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};

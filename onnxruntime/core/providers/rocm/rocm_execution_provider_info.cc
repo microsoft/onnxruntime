@@ -7,21 +7,15 @@
 #include "core/framework/provider_options_utils.h"
 
 namespace onnxruntime {
-namespace provider_option_names {
-constexpr const char* kDeviceId = "device_id";
-constexpr const char* kMemLimit = "hip_mem_limit";
-constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
-}  // namespace provider_option_names
-
 ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   ROCMExecutionProviderInfo info{};
 
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           // TODO validate info.device_id
-          .AddAssignmentToReference(provider_option_names::kDeviceId, info.device_id)
-          .AddAssignmentToReference(provider_option_names::kMemLimit, info.hip_mem_limit)
-          .AddAssignmentToReference(provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy)
+          .AddAssignmentToReference(rocm::provider_option_names::kDeviceId, info.device_id)
+          .AddAssignmentToReference(rocm::provider_option_names::kMemLimit, info.hip_mem_limit)
+          .AddAssignmentToReference(rocm::provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy)
           .Parse(options));
 
   return info;
@@ -29,9 +23,9 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
 
 ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecutionProviderInfo& info) {
   const ProviderOptions options{
-      {provider_option_names::kDeviceId, MakeString(info.device_id)},
-      {provider_option_names::kMemLimit, MakeString(info.hip_mem_limit)},
-      {provider_option_names::kArenaExtendStrategy, MakeString(info.arena_extend_strategy)},
+      {rocm::provider_option_names::kDeviceId, MakeString(info.device_id)},
+      {rocm::provider_option_names::kMemLimit, MakeString(info.hip_mem_limit)},
+      {rocm::provider_option_names::kArenaExtendStrategy, MakeString(info.arena_extend_strategy)},
   };
 
   return options;
