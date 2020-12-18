@@ -475,6 +475,9 @@ Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool res
 INSTANTIATE_REDUCE_MATRIX_ROWS(half);
 INSTANTIATE_REDUCE_MATRIX_ROWS(float);
 INSTANTIATE_REDUCE_MATRIX_ROWS(double);
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_REDUCE_MATRIX_ROWS(nv_bfloat16);
+#endif
 #undef INSTANTIATE_REDUCE_MATRIX_ROWS
 
 template <typename TIn, typename TOut>
@@ -488,6 +491,9 @@ Status reduce_matrix_columns(const TIn* input, TOut* output, int m, int n, void*
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(half);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(float);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_REDUCE_MATRIX_COLUMNS(nv_bfloat16);
+#endif
 #undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
 
 }  // namespace cuda
