@@ -19,9 +19,6 @@ jobs:
       displayName: CPU EP, Build and Test on Android Emulator
     - script: /bin/bash tools/ci_build/github/android/run_nnapi_code_coverage.sh $(pwd)
       displayName: NNAPI EP, Build, Test and Get Code Coverage on Android Emulator
-
-    - template: templates/set-version-number-variables-step.yml
-
     - task: PublishPipelineArtifact@0
       displayName: 'Publish code coverage report'
       inputs:
@@ -39,6 +36,9 @@ jobs:
   dependsOn: Android_CI
   condition: succeeded()
   steps:
+
+    - template: templates/set-version-number-variables-step.yml
+
     - task: DownloadPipelineArtifact@0
       displayName: 'Download code coverage report'
       inputs:
@@ -54,7 +54,7 @@ jobs:
           sudo apt-get install -y python3-pip
           python3 -m pip install mysql-connector-python
     - task: PythonScript@0
-      displayName: Post Code Coverage To Dash Board
+      displayName: Post Android Code Coverage To DashBoard
       inputs:
         scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py'
         arguments: >
