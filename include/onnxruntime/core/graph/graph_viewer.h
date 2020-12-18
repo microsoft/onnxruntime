@@ -39,6 +39,9 @@ class GraphViewer {
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;
 
+  /** Gets the path of the owning model, if any. */
+  const Path& ModelPath() const;
+
   /** Gets the Graph description. */
   const std::string& Description() const noexcept;
 
