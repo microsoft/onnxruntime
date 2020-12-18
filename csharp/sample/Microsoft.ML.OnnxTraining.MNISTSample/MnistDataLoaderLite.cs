@@ -37,10 +37,6 @@ namespace MyCaffe.data
         /// The OnError event fires when an error occurs.
         /// </summary>
         public event EventHandler<ProgressArgs> OnError;
-        /// <summary>
-        /// The OnComplete event fires once the dataset creation has completed.
-        /// </summary>
-        public event EventHandler OnCompleted;
 
         /// <summary>
         /// The constructor.
