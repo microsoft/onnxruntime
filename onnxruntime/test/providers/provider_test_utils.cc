@@ -77,6 +77,9 @@ void Check<uint8_t>(const OpTester::Data& expected_data,
   auto* output = output_tensor.template Data<uint8_t>();
   auto size = output_tensor.Shape().Size();
 
+  bool has_abs_err = expected_data.absolute_error_.has_value();
+  bool has_rel_err = expected_data.relative_error_.has_value();
+
   if (expected_data.sort_output_) {
     // if order can be jumbled in the output of an operator, sort both the
     // expected and output buffers prior to
@@ -89,24 +92,17 @@ void Check<uint8_t>(const OpTester::Data& expected_data,
 
   // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
   // For any other EPs, we still expect an exact match for the results
-  if (provider_type == kNnapiExecutionProvider) {
-    // For quantized models, NNAPI's rounding is different than CPU provider
-    // Sometimes the result is within +/-1 of result of CPU provider
-    // For ONNX, we use rounding to nearest ties to even.
-    // For NNAPI, it is using std::round which is HALF_AWAY_FROM_ZERO, see
-    // https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/operations/Quantize.cpp
-    // Add 1 as default threshold which is the smallest possbile for uint8_t
-    bool has_rel_err = expected_data.relative_error_.has_value();
-    double threshold = 1.0;
-    if (expected_data.absolute_error_.has_value())
-      threshold = expected_data.absolute_error_.value();
+  if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
+    double threshold = has_abs_err
+                           ? expected_data.absolute_error_.value()
+                           : 0.0;
 
     for (int i = 0; i < size; ++i) {
       if (has_rel_err) {
         EXPECT_NEAR(expected[i], output[i],
                     expected_data.relative_error_.value() * expected[i])  // expected[i] is unsigned, can't be negative
             << "i:" << i << ", provider_type: " << provider_type;
-      } else {
+      } else {  // has_abs_err
         EXPECT_NEAR(expected[i], output[i], threshold)
             << "i:" << i << ", provider_type: " << provider_type;
       }

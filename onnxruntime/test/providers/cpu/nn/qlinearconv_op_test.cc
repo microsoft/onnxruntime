@@ -481,7 +481,23 @@ class QLinearConvOpTester {
       test.AddInput<int32_t>("b", B_shape, B_, all_input_initializer_except_x);
     }
 
-    test.AddOutput<uint8_t>("y", Y_shape, Y_data);
+    float abs_error = 0.0f;
+
+    // For quantized models, NNAPI's rounding is different than CPU provider
+    // Sometimes the result is within +/-1 of result of CPU provider
+    // For ONNX, we use rounding to nearest ties to even.
+    // For NNAPI, it is using std::round which is HALF_AWAY_FROM_ZERO, see
+    // https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/operations/Quantize.cpp
+    // Use 1 as abs_error which is the smallest possbile for uint8_t
+    //
+    // NOTE, for now the tolerance will only apply if the NNAPI is actually used,
+    // if for any reason the execution falls back to CPU, we still expect an exact match
+    // See, 'void Check<uint8_t>(...' in onnxruntime/test/providers/provider_test_utils.cc
+#ifdef USE_NNAPI
+    abs_error = 1.0f;
+#endif
+
+    test.AddOutput<uint8_t>("y", Y_shape, Y_data, false /* sort_output */, 0.0f /* rel_error */, abs_error);
 
     if (!pads_.empty()) {
       test.AddAttribute("pads", pads_);
