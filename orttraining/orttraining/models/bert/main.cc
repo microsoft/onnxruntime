@@ -21,7 +21,7 @@
 #endif
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/models/runner/constant.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
@@ -110,7 +110,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("seed", "Random seed.", cxxopts::value<int64_t>()->default_value("-1"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
-      ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
+      ("enable_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
       ("loss_scale", "Loss scaling, positive power of 2 values can improve fp16 convergence. "
         "Set it 0 to uses dynamic scaling; Other none-zero value will used as static scale",
@@ -253,7 +253,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.max_num_checkpoints = flags["max_num_checkpoints"].as<size_t>();
 
     params.use_nccl = flags["use_nccl"].as<bool>();
-    params.use_adasum = flags["use_adasum"].as<bool>();
+    params.enable_adasum = flags["enable_adasum"].as<bool>();
     params.use_profiler = flags.count("use_profiler") > 0;
     ort_params.max_num_profiling_events = flags["max_profile_records"].as<size_t>();
 
@@ -564,9 +564,9 @@ void setup_training_params(BertParameters& params) {
     params.data_parallel_size = data_group_size;
   }
 
-  params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
-  if (params.use_adasum)
-    std::cout << "Use Adsum for allreduce." << std::endl;
+  params.enable_adasum = params.enable_adasum && (params.data_parallel_size > 1);
+  if (params.enable_adasum)
+    std::cout << "Use Adasum for allreduce." << std::endl;
 #endif
 
 #ifdef USE_CUDA

@@ -6,19 +6,11 @@ import subprocess
 import os
 import shutil
 import sys
-import torch
 from checkpoint._test_helpers import makedir
-
-def _single_run(execution_file, scenario, checkopint_dir):
-    assert subprocess.call([sys.executable, execution_file, '--scenario', scenario, '--checkpoint_dir', checkopint_dir]) == 0
-
-def _distributed_run(execution_file, scenario, checkopint_dir):
-    assert subprocess.call(['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, execution_file, '--scenario', scenario,  '--checkpoint_dir', checkopint_dir]) == 0
+from _test_commons import _single_run, _distributed_run
 
 checkpoint_dir = os.path.abspath('checkpoint/checkpoint_dir/')
 makedir(checkpoint_dir)
-
-ngpus = torch.cuda.device_count()
 
 # test workflow:
 # - there are a total of three files that are used for checkpointing tests:

@@ -10,11 +10,13 @@
 #include "core/optimizer/initializer.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 
+#include "orttraining/core/framework/distributed_run_context.h"
+
 namespace onnxruntime {
 namespace training {
 
 static bool IsNcclAvailable() {
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
   return true;
 #else
   return false;
@@ -80,7 +82,8 @@ static Status AddL2NormNcclAllReduce(
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {norm_squared},
                                   {allreduce_output},
-                                  NodeAttributes(),
+                                  {ONNX_NAMESPACE::MakeAttribute("group_type",
+                                                                static_cast<int64_t>(WorkerGroupType::DataParallel))},
                                   allreduce_output.name)});
 
   // Sqrt the reduced L2 norm.

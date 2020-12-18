@@ -130,11 +130,12 @@ option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model 
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
-option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
+option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
 option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
+option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
 # A special build option only used for gathering code coverage info
 option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
@@ -450,6 +451,37 @@ else()
   endif()
   if(onnxruntime_GCC_STATIC_CPP_RUNTIME)
     string(APPEND CMAKE_CXX_FLAGS " -static-libstdc++")
+  endif()
+
+  # Check support for AVX and f16c.
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag("-mf16c" COMPILER_SUPPORT_MF16C)
+  if(NOT COMPILER_SUPPORT_MF16C)
+    message("F16C instruction set is not supported.")
+  endif()
+
+  check_cxx_compiler_flag("-mfma" COMPILER_SUPPORT_FMA)
+  if(NOT COMPILER_SUPPORT_FMA)
+    message("FMA instruction set is not supported.")
+  endif()
+
+  check_cxx_compiler_flag("-mavx" COMPILER_SUPPORT_AVX)
+  if(NOT COMPILER_SUPPORT_AVX)
+    message("AVX instruction set is not supported.")
+  endif()
+
+  if(NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX))
+    message("One or more AVX/F16C instruction flags are not supported. ")
+    set(onnxruntime_ENABLE_CPU_FP16_OPS FALSE)
+  endif()
+
+  # This is enabled only for Adasum files in training mode.
+  # The flags won't be applied globally since some high-precision training and inferencing ops will incur precision loss.
+  if(onnxruntime_ENABLE_CPU_FP16_OPS)
+    set_source_files_properties(${ORTTRAINING_SOURCE_DIR}/core/framework/adasum/adasum_mpi.cc PROPERTIES COMPILE_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma ")
+    set_source_files_properties(${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/adasum_kernels.cc PROPERTIES COMPILE_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma ")
+    set_source_files_properties(${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/adasum_kernels.cc PROPERTIES COMPILE_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma ")
+    add_definitions(-DENABLE_CPU_FP16_TRAINING_OPS)
   endif()
 endif()
 
@@ -1259,7 +1291,6 @@ if (onnxruntime_ENABLE_TRAINING)
     include(FindPackageHandleStandardArgs)
     find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
 
-    set(onnxruntime_USE_MPI ON)
     if (MPI_FOUND)
       if(NOT DEFINED onnxruntime_MPI_HOME)
         execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
@@ -1276,16 +1307,10 @@ if (onnxruntime_ENABLE_TRAINING)
 
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
 
-      # Enable NCCL only when using CUDA or ROCM.
-      if(${onnxruntime_USE_CUDA} OR ${onnxruntime_USE_ROCM})
-        set(onnxruntime_USE_NCCL ON)
-      endif()
-
     else ()
-      set(onnxruntime_USE_MPI OFF)
       set(onnxruntime_USE_NCCL OFF)
-      set(onnxruntime_USE_HOROVOD OFF)
-      message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL or HOROVOD will be disabled." )
+      set(onnxruntime_USE_MPI OFF)
+      message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL will be disabled." )
     endif()
 
     # Find NCCL and MPI
@@ -1344,7 +1369,7 @@ if (onnxruntime_ENABLE_TRAINING)
 
         list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
 
-        add_definitions(-DUSE_NCCL=1)
+        add_definitions(-DORT_USE_NCCL=1)
         message( STATUS "NCCL is enabled in Linux GPU Build." )
       else ()
         set(onnxruntime_USE_NCCL OFF)
@@ -1355,21 +1380,6 @@ if (onnxruntime_ENABLE_TRAINING)
 
   if (onnxruntime_USE_MPI AND MPI_FOUND)
     add_definitions(-DUSE_MPI=1)
-  endif()
-
-  if (onnxruntime_USE_HOROVOD AND MPI_FOUND)
-    if (WIN32)
-      message( FATAL_ERROR "Horovod is not supported on Windows." )
-    elseif (UNIX)
-      add_definitions(-DUSE_HOROVOD=1)
-      set(HOROVOD_ROOT ${PROJECT_SOURCE_DIR}/external/horovod)
-      set(HOROVOD_INCLUDE_DIRS  "${HOROVOD_ROOT}/horovod/common")
-      add_subdirectory(horovod EXCLUDE_FROM_ALL)
-      # use external/horovod/third_party/gloo/cmake/Modules/Findnccl.cmake to locate nccl lib path
-      list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external/horovod/third_party/gloo/cmake/Modules/)
-      find_package(nccl REQUIRED)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod)
-    endif()
   endif()
 
   add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
