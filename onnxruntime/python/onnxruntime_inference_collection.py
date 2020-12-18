@@ -26,7 +26,7 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
         normalized version.
 
     :param providers: Optional sequence of providers in order of decreasing
-        precedence. Values can either be provider names or a tuples of
+        precedence. Values can either be provider names or tuples of
         (provider name, options dict).
     :param provider_options: Optional sequence of options dicts corresponding
         to the providers listed in 'providers'.
@@ -35,13 +35,13 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
     :return: Tuple of (normalized 'providers' sequence, normalized
         'provider_options' sequence).
 
+    'providers' can contain either names or names and options. When any options
+        are given in 'providers', 'provider_options' should not be used.
+
     The normalized result is a tuple of:
     1. Sequence of provider names in the same order as 'providers'.
     2. Sequence of corresponding provider options dicts with string keys and
         values. Unspecified provider options yield empty dicts.
-
-    'providers' can contain either names or names and options. When any options
-        are given in 'providers', 'provider_options' should not be used.
     """
     if providers is None:
         return [], []
@@ -130,14 +130,21 @@ class Session:
         "Return registered execution providers' configurations."
         return self._provider_options
 
-    def set_providers(self, providers, provider_options=None):
+    def set_providers(self, providers=None, provider_options=None):
         """
         Register the input list of execution providers. The underlying session is re-created.
 
-        :param providers: list of execution providers
-        :param provider_options: list of provider options dict for each provider, in the same order as 'providers'
+        :param providers: Optional sequence of providers in order of decreasing
+            precedence. Values can either be provider names or tuples of
+            (provider name, options dict). If not provided, then all available
+            providers are used with the default precedence.
+        :param provider_options: Optional sequence of options dicts corresponding
+            to the providers listed in 'providers'.
 
-        The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        'providers' can contain either names or names and options. When any options
+        are given in 'providers', 'provider_options' should not be used.
+
+        The list of providers is ordered by precedence. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
         # recreate the underlying C.InferenceSession
@@ -230,8 +237,12 @@ class InferenceSession(Session):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
         :param sess_options: session options
-        :param providers: list of providers to use for session. If empty, will use all available providers.
-        :param provider_options: list of provider options dict for each provider, in the same order as 'providers'
+        :param providers: Optional sequence of providers in order of decreasing
+            precedence. Values can either be provider names or tuples of
+            (provider name, options dict). If not provided, then all available
+            providers are used with the default precedence.
+        :param provider_options: Optional sequence of options dicts corresponding
+            to the providers listed in 'providers'.
 
         The model type will be inferred unless explicitly set in the SessionOptions.
         To explicitly set:
@@ -241,6 +252,12 @@ class InferenceSession(Session):
 
         A file extension of '.ort' will be inferred as an ORT format model.
         All other filenames are assumed to be ONNX format models.
+
+        'providers' can contain either names or names and options. When any options
+        are given in 'providers', 'provider_options' should not be used.
+
+        The list of providers is ordered by precedence. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
 
         Session.__init__(self)
