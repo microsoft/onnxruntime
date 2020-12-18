@@ -1,4 +1,8 @@
-﻿using System;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) SignalPop LLC. All rights reserved.
+// Licensed under the MIT License.
+
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -62,14 +66,33 @@ namespace Microsoft.ML.OnnxTraining
         public IntPtr GetVersionString;
     };
 
+    /// <summary>
+    /// Defines the error function callback delegate.
+    /// </summary>
+    /// <param name="nCount">Specifies the number of ORtValues in the OrtValueCollection.</param>
+    /// <param name="colVal">Specifies the OrtValueCollection.  Use GetAt/SetAt funnctions with the collection.</param>
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    delegate void OrtErrorFunctionCallback(UIntPtr nCount, IntPtr /* (OrtValueCollection*) */ colVal); 
+    delegate void OrtErrorFunctionCallback(IntPtr /* (OrtValueCollection*) */ colVal); 
 
+    /// <summary>
+    /// Defines the evaluation function callback delegate.
+    /// </summary>
+    /// <param name="num_samples">Specifies the number of samples run.</param>
+    /// <param name="step">Specifies the current step.</param>
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     delegate void OrtEvaluationFunctionCallback(long num_samples, long step);
 
+    /// <summary>
+    /// Defines the callback called to get a batch of data.  This callback is used to fill the colVal with OrtValues making up
+    /// the entire batch.  All 'nCount' items should be set in the colVal using the SetAt method.
+    /// </summary>
+    /// <param name="nBatchSize">Specifies the batch size.</param>
+    /// <param name="nCount">Specifies the number of items that can be set in the colVal.</param>
+    /// <param name="colVal">Specifies the collection to be filled using the SetAt method.</param>
+    /// <param name="hInputShape">Specifies the OrtShape containing all input dimensions 'after' the batch but not including the batch size.</param>
+    /// <param name="hOutputShape">Specifies the OrtShape containing all output dimensions 'after' the batch but not including the batch size.</param>
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    delegate void OrtDataGetBatchCallback(UIntPtr nBatchSize, UIntPtr nCount, IntPtr /* (OrtValueCollection*) */ colVal);
+    delegate void OrtDataGetBatchCallback(long nBatchSize, IntPtr /* (OrtValueCollection*) */ colVal, IntPtr /* (OrtShape*) */ hInputShape, IntPtr /* (OrtShape*) */ hOutputShape);
 
     // NOTE: The order of the APIs in this struct should match exactly that in
     // OrtTrainingApi ort_training_api_1_to_6 (orttraining_c_api.cc)
@@ -104,6 +127,9 @@ namespace Microsoft.ML.OnnxTraining
         public IntPtr GetCapacity;
         public IntPtr GetAt;
         public IntPtr SetAt;
+
+        public IntPtr GetDimCount;
+        public IntPtr GetDimAt;
 
         public IntPtr ReleaseTrainingParameters;
     };
@@ -153,6 +179,9 @@ namespace Microsoft.ML.OnnxTraining
             OrtGetCapacity = (DOrtGetCapacity)Marshal.GetDelegateForFunctionPointer(api_.GetCapacity, typeof(DOrtGetCapacity));
             OrtGetAt = (DOrtGetAt)Marshal.GetDelegateForFunctionPointer(api_.GetAt, typeof(DOrtGetAt));
             OrtSetAt = (DOrtSetAt)Marshal.GetDelegateForFunctionPointer(api_.SetAt, typeof(DOrtSetAt));
+
+            OrtGetDimCount = (DOrtGetDimCount)Marshal.GetDelegateForFunctionPointer(api_.GetDimCount, typeof(DOrtGetDimCount));
+            OrtGetDimAt = (DOrtGetDimAt)Marshal.GetDelegateForFunctionPointer(api_.GetDimAt, typeof(DOrtGetDimAt));
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -251,6 +280,10 @@ namespace Microsoft.ML.OnnxTraining
                                                 [MarshalAs(UnmanagedType.FunctionPtr)] OrtEvaluationFunctionCallback evalFn);
         public static DOrtSetupTrainingParameters OrtSetupTrainingParameters;
 
+        #endregion
+
+        #region Training Data
+
         public delegate IntPtr /* OrtStatus */DOrtSetupTrainingData(
                                                 IntPtr /* (OrtTrainingParameters*) */ trainParam,
                                                 [MarshalAs(UnmanagedType.FunctionPtr)] OrtDataGetBatchCallback traininggetdataFn,
@@ -260,6 +293,9 @@ namespace Microsoft.ML.OnnxTraining
                                                 byte[] strFeedNames);
         public static DOrtSetupTrainingData OrtSetupTrainingData;
 
+        #endregion
+
+        #region Training
 
         public delegate IntPtr /* OrtStatus */DOrtInitializeTraining(
                                                 IntPtr /* (OrtEnv*) */ env,
@@ -274,6 +310,9 @@ namespace Microsoft.ML.OnnxTraining
                                                 IntPtr /* (OrtTrainingParameters*) */ trainParam);
         public static DOrtEndTraining OrtEndTraining;
 
+        #endregion
+
+        #region OrtValueCollection
 
         public delegate IntPtr /* OrtStatus */DOrtGetCount(
                                                 IntPtr /* (OrtValueCollection*) */ colVal,
@@ -302,5 +341,28 @@ namespace Microsoft.ML.OnnxTraining
         public static DOrtSetAt OrtSetAt;
 
         #endregion
+
+        #region OrtShape
+
+        public delegate IntPtr /* OrtStatus */DOrtGetDimCount(
+                                                IntPtr /* (OrtShape*) */ shape,
+                                                out UIntPtr val);
+        public static DOrtGetDimCount OrtGetDimCount;
+
+        public delegate IntPtr /* OrtStatus */DOrtGetDimAt(
+                                                IntPtr /* (OrtShape*) */ shape,
+                                                int nIdx,
+                                                out UIntPtr val);
+        public static DOrtGetDimAt OrtGetDimAt;
+
+        #endregion
+
+        public static string GetPlatformSerializedString(byte[] rgBytes, int nLen)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return System.Text.Encoding.Unicode.GetString(rgBytes, 0, nLen);
+            else
+                return System.Text.Encoding.UTF8.GetString(rgBytes, 0, nLen);
+        }
     };
 }
