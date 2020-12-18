@@ -1428,3 +1428,21 @@ def testORTTrainerOptionsDisabledAdasumFlag(test_input):
 
     actual_values = orttrainer_options.ORTTrainerOptions(test_input)
     assert actual_values.distributed.enable_adasum == False
+
+def testORTTrainerUnusedInput():
+    class UnusedInputModel(torch.nn.Module):
+        def __init__(self):
+            super(UnusedInputModel, self).__init__()
+        def forward(self, x, y):
+            return torch.mean(x)
+
+    model = UnusedInputModel()
+    model_desc = {'inputs': [('x', [1]), ('y', [1])], 'outputs': [('loss', [], True)]}
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config)
+
+    # Run just one step to make sure there are no iobinding errors for the unused input.
+    try:
+        trainer.train_step(torch.FloatTensor([1.0]), torch.FloatTensor([1.0]))
+    except RuntimeError:
+        pytest.fail("RuntimeError doing train_step with an unused input.")
