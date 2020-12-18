@@ -18,7 +18,7 @@ class TestEP : public IExecutionProvider {
   static constexpr const char* kEPType = "TestEP";
 
  public:
-  TestEP() : IExecutionProvider{kEPType} {}
+  TestEP() : IExecutionProvider{kEPType, true} {}
 
   int GetId(const GraphViewer& viewer, uint64_t& model_hash) {
     return GenerateMetaDefId(viewer, model_hash);

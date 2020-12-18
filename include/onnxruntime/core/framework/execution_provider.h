@@ -48,10 +48,15 @@ struct NodeComputeInfo {
 
 class IExecutionProvider {
  protected:
-  IExecutionProvider(const std::string& type);
+  IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
+      : type_{type} {
+    if (use_metadef_id_creator) {
+      metadef_id_generator_ = onnxruntime::make_unique<ModelMetadefIdGenerator>();
+    }
+  }
 
  public:
-  virtual ~IExecutionProvider();
+  virtual ~IExecutionProvider() = default;
 
   /**
      Get all IAllocators for <*this> execution provider.
@@ -234,7 +239,6 @@ class IExecutionProvider {
     return logger_;
   }
 
- protected:
   /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance. 
    The model hash is also returned if you wish to include that in the MetaDef name to ensure uniqueness across models.
    @param graph_viewer[in] Graph viewer that GetCapability was called with. Can be for the main graph or nested graph.
@@ -242,9 +246,11 @@ class IExecutionProvider {
                           This is created using the model path if available, 
                           or the model input names and the output names from all nodes in the main graph.
    @remarks e.g. the TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
-   compiled kernels, so the name must be unique and deterministic across models and sessions.
+            compiled kernels, so the name must be unique and deterministic across models and sessions.
+            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
+			      virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
-  int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
+  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
 
  private:
   const std::string type_;
@@ -256,9 +262,17 @@ class IExecutionProvider {
   // contains the same instances as allocators_
   std::vector<AllocatorPtr> allocator_list_;
 
-  // helper to generate ids that are unique to model and deterministic if the execution provider is shared across
+  // helper to generate ids that are unique to model and deterministic, even if the execution provider is shared across
   // multiple sessions.
-  class ModelMetadefIdGenerator;
+  class ModelMetadefIdGenerator {
+   public:
+    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash);
+
+   private:
+    std::unordered_map<uint64_t, int64_t> main_graph_hash_;  // map graph instance hash to model contents hash
+    std::unordered_map<int64_t, int> model_metadef_id_;      // current unique id for model
+  };
+
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 }  // namespace onnxruntime
