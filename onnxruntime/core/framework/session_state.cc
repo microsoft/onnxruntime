@@ -344,7 +344,7 @@ Status TryResolveShape(
     size_t& is_resolved,  // indicate whether resolve successfully or not.
     std::vector<int64_t>& resolved_shape) {
   if (!arg->Shape()) {
-    //std::cout << "no shape is found for arg " << arg->Name() << std::endl;
+    std::cout << "no shape is found for arg " << arg->Name() << std::endl;
     // 0 means no shape information.
     is_resolved = 0;
     return Status::OK();
