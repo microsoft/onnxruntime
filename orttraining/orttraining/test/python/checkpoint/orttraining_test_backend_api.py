@@ -7,14 +7,8 @@
 ################################################################################
 
 import os
-import pytest
-import pickle
 import argparse
-from itertools import islice
-import torch
-import torch.distributed as dist
-from onnxruntime import set_seed
-from onnxruntime.training import amp, checkpoint, optim, orttrainer
+from onnxruntime.training import orttrainer
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
