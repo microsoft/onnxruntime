@@ -404,8 +404,6 @@ def validate(all_ref_outputs, all_outputs, decimal):
     logger.info('Reference {} results.'.format(len(all_ref_outputs)))
     logger.info('Predicted {} results.'.format(len(all_outputs)))
     logger.info('decimal {}'.format(decimal))
-    # print(np.array(all_ref_outputs).shape)
-    # print(np.array(all_outputs).shape)
 
     try:
         for i in range(len(all_outputs)):
@@ -415,8 +413,6 @@ def validate(all_ref_outputs, all_outputs, decimal):
             for j in range(len(outputs)):
                 ref_output = ref_outputs[j]
                 output = outputs[j]
-                # print(ref_output)
-                # print(output)
 
                 # Compare the results with reference outputs up to x decimal places
                 for ref_o, o in zip(ref_output, output):
@@ -1075,9 +1071,6 @@ def run_onnxruntime(args, models):
                 if ep not in validation_exemption:
                     try:
                         ort_outputs = inference_ort_and_get_prediction(name, sess, inputs)
-                        #logger.info("COMPARE OUTPUTS Ref, Ort") 
-                        #for ref_o, o in zip(ref_outputs, ort_outputs):
-                        #   logger.info("{} | {} \n".format(ref_o, o))
 
                         decimal = 0
                         status = validate(ref_outputs, ort_outputs, decimal)

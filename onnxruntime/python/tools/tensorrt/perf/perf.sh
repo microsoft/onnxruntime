@@ -12,7 +12,7 @@ FLOAT_16="float16.py"
 FLOAT_16_LINK="https://raw.githubusercontent.com/microsoft/onnxconverter-common/master/onnxconverter_common/float16.py"
 
 # root working directory 
-DEFAULT_DIR="/home/olivia/build_cuda/perf/"
+DEFAULT_DIR="./"
 
 cleanup_files() {
     rm -f $FAIL_MODEL_FILE
@@ -59,9 +59,9 @@ then
 fi
 
 # Test models 
-if [ "$1" == "models" ]
+if [ "$1" == "selected-models" ]
 then
-    MODEL_LIST="/home/olivia/build_cuda/perf/bertsquad.json"
+    MODEL_LIST="selected_models.json"
     update_files
     python3 benchmark_wrapper.py -d $DEFAULT_DIR -r validate -m $MODEL_LIST -o result/"$1"
     python3 benchmark_wrapper.py -d $DEFAULT_DIR -r benchmark -i random -t 1 -m $MODEL_LIST -o result/"$1"
