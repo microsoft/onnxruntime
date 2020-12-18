@@ -19,8 +19,8 @@ from onnxruntime.training import amp, checkpoint, optim, orttrainer
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from _test_helpers import _train, distributed_setup, generate_model_optimizer_from_training_instance, \
-    create_initialized_orttrainer, split_state_dict, global_fp16_fp32_atol, verify_model_state, verify_opt_state, verify_part_info
+from _test_helpers import _train, distributed_setup, create_initialized_orttrainer, \
+    split_state_dict, global_fp16_fp32_atol, verify_model_state, verify_opt_state, verify_part_info
 
 def test_single_node_full_precision_lamb(device = 'cuda', checkpoint_dir=''):
     opts_dict = {'device' : {'id' : device},
@@ -79,7 +79,7 @@ def test_distributed_zero_mixed_precision_lamb(world_rank, world_size, device, c
 
 # To run distributed test locally, from build directory
 # mpirun -n 4 -x NCCL_DEBUG=INFO python3 checkpoint/orttraining_test_backend_api.py
-#test_distributed_zero_mixed_precision_lamb(checkpoint_dir='')
+# test_distributed_zero_mixed_precision_lamb(checkpoint_dir='')
 
 function_map = {
     'test_single_node_full_precision_lamb': test_single_node_full_precision_lamb,

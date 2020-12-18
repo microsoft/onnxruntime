@@ -922,6 +922,13 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
       opt_state_tensors[weight_name][opt_prefix] = curr_opt_tensors[opt_name];
     }
   }
+  // Change key from sharded_name to weight_name
+  for (const auto& weight_sharded_pair: updated_weight_names_map_) {
+    const auto& it = opt_state_tensors.find(weight_sharded_pair.second);
+    ORT_ENFORCE(it != opt_state_tensors.end(), "Cannot find weight: " + weight_sharded_pair.second + " in updated_weight_names_map_");
+    opt_state_tensors[weight_sharded_pair.first] = it->second;
+    opt_state_tensors.erase(it);
+  }
   return Status::OK();
 }
 

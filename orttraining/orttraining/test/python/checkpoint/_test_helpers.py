@@ -104,30 +104,6 @@ def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir, 
 
     return checkpoint.experimental_state_dict(trainer), model
 
-def generate_model_optimizer_from_training_instance(device, trainer_opts, use_lamb=True):
-    """Instantiate and load checkpoint into trainer
-
-    - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple transformer model
-    - Runs train_step on the trainer so the trainer onnx graph is initialized
-    - Returns the trainer state_dict and the pytorch model
-    """
-    seed = 1
-    torch.manual_seed(seed)
-    set_seed(seed)
-
-    # PyTorch transformer model setup
-    learning_rate = 1e-10
-    optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
-    model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
-
-    _train(trainer, train_data, batcher_fn)
-
-    model_state = trainer._training_session.get_model_state(include_mixed_precision_weights=False)
-    opt_state = trainer._training_session.get_optimizer_state()
-
-    return model_state, opt_state
-
 def create_initialized_orttrainer(device, trainer_opts, use_lamb=True):
     seed = 1
     torch.manual_seed(seed)
@@ -151,7 +127,6 @@ def verify_model_state(trainer, expected_state_dict, is_mixedprecision):
         if not weight_name in actual_model_state['full_precision']:
             assert '_view_' in weight_name, \
                 "only zero shared weight may not match name"
-            shape = expected_state_dict['fp32_param'][weight_name].shape
             weight_name = weight_name.split('_view_')[0]
         assert_allclose(tensor, actual_model_state['full_precision'][weight_name])
 
@@ -161,22 +136,28 @@ def verify_model_state(trainer, expected_state_dict, is_mixedprecision):
             "expected and actual should have same number of tensors"
         for weight_name, tensor in expected_state_dict['fp16_param'].items():
             weight_name = weight_name.split('_fp16')[0]
-            assert_allclose(tensor, actual_model_state['mixed_precision'][weight_name], atol=global_fp16_fp32_atol)
+            assert_allclose(tensor, actual_model_state['mixed_precision'][weight_name])
 
 def verify_opt_state(trainer, expected_state_dict):
     actual_opt_state = trainer._training_session.get_optimizer_state()
-    opt_count = 0
-    for weight_name, weights in actual_opt_state.items():
-        for opt_prefix, tensor in weights.items():
-            full_opt_name = opt_prefix + "_" + weight_name
-            if full_opt_name in expected_state_dict['optimizer']:
-                expected_tensor = expected_state_dict['optimizer'][full_opt_name]
-            else:
-                assert opt_prefix == "Step"
-                expected_tensor = expected_state_dict['optimizer'][opt_prefix]
-            assert_allclose(tensor, expected_tensor)
-        opt_count += len(weights)
-    assert opt_count == len(expected_state_dict['optimizer'])
+    actual_opt_count = sum(len(v) for v in actual_opt_state.values())
+    assert actual_opt_count == len(expected_state_dict['optimizer'])
+    for opt_name, expected_tensor in expected_state_dict['optimizer'].items():
+        if opt_name == "Step":
+            actual_tensor = actual_opt_state['shared_optimizer_state']['Step']
+        else:
+            if opt_name.startswith('Moment_'):
+                prefix = opt_name[:len("Moment_0")]
+                weight_name = opt_name[len("Moment_0_"):]
+                if not weight_name in actual_opt_state:
+                    assert '_view_' in weight_name, \
+                        "only zero shared weight may not match name"
+                    weight_name = weight_name.split('_view_')[0]
+            elif opt_name.startswith('Update_Count_'):
+                prefix = "Update_Count"
+                weight_name = opt_name[len(prefix + 1):]
+            actual_tensor = actual_opt_state[weight_name][prefix]
+        assert_allclose(actual_tensor, expected_tensor, atol=global_fp16_fp32_atol)
 
 def verify_part_info(trainer, expected_state_dict, is_zero_run):
     part_info = trainer._training_session.get_partition_info_map()

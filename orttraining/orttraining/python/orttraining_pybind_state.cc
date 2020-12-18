@@ -202,21 +202,6 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
   return py_tensor_state;
 }
 
-std::unordered_map<std::string, NameMLValMap> ConvertNumpyMapToORT(std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& py_tensor_state, const std::pair<common::Status, const InputDefList*>& px) {
-  std::unordered_map<std::string, NameMLValMap> c_state_tensors;
-  for (const auto& layer1_item: py_tensor_state) {
-    c_state_tensors[layer1_item.first] = {};
-    for (auto layer2_item : layer1_item.second) {
-      OrtValue ml_value;
-      assert(px.second.IsTensor());
-      CreateGenericMLValue(px.second, GetAllocator(), layer2_item.first, layer2_item.second, &ml_value);
-      ThrowIfPyErrOccured();
-      c_state_tensors[layer1_item.first].insert(std::make_pair(layer2_item.first, ml_value));
-    }
-  }
-  return c_state_tensors;
-}
-
 void addObjectMethodsForTraining(py::module& m) {
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
