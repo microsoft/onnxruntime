@@ -3,13 +3,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <string.h>
-#include <runner\training_runner.h>
-
-using namespace onnxruntime;
-using namespace onnxruntime::common;
-using namespace std;
-
 
 #ifdef __cplusplus
 extern "C" {
@@ -57,102 +50,17 @@ typedef enum OrtDataUse {
   ORT_DATAUSE_TESTING = 1
 };
 
+struct OrtTrainingParameters;
 struct OrtValueCollection;
+struct OrtShape;
 
-typedef void(__stdcall* OrtErrorFunctionCallback)(_In_ const size_t ulCount, _In_ OrtValueCollection* output);  // Array of outputs (e.g. label, predictions, loss).
+typedef void(__stdcall* OrtErrorFunctionCallback)(_In_ OrtValueCollection* output);  // Array of outputs (e.g. label, predictions, loss).
 typedef void(__stdcall* OrtEvaluationFunctionCallback)(size_t num_samples, size_t step);
-typedef void(__stdcall* OrtDataGetBatchCallback)(_In_ const size_t ulBatchSize, _In_ const size_t ulCount, _In_ OrtValueCollection* data); // Array of input locations, then set by call-back implemenation by calling SetAt.
+typedef void(__stdcall* OrtDataGetBatchCallback)(_In_ const size_t ulBatchSize, _In_ OrtValueCollection* data, _In_ OrtShape* input_shape, _In_ OrtShape* output_shape); 
 
-
-// The actual types defined have an Ort prefix
-//ORT_RUNTIME_CLASS(OrtValueCollection);
-struct OrtValueCollection {
-  std::vector<OrtValue*> m_rgValues;
-  std::vector<std::string> m_rgNames;
-
-  OrtValueCollection(int nCapacity) : m_rgValues(nCapacity), m_rgNames(nCapacity) {}
-  ~OrtValueCollection() {}
-
-  size_t Capacity() {
-    return m_rgValues.capacity();
-  }
-
-  size_t Count() {
-    return m_rgValues.size();
-  }
-
-  std::vector<OrtValue*> ValuePtrs() {
-    return m_rgValues;
-  }
-
-  std::vector<std::string> Names() {
-    return m_rgNames;
-  }
-
-  void BeforeUsingAsInput(int queue_id) {
-    for (size_t i = 0; i < m_rgValues.size(); i++) {
-      if (m_rgValues[i]->Fence())
-        m_rgValues[i]->Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
-    }
-  }
-};
 
 struct OrtTrainingApi;
 typedef struct OrtTrainingApi OrtTrainingApi;
-
-
-// The actual types defined have an Ort prefix
-//ORT_RUNTIME_CLASS(TrainingParameters);
-struct OrtTrainingParameters {
-  struct onnxruntime::training::TrainingRunner::Parameters m_param;
-  std::string m_strInputLabels;
-  std::string m_strOutputPredictions;
-  std::string m_strOutputLoss;
-  std::string m_strLossFunction;
-  char* m_pszInitFeedNames;
-  bool m_bUseCuda;
-  bool m_bUseTensorboard;
-  OrtDataGetBatchCallback m_fnTrainingDataGetBatch;
-  OrtDataGetBatchCallback m_fnTestingDataGetBatch;
-  std::vector<std::string> m_rgstrDataFeedNames;
-  OrtValueCollection* m_pTrainingData;
-  OrtValueCollection* m_pTestingData;
-  onnxruntime::training::TrainingRunner* m_pTrainingRunner;
-  onnxruntime::training::IDataLoader* m_pTrainingDataLoader;
-  onnxruntime::training::IDataLoader* m_pTestingDataLoader;
-
-  OrtTrainingParameters() {
-    m_bUseCuda = false;
-    m_bUseTensorboard = true;
-    m_pTrainingData = nullptr;
-    m_pTestingData = nullptr;
-    m_fnTrainingDataGetBatch = nullptr;
-    m_fnTestingDataGetBatch = nullptr;
-    m_pTrainingRunner = nullptr;
-    m_pTrainingDataLoader = nullptr;
-    m_pTestingDataLoader = nullptr;
-    m_pszInitFeedNames = nullptr;
-  }
-
-  ~OrtTrainingParameters() {
-    if (m_pTrainingDataLoader != nullptr)
-      delete m_pTrainingDataLoader;
-
-    if (m_pTestingDataLoader != nullptr)
-      delete m_pTestingDataLoader;
-
-    if (m_pTrainingData != nullptr)
-      delete m_pTrainingData;
-
-    if (m_pTestingData != nullptr)
-      delete m_pTestingData;
-
-    if (m_pszInitFeedNames != nullptr)
-      free(m_pszInitFeedNames);
-  }
-};
-typedef struct OrtTrainingParameters OrtTrainingParameters;
-
 
 struct OrtTrainingApiBase {
   const OrtTrainingApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;  // Pass in ORT_API_VERSION
@@ -298,6 +206,19 @@ struct OrtTrainingApi {
      * \param szName specifies the name of the OrtValue (if any).
      */
   ORT_API2_STATUS(SetAt, _In_ OrtValueCollection* pCol, _In_ size_t nIdx, _Outptr_ OrtValue* input, _In_ const ORTCHAR_T* szName);
+
+
+  /**
+     * \param pCol points to the OrtShape.
+     * \param pnCount the number of items in the collection are returned in pnCount.
+     */
+  ORT_API2_STATUS(GetDimCount, _In_ OrtShape* pShape, _Out_ size_t* pnCount);
+  /**
+     * \param pCol points to the OrtShape.
+     * \param nIdx specifies the index of the OrtValue to retrieve.
+     * \param output specifies the OrtValue is returned in output.
+     */
+  ORT_API2_STATUS(GetDimAt, _In_ OrtShape* pShape, _In_ size_t nIdx, _Out_ size_t* output);
 
 
   ORT_CLASS_RELEASE(TrainingParameters);

@@ -65,6 +65,8 @@ using onnxruntime::ToOrtStatus;
 using onnxruntime::common::Status;
 
 using namespace onnxruntime;
+using namespace onnxruntime::common;
+using namespace std;
 using namespace training;
 
 namespace onnxruntime {
@@ -112,65 +114,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
   auto tensor = v->GetMutable<onnxruntime::Tensor>();
 
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingParameters, OrtTrainingParameters** out) {
-  API_IMPL_BEGIN
-  *out = new OrtTrainingParameters();
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API(void, OrtTrainingApis::ReleaseTrainingParameters, _Frees_ptr_opt_ OrtTrainingParameters* ptr) {
-  delete ptr;
-}
-
-ORT_API_STATUS_IMPL(OrtTrainingApis::CloneTrainingParameters, const OrtTrainingParameters* input, OrtTrainingParameters** out) {
-  API_IMPL_BEGIN
-  *out = new OrtTrainingParameters(*input);
-  return nullptr;
-  API_IMPL_END
-}
-
-static char* StrDup(const wchar_t* val) {
-  _bstr_t b(val);
-  return _strdup((char*)b);
-}
-
-ORT_API_STATUS_IMPL(OrtTrainingApis::SetTrainingParameter_string, _In_ OrtTrainingParameters* pParam,
-                    _In_ const OrtTrainingStringParameter key, _In_ const ORTCHAR_T* value) {
-  API_IMPL_BEGIN
-  Status status;
-
-  switch (key) 
-  {
-    case OrtTrainingStringParameter::ORT_TRAINING_MODEL_PATH:
-      pParam->m_param.model_name = _bstr_t(value);
-      break;
-
-    case OrtTrainingStringParameter::ORT_TRAINING_LOG_PATH:
-      pParam->m_param.log_dir = ToPathString(value);
-      break;
-
-    case OrtTrainingStringParameter::ORT_TRAINING_INPUT_LABELS:
-      pParam->m_strInputLabels = _bstr_t(value);
-      break;
-
-    case OrtTrainingStringParameter::ORT_TRAINING_OUTPUT_PREDICTIONS:
-      pParam->m_strOutputPredictions = _bstr_t(value);
-      break;
-
-    case OrtTrainingStringParameter::ORT_TRAINING_OUTPUT_LOSS:
-      pParam->m_strOutputLoss = _bstr_t(value);
-      break;
-
-    default:
-      status = Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
-      break;
-  }
-
-  return ToOrtStatus(status);
-  API_IMPL_END
-}
-
 static char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator) {
   char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
   memcpy(output_string, str.c_str(), str.size());
@@ -187,6 +130,331 @@ static char* StrDup(const onnxruntime::PathString& str, _Inout_ OrtAllocator* al
   return StrDup(str.c_str(), allocator);
 }
 
+static char* StrDup(const wchar_t* val) {
+  _bstr_t b(val);
+  return _strdup((char*)b);
+}
+
+
+//=================================================================================================
+//  Helper Classes 
+//=================================================================================================
+
+struct OrtShape {
+  std::vector<size_t> dim_;
+};
+
+struct OrtValueCollection {
+  size_t capacity_;
+  size_t count_;
+  OrtValue** rgvalues_;
+  char** rgnames_;
+  bool* rgname_owned_;
+};
+
+class OrtValueCollectionEx : public OrtValueCollection {
+ public:
+  OrtValueCollectionEx(int nCapacity) {
+    capacity_ = nCapacity;
+    count_ = 0;
+    rgvalues_ = new OrtValue*[nCapacity];
+    rgnames_ = new char*[nCapacity];
+    rgname_owned_ = new bool[nCapacity];
+
+    for (int i = 0; i < nCapacity; i++) {
+      rgvalues_[i] = nullptr;
+      rgnames_[i] = nullptr;
+      rgname_owned_[i] = false;
+    }
+  }
+
+  ~OrtValueCollectionEx() {
+    // Do not delete the OrtValue pointers, for the memory is not owned by the array.
+    if (rgvalues_ != nullptr)
+      delete rgvalues_;
+
+    for (int i = 0; i < capacity_; i++) {
+      if (rgname_owned_[i])
+        free(rgnames_[i]);
+    }
+
+    if (rgnames_ != nullptr)
+      delete rgnames_;
+
+    if (rgname_owned_ != nullptr)
+      delete rgname_owned_;
+  }
+
+  bool Add(OrtValue* val, char* szName, bool bNameOwned = false) {
+    if (count_ == capacity_)
+      return false;
+
+    rgvalues_[count_] = val;
+    rgnames_[count_] = szName;
+    rgname_owned_[count_] = bNameOwned;
+    count_++;
+    return true;
+  }
+
+  bool SetAt(size_t nIdx, OrtValue* val, char* szName, bool bNameOwned) {
+    if (nIdx >= capacity_)
+      return false;
+
+    rgvalues_[nIdx] = val;
+
+    if (rgnames_[nIdx] != nullptr && rgname_owned_[nIdx])
+      free(rgnames_[nIdx]);
+
+    rgnames_[nIdx] = szName;
+    rgname_owned_[nIdx] = bNameOwned;
+    return true;
+  }
+
+  void BeforeUsingAsInput(int queue_id) {
+    for (size_t i = 0; i < count_; i++) {
+      if (rgvalues_[i]->Fence())
+        rgvalues_[i]->Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
+    }
+  }
+};
+
+struct InternalParameters {
+ public:
+  std::vector<std::string> rgstr_datafeed_names_;
+  OrtShape expected_input_shape_;
+  OrtShape expected_output_shape_;
+};
+
+struct InternalParameters;
+typedef struct InternalParameters InternalTrainingParameters;
+
+// The actual types defined have an Ort prefix
+//ORT_RUNTIME_CLASS(TrainingParameters);
+struct OrtTrainingParameters {
+  struct onnxruntime::training::TrainingRunner::Parameters* prunner_param_;
+  InternalTrainingParameters* pinternal_param_;
+  char* pszinput_labels_;
+  char* pszoutput_predictions_;
+  char* pszoutput_loss_;
+  char* pszloss_function_type_;
+  char* pszinit_feed_names_;
+  bool use_cuda_;
+  bool use_tensorboard_;
+  OrtDataGetBatchCallback fntraining_data_getbatch_;
+  OrtDataGetBatchCallback fntesting_data_getbatch_;
+  OrtValueCollection* ptraining_data_;
+  OrtValueCollection* ptesting_data_;
+  onnxruntime::training::TrainingRunner* ptraining_runner_;
+  onnxruntime::training::IDataLoader* ptraining_data_loader_;
+  onnxruntime::training::IDataLoader* ptesting_data_loader_;
+};
+typedef struct OrtTrainingParameters OrtTrainingParameters;
+
+class OrtTrainingParametersEx : public OrtTrainingParameters {
+ public:
+  OrtTrainingParametersEx() {
+    use_cuda_ = false;
+    use_tensorboard_ = true;
+    fntraining_data_getbatch_ = nullptr;
+    fntesting_data_getbatch_ = nullptr;
+
+    ptraining_data_ = nullptr;
+    ptesting_data_ = nullptr;
+    ptraining_data_loader_ = nullptr;
+    ptesting_data_loader_ = nullptr;
+    pszinput_labels_ = nullptr;
+    pszoutput_predictions_ = nullptr;
+    pszoutput_loss_ = nullptr;
+    pszloss_function_type_ = nullptr; // Do not free, set to static string.
+    pszinit_feed_names_ = nullptr;
+    ptraining_runner_ = nullptr;
+    prunner_param_ = new struct onnxruntime::training::TrainingRunner::Parameters(); 
+    pinternal_param_ = new InternalParameters();
+  }
+
+  OrtTrainingParametersEx(OrtTrainingParameters p) {
+    use_cuda_ = p.use_cuda_;
+    use_tensorboard_ = p.use_tensorboard_;
+    fntraining_data_getbatch_ = p.fntraining_data_getbatch_;
+    fntesting_data_getbatch_ = p.fntesting_data_getbatch_;
+    ptraining_data_ = p.ptraining_data_;
+    ptesting_data_ = p.ptesting_data_;
+    ptraining_data_loader_ = p.ptraining_data_loader_;
+    ptesting_data_loader_ = p.ptesting_data_loader_;
+    pszinput_labels_ = _strdup(p.pszinput_labels_);
+    pszoutput_predictions_ = _strdup(p.pszoutput_predictions_);
+    pszoutput_loss_ = _strdup(p.pszoutput_loss_);
+    pszloss_function_type_ = p.pszloss_function_type_;  // Do not free, set to static string.
+    pszinit_feed_names_ = _strdup(p.pszinit_feed_names_);
+    ptraining_runner_ = nullptr;
+    prunner_param_ = new struct onnxruntime::training::TrainingRunner::Parameters(*p.prunner_param_);
+    pinternal_param_ = new InternalParameters();
+  }
+
+  ~OrtTrainingParametersEx() {
+    CleanUp();
+  }
+
+  void CleanUp() {
+    if (ptraining_data_loader_ != nullptr) {
+      delete ptraining_data_loader_;
+      ptraining_data_loader_ = nullptr;
+    }
+
+    if (ptesting_data_loader_ != nullptr) {
+      delete ptesting_data_loader_;
+      ptesting_data_loader_ = nullptr;
+    }
+
+    if (ptraining_data_ != nullptr) {
+      delete ((OrtValueCollectionEx*)ptraining_data_);
+      ptraining_data_ = nullptr;
+    }
+
+    if (ptesting_data_ != nullptr) {
+      delete ((OrtValueCollectionEx*)ptesting_data_);
+      ptesting_data_ = nullptr;
+    }
+
+    if (pszinput_labels_ != nullptr) {
+      free(pszinput_labels_);
+      pszinput_labels_ = nullptr;
+    }
+
+    if (pszoutput_predictions_ != nullptr) {
+      free(pszoutput_predictions_);
+      pszoutput_predictions_ = nullptr;
+    }
+
+    if (pszoutput_loss_ != nullptr) {
+      free(pszoutput_loss_);
+      pszoutput_loss_ = nullptr;
+    }
+
+    if (pszinit_feed_names_ != nullptr) {
+      free(pszinit_feed_names_);
+      pszinit_feed_names_ = nullptr;
+    }
+
+    if (ptraining_runner_ != nullptr) {
+      delete ptraining_runner_;
+      ptraining_runner_ = nullptr;
+    }
+
+    if (prunner_param_ != nullptr) {
+      delete prunner_param_;
+      prunner_param_ = nullptr;
+    }
+
+    if (pinternal_param_ != nullptr) {
+      delete pinternal_param_;
+      pinternal_param_ = nullptr;
+    }
+  }
+};
+
+class DataSetEx : public DataSet {
+ public:
+  DataSetEx(OrtTrainingParameters* pParam, OrtDataUse dataUse)
+      : DataSet(((OrtTrainingParametersEx*)pParam)->pinternal_param_->rgstr_datafeed_names_) {
+    m_pParam = pParam;
+    m_dataUse = dataUse;
+  }
+
+  virtual size_t NumSamples() const {
+    return m_pParam->prunner_param_->batch_size;
+  }
+
+  virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th, AllocatorPtr allocator = nullptr) const {
+    OrtDataGetBatchCallback fnGetData;
+    OrtValueCollection* pData;
+
+    if (m_dataUse == ORT_DATAUSE_TRAINING) {
+      fnGetData = m_pParam->fntraining_data_getbatch_;
+      pData = m_pParam->ptraining_data_;
+    } else {
+      fnGetData = m_pParam->fntesting_data_getbatch_;
+      pData = m_pParam->ptesting_data_;
+    }
+
+    for (int i = 0; i < pData->capacity_; i++) {
+      pData->rgvalues_[i] = nullptr;
+    }
+
+    fnGetData(m_pParam->prunner_param_->batch_size, pData, &m_pParam->pinternal_param_->expected_input_shape_, &m_pParam->pinternal_param_->expected_output_shape_);
+
+    std::vector<OrtValue> result;
+    for (int i = 0; i < pData->capacity_; i++) {
+      if (pData->rgvalues_[i] != nullptr)
+        result.push_back(*pData->rgvalues_[i]);
+    }
+
+    return result;
+  }
+
+ private:
+  OrtTrainingParameters* m_pParam;
+  OrtDataUse m_dataUse;
+};
+
+//=================================================================================================
+//  C API Implementations - OrtTrainingApis
+//=================================================================================================
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingParameters, OrtTrainingParameters** out) {
+  API_IMPL_BEGIN
+  *out = new OrtTrainingParametersEx();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtTrainingApis::ReleaseTrainingParameters, _Frees_ptr_opt_ OrtTrainingParameters* ptr) {
+  delete ((OrtTrainingParametersEx*)ptr);
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::CloneTrainingParameters, const OrtTrainingParameters* input, OrtTrainingParameters** out) {
+  API_IMPL_BEGIN
+  *out = new OrtTrainingParametersEx(*input);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::SetTrainingParameter_string, _In_ OrtTrainingParameters* pParam,
+                    _In_ const OrtTrainingStringParameter key, _In_ const ORTCHAR_T* value) {
+  API_IMPL_BEGIN
+  Status status;
+
+  switch (key) 
+  {
+    case OrtTrainingStringParameter::ORT_TRAINING_MODEL_PATH:
+      pParam->prunner_param_->model_name = _bstr_t(value);
+      break;
+
+    case OrtTrainingStringParameter::ORT_TRAINING_LOG_PATH:
+      pParam->prunner_param_->log_dir = ToPathString(value);
+      break;
+
+    case OrtTrainingStringParameter::ORT_TRAINING_INPUT_LABELS:
+      pParam->pszinput_labels_ = _strdup(_bstr_t(value));
+      break;
+
+    case OrtTrainingStringParameter::ORT_TRAINING_OUTPUT_PREDICTIONS:
+      pParam->pszoutput_predictions_ = _strdup(_bstr_t(value));
+      break;
+
+    case OrtTrainingStringParameter::ORT_TRAINING_OUTPUT_LOSS:
+      pParam->pszoutput_loss_ = _strdup(_bstr_t(value));
+      break;
+
+    default:
+      status = Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
+      break;
+  }
+
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtTrainingApis::GetTrainingParameter_string, _In_ OrtTrainingParameters* pParam,
                     _In_ const OrtTrainingStringParameter key, _Inout_ OrtAllocator* allocator, _Outptr_ char** ppvalue) {
   API_IMPL_BEGIN
@@ -194,23 +462,23 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetTrainingParameter_string, _In_ OrtTraini
 
   switch (key) {
     case OrtTrainingStringParameter::ORT_TRAINING_MODEL_PATH:
-      *ppvalue = StrDup(pParam->m_param.model_name.c_str(), allocator);
+      *ppvalue = StrDup(pParam->prunner_param_->model_name.c_str(), allocator);
       break;
 
     case OrtTrainingStringParameter::ORT_TRAINING_LOG_PATH:
-      *ppvalue = StrDup(pParam->m_param.log_dir.c_str(), allocator);
+      *ppvalue = StrDup(pParam->prunner_param_->log_dir.c_str(), allocator);
       break;
 
     case OrtTrainingStringParameter::ORT_TRAINING_INPUT_LABELS:
-      *ppvalue = StrDup(pParam->m_strInputLabels, allocator);
+      *ppvalue = StrDup(pParam->pszinput_labels_, allocator);
       break;
 
     case OrtTrainingStringParameter::ORT_TRAINING_OUTPUT_PREDICTIONS:
-      *ppvalue = StrDup(pParam->m_strOutputPredictions, allocator);
+      *ppvalue = StrDup(pParam->pszoutput_predictions_, allocator);
       break;
 
     case OrtTrainingStringParameter::ORT_TRAINING_OUTPUT_LOSS:
-      *ppvalue = StrDup(pParam->m_strOutputLoss, allocator);
+      *ppvalue = StrDup(pParam->pszoutput_loss_, allocator);
       break;
 
     default:
@@ -229,27 +497,27 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetTrainingParameter_bool, _In_ OrtTraining
 
   switch (key) {
     case OrtTrainingBooleanParameter::ORT_TRAINING_USE_CUDA:
-      pParam->m_bUseCuda = value;
+      pParam->use_cuda_ = value;
       break;
 
     case OrtTrainingBooleanParameter::ORT_TRAINING_USE_GIST:
-      pParam->m_param.use_gist = value;
+      pParam->prunner_param_->use_gist = value;
       break;
 
     case OrtTrainingBooleanParameter::ORT_TRAINING_USE_PROFILER:
-      pParam->m_param.use_profiler = value;
+      pParam->prunner_param_->use_profiler = value;
       break;
 
     case OrtTrainingBooleanParameter::ORT_TRAINING_USE_TENSORBOARD:
-      pParam->m_bUseTensorboard = value;
+      pParam->use_tensorboard_ = value;
       break;
 
     case OrtTrainingBooleanParameter::ORT_TRAINING_IS_PERFTEST:
-      pParam->m_param.is_perf_test = value;
+      pParam->prunner_param_->is_perf_test = value;
       break;
 
     case OrtTrainingBooleanParameter::ORT_TRAINING_SHUFFLE_DATA:
-      pParam->m_param.shuffle_data = value;
+      pParam->prunner_param_->shuffle_data = value;
       break;
 
     default:
@@ -267,27 +535,27 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetTrainingParameter_bool, _In_ OrtTraining
 
   switch (key) {
     case OrtTrainingBooleanParameter::ORT_TRAINING_USE_CUDA:
-      *pvalue = pParam->m_bUseCuda;
+      *pvalue = pParam->use_cuda_;
       break;
 
     case OrtTrainingBooleanParameter::ORT_TRAINING_USE_GIST:
-      *pvalue = pParam->m_param.use_gist;
+      *pvalue = pParam->prunner_param_->use_gist;
       break;
 
     case OrtTrainingBooleanParameter::ORT_TRAINING_USE_PROFILER:
-      *pvalue = pParam->m_param.use_profiler;
+      *pvalue = pParam->prunner_param_->use_profiler;
       break;
 
     case OrtTrainingBooleanParameter::ORT_TRAINING_USE_TENSORBOARD:
-      *pvalue = pParam->m_bUseTensorboard;
+      *pvalue = pParam->use_tensorboard_;
       break;
 
     case OrtTrainingBooleanParameter::ORT_TRAINING_IS_PERFTEST:
-      *pvalue = pParam->m_param.is_perf_test;
+      *pvalue = pParam->prunner_param_->is_perf_test;
       break;
 
     case OrtTrainingBooleanParameter::ORT_TRAINING_SHUFFLE_DATA:
-      *pvalue = pParam->m_param.shuffle_data;
+      *pvalue = pParam->prunner_param_->shuffle_data;
       break;
 
     default:
@@ -307,23 +575,23 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetTrainingParameter_long, _In_ OrtTraining
 
   switch (key) {
     case OrtTrainingLongParameter::ORT_TRAINING_EVAL_BATCH_SIZE:
-      pParam->m_param.eval_batch_size = (size_t)value;
+      pParam->prunner_param_->eval_batch_size = (size_t)value;
       break;
 
     case OrtTrainingLongParameter::ORT_TRAINING_EVAL_PERIOD:
-      pParam->m_param.evaluation_period = (size_t)value;
+      pParam->prunner_param_->evaluation_period = (size_t)value;
       break;
 
     case OrtTrainingLongParameter::ORT_TRAINING_NUM_TRAIN_STEPS:
-      pParam->m_param.num_train_steps = (size_t)value;
+      pParam->prunner_param_->num_train_steps = (size_t)value;
       break;
 
     case OrtTrainingLongParameter::ORT_TRAINING_TRAIN_BATCH_SIZE:
-      pParam->m_param.batch_size = (size_t)value;
+      pParam->prunner_param_->batch_size = (size_t)value;
       break;
 
     case OrtTrainingLongParameter::ORT_TRAINING_DISPLAY_LOSS_STEPS:
-      pParam->m_param.display_loss_steps = (size_t)value;
+      pParam->prunner_param_->display_loss_steps = (size_t)value;
       break;
 
     default:
@@ -342,23 +610,23 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetTrainingParameter_long, _In_ OrtTraining
 
   switch (key) {
     case OrtTrainingLongParameter::ORT_TRAINING_EVAL_BATCH_SIZE:
-      *pvalue = (long)pParam->m_param.eval_batch_size;
+      *pvalue = (long)pParam->prunner_param_->eval_batch_size;
       break;
 
     case OrtTrainingLongParameter::ORT_TRAINING_EVAL_PERIOD:
-      *pvalue = (long)pParam->m_param.evaluation_period;
+      *pvalue = (long)pParam->prunner_param_->evaluation_period;
       break;
 
     case OrtTrainingLongParameter::ORT_TRAINING_NUM_TRAIN_STEPS:
-      *pvalue = (long)pParam->m_param.num_train_steps;
+      *pvalue = (long)pParam->prunner_param_->num_train_steps;
       break;
 
     case OrtTrainingLongParameter::ORT_TRAINING_TRAIN_BATCH_SIZE:
-      *pvalue = (long)pParam->m_param.batch_size;
+      *pvalue = (long)pParam->prunner_param_->batch_size;
       break;
 
     case OrtTrainingLongParameter::ORT_TRAINING_DISPLAY_LOSS_STEPS:
-      *pvalue = (long)pParam->m_param.display_loss_steps;
+      *pvalue = (long)pParam->prunner_param_->display_loss_steps;
       break;
 
     default:
@@ -378,7 +646,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetTrainingParameter_double, _In_ OrtTraini
 
   switch (key) {
     case OrtTrainingNumericParameter::ORT_TRAINING_LEARNING_RATE:
-      pParam->m_param.lr_params.initial_lr = (float)value;
+      pParam->prunner_param_->lr_params.initial_lr = (float)value;
       break;
 
     default:
@@ -398,7 +666,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetTrainingParameter_double, _In_ OrtTraini
 
   switch (key) {
     case OrtTrainingNumericParameter::ORT_TRAINING_LEARNING_RATE:
-      snprintf(szBuffer, MAX_BUFFER - 1, "%f", pParam->m_param.lr_params.initial_lr);
+      snprintf(szBuffer, MAX_BUFFER - 1, "%f", pParam->prunner_param_->lr_params.initial_lr);
       *ppvalue = StrDup(szBuffer, allocator); 
       break;
 
@@ -419,7 +687,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetTrainingOptimizer, _In_ OrtTrainingParam
 
   switch (opt) {
     case OrtTrainingOptimizer::ORT_TRAINING_OPTIMIZER_SGD:
-      pParam->m_param.training_optimizer_name = "SGDOptimizer";
+      pParam->prunner_param_->training_optimizer_name = "SGDOptimizer";
       break;
 
     default:
@@ -436,7 +704,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetTrainingOptimizer, _In_ OrtTrainingParam
   API_IMPL_BEGIN
   Status status;
 
-  if (pParam->m_param.training_optimizer_name == "SGDOptimizer")
+  if (pParam->prunner_param_->training_optimizer_name == "SGDOptimizer")
     *popt = OrtTrainingOptimizer::ORT_TRAINING_OPTIMIZER_SGD;
 
   else
@@ -454,7 +722,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetTrainingLossFunction, _In_ OrtTrainingPa
 
   switch (loss) {
     case OrtTrainingLossFunction::ORT_TRAINING_LOSS_FUNCTION_SOFTMAXCROSSENTROPY:
-      pParam->m_strLossFunction = "SoftmaxCrossEntropy";
+      pParam->pszloss_function_type_ = "SoftmaxCrossEntropy";
       break;
 
     default:
@@ -471,7 +739,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetTrainingLossFunction, _In_ OrtTrainingPa
   API_IMPL_BEGIN
   Status status;
 
-  if (pParam->m_strLossFunction == "SoftmaxCrossEntropy")
+  if (strcmp(pParam->pszloss_function_type_, "SoftmaxCrossEntropy") == 0)
     *ploss = OrtTrainingLossFunction::ORT_TRAINING_LOSS_FUNCTION_SOFTMAXCROSSENTROPY;
 
   else
@@ -504,17 +772,14 @@ static void error_function_callback(const std::vector<std::string>& feed_names,
   std::string strLabel = feed_names[1];
   m_strLastMapUsed = strLabel;
   OrtErrorFunctionCallback errorFn = std::get<0>(m_fnFunctionMap[strLabel]);
-  OrtValueCollection col(3);
 
-  col.m_rgValues[0] = (OrtValue*)label_o;
-  col.m_rgNames[0] = label;
-  col.m_rgValues[1] = (OrtValue*)predict_o;
-  col.m_rgNames[1] = predict;
-  col.m_rgValues[2] = (OrtValue*)loss_o;
-  col.m_rgNames[2] = loss;
+  OrtValueCollectionEx col(3);
+  col.Add((OrtValue*)label_o, (char*)label.c_str(), false);
+  col.Add((OrtValue*)predict_o, (char*)predict.c_str(), false);
+  col.Add((OrtValue*)loss_o, (char*)loss.c_str(), false);
   col.BeforeUsingAsInput(queue_id);
 
-  errorFn(col.Count(), &col);
+  errorFn((OrtValueCollection*)&col);
 }
 
 static void evaluation_function_callback(size_t num_samples, size_t step, const std::string str) {
@@ -529,85 +794,40 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetupTrainingParameters, _In_ OrtTrainingPa
   API_IMPL_BEGIN
   Status status;
 
-  pParam->m_param.model_path = ToPathString(pParam->m_param.model_name) + ORT_TSTR(".onnx");
-  pParam->m_param.model_with_loss_func_path = ToPathString(pParam->m_param.model_name) + ORT_TSTR("_with_cost.onnx");
-  pParam->m_param.model_with_training_graph_path = ToPathString(pParam->m_param.model_name) + ORT_TSTR("_bw.onnx");
-  pParam->m_param.model_actual_running_graph_path = ToPathString(pParam->m_param.model_name) + ORT_TSTR("_bw_running.onnx");
-  pParam->m_param.output_dir = ORT_TSTR(".");
+  pParam->prunner_param_->model_path = ToPathString(pParam->prunner_param_->model_name) + ORT_TSTR(".onnx");
+  pParam->prunner_param_->model_with_loss_func_path = ToPathString(pParam->prunner_param_->model_name) + ORT_TSTR("_with_cost.onnx");
+  pParam->prunner_param_->model_with_training_graph_path = ToPathString(pParam->prunner_param_->model_name) + ORT_TSTR("_bw.onnx");
+  pParam->prunner_param_->model_actual_running_graph_path = ToPathString(pParam->prunner_param_->model_name) + ORT_TSTR("_bw_running.onnx");
+  pParam->prunner_param_->output_dir = ORT_TSTR(".");
 
   // Gist encode
-  pParam->m_param.model_gist_encode_path = ToPathString(pParam->m_param.model_name) + ORT_TSTR("_encode_gist.onnx");
+  pParam->prunner_param_->model_gist_encode_path = ToPathString(pParam->prunner_param_->model_name) + ORT_TSTR("_encode_gist.onnx");
 
-  if (pParam->m_strLossFunction == "SoftmaxCrossEntropy") {
-    pParam->m_param.loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain, 1),
-                                                      pParam->m_strOutputLoss,
-                                                      {pParam->m_strOutputPredictions, pParam->m_strInputLabels});
+  if (strcmp(pParam->pszloss_function_type_, "SoftmaxCrossEntropy") == 0) {
+    pParam->prunner_param_->loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain, 1),
+                                                      pParam->pszoutput_loss_,
+                                                      {pParam->pszoutput_predictions_, pParam->pszinput_labels_});
   } 
   else {
     status = Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
     return ToOrtStatus(status);
   }
 
-  pParam->m_param.fetch_names = {pParam->m_strOutputPredictions, pParam->m_strOutputLoss};
-  pParam->m_param.error_function = error_function_callback;
-  pParam->m_param.post_evaluation_callback = evaluation_function_callback;
-  m_fnFunctionMap.insert(std::make_pair(pParam->m_strInputLabels, std::make_pair(errorFn, evalFn)));
+  pParam->prunner_param_->fetch_names = {pParam->pszoutput_predictions_, pParam->pszoutput_loss_};
+  pParam->prunner_param_->error_function = error_function_callback;
+  pParam->prunner_param_->post_evaluation_callback = evaluation_function_callback;
+  m_fnFunctionMap.insert(std::make_pair(pParam->pszinput_labels_, std::make_pair(errorFn, evalFn)));
 
   // Setup CUDA
-  if (pParam->m_bUseCuda) {
+  if (pParam->use_cuda_) {
     // Use local rank as device ID of the associated CUDA EP.
     OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
-    pParam->m_param.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
+    pParam->prunner_param_->providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
   }
 
   return ToOrtStatus(status);
   API_IMPL_END
 }
-
-class DataSetEx : public DataSet {
- public:
-  DataSetEx(OrtTrainingParameters* pParam, OrtDataUse dataUse) 
-      : DataSet(pParam->m_rgstrDataFeedNames) 
-  {
-    m_pParam = pParam;
-    m_dataUse = dataUse;
-  }
-
-  virtual size_t NumSamples() const 
-  { 
-      return m_pParam->m_param.batch_size;
-  }
-
-  virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th, AllocatorPtr allocator = nullptr) const
-  {
-    OrtDataGetBatchCallback fnGetData;
-    OrtValueCollection* pData;
-
-    if (m_dataUse == ORT_DATAUSE_TRAINING) {
-      fnGetData = m_pParam->m_fnTrainingDataGetBatch;
-      pData = m_pParam->m_pTrainingData;
-    } 
-    else {
-      fnGetData = m_pParam->m_fnTestingDataGetBatch;
-      pData = m_pParam->m_pTestingData;
-    }
-
-    fnGetData(m_pParam->m_param.batch_size, pData->Capacity(), pData);
-
-    std::vector<OrtValue*> dataPtr = pData->ValuePtrs();
-    std::vector<OrtValue> result;
-
-    for (int i = 0; i < dataPtr.size(); i++) {
-      result.push_back(*dataPtr[i]);
-    }
-
-    return result;
-  }
-
-  private:
-    OrtTrainingParameters* m_pParam;
-    OrtDataUse m_dataUse;
-};
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::SetupTrainingData, _In_ OrtTrainingParameters* pParam,
                     _In_ OrtDataGetBatchCallback trainingdataqueryFn, 
@@ -616,28 +836,32 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetupTrainingData, _In_ OrtTrainingParamete
   API_IMPL_BEGIN
   Status status;
 
-  pParam->m_fnTrainingDataGetBatch = trainingdataqueryFn;
-  pParam->m_fnTestingDataGetBatch = testingdataqueryFn;
+  pParam->fntraining_data_getbatch_ = trainingdataqueryFn;
+  pParam->fntesting_data_getbatch_ = testingdataqueryFn;
 
-  pParam->m_pszInitFeedNames = StrDup(szFeedNames);
-  istringstream fstrm(pParam->m_pszInitFeedNames);
-  std::string strName;
+  pParam->pszinit_feed_names_ = StrDup(szFeedNames);
+  istringstream fstrm(pParam->pszinit_feed_names_);
+  string strName;
 
   while (getline(fstrm, strName, ';')) {
-    pParam->m_rgstrDataFeedNames.push_back(strName);
+    pParam->pinternal_param_->rgstr_datafeed_names_.push_back(strName);
   }
 
   int nInputCount = 2;
 
-  pParam->m_pTrainingData = new OrtValueCollection(nInputCount);
-  pParam->m_pTestingData = new OrtValueCollection(nInputCount);
+  pParam->ptraining_data_ = (OrtValueCollection*)new OrtValueCollectionEx(nInputCount);
+  pParam->ptesting_data_ = (OrtValueCollection*)new OrtValueCollectionEx(nInputCount);
+
+  // TODO: load these from the actual model once loaded.
+  pParam->pinternal_param_->expected_input_shape_.dim_.push_back(784);
+  pParam->pinternal_param_->expected_output_shape_.dim_.push_back(10);
 
   auto device_count = MPIContext::GetInstance().GetWorldSize();
   auto trainingData = std::make_shared<DataSetEx>(pParam, OrtDataUse::ORT_DATAUSE_TRAINING);
   auto testingData = std::make_shared<DataSetEx>(pParam, OrtDataUse::ORT_DATAUSE_TESTING);
 
-  pParam->m_pTrainingDataLoader = new SingleDataLoader(std::dynamic_pointer_cast<DataSet>(trainingData), pParam->m_rgstrDataFeedNames);
-  pParam->m_pTestingDataLoader = new SingleDataLoader(std::dynamic_pointer_cast<DataSet>(testingData), pParam->m_rgstrDataFeedNames);
+  pParam->ptraining_data_loader_ = new SingleDataLoader(std::dynamic_pointer_cast<DataSet>(trainingData), pParam->pinternal_param_->rgstr_datafeed_names_);
+  pParam->ptesting_data_loader_ = new SingleDataLoader(std::dynamic_pointer_cast<DataSet>(testingData), pParam->pinternal_param_->rgstr_datafeed_names_);
 
   return ToOrtStatus(status);
   API_IMPL_END
@@ -647,8 +871,11 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::InitializeTraining, _In_ OrtEnv* pEnv, _In_
   API_IMPL_BEGIN
   Status status;
 
-  pParam->m_pTrainingRunner = new TrainingRunner(pParam->m_param, pEnv->GetEnvironment());    
-  status = pParam->m_pTrainingRunner->Initialize();
+  if (pParam->ptraining_runner_ != nullptr)
+    delete pParam->ptraining_runner_;
+
+  pParam->ptraining_runner_ = new TrainingRunner(*pParam->prunner_param_, pEnv->GetEnvironment());    
+  status = pParam->ptraining_runner_->Initialize();
 
   return ToOrtStatus(status);
   API_IMPL_END
@@ -658,7 +885,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::RunTraining, _In_ OrtTrainingParameters* pP
   API_IMPL_BEGIN
   Status status;
 
-  status = pParam->m_pTrainingRunner->Run(pParam->m_pTrainingDataLoader, pParam->m_pTestingDataLoader);
+  status = pParam->ptraining_runner_->Run(pParam->ptraining_data_loader_, pParam->ptesting_data_loader_);
 
   return ToOrtStatus(status);
   API_IMPL_END
@@ -668,7 +895,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::EndTraining, _In_ OrtTrainingParameters* pP
   API_IMPL_BEGIN
   Status status;
 
-  status = pParam->m_pTrainingRunner->EndTraining(pParam->m_pTestingDataLoader);
+  status = pParam->ptraining_runner_->EndTraining(pParam->ptesting_data_loader_);
 
   return ToOrtStatus(status);
   API_IMPL_END
@@ -678,7 +905,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetCount, _In_ OrtValueCollection* pCol, _O
   API_IMPL_BEGIN
   Status status;
 
-  *pnCount = pCol->Count();
+  *pnCount = pCol->count_;
 
   return ToOrtStatus(status);
   API_IMPL_END
@@ -688,7 +915,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetCapacity, _In_ OrtValueCollection* pCol,
   API_IMPL_BEGIN
   Status status;
 
-  *pnCount = pCol->Capacity();
+  *pnCount = pCol->capacity_;
 
   return ToOrtStatus(status);
   API_IMPL_END
@@ -698,10 +925,12 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetAt, _In_ OrtValueCollection* pCol, _In_ 
   API_IMPL_BEGIN
   Status status;
 
-  if (nIdx < pCol->m_rgValues.size()) {
-    *output = pCol->m_rgValues[nIdx];
-    *ppName = StrDup(pCol->m_rgNames[nIdx], allocator); 
-
+  if (nIdx < pCol->count_) {
+    *output = pCol->rgvalues_[nIdx];
+    if (pCol->rgnames_[nIdx] != nullptr)
+      *ppName = StrDup(pCol->rgnames_[nIdx], allocator);
+    else
+      *ppName = nullptr;
   } 
   else {
     status = Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
@@ -711,17 +940,20 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetAt, _In_ OrtValueCollection* pCol, _In_ 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::SetAt, _In_ OrtValueCollection* pCol, _In_ size_t nIdx, _In_ OrtValue* input, _In_ const ORTCHAR_T* pszName) {
+ORT_API_STATUS_IMPL(OrtTrainingApis::SetAt, _In_ OrtValueCollection* pCol, _In_ size_t nIdx, _In_ OrtValue* input, _In_ const ORTCHAR_T* pwszName) {
   API_IMPL_BEGIN
   Status status;
 
-  if (nIdx < pCol->m_rgValues.size()) {
-    pCol->m_rgValues[nIdx] = input;
-    
-    if (pszName != nullptr)
-      pCol->m_rgNames[nIdx] = _bstr_t(pszName);
-    else
-      pCol->m_rgNames[nIdx] = "";
+  if (nIdx < pCol->capacity_) {
+    bool bNameOwned = false;
+    char* pszName = "";
+
+    if (pwszName != nullptr) {
+      pszName = _strdup(_bstr_t(pwszName));
+      bNameOwned = true;
+    }
+
+    ((OrtValueCollectionEx*)pCol)->SetAt(nIdx, input, pszName, bNameOwned);
   } 
   else {
     status = Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
@@ -730,6 +962,30 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetAt, _In_ OrtValueCollection* pCol, _In_ 
   return ToOrtStatus(status);
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::GetDimCount, _In_ OrtShape* pShape, _Out_ size_t* pnCount) {
+  API_IMPL_BEGIN
+  Status status;
+
+  *pnCount = pShape->dim_.size();
+
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::GetDimAt, _In_ OrtShape* pShape, _In_ size_t nIdx, _Out_ size_t* output) {
+  API_IMPL_BEGIN
+  Status status;
+
+  if (nIdx < pShape->dim_.size())
+    *output = pShape->dim_[nIdx];
+  else
+    status = Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
+
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
 
 static constexpr OrtTrainingApiBase ort_training_api_base = {
     &OrtTrainingApis::GetApi,
@@ -779,6 +1035,9 @@ static constexpr OrtTrainingApi ort_training_api_1_to_6 = {
     &OrtTrainingApis::GetCapacity,
     &OrtTrainingApis::GetAt,
     &OrtTrainingApis::SetAt,
+
+    &OrtTrainingApis::GetDimCount,
+    &OrtTrainingApis::GetDimAt,
 
     &OrtTrainingApis::ReleaseTrainingParameters,
 };

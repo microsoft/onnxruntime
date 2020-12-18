@@ -41,4 +41,7 @@ ORT_API_STATUS_IMPL(GetCount, _In_ OrtValueCollection* pCol, _Out_ size_t* pnCou
 ORT_API_STATUS_IMPL(GetCapacity, _In_ OrtValueCollection* pCol, _Out_ size_t* pnCount);
 ORT_API_STATUS_IMPL(GetAt, _In_ OrtValueCollection* pCol, _In_ size_t nIdx, _Outptr_ OrtValue** output, _Inout_ OrtAllocator* allocator, _Outptr_ char** ppName);
 ORT_API_STATUS_IMPL(SetAt, _In_ OrtValueCollection* pCol, _In_ size_t nIdx, _In_ OrtValue* output, _In_ const ORTCHAR_T* name);
+
+ORT_API_STATUS_IMPL(GetDimCount, _In_ OrtShape* pShape, _Out_ size_t* pnCount);
+ORT_API_STATUS_IMPL(GetDimAt, _In_ OrtShape* pShape, _In_ size_t nIdx, _Out_ size_t* output);
 }  // namespace OrtTrainingApis
