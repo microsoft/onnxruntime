@@ -120,7 +120,9 @@ def create_initialized_orttrainer(device, trainer_opts, use_lamb=True):
 
 def verify_model_state(trainer, expected_state_dict, is_mixedprecision):
     actual_model_state = trainer._training_session.get_model_state(include_mixed_precision_weights=True)
-    
+    for fp_or_mp, value in actual_model_state.items():
+        for weight_name in value:
+            assert weight_name.find('_view_') == -1
     assert len(expected_state_dict['fp32_param']) == len(actual_model_state['full_precision']), \
         "expected and actual should have same number of tensors"
     for weight_name, tensor in expected_state_dict['fp32_param'].items():
@@ -142,6 +144,8 @@ def verify_opt_state(trainer, expected_state_dict):
     actual_opt_state = trainer._training_session.get_optimizer_state()
     actual_opt_count = sum(len(v) for v in actual_opt_state.values())
     assert actual_opt_count == len(expected_state_dict['optimizer'])
+    for weight_name in actual_opt_state:
+        assert weight_name.find('_view_') == -1
     for opt_name, expected_tensor in expected_state_dict['optimizer'].items():
         if opt_name == "Step":
             actual_tensor = actual_opt_state['shared_optimizer_state']['Step']

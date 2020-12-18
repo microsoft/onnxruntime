@@ -235,7 +235,8 @@ static Status AddParameterPartition(
     std::vector<OptimizerNodeConfig>& opt_configs,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
-    std::unordered_map<std::string, std::string>& updated_weight_names_map) {
+    std::unordered_map<std::string, std::string>& updated_weight_names_map,
+    std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info) {
   // Add View/Partition for weight
   std::vector<ArgDef> weight_views, mixed_precision_weight_views;
   if (opt_config.mixed_precision_weight_arg != nullptr) {
@@ -270,12 +271,16 @@ static Status AddParameterPartition(
     new_config.enabled = enabled[i];
 
     // Partition initial optimizer state
-    if (enabled[i] && !initial_states.empty()) {
-      ORT_ENFORCE(view_shapes.size() == 3, "Invalid view_shapes vector passed for partitioning.");
-      int64_t partition_offset = view_shapes[0].GetDims()[0];
-      int64_t partition_size = view_shapes[1].GetDims()[0];
-      new_config.initial_states = opt_config.initial_states;
-      PartitionOptimizerState(partition_offset, partition_size, new_config.initial_states);
+    if (enabled[i]) {
+      weight_partition_info[weight_argdef.name].view_name = weight_views[i].name;
+
+      if (!initial_states.empty()) {
+        ORT_ENFORCE(view_shapes.size() == 3, "Invalid view_shapes vector passed for partitioning.");
+        int64_t partition_offset = view_shapes[0].GetDims()[0];
+        int64_t partition_size = view_shapes[1].GetDims()[0];
+        new_config.initial_states = opt_config.initial_states;
+        PartitionOptimizerState(partition_offset, partition_size, new_config.initial_states);
+      }
     }
 
     if (opt_config.mixed_precision_weight_arg != nullptr) {
@@ -358,14 +363,14 @@ static Status ModifyParametersForOptimizerPartitioning(
           std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
           std::vector<bool> enabled = {false, true};
           AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
         } else if (offset >= rank_start && offset + tensor_count > rank_end) {
           int64_t size_for_current_rank = rank_end - offset;
           int64_t size_for_next_rank = offset + tensor_count - rank_end;
           std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
           std::vector<bool> enabled = {true, false};
           AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
         } else {  // offset < rank_start && offset + tensor_count > rank_end
           int64_t size_for_previous_rank = rank_start - offset;
           int64_t size_for_current_rank = rank_end - rank_start;
@@ -373,7 +378,7 @@ static Status ModifyParametersForOptimizerPartitioning(
           std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
           std::vector<bool> enabled = {false, true, false};
           AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
         }
       }
     } else {

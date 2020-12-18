@@ -33,6 +33,40 @@ def test_single_node_full_precision_lamb(device = 'cuda', checkpoint_dir=''):
     verify_part_info(trainer, expected_state_dict, is_mixedprecision, is_zero_run)
 
 @distributed_setup
+def test_distributed_zero_full_precision_lamb(world_rank, world_size, device, checkpoint_dir):
+    is_mixedprecision = False
+    is_zero_run = True
+    opts_dict = {
+                'device' : {'id' : device},
+                'mixed_precision':
+                {
+                    'enabled': is_mixedprecision
+                },
+                'distributed' :
+                {
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
+                    }
+                },
+                'debug' : {'deterministic_compute': True}
+            }
+    
+    trainer = create_initialized_orttrainer(device, opts_dict, True)
+
+    expected_state_dict = trainer._training_session.get_state()
+    expected_state_dict = split_state_dict(expected_state_dict)
+
+    verify_model_state(trainer, expected_state_dict, is_mixedprecision)
+    
+    verify_opt_state(trainer, expected_state_dict)
+
+    verify_part_info(trainer, expected_state_dict, is_mixedprecision, is_zero_run)
+
+@distributed_setup
 def test_distributed_zero_mixed_precision_lamb(world_rank, world_size, device, checkpoint_dir):
     is_mixedprecision = True
     is_zero_run = True
@@ -72,10 +106,12 @@ def test_distributed_zero_mixed_precision_lamb(world_rank, world_size, device, c
 
 # To run distributed test locally, from build directory
 # mpirun -n 4 -x NCCL_DEBUG=INFO python3 checkpoint/orttraining_test_backend_api.py
+# test_distributed_zero_full_precision_lamb(checkpoint_dir='')
 # test_distributed_zero_mixed_precision_lamb(checkpoint_dir='')
 
 function_map = {
     'test_single_node_full_precision_lamb': test_single_node_full_precision_lamb,
+    'test_distributed_zero_full_precision_lamb': test_distributed_zero_full_precision_lamb,
     'test_distributed_zero_mixed_precision_lamb': test_distributed_zero_mixed_precision_lamb
 }
 parser = argparse.ArgumentParser(description='Test saved states of trainers to loaded states')
