@@ -973,6 +973,7 @@ struct GraphViewer {
   std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
 
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
+  const Path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); } //slx
 
   const Node* GetNode(NodeIndex node_index) const { return g_host->GraphViewer__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->GraphViewer__GetNodeArg(this, name); }
