@@ -145,13 +145,13 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
     const auto scale_name = input_defs[idx]->Name();
     if (Contains(initializers, scale_name)) {
       const auto& scale_tensor = *initializers.at(scale_name);
+      int64_t scales_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
       bool is_conv_weight = is_qlinear_conv && idx == 4;
       bool is_conv_u8s8_weight = false;
 
       if (is_conv_weight) {
         const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
-        is_conv_u8s8_weight = is_conv_weight &&
-                              weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
+        is_conv_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
       }
 
       // We need to check the per-channel quantization scales dimensions for u8s8 QlinearConv
@@ -164,7 +164,6 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
           return false;
         }
 
-        int64_t scales_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
         const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
         if (weight_tensor.dims()[0] != scales_dim) {
           LOGS_DEFAULT(VERBOSE) << op_type << " mismatch int8 per-channel quantization weight,"
@@ -173,7 +172,7 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
           return false;
         }
       } else {
-        if (!scale_tensor.dims().empty() && scale_tensor.dims()[0] != 1) {
+        if (scales_dim != 1) {
           LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization, "
                                 << " for now, only u8s8 QlinearConv supports per-channel quantization on API 29+";
           return false;
@@ -201,29 +200,62 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
     }
 
     const auto zero_point_name = input_defs[idx]->Name();
-    // For zero point, we want to make sure it is a initializer scalar
-    // Except for u8s8 QlinearConv, which we are not using zero point, so we don't care
-    bool is_conv_weight = is_qlinear_conv && idx == 5;
-    bool is_u8s8_conv_weight = false;
-    if (is_conv_weight) {
-      int32_t zero_point_type;
-      if (!GetType(*input_defs[idx], zero_point_type))
-        return false;
+    if (Contains(initializers, zero_point_name)) {
+      bool is_conv_weight = is_qlinear_conv && idx == 5;
+      bool is_conv_u8s8_weight = false;
+      if (is_conv_weight) {
+        const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
+        is_conv_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
+      }
 
-      is_u8s8_conv_weight = is_conv_weight && zero_point_type == ONNX_NAMESPACE::TensorProto_DataType_INT8;
-    }
-
-    if (!is_u8s8_conv_weight) {
-      if (Contains(initializers, zero_point_name)) {
-        const auto& zero_tensor = *initializers.at(zero_point_name);
-        if (!zero_tensor.dims().empty() && zero_tensor.dims()[0] != 1) {
-          LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization";
+      const auto& zero_tensor = *initializers.at(zero_point_name);
+      int64_t zero_dim = zero_tensor.dims().empty() ? 1 : zero_tensor.dims()[0];
+      if (is_conv_u8s8_weight) {
+        if (zero_tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+          LOGS_DEFAULT(VERBOSE) << "u8s8 QlinearConv only supports int8 zero point for weight, "
+                                << "actual zero point type: [" << zero_tensor.data_type() << "]";
           return false;
         }
+
+        // For onnx, u8s8 QlinearConv, the weight zero point can be a scalar,
+        // or a tensor with same channel as weight, for NNAPI we only support it be
+        // 0 (scalar) or all 0 (tensor), NNAPI will assume the zero point for per-channel
+        // quantization is 0 there is no input for it
+        const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
+        if (weight_tensor.dims()[0] != zero_dim && zero_dim != 1) {
+          LOGS_DEFAULT(VERBOSE) << op_type << " mismatch int8 per-channel quantization weight,"
+                                << " weight dimension[0] " << weight_tensor.dims()[0]
+                                << " zero point dimension " << zero_dim;
+          return false;
+        }
+
+        std::unique_ptr<uint8_t[]> unpacked_tensor;
+        size_t tensor_byte_size;
+        auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, unpacked_tensor, tensor_byte_size);
+        if (!status.IsOK()) {
+          LOGS_DEFAULT(ERROR) << "QLinearConv erro when unpack zero tensor:" << status.ErrorMessage();
+          return false;
+        }
+
+        // Verify all onnx weight zero point(s) are 0(s)
+        const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.get());
+        for (size_t i = 0; i < tensor_byte_size; i++) {
+          if (zero_points[i] != 0) {
+            LOGS_DEFAULT(VERBOSE) << "QLinearConv only support 0 as zero point, "
+                                  << "zero_points[" << i << "] has value: " << zero_points[i];
+            return false;
+          }
+        }
       } else {
-        LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be known";
-        return false;
+        if (zero_dim != 1) {
+          LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization, "
+                                << " for now, only u8s8 QlinearConv supports per-channel quantization on API 29+";
+          return false;
+        }
       }
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be known";
+      return false;
     }
   }
 
