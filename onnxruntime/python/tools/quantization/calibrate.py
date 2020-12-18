@@ -13,7 +13,7 @@ import onnxruntime
 from onnx import helper, TensorProto
 from onnx import onnx_pb as onnx_proto
 
-from .quant_utils import QuantType, write_calibration_table
+from .quant_utils import QuantType
 from .registry import QLinearOpsRegistry
 
 import abc
@@ -328,16 +328,17 @@ def calculate_calibration_data(model_path,
 
     calibrator.get_intermediate_outputs(providers=["CUDAExecutionProvider"])
 
-def generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=None, stride=5000, batch_size=20):
+def generate_calibration_table(calibrator, model_path, augmented_model_path, remove_previous_flag, data_reader, calibration_dataset=None, stride=5000, batch_size=20):
 
-    if os.path.exists(augmented_model_path):
+    if remove_previous_flag and os.path.exists(augmented_model_path):
         os.remove(augmented_model_path)
         print("remove previously generated %s and start to generate a new one." % (augmented_model_path))
 
-    calibrator = get_calibrator(model_path, data_reader, augmented_model_path=augmented_model_path)
+    if not calibrator:
+        calibrator = get_calibrator(model_path, data_reader, augmented_model_path=augmented_model_path)
     calculate_calibration_data(model_path, calibrator, augmented_model_path=augmented_model_path)
-    write_calibration_table(calibrator.get_calibration_cache())
-    print('calibration table generated and saved.')
+
+    return calibrator.get_calibration_cache()
 
 def calibrate(model_path,
               data_reader: CalibrationDataReader,

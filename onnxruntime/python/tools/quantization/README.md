@@ -123,6 +123,7 @@ Please refer to ./E2E_example_model for an example of static quantization.
 #### MinMax static calibration
 This Quantization tool also provides API for generating calibration table using MinMax algorithm, as previously mentioned, users need to provide implementation of CalibrationDataReader.```data_reader.py``` is an example of data reader implementaion with both serial and batch processing.
 After calling the API, three different format of calibration tables are generated with filename calibration.* (FlatBuffers, Python dictionary and plain text).
+Note: In order to include all tensors from the model for better calibration, please run symbolic_shape_infer.py first. (see [here](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/TensorRT-ExecutionProvider.md#sample))
 #### Example
 ```
 data_reader = YoloV3DataReader(calibration_dataset, model_path=augmented_model_path)

@@ -2,35 +2,8 @@ from onnxruntime.quantization import CalibrationDataReader
 from .preprocessing import yolov3_preprocess_func, yolov3_vision_preprocess_func
 import onnxruntime
 from argparse import Namespace
-
-from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
-                               TensorDataset)
-from tqdm import tqdm
-from transformers import (BertConfig, BertForSequenceClassification, BertTokenizer,)
-from transformers import glue_compute_metrics as compute_metrics
-from transformers import glue_output_modes as output_modes
-from transformers import glue_processors as processors
-from transformers import glue_convert_examples_to_features as convert_examples_to_features
-
 import os
-import logging
 import numpy as np
-import os
-import random
-import sys
-import time
-import torch
-
-# Setup logging level to WARN. Change it accordingly
-logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
-                    datefmt = '%m/%d/%Y %H:%M:%S',
-                    level = logging.INFO)
-
-logging.getLogger("transformers.modeling_utils").setLevel(
-   logging.INFO)  # Reduce logging
-
-logger = logging.getLogger(__name__)
-
 
 def parse_annotations(filename):
     import json
@@ -54,31 +27,17 @@ class ObejctDetectionDataReader(CalibrationDataReader):
         self.end_index = 0 
         self.stride = 1 
         self.batch_size = 1 
-        self.support_batch = False
         self.enum_data_dicts = iter([])
-        self.batches = []
-
-    def set_start_index(self, i):
-        self.start_index = i
-
-    def set_size_limit(self, limit):
-        self.size_limit = limit
-
-    def set_batch_size(self, batch_size):
-        self.batches = []
-        self.batch_size = batch_size
 
     def get_batch_size(self):
         return self.batch_size
-
-    def set_preprocess_flag(self, flag):
-        self.preprocess_flag = flag
 
 class YoloV3DataReader(ObejctDetectionDataReader):
     def __init__(self, calibration_image_folder,
                        width=416,
                        height=416,
                        start_index=0,
+                       end_index=0,
                        stride=1,
                        batch_size=1,
                        model_path='augmented_model.onnx',
@@ -92,20 +51,29 @@ class YoloV3DataReader(ObejctDetectionDataReader):
         self.width = width
         self.height = height
         self.start_index = start_index
-        self.end_index = len(os.listdir(calibration_image_folder)) 
+        self.end_index = len(os.listdir(calibration_image_folder)) if end_index == 0 else end_index
         self.stride = stride if stride >= 1 else 1 # stride must > 0
         self.batch_size = batch_size
         self.is_evaluation = is_evaluation
 
-        session = onnxruntime.InferenceSession(self.model_path, providers=['CPUExecutionProvider'])
-        self.input_name = session.get_inputs()[0].name
+        self.input_name = 'input_1'
         self.img_name_to_img_id = parse_annotations(annotations)
 
-    def get_next(self):
-        input_data = next(self.enum_data_dicts, None)
-        if input_data:
-            return input_data
+    def get_dataset_size(self):
+        return len(os.listdir(self.image_folder))
 
+    def get_input_name(self):
+        if self.input_name:
+            return
+        session = onnxruntime.InferenceSession(self.model_path, providers=['CPUExecutionProvider'])
+        self.input_name = session.get_inputs()[0].name
+
+    def get_next(self):
+        iter_data = next(self.enum_data_dicts, None)
+        if iter_data:
+            return iter_data
+
+        self.enum_data_dicts = None
         if self.start_index < self.end_index:
             if self.batch_size == 1:
                 data = self.load_serial()
@@ -125,6 +93,7 @@ class YoloV3DataReader(ObejctDetectionDataReader):
         nchw_data_list, filename_list, image_size_list = yolov3_preprocess_func(self.image_folder, height, width, self.start_index, self.stride)
         input_name = self.input_name
 
+        print("Start from index %s ..." % (str(self.start_index)))
         data = []
         if self.is_evaluation:
             img_name_to_img_id = self.img_name_to_img_id 
@@ -138,7 +107,6 @@ class YoloV3DataReader(ObejctDetectionDataReader):
                 nhwc_data = nchw_data_list[i]
                 file_name = filename_list[i]
                 data.append({input_name: nhwc_data, "image_shape": image_size_list[i]})
-                # self.enum_data_dicts = iter([{input_name: nhwc_data, "image_shape": arr} for nhwc_data in nchw_data_list])
         return data
 
     def load_batches(self):
@@ -189,13 +157,14 @@ class YoloV3VisionDataReader(YoloV3DataReader):
                        width=608,
                        height=384,
                        start_index=0,
-                       stride=0,
+                       end_index=0,
+                       stride=1,
                        batch_size=1,
                        model_path='augmented_model.onnx',
                        is_evaluation=False,
                        annotations='./annotations/instances_val2017.json'):
-        YoloV3DataReader.__init__(self, calibration_image_folder, width, height, start_index, stride, batch_size, model_path, is_evaluation, annotations)
-
+        YoloV3DataReader.__init__(self, calibration_image_folder, width, height, start_index, end_index, stride, batch_size, model_path, is_evaluation, annotations)
+        self.input_name = 'images'
 
     def load_serial(self):
         width = self.width 
@@ -216,7 +185,6 @@ class YoloV3VisionDataReader(YoloV3DataReader):
                 nhwc_data = nchw_data_list[i]
                 file_name = filename_list[i]
                 data.append({input_name: nhwc_data})
-                # self.enum_data_dicts = iter([{input_name: nhwc_data, "image_shape": arr} for nhwc_data in nchw_data_list])
         return data
 
     def load_batches(self):
