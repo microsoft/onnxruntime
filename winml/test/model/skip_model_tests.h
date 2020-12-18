@@ -8,15 +8,6 @@ static const std::string disabledGpuTestDefaultReason = "Model not working on GP
 // {"model test name", "reason for why it is happening and bug filed for it."}
 std::unordered_map<std::string, std::string> disabledTests(
     {
-     // Tier 2 models
-     {"coreml_VGG16_ImageNet_opset8", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
-     {"coreml_VGG16_ImageNet_opset9", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
-     {"coreml_Resnet50_opset9", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
-     {"coreml_inceptionv3_opset9", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
-     {"coreml_VGG16_ImageNet_opset10", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
-     {"coreml_Resnet50_opset10", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
-     {"coreml_inceptionv3_opset10", "Bug 31011100: Processing string tensors need to be implemented in WinML model tests https://microsoft.visualstudio.com/OS/_workitems/edit/31011100"},
-
      // Tier 3 models
      {"mxnet_arcface_opset8", disabledTestDefaultReason},
      {"XGBoost_XGClassifier_sklearn_load_wine_opset7", disabledTestDefaultReason},
