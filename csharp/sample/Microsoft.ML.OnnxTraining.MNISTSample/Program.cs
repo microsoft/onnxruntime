@@ -1,4 +1,5 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) SignalPop LLC. All rights reserved.
 // Licensed under the MIT License.
 
 using System;
@@ -25,42 +26,125 @@ namespace Microsoft.ML.OnnxTraining.MNISTSample
 
         static void Main(string[] args)
         {
+            string strModel;
+            int nBatch;
+            int nSteps;
+
+            if (!getArgs(args, out strModel, out nBatch, out nSteps))
+                return;
+
+            // Create the training session.
             TrainingSession session = new TrainingSession();
 
+            // Set the error callback function called at the end of the forward pass.
             session.Parameters.OnErrorFunction += OnErrorFunction;
+            // Set the evaluation callback function called after the error function on 'DISPLAY_LOSS_STEPS'
             session.Parameters.OnEvaluationFunction += OnEvaluationFunction;
+            // Set the training and testing data batch callbacks called to get a new batch of data.
             session.Parameters.OnGetTrainingDataBatch += OnGetTrainingDataBatch;
             session.Parameters.OnGetTestingDataBatch += OnGetTestingDataBatch;
 
-            session.Parameters.SetTrainingParameter(OrtTrainingStringParameter.ORT_TRAINING_MODEL_PATH, "mnist");
+            // Setup the training parameters.
+            session.Parameters.SetTrainingParameter(OrtTrainingStringParameter.ORT_TRAINING_MODEL_PATH, strModel);
             session.Parameters.SetTrainingParameter(OrtTrainingStringParameter.ORT_TRAINING_INPUT_LABELS, "labels");
             session.Parameters.SetTrainingParameter(OrtTrainingStringParameter.ORT_TRAINING_OUTPUT_LOSS, "loss");
             session.Parameters.SetTrainingParameter(OrtTrainingStringParameter.ORT_TRAINING_OUTPUT_PREDICTIONS, "predictions");
             session.Parameters.SetTrainingParameter(OrtTrainingStringParameter.ORT_TRAINING_LOG_PATH, "c:\\temp");
             session.Parameters.SetTrainingParameter(OrtTrainingBooleanParameter.ORT_TRAINING_USE_CUDA, true);
             session.Parameters.SetTrainingParameter(OrtTrainingBooleanParameter.ORT_TRAINING_SHUFFLE_DATA, false);
-            session.Parameters.SetTrainingParameter(OrtTrainingLongParameter.ORT_TRAINING_EVAL_BATCH_SIZE, 100);
-            session.Parameters.SetTrainingParameter(OrtTrainingLongParameter.ORT_TRAINING_TRAIN_BATCH_SIZE, 100);
-            session.Parameters.SetTrainingParameter(OrtTrainingLongParameter.ORT_TRAINING_NUM_TRAIN_STEPS, 2000);
+            session.Parameters.SetTrainingParameter(OrtTrainingLongParameter.ORT_TRAINING_EVAL_BATCH_SIZE, nBatch);
+            session.Parameters.SetTrainingParameter(OrtTrainingLongParameter.ORT_TRAINING_TRAIN_BATCH_SIZE, nBatch);
+            session.Parameters.SetTrainingParameter(OrtTrainingLongParameter.ORT_TRAINING_NUM_TRAIN_STEPS, nSteps);
             session.Parameters.SetTrainingParameter(OrtTrainingLongParameter.ORT_TRAINING_EVAL_PERIOD, 1);
             session.Parameters.SetTrainingParameter(OrtTrainingLongParameter.ORT_TRAINING_DISPLAY_LOSS_STEPS, 400);
             session.Parameters.SetTrainingParameter(OrtTrainingNumericParameter.ORT_TRAINING_LEARNING_RATE, 0.01);
             session.Parameters.SetTrainingOptimizer(OrtTrainingOptimizer.ORT_TRAINING_OPTIMIZER_SGD);
             session.Parameters.SetTrainingLossFunction(OrtTrainingLossFunction.ORT_TRAINING_LOSS_FUNCTION_SOFTMAXCROSSENTROPY);
-
             session.Parameters.SetupTrainingParameters();
+
+            // Setup the training data information.
             session.Parameters.SetupTrainingData(new List<string>() { "X", "labels" });
 
-            MnistDataLoaderLite dataLoader = new MnistDataLoaderLite("C:\\Users\\winda\\Downloads\\DeepLearning\\Datasets\\mnist");
+            // Load the MNIST dataset from file. See http://yann.lecun.com/exdb/mnist/ to get data files.
+            MnistDataLoaderLite dataLoader = new MnistDataLoaderLite("c:\\temp\\data");
             dataLoader.ExtractImages(out m_rgTrainingData, out m_rgTestingData);
             m_nTrainingDataIdx = 0;
             m_nTestingDataIdx = 0;
 
-            session.Initialize(LogLevel.Error);
+            // Setup the OnnxRuntime instance.
+            OrtEnv env = OrtEnv.Instance();
+
+            // Initialize the training session.
+            session.Initialize(env);
+
+            // Run the training session.
             session.RunTraining();
             session.EndTraining();
 
+            // Cleanup.
+            session.Dispose();
+
             Console.WriteLine("Done!");
+            Console.WriteLine("press any key to exit...");
+            Console.ReadKey();
+        }
+
+        private static bool getArgs(string[] args, out string strModel, out int nBatch, out int nSteps)
+        {
+            strModel = "mnist";
+            nBatch = 100;
+            nSteps = 2000;
+
+            if (args.Length == 0)
+            {
+                Console.WriteLine("MNIST Test Application Command Line:");
+                Console.WriteLine("--model <model> --batch <batch> --steps <steps>");
+                Console.WriteLine(Environment.NewLine);
+                Console.WriteLine("Example:");
+                Console.WriteLine("--model " + strModel + " --batch " + nBatch.ToString() + " --steps " + nSteps.ToString());
+                return false;
+            }
+
+            int nIdx = 0;
+            while (nIdx < args.Length)
+            {
+                if (args[nIdx] == "--defaults")
+                {
+                    Console.WriteLine("Using defaults: --model " + strModel + " --batch " + nBatch.ToString() + " --steps " + nSteps.ToString());
+                    return true;
+                }
+
+                if (args[nIdx] == "--model")
+                {
+                    nIdx++;
+                    if (nIdx < args.Length)
+                        strModel = args[nIdx];
+
+                    nIdx++;
+                }
+                else if (args[nIdx] == "--batch")
+                {
+                    nIdx++;
+                    if (nIdx < args.Length)
+                    {
+                        string strBatch = args[nIdx];
+                        int.TryParse(strBatch, out nBatch);
+                        nIdx++;
+                    }
+                }
+                else if (args[nIdx] == "--steps")
+                {
+                    nIdx++;
+                    if (nIdx < args.Length)
+                    {
+                        string strSteps = args[nIdx];
+                        int.TryParse(strSteps, out nSteps);
+                        nIdx++;
+                    }
+                }
+            }
+
+            return true;
         }
 
         private static void OnGetTestingDataBatch(object sender, DataBatchArgs e)
@@ -76,11 +160,14 @@ namespace Microsoft.ML.OnnxTraining.MNISTSample
         private static void loadBatch(DataBatchArgs e, List<Tuple<byte[], int>> rgData, ref int nIdx)
         {
             float[] rgRawData = new float[rgData[0].Item1.Length * e.BatchSize];
-            int[] rgDimData = new int[] { e.BatchSize, 784 };
             float[] rgRawLabels = new float[e.BatchSize * 10];
-            int[] rgDimLabels = new int[] { e.BatchSize, 10 };
+            List<int> rgDimData = new List<int>() { e.BatchSize };
+            List<int> rgDimLabels = new List<int>() { e.BatchSize };
             int nDataOffset = 0;
             int nLabelOffset = 0;
+
+            rgDimData.AddRange(e.InputShape);
+            rgDimLabels.AddRange(e.OutputShape);
 
             for (int i = 0; i < e.BatchSize; i++)
             {
@@ -107,8 +194,8 @@ namespace Microsoft.ML.OnnxTraining.MNISTSample
                     nIdx = 0;
             }
 
-            DenseTensor<float> tensorData = new DenseTensor<float>(rgRawData, rgDimData);
-            DenseTensor<float> tensorLabels = new DenseTensor<float>(rgRawLabels, rgDimLabels);
+            DenseTensor<float> tensorData = new DenseTensor<float>(rgRawData, rgDimData.ToArray());
+            DenseTensor<float> tensorLabels = new DenseTensor<float>(rgRawLabels, rgDimLabels.ToArray());
 
             e.Values.Add(NamedOnnxValue.CreateFromTensor<float>("X", tensorData));
             e.Values.Add(NamedOnnxValue.CreateFromTensor<float>("labels", tensorLabels));
