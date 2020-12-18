@@ -30,7 +30,7 @@ def parse_arguments():
 def parse_txt_report(report_file):
     data = {}
     with open(report_file, 'r') as report:
-        for line in report.readlines():
+        for line in reversed(report.readlines()):
             if 'TOTAL' in line:
                 fields = line.strip().split()
                 data['lines_valid'] = int(fields[1])
