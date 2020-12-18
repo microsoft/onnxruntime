@@ -312,8 +312,6 @@ class TrainingSession : public InferenceSession {
    */
   common::Status SetStateTensors(const NameMLValMap& state_tensors, bool strict = false);
 
-  common::Status SetModelOptState(const std::unordered_map<std::string, NameMLValMap>& model_tensors, const std::unordered_map<std::string, NameMLValMap>& optimizer_tensors, bool strict = false);
-
   /**
    * Gets the state tensors.
    * @param[out] The state tensors.

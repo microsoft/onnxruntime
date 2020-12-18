@@ -159,18 +159,23 @@ def verify_opt_state(trainer, expected_state_dict):
             actual_tensor = actual_opt_state[weight_name][prefix]
         assert_allclose(actual_tensor, expected_tensor, atol=global_fp16_fp32_atol)
 
-def verify_part_info(trainer, expected_state_dict, is_zero_run):
+def verify_part_info(trainer, expected_state_dict, is_mixedprecision, is_zero_run):
     part_info = trainer._training_session.get_partition_info_map()
     for weight_name, weight_info in part_info.items():
         for info, value in weight_info.items():
             assert isinstance(value, list), "get_partition_info_map should return list"
             assert isinstance(value[0], int), "get_partition_info_map should return list of int"
-            if is_zero_run:
-                if info == "megatron_row_partition":
-                    assert value[0] == -1, "megatron_row_partition is 0 (false) if megatron optimization is not on"
-                if info == "original_dim":
+            if info == "megatron_row_partition":
+                assert len(value) == 1, "megatron_row_partition should only have 1 element"
+                if is_zero_run:
+                    assert value[0] == -1, "megatron_row_partition is -1 if megatron optimization is not on"
+            if info == "original_dim":
+                if is_zero_run:
                     assert len(value) > 0, "original_dim should not be empty in zero run"
-                    assert_array_equal(part_info[weight_name]['original_dim'], expected_state_dict['fp16_param'][weight_name + '_fp16'].shape)
+                    if is_mixedprecision:
+                        assert_array_equal(part_info[weight_name]['original_dim'], expected_state_dict['fp16_param'][weight_name + '_fp16'].shape)
+                    else:
+                        assert_array_equal(part_info[weight_name]['original_dim'], expected_state_dict['fp32_param'][weight_name].shape)
 
 def split_state_dict(state_dict):
     """Given a flat state dictionary, split it into optimizer, fp32_param, fp16_param hierarchical dictionary and return"""

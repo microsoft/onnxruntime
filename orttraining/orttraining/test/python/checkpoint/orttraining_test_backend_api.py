@@ -8,7 +8,6 @@
 
 import os
 import argparse
-from onnxruntime.training import orttrainer
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,7 +18,7 @@ from _test_helpers import _train, distributed_setup, create_initialized_orttrain
 def test_single_node_full_precision_lamb(device = 'cuda', checkpoint_dir=''):
     opts_dict = {'device' : {'id' : device},
             'debug' : {'deterministic_compute': True}}
-    is_mixed_precision_run = False
+    is_mixedprecision = False
     is_zero_run = False
     
     trainer = create_initialized_orttrainer(device, opts_dict, True)
@@ -27,21 +26,21 @@ def test_single_node_full_precision_lamb(device = 'cuda', checkpoint_dir=''):
     expected_state_dict = trainer._training_session.get_state()
     expected_state_dict = split_state_dict(expected_state_dict)
 
-    verify_model_state(trainer, expected_state_dict, is_mixed_precision_run)
+    verify_model_state(trainer, expected_state_dict, is_mixedprecision)
     
     verify_opt_state(trainer, expected_state_dict)
 
-    verify_part_info(trainer, expected_state_dict, is_zero_run)
+    verify_part_info(trainer, expected_state_dict, is_mixedprecision, is_zero_run)
 
 @distributed_setup
 def test_distributed_zero_mixed_precision_lamb(world_rank, world_size, device, checkpoint_dir):
-    is_mixed_precision_run = True
+    is_mixedprecision = True
     is_zero_run = True
     opts_dict = {
                 'device' : {'id' : device},
                 'mixed_precision':
                 {
-                    'enabled': is_mixed_precision_run
+                    'enabled': is_mixedprecision
                 },
                 'distributed' :
                 {
@@ -61,11 +60,11 @@ def test_distributed_zero_mixed_precision_lamb(world_rank, world_size, device, c
     expected_state_dict = trainer._training_session.get_state()
     expected_state_dict = split_state_dict(expected_state_dict)
 
-    verify_model_state(trainer, expected_state_dict, is_mixed_precision_run)
+    verify_model_state(trainer, expected_state_dict, is_mixedprecision)
     
     verify_opt_state(trainer, expected_state_dict)
 
-    verify_part_info(trainer, expected_state_dict, is_zero_run)
+    verify_part_info(trainer, expected_state_dict, is_mixedprecision, is_zero_run)
 
 # To run single node test locally, from build directory
 # python3 checkpoint/orttraining_test_backend_api.py
