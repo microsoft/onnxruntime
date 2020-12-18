@@ -804,15 +804,20 @@ class ORTTrainer(object):
         else:
             iobinding = self._eval_io_binding
 
+        # Get the list of the actual session inputs because unused inputs can be removed.
+        input_nodes = self._training_session.get_inputs()
+        input_node_names = [input_node.name for input_node in input_nodes]
+
         # Bind input tensors
         for input, input_desc in zip(inputs, inputs_desc):
-            device_index = _utils.get_device_index_from_input(input)
-            iobinding.bind_input(input_desc.name,
-                                 input.device.type,
-                                 device_index,
-                                 _utils.dtype_torch_to_numpy(input.dtype),
-                                 list(input.size()),
-                                 input.data_ptr())
+            if input_desc.name in input_node_names:
+                device_index = _utils.get_device_index_from_input(input)
+                iobinding.bind_input(input_desc.name,
+                                    input.device.type,
+                                    device_index,
+                                    _utils.dtype_torch_to_numpy(input.dtype),
+                                    list(input.size()),
+                                    input.data_ptr())
 
         # Bind output tensors
         outputs_desc_resolved = self._resolve_symbolic_dimensions(inputs, inputs_desc, outputs_desc)
