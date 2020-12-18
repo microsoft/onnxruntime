@@ -880,7 +880,7 @@ std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // Get ModelPath
-  const auto& model_path_str = graph->ModelPath().ToPathString();//slx
+  const auto& model_path_str = graph.ModelPath().ToPathString();//slx
   std::cout << "model_path_str : " << model_path_str << std::endl;
 
   // Get supported node list from TensorRT parser
