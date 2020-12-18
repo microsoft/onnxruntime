@@ -3,7 +3,8 @@
 
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 
-#include "core/common/string_utils.h"
+#include "core/common/make_string.h"
+#include "core/common/parse_string.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 

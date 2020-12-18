@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/common/optional.h"
+#include "core/common/parse_string.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {

@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/string_utils.h"
+#include "core/common/make_string.h"
+#include "core/common/parse_string.h"
 
 #include "gtest/gtest.h"
 

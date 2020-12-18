@@ -15,15 +15,10 @@
  */
 // Portions Copyright (c) Microsoft Corporation
 
-// Note: This header does not depend on common.h because common.h includes it.
-// string_utils.h includes the utilities here and others which may depend on
-// common.h.
-
 #pragma once
 
 #include <locale>
 #include <sstream>
-#include <type_traits>
 
 namespace onnxruntime {
 
@@ -62,57 +57,6 @@ inline std::string MakeString(const std::string& str) {
 
 inline std::string MakeString(const char* cstr) {
   return cstr;
-}
-
-/**
- * Tries to parse a value from an entire string.
- */
-template <typename T>
-bool TryParseString(const std::string& str, T& value) {
-  if (std::is_integral<T>::value && std::is_unsigned<T>::value) {
-    // if T is unsigned integral type, reject negative values which will wrap
-    if (!str.empty() && str[0] == '-') {
-      return false;
-    }
-  }
-
-  // don't allow leading whitespace
-  if (!str.empty() && std::isspace(str[0], std::locale::classic())) {
-    return false;
-  }
-
-  std::istringstream is{str};
-  is.imbue(std::locale::classic());
-  T parsed_value{};
-
-  const bool parse_successful =
-      is >> parsed_value &&
-      is.get() == std::istringstream::traits_type::eof();  // don't allow trailing characters
-  if (!parse_successful) {
-    return false;
-  }
-
-  value = std::move(parsed_value);
-  return true;
-}
-
-inline bool TryParseString(const std::string& str, std::string& value) {
-  value = str;
-  return true;
-}
-
-inline bool TryParseString(const std::string& str, bool& value) {
-  if (str == "0" || str == "False" || str == "false") {
-    value = false;
-    return true;
-  }
-
-  if (str == "1" || str == "True" || str == "true") {
-    value = true;
-    return true;
-  }
-
-  return false;
 }
 
 }  // namespace onnxruntime

@@ -3,7 +3,7 @@
 
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 
-#include "core/common/string_utils.h"
+#include "core/common/make_string.h"
 #include "core/framework/provider_options_utils.h"
 
 namespace onnxruntime {
