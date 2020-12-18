@@ -510,6 +510,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   const std::string& GraphViewer__Name(const GraphViewer* p) noexcept override { return p->Name(); }
+  const Path& GraphViewer__ModelPath(const GraphViewer* p) noexcept override { return p->ModelPath(); } //slx
 
   const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) override { return p->GetNode(node_index); }
   const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) override { return p->GetNodeArg(name); }
