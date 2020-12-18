@@ -9,7 +9,7 @@ from functools import partial
 import numpy as np
 
 import onnxruntime as ort
-from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
+from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions, _checkpoint_storage
 from .model_desc_validation import _ORTTrainerModelDesc
 
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
@@ -568,7 +568,7 @@ class ORTTrainer(object):
 
         return onnx_model
 
-    def _create_ort_training_session(self, state_dict = {}):
+    def _create_ort_training_session(self, optimizer_state_dict={}):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
             if n not in [i.name for i in self._onnx_model.graph.initializer]]
@@ -639,8 +639,8 @@ class ORTTrainer(object):
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
         if bool(self._optim_state_dict):
             ort_parameters.set_optimizer_initial_state(self._optim_state_dict)
-        if bool(state_dict) and bool(state_dict[_utils.state_dict_optimizer_key()]):
-            ort_parameters.set_optimizer_initial_state(state_dict[_utils.state_dict_optimizer_key()])
+        if bool(optimizer_state_dict):
+            ort_parameters.set_optimizer_initial_state(optimizer_state_dict)
 
         ort_parameters.attn_dropout_recompute = self.options.graph_transformer.attn_dropout_recompute
         ort_parameters.gelu_recompute = self.options.graph_transformer.gelu_recompute
@@ -688,13 +688,13 @@ class ORTTrainer(object):
             if self.options._internal_use.extra_postprocess:
                 self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
 
-        state_dict = {}
+        optimizer_state_dict = {}
         if self._load_state_dict:
-            state_dict = self._load_state_dict()
+            optimizer_state_dict = self._load_state_dict()
 
-        self._init_session(state_dict)
+        self._init_session(optimizer_state_dict)
 
-    def _init_session(self, state_dict = {}):
+    def _init_session(self, optimizer_state_dict={}):
         if self._onnx_model is None:
             return
 
@@ -703,7 +703,7 @@ class ORTTrainer(object):
 
         # Create training session used by train_step
         # pass all optimizer states to the backend
-        self._create_ort_training_session(state_dict)
+        self._create_ort_training_session(optimizer_state_dict)
 
         # Update model description to update dtype when mixed precision is enabled
         # C++ backend modifies model's output dtype from float32 to float16 for mixed precision
@@ -886,13 +886,19 @@ class ORTTrainer(object):
     def _extract_trainer_options(self, state_dict):
         """Extract relevant trainer configuration and load it into the state_dict"""
 
+        mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
+        zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
+        world_rank = _utils.state_dict_trainer_options_world_rank_key()
+        world_size = _utils.state_dict_trainer_options_world_size_key()
+        optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+
         state_dict[_utils.state_dict_trainer_options_key()] = {}
-        state_dict[_utils.state_dict_trainer_options_key()]['mixed_precision'] = self.options.mixed_precision.enabled
-        state_dict[_utils.state_dict_trainer_options_key()]['zero_stage'] = \
-            self.options.distributed.deepspeed_zero_optimization.stage or 0
-        state_dict[_utils.state_dict_trainer_options_key()]['world_rank'] = self.options.distributed.world_rank or 0
-        state_dict[_utils.state_dict_trainer_options_key()]['world_size'] = self.options.distributed.world_size or 1
-        state_dict[_utils.state_dict_trainer_options_key()]['optimizer_name'] = self.optim_config.name
+        state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = self.options.mixed_precision.enabled
+        state_dict[_utils.state_dict_trainer_options_key()][zero_stage] = \
+            self.options.distributed.deepspeed_zero_optimization.stage
+        state_dict[_utils.state_dict_trainer_options_key()][world_rank] = self.options.distributed.world_rank
+        state_dict[_utils.state_dict_trainer_options_key()][world_size] = self.options.distributed.world_size
+        state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = self.optim_config.name
 
     def state_dict(self, pytorch_format=False):
         """Returns a dictionary with model, and optionally, optimizer states
@@ -911,7 +917,7 @@ class ORTTrainer(object):
                 type: dict,
                 schema:
                 {
-                    "fp32":
+                    "full_precision":
                     {
                         type: dict,
                         schema:
@@ -1082,8 +1088,29 @@ class ORTTrainer(object):
     def _load_optimizer_states(self, current_state_dict, state_dict):
         """Load the optimizer states onto the training session state dictionary"""
 
+        def _check_optimizer_mismatch(state_dict):
+            """Assert that the loaded optimizer has the same config as the current training session config"""
+
+            # the state_dict optimizer_name can be a byte string (if coming from checkpoint file)
+            # or can be a regular string (coming from user)
+            optimizer_name = \
+                state_dict[_utils.state_dict_trainer_options_key()][_utils.state_dict_trainer_options_optimizer_name_key()]
+
+            # optimizer_name can be either a regular string or a byte string.
+            # if it is a byte string, convert to regular string using decode()
+            # if it is a regular string, do nothing to it
+            try:
+                optimizer_name = optimizer_name.decode()
+            except AttributeError:
+                pass
+            assert self.optim_config.name == optimizer_name, \
+                "Optimizer mismatch: expected {}, got {}".format(self.optim_config.name, optimizer_name)
+
         if _utils.state_dict_optimizer_key() not in state_dict:
             return
+
+        # check optimizer config names are the same for current session and the sessino being loaded
+        _check_optimizer_mismatch(state_dict)
 
         # create an entry for the optimizer in the training session state dictionary
         if _utils.state_dict_optimizer_key() not in current_state_dict:
@@ -1179,7 +1206,8 @@ class ORTTrainer(object):
         # dictionary
         self._load_optimizer_states(current_state_dict, state_dict)
 
-        return current_state_dict
+        return current_state_dict[_utils.state_dict_optimizer_key()] if \
+            _utils.state_dict_optimizer_key() in current_state_dict else {}
 
     def load_state_dict(self, state_dict, strict=True):
         """Loads state_dict containing model/optimizer states into ORTTrainer
@@ -1203,8 +1231,80 @@ class ORTTrainer(object):
             return
 
         # load states onto the frontend onnx graph
-        state_dict = self._load_state_dict_impl(state_dict, strict=strict)
+        optimizer_state_dict = self._load_state_dict_impl(state_dict, strict=strict)
 
         # create a new training session after loading initializer states onto the onnx graph
         # pass the populated states to the training session to populate the backend graph
-        self._init_session(state_dict)
+        self._init_session(optimizer_state_dict)
+
+    def save_checkpoint(self, path, user_dict={}, include_optimizer_states=True):
+        """Persists ORTTrainer state dictionary on disk along with user_dict.
+
+        Saves the state_dict along with the user_dict to a file specified by path.
+
+        Args:
+            path: string representation to a file path or a python file-like object.
+                if file already exists at path, an exception is raised.
+            user_dict: custom data to be saved along with the state_dict. This data will be returned
+                to the user when load_checkpoint is called.
+            include_optimizer_states: boolean flag indicating whether or not to persist the optimizer states.
+                on load_checkpoint, only model states will be loaded if include_optimizer_states==True
+        """
+
+        # extract state_dict to be saved in the checkpoint
+        state_dict = self.state_dict()
+
+        # if user_dict is provided, serialize to bytes and convert to hex string.
+        # this helps in loading the types as they are given by the user since hdf5
+        # converts to numpy types otherwise
+        if bool(user_dict):
+            state_dict[_utils.state_dict_user_dict_key()] = _checkpoint_storage.to_serialized_hex(user_dict)
+
+        # if include_optimizer_states is False, only save the model states in the checkpoint file
+        if not include_optimizer_states:
+            if _utils.state_dict_optimizer_key() in state_dict:
+                del state_dict[_utils.state_dict_optimizer_key()]
+
+        _checkpoint_storage.save(state_dict, path)
+
+    def _aggregation_required(self, loaded_trainer_options):
+        """Checks if aggregation is required for the loading the state_dict into the ORTTrainer"""
+
+        # To load states in the backend, aggregation is required for every ZeRO checkpoint
+        return loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0
+
+    def load_checkpoint(self, *paths, strict=True):
+        """Loads the saved checkpoint state dictionary into the ORTTrainer
+
+        Reads the saved checkpoint files specified by paths from disk and loads the state dictionary
+        onto the ORTTrainer.
+        Aggregates the checkpoint files if aggregation is required.
+
+        Args:
+            paths: one or more files represented as strings where the checkpoint is saved
+            strict: boolean flag to strictly enforce that the saved checkpoint state_dict
+                keys match the keys from ORTTrainer.state_dict
+        Returns:
+            dictionary that the user had saved when calling save_checkpoint
+        """
+        state_dict = {}
+
+        # check if aggregation is required
+        loaded_trainer_options = _checkpoint_storage.load(paths[0], key=_utils.state_dict_trainer_options_key())
+        if self._aggregation_required(loaded_trainer_options):
+            # if aggregation is required, aggregation logic must be run on the saved checkpoints
+            state_dict = checkpoint.aggregate_checkpoints(paths, pytorch_format=False)
+        else:
+            # if aggregation is not required, there must only be a single file that needs to be loaded
+            assert len(paths) == 1, "Expected number of files to load: 1, got {}".format(len(paths))
+            state_dict = _checkpoint_storage.load(paths[0])
+
+        # extract user dict from the saved checkpoint
+        user_dict = {}
+        if _utils.state_dict_user_dict_key() in state_dict:
+            user_dict = _checkpoint_storage.from_serialized_hex(state_dict[_utils.state_dict_user_dict_key()])
+            del state_dict[_utils.state_dict_user_dict_key()]
+
+        self.load_state_dict(state_dict, strict=strict)
+
+        return user_dict
