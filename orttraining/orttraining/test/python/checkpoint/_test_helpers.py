@@ -167,9 +167,9 @@ def verify_part_info(trainer, expected_state_dict, is_zero_run):
             assert isinstance(value[0], int), "get_partition_info_map should return list of int"
             if is_zero_run:
                 if info == "megatron_row_partition":
-                    assert value[0] == 0, "megatron_row_partition is 0 (false) if megatron optimization is not on"
+                    assert value[0] == -1, "megatron_row_partition is 0 (false) if megatron optimization is not on"
                 if info == "original_dim":
-                    assert len(value) > 0, "original_dim should not be empty if zero run"
+                    assert len(value) > 0, "original_dim should not be empty in zero run"
                     assert_array_equal(part_info[weight_name]['original_dim'], expected_state_dict['fp16_param'][weight_name + '_fp16'].shape)
 
 def split_state_dict(state_dict):

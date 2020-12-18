@@ -33,7 +33,7 @@ class TrainingSession : public InferenceSession {
    */
   struct PartitionInfo {
     std::vector<int64_t> original_dim;
-    bool megatron_row_partition;
+    int megatron_row_partition = -1;
   };
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)

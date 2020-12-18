@@ -362,12 +362,12 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
 #ifdef USE_HOROVOD
 static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
-  std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
+  std::unordered_map<std::string, TrainingSession::PartitionInfo> weight_partition_info;
   AdasumOptimizerGraphBuilder optimizer_graph_builder(
       GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map, weight_partition_info);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_map<std::string, std::vector<std::string>> weight_to_opt_mapping;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping;
   ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, weight_to_opt_mapping, opt_graph_outputs));
 
   auto op_counts = CountOpsInGraph(graph, false);
