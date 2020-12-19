@@ -118,7 +118,7 @@ if __name__ == "__main__":
         elif args.report_file.endswith(".txt"):
             coverage_data = parse_txt_report(args.report_file)
         else:
-            raise "Only report extensions txt or json are accepted"
+            raise ValueError("Only report extensions txt or json are accepted")
 
         build_config = json.loads(args.build_config) if args.build_config else {}
         write_to_db(coverage_data, build_config, args)
