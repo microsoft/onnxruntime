@@ -324,20 +324,24 @@ class OpTester {
 
   template <typename T>
   void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& expected_values,
-                 bool sort_output = false) {
-    AddData(output_data_, name, dims, expected_values.begin(), expected_values.size(), false, sort_output);
+                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddData(output_data_, name, dims, expected_values.begin(), expected_values.size(), false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
   // This function doesn't work for vector<bool> because const vector<bool> cannot invoke its data().
   template <typename T>
   void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& expected_values,
-                 bool sort_output = false) {
-    AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false, sort_output);
+                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
   template <typename T>
-  void AddOutput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size) {
-    AddData(output_data_, name, dims, p_values, size);
+  void AddOutput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size,
+                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddData(output_data_, name, dims, p_values, size, false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
   template <typename T>
@@ -521,7 +525,8 @@ class OpTester {
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
-               const std::vector<std::string>* dim_params = nullptr) {
+               const std::vector<std::string>* dim_params = nullptr,
+               float rel_error = 0.0f, float abs_error = 0.0f) {
     ORT_TRY {
       TensorShape shape{dims};
       ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
@@ -565,7 +570,19 @@ class OpTester {
         }
         node_arg.SetShape(new_shape);
       }
-      data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>(), sort_output));
+
+      optional<float> rel;
+      optional<float> abs;
+
+      if (rel_error != 0.0f) {
+        rel = rel_error;
+      }
+
+      if (abs_error != 0.0f) {
+        abs = abs_error;
+      }
+
+      data.push_back(Data(std::move(node_arg), std::move(value), std::move(rel), std::move(abs), sort_output));
       if (is_initializer) initializer_index_.push_back(data.size() - 1);
     }
     ORT_CATCH(const std::exception& ex) {
