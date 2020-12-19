@@ -25,7 +25,7 @@
         "^test_gradient_of_add",
         "^test_batchnorm_example_training_mode",
         "^test_batchnorm_epsilon_training_mode",
-        "^test_maxpool_2d_dilations_cpu", // result approximation error; need to be updated in ONNX
+        "^test_MaxPool2d_stride_padding_dilation_cpu", // result approximation error; need to be updated in ONNX
         "^test_maxunpool_export_with_output_shape", // result mismatch
         "^test_resize_downsample_scales_cubic_align_corners", // results mismatch with onnx tests
         "^test_resize_downsample_scales_linear_align_corners", // results mismatch with onnx tests
