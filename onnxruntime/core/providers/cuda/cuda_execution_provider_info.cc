@@ -17,7 +17,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddValueParser(
               cuda::provider_option_names::kDeviceId,
               [&info](const std::string& value_str) -> Status {
-                ORT_RETURN_IF_ERROR(ParseString(value_str, info.cuda_mem_limit));
+                ORT_RETURN_IF_ERROR(ParseString(value_str, info.device_id));
                 int num_devices{};
                 ORT_RETURN_IF_NOT(
                     CUDA_CALL(cudaGetDeviceCount(&num_devices)),

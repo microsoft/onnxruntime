@@ -207,6 +207,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(in
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -626,6 +627,10 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nnapi(0));
 #endif
+    } else if (type == kRknpuExecutionProvider) {
+#ifdef USE_RKNPU
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Rknpu());
+#endif
     } else {
       // unknown provider
       throw std::runtime_error("Unknown Provider Type: " + type);
@@ -863,6 +868,9 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #endif
 #ifdef USE_NNAPI
             onnxruntime::CreateExecutionProviderFactory_NNAPI(0),
+#endif
+#ifdef USE_RKNPU
+            onnxruntime::CreateExecutionProviderFactory_Rknpu(),
 #endif
         };
 
