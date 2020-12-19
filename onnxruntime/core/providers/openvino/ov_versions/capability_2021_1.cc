@@ -272,7 +272,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
         return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
-    /*if (GetInputCount(node, initializers) == 1)
+    if (GetInputCount(node, initializers) == 1)
       return true;
       if (optype == "Max" || optype == "Min") {
         for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -281,7 +281,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
               dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
             return true;
        }
-      }*/
+      }
   } else if (optype == "Clip") {
     //Only float 16, float and double data types are supported
     const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -954,7 +954,6 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
           }
         }
       }
-      std::cout << "Omit subgraph " << omit_subgraph << std::endl;
       if (omit_subgraph)
         continue;
 

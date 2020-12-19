@@ -447,11 +447,8 @@ TEST(MathOpTest, Div_int32) {
   test.AddInput<int32_t>("A", {3}, {4, 8, 8});
   test.AddInput<int32_t>("B", {3}, {1, 3, 2});
   test.AddOutput<int32_t>("C", {3}, {4, 2, 4});
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Hardware limitation
-#else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
-#endif
+  //ov parser accuracy mismatch for div
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
 }
 
 TEST(MathOpTest, Div_int64) {
@@ -459,11 +456,8 @@ TEST(MathOpTest, Div_int64) {
   test.AddInput<int64_t>("A", {3}, {4, 8, 8});
   test.AddInput<int64_t>("B", {3}, {2, 3, 4});
   test.AddOutput<int64_t>("C", {3}, {2, 2, 2});
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Hardware limitation
-#else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
-#endif
+  //ov parser accuracy mismatch for div
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
 }
 
 TEST(MathOpTest, Div) {
