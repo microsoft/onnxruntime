@@ -4,10 +4,18 @@ parameters:
 
 trigger: none
 
-pool: 'Linux-CPU'
+pool:
+  vmImage: 'ubuntu-latest'
 
 jobs:
 - job: Job
 
   steps:
-  - script: echo ${{ parameters.value }}
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.6'
+      addToPath: true
+      architecture: 'x64'
+
+  - script: |
+      python -m pip install mysql-connector-python
