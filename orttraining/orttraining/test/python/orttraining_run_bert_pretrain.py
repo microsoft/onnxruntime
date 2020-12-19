@@ -437,8 +437,8 @@ def prepare_model(args, device):
                                                 'world_size': args.world_size,
                                                 'local_rank': max(0, args.local_rank),
                                                 'allreduce_post_accumulation': args.allreduce_post_accumulation,
-                                                'deepspeed_zero_optimization': {'stage': args.deepspeed_zero_stage}},
-                                                'enable_adasum': False,
+                                                'deepspeed_zero_optimization': {'stage': args.deepspeed_zero_stage},
+                                                'enable_adasum': False},
                                             'lr_scheduler': lr_scheduler
                                             })
 
