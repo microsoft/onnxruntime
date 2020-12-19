@@ -103,8 +103,8 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Acos | Yes | No | No |
 | Acosh | Yes | No | No |
 | Add | Yes | Yes | Yes |
-| ArgMax | Yes | No | No |
-| ArgMin | Yes | No | No |
+| ArgMax | Yes | Yes | Yes |
+| ArgMin | Yes | No | Yes |
 | Asin | Yes | Yes | No |
 | Asinh | Yes | Yes | No |
 | Atan | Yes | Yes | No |
@@ -112,6 +112,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | AveragePool | Yes | Yes | Yes |
 | BatchNormalization | Yes | Yes | Yes |
 | Cast | Yes | Yes | Yes |
+| Ceil | No | Yes | No |
 | Clip | Yes | Yes | Yes |
 | Concat | Yes | Yes | Yes |
 | Constant | Yes | Yes | Yes |
@@ -131,6 +132,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Flatten | Yes | Yes | Yes |
 | Floor | Yes | Yes | Yes |
 | Gather | Yes | Yes | Yes |
+| GatherND | No | No | Yes |
 | Gemm | Yes | Yes | Yes |
 | GlobalAveragePool | Yes | Yes | Yes |
 | GlobalLpPool | Yes | Yes | No |
@@ -150,12 +152,13 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Neg | Yes | Yes | Yes |
 | NonMaxSuppression | No | No | Yes |
 | NonZero | Yes | No | Yes |
-| Not | Yes | Yes | No |
+| Not | Yes | Yes | Yes |
 | OneHot | Yes | Yes | Yes |
 | Pad | Yes | Yes | Yes |
 | Pow | Yes | Yes | Yes |
 | PRelu | Yes | Yes | Yes |
 | Reciprocal | Yes | Yes | Yes |
+| Range | No | No | Yes |
 | ReduceLogSum | Yes | No | Yes |
 | ReduceMax | Yes | Yes | Yes |
 | ReduceMean | Yes | Yes | Yes |
@@ -168,6 +171,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Resize | Yes | No | Yes |
 | RoiAlign | No | No | Yes |
 | Scatter | No | No | Yes |
+| ScatterElements | No | No | Yes |
 | Selu | Yes | Yes | No |
 | Shape | Yes | Yes | Yes |
 | Sigmoid | Yes | Yes | Yes |
@@ -188,6 +192,8 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | TopK | Yes | Yes | Yes |
 | Transpose | Yes | Yes | Yes |
 | Unsqueeze | Yes | Yes | Yes |
+| Upsample | Yes | No | No |
+| Where | No | No | Yes |
 
 ## Topology Support
 
