@@ -21,7 +21,7 @@
 #include <memory>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
-#include <iostream> //slx
+#include <iostream> ///
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
@@ -629,7 +629,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 }
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
-                                                                 const GraphViewer& graph, bool* early_termination) const {
+                                                                 const GraphViewer& graph, const PathString model_path, bool* early_termination) const {
   // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
   if (iterations > max_iterations) {
@@ -746,11 +746,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
 
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
+        //std::cout << "model_path : " << model_path << std::endl;///
         trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list);
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
-        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
+        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, model_path, early_termination);
         for (int i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (int j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
@@ -880,8 +881,8 @@ std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // Get ModelPath
-  const auto& model_path_str = graph.ModelPath().ToPathString();//slx
-  std::cout << "model_path_str : " << model_path_str << std::endl;
+  const auto& model_path = graph.ModelPath().ToPathString();///
+  //std::cout << "model_path : " << model_path << std::endl;
 
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
@@ -889,7 +890,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
   SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
   bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, model_path, &early_termination);///
   if (early_termination) {
     supported_nodes_vector.clear();
   }
