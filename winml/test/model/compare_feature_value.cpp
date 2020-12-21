@@ -5,7 +5,7 @@
 #include "ort_value_helper.h"
 
 using namespace winrt::Windows::Foundation::Collections;
-using namespace winrt::Windows::AI::MachineLearning;
+using namespace winml;
 
 namespace CompareFeatureValuesHelper{
 
@@ -63,7 +63,7 @@ bool CompareSequenceOfMapsStringToFloat(
     }
     expectedValSequenceIndex++;
   }
-  // If errors or discrepancies found, then return true
+  // If errors or discrepancies are not found, then return true
   return true;
 }
 

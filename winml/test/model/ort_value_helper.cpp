@@ -203,10 +203,11 @@ Ort::Value CreateOrtValueFromITensor(winml::ITensor winmlTensor) {
             shape.size(),
             ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
     std::vector<const char*> strData;
+    std::vector<std::string> utf8Strs;
     auto strValues = winmlTensor.as<TensorString>().GetAsVectorView();
     for (winrt::hstring str : strValues) {
-      std::string utf8Str = _winml::Strings::UTF8FromHString(str);
-      strData.push_back(utf8Str.c_str());
+      utf8Strs.push_back(std::move(_winml::Strings::UTF8FromHString(str)));
+      strData.push_back(utf8Strs.back().c_str());
     }
     WINML_EXPECT_NO_THROW(ortValueCreated.FillStringTensor(strData.data(), strData.size()));
   }
