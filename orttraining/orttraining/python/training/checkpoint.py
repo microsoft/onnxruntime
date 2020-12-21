@@ -12,6 +12,9 @@ from . import _checkpoint_storage, _utils
 
 
 def experimental_state_dict(ort_trainer, include_optimizer_state=True):
+    warnings.warn("experimental_state_dict() will be deprecated soon. "
+                "Please use ORTTrainer.state_dict() instead.", DeprecationWarning)
+
     if not ort_trainer._training_session:
         warnings.warn("ONNX Runtime training session is not initialized yet. "
                         "Please run train_step or eval_step at least once before calling state_dict().")
@@ -35,6 +38,9 @@ def experimental_state_dict(ort_trainer, include_optimizer_state=True):
 
 
 def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
+    warnings.warn("experimental_load_state_dict() will be deprecated soon. "
+                "Please use ORTTrainer.load_state_dict() instead.", DeprecationWarning)
+
     # Note: It may happen ONNX model has not yet been initialized
     # In this case we cache a reference to desired state and delay the restore until after initialization
     # Unexpected behavior will result if the user changes the reference before initialization
@@ -65,6 +71,9 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
 
 
 def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None, include_optimizer_state=True):
+    warnings.warn("experimental_save_checkpoint() will be deprecated soon. "
+                "Please use ORTTrainer.save_checkpoint() instead.", DeprecationWarning)
+
     if checkpoint_state_dict is None:
         checkpoint_state_dict = {'model': experimental_state_dict(ort_trainer, include_optimizer_state)}
     else:
@@ -84,6 +93,9 @@ def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
 
 
 def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", strict=False):
+    warnings.warn("experimental_load_checkpoint() will be deprecated soon. "
+                "Please use ORTTrainer.load_checkpoint() instead.", DeprecationWarning)
+
     checkpoint_files = _list_checkpoint_files(
         checkpoint_dir, checkpoint_prefix)
     is_partitioned = False
@@ -477,6 +489,9 @@ class _CombineZeroCheckpoint(object):
                 self._update_weight_statistics(weight_name, v)
 
     def aggregate_checkpoints(self):
+        warnings.warn("_CombineZeroCheckpoint.aggregate_checkpoints() will be deprecated soon. "
+                    "Please use aggregate_checkpoints() instead.", DeprecationWarning)
+
         checkpoint_prefix = self.checkpoint_files[0].split('.ZeRO')[0]
         self.aggregate_state_dict = dict()
 
