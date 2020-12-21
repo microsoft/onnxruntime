@@ -26,8 +26,8 @@ RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /
-RUN mkdir -p /onnxruntime/build && cd /onnxruntime/build && cmake -DCMAKE_BUILD_TYPE=Release /onnxruntime/server \
-    && make -j$(getconf _NPROCESSORS_ONLN)
+RUN cd /onnxruntime && ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
+
 
 FROM minimal AS final
 COPY --from=build /onnxruntime/build/onnxruntime_server /onnxruntime/server/
