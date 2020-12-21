@@ -151,7 +151,7 @@ class ORTModule(torch.nn.Module):
         '''Thin layer to capture device for ORTModule IO bindings'''
         # TODO: Should we do anything?
         self._require_export = False
-        return super(ORTModule, self).to(args, kwargs)
+        return super(ORTModule, self).to(*args, **kwargs)
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
