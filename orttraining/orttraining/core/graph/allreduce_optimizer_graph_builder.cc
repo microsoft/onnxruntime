@@ -45,11 +45,13 @@ AllreduceOptimizerGraphBuilder::AllreduceOptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
     const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
-    std::unordered_map<std::string, std::string>& updated_weight_names_map)
+    std::unordered_map<std::string, std::string>& updated_weight_names_map,
+    std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info)
     : OptimizerGraphBuilder(opt_builder_registry,
                             opt_graph_config,
                             weight_names_to_opt_configs,
-                            updated_weight_names_map) {
+                            updated_weight_names_map,
+                            weight_partition_info) {
   ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1,
               "Allreduce optimizer graph builder can only be used for distributed training.");
   if (opt_graph_config.use_nccl) {
@@ -66,7 +68,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
-    std::unordered_set<std::string>& optimizer_state_initializer_names,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);
@@ -105,7 +107,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
       &global_grad_norm_argdef,
       &global_grad_norm_finite_argdef,
       opt_configs_, graph_defs,
-      optimizer_state_initializer_names));
+      weight_to_opt_mapping));
 
   return Status::OK();
 }
