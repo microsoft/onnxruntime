@@ -14,7 +14,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
                                   11, 12,
                                   kCudaExecutionProvider,
                                   KernelDefBuilder()
-                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                                      .MayInplace(0, 0),
                                   ScatterND);
 
 ONNX_OPERATOR_KERNEL_EX(ScatterND,
@@ -22,7 +23,8 @@ ONNX_OPERATOR_KERNEL_EX(ScatterND,
                         13,
                         kCudaExecutionProvider,
                         KernelDefBuilder()
-                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                            .MayInplace(0, 0),
                         ScatterND);
 
 Status ScatterND::ComputeInternal(OpKernelContext* context) const {
@@ -49,8 +51,8 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
     cudaMemcpyAsync(output_data, input_data, element_size * input_shape.Size(), cudaMemcpyDeviceToDevice);
   }
 
-  // Bail early cases
-  if (input_shape.Size() == 0 || indices_shape.Size() == 0) {
+  // Bail out early
+  if (indices_shape.Size() == 0) {
     return Status::OK();
   }
 

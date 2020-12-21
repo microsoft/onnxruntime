@@ -19,7 +19,7 @@ __global__ void _ScatterNDKernel(
     const size_t num_updates_elements) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, num_indices);
 
-  // Compute the base offset into the input
+  // Compute the base offset into the output data
   int64_t data_offset = 0;
 
   size_t indices_start = last_index_dimension * id;
