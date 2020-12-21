@@ -49,6 +49,7 @@ save_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_save_checkpo
 load_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_load_checkpoint.py')
 aggregate_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_checkpoint_aggregation.py')
 optim_state_file = os.path.join('checkpoint', 'orttraining_test_load_optimizer_state.py')
+backend_api_file = os.path.join('checkpoint', 'orttraining_test_backend_api.py')
 
 single_node_full_precision_path = os.path.join(checkpoint_dir, 'single_node', 'full_precision')
 single_node_mixed_precision_path = os.path.join(checkpoint_dir, 'single_node', 'mixed_precision')
@@ -123,5 +124,9 @@ _distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_full_pre
 _distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_mixed_precision_adam', distributed_zero_mixed_precision_adam_path)
 _distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
 _distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_full_precision_lamb', distributed_zero_full_precision_lamb_path)
+
+# backend api tests
+_single_run(backend_api_file, 'test_single_node_full_precision_lamb', single_node_full_precision_path)
+_distributed_run(backend_api_file, 'test_distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
 
 shutil.rmtree(checkpoint_dir)

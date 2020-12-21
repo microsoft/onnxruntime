@@ -45,11 +45,13 @@ AdasumOptimizerGraphBuilder::AdasumOptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
     const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
-    std::unordered_map<std::string, std::string>& updated_weight_names_map)
+    std::unordered_map<std::string, std::string>& updated_weight_names_map,
+    std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info)
     : AllreduceOptimizerGraphBuilder(opt_builder_registry,
                                      opt_graph_config,
                                      weight_names_to_opt_configs,
-                                     updated_weight_names_map) {
+                                     updated_weight_names_map,
+                                     weight_partition_info) {
   ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1,
               "Adasum optimizer graph builder can only be used for distributed training.");
 }
@@ -63,6 +65,7 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<TensorProto>& new_initializers,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) {
   OptimizerBuilderConfig config;
@@ -81,6 +84,7 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
   ORT_RETURN_IF_ERROR(opt_builder->Build(
       config, graph_defs,
       new_initializers,
+      weight_to_opt_mapping,
       output_weight_argdefs, output_gradient_argdefs));
 
   return Status::OK();
@@ -162,7 +166,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
-    std::unordered_set<std::string>& optimizer_state_initializer_names,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   
   // Set weight update to false for optimizer
@@ -224,7 +228,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
       &global_grad_norm_argdef,
       &global_grad_norm_finite_argdef,
       opt_configs_, graph_defs,
-      optimizer_state_initializer_names));
+      weight_to_opt_mapping));
 
   // Perform allreduce on deltas after step() for Adasum
   ORT_RETURN_IF_ERROR(AddAdasumAllReduceForGradients(gradient_argdefs,

@@ -189,20 +189,23 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
   }
 
   std::unordered_map<std::string, std::string> updated_weight_names_map;
-  OptimizerGraphBuilder optimizer_graph_builder(GetOptimizerBuilderRegistry(), config, weight_names_to_opt_configs, updated_weight_names_map);
+  std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
+  OptimizerGraphBuilder optimizer_graph_builder(GetOptimizerBuilderRegistry(), config, weight_names_to_opt_configs, updated_weight_names_map, weight_partition_info);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_set<std::string> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> opt_initializer_names_map;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names_map, opt_graph_outputs));
 
   const ONNX_NAMESPACE::TensorProto* tensor;
-  for (auto& init_name : opt_initializer_names) {
-    ASSERT_TRUE(graph.GetInitializedTensor(init_name, tensor));
-    ASSERT_TRUE(tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT || tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64);
-    if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
-      VerifyTensorValue(tensor, values[0]);
-    } else if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
-      VerifyTensorValue(tensor, uc_value[0]);
+  for (auto& weight_item : opt_initializer_names_map) {
+    for (auto& opt_item : weight_item.second) {
+      ASSERT_TRUE(graph.GetInitializedTensor(opt_item.second, tensor));
+      ASSERT_TRUE(tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT || tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64);
+      if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
+        VerifyTensorValue(tensor, values[0]);
+      } else if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
+        VerifyTensorValue(tensor, uc_value[0]);
+      }
     }
   }
 }
@@ -254,12 +257,13 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
 
 static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
+  std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   OptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map, weight_partition_info);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_set<std::string> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, weight_to_opt_mapping, opt_graph_outputs));
 
   auto op_counts = CountOpsInGraph(graph, false);
 
@@ -319,12 +323,13 @@ TEST_F(OptimizerGraphBuilderTest, Default_WithGradientAccumulation_WithMixedPrec
 #if defined(ORT_USE_NCCL)
 static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
+  std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   AllreduceOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map, weight_partition_info);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_set<std::string> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, weight_to_opt_mapping, opt_graph_outputs));
 
   auto op_counts = CountOpsInGraph(graph, false);
 
@@ -354,12 +359,13 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
 #if defined(ORT_USE_NCCL) && defined(USE_MPI)
 static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
+  std::unordered_map<std::string, TrainingSession::PartitionInfo> weight_partition_info;
   AdasumOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map, weight_partition_info);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_set<std::string> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, weight_to_opt_mapping, opt_graph_outputs));
 
   auto op_counts = CountOpsInGraph(graph, false);
 
@@ -473,12 +479,13 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_WithGradientAccumulation_WithMixedPr
 
 static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
+  std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   ZeROOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map, weight_partition_info);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_set<std::string> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, weight_to_opt_mapping, opt_graph_outputs));
 
   auto op_counts = CountOpsInGraph(graph, false);
 

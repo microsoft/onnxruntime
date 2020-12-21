@@ -14,7 +14,8 @@ class ZeROOptimizerGraphBuilder : public OptimizerGraphBuilder {
       const OptimizerBuilderRegistry& opt_builder_registry,
       const OptimizerGraphConfig& opt_graph_config,
       const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
-      std::unordered_map<std::string, std::string>& updated_weight_names_map);
+      std::unordered_map<std::string, std::string>& updated_weight_names_map,
+      std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info);
 
  protected:
   virtual Status BuildInternal(
@@ -24,7 +25,7 @@ class ZeROOptimizerGraphBuilder : public OptimizerGraphBuilder {
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& weight_argdefs,
       std::vector<ArgDef>& gradient_argdefs,
-      std::unordered_set<std::string>& optimizer_state_initializer_names,
+      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& optimizer_state_initializer_names,
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) override;
 };
 
