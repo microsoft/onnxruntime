@@ -75,7 +75,7 @@ const char* RocmErrString<hipfftResult>(hipfftResult e) {
   }
 }
 
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
 template <>
 const char* RocmErrString<ncclResult_t>(ncclResult_t e) {
   hipDeviceSynchronize();
@@ -138,7 +138,7 @@ template bool RocmCall<miopenStatus_t, true>(miopenStatus_t retCode, const char*
 template bool RocmCall<hipfftResult, false>(hipfftResult retCode, const char* exprString, const char* libName, hipfftResult successCode, const char* msg);
 template bool RocmCall<hipfftResult, true>(hipfftResult retCode, const char* exprString, const char* libName, hipfftResult successCode, const char* msg);
 
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
 template bool RocmCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg);
 #endif
 }  // namespace onnxruntime

@@ -4,8 +4,27 @@ import sys
 import subprocess
 import copy
 import numpy as np
+import torch
+import onnx
 
 from onnxruntime.training import optim
+
+def _single_run(execution_file, scenario, checkopint_dir = None):
+    cmd = [sys.executable, execution_file]
+    if scenario:
+        cmd += ['--scenario', scenario]
+    if checkopint_dir:
+        cmd += ['--checkpoint_dir', checkopint_dir]
+    assert subprocess.call(cmd) == 0
+
+def _distributed_run(execution_file, scenario, checkopint_dir = None):
+    ngpus = torch.cuda.device_count()
+    cmd = ['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, execution_file]
+    if scenario:
+        cmd += ['--scenario', scenario]
+    if checkopint_dir:
+        cmd += ['--checkpoint_dir', checkopint_dir]
+    assert subprocess.call(cmd) == 0
 
 def is_windows():
     return sys.platform.startswith("win")
@@ -83,6 +102,7 @@ def legacy_poly_lr_scheduler(global_step, initial_lr, total_steps, warmup, power
 
 
 def generate_dummy_optim_state(model, optimizer):
+    np.random.seed(0)
     if not (isinstance(optimizer, optim.AdamConfig) or isinstance(optimizer, optim.LambConfig)):
         return dict()
 
@@ -92,26 +112,31 @@ def generate_dummy_optim_state(model, optimizer):
     shared_state_key = "shared_optimizer_state"
 
     optim_state = dict()
-    name_to_initializer_map = {n.name:n for n in model.graph.initializer}
-    initializers_names = name_to_initializer_map.keys()
-    for weight in initializers_names:
+    weight_shape_map = dict()
+    if isinstance(model, torch.nn.Module):
+        weight_shape_map = {name: param.size() for name, param in model.named_parameters()}
+    elif isinstance(model, onnx.ModelProto):
+        weight_shape_map = {n.name: n.dims for n in model.graph.initializer}
+    else:
+        raise ValueError("'model' must be either 'torch.nn.Module' or 'onnx.ModelProto'")
+
+    for weight_name, weight_shape in weight_shape_map.items():
         per_weight_state = dict()
-        weight_shape = name_to_initializer_map[weight].dims
         for moment in moment_keys:
-            per_weight_state[moment] = np.full(weight_shape, 2.5, dtype=np.float32)
+            per_weight_state[moment] = np.random.uniform(-2, 2, weight_shape).astype(np.float32)
         if isinstance(optimizer, optim.AdamConfig):
             per_weight_state[uc_key] = np.full([1], 5, dtype=np.int64)
-        optim_state[weight] = copy.deepcopy(per_weight_state)
+        optim_state[weight_name] = copy.deepcopy(per_weight_state)
     if isinstance(optimizer, optim.LambConfig):
         step_val = np.full([1], 5, dtype=np.int64)
-        optim_state[shared_state_key] = {step_key : step_val}
+        optim_state[shared_state_key] = {step_key: step_val}
     return optim_state
 
 
 def get_optim_state_from_state_dict(state_dict, optimizer):
     if not (isinstance(optimizer, optim.AdamConfig) or isinstance(optimizer, optim.LambConfig)):
         return dict()
-    
+
     moment_keys = ["Moment_1", "Moment_2"]
     uc_key = "Update_Count"
     step_key = "Step"
@@ -119,6 +144,9 @@ def get_optim_state_from_state_dict(state_dict, optimizer):
 
     optim_state = dict()
     for param_name, v in state_dict.items():
+        if '_view_' in param_name:
+            param_name = param_name.split('_view_')[0]
+
         for moment in moment_keys:
             if param_name.startswith(moment):
                 fp32_name = param_name.split(moment + '_')[-1]
