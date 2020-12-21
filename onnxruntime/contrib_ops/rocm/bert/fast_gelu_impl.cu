@@ -46,10 +46,18 @@ template <typename T, unsigned TPB>
 __global__ void FastGeluKernel(const T a, const T b, const T c, int input_length, int bias_length, const T* input, const T* bias, T* output) {
   const int idx = blockIdx.x * TPB + threadIdx.x;
 
+  const T twoT = T(two);
+  const T oneT = T(one);
+
   if (idx < input_length) {
     const T x = input[idx];
     const T in = (bias == nullptr) ? x : (x + bias[idx % bias_length]);
-    const T cdf = a + a * _Tanh(in * (c * in * in + b));
+
+    // const T cdf = a + a * _Tanh(in * (c * in * in + b));
+    const T u = twoT * in * (c * in * in + b);
+    const T emu = __expf(-u);
+    const T cdf = a + a * (twoT/(oneT + emu) - oneT);
+
     output[idx] = in * cdf;
   }
 }
@@ -65,10 +73,11 @@ __global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, int
     const half2 x = input[idx];
     const half2 in = (bias == nullptr) ? x : (x + bias[idx % bias_length]);
 
-    //  const half2 cdf = a + a * _Tanh(in * (c * in * in + b));
+    // const half2 cdf = a + a * _Tanh(in * (c * in * in + b));
     const half2 u = two2 * in * (c * in * in + b);
-    const half2 eu = h2exp(u);
-    const half2 cdf = a + a * (eu - one2)/(eu + one2);
+    const half2 emu = h2exp(-u);
+    const half2 cdf = a + a * (two2/(one2 + emu) - one2);
+
     output[idx] = in * cdf;
   }
 }
