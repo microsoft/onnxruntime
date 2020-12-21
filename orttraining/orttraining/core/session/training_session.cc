@@ -14,6 +14,7 @@
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/framework/distributed_run_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 #include "orttraining/core/graph/mixed_precision_transformer.h"
@@ -31,12 +32,8 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #endif
 
-#ifdef USE_HOROVOD
-#include "orttraining/core/graph/horovod_adapters.h"
-#endif
-
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
-#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
 
@@ -129,12 +126,6 @@ Status SetupOptimizerParams(
   opt_graph_config.use_nccl = optimizer_config.use_nccl;
   opt_graph_config.adasum_reduction_type = optimizer_config.adasum_reduction_type;
   opt_graph_config.enable_grad_norm_clip = optimizer_config.enable_grad_norm_clip;
-#if USE_HOROVOD
-  opt_graph_config.horovod_reduce_op =
-      opt_graph_config.adasum_reduction_type == AdasumReductionType::None
-          ? static_cast<int64_t>(hvd::ReduceOp::SUM)
-          : static_cast<int64_t>(hvd::ReduceOp::ADASUM);
-#endif
   opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
 
   // check if shared initial optimizer states have been provided
@@ -288,7 +279,19 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
-  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ? DistributedRunContext::RankInGroup(WorkerGroupType::PipelineParallel) : -1;
+#ifdef USE_MPI
+  const std::vector<MPIGroup>& mpi_groups = MPIContext::GetInstance().GetAllMPIGroups();
+  for (int i = 0; i < WorkerGroupType::WorkerGroupTypeCount; i++) {
+    if (!mpi_groups[i].is_group_initialized && MPIContext::GetInstance().GetWorldSize() > 1) {
+      MPIContext::GetInstance().AddMPIGroup(static_cast<WorkerGroupType>(i),
+        DistributedRunContext::GetInstance().GetWorkerGroup(static_cast<WorkerGroupType>(i)));
+    }
+  }
+#endif
+
+  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ?
+                              DistributedRunContext::RankInGroup(WorkerGroupType::PipelineParallel) :
+                              -1;
 
   ORT_RETURN_IF_ERROR(PartitionGraphForPipeline(
       pipeline_stage_id,
@@ -428,7 +431,6 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(BuildOptimizer(
         opt_graph_config, opt_node_configs,
         optimizer_config_result.output_key_to_graph_output_name));
-
     config_result.opt_config_result = optimizer_config_result;
   } else {
     if (config.gradient_accumulation_steps > 1) {
@@ -1206,7 +1208,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   return trainable_initializers;
 }
 
-#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 // Create NCCL's communication plan. In runtime, we will provide details such
 // as pointer to sent/recieved data and the size of the data in byte. See how
 // Send and Recv call SubmitSendAndWait and SubmitRecvAndWait, respectively.
@@ -1246,7 +1248,7 @@ Status PipelineTrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config,
     TrainingConfigurationResult& config_result_out) {
   auto status = TrainingSession::ConfigureForTraining(config, config_result_out);
-#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   LaunchNcclService(pipeline_context_.pipeline_stage_id);
 #endif
   return status;
@@ -1598,7 +1600,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
 
   pipeline_worker_pool_.JoinAll();
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
-#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.Reset();
 #endif
@@ -1607,7 +1609,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
 }
 
 PipelineTrainingSession::~PipelineTrainingSession() {
-#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.Terminate();
 #endif

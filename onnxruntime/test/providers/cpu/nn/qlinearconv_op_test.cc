@@ -389,7 +389,9 @@ class QLinearConvOpTester {
     Y_shape.push_back(output_channels);
     for (size_t n = 0; n < kernel_rank; n++) {
       Y_shape.push_back(((input_shape[n] + pads[n] + pads[kernel_rank + n]) -
-                        (dilations[n] * (kernel_shape[n] - 1) + 1)) / strides[n] + 1);
+                         (dilations[n] * (kernel_shape[n] - 1) + 1)) /
+                            strides[n] +
+                        1);
     }
     const int64_t* output_shape = Y_shape.data() + 2;
     Y_data.resize(ShapeSize(Y_shape));
@@ -464,22 +466,38 @@ class QLinearConvOpTester {
 
     test.AddInput<T1>("x", X_.shape_, X_.data_);
     test.AddInput<float>("x_scale", {}, X_.scale_, all_input_initializer_except_x);
-    test.AddInput<T1>("x_zero_point", {}, {X_.zero_point_});
+    test.AddInput<T1>("x_zero_point", {}, {X_.zero_point_}, all_input_initializer_except_x);
 
     const std::vector<int64_t> W_scale_shape{static_cast<int64_t>(W_.scale_.size())};
     test.AddInput<T2>("w", W_.shape_, W_.data_, all_input_initializer_except_x);
     test.AddInput<float>("w_scale", W_scale_shape, W_.scale_, all_input_initializer_except_x);
-    test.AddInput<T2>("w_zero_point", {}, {W_.zero_point_});
+    test.AddInput<T2>("w_zero_point", {}, {W_.zero_point_}, all_input_initializer_except_x);
 
     test.AddInput<float>("y_scale", {}, {output_scale_}, all_input_initializer_except_x);
-    test.AddInput<T1>("y_zero_point", {}, {output_zero_point_});
+    test.AddInput<T1>("y_zero_point", {}, {output_zero_point_}, all_input_initializer_except_x);
 
     if (!B_.empty()) {
       const std::vector<int64_t> B_shape{static_cast<int64_t>(B_.size())};
-      test.AddInput<int32_t>("b", B_shape, B_);
+      test.AddInput<int32_t>("b", B_shape, B_, all_input_initializer_except_x);
     }
 
-    test.AddOutput<uint8_t>("y", Y_shape, Y_data);
+    float abs_error = 0.0f;
+
+    // For quantized models, NNAPI's rounding is different than CPU provider
+    // Sometimes the result is within +/-1 of result of CPU provider
+    // For ONNX, we use rounding to nearest ties to even.
+    // For NNAPI, it is using std::round which is HALF_AWAY_FROM_ZERO, see
+    // https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/operations/Quantize.cpp
+    // Use 1 as abs_error which is the smallest possbile for uint8_t
+    //
+    // NOTE, for now the tolerance will only apply if the NNAPI is actually used,
+    // if for any reason the execution falls back to CPU, we still expect an exact match
+    // See, 'void Check<uint8_t>(...' in onnxruntime/test/providers/provider_test_utils.cc
+#ifdef USE_NNAPI
+    abs_error = 1.0f;
+#endif
+
+    test.AddOutput<uint8_t>("y", Y_shape, Y_data, false /* sort_output */, 0.0f /* rel_error */, abs_error);
 
     if (!pads_.empty()) {
       test.AddAttribute("pads", pads_);
