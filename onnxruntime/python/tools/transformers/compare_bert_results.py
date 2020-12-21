@@ -69,7 +69,7 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
         print("100% passed for {} random inputs given thresholds (rtol={}, atol={}).".format(
             len(baseline_results), rtol, atol))
     else:
-        print("{} out of {} results not passed for thresholds (rtol={}, atol={}).".format(
+        print("WARNING: {} out of {} results NOT passed for thresholds (rtol={}, atol={}).".format(
             diff_count, len(baseline_results), rtol, atol))
 
     print("maximum absolute difference={}".format(max_abs_diff))

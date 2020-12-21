@@ -13,6 +13,7 @@
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/framework/distributed_run_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -27,10 +28,6 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_allocator.h"
-#endif
-
-#ifdef USE_HOROVOD
-#include "orttraining/core/graph/horovod_adapters.h"
 #endif
 
 namespace onnxruntime {
@@ -86,6 +83,15 @@ Status SetupOptimizerParams(
     if (mixed_precision_weight_name_it != fp32_weight_names_to_mixed_precision_node_args.end()) {
       opt_node_config.mixed_precision_weight_arg = mixed_precision_weight_name_it->second;
     }
+
+    // check if initial optimizer states have been provided for weight
+    if (config.init_optimizer_states){
+      const auto optim_state_it = config.init_optimizer_states->find(weight_name);
+      if (optim_state_it != config.init_optimizer_states->end()) {
+        opt_node_config.initial_states = optim_state_it->second;
+      }
+    }    
+
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
   }
 
@@ -108,13 +114,15 @@ Status SetupOptimizerParams(
   opt_graph_config.use_nccl = optimizer_config.use_nccl;
   opt_graph_config.adasum_reduction_type = optimizer_config.adasum_reduction_type;
   opt_graph_config.enable_grad_norm_clip = optimizer_config.enable_grad_norm_clip;
-#if USE_HOROVOD
-  opt_graph_config.horovod_reduce_op =
-      opt_graph_config.adasum_reduction_type == AdasumReductionType::None
-          ? static_cast<int64_t>(hvd::ReduceOp::SUM)
-          : static_cast<int64_t>(hvd::ReduceOp::ADASUM);
-#endif
   opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
+
+  // check if shared initial optimizer states have been provided
+  if (config.init_optimizer_states){
+    const auto optim_state_it = config.init_optimizer_states->find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
+    if (optim_state_it != config.init_optimizer_states->end()) {
+      opt_graph_config.shared_optimizer_states = std::move(optim_state_it->second);
+    }
+  }
   opt_node_configs_result = std::move(opt_node_configs);
   opt_graph_config_result = std::move(opt_graph_config);
 
@@ -138,6 +146,7 @@ void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>&
           << "Couldn't find any consumer node for weight " << name << ", exclude it from training.";
   }
 }
+
 
 const std::string TrainingSession::training_mode_string_ = "training_mode";
 
@@ -166,6 +175,16 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
+#ifdef USE_MPI
+  const std::vector<MPIGroup>& mpi_groups = MPIContext::GetInstance().GetAllMPIGroups();
+  for (int i = 0; i < WorkerGroupType::WorkerGroupTypeCount; i++) {
+    if (!mpi_groups[i].is_group_initialized && MPIContext::GetInstance().GetWorldSize() > 1) {
+      MPIContext::GetInstance().AddMPIGroup(static_cast<WorkerGroupType>(i),
+        DistributedRunContext::GetInstance().GetWorkerGroup(static_cast<WorkerGroupType>(i)));
+    }
+  }
+#endif
+
   const int32_t pipeline_stage_id = config.pipeline_config.has_value() ?
                               DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) :
                               -1;
@@ -174,11 +193,22 @@ Status TrainingSession::ConfigureForTraining(
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
     ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
+    int n_stages = config.distributed_config.pipeline_parallel_size;
+    std::map<const Node*, int> op_to_stage;
+    const auto& cut_list = config.pipeline_config.value().cut_list;
+    if (cut_list.size() > 0) {
+      ORT_RETURN_IF_ERROR(
+        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
+    } else {
+      const auto& id_to_stage = config.pipeline_config.value().op_id_to_stage;
+      ORT_RETURN_IF_ERROR(
+        GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
+    }
 
-    ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
-                                                          config.pipeline_config.value().cut_list,
-                                                          pipeline_stage_id,
-                                                          config.distributed_config.pipeline_parallel_size));
+    auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel);
+    ORT_RETURN_IF_ERROR(
+      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
+                                        pipeline_stage_id, n_stages, ranks));
 
     if (config.pipeline_config.value().partitioned_model_path.has_value()) {
       // Save the partitioned file out.
@@ -340,7 +370,6 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(BuildOptimizer(
         opt_graph_config, opt_node_configs,
         optimizer_config_result.output_key_to_graph_output_name));
-
     config_result.opt_config_result = optimizer_config_result;
   } else {
     if (config.gradient_accumulation_steps > 1) {
@@ -501,12 +530,13 @@ static Status BuildOptimizerInternal(Graph& graph,
                                      const OptimizerGraphConfig& opt_graph_config,
                                      const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs,
                                      std::unordered_set<std::string>& opt_state_initializer_names,
-                                     OptimizerOutputKeyMap<std::string>& opt_graph_outputs) {
+                                     OptimizerOutputKeyMap<std::string>& opt_graph_outputs,
+                                     std::unordered_map<std::string, std::string>& updated_weight_names_map) {
   OptimizerBuilderRegistry& optimizer_registry = OptimizerBuilderRegistry::GetInstance();
   OptimizerGraphBuilderRegistry& optimizer_graph_registry = OptimizerGraphBuilderRegistry::GetInstance();
   std::string graph_builder_name = optimizer_graph_registry.GetNameFromConfig(opt_graph_config);
   auto optimizer_graph_builder = optimizer_graph_registry.MakeUnique(
-      graph_builder_name, optimizer_registry, opt_graph_config, opt_configs);
+      graph_builder_name, optimizer_registry, opt_graph_config, opt_configs, updated_weight_names_map);
   ORT_RETURN_IF_ERROR(optimizer_graph_builder->Build(
       graph, opt_state_initializer_names, opt_graph_outputs));
 
@@ -752,7 +782,8 @@ Status TrainingSession::BuildOptimizer(
                                              opt_graph_config_,
                                              opt_configs_,
                                              opt_state_initializer_names_,
-                                             opt_graph_outputs));
+                                             opt_graph_outputs,
+                                             updated_weight_names_map_));
 
   return DoPostLoadProcessing(*model_);
 }
@@ -837,11 +868,13 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 
     OptimizerOutputKeyMap<std::string> opt_graph_outputs;
     std::unordered_set<std::string> opt_state_initializer_names;
+    std::unordered_map<std::string, std::string> updated_weight_names_map;
     ORT_RETURN_IF_ERROR(BuildOptimizerInternal(new_model->MainGraph(),
                                                opt_graph_config_,
                                                opt_configs_,
                                                opt_state_initializer_names,
-                                               opt_graph_outputs));
+                                               opt_graph_outputs,
+                                               updated_weight_names_map));
   }
 
   auto status = Model::Save(*new_model, model_uri);
@@ -1021,6 +1054,9 @@ std::unordered_set<std::string> TrainingSession::GetStateTensorNames() const {
   std::unordered_set<std::string> checkpointed_tensor_names{};
   checkpointed_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
+  for (const auto& p : updated_weight_names_map_) {
+    checkpointed_tensor_names.insert(p.second);
+  }
   checkpointed_tensor_names.insert(
       opt_state_initializer_names_.begin(), opt_state_initializer_names_.end());
   checkpointed_tensor_names.insert(

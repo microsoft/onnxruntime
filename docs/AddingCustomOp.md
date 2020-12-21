@@ -6,7 +6,7 @@ Adding a new op
 * Create an OrtCustomOpDomain with the domain name used by the custom ops
 * Create an OrtCustomOp structure for each op and add them to the OrtCustomOpDomain with OrtCustomOpDomain_Add
 * Call OrtAddCustomOpDomain to add the custom domain of ops to the session options
-See [this](../onnxruntime/test/shared_lib/test_inference.cc) for an example called MyCustomOp that uses the C++ helper API (onnxruntime_cxx_api.h).
+See [this](../onnxruntime/test/shared_lib/test_inference.cc) for examples of MyCustomOp and SliceCustomOp that use the C++ helper API (onnxruntime_cxx_api.h).
 You can also compile the custom ops into a shared library and use that to run a model via the C++ API. The same test file contains an example.
 The source code for a sample custom op shared library containing two custom kernels is [here](../onnxruntime/test/testdata/custom_op_library/custom_op_library.cc).
 See [this](../onnxruntime/test/python/onnxruntime_test_python.py) for an example called testRegisterCustomOpsLibrary that uses the Python API

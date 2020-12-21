@@ -17,7 +17,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     7,
     kDnnlExecutionProvider,
-    Provider_KernelDefBuilder::Create()->TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    KernelDefBuilder::Create()->TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
 
 class GemmHelper {
@@ -92,10 +92,10 @@ template <typename T>
 using ConstEigenMatrixMapRowMajor = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
 
 template <>
-Status Gemm<float>::Compute(Provider_OpKernelContext* ctx, const Provider_OpKernel_Base&) const {
-  const auto X = ctx->Input<Provider_Tensor>(0);
-  const auto W = ctx->Input<Provider_Tensor>(1);
-  const auto B = ctx->Input<Provider_Tensor>(2);
+Status Gemm<float>::Compute(OpKernelContext* ctx, const Provider_OpKernel_Base&) const {
+  const auto X = ctx->Input<Tensor>(0);
+  const auto W = ctx->Input<Tensor>(1);
+  const auto B = ctx->Input<Tensor>(2);
   GemmHelper helper(X->Shape(), trans_A_, W->Shape(), trans_B_, B->Shape());
 
   if (!helper.State().IsOK())

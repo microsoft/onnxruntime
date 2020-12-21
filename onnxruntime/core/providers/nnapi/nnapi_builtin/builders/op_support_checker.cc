@@ -228,7 +228,7 @@ bool BinaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 }
 
 bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                               const OpSupportCheckParams& /* params */) const {
+                                               const OpSupportCheckParams& params) const {
   const auto& op_type(node.OpType());
   const auto input_defs(node.InputDefs());
   bool op_is_qlinear = op_type == "QLinearAdd";
@@ -265,7 +265,7 @@ bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
 
     // All scale/zero points are initializer scalars
     // a/b/y_scale
-    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
+    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
       return false;
 
     // a/b/y_zero_point
@@ -599,7 +599,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     }
 
     // a/b/y_scale
-    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
+    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
       return false;
 
     // a/b/y_zero_point
@@ -719,6 +719,39 @@ bool GemmOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
       });
 }
 
+// Get the bias size (C) of Gemm op
+// ANEURALNETWORKS_FULLY_CONNECTED only supports 1d bias
+// Will test if C of Gemm can be squeezed and return the 1d vector size after squeeze
+static bool GetBiasSize(const Shape& c_shape, int32_t android_sdk_ver, uint32_t& size) {
+  // TODO add support of scalar C for Gemm
+  size_t c_dim = c_shape.size();
+  if (c_dim == 0) {
+    LOGS_DEFAULT(VERBOSE) << "C of Gemm cannot be a scalar";
+    return false;
+  }
+
+  if (c_dim != 1 && android_sdk_ver < 28) {
+    LOGS_DEFAULT(VERBOSE) << "C of Gemm can only be 1d tensor for API level " << android_sdk_ver
+                          << " shape of C, " << Shape2String(c_shape);
+    return false;
+  }
+
+  if (c_dim != 1) {
+    // If C is a (2+)d tensor, it must have the format {1, 1, ..., 1, n}
+    // where every except the last dimension should be 1
+    for (size_t i = 0; i < c_dim - 1; ++i) {
+      if (c_shape[i] != 1) {
+        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector or a tensor with only last dimension != 1"
+                              << " c_shape: " << Shape2String(c_shape);
+        return false;
+      }
+    }
+  }
+
+  size = c_shape[c_dim - 1];
+  return true;
+}
+
 int GemmOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
   const auto& op(node.OpType());
 
@@ -730,7 +763,7 @@ int GemmOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
 }
 
 bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                             const OpSupportCheckParams& /* params */) const {
+                                             const OpSupportCheckParams& params) const {
   const auto& op_type = node.OpType();
   const auto input_defs(node.InputDefs());
   size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
@@ -774,7 +807,11 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
     if (!(transA == 0 && alpha == 1.f && beta == 1.f)) {
       LOGS_DEFAULT(VERBOSE) << "Only transA == 0, alpha == 1.0 "
-                            << "and beta == 1.0 is supported.";
+                            << "and beta == 1.0 is supported."
+                            << " transA " << transA
+                            << " transB " << transB
+                            << " alpha " << alpha
+                            << " beta " << beta;
       return false;
     }
 
@@ -788,9 +825,13 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
       if (!GetShape(*input_defs[c_idx], c_shape))
         return false;
 
-      if (c_shape.size() != 1 ||
-          c_shape[0] != (transB == 0 ? b_shape[1] : b_shape[0])) {
-        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector of b_shape[0]"
+      uint32_t c_size;
+      if (!GetBiasSize(c_shape, params.android_sdk_ver, c_size))
+        return false;
+
+      if (c_size != (transB == 0 ? b_shape[1] : b_shape[0])) {
+        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector of b_shape["
+                              << (transB == 0 ? "1" : "0") << "]"
                               << " b_shape: " << Shape2String(b_shape)
                               << " c_shape: " << Shape2String(c_shape);
 
@@ -819,7 +860,7 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
       // All scale/zero points are initializer scalars
       // a/b/y_scale
-      if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
+      if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
         return false;
 
       // a/b/y_zero_point
@@ -962,7 +1003,7 @@ class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
 };
 
 bool QuantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                                       const OpSupportCheckParams& /* params */) const {
+                                                       const OpSupportCheckParams& params) const {
   const auto input_defs(node.InputDefs());
   const auto output_defs(node.OutputDefs());
 
@@ -977,7 +1018,7 @@ bool QuantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSe
     return false;
   }
 
-  if (!HasValidQuantizationScales(initializers, node, {1}))
+  if (!HasValidQuantizationScales(initializers, node, {1}, params))
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
@@ -1004,9 +1045,9 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
 };
 
 bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                                         const OpSupportCheckParams& /* params */) const {
+                                                         const OpSupportCheckParams& params) const {
   const auto input_defs(node.InputDefs());
-  if (!HasValidQuantizationScales(initializers, node, {1}))
+  if (!HasValidQuantizationScales(initializers, node, {1}, params))
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
@@ -1254,6 +1295,49 @@ bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
 
 #pragma endregion
 
+#pragma region op_minmax
+
+class MinMaxOpSupportChecker : public BaseOpSupportChecker {
+ public:
+  static void CreateSharedOpSupportChecker(
+      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
+
+ private:
+  int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+    return 29;
+  }
+
+  // Min/Max opset 5- uses consumed_inputs attribute which is not supported for now
+  int GetMinSupportedOpSet(const Node& /* node */) const override { return 6; }
+
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const OpSupportCheckParams& params) const override;
+};
+
+/* static */ void MinMaxOpSupportChecker::CreateSharedOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  CreateSharedOpSupportCheckerImpl<MinMaxOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Min",
+          "Max",
+      });
+}
+
+bool MinMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                               const OpSupportCheckParams& /* params */) const {
+  // TODO support 2+ inputs for Min/Max op
+  if (node.InputDefs().size() != 2) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] only supports 2 inputs, "
+                          << "actual input number, " << node.InputDefs().size();
+    return false;
+  }
+
+  return true;
+}
+
+#pragma endregion
+
 #pragma region CreateGetOpSupportCheckers
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
@@ -1332,6 +1416,10 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Resize", ResizeOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Flatten", FlattenOpSupportChecker);
 
+  {
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Min", MinMaxOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Max", MinMaxOpSupportChecker);
+  }
   return op_registrations;
 }
 

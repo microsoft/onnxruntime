@@ -10,6 +10,10 @@ from onnxruntime.training import amp, checkpoint, optim, orttrainer
 from orttraining_test_orttrainer_frontend import _load_pytorch_transformer_model
 from onnxruntime.capi._pybind_state import set_cuda_device_id, get_mpi_context_world_rank, get_mpi_context_world_size
 
+from _test_commons import generate_dummy_optim_state
+
+global_fp16_fp32_atol = 1e-3
+
 def _train(trainer, train_data, batcher_fn, total_batch_steps = 5, seed = 1):
     """Runs train_step total_batch_steps number of times on the given trainer"""
     for i in range(total_batch_steps):
@@ -69,7 +73,7 @@ def distributed_setup(func):
 
     return setup
 
-def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir):
+def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir, use_lamb=True):
     """Instantiate and load checkpoint into trainer
 
     - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple transformer model
@@ -83,7 +87,7 @@ def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir):
 
     # PyTorch transformer model setup
     learning_rate = 0.1
-    optim_config = optim.LambConfig(lr=learning_rate)
+    optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
     model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
 
@@ -101,7 +105,7 @@ def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir):
 def split_state_dict(state_dict):
     """Given a flat state dictionary, split it into optimizer, fp32_param, fp16_param hierarchical dictionary and return"""
 
-    optimizer_keys = ['Moment_1_', 'Moment_2_', 'Update_Count_', 'Step_']
+    optimizer_keys = ['Moment_1_', 'Moment_2_', 'Update_Count_', 'Step']
     split_sd = {'optimizer': {}, 'fp32_param': {}, 'fp16_param': {}}
     for k, v in state_dict.items():
         mode = 'fp32_param'
@@ -153,14 +157,14 @@ def aggregate_states(aggregated_states, state_dict):
         else:
             aggregated_states[key] = value
 
-def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, state_dict_key_name='state_dict'):
+def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, state_dict_key_name='state_dict', use_lamb=True):
     learning_rate = 0.1
     seed = 1
 
     torch.manual_seed(seed)
     set_seed(seed)
 
-    optim_config = optim.LambConfig(lr=learning_rate)
+    optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
     model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
 
@@ -173,3 +177,25 @@ def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, 
     # save current model parameters as a checkpoint
     if checkpoint_dir:
         _save(trainer, checkpoint_dir, state_dict_key_name)
+
+
+def load_model_optim_state_and_eval(device, trainer_opts, use_lamb=True):
+    learning_rate = 0.1
+    seed = 1
+
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
+    model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
+
+    # load dummy state
+    dummy_init_state = generate_dummy_optim_state(model, optim_config)
+    checkpoint._experimental_load_optimizer_state(trainer, dummy_init_state)
+
+    # run an eval step to innitialize the graph
+    data, targets = batcher_fn(train_data, 0)
+    trainer.eval_step(data, targets)
+
+    return dummy_init_state, checkpoint.experimental_state_dict(trainer)

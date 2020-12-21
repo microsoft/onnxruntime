@@ -9,6 +9,7 @@ import onnxruntime as onnxrt
 import threading
 import sys
 from helper import get_name
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 
 class TestInferenceSession(unittest.TestCase):
 
@@ -20,12 +21,19 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testModelSerialization(self):
-        so = onnxrt.SessionOptions()
-        so.log_verbosity_level = 1
-        so.logid = "TestModelSerialization"
-        so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
-        onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
-        self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+        try:
+            so = onnxrt.SessionOptions()
+            so.log_verbosity_level = 1
+            so.logid = "TestModelSerialization"
+            so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
+            self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+        except Fail as onnxruntime_error:
+            if str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains" \
+                " compiled nodes. Please disable any execution providers which generate compiled nodes.":
+                pass
+            else:
+                raise onnxruntime_error
 
     def testGetProviders(self):
         self.assertTrue('CPUExecutionProvider' in onnxrt.get_available_providers())

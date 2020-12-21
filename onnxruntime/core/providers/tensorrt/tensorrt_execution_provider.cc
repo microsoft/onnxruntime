@@ -198,7 +198,7 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
     auto flat_table = flatbuffers::GetRoot<CalTableFlatBuffers::TrtTable>((const uint8_t*)data.get());
     auto flat_dict = flat_table->dict();
     for (size_t i = 0, end = flat_dict->size(); i < end; ++i) {
-      dynamic_range_map[flat_dict->Get(i)->key()->str()] = std::stof(flat_dict->Get(i)->value()->str()); 
+      dynamic_range_map[flat_dict->Get(i)->key()->str()] = std::stof(flat_dict->Get(i)->value()->str());
     }
   }
   return true;
@@ -259,6 +259,7 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
   }
   return true;
 }
+
 }  // namespace
 
 namespace google {
@@ -307,11 +308,11 @@ constexpr const char* TRT_PINNED = "TensorrtPinned";
 
 class Memcpy final : public Provider_OpKernel {
  public:
-  Memcpy(const Provider_OpKernelInfo&) {}
+  Memcpy(const OpKernelInfo&) {}
 
-  Status Compute(Provider_OpKernelContext* ctx, const Provider_OpKernel_Base& base) const override {
-    const auto* X = ctx->Input<Provider_Tensor>(0);
-    Provider_Tensor* Y = ctx->Output(0, X->Shape());
+  Status Compute(OpKernelContext* ctx, const Provider_OpKernel_Base& base) const override {
+    const auto* X = ctx->Input<Tensor>(0);
+    Tensor* Y = ctx->Output(0, X->Shape());
     Status retval = base.GetInfo().GetDataTransferManager().CopyTensor(*X, *Y, base.GetInfo().GetKernelDef_ExecQueueId());
     return retval;
   }
@@ -325,7 +326,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     1,
     kTensorrtExecutionProvider,
-    (*Provider_KernelDefBuilder::Create())
+    (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .ExecQueueId(kCudaStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -336,7 +337,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     1,
     kTensorrtExecutionProvider,
-    (*Provider_KernelDefBuilder::Create())
+    (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .ExecQueueId(kCudaStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -345,7 +346,7 @@ ONNX_OPERATOR_KERNEL_EX(
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
-static Status RegisterTensorrtKernels(Provider_KernelRegistry& kernel_registry) {
+static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
   static const Provider_BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
@@ -357,15 +358,15 @@ static Status RegisterTensorrtKernels(Provider_KernelRegistry& kernel_registry) 
   return Status::OK();
 }
 
-static std::shared_ptr<onnxruntime::Provider_KernelRegistry> s_kernel_registry;
+static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
 void Shutdown_DeleteRegistry() {
   s_kernel_registry.reset();
 }
 
-std::shared_ptr<Provider_KernelRegistry> TensorrtExecutionProvider::Provider_GetKernelRegistry() const {
+std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
   if (!s_kernel_registry) {
-    s_kernel_registry = onnxruntime::Provider_KernelRegistry::Create();
+    s_kernel_registry = KernelRegistry::Create();
     auto status = RegisterTensorrtKernels(*s_kernel_registry);
     if (!status.IsOK())
       s_kernel_registry.reset();
@@ -382,17 +383,17 @@ TensorrtLogger& GetTensorrtLogger() {
 }
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
-    : Provider_IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   AllocatorCreationInfo default_memory_info(
       [](int id) { return CreateCUDAAllocator(id, TRT); }, device_id_);
   allocator_ = CreateAllocator(default_memory_info);
-  Provider_InsertAllocator(allocator_);
+  InsertAllocator(allocator_);
 
   AllocatorCreationInfo pinned_allocator_info(
       [](int) { return CreateCUDAPinnedAllocator(0, TRT_PINNED); }, device_id_);
-  Provider_InsertAllocator(CreateAllocator(pinned_allocator_info));
+  InsertAllocator(CreateAllocator(pinned_allocator_info));
 
   // Get environment variables
   const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -460,20 +461,20 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
 
-AllocatorPtr TensorrtExecutionProvider::Provider_GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
     return allocator_;
   } else {
-    return Provider_IExecutionProvider::Provider_GetAllocator(id, mem_type);
+    return IExecutionProvider::GetAllocator(id, mem_type);
   }
 }
 
-std::unique_ptr<onnxruntime::Provider_IDataTransfer> TensorrtExecutionProvider::Provider_GetDataTransfer() const {
-  return onnxruntime::Provider_CreateGPUDataTransfer();
+std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
+  return onnxruntime::CreateGPUDataTransfer();
 }
 
 // Convert GraphViewer graph to GraphProto
-void ToGraphProtoInternal(const onnxruntime::Provider_GraphViewer& graph, Provider_GraphProto& graph_proto) {
+void ToGraphProtoInternal(const GraphViewer& graph, Provider_GraphProto& graph_proto) {
   for (const auto* input_arg : graph.GetInputs()) {
     *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
   }
@@ -495,12 +496,12 @@ void ToGraphProtoInternal(const onnxruntime::Provider_GraphViewer& graph, Provid
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
   for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {
     const gsl::not_null<Provider_NodeProto*> node_proto{graph_proto.add_node()};
-    const gsl::not_null<const Provider_Node*> p_node{graph.GetNode(node_idx)};
+    const gsl::not_null<const Node*> p_node{graph.GetNode(node_idx)};
     p_node->ToProto(*node_proto);
   }
 }
 
-std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::Provider_GraphViewer& graph) const {
+std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.first.size());
@@ -515,9 +516,9 @@ std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph
   }
 
   // Find inputs and outputs of the subgraph
-  std::unique_ptr<Provider_IndexedSubGraph> sub_graph = onnxruntime::Provider_IndexedSubGraph::Create();
-  std::unordered_map<const Provider_NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
-  std::unordered_set<const Provider_NodeArg*> erased;
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
+  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
+  std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
   int output_order = 0;
 
@@ -593,19 +594,19 @@ std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph
   fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
 
   // Sort inputs and outputs by the order they were added
-  std::multimap<int, const Provider_NodeArg*> inputs, outputs;
+  std::multimap<int, const NodeArg*> inputs, outputs;
   for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
-    inputs.insert(std::pair<int, const Provider_NodeArg*>(it->second, it->first));
+    inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
 
   for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
-    outputs.insert(std::pair<int, const Provider_NodeArg*>(it->second, it->first));
+    outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
 
   // Assign inputs and outputs to subgraph's meta_def
-  auto meta_def = Provider_IndexedSubGraph_MetaDef::Create();
+  auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
-  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(kernels_index++);
+  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(subgraph_id_++);
   meta_def->domain() = kMSDomain;
 
   for (const auto& input : inputs) {
@@ -627,7 +628,7 @@ std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph
 }
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
-                                                                 const onnxruntime::Provider_GraphViewer& graph, bool* early_termination) const {
+                                                                 const GraphViewer& graph, bool* early_termination) const {
   // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
   if (iterations > max_iterations) {
@@ -658,7 +659,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
-          std::vector<onnxruntime::Provider_NodeArg*> inputs, outputs;
+          std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
@@ -695,7 +696,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         // Add parent graph output to the subgraph
         int i = 0;
-        std::vector<const Provider_NodeArg*> subgraph_outputs;
+        std::vector<const NodeArg*> subgraph_outputs;
         subgraph_outputs.resize(subgraph_output_names.size());
         for (auto& name : subgraph_output_names) {
           auto output_arg = graph.GetNodeArg(name);
@@ -762,7 +763,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 }
 
 // Detect and remove cycles from supported node list
-void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::Provider_GraphViewer& graph) const {
+void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   bool trt_cycle = true;
   while (trt_cycle) {
@@ -771,11 +772,11 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     std::unordered_map<int, std::string> index_to_node_map;
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
     std::unordered_set<int> non_trt_node_index(node_index.begin(), node_index.end());
-    int counter = 0, id = 0;
+    int id = 0;
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
         // Construct subgraph from node list
-        std::unique_ptr<Provider_IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
+        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);
 
         // Create node to inputs/outputs/index maps
         const auto& meta_def = sub_graph->GetMetaDef();
@@ -874,9 +875,9 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
   }
 }
 
-std::vector<std::unique_ptr<Provider_ComputeCapability>>
-TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
-                                                  const std::vector<const Provider_KernelRegistry*>& /*kernel_registries*/) const {
+std::vector<std::unique_ptr<ComputeCapability>>
+TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
+                                         const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
@@ -900,12 +901,12 @@ TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_Gr
   RemoveTensorRTGraphCycles(supported_nodes_vector, graph);
 
   // Construct subgraph capability from node list
-  std::vector<std::unique_ptr<Provider_ComputeCapability>> result;
-  int counter = 0, number_of_trt_nodes = 0;
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
-      std::unique_ptr<Provider_IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
-      result.push_back(Provider_ComputeCapability::Create(std::move(sub_graph)));
+      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);
+      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       number_of_trt_nodes += group.first.size();
     }
   }
@@ -922,8 +923,8 @@ TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_Gr
   return result;
 }
 
-common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onnxruntime::Provider_Node*>& fused_nodes,
-                                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
+common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
+                                                  std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
     // Build map from input name to its index in input definitions
     std::unordered_map<std::string, int> input_map;
@@ -946,7 +947,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
     if (!func_body) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
-    const Provider_Graph& graph_body = func_body->Body();
+    const Graph& graph_body = func_body->Body();
     auto graph_body_viewer = graph_body.CreateGraphViewer();
     auto model = graph_body_viewer->CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
@@ -1000,7 +1001,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       }
     }
 
-    // Check platform availability for low precision 
+    // Check platform availability for low precision
     if (fp16_enable_) {
       if (!trt_builder->platformHasFastFp16()) {
         fp16_enable_ = false;

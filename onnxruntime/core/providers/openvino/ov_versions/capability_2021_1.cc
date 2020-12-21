@@ -27,7 +27,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-bool IsDimensionSupported(const Provider_Node* node) {
+bool IsDimensionSupported(const Node* node) {
   auto node_inputs = node->InputDefs();
   size_t input_dims = 0;
   if (node_inputs[0]->Shape() == nullptr) {
@@ -236,7 +236,7 @@ bool IsOpSupported(std::string name, std::string device) {
 }
 
 // Returns true only if op is in a mode that is not currently supported
-static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphViewer& graph_viewer, const std::string& device_id) {
+static bool IsUnsupportedOpMode(const Node* node, const GraphViewer& graph_viewer, const std::string& device_id) {
   const auto& optype = node->OpType();
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
@@ -483,9 +483,8 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
       return true;
     } else
       return false;
-  } else if(optype == "Gather") {
-
-    if(device_id.find("GPU") != std::string::npos){
+  } else if (optype == "Gather") {
+    if (device_id.find("GPU") != std::string::npos) {
       const auto& input = node->InputDefs()[0];
       auto graph_inputs = graph_viewer.GetInputs();
       auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
@@ -528,7 +527,7 @@ static bool IsUnsupportedOpMode(const Provider_Node* node, const Provider_GraphV
   return false;
 }
 
-static bool IsTypeSupported(const Provider_NodeArg* node_arg, bool is_initializer, const std::string& device_id) {
+static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const std::string& device_id) {
   const auto* type_proto = node_arg->TypeAsProto();
   if (!type_proto) {
     return false;
@@ -621,7 +620,7 @@ static bool IsTypeSupported(const Provider_NodeArg* node_arg, bool is_initialize
 }
 
 static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& op_map,
-                            const Provider_GraphViewer& graph_viewer,
+                            const GraphViewer& graph_viewer,
                             const NodeIndex node_idx, std::string& device_id) {
   const auto& node = graph_viewer.GetNode(node_idx);
   const auto& optype = node->OpType();
@@ -656,7 +655,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   //Check 1
   bool are_types_supported = true;
 
-  node->ForEachDef([&are_types_supported, &graph_viewer, &device_id](const Provider_NodeArg& node_arg, bool is_input) {
+  node->ForEachDef([&are_types_supported, &graph_viewer, &device_id](const NodeArg& node_arg, bool is_input) {
     bool is_initializer = false;
     if (is_input) {
       if (graph_viewer.IsConstantInitializer(node_arg.Name(), true))
@@ -672,7 +671,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   //Check 2
 
   bool has_unsupported_dimension = false;
-  node->ForEachDef([&has_unsupported_dimension, &graph_viewer, &device_id, &optype](const Provider_NodeArg& node_arg, bool is_input) {
+  node->ForEachDef([&has_unsupported_dimension, &graph_viewer, &device_id, &optype](const NodeArg& node_arg, bool is_input) {
     if (is_input) {
       if (graph_viewer.IsConstantInitializer(node_arg.Name(), true))
         return;
@@ -729,7 +728,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
 }
 
 static std::vector<NodeIndex>
-GetUnsupportedNodeIndices(const Provider_GraphViewer& graph_viewer, std::string device, /*out*/ std::unordered_set<std::string>& ng_required_initializers) {
+GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, std::string device, /*out*/ std::unordered_set<std::string>& ng_required_initializers) {
   const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer));
 
   std::vector<NodeIndex> unsupported_nodes_idx;
@@ -737,7 +736,7 @@ GetUnsupportedNodeIndices(const Provider_GraphViewer& graph_viewer, std::string 
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(ng_supported_ops, graph_viewer, node_idx, device)) {
       // Collect inputs that are initializers
-      graph_viewer.GetNode(node_idx)->ForEachDef([&ng_required_initializers, &graph_viewer](const Provider_NodeArg& node_arg, bool is_input) {
+      graph_viewer.GetNode(node_idx)->ForEachDef([&ng_required_initializers, &graph_viewer](const NodeArg& node_arg, bool is_input) {
               if(is_input && graph_viewer.GetAllInitializedTensors().count(node_arg.Name())) {
                 ng_required_initializers.insert(node_arg.Name());
               } }, true);
@@ -749,9 +748,9 @@ GetUnsupportedNodeIndices(const Provider_GraphViewer& graph_viewer, std::string 
   return unsupported_nodes_idx;
 }
 
-std::vector<std::unique_ptr<Provider_ComputeCapability>>
-GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string device_id) {
-  std::vector<std::unique_ptr<Provider_ComputeCapability>> result;
+std::vector<std::unique_ptr<ComputeCapability>>
+GetCapability_2021_1(const GraphViewer& graph_viewer, std::string device_id) {
+  std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;
   }
@@ -784,7 +783,7 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
     std::vector<std::string> outputs;
     //Fill inputs with names
     std::for_each(graph_viewer.GetInputs().begin(), graph_viewer.GetInputs().end(),
-                  [&inputs](const Provider_NodeArg* node_arg) { inputs.push_back(node_arg->Name()); });
+                  [&inputs](const NodeArg* node_arg) { inputs.push_back(node_arg->Name()); });
 
     /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
@@ -821,9 +820,7 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
             (output_data_type != onnx_dtype::TensorProto_DataType_FLOAT16))
           return result;
       } else if ((node->OpType() == "Greater") || (node->OpType() == "Less")) {
-
         if (device_id.find("MYRIAD") != std::string::npos) {
-
           auto input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
           auto input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
           auto output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -847,7 +844,7 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
 
     //Fill outputs with names
     std::for_each(graph_viewer.GetOutputs().begin(), graph_viewer.GetOutputs().end(),
-                  [&outputs](const Provider_NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
+                  [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
 
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
@@ -867,8 +864,8 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
         if (optype == "TopK" || optype == "NonZero") {
           modified_unsupported_nodes.push_back(node_idx);
         }
-        if(optype == "Gather"){
-          if(device_id.find("MYRIAD") != std::string::npos){
+        if (optype == "Gather") {
+          if (device_id.find("MYRIAD") != std::string::npos) {
             auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
             if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
               modified_unsupported_nodes.push_back(node_idx);
@@ -910,9 +907,8 @@ GetCapability_2021_1(const Provider_GraphViewer& graph_viewer, std::string devic
         if (optype == "Mul" || optype == "Transpose" || optype == "Unsqueeze" ||
             optype == "Cast" || optype == "Concat" || optype == "Gather" ||
             optype == "Div" || optype == "Sub" || optype == "Identity") {
-
-            if(optype == "Identity" && device_id.find("CPU") == std::string::npos)
-              continue;
+          if (optype == "Identity" && device_id.find("CPU") == std::string::npos)
+            continue;
 
           if ((optype == "Div" || optype == "Sub") && (device_id.find("MYRIAD") == std::string::npos && device_id.find("GPU") == std::string::npos))
             continue;

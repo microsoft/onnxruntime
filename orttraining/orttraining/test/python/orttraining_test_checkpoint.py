@@ -6,19 +6,11 @@ import subprocess
 import os
 import shutil
 import sys
-import torch
 from checkpoint._test_helpers import makedir
-
-def _single_run(execution_file, scenario, checkopint_dir):
-    assert subprocess.call([sys.executable, execution_file, '--scenario', scenario, '--checkpoint_dir', checkopint_dir]) == 0
-
-def _distributed_run(execution_file, scenario, checkopint_dir):
-    assert subprocess.call(['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, execution_file, '--scenario', scenario,  '--checkpoint_dir', checkopint_dir]) == 0
+from _test_commons import _single_run, _distributed_run
 
 checkpoint_dir = os.path.abspath('checkpoint/checkpoint_dir/')
 makedir(checkpoint_dir)
-
-ngpus = torch.cuda.device_count()
 
 # test workflow:
 # - there are a total of three files that are used for checkpointing tests:
@@ -55,21 +47,27 @@ ngpus = torch.cuda.device_count()
 
 save_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_save_checkpoint.py')
 load_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_load_checkpoint.py')
+aggregate_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_checkpoint_aggregation.py')
+optim_state_file = os.path.join('checkpoint', 'orttraining_test_load_optimizer_state.py')
 
 single_node_full_precision_path = os.path.join(checkpoint_dir, 'single_node', 'full_precision')
 single_node_mixed_precision_path = os.path.join(checkpoint_dir, 'single_node', 'mixed_precision')
 data_parallelism_full_precision_path = os.path.join(checkpoint_dir, 'data_parallelism', 'full_precision')
 data_parallelism_mixed_precision_path = os.path.join(checkpoint_dir, 'data_parallelism', 'mixed_precision')
-distributed_zero_full_precision_path = os.path.join(checkpoint_dir, 'distributed_zero', 'full_precision')
-distributed_zero_mixed_precision_path = os.path.join(checkpoint_dir, 'distributed_zero', 'mixed_precision')
+distributed_zero_full_precision_adam_path = os.path.join(checkpoint_dir, 'distributed_zero', 'full_precision', 'adam')
+distributed_zero_mixed_precision_adam_path = os.path.join(checkpoint_dir, 'distributed_zero', 'mixed_precision', 'adam')
+distributed_zero_full_precision_lamb_path = os.path.join(checkpoint_dir, 'distributed_zero', 'full_precision', 'lamb')
+distributed_zero_mixed_precision_lamb_path = os.path.join(checkpoint_dir, 'distributed_zero', 'mixed_precision', 'lamb')
 
 # save all checkpoint files (pre-checkpoint)
 _single_run(save_checkpoint_file, 'single_node_full_precision', single_node_full_precision_path)
 _single_run(save_checkpoint_file, 'single_node_mixed_precision', single_node_mixed_precision_path)
 _distributed_run(save_checkpoint_file, 'data_parallelism_full_precision', data_parallelism_full_precision_path)
 _distributed_run(save_checkpoint_file, 'data_parallelism_mixed_precision', data_parallelism_mixed_precision_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_full_precision', distributed_zero_full_precision_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_mixed_precision', distributed_zero_mixed_precision_path)
+_distributed_run(save_checkpoint_file, 'distributed_zero_full_precision_adam', distributed_zero_full_precision_adam_path)
+_distributed_run(save_checkpoint_file, 'distributed_zero_mixed_precision_adam', distributed_zero_mixed_precision_adam_path)
+_distributed_run(save_checkpoint_file, 'distributed_zero_full_precision_lamb', distributed_zero_full_precision_lamb_path)
+_distributed_run(save_checkpoint_file, 'distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
 
 # load checkpoint files (post-checkpoint)
 # going to single node trainer
@@ -81,10 +79,10 @@ _single_run(load_checkpoint_file, 'test_load_from_data_parallelism_full_precisio
 _single_run(load_checkpoint_file, 'test_load_from_data_parallelism_mixed_precision_into_single_node_full_precision', data_parallelism_mixed_precision_path)
 _single_run(load_checkpoint_file, 'test_load_from_data_parallelism_mixed_precision_into_single_node_mixed_precision', data_parallelism_mixed_precision_path)
 _single_run(load_checkpoint_file, 'test_load_from_data_parallelism_full_precision_into_single_node_mixed_precision', data_parallelism_full_precision_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_single_node_full_precision', distributed_zero_full_precision_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_single_node_full_precision', distributed_zero_mixed_precision_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_single_node_mixed_precision', distributed_zero_mixed_precision_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_single_node_mixed_precision', distributed_zero_full_precision_path)
+_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_single_node_full_precision', distributed_zero_full_precision_lamb_path)
+_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_single_node_full_precision', distributed_zero_mixed_precision_lamb_path)
+_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_single_node_mixed_precision', distributed_zero_mixed_precision_lamb_path)
+_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_single_node_mixed_precision', distributed_zero_full_precision_lamb_path)
 
 # going to data parallel trainer
 _distributed_run(load_checkpoint_file, 'test_load_from_single_node_full_precision_into_data_parallelism_full_precision', single_node_full_precision_path)
@@ -95,10 +93,10 @@ _distributed_run(load_checkpoint_file, 'test_load_from_data_parallelism_full_pre
 _distributed_run(load_checkpoint_file, 'test_load_from_data_parallelism_mixed_precision_into_data_parallelism_full_precision', data_parallelism_mixed_precision_path)
 _distributed_run(load_checkpoint_file, 'test_load_from_data_parallelism_mixed_precision_into_data_parallelism_mixed_precision', data_parallelism_mixed_precision_path)
 _distributed_run(load_checkpoint_file, 'test_load_from_data_parallelism_full_precision_into_data_parallelism_mixed_precision', data_parallelism_full_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_data_parallelism_full_precision', distributed_zero_full_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_data_parallelism_full_precision', distributed_zero_mixed_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_data_parallelism_mixed_precision', distributed_zero_mixed_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_data_parallelism_mixed_precision', distributed_zero_full_precision_path)
+_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_data_parallelism_full_precision', distributed_zero_full_precision_lamb_path)
+_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_data_parallelism_full_precision', distributed_zero_mixed_precision_lamb_path)
+_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_data_parallelism_mixed_precision', distributed_zero_mixed_precision_lamb_path)
+_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_data_parallelism_mixed_precision', distributed_zero_full_precision_lamb_path)
 
 # going to distributed zero trainer
 _distributed_run(load_checkpoint_file, 'test_load_from_single_node_full_precision_into_distributed_zero_full_precision', single_node_full_precision_path)
@@ -109,9 +107,21 @@ _distributed_run(load_checkpoint_file, 'test_load_from_data_parallelism_full_pre
 _distributed_run(load_checkpoint_file, 'test_load_from_data_parallelism_mixed_precision_into_distributed_zero_full_precision', data_parallelism_mixed_precision_path)
 _distributed_run(load_checkpoint_file, 'test_load_from_data_parallelism_mixed_precision_into_distributed_zero_mixed_precision', data_parallelism_mixed_precision_path)
 _distributed_run(load_checkpoint_file, 'test_load_from_data_parallelism_full_precision_into_distributed_zero_mixed_precision', data_parallelism_full_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_distributed_zero_full_precision', distributed_zero_full_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_distributed_zero_full_precision', distributed_zero_mixed_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_distributed_zero_mixed_precision', distributed_zero_mixed_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_distributed_zero_mixed_precision', distributed_zero_full_precision_path)
+_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_distributed_zero_full_precision', distributed_zero_full_precision_lamb_path)
+_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_distributed_zero_full_precision', distributed_zero_mixed_precision_lamb_path)
+_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_distributed_zero_mixed_precision', distributed_zero_mixed_precision_lamb_path)
+_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_distributed_zero_mixed_precision', distributed_zero_full_precision_lamb_path)
+
+# checkpoint aggregation tests
+_single_run(aggregate_checkpoint_file, 'test_aggregation_from_distributed_zero_full_precision_adam', distributed_zero_full_precision_adam_path)
+_single_run(aggregate_checkpoint_file, 'test_aggregation_from_distributed_zero_mixed_precision_adam', distributed_zero_mixed_precision_adam_path)
+_single_run(aggregate_checkpoint_file, 'test_aggregation_from_distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
+_single_run(aggregate_checkpoint_file, 'test_aggregation_from_distributed_zero_full_precision_lamb', distributed_zero_full_precision_lamb_path)
+
+# optimizer state loading into model-parallel tests
+_distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_full_precision_adam', distributed_zero_full_precision_adam_path)
+_distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_mixed_precision_adam', distributed_zero_mixed_precision_adam_path)
+_distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
+_distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_full_precision_lamb', distributed_zero_full_precision_lamb_path)
 
 shutil.rmtree(checkpoint_dir)
