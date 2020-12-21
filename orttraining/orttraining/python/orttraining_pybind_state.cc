@@ -79,9 +79,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   // When DxHxP != the total number of ranks, we try adjusting D so that DxHxP == the total number of ranks.
   if (parameters.world_size != parameters.data_parallel_size * parameters.horizontal_parallel_size * parameters.pipeline_parallel_size) {
     ORT_ENFORCE(parameters.world_size % parameters.horizontal_parallel_size * parameters.pipeline_parallel_size == 0,
-                "D, H, P sizes are incorrect. To enable automatic correction, total number of ranks must be a multiple of HxP.");
+                "D, H, P sizes are incorrect. To enable automatic correction, total number of ranks must be a divisible by HxP.");
 
-    auto new_data_parallel_size = parameters.world_size / (parameters.horizontal_parallel_size * parameters.pipeline_parallel_size);
+    const auto new_data_parallel_size = parameters.world_size / (parameters.horizontal_parallel_size * parameters.pipeline_parallel_size);
     parameters.data_parallel_size = new_data_parallel_size;
 
     const std::string msg = "Cannot distribute " + std::to_string(parameters.world_size) + " ranks for distributed computation with D=" + std::to_string(parameters.data_parallel_size) +

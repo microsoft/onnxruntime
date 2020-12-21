@@ -369,15 +369,15 @@ void NcclService::Terminate() {
     cv_.wait(lock, [this] { return schedule_.empty() || total_time_ > 0 && time_ == 0; });
   }
 
-  int is_mpi_finalized = 0;
-  MPI_CHECK(MPI_Finalized(&is_mpi_finalized));
-  if (!is_mpi_finalized) {
-    MPI_CHECK(MPI_Finalize());
-  }
-
   CUDA_CALL(cudaStreamDestroy(stream_));
 
   is_running_ = false;
+  is_planned_ = false;
+  time_ = 0;
+  total_time_ = 0;
+
+  group_status_.clear();
+  schedule_.clear();
   worker_.join();
   NCCL_CALL(ncclCommDestroy(comm_));
 }
