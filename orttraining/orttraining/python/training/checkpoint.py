@@ -256,6 +256,16 @@ def _aggregate_trainer_options(rank_state_dict, state_dict):
     state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = \
         rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
 
+def _to_pytorch_format(state_dict):
+    """Convert ORT state dictionary schema (hierarchical structure) to PyTorch state dictionary schema (flat structure)"""
+
+    pytorch_state_dict = {}
+    for model_state_key, model_state_value in \
+        state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()].items():
+        # convert numpy array to a torch tensor
+        pytorch_state_dict[model_state_key] = torch.tensor(model_state_value)
+    return pytorch_state_dict
+
 def aggregate_checkpoints(paths, pytorch_format=True):
     """Aggregate checkpoint files and return a single state dictionary
 
@@ -337,7 +347,7 @@ def aggregate_checkpoints(paths, pytorch_format=True):
 
     # return a flat structure for PyTorch model in case pytorch_format is True
     # else return the hierarchical structure for ORTTrainer
-    return state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()] if pytorch_format else state_dict
+    return _to_pytorch_format(state_dict) if pytorch_format else state_dict
 
 ################################################################################
 # Helper functions
