@@ -3379,23 +3379,7 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
 }
 
 void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node) {
-  const auto* func_meta_def = sub_graph.GetMetaDef();
-  ORT_ENFORCE(nullptr != func_meta_def);
-
-  std::unordered_map<std::string, int> input_indexes;
-  std::unordered_map<std::string, int> output_indexes;
-
-  int cur_idx = 0;
-  for (auto& arg_name : func_meta_def->inputs) {
-    input_indexes[arg_name] = cur_idx++;
-  }
-
-  cur_idx = 0;
-  for (auto& arg_name : func_meta_def->outputs) {
-    output_indexes[arg_name] = cur_idx++;
-  }
-
-  auto new_node_idx = fused_node.Index();
+  auto fused_node_idx = fused_node.Index();
 
   // Remove nodes that were fused
   for (auto node_index : sub_graph.nodes) {
@@ -3413,9 +3397,11 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
       auto dst_idx = input_edge.GetDstArgIndex();
 
       // if this input is an input of the fused node add an edge for that
-      auto it = input_indexes.find(node->InputDefs()[dst_idx]->Name());
-      if (it != input_indexes.cend()) {
-        AddEdge(producer_idx, new_node_idx, src_idx, it->second);
+      const auto& input_arg_name = producer.OutputDefs()[src_idx]->Name();
+      for (int input_idx_to_fused_node = 0;
+        input_idx_to_fused_node < (int)fused_node.InputDefs().size(); input_idx_to_fused_node++) {
+        if  (fused_node.InputDefs()[input_idx_to_fused_node]->Name() == input_arg_name)
+          AddEdge(producer_idx, fused_node_idx, src_idx, input_idx_to_fused_node);
       }
 
       RemoveEdge(producer_idx, node_index, src_idx, dst_idx);
@@ -3430,9 +3416,12 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
       auto dst_idx = output_edge.GetDstArgIndex();
 
       // if this output is an output of the fused node add an edge for that
-      auto it = output_indexes.find(node->OutputDefs()[src_idx]->Name());
-      if (it != output_indexes.cend()) {
-        AddEdge(new_node_idx, consumer_idx, it->second, dst_idx);
+      const auto& output_arg_name = dst_idx < (int)consumer.InputDefs().size() ?
+        consumer.InputDefs()[dst_idx]->Name() : consumer.ImplicitInputDefs()[dst_idx - consumer.InputDefs().size()]->Name();
+      for (int output_idx_from_fused_node = 0;
+        output_idx_from_fused_node < (int)fused_node.OutputDefs().size(); output_idx_from_fused_node++) {
+        if  (fused_node.OutputDefs()[output_idx_from_fused_node]->Name() == output_arg_name)
+          AddEdge(fused_node_idx, consumer_idx, output_idx_from_fused_node, dst_idx);
       }
 
       RemoveEdge(node_index, consumer_idx, src_idx, dst_idx);
