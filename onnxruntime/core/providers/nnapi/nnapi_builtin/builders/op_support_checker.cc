@@ -228,7 +228,7 @@ bool BinaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 }
 
 bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                               const OpSupportCheckParams& /* params */) const {
+                                               const OpSupportCheckParams& params) const {
   const auto& op_type(node.OpType());
   const auto input_defs(node.InputDefs());
   bool op_is_qlinear = op_type == "QLinearAdd";
@@ -265,7 +265,7 @@ bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
 
     // All scale/zero points are initializer scalars
     // a/b/y_scale
-    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
+    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
       return false;
 
     // a/b/y_zero_point
@@ -599,7 +599,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     }
 
     // a/b/y_scale
-    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
+    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
       return false;
 
     // a/b/y_zero_point
@@ -860,7 +860,7 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
       // All scale/zero points are initializer scalars
       // a/b/y_scale
-      if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
+      if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
         return false;
 
       // a/b/y_zero_point
@@ -1003,7 +1003,7 @@ class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
 };
 
 bool QuantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                                       const OpSupportCheckParams& /* params */) const {
+                                                       const OpSupportCheckParams& params) const {
   const auto input_defs(node.InputDefs());
   const auto output_defs(node.OutputDefs());
 
@@ -1018,7 +1018,7 @@ bool QuantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSe
     return false;
   }
 
-  if (!HasValidQuantizationScales(initializers, node, {1}))
+  if (!HasValidQuantizationScales(initializers, node, {1}, params))
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
@@ -1045,9 +1045,9 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
 };
 
 bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                                         const OpSupportCheckParams& /* params */) const {
+                                                         const OpSupportCheckParams& params) const {
   const auto input_defs(node.InputDefs());
-  if (!HasValidQuantizationScales(initializers, node, {1}))
+  if (!HasValidQuantizationScales(initializers, node, {1}, params))
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input

@@ -34,7 +34,7 @@ static bool CheckBiasShape(const TensorShapeProto* bias_shape) {
 /**
 MatMulIntegerToFloatFusion will fuse subgraph like below into MatMulIntegerToFloat:
  
- A   A_Zero B B_Zero  A_Scale  B_Scale  Bias (Const, Optional)
+ A   A_Zero B B_Zero  A_Scale) B_Scale  Bias (Const, Optional)
   \    |    |    /        \      /             |
    \   |    |   /          \    /              |
     \  |    |  /            \  /               |  
@@ -81,13 +81,6 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
 
     const Node* p_mul_node_right = graph_utils::FirstParentByType(mul_node, "Mul");
     if (p_mul_node_right == nullptr) {
-      continue;
-    }
-
-    // A_Scale is scalar and B_Scale is scalar or 1D tensor
-    auto mul_node_input_defs = p_mul_node_right->InputDefs();
-    if (!optimizer_utils::IsScalar(*mul_node_input_defs[0]) ||
-        !optimizer_utils::IsScalar(*mul_node_input_defs[1])) {
       continue;
     }
 

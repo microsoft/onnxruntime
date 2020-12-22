@@ -411,8 +411,6 @@ def validate(all_ref_outputs, all_outputs, decimal):
     logger.info('Reference {} results.'.format(len(all_ref_outputs)))
     logger.info('Predicted {} results.'.format(len(all_outputs)))
     logger.info('decimal {}'.format(decimal))
-    # print(np.array(all_ref_outputs).shape)
-    # print(np.array(all_outputs).shape)
 
     try:
         for i in range(len(all_outputs)):
@@ -422,8 +420,6 @@ def validate(all_ref_outputs, all_outputs, decimal):
             for j in range(len(outputs)):
                 ref_output = ref_outputs[j]
                 output = outputs[j]
-                # print(ref_output)
-                # print(output)
 
                 # Compare the results with reference outputs up to x decimal places
                 for ref_o, o in zip(ref_output, output):
@@ -782,10 +778,10 @@ def parse_models_info_from_directory(path, models):
             parse_models_info_from_directory(os.path.join(path, dir), models)
     
 
-def parse_models_info_from_file(default_dir, path, models):
+def parse_models_info_from_file(root_dir, path, models):
 
     # default working directory
-    root_working_directory = default_dir
+    root_working_directory = root_dir
 
     with open(path) as f:
         data = json.load(f)
@@ -1228,51 +1224,52 @@ def output_status(results, csv_filename):
                         cpu,
                         cuda + " fp32",
                         trt + " fp32",
-                        "Standalone TRT fp32",
+                        standalone_trt + " fp32",
                         cuda + " fp16",
                         trt + " fp16",
-                        "Standalone TRT fp16"
+                        standalone_trt + "fp16"
                         ]
+
         csv_writer = csv.writer(csv_file)
 
         if need_write_header:
             csv_writer.writerow(column_names)
     
-        cpu_val = ""
-        cuda_fp32_val = ""
-        trt_fp32_val = ""
-        standalone_fp32_val = ""
-        cuda_fp16_val = ""
-        trt_fp16_val = ""
-        standalone_fp16_val = ""
+        cpu_status = ""
+        cuda_fp32_status = ""
+        trt_fp32_status = ""
+        standalone_fp32_status = ""
+        cuda_fp16_status = ""
+        trt_fp16_status = ""
+        standalone_fp16_status = ""
         
         for model_name, ep_dict in results.items():
             for ep, status in ep_dict.items():
                 if ep == cpu: 
-                    cpu_val = status 
+                    cpu_status = status 
                 elif ep == cuda: 
-                    cuda_fp32_val = status
+                    cuda_fp32_status = status
                 elif ep == trt: 
-                    trt_fp32_val = status
+                    trt_fp32_status = status
                 elif ep == standalone_trt:
-                    standalone_fp32_val = status
+                    standalone_fp32_status = status
                 elif ep == cuda_fp16: 
-                    cuda_fp16_val = status
+                    cuda_fp16_status = status
                 elif ep == trt_fp16:
-                    trt_fp16_val = status
+                    trt_fp16_status = status
                 elif ep == standalone_trt_fp16: 
-                    standalone_fp16_val = status
+                    standalone_fp16_status = status
                 else: 
                     continue
                     
             row = [model_name,
                    cpu, 
-                   cuda_fp32_val, 
-                   trt_fp32_val, 
-                   standalone_fp32_val, 
-                   cuda_fp16_val, 
-                   trt_fp16_val, 
-                   standalone_fp16_val]
+                   cuda_fp32_status, 
+                   trt_fp32_status, 
+                   standalone_fp32_status, 
+                   cuda_fp16_status, 
+                   trt_fp16_status, 
+                   standalone_fp16_status]
             csv_writer.writerow(row)
 
 def output_latency(results, csv_filename):
@@ -1488,7 +1485,7 @@ def str2bool(v):
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-d", "--default_dir", required=False, default="~/", help="Perf folder path")
+    parser.add_argument("-d", "--working_dir", required=False, default="./", help="Perf folder path")
     
     parser.add_argument("-m", "--model_source", required=False, default="model_list.json", help="Model source: (1) model list file (2) model directory.")
 
@@ -1531,7 +1528,7 @@ def setup_logger(verbose):
 def parse_models_helper(args, models): 
     if ".json" in args.model_source:
         logger.info("Parsing model information from file ...")
-        parse_models_info_from_file(args.default_dir, args.model_source, models)
+        parse_models_info_from_file(args.working_dir, args.model_source, models)
     else:
         logger.info("Parsing model information from directory ...")
         parse_models_info_from_directory(args.model_source, models)

@@ -6,19 +6,11 @@ import subprocess
 import os
 import shutil
 import sys
-import torch
 from checkpoint._test_helpers import makedir
-
-def _single_run(execution_file, scenario, checkopint_dir):
-    assert subprocess.call([sys.executable, execution_file, '--scenario', scenario, '--checkpoint_dir', checkopint_dir]) == 0
-
-def _distributed_run(execution_file, scenario, checkopint_dir):
-    assert subprocess.call(['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, execution_file, '--scenario', scenario,  '--checkpoint_dir', checkopint_dir]) == 0
+from _test_commons import _single_run, _distributed_run
 
 checkpoint_dir = os.path.abspath('checkpoint/checkpoint_dir/')
 makedir(checkpoint_dir)
-
-ngpus = torch.cuda.device_count()
 
 # test workflow:
 # - there are a total of three files that are used for checkpointing tests:
@@ -57,6 +49,7 @@ save_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_save_checkpo
 load_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_load_checkpoint.py')
 aggregate_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_checkpoint_aggregation.py')
 optim_state_file = os.path.join('checkpoint', 'orttraining_test_load_optimizer_state.py')
+backend_api_file = os.path.join('checkpoint', 'orttraining_test_backend_api.py')
 
 single_node_full_precision_path = os.path.join(checkpoint_dir, 'single_node', 'full_precision')
 single_node_mixed_precision_path = os.path.join(checkpoint_dir, 'single_node', 'mixed_precision')
@@ -131,5 +124,9 @@ _distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_full_pre
 _distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_mixed_precision_adam', distributed_zero_mixed_precision_adam_path)
 _distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
 _distributed_run(optim_state_file, 'test_optim_load_to_distributed_zero_full_precision_lamb', distributed_zero_full_precision_lamb_path)
+
+# backend api tests
+_single_run(backend_api_file, 'test_single_node_full_precision_lamb', single_node_full_precision_path)
+_distributed_run(backend_api_file, 'test_distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
 
 shutil.rmtree(checkpoint_dir)

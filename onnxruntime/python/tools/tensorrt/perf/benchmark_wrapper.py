@@ -49,7 +49,6 @@ def main():
             if args.running_mode == "validate":
                 p = subprocess.run(["python3",
                                     "benchmark.py",
-                                    "-d", args.default_dir,
                                     "-r", args.running_mode,
                                     "-m", model_list_file,
                                     "--ep", ep,
@@ -60,7 +59,6 @@ def main():
             elif args.running_mode == "benchmark":
                 p = subprocess.run(["python3",
                                     "benchmark.py",
-                                    "-d", args.default_dir,
                                     "-r", args.running_mode,
                                     "-m", model_list_file,
                                     "--ep", ep,
