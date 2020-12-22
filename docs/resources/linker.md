@@ -25,13 +25,26 @@ reliable way to override a symbol(e.g. malloc/free) which is already provided at
 other words, some code are not suitable to be compiled to a static library.
 
 
+##When are global objects constructed and destructed by Visual C++? ##
+
+| When does it run?	  | Constructor  | Destructor  |
+|---|---|---|
+|magic statics in EXE	   |  the first use	  | Just before before any atexit calls or static object destructors  |
+|magic statics in DLL	   |  the first use	  | (TODO)|
+|Global object in EXE	   |  C runtime startup code	  | When processing atexit calls   |
+|Global object in DLL	   | C runtime DLL_PROCESS_ATTACH prior to Dll­Main	  |  C runtime DLL_PROCESS_DETACH after Dll­Main returns
+  |
+
+TODO: examine the variables without a non-trivial constructor.
+
 ## Delay Loading ##
 [Delay Loading](https://docs.microsoft.com/en-us/cpp/build/reference/linker-support-for-delay-loaded-dlls?view=msvc-160) 
 is only available on Windows.
 
 Q: If A.dll depends on B.dll, what is required to delay load B.dll?
 
-A: [If the initialization and deinitialization of A.dll totally doesn't depend on B.dll.](https://devblogs.microsoft.com/oldnewthing/20190718-00/?p=102719)
+A: [If the initialization and deinitialization of A.dll totally doesn't depend on B.dll.](https://devblogs.microsoft.com/oldnewthing/20190718-00/?p=102719).
+Also, please read [Constraints of Delay Loading DLLs](https://docs.microsoft.com/en-us/cpp/build/reference/constraints-of-delay-loading-dlls?view=msvc-160).
 
 Q: Why can't we delay load the CUDA DLLs?
 
