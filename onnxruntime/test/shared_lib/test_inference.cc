@@ -353,8 +353,10 @@ struct SliceCustomOpKernel {
                      ort_.GetTensorMutableData<double>(output));
         break;
       default:
+        ort_.ReleaseTensorTypeAndShapeInfo(input_X_info);
         ORT_THROW("Unsupported input type: ", input_X_type);
     }
+    ort_.ReleaseTensorTypeAndShapeInfo(input_X_info);
   }  // Compute
 
  private:
