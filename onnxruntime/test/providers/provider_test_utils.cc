@@ -434,8 +434,36 @@ void OpTester::AddNodes(
   // default behavior is to create a single Node for the op being tested, with
   // node inputs/outputs
   // being 1:1 with graph inputs/outputs.
-  auto& node = graph.AddNode("node1", op_, op_, graph_input_defs,
-                             graph_output_defs, nullptr, domain_);
+
+  std::vector<NodeArg*> buffered_input_defs;
+  std::vector<NodeArg*> buffered_output_defs;
+  if (enable_buffered_input_outputs_) {
+    for (NodeArg* input_def : graph_input_defs) {
+      NodeArg& buffered_input = graph.GetOrCreateNodeArg(input_def->Name() + "_buffered", input_def->TypeAsProto());
+
+      std::vector<onnxruntime::NodeArg*> inputs = {input_def};
+      std::vector<onnxruntime::NodeArg*> outputs = {&buffered_input};
+
+      graph.AddNode(buffered_input.Name(), "Identity", "", inputs, outputs, nullptr, kOnnxDomain);
+      buffered_input_defs.push_back(&buffered_input);
+    }
+
+    for (NodeArg* output_def : graph_output_defs) {
+      NodeArg& buffered_output = graph.GetOrCreateNodeArg(output_def->Name() + "_buffered", output_def->TypeAsProto());
+
+      std::vector<onnxruntime::NodeArg*> inputs = {&buffered_output};
+      std::vector<onnxruntime::NodeArg*> outputs = {output_def};
+
+      graph.AddNode(buffered_output.Name(), "Identity", "", inputs, outputs, nullptr, kOnnxDomain);
+      buffered_output_defs.push_back(&buffered_output);
+    }
+  } else {
+    buffered_input_defs = graph_input_defs;
+    buffered_output_defs = graph_output_defs;
+  }
+
+  auto& node = graph.AddNode("node1", op_, op_, buffered_input_defs,
+                             buffered_output_defs, nullptr, domain_);
 
   // Add the attributes if any
   for (auto& add_attribute_fn : add_attribute_funcs)
@@ -469,6 +497,22 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
     // 4. name
     tensor_proto.set_name(data.def_.Name());
     graph.AddInitializedTensor(tensor_proto);
+  }
+}
+
+void OpTester::AddBufferedInputOutput() {
+  enable_buffered_input_outputs_ = true;
+}
+
+void OpTester::AddExtraDomainToVersion(const std::unordered_map<std::string, int>& extra_domain_to_version) {
+  extra_domain_to_version_ = extra_domain_to_version;
+
+  // override onnx opset version to latest if opset is < 0
+  auto it = extra_domain_to_version_.find(kOnnxDomain);
+  if (it != extra_domain_to_version_.end() && it->second < 0) {
+    int latest_onnx_version =
+        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
+    it->second = latest_onnx_version;
   }
 }
 
@@ -694,7 +738,7 @@ void OpTester::Run(
 
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
-    auto p_model = !cache_enabled ? BuildGraph() : cached_model_;
+    auto p_model = !cache_enabled ? BuildGraph(extra_domain_to_version_) : cached_model_;
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();
@@ -747,8 +791,7 @@ void OpTester::Run(
         kAclExecutionProvider,
         kArmNNExecutionProvider,
         kNnapiExecutionProvider,
-        kRocmExecutionProvider
-    };
+        kRocmExecutionProvider};
 
     bool has_run = false;
 
@@ -844,8 +887,7 @@ void OpTester::Run(
               }
             }
 
-            if (!valid)
-            {
+            if (!valid) {
               std::cerr << "No kernel registered from EP: " << provider_type << "for node: " << node.OpType() << std::endl;
               break;
             }

@@ -436,6 +436,10 @@ class OpTester {
 
   std::vector<MLValue> GetFetches() { return fetches_; }
 
+  void AddBufferedInputOutput();
+
+  void AddExtraDomainToVersion(const std::unordered_map<std::string, int>& extra_domain_to_version);
+
   std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
 
   // storing p_model as cache
@@ -506,6 +510,10 @@ class OpTester {
                                     const std::string& provider_type);
 
   const char* op_;
+
+  bool enable_buffered_input_outputs_ = false;
+  std::unordered_map<std::string, int> extra_domain_to_version_;
+
   std::vector<Data> input_data_;
   std::vector<Data> output_data_;
   std::vector<OrtValue> fetches_;
