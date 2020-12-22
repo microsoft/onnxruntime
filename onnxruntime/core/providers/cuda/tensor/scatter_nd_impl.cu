@@ -64,7 +64,7 @@ Status ScatterNDImpl(
     return Status::OK();
 
   // Parallelize on number of indices
-  int blocksPerGrid = (int)(ceil(static_cast<float>(num_indices) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(num_indices) / GridDim::maxThreadsPerBlock));
 
   switch (element_size) {
     case sizeof(int8_t):

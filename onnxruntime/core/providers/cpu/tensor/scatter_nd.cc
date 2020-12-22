@@ -24,7 +24,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
                                      const TensorShape& indice_shape,
-                                     const TensorShape& update_shape) const {
+                                     const TensorShape& update_shape) {
   auto input_rank = input_shape.NumDimensions();
   auto indice_rank = indice_shape.NumDimensions();
   auto update_rank = update_shape.NumDimensions();
