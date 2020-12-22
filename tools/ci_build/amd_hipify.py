@@ -105,6 +105,7 @@ provider_excluded_files = [
                 'math/matmul_integer.cu',
                 'math/matmul_integer.cuh',
                 'math/matmul_integer.h',
+                'math/softmax_impl.cu',
                 'math/softmax.cc',
                 'math/topk.cc',
                 'math/topk.h',
@@ -235,8 +236,8 @@ provider_excluded_files = [
 
 training_ops_excluded_files = [
                     'activation/activations_grad.cc',
-                    'collective/horovod_kernels.cc',
-                    'collective/horovod_kernels.h',
+                    'collective/adasum_kernels.cc',
+                    'collective/adasum_kernels.h',
                     'collective/nccl_common.cc',
                     'collective/ready_event.cc',
                     'collective/ready_event.h',
@@ -260,6 +261,7 @@ training_ops_excluded_files = [
                     'math/scale.cc',
                     'math/scale.cu',
                     'math/scale.h',
+                    'math/softmax_grad_impl.cu',
                     'math/softmax_grad.cc',
                     'nn/batch_norm_grad.cc',
                     'nn/batch_norm_grad.h',

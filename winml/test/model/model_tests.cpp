@@ -6,6 +6,7 @@
 #include "onnxruntime_cxx_api.h"
 #include "StringHelpers.h"
 #include "skip_model_tests.h"
+#include "compare_feature_value.h"
 
 #ifndef BUILD_GOOGLE_TEST
 #error Must use googletest for value-parameterized tests
@@ -14,6 +15,7 @@
 using namespace onnxruntime::test;
 using namespace winml;
 using namespace onnxruntime;
+using namespace winrt::Windows::Foundation::Collections;
 
 namespace WinML {
 // Global needed to keep the actual ITestCase alive while the tests are going on. Only ITestCase* are used as test parameters.
@@ -56,33 +58,43 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
   }
 
   void CompareEvaluationResults(LearningModelEvaluationResult& results,
-                                std::unordered_map<std::string, Ort::Value>& expectedOutputFeeds) {
+                                std::unordered_map<std::string,
+                                Ort::Value>& expectedOutputFeeds,
+                                const IVectorView<ILearningModelFeatureDescriptor>& outputFeatureDescriptors) {
     for (const auto& [name, value] : expectedOutputFeeds) {
       // Extract the output buffer from the evaluation output
       std::wstring outputName = _winml::Strings::WStringFromString(name);
-      auto actualOutputTensorValue = results.Outputs().Lookup(outputName).as<ITensorNative>();
-      BYTE* actualData;
-      uint32_t actualSizeInBytes;
-      WINML_EXPECT_HRESULT_SUCCEEDED(actualOutputTensorValue->GetBuffer(&actualData, &actualSizeInBytes));
+      
+      // find the output descriptor
+      ILearningModelFeatureDescriptor outputDescriptor = nullptr;
+      for (const auto& descriptor : outputFeatureDescriptors) {
+        if (descriptor.Name() == outputName) {
+          outputDescriptor = descriptor;
+          break;
+        }
+      }
+      if (outputDescriptor == nullptr) {
+        throw std::invalid_argument("Expected protobuf output name doesn't match the output names in the model.");
+      }
 
-      // Create a copy of Ort::Value from evaluation output
-      auto expectedShapeAndTensorType = Ort::TensorTypeAndShapeInfo{nullptr};
-      auto memoryInfo = Ort::MemoryInfo{nullptr};
-      WINML_EXPECT_NO_THROW(expectedShapeAndTensorType = value.GetTensorTypeAndShapeInfo());
-      WINML_EXPECT_NO_THROW(memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault));
-      Ort::Value actualOutput = Ort::Value{nullptr};
-      WINML_EXPECT_NO_THROW(
-          actualOutput = Ort::Value::CreateTensor(
-              memoryInfo,
-              actualData,
-              actualSizeInBytes,
-              expectedShapeAndTensorType.GetShape().data(),
-              expectedShapeAndTensorType.GetShape().size(),
-              expectedShapeAndTensorType.GetElementType()));
-
-      // Use the expected and actual OrtValues to compare
-      std::pair<COMPARE_RESULT, std::string> ret = CompareOrtValue(*actualOutput, *value, m_perSampleTolerance, m_relativePerSampleTolerance, m_postProcessing);
-      WINML_EXPECT_EQUAL(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
+      if (outputDescriptor.Kind() == LearningModelFeatureKind::Tensor) {
+        auto actualOutputTensorValue = results.Outputs().Lookup(outputName).as<ITensor>();
+        Ort::Value actualOutput = OrtValueHelpers::CreateOrtValueFromITensor(actualOutputTensorValue);
+        // Use the expected and actual OrtValues to compare
+        std::pair<COMPARE_RESULT, std::string> ret = CompareOrtValue(*actualOutput, *value, m_perSampleTolerance, m_relativePerSampleTolerance, m_postProcessing);
+        WINML_EXPECT_EQUAL(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
+      } else if (outputDescriptor.Kind() == LearningModelFeatureKind::Sequence) {
+        auto sequenceOfMapsStringToFloat = results.Outputs().Lookup(outputName).try_as<IVectorView<IMap<winrt::hstring, float>>>();
+        if (sequenceOfMapsStringToFloat != nullptr) {
+          WINML_EXPECT_TRUE(CompareFeatureValuesHelper::CompareSequenceOfMapsStringToFloat(
+              sequenceOfMapsStringToFloat,
+              value,
+              m_perSampleTolerance,
+              m_relativePerSampleTolerance));
+        } else {
+          throw winrt::hresult_not_implemented(L"This particular type of sequence output hasn't been handled yet.");
+        }
+      }
     }
   }
 };
@@ -113,7 +125,7 @@ TEST_P(ModelTest, Run) {
     WINML_EXPECT_NO_THROW(m_testCase->LoadTestData(i, outputHolder, outputFeeds, false));
 
     // compare results
-    CompareEvaluationResults(results, outputFeeds);
+    CompareEvaluationResults(results, outputFeeds, model.OutputFeatures());
   }
 }
 

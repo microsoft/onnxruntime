@@ -16,7 +16,7 @@ from onnxruntime.training import _utils, amp, optim, orttrainer, TrainStepInfo,\
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 
-from orttraining_test_orttrainer_frontend import _load_pytorch_transformer_model
+from _test_commons import _load_pytorch_transformer_model
 
 import _test_helpers
 

@@ -9,10 +9,11 @@ from functools import partial
 import numpy as np
 
 import onnxruntime as ort
-from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
+from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions, _checkpoint_storage
 from .model_desc_validation import _ORTTrainerModelDesc
 
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
 
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
@@ -41,7 +42,6 @@ class TrainStepInfo(object):
                 print(f'Yay, all gradients are finite at {step} step!')
 
     """
-
     def __init__(self, optimizer_config, all_finite=True, fetches=[], optimization_step=0, step=0):
         assert isinstance(optimizer_config, optim._OptimizerConfig),\
             "optimizer_config must be a optim._OptimizerConfig"
@@ -120,7 +120,6 @@ class ORTTrainer(object):
                                             alpha=0.9, beta=0.999)
             ort_trainer = ORTTrainer(model, model_desc, optim_config, loss_fn)
     """
-
     def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
         # Basic validation
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
@@ -148,7 +147,7 @@ class ORTTrainer(object):
                 "'loss_fn' must be either 'None' or 'torch.nn.Module'"
             self._torch_model = model
             self.loss_fn = loss_fn
-            # TODO: Subject to change after checkpoint redesign
+            # TODO: Remove when experimental checkpoint functions are removed.
             self._torch_state_dict_keys = list(model.state_dict().keys())
         elif isinstance(model, onnx.ModelProto):
             assert loss_fn is None, "'loss_fn' must not be specified when 'model' is an ONNX model"
@@ -195,9 +194,8 @@ class ORTTrainer(object):
                         break
                 assert dtype is not None, f"ONNX model with unknown output type ({o_desc.name})"
 
-        # TODO: Subject to change after checkpoint redesign
+        # TODO: Remove when experimental checkpoint functions are removed.
         self._state_dict = {}
-        self._optim_state_dict = {}
 
         self._train_step_info = TrainStepInfo(self.optim_config)
         self._training_session = None
@@ -215,8 +213,7 @@ class ORTTrainer(object):
             ordered :py:obj:`list` with model outputs as described by :py:attr:`.ORTTrainer.model_desc`
         """
         # Get data. CombineTorchModelLossFn takes label as last input and outputs loss first
-        sample_input = self._prepare_model_input(self.model_desc.inputs,
-                                                 None, None, *args, **kwargs)
+        sample_input = self._prepare_model_input(self.model_desc.inputs, None, None, *args, **kwargs)
 
         # Export model to ONNX
         if self._onnx_model is None:
@@ -235,7 +232,7 @@ class ORTTrainer(object):
 
         # Normalize input
         if not isinstance(sample_input, (list, tuple)):
-            sample_input = (sample_input,)
+            sample_input = (sample_input, )
 
         # RunOptions
         run_options = ort.RunOptions()
@@ -243,16 +240,12 @@ class ORTTrainer(object):
         run_options.training_mode = False
 
         # Run a eval step and return
-        session_run_results = self._training_session_run_helper(False,
-                                                                sample_input,
-                                                                inputs_desc,
-                                                                outputs_desc,
+        session_run_results = self._training_session_run_helper(False, sample_input, inputs_desc, outputs_desc,
                                                                 run_options)
 
         # Output must be returned in the same order as defined in the model description
         results = [session_run_results[o_desc.name] for o_desc in outputs_desc]
-        return results[0] if len (results) == 1 else results
-
+        return results[0] if len(results) == 1 else results
 
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
@@ -268,8 +261,9 @@ class ORTTrainer(object):
             ValueError: raised when `path` is not valid path
         """
         if not self._training_session:
-            warnings.warn("Training session is not initialized yet. "
-                                 "'train_step' or 'eval_step' methods must be executed at least once before calling 'save_as_onnx()'.")
+            warnings.warn(
+                "Training session is not initialized yet. "
+                "'train_step' or 'eval_step' methods must be executed at least once before calling 'save_as_onnx()'.")
             return
         state_tensors = self._training_session.get_state()
         self._update_onnx_model_initializers(state_tensors)
@@ -316,12 +310,15 @@ class ORTTrainer(object):
             inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
         _inference_outs = _inference_sess.run(None, inf_inputs)
         for torch_item, ort_item in zip(self.torch_sample_outputs, _inference_outs):
-            assert_allclose(torch_item, ort_item, rtol=1e-2, atol=1e-6,
+            assert_allclose(torch_item,
+                            ort_item,
+                            rtol=1e-2,
+                            atol=1e-6,
                             err_msg="Mismatch between outputs of PyTorch model and exported ONNX model. "
-                                    "Note that different backends may exhibit small computational differences."
-                                    "If this is within acceptable margin, or if there is random generator "
-                                    "in the model causing inevitable mismatch, you can proceed training by "
-                                    "setting the flag debug.check_model_export to False.")
+                            "Note that different backends may exhibit small computational differences."
+                            "If this is within acceptable margin, or if there is random generator "
+                            "in the model causing inevitable mismatch, you can proceed training by "
+                            "setting the flag debug.check_model_export to False.")
 
     def train_step(self, *args, **kwargs):
         r"""Train step method
@@ -345,7 +342,6 @@ class ORTTrainer(object):
             # Debug Model Export if indicated
             if self.options.debug.check_model_export:
                 self._check_model_export(sample_input)
-
 
         # Prepare inputs+lr and output descriptions
         inputs_desc = self._model_desc_inputs_with_lr
@@ -390,11 +386,10 @@ class ORTTrainer(object):
 
         # Normalize input
         if not isinstance(args, (list, tuple)):
-            args = (args,)
+            args = (args, )
 
         # Run a train step and return
-        session_run_results = self._training_session_run_helper(True, input, inputs_desc,
-                                                                outputs_desc, run_options)
+        session_run_results = self._training_session_run_helper(True, input, inputs_desc, outputs_desc, run_options)
         if mixed_precision_without_fetches:
             # After session run with all_fp32_gradients_finite, we need to clear the training I/O binding's output
             # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
@@ -418,7 +413,7 @@ class ORTTrainer(object):
             results = [session_run_results[o_desc] for o_desc in self._train_step_info.fetches]
         else:
             results = [session_run_results[o_desc.name] for o_desc in self.model_desc.outputs]
-        return results[0] if len (results) == 1 else results
+        return results[0] if len(results) == 1 else results
 
     def _convert_torch_model_loss_fn_to_onnx(self, inputs, device):
         # Dynamic axes
@@ -443,9 +438,12 @@ class ORTTrainer(object):
         if isinstance(inputs, dict):
             sample_inputs = [inputs[k.name_].to(device=device) for k in self.model_desc.inputs]
         elif isinstance(inputs, (list, tuple)):
-            sample_inputs = [input.to(device=device) for i, input in enumerate(inputs) if i < len(self.model_desc.inputs)]
+            sample_inputs = [
+                input.to(device=device) for i, input in enumerate(inputs) if i < len(self.model_desc.inputs)
+            ]
         else:
-            raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
+            raise RuntimeError(
+                "Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
 
         # PyTorch ONNX exporter does not match argument names
         # This is an issue because the ONNX graph depends on all inputs to be specified
@@ -463,8 +461,7 @@ class ORTTrainer(object):
 
         # Label from loss_fn goes after model input
         if self.loss_fn:
-            ordered_input_list = [*ordered_input_list,
-                                list(sig_loss.parameters.keys())[1]]
+            ordered_input_list = [*ordered_input_list, list(sig_loss.parameters.keys())[1]]
 
         class CombineTorchModelLossFnWrapInput(torch.nn.Module):
             def __init__(self, model, loss_fn, input_names):
@@ -501,8 +498,9 @@ class ORTTrainer(object):
                 model_copy = copy.deepcopy(model)
             except Exception:
                 model_copy = model
-                warnings.warn("This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
-                              " Compute will continue, but unexpected results may occur!")
+                warnings.warn(
+                    "This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
+                    " Compute will continue, but unexpected results may occur!")
             sample_outputs = model_copy(*sample_inputs_copy)
             self.torch_sample_outputs = sample_outputs
         model.train()
@@ -513,12 +511,10 @@ class ORTTrainer(object):
         # Append 'dtype' for model description's inputs/outputs
         for idx_i, sample_input in enumerate(sample_inputs):
             if idx_i < len(self.model_desc.inputs):
-                self.model_desc.add_type_to_input_description(
-                    idx_i, sample_input.dtype)
+                self.model_desc.add_type_to_input_description(idx_i, sample_input.dtype)
         for idx_o, sample_output in enumerate(sample_outputs):
             if idx_o < len(self.model_desc.outputs):
-                self.model_desc.add_type_to_output_description(
-                    idx_o, sample_output.dtype)
+                self.model_desc.add_type_to_output_description(idx_o, sample_output.dtype)
 
         # Export the model to ONNX
         f = io.BytesIO()
@@ -536,7 +532,9 @@ class ORTTrainer(object):
             register_custom_ops_pytorch_exporter.unregister_custom_op()
 
         # Export torch.nn.Module to ONNX
-        torch.onnx._export(model, tuple(sample_inputs_copy), f,
+        torch.onnx._export(model,
+                           tuple(sample_inputs_copy),
+                           f,
                            input_names=[input.name for input in self.model_desc.inputs],
                            output_names=[output.name for output in self.model_desc.outputs],
                            opset_version=self.options._internal_use.onnx_opset_version,
@@ -561,13 +559,13 @@ class ORTTrainer(object):
 
         return onnx_model
 
-    def _create_ort_training_session(self, state_dict = {}):
+    def _create_ort_training_session(self, optimizer_state_dict={}):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
             if n not in [i.name for i in self._onnx_model.graph.initializer]]
         if unused_frozen_weights:
-            raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(
-                unused_frozen_weights))
+            raise RuntimeError(
+                "{} params from 'frozen_weights' not found in the ONNX model.".format(unused_frozen_weights))
 
         # Get loss name from model description
         loss_name = [item.name for item in self.model_desc.outputs if item.is_loss]
@@ -620,6 +618,7 @@ class ORTTrainer(object):
         ort_parameters.world_size = self.options.distributed.world_size
         ort_parameters.gradient_accumulation_steps = self.options.batch.gradient_accumulation_steps
         ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
+        ort_parameters.enable_adasum = self.options.distributed.enable_adasum
         ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_optimization.stage
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
         ort_parameters.set_gradients_as_graph_outputs = False
@@ -629,10 +628,8 @@ class ORTTrainer(object):
         ort_parameters.weights_to_train = trainable_params
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
-        if bool(self._optim_state_dict):
-            ort_parameters.set_optimizer_initial_state(self._optim_state_dict)
-        if bool(state_dict) and bool(state_dict[_utils.state_dict_optimizer_key()]):
-            ort_parameters.set_optimizer_initial_state(state_dict[_utils.state_dict_optimizer_key()])
+        if bool(optimizer_state_dict):
+            ort_parameters.set_optimizer_initial_state(optimizer_state_dict)
 
         ort_parameters.attn_dropout_recompute = self.options.graph_transformer.attn_dropout_recompute
         ort_parameters.gelu_recompute = self.options.graph_transformer.gelu_recompute
@@ -642,9 +639,8 @@ class ORTTrainer(object):
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
-        if (self.options.graph_transformer.attn_dropout_recompute or
-            self.options.graph_transformer.gelu_recompute or
-            self.options.graph_transformer.transformer_layer_recompute):
+        if (self.options.graph_transformer.attn_dropout_recompute or self.options.graph_transformer.gelu_recompute
+                or self.options.graph_transformer.transformer_layer_recompute):
             session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 
         # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
@@ -700,29 +696,31 @@ class ORTTrainer(object):
             if self.options._internal_use.extra_postprocess:
                 self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
 
-        state_dict = {}
+        optimizer_state_dict = {}
         if self._load_state_dict:
-            state_dict = self._load_state_dict()
+            optimizer_state_dict = self._load_state_dict()
 
-        self._init_session(state_dict)
+        self._init_session(optimizer_state_dict)
 
-    def _init_session(self, state_dict = {}):
+    def _init_session(self, optimizer_state_dict={}):
         if self._onnx_model is None:
             return
 
         if self.options.utils.run_symbolic_shape_infer:
-            self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)
+            self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model,
+                                                                   auto_merge=True,
+                                                                   guess_output_rank=True)
 
         # Create training session used by train_step
         # pass all optimizer states to the backend
-        self._create_ort_training_session(state_dict)
+        self._create_ort_training_session(optimizer_state_dict)
 
         # Update model description to update dtype when mixed precision is enabled
         # C++ backend modifies model's output dtype from float32 to float16 for mixed precision
         # Note that for training we must use float32 and for evaluation we must use float16
         for idx, o_desc in enumerate(self.model_desc.outputs):
-            if (self.options.mixed_precision.enabled and o_desc.dtype == torch.float32 and
-                    not self._training_session.is_output_fp32_node(o_desc.name)):
+            if (self.options.mixed_precision.enabled and o_desc.dtype == torch.float32
+                    and not self._training_session.is_output_fp32_node(o_desc.name)):
                 self.model_desc.add_type_to_output_description(idx, o_desc.dtype, torch.float16)
 
         # Update model description
@@ -732,7 +730,8 @@ class ORTTrainer(object):
         if self.options.mixed_precision.enabled:
             self.model_desc.loss_scale_input = self._training_session.loss_scale_input_name
             self._model_desc_inputs_with_lr_and_loss_scale = [
-                *self._model_desc_inputs_with_lr, self.model_desc.loss_scale_input]
+                *self._model_desc_inputs_with_lr, self.model_desc.loss_scale_input
+            ]
             self.model_desc.all_finite = _utils.get_all_gradients_finite_name_from_session(self._training_session)
             self._model_desc_outputs_with_all_finite = [*self.model_desc.outputs, self.model_desc.all_finite]
         elif self.options.mixed_precision.loss_scaler:
@@ -746,11 +745,13 @@ class ORTTrainer(object):
 
         # Update Gradient Accumulation, if applicable
         if self.options.batch.gradient_accumulation_steps > 1:
-            self.model_desc.gradient_accumulation = _utils.get_gradient_accumulation_name_from_session(self._training_session)
+            self.model_desc.gradient_accumulation = _utils.get_gradient_accumulation_name_from_session(
+                self._training_session)
             self._model_desc_outputs_with_gradient_accumulation = [
-                *self.model_desc.outputs, self.model_desc.gradient_accumulation]
+                *self.model_desc.outputs, self.model_desc.gradient_accumulation
+            ]
 
-        # TODO: Subject to change after checkpoint redesign
+        # TODO: Remove when experimental checkpoint functions are removed
         if self._state_dict:
             checkpoint.experimental_load_state_dict(self, self._state_dict, self._load_state_dict_strict)
             self._state_dict_debug = self._state_dict
@@ -766,20 +767,20 @@ class ORTTrainer(object):
         # Append input from 'kwargs'
         for input_desc in inputs_desc:
             if input_desc.name in kwargs:
-                input = input + (kwargs[input_desc.name],)
+                input = input + (kwargs[input_desc.name], )
 
         # Append learning rate
         extra_inputs = 0
         if lr is not None:
             lr = torch.tensor([lr])
-            input += (lr,)
+            input += (lr, )
             extra_inputs += 1
 
         # Append loss scale
         if loss_scale is not None:
             assert self.options.mixed_precision.enabled, "Loss scale cannot be used without mixed precision"
             loss_scale = torch.tensor([loss_scale])
-            input += (loss_scale,)
+            input += (loss_scale, )
             extra_inputs += 1
 
         # Only assert length of input when fetches is not used
@@ -816,15 +817,16 @@ class ORTTrainer(object):
         else:
             iobinding = self._eval_io_binding
 
+        # Get the list of the actual session inputs because unused inputs can be removed.
+        input_nodes = self._training_session.get_inputs()
+        input_node_names = [input_node.name for input_node in input_nodes]
+
         # Bind input tensors
         for input, input_desc in zip(inputs, inputs_desc):
-            device_index = _utils.get_device_index_from_input(input)
-            iobinding.bind_input(input_desc.name,
-                                 input.device.type,
-                                 device_index,
-                                 _utils.dtype_torch_to_numpy(input.dtype),
-                                 list(input.size()),
-                                 input.data_ptr())
+            if input_desc.name in input_node_names:
+                device_index = _utils.get_device_index_from_input(input)
+                iobinding.bind_input(input_desc.name, input.device.type, device_index,
+                                     _utils.dtype_torch_to_numpy(input.dtype), list(input.size()), input.data_ptr())
 
         # Bind output tensors
         outputs_desc_resolved = self._resolve_symbolic_dimensions(inputs, inputs_desc, outputs_desc)
@@ -835,11 +837,13 @@ class ORTTrainer(object):
                 # Keep all finite flag on CPU to match backend implementation
                 # This prevents CPU -> GPU -> CPU copies between frontend and backend
                 target_device = 'cpu'
-            torch_tensor = torch.zeros(output_desc.shape, device=target_device,
+            torch_tensor = torch.zeros(output_desc.shape,
+                                       device=target_device,
                                        dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
-            iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
-                                  _utils.dtype_torch_to_numpy(torch_tensor.dtype),
-                                  list(torch_tensor.size()), torch_tensor.data_ptr())
+            iobinding.bind_output(output_desc.name, torch_tensor.device.type,
+                                  _utils.get_device_index(self.options.device.id),
+                                  _utils.dtype_torch_to_numpy(torch_tensor.dtype), list(torch_tensor.size()),
+                                  torch_tensor.data_ptr())
             result[output_desc.name] = torch_tensor
 
         # Run a train/eval step
@@ -898,13 +902,19 @@ class ORTTrainer(object):
     def _extract_trainer_options(self, state_dict):
         """Extract relevant trainer configuration and load it into the state_dict"""
 
+        mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
+        zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
+        world_rank = _utils.state_dict_trainer_options_world_rank_key()
+        world_size = _utils.state_dict_trainer_options_world_size_key()
+        optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+
         state_dict[_utils.state_dict_trainer_options_key()] = {}
-        state_dict[_utils.state_dict_trainer_options_key()]['mixed_precision'] = self.options.mixed_precision.enabled
-        state_dict[_utils.state_dict_trainer_options_key()]['zero_stage'] = \
-            self.options.distributed.deepspeed_zero_optimization.stage or 0
-        state_dict[_utils.state_dict_trainer_options_key()]['world_rank'] = self.options.distributed.world_rank or 0
-        state_dict[_utils.state_dict_trainer_options_key()]['world_size'] = self.options.distributed.world_size or 1
-        state_dict[_utils.state_dict_trainer_options_key()]['optimizer_name'] = self.optim_config.name
+        state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = self.options.mixed_precision.enabled
+        state_dict[_utils.state_dict_trainer_options_key()][zero_stage] = \
+            self.options.distributed.deepspeed_zero_optimization.stage
+        state_dict[_utils.state_dict_trainer_options_key()][world_rank] = self.options.distributed.world_rank
+        state_dict[_utils.state_dict_trainer_options_key()][world_size] = self.options.distributed.world_size
+        state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = self.optim_config.name
 
     def state_dict(self, pytorch_format=False):
         """Returns a dictionary with model, and optionally, optimizer states
@@ -923,7 +933,7 @@ class ORTTrainer(object):
                 type: dict,
                 schema:
                 {
-                    "fp32":
+                    "full_precision":
                     {
                         type: dict,
                         schema:
@@ -1038,9 +1048,9 @@ class ORTTrainer(object):
             A dictionary with `ORTTrainer` state
         """
         if not self._training_session:
-            warnings.warn("ONNX Runtime training session is not initialized yet. "
-                          "Please run train_step or eval_step at least once before calling ORTTrainer.state_dict().",
-                          UserWarning)
+            warnings.warn(
+                "ONNX Runtime training session is not initialized yet. "
+                "Please run train_step or eval_step at least once before calling ORTTrainer.state_dict().", UserWarning)
             return self._load_state_dict.args[0] if self._load_state_dict else {}
 
         state_dict = {}
@@ -1093,9 +1103,29 @@ class ORTTrainer(object):
 
     def _load_optimizer_states(self, current_state_dict, state_dict):
         """Load the optimizer states onto the training session state dictionary"""
+        def _check_optimizer_mismatch(state_dict):
+            """Assert that the loaded optimizer has the same config as the current training session config"""
+
+            # the state_dict optimizer_name can be a byte string (if coming from checkpoint file)
+            # or can be a regular string (coming from user)
+            optimizer_name = \
+                state_dict[_utils.state_dict_trainer_options_key()][_utils.state_dict_trainer_options_optimizer_name_key()]
+
+            # optimizer_name can be either a regular string or a byte string.
+            # if it is a byte string, convert to regular string using decode()
+            # if it is a regular string, do nothing to it
+            try:
+                optimizer_name = optimizer_name.decode()
+            except AttributeError:
+                pass
+            assert self.optim_config.name == optimizer_name, \
+                "Optimizer mismatch: expected {}, got {}".format(self.optim_config.name, optimizer_name)
 
         if _utils.state_dict_optimizer_key() not in state_dict:
             return
+
+        # check optimizer config names are the same for current session and the sessino being loaded
+        _check_optimizer_mismatch(state_dict)
 
         # create an entry for the optimizer in the training session state dictionary
         if _utils.state_dict_optimizer_key() not in current_state_dict:
@@ -1108,7 +1138,6 @@ class ORTTrainer(object):
             for optimizer_state_key, optimizer_state_value in optimizer_dict.items():
                 current_state_dict[_utils.state_dict_optimizer_key()][model_state_key][optimizer_state_key] = \
                     optimizer_state_value
-
 
     def _load_state_dict_impl(self, state_dict, strict=True):
         """Load the state dictionary onto the onnx model and on the training session graph"""
@@ -1137,28 +1166,27 @@ class ORTTrainer(object):
 
             # check unxexpected and missing precision keys in the model state_dict compared to the training
             # session model state_dict
-            _mismatch_keys(current_state_dict[_utils.state_dict_model_key()],
-                                   state_dict[_utils.state_dict_model_key()], 'state_dict[model]')
+            _mismatch_keys(current_state_dict[_utils.state_dict_model_key()], state_dict[_utils.state_dict_model_key()],
+                           'state_dict[model]')
 
             # check for model state key mismatch
             for precision_key in current_state_dict[_utils.state_dict_model_key()]:
                 _mismatch_keys(current_state_dict[_utils.state_dict_model_key()][precision_key],
-                                       state_dict[_utils.state_dict_model_key()][precision_key],
-                                       'state_dict[model][{}]'.format(precision_key))
+                               state_dict[_utils.state_dict_model_key()][precision_key],
+                               'state_dict[model][{}]'.format(precision_key))
 
         def _check_optimizer_key_mismatch(current_state_dict, state_dict):
             """Check if there is any mismatch in the optimizer sub state dictionary between the two state_dicts"""
 
             # check for model state key mismatch for the optimizer state_dict
             _mismatch_keys(current_state_dict[_utils.state_dict_optimizer_key()],
-                                   state_dict[_utils.state_dict_optimizer_key()],
-                                   'state_dict[optimizer]')
+                           state_dict[_utils.state_dict_optimizer_key()], 'state_dict[optimizer]')
 
             # check for optimizer state keys mismatch
             for model_state_key in current_state_dict[_utils.state_dict_optimizer_key()]:
                 _mismatch_keys(current_state_dict[_utils.state_dict_optimizer_key()][model_state_key],
-                                       state_dict[_utils.state_dict_optimizer_key()][model_state_key],
-                                       'state_dict[optimizer][{}]'.format(model_state_key))
+                               state_dict[_utils.state_dict_optimizer_key()][model_state_key],
+                               'state_dict[optimizer][{}]'.format(model_state_key))
 
         def _check_key_mismatch(current_state_dict, state_dict):
             """Check if there is a mismatch in the keys (model and optimizer) in the two state_dicts"""
@@ -1191,7 +1219,8 @@ class ORTTrainer(object):
         # dictionary
         self._load_optimizer_states(current_state_dict, state_dict)
 
-        return current_state_dict
+        return current_state_dict[_utils.state_dict_optimizer_key()] if \
+            _utils.state_dict_optimizer_key() in current_state_dict else {}
 
     def load_state_dict(self, state_dict, strict=True):
         """Loads state_dict containing model/optimizer states into ORTTrainer
@@ -1215,8 +1244,80 @@ class ORTTrainer(object):
             return
 
         # load states onto the frontend onnx graph
-        state_dict = self._load_state_dict_impl(state_dict, strict=strict)
+        optimizer_state_dict = self._load_state_dict_impl(state_dict, strict=strict)
 
         # create a new training session after loading initializer states onto the onnx graph
         # pass the populated states to the training session to populate the backend graph
-        self._init_session(state_dict)
+        self._init_session(optimizer_state_dict)
+
+    def save_checkpoint(self, path, user_dict={}, include_optimizer_states=True):
+        """Persists ORTTrainer state dictionary on disk along with user_dict.
+
+        Saves the state_dict along with the user_dict to a file specified by path.
+
+        Args:
+            path: string representation to a file path or a python file-like object.
+                if file already exists at path, an exception is raised.
+            user_dict: custom data to be saved along with the state_dict. This data will be returned
+                to the user when load_checkpoint is called.
+            include_optimizer_states: boolean flag indicating whether or not to persist the optimizer states.
+                on load_checkpoint, only model states will be loaded if include_optimizer_states==True
+        """
+
+        # extract state_dict to be saved in the checkpoint
+        state_dict = self.state_dict()
+
+        # if user_dict is provided, serialize to bytes and convert to hex string.
+        # this helps in loading the types as they are given by the user since hdf5
+        # converts to numpy types otherwise
+        if bool(user_dict):
+            state_dict[_utils.state_dict_user_dict_key()] = _checkpoint_storage.to_serialized_hex(user_dict)
+
+        # if include_optimizer_states is False, only save the model states in the checkpoint file
+        if not include_optimizer_states:
+            if _utils.state_dict_optimizer_key() in state_dict:
+                del state_dict[_utils.state_dict_optimizer_key()]
+
+        _checkpoint_storage.save(state_dict, path)
+
+    def _aggregation_required(self, loaded_trainer_options):
+        """Checks if aggregation is required for the loading the state_dict into the ORTTrainer"""
+
+        # To load states in the backend, aggregation is required for every ZeRO checkpoint
+        return loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0
+
+    def load_checkpoint(self, *paths, strict=True):
+        """Loads the saved checkpoint state dictionary into the ORTTrainer
+
+        Reads the saved checkpoint files specified by paths from disk and loads the state dictionary
+        onto the ORTTrainer.
+        Aggregates the checkpoint files if aggregation is required.
+
+        Args:
+            paths: one or more files represented as strings where the checkpoint is saved
+            strict: boolean flag to strictly enforce that the saved checkpoint state_dict
+                keys match the keys from ORTTrainer.state_dict
+        Returns:
+            dictionary that the user had saved when calling save_checkpoint
+        """
+        state_dict = {}
+
+        # check if aggregation is required
+        loaded_trainer_options = _checkpoint_storage.load(paths[0], key=_utils.state_dict_trainer_options_key())
+        if self._aggregation_required(loaded_trainer_options):
+            # if aggregation is required, aggregation logic must be run on the saved checkpoints
+            state_dict = checkpoint.aggregate_checkpoints(paths, pytorch_format=False)
+        else:
+            # if aggregation is not required, there must only be a single file that needs to be loaded
+            assert len(paths) == 1, "Expected number of files to load: 1, got {}".format(len(paths))
+            state_dict = _checkpoint_storage.load(paths[0])
+
+        # extract user dict from the saved checkpoint
+        user_dict = {}
+        if _utils.state_dict_user_dict_key() in state_dict:
+            user_dict = _checkpoint_storage.from_serialized_hex(state_dict[_utils.state_dict_user_dict_key()])
+            del state_dict[_utils.state_dict_user_dict_key()]
+
+        self.load_state_dict(state_dict, strict=strict)
+
+        return user_dict

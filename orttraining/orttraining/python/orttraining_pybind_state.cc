@@ -10,7 +10,7 @@
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 namespace onnxruntime {
@@ -55,6 +55,7 @@ struct TrainingParameters {
   bool gelu_recompute = false;
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
+  bool enable_adasum = false;
 };
 
 struct TrainingConfigurationResult {
@@ -137,6 +138,15 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // Need to have another option to support more values in the future.
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
+    // TODO reduction types
+    if (parameters.enable_adasum) {
+#ifdef USE_CUDA
+      opt.adasum_reduction_type = training::AdasumReductionType::GpuHierarchicalReduction;
+#else
+      opt.adasum_reduction_type = training::AdasumReductionType::CpuReduction;
+#endif
+    }
+
     config.optimizer_config = opt;
   }
 
@@ -187,6 +197,21 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
 }
 #endif
 
+std::unordered_map<std::string, std::unordered_map<std::string, py::object>> ConvertORTTensorMapToNumpy(std::unordered_map<std::string, NameMLValMap> c_tensor_state, const DataTransferManager& data_transfer_manager) {
+  std::unordered_map<std::string, std::unordered_map<std::string, py::object>> py_tensor_state;
+  for (const auto& layer1_item: c_tensor_state) {
+    py_tensor_state[layer1_item.first] = {};
+    for (const auto& layer2_item: layer1_item.second) {
+      assert(layer2_item.second.IsTensor());
+      py::object obj;
+      const Tensor& rtensor = layer2_item.second.Get<Tensor>();
+      GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
+      py_tensor_state[layer1_item.first].insert({layer2_item.first, obj});
+    }
+  }
+  return py_tensor_state;
+}
+
 void addObjectMethodsForTraining(py::module& m) {
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
@@ -234,7 +259,8 @@ void addObjectMethodsForTraining(py::module& m) {
                optim_state.emplace(weight_it.first, state_tensors);
              }
              parameters.optimizer_initial_state = optim_state;
-           });
+           })
+      .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
@@ -325,6 +351,23 @@ void addObjectMethodsForTraining(py::module& m) {
           }
         }
         return rmap;
+      })
+      .def("get_model_state", [](PyTrainingSession* sess, bool include_mixed_precision_weights) {
+        std::unordered_map<std::string, NameMLValMap> model_state_tensors;
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetModelState(model_state_tensors, include_mixed_precision_weights));
+        auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
+        return ConvertORTTensorMapToNumpy(model_state_tensors, data_transfer_manager);
+      })
+      .def("get_optimizer_state", [](PyTrainingSession* sess) {
+        std::unordered_map<std::string, NameMLValMap> opt_state_tensors;
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetOptimizerState(opt_state_tensors));
+        auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
+        return ConvertORTTensorMapToNumpy(opt_state_tensors, data_transfer_manager);
+      })
+      .def("get_partition_info_map", [](PyTrainingSession* sess) {
+        std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>> part_info_map;
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetPartitionInfoMap(part_info_map));
+        return part_info_map;
       })
       .def("load_state", [](PyTrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
         NameMLValMap state_tensors;

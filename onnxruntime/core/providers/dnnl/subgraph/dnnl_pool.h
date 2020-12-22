@@ -13,7 +13,7 @@ class DnnlPool : public DnnlKernel {
  public:
   DnnlPool(const DnnlNode& node,
            DNNLExecutionProvider* provider,
-           const Provider_NodeAttributes& attributes,
+           const NodeAttributes& attributes,
            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     op_name_ = node.name;
     ReadAttributes(attributes, attributes_prefix);
@@ -85,7 +85,7 @@ class DnnlPool : public DnnlKernel {
           src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
               dnnl::memory::desc(parents_[0].get()->primitive_dst_mem_->get_desc()));
         }
-      } else { // gpu_available_
+      } else {  // gpu_available_
         src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
             dnnl::memory::desc(parents_[0].get()->primitive_dst_mem_->get_desc()));
       }
@@ -131,7 +131,7 @@ class DnnlPool : public DnnlKernel {
     if (!gpu_available_) {
       fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::primitive_desc>(
           dnnl::pooling_forward::primitive_desc(*fwd_desc_, cpu_engine));
-    } else { // gpu_available_
+    } else {  // gpu_available_
       fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::primitive_desc>(
           dnnl::pooling_forward::primitive_desc(*fwd_desc_, gpu_engine));
     }
@@ -180,7 +180,7 @@ class DnnlPool : public DnnlKernel {
           src_mem_ = parents_[0].get()->primitive_dst_mem_;
         }
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       if (primitive_src_desc_ != source_desc_) {
         dnnl::memory::dims src_dims(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
         auto pd = dnnl::memory::desc(source_desc_);
@@ -230,7 +230,7 @@ class DnnlPool : public DnnlKernel {
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), gpu_engine));
     }
@@ -241,7 +241,7 @@ class DnnlPool : public DnnlKernel {
       net.push_back(*pool_fwd_);
       net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
                           {DNNL_ARG_DST, *primitive_dst_mem_}});
-    } else { // gpu_available_
+    } else {  // gpu_available_
       net.push_back(*pool_fwd_);
       net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
                           {DNNL_ARG_DST, *primitive_dst_mem_}});
@@ -298,7 +298,7 @@ class DnnlPool : public DnnlKernel {
         } else {
           primitive_dst_mem_->set_data_handle(dst_data);
         }
-      } else { // gpu_available_
+      } else {  // gpu_available_
         reorder_dst_mem_to_->set_data_handle(dst_data);
       }
     }
@@ -306,7 +306,7 @@ class DnnlPool : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const Provider_NodeAttributes& attributes,
+  void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
