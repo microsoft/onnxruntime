@@ -2,7 +2,7 @@
 #include "ort_value_helper.h"
 #include "StringHelpers.h"
 using namespace winml;
-
+using namespace winrt::Windows::Foundation::Collections;
 namespace OrtValueHelpers {
 
 template <ONNXTensorElementDataType T>
@@ -135,5 +135,82 @@ winml::ITensor LoadTensorFromOrtValue(Ort::Value& val) {
   WINML_EXPECT_NO_THROW(Ort::GetApi().GetTensorMutableData(val, &ortValueTensorData));
   WINML_EXPECT_NO_THROW(memcpy(actualData, ortValueTensorData, actualSizeInBytes * sizeof(char)));
   return tensor;
+}
+
+static ONNXTensorElementDataType OnnxTensorTypeFromWinMLType(winml::TensorKind tensorKind) {
+    switch (tensorKind) {
+    case (TensorKind::Float):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    case (TensorKind::UInt8):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
+    case (TensorKind::Int8):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+    case (TensorKind::UInt16):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
+    case (TensorKind::Int16):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
+    case (TensorKind::Int32):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
+    case (TensorKind::Int64):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+    case (TensorKind::Boolean):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+    case (TensorKind::Float16):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+    case (TensorKind::Double):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+    case (TensorKind::UInt32):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
+    case (TensorKind::UInt64):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
+    case (TensorKind::Complex64):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;
+    case (TensorKind::Complex128):
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;
+    default:
+      throw std::invalid_argument("No conversion from WinML Type into Onnx TensorType");
+  }
+}
+
+Ort::Value CreateOrtValueFromITensor(winml::ITensor winmlTensor) {
+  Ort::Value ortValueCreated = Ort::Value{nullptr};
+  auto memoryInfo = Ort::MemoryInfo{nullptr};
+  WINML_EXPECT_NO_THROW(memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault));
+  std::vector<int64_t> shape;
+  auto vectorViewShape = winmlTensor.Shape();
+  for (int64_t dimension : vectorViewShape) {
+    shape.push_back(dimension);
+  }
+  if (winmlTensor.TensorKind() != winml::TensorKind::String) {
+    auto winmlTensorNative = winmlTensor.as<ITensorNative>();
+    BYTE* actualData;
+    uint32_t actualSizeInBytes;
+    WINML_EXPECT_HRESULT_SUCCEEDED(winmlTensorNative->GetBuffer(&actualData, &actualSizeInBytes));
+    WINML_EXPECT_NO_THROW(
+        ortValueCreated = Ort::Value::CreateTensor(
+            memoryInfo,
+            actualData,
+            actualSizeInBytes,
+            shape.data(),
+            shape.size(), 
+            OnnxTensorTypeFromWinMLType(winmlTensor.TensorKind())));
+  } else {
+    Ort::AllocatorWithDefaultOptions allocator;
+    WINML_EXPECT_NO_THROW(
+        ortValueCreated = Ort::Value::CreateTensor(
+            allocator,
+            shape.data(),
+            shape.size(),
+            ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING));
+    std::vector<const char*> strData;
+    std::vector<std::string> utf8Strs;
+    auto strValues = winmlTensor.as<TensorString>().GetAsVectorView();
+    for (winrt::hstring str : strValues) {
+      utf8Strs.push_back(std::move(_winml::Strings::UTF8FromHString(str)));
+      strData.push_back(utf8Strs.back().c_str());
+    }
+    WINML_EXPECT_NO_THROW(ortValueCreated.FillStringTensor(strData.data(), strData.size()));
+  }
+  return ortValueCreated;
 }
 }  // namespace OrtValueHelpers
