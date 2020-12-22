@@ -166,13 +166,11 @@ static std::vector<ITestCase*> GetAllTestCases() {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> dataDirs;
   auto testDataPath = GetTestDataPath();
   if (testDataPath == "") return tests;
-
   for (auto& p : std::filesystem::directory_iterator(testDataPath.c_str())) {
     if (p.is_directory()) {
       dataDirs.push_back(std::move(p.path()));
     }
   }
-
   #if !defined(__amd64__) && !defined(_M_AMD64)
   // Should match "x86_disabled_tests" in onnxruntime/test/providers/cpu/model_tests.cc
   // However there are more tests skipped. TODO: bugs must be filed for difference in models.
