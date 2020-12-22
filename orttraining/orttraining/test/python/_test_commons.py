@@ -130,35 +130,9 @@ def generate_dummy_optim_state(model, optimizer):
     if isinstance(optimizer, optim.LambConfig):
         step_val = np.full([1], 5, dtype=np.int64)
         optim_state[shared_state_key] = {step_key: step_val}
-    return optim_state
-
-
-def get_optim_state_from_state_dict(state_dict, optimizer):
-    if not (isinstance(optimizer, optim.AdamConfig) or isinstance(optimizer, optim.LambConfig)):
-        return dict()
-
-    moment_keys = ["Moment_1", "Moment_2"]
-    uc_key = "Update_Count"
-    step_key = "Step"
-    shared_state_key = "shared_optimizer_state"
-
-    optim_state = dict()
-    for param_name, v in state_dict.items():
-        if '_view_' in param_name:
-            param_name = param_name.split('_view_')[0]
-
-        for moment in moment_keys:
-            if param_name.startswith(moment):
-                fp32_name = param_name.split(moment + '_')[-1]
-                if fp32_name not in optim_state:
-                    optim_state[fp32_name] = dict()
-                optim_state[fp32_name].update({moment: v})
-                break
-        if param_name.startswith(uc_key):
-            fp32_name = param_name.split(uc_key + '_')[-1]
-            if fp32_name not in optim_state:
-                optim_state[fp32_name] = dict()
-            optim_state[fp32_name].update({uc_key: v})
-        elif param_name == step_key:
-            optim_state[shared_state_key] = {step_key: v}
-    return optim_state
+    return {
+        'optimizer': optim_state,
+        'trainer_options': {
+            'optimizer_name': optimizer.name
+        }
+    }
