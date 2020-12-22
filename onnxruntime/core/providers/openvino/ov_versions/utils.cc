@@ -174,7 +174,7 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     const auto& node = graph_viewer.GetNode(node_idx);
     // Collect all inputs and outputs
     node->ForEachDef(
-        [&input_args, &ordered_input_args, &output_args](const Provider_NodeArg& node_arg, bool is_input) {
+        [&input_args, &ordered_input_args, &output_args](const NodeArg& node_arg, bool is_input) {
           if(node_arg.Name() != ""){
             if (is_input) {
               if (!input_args.count(node_arg.Name())) {
