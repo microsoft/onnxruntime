@@ -7,7 +7,7 @@ An executable file links to a library in one of three ways:
 as the executable that uses it.
 
 3. Explicit dynamic linking, where the operating system loads the dynamic library on demand at 
-runtime.  
+runtime. From the definition, DLL delay loading is actually one kind of "Explicit dynamic linking". 
 
 ## Static linking ##
 Static linking is simple and mature, it delivers the best run time performance, and most of the 
@@ -25,9 +25,26 @@ reliable way to override a symbol(e.g. malloc/free) which is already provided at
 other words, some code are not suitable to be compiled to a static library.
 
 
+## Delay Loading ##
+[Delay Loading](https://docs.microsoft.com/en-us/cpp/build/reference/linker-support-for-delay-loaded-dlls?view=msvc-160) 
+is only available on Windows.
+
+Q: If A.dll depends on B.dll, what is required to delay load B.dll?
+
+A: [If the initialization and deinitialization of A.dll totally doesn't depend on B.dll.](https://devblogs.microsoft.com/oldnewthing/20190718-00/?p=102719)
+
+Q: Why can't we delay load the CUDA DLLs?
+
+A: Because our CUDA EP has some thread local variables that may call CUDA functions in their 
+destructors. And we don't have a way to ensure all such variables has been cleaned up when the 
+corresponding session is closed. See https://github.com/microsoft/onnxruntime/pull/3147
+
+
 ##Switching between static linking and dynamic linking ##
 
-### Init order of global variables get changed ###
+For some reasons, you can't freely change it.
+
+### Init order of global variables ###
 The init order of global variables may get messed up when you convert a library from dynamic 
 linking to static linking. For example, if you have an application that statically links to google 
 protobuf, and if the application has a global variable with a non-trivial constructor which uses
@@ -50,7 +67,6 @@ registered once to libprobuf's central database. Also none of the frameworks can
 the message definition in a different way. If a framework wants to define a protobuf message that 
  contains an ONNX TensorProto message inside, it can not directly include ONNX's existing *.proto file. 
 
-For the reasons above, sometimes you can't freely choose the link form you want.
 
 ## PE and ELF
 [Portable Executable (PE)](https://docs.microsoft.com/en-us/windows/win32/debug/pe-format) and 
