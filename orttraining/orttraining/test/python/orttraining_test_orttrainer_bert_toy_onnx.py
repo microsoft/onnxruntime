@@ -19,7 +19,6 @@ from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, Tra
                                       orttrainer_options as orttrainer_options
 
 import _test_commons, _test_helpers
-from checkpoint._test_helpers import assert_all_states_close_ort
 
 ###############################################################################
 # Helper functions ############################################################
@@ -420,7 +419,7 @@ def testToyBertCheckpointBasic():
     loaded_sd = trainer2.state_dict()
 
     # Assert whether original state and the one loaded from checkpoint matches
-    assert_all_states_close_ort(sd, loaded_sd)
+    _test_commons.assert_all_states_close_ort(sd, loaded_sd)
 
 
 def testToyBertCheckpointFrozenWeights():
@@ -460,7 +459,7 @@ def testToyBertCheckpointFrozenWeights():
     # Must match as both trainers have the same dict state
     assert_allclose(loss.cpu(), ckpt_loss.cpu())
     loaded_state_dict = trainer2.state_dict()
-    assert_all_states_close_ort(state_dict, loaded_state_dict)
+    _test_commons.assert_all_states_close_ort(state_dict, loaded_state_dict)
 
 @pytest.mark.parametrize("optimizer, mixedprecision_enabled", [
     (optim.LambConfig(), False),
@@ -502,7 +501,7 @@ def testToyBertLoadOptimState(optimizer, mixedprecision_enabled):
     
     actual_state_dict = trainer.state_dict()
     del actual_state_dict['model']
-    assert_all_states_close_ort(actual_state_dict, dummy_init_state)
+    _test_commons.assert_all_states_close_ort(actual_state_dict, dummy_init_state)
 
 @pytest.mark.parametrize("model_params", [
     (['bert.embeddings.LayerNorm.bias']),

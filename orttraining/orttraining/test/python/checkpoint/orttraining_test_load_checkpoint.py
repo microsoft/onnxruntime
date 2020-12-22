@@ -19,8 +19,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import onnxruntime
 from onnxruntime.training import checkpoint
-from _test_helpers import distributed_setup, create_orttrainer_and_load_checkpoint, aggregate_states, assert_all_states_close, assert_all_states_close_ort, assert_all_states_close_pytorch
-
+from _test_helpers import distributed_setup, create_orttrainer_and_load_checkpoint, aggregate_states, assert_all_states_close
+from _test_commons import assert_all_states_close_ort, assert_all_states_close_pytorch
 
 def test_load_from_single_node_full_precision_into_single_node_full_precision(device = 'cuda', checkpoint_dir = 'checkpoint_dir/single_node/full_precision/'):
     opts = {'device' : {'id' : device},

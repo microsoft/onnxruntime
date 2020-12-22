@@ -21,7 +21,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import onnxruntime
 from onnxruntime.training import checkpoint
-from _test_helpers import distributed_setup, create_orttrainer_and_load_checkpoint, aggregate_states, assert_all_states_close_ort
+from _test_helpers import distributed_setup, create_orttrainer_and_load_checkpoint, aggregate_states
+from _test_commons import assert_all_states_close_ort
 
 
 def test_zero_aggregation(checkpoint_dir, loaded_state_dict, is_mixedprecision):

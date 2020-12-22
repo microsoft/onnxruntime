@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from orttraining_test_orttrainer_frontend import _load_pytorch_transformer_model
+from _test_commons import _load_pytorch_transformer_model
 from onnxruntime.training import amp, checkpoint, optim, orttrainer, _checkpoint_storage
 import numpy as np
 import onnx

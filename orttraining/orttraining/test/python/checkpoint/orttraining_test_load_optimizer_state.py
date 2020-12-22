@@ -20,7 +20,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import onnxruntime
 from onnxruntime.training import checkpoint, optim
-from _test_helpers import distributed_setup, load_model_optim_state_and_eval, aggregate_states, assert_all_states_close_ort
+from _test_helpers import distributed_setup, load_model_optim_state_and_eval, aggregate_states
+from _test_commons import assert_all_states_close_ort
 
 def verify_optimizer_state_match(device, opts, checkpoint_dir,  world_rank, use_lamb=False):
     expected_optim_state, trainer_optim_state = load_model_optim_state_and_eval(device, opts, use_lamb)
