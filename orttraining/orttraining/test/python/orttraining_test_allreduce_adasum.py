@@ -9,7 +9,7 @@ import torch
 import argparse
 from onnxruntime.capi._pybind_state import set_cuda_device_id, get_mpi_context_world_rank, get_mpi_context_world_size
 from onnxruntime.training import optim, orttrainer
-from orttraining_test_orttrainer_frontend import _load_pytorch_transformer_model
+from _test_commons import _load_pytorch_transformer_model
 from onnxruntime import set_seed
 
 def _run_adasum_tests(opts):
