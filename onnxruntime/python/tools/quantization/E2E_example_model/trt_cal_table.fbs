@@ -1,0 +1,4 @@
+namespace CalTableFlatBuffers;
+
+table KeyValue { key:string (key); value:string; }
+table TrtTable { dict:[KeyValue]; }
