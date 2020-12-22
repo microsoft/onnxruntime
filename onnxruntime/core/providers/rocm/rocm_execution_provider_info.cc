@@ -7,6 +7,14 @@
 #include "core/framework/provider_options_utils.h"
 
 namespace onnxruntime {
+namespace rocm {
+namespace provider_option_names {
+constexpr const char* kDeviceId = "device_id";
+constexpr const char* kMemLimit = "hip_mem_limit";
+constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
+}  // namespace provider_option_names
+}  // namespace rocm
+
 ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   ROCMExecutionProviderInfo info{};
 
