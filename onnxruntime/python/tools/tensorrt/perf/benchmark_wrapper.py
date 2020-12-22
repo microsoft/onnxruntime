@@ -15,6 +15,14 @@ def write_model_info_to_file(model, path):
     with open(path, 'w') as file:
         file.write(json.dumps(model)) # use `json.loads` to do the reverse
 
+def get_ep_list(comparison): 
+    if comparison == 'acl': 
+        ep_list = [cpu, acl]
+    else:   
+        # test with cuda and trt
+        ep_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
+    return ep_list 
+
 def main():
     args = parse_arguments()
     setup_logger(False)
@@ -42,9 +50,7 @@ def main():
         model_list_file = os.path.join(os.getcwd(), model +'.json')
         write_model_info_to_file([model_info], model_list_file)
 
-        ep_list = [cpu, cuda]
-        #ep_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
-
+        ep_list = get_ep_list(args.comparison)
         for ep in ep_list:
             if args.running_mode == "validate":
                 p = subprocess.run(["python3",

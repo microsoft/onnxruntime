@@ -24,6 +24,7 @@ logger = logging.getLogger('')
 
 # global ep variables 
 cpu = "CPUExecutionProvider"
+acl = "ACLExecutionProvider"
 cuda = "CUDAExecutionProvider"
 cuda_fp16 = "CUDAExecutionProvider_fp16"
 trt = "TensorrtExecutionProvider"
@@ -219,6 +220,20 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
 
     return ort_outputs
 
+def get_acl_version():
+    from pathlib import Path
+    home = str(Path.home())
+    p = subprocess.run(["find", home, "-name", "libarm_compute.so"], check=True, stdout=subprocess.PIPE)
+    libarm_compute_path = p.stdout.decode("ascii").strip()
+    if libarm_compute_path == '':
+        return "No Compute Library Found"
+    else:
+        p = subprocess.run(["strings", libarm_compute_path], check=True, stdout=subprocess.PIPE)  
+        libarm_so_strings = p.stdout.decode("ascii").strip()
+        version_match = re.search(r'arm_compute_version.*\n', libarm_so_strings)
+        version = version_match.group(0).split(' ')[0]
+        return version
+
 def get_cuda_version():
     from pathlib import Path
     home = str(Path.home())
@@ -410,7 +425,7 @@ def validate(all_ref_outputs, all_outputs, decimal):
 
     logger.info('Reference {} results.'.format(len(all_ref_outputs)))
     logger.info('Predicted {} results.'.format(len(all_outputs)))
-    logger.info('decimal {}'.format(decimal))
+    logger.info('decimal: {}'.format(decimal))
 
     try:
         for i in range(len(all_outputs)):
@@ -421,7 +436,7 @@ def validate(all_ref_outputs, all_outputs, decimal):
                 ref_output = ref_outputs[j]
                 output = outputs[j]
 
-                # Compare the results with reference outputs up to x decimal places
+                # Compare the results with reference outputs
                 for ref_o, o in zip(ref_output, output):
                     # abs(desired-actual) < 1.5 * 10**(-decimal)
                     np.testing.assert_almost_equal(ref_o, o, decimal)
@@ -1078,9 +1093,6 @@ def run_onnxruntime(args, models):
                 if ep not in validation_exemption:
                     try:
                         ort_outputs = inference_ort_and_get_prediction(name, sess, inputs)
-                        #logger.info("COMPARE OUTPUTS Ref, Ort") 
-                        #for ref_o, o in zip(ref_outputs, ort_outputs):
-                        #   logger.info("{} | {} \n".format(ref_o, o))
 
                         decimal = 0
                         status = validate(ref_outputs, ort_outputs, decimal)
@@ -1484,6 +1496,8 @@ def str2bool(v):
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
+    
+    parser.add_argument("-c", "--comparison", required=False, default="cuda_trt", choices=["cuda_trt", "acl"], help="EPs to compare: CPU vs. CUDA vs. TRT or CPU vs. ACL")
 
     parser.add_argument("-d", "--working_dir", required=False, default="./", help="Perf folder path")
     
