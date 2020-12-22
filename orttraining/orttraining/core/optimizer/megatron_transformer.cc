@@ -130,9 +130,11 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   if (rank == 2 && utils::HasDimValue(shape->dim(0)) && utils::HasDimValue(shape->dim(1))) {
     row_count = shape->dim(0).dim_value();
     column_count = shape->dim(1).dim_value();
+    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{row_count, column_count};
   } else if (rank == 1) {
     row_count = 1;
     column_count = shape->dim(0).dim_value();
+    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{column_count};
   } else {
     LOGS_DEFAULT(WARNING) << "Initializer tensor's rank is " << rank << " (expected to be 1 or 2).";
     return false;
@@ -177,6 +179,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   }
 
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
+  weight_partition_info_[new_initializer_name].megatron_row_partition = 0;
   return true;
 }
 
@@ -197,9 +200,11 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   if (rank == 2 && utils::HasDimValue(shape->dim(0)) && utils::HasDimValue(shape->dim(1))) {
     row_count = shape->dim(0).dim_value();
     column_count = shape->dim(1).dim_value();
+    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{row_count, column_count};
   } else if (rank == 1) {
     row_count = shape->dim(0).dim_value();
     column_count = 1;
+    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{row_count};
   } else {
     LOGS_DEFAULT(WARNING) << "Initializer tensor's rank is more than " << rank
                           << " (expected to be 1 or 2).";
@@ -233,6 +238,7 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   const int64_t row_index_offset = horizontal_parallel_rank_ * row_partition;
   memcpy(result.data(), a_weight + row_index_offset * column_count, sizeof(float) * element_count);
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
+  weight_partition_info_[new_initializer_name].megatron_row_partition = 1;
   return true;
 }
 
