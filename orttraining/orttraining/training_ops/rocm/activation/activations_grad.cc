@@ -19,19 +19,19 @@ namespace rocm {
           .MayInplace(0, 0),                                     \
       x<T>);
 
-#define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
-  template <>                                                                                                    \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare(this);                                                                  \
-    Prepare(context, &prepare);                                                                                  \
-    RocmAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                                                    \
-    if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                        \
+#define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                        \
+  template <>                                                                                                   \
+  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                \
+    BinaryElementwisePreparation prepare;                                                                       \
+    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                            \
+    RocmAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                                                   \
+    if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                       \
     Impl_##x<typename ToHipType<T>::MappedType>(                                                                \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
         reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
-        func_ctx.GpuPtr(), prepare.output_tensor->Shape().Size());                                               \
-    return Status::OK();                                                                                         \
+        func_ctx.GpuPtr(), prepare.output_tensor->Shape().Size());                                              \
+    return Status::OK();                                                                                        \
   }
 
 #define ACTIVATION_GRAD_OP_TYPED(name, ver, domain, T)  \

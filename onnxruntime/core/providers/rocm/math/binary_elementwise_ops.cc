@@ -142,16 +142,15 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare(this);                                                                  \
-    Prepare(context,  &prepare);                                                                                 \
-    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
-    Impl_##x<typename ToHipType<T>::MappedType>(                                                                 \
+    BinaryElementwisePreparation prepare;                                                                        \
+    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
+    Impl_##x<typename ToHipType<T>::MappedType>(                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
-        prepare.lhs_padded_strides.GpuPtr(),                                                                     \
+        &prepare.lhs_padded_strides,                                                                             \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
-        prepare.rhs_padded_strides.GpuPtr(),                                                                    \
+        &prepare.rhs_padded_strides,                                                                             \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
-        prepare.fdm_output_strides.GpuPtr(),                                                                     \
+        &prepare.fdm_output_strides,                                                                             \
         prepare.fdm_H,                                                                                           \
         prepare.fdm_C,                                                                                           \
         reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
@@ -159,7 +158,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
     return Status::OK();                                                                                         \
   }
 
-#define BINARY_OP_VERSIONED_TYPED(name, startver, endver, T)                    \
+#define BINARY_OP_VERSIONED_TYPED(name, startver, endver, T) \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, T)
 
 #define BINARY_OP_TYPED(name, ver, T)                    \
@@ -189,16 +188,16 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 // D: double
 // O: bool
 
-#define BINARY_OP_VERSIONED_HFD(name, startver, endver)         \
-  BINARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16)  \
-  BINARY_OP_VERSIONED_TYPED(name, startver, endver, float)      \
+#define BINARY_OP_VERSIONED_HFD(name, startver, endver)        \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, float)     \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, double)
 
-#define BINARY_OP_VERSIONED_UZILHFD(name, startver, endver) \
-  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint32_t)         \
-  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t)         \
-  BINARY_OP_VERSIONED_TYPED(name, startver, endver, int32_t)          \
-  BINARY_OP_VERSIONED_TYPED(name, startver, endver, int64_t)          \
+#define BINARY_OP_VERSIONED_UZILHFD(name, startver, endver)   \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint32_t) \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t) \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, int32_t)  \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, int64_t)  \
   BINARY_OP_VERSIONED_HFD(name, startver, endver)
 
 #define BINARY_OP_HFD(name, ver)        \
@@ -309,11 +308,11 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
     case on::TensorProto_DataType_INT32:
       ImplT1_Pow<typename ToHipType<T>::MappedType, typename ToHipType<int32_t>::MappedType>(
           prepare.output_rank_or_simple_broadcast,
-          prepare.lhs_padded_strides.GpuPtr(),
+          &prepare.lhs_padded_strides,
           reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
-          prepare.rhs_padded_strides.GpuPtr(),
+          &prepare.rhs_padded_strides,
           reinterpret_cast<const typename ToHipType<int32_t>::MappedType*>(prepare.rhs_tensor->template Data<int32_t>()),
-          prepare.fdm_output_strides.GpuPtr(),
+          &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
           reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
@@ -322,11 +321,11 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
     case on::TensorProto_DataType_INT64:
       ImplT1_Pow<typename ToHipType<T>::MappedType, typename ToHipType<int64_t>::MappedType>(
           prepare.output_rank_or_simple_broadcast,
-          prepare.lhs_padded_strides.GpuPtr(),
+          &prepare.lhs_padded_strides,
           reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
-          prepare.rhs_padded_strides.GpuPtr(),
+          &prepare.rhs_padded_strides,
           reinterpret_cast<const typename ToHipType<int64_t>::MappedType*>(prepare.rhs_tensor->template Data<int64_t>()),
-          prepare.fdm_output_strides.GpuPtr(),
+          &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
           reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
@@ -335,11 +334,11 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
     case on::TensorProto_DataType_FLOAT:
       ImplT1_Pow<typename ToHipType<T>::MappedType, typename ToHipType<float>::MappedType>(
           prepare.output_rank_or_simple_broadcast,
-          prepare.lhs_padded_strides.GpuPtr(),
+          &prepare.lhs_padded_strides,
           reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
-          prepare.rhs_padded_strides.GpuPtr(),
+          &prepare.rhs_padded_strides,
           reinterpret_cast<const typename ToHipType<float>::MappedType*>(prepare.rhs_tensor->template Data<float>()),
-          prepare.fdm_output_strides.GpuPtr(),
+          &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
           reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
@@ -348,11 +347,11 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
     case on::TensorProto_DataType_DOUBLE:
       ImplT1_Pow<typename ToHipType<T>::MappedType, typename ToHipType<double>::MappedType>(
           prepare.output_rank_or_simple_broadcast,
-          prepare.lhs_padded_strides.GpuPtr(),
+          &prepare.lhs_padded_strides,
           reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
-          prepare.rhs_padded_strides.GpuPtr(),
+          &prepare.rhs_padded_strides,
           reinterpret_cast<const typename ToHipType<double>::MappedType*>(prepare.rhs_tensor->template Data<double>()),
-          prepare.fdm_output_strides.GpuPtr(),
+          &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
           reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
@@ -367,8 +366,8 @@ Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
 }  // namespace pow12_internal
 
 Status Pow::ComputeInternal(OpKernelContext* context) const {
-  BinaryElementwisePreparation prepare(this);
-  Prepare(context, &prepare);
+  BinaryElementwisePreparation prepare;
+  ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
   namespace on = ONNX_NAMESPACE;
   using namespace pow12_internal;
 
@@ -398,17 +397,16 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
 //for other elementwise ops
 template <typename T, typename HipT>
 Status CompareFunction<T, HipT>::CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const {
-  BinaryElementwisePreparation prepare(this);
+  BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
-  size_t output_size = prepare.output_tensor->Shape().Size();
-  IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
+
   Impl_Compare(
       prepare.output_rank_or_simple_broadcast,
-      prepare.lhs_padded_strides.GpuPtr(),
+      &prepare.lhs_padded_strides,
       reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
-      prepare.rhs_padded_strides.GpuPtr(),
+      &prepare.rhs_padded_strides,
       reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
-      prepare.fdm_output_strides.GpuPtr(),
+      &prepare.fdm_output_strides,
       prepare.fdm_H,
       prepare.fdm_C,
       reinterpret_cast<ToHipType<bool>::MappedType*>(prepare.output_tensor->template MutableData<bool>()),

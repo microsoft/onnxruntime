@@ -29,12 +29,12 @@ class VariadicElementwiseOp : public RocmKernel {
 
   template <typename T>
   struct BinaryImplDispatchTarget {
-    Status operator()(const RocmKernel* kernel, const Tensor& lhs, const Tensor& rhs, Tensor& output) const;
+    Status operator()(const Tensor& lhs, const Tensor& rhs, Tensor& output) const;
   };
 
   template <typename T>
   struct GeneralImplDispatchTarget {
-    Status operator()(const RocmKernel* kernel, const InputTensorVector& inputs, Tensor& output) const;
+    Status operator()(const InputTensorVector& inputs, Tensor& output) const;
   };
 };
 

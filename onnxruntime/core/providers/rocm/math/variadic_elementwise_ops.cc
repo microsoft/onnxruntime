@@ -39,19 +39,19 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 template <typename VariadicElementwiseOpTag, typename... SupportedElementTypes>
 template <typename T>
 Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::
-    BinaryImplDispatchTarget<T>::operator()(const RocmKernel* kernel, const Tensor& lhs, const Tensor& rhs, Tensor& output) const {
+    BinaryImplDispatchTarget<T>::operator()(const Tensor& lhs, const Tensor& rhs, Tensor& output) const {
   using HipT = typename ToHipType<T>::MappedType;
 
-  BinaryElementwisePreparation prepare(kernel);
+  BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&lhs, &rhs, &output, &prepare));
 
   Impl_General<HipT, VariadicElementwiseOpTag>(
       prepare.output_rank_or_simple_broadcast,
-      prepare.lhs_padded_strides.GpuPtr(),
+      &prepare.lhs_padded_strides,
       reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
-      prepare.rhs_padded_strides.GpuPtr(),
+      &prepare.rhs_padded_strides,
       reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
-      prepare.fdm_output_strides.GpuPtr(),
+      &prepare.fdm_output_strides,
       prepare.fdm_H,
       prepare.fdm_C,
       reinterpret_cast<HipT*>(prepare.output_tensor->template MutableData<T>()),
@@ -64,23 +64,23 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 template <typename VariadicElementwiseOpTag, typename... SupportedElementTypes>
 template <typename T>
 Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::
-    GeneralImplDispatchTarget<T>::operator()(const RocmKernel* kernel, const InputTensorVector& inputs, Tensor& output) const {
+    GeneralImplDispatchTarget<T>::operator()(const InputTensorVector& inputs, Tensor& output) const {
   assert(inputs.size() > 1);
 
   using HipT = typename ToHipType<T>::MappedType;
 
   HIP_RETURN_IF_ERROR(hipMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes()));
 
-  BinaryElementwisePreparation prepare(kernel);
+  BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[0].get(), &output, &prepare));
 
   Impl_Add(
       prepare.output_rank_or_simple_broadcast,
-      prepare.lhs_padded_strides.GpuPtr(),
+      &prepare.lhs_padded_strides,
       reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
-      prepare.rhs_padded_strides.GpuPtr(),
+      &prepare.rhs_padded_strides,
       reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
-      prepare.fdm_output_strides.GpuPtr(),
+      &prepare.fdm_output_strides,
       prepare.fdm_H,
       prepare.fdm_C,
       reinterpret_cast<HipT*>(prepare.output_tensor->template MutableData<T>()),
@@ -91,11 +91,11 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
     Impl_General<HipT, VariadicElementwiseOpTag>(
         prepare.output_rank_or_simple_broadcast,
-        prepare.lhs_padded_strides.GpuPtr(),
+        &prepare.lhs_padded_strides,
         reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
-        prepare.rhs_padded_strides.GpuPtr(),
+        &prepare.rhs_padded_strides,
         reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
-        prepare.fdm_output_strides.GpuPtr(),
+        &prepare.fdm_output_strides,
         prepare.fdm_H,
         prepare.fdm_C,
         reinterpret_cast<HipT*>(prepare.output_tensor->template MutableData<T>()),
@@ -152,7 +152,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
     // special case for no broadcasting and 2 inputs
     if (input_count == 2) {
       utils::MLTypeCallDispatcherRet<Status, BinaryImplDispatchTarget, SupportedElementTypes...> dispatcher(element_type);
-      ORT_RETURN_IF_ERROR(dispatcher.Invoke(this, input_tensors[0], input_tensors[1], output_tensor));
+      ORT_RETURN_IF_ERROR(dispatcher.Invoke(input_tensors[0], input_tensors[1], output_tensor));
 
       return Status::OK();
     }
@@ -177,7 +177,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   // special case for 2 inputs
   if (input_count == 2) {
     utils::MLTypeCallDispatcherRet<Status, BinaryImplDispatchTarget, SupportedElementTypes...> dispatcher(element_type);
-    ORT_RETURN_IF_ERROR(dispatcher.Invoke(this, input_tensors[0], input_tensors[1], output_tensor));
+    ORT_RETURN_IF_ERROR(dispatcher.Invoke(input_tensors[0], input_tensors[1], output_tensor));
 
     return Status::OK();
   }
@@ -186,7 +186,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   {
     utils::MLTypeCallDispatcherRet<Status, GeneralImplDispatchTarget, SupportedElementTypes...> dispatcher(
         element_type);
-    ORT_RETURN_IF_ERROR(dispatcher.Invoke(this, input_tensors, output_tensor));
+    ORT_RETURN_IF_ERROR(dispatcher.Invoke(input_tensors, output_tensor));
   }
 
   return Status::OK();
