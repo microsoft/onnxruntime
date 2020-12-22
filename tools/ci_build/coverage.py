@@ -39,12 +39,15 @@ def main():
     script_dir = os.path.realpath(os.path.dirname(__file__))
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
     cwd = os.path.abspath(os.path.join(args.build_dir, args.config))
-    adb_shell('cd /data/local/tmp && tar -zcvf gcda_files.tar.gz *.dir')
+    adb_shell('cd /data/local/tmp && tar -zcf gcda_files.tar.gz *.dir')
     adb_pull('/data/local/tmp/gcda_files.tar.gz', cwd)
     os.chdir(cwd)
-    run_subprocess("tar -zxvf gcda_files.tar.gz -C CMakeFiles".split(' '))
-    run_subprocess("gcovr -s -r {} .".format(os.path.join(source_dir, "onnxruntime")).split(' '),
-                   cwd=os.path.join(cwd, "CMakeFiles"))
+    run_subprocess("tar -zxf gcda_files.tar.gz -C CMakeFiles".split(' '))
+    cmd = ["gcovr", "-s", "-r"]
+    cmd.append(os.path.join(source_dir, "onnxruntime"))
+    cmd.extend([".", "-o"])
+    cmd.append(os.path.join(cwd, "coverage_rpt.txt"))
+    run_subprocess(cmd, cwd=os.path.join(cwd, "CMakeFiles"))
 
 
 if __name__ == "__main__":
