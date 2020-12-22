@@ -7,6 +7,8 @@
 #include "StringHelpers.h"
 #include "skip_model_tests.h"
 #include "compare_feature_value.h"
+#include <regex>
+#include "CommonDeviceHelpers.h"
 
 #ifndef BUILD_GOOGLE_TEST
 #error Must use googletest for value-parameterized tests
@@ -164,13 +166,13 @@ static std::vector<ITestCase*> GetAllTestCases() {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> dataDirs;
   auto testDataPath = GetTestDataPath();
   if (testDataPath == "") return tests;
-  
+
   for (auto& p : std::filesystem::directory_iterator(testDataPath.c_str())) {
     if (p.is_directory()) {
       dataDirs.push_back(std::move(p.path()));
     }
   }
-  
+
   #if !defined(__amd64__) && !defined(_M_AMD64)
   // Should match "x86_disabled_tests" in onnxruntime/test/providers/cpu/model_tests.cc
   // However there are more tests skipped. TODO: bugs must be filed for difference in models.
@@ -225,6 +227,90 @@ static std::vector<ITestCase*> GetAllTestCases() {
   return tests;
 }
 
+bool ShouldSkipTestOnGpuAdapterDxgi(std::string& testName) {
+  winrt::com_ptr<IDXGIFactory1> spFactory;
+  winrt::com_ptr<IDXGIAdapter1> spAdapter;
+  UINT i = 0;
+  WINML_EXPECT_HRESULT_SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
+  while (spFactory->EnumAdapters1(i, spAdapter.put()) != DXGI_ERROR_NOT_FOUND) {
+    DXGI_ADAPTER_DESC1 pDesc;
+    WINML_EXPECT_HRESULT_SUCCEEDED(spAdapter->GetDesc1(&pDesc));
+    
+    // Check if WARP adapter
+    // see here for documentation on filtering WARP adapter:
+    // https://docs.microsoft.com/en-us/windows/desktop/direct3ddxgi/d3d10-graphics-programming-guide-dxgi#new-info-about-enumerating-adapters-for-windows-8
+    auto isBasicRenderDriverVendorId = pDesc.VendorId == 0x1414;
+    auto isBasicRenderDriverDeviceId = pDesc.DeviceId == 0x8c;
+    auto isSoftwareAdapter = pDesc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
+    bool isWarpAdapter = isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
+
+    if (!isWarpAdapter) {
+      // Found an adapter that is not WARP. This is the adapter that will be used by WinML.
+      std::string regex = disabledGpuAdapterTests[testName].first;
+      std::wstring adapterDescription = pDesc.Description;
+      return std::regex_search(
+          _winml::Strings::UTF8FromUnicode(adapterDescription.c_str(), adapterDescription.length()),
+          std::regex(regex, std::regex_constants::icase | std::regex_constants::nosubs));
+    }
+    spAdapter = nullptr;
+    i++;
+  }
+  // If no adapters can be enumerated or none of them are hardware, might as well skip this test
+  return true;
+}
+#ifdef ENABLE_DXCORE
+bool ShouldSkipTestOnGpuAdapterDxcore(std::string& testName) {
+  winrt::com_ptr<IDXCoreAdapterFactory> spFactory;
+  WINML_EXPECT_HRESULT_SUCCEEDED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(spFactory.put())));
+
+  winrt::com_ptr<IDXCoreAdapterList> spAdapterList;
+  const GUID gpuFilter[] = {DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS};
+  WINML_EXPECT_HRESULT_SUCCEEDED(spFactory->CreateAdapterList(1, gpuFilter, IID_PPV_ARGS(spAdapterList.put())));
+
+  winrt::com_ptr<IDXCoreAdapter> firstHardwareAdapter;
+  
+  // select first hardware adapter
+  for (uint32_t i = 0; i < spAdapterList->GetAdapterCount(); i++) {
+    winrt::com_ptr<IDXCoreAdapter> spCurrAdapter;
+    WINML_EXPECT_HRESULT_SUCCEEDED(spAdapterList->GetAdapter(i, IID_PPV_ARGS(spCurrAdapter.put())));
+
+    bool isHardware = false;
+    WINML_EXPECT_HRESULT_SUCCEEDED(spCurrAdapter->GetProperty(DXCoreAdapterProperty::IsHardware, &isHardware));
+
+    if (isHardware) {
+      // Found an adapter that is not WARP. This is the adapter that will be used by WinML.
+      std::string regex = disabledGpuAdapterTests[testName].first;
+      std::string adapterDescription;
+      WINML_EXPECT_HRESULT_SUCCEEDED(spCurrAdapter->GetProperty(DXCoreAdapterProperty::DriverDescription, &adapterDescription));
+      return std::regex_search(
+          adapterDescription,
+          std::regex(regex, std::regex_constants::icase | std::regex_constants::nosubs));
+    }
+  }
+  // If no adapters can be enumerated or none of them are hardware, might as well skip this test
+  return true;
+}
+#endif
+
+bool ShouldSkipTestOnGpuAdapter(std::string& testName) {
+  CommonDeviceHelpers::AdapterEnumerationSupport support;
+  if (FAILED(CommonDeviceHelpers::GetAdapterEnumerationSupport(&support))) {
+    WINML_LOG_ERROR("Unable to load DXGI or DXCore");
+    // If cannot load DXGI or DXCore, then don't run the GPU test
+    return true;
+  }
+  if (support.has_dxgi) {
+    return ShouldSkipTestOnGpuAdapterDxgi(testName);
+  }
+#ifdef ENABLE_DXCORE
+  if (support.has_dxcore) {
+    return ShouldSkipTestOnGpuAdapterDxcore(testName);
+  }
+#endif
+  // don't skip by default (shouldn't really hit this case)
+  return false;
+}
+
 // determine if test should be disabled
 void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKind deviceKind) {
   bool shouldSkip = false;
@@ -238,6 +324,9 @@ void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKin
       shouldSkip = true;
     } else if (disabledGpuTests.find(testName) != disabledGpuTests.end()) {
       reason = disabledGpuTests.at(testName);
+      shouldSkip = true;
+    } else if (disabledGpuAdapterTests.find(testName) != disabledGpuAdapterTests.end() && ShouldSkipTestOnGpuAdapter(testName)) {
+      reason = disabledGpuAdapterTests[testName].second;
       shouldSkip = true;
     }
   }

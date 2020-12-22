@@ -206,7 +206,7 @@ Ort::Value CreateOrtValueFromITensor(winml::ITensor winmlTensor) {
     std::vector<std::string> utf8Strs;
     auto strValues = winmlTensor.as<TensorString>().GetAsVectorView();
     for (winrt::hstring str : strValues) {
-      utf8Strs.push_back(std::move(_winml::Strings::UTF8FromHString(str)));
+      utf8Strs.push_back(_winml::Strings::UTF8FromHString(str));
       strData.push_back(utf8Strs.back().c_str());
     }
     WINML_EXPECT_NO_THROW(ortValueCreated.FillStringTensor(strData.data(), strData.size()));
