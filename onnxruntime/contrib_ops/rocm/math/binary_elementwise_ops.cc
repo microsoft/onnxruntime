@@ -19,24 +19,23 @@ namespace rocm {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
-#define CONTRIB_BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
-  template <>                                                                                                    \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare(this);                                                                  \
-    Prepare(context,  &prepare);                                                          \
-    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
+#define CONTRIB_BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                \
+  template <>                                                                                                   \
+  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                \
+    BinaryElementwisePreparation prepare;                                                                       \
+    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                            \
     Impl_##x<typename ToHipType<T>::MappedType>(                                                                \
-        prepare.output_rank_or_simple_broadcast,                                                                 \
-        prepare.lhs_padded_strides.GpuPtr(),                                                                     \
+        prepare.output_rank_or_simple_broadcast,                                                                \
+        &prepare.lhs_padded_strides,                                                                            \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
-        prepare.rhs_padded_strides.GpuPtr(),                                                                     \
+        &prepare.rhs_padded_strides,                                                                            \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
-        prepare.fdm_output_strides.GpuPtr(),                                                                     \
-        prepare.fdm_H,                                                                                           \
-        prepare.fdm_C,                                                                                           \
+        &prepare.fdm_output_strides,                                                                            \
+        prepare.fdm_H,                                                                                          \
+        prepare.fdm_C,                                                                                          \
         reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
         prepare.output_tensor->Shape().Size());                                                                 \
-    return Status::OK();                                                                                         \
+    return Status::OK();                                                                                        \
   }
 
 #define CONTRIB_BINARY_OP_TYPED(name, ver, T)                    \
