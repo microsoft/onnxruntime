@@ -28,7 +28,7 @@ Status ConcatSliceElimination::ApplyImpl(Graph& graph, bool& modified, int graph
       continue;
     }
 
-    if (ConcatSliceElimination::Fuse_Subgraph(concat, graph, logger)) {
+    if (ConcatSliceElimination::FuseConcatSliceSubgraph(concat, graph, logger)) {
       fused_count++;
       LOGS(logger, INFO) << "Fused concat node: " << concat.OutputDefs()[0]->Name();
       modified = true;
@@ -144,89 +144,112 @@ static bool GetSliceInfo(const Graph& graph,
 
 /**
 Apply Concat Slice Elimination transform. This transform removes the redundant
-Concat + Slice pattern in the application of the attention bias.
+Concat + Slice pattern if the concat and slice axis is 0 and we are slicing the same 
+sizes as the inputs to concat.
 
 Before transform:
-q_bias              -- >Slice [0, q] ---> Add_q  
-      \            | 
-k_bias-- Concat --> -->Slice [q, q+k]---> Add_k
-      /            | 
-v_bias              -->Slice [q+k, :]---> Add_v
+ip_0(l0)               -- >Slice [0, l0] ---> op0  
+      \               | 
+ip_1(l1)-- Concat(axis=0) -->Slice [q, l0+l1]---> op1
+      /               | 
+ip_2(l2)                -->Slice [l0+l1, :]---> op2
 
 After transform:
-q_bias ---> Add_q  
+ip_0 ---> op0  
       
-k_bias ---> Add_k
+ip_1 ---> op1
 
-v_bias ---> Add_v
+ip_2 ---> op2
 
 */
-bool ConcatSliceElimination::Fuse_Subgraph(Node& concat, Graph& graph, const logging::Logger& logger) {
+bool ConcatSliceElimination::FuseConcatSliceSubgraph(Node& concat, Graph& graph, const logging::Logger& logger) {
   // The root could be either a graph input or a node so use node arg to compare.
   std::vector<NodeArg*>& concat_inputs = concat.MutableInputDefs();
-  NodeArg& q_bias = *(concat_inputs[0]);
-  NodeArg& k_bias = *(concat_inputs[1]);
-  NodeArg& v_bias = *(concat_inputs[2]);
+  std::vector<onnxruntime::Node*> concat_outputs = graph.GetMutableConsumerNodes(concat.MutableOutputDefs()[0]->Name());
 
-  bool is_valid = graph_utils::IsInitializer(graph, q_bias.Name(), true) &&
-                  graph_utils::IsInitializer(graph, k_bias.Name(), true) &&
-                  graph_utils::IsInitializer(graph, v_bias.Name(), true);
+  // number of inputs and outputs must be equal
+  if (concat_outputs.size() != concat_inputs.size()) return false;
 
+  size_t num_inputs = concat_inputs.size();
+
+  // inputs to concat must be initializers
+  bool is_valid = true;
+  for (size_t i = 0; i < num_inputs; i++) {
+    is_valid = is_valid && graph_utils::IsInitializer(graph, concat_inputs[i]->Name(), true);
+  }
   if (!is_valid) return false;
+
+  // concat axis must be 0
+  const auto* axis_attr = graph_utils::GetNodeAttribute(concat, "axis");
+  if (axis_attr == nullptr || !utils::HasInt(*axis_attr) || axis_attr->i() != 0) {
+    return false;
+  }
 
   auto get_initializer_size =
       [&graph](const std::string& name) -> int64_t {
     const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-    graph.GetInitializedTensor(name, initializer);
-    if (initializer != nullptr) {
-      Initializer init(*initializer, graph.ModelPath());
-        return init.size();
+    if (!graph.GetInitializedTensor(name, initializer)) {
+      return static_cast<int64_t>(-1);
     }
-    return static_cast<int64_t>(-1);
+    int64_t size = 1;
+    for (auto& dim : initializer->dims()) {
+      size *= dim;
+    }
+    return size;
   };
 
-  int64_t q_bias_len, k_bias_len;
-  q_bias_len = get_initializer_size(q_bias.Name());
-  k_bias_len = get_initializer_size(k_bias.Name());
+  std::vector<int64_t> concat_input_len(num_inputs);
+  for (size_t i = 0; i < num_inputs; i++) {
+    concat_input_len[i] = get_initializer_size(concat_inputs[i]->Name());
+    if (concat_input_len[i] == -1) {  // invalid size
+      return false;
+    }
+  }
 
-  std::vector<onnxruntime::Node*> node_consumers = graph.GetMutableConsumerNodes(concat.MutableOutputDefs()[0]->Name());
-  if (node_consumers.size() != 3) return false;
+  std::vector<int64_t> cumulative_input_len(num_inputs + 1, 0);
+  std::partial_sum(concat_input_len.begin(), concat_input_len.end(), cumulative_input_len.begin() + 1);
+  std::vector<bool> visited(num_inputs, false);
 
-  std::vector<onnxruntime::Node*> ordered_slice = node_consumers;
-  for (auto slice : node_consumers) {
+  std::vector<onnxruntime::Node*> ordered_slice = concat_outputs;
+  for (auto slice : concat_outputs) {
     std::vector<int64_t> starts, ends, axes, steps;
-    bool success = GetSliceInfo(graph, *slice, logger, starts, ends, axes, steps);
-    if (!success) return false;
+    if (!GetSliceInfo(graph, *slice, logger, starts, ends, axes, steps)) return false;
     if (starts.size() > 1) return false;
     if (axes[0] != 0) return false;
     if (steps[0] != 1) return false;
-    if (starts[0] == 0 && ends[0] == q_bias_len) {
-      ordered_slice[0] = slice;
-    } else if (starts[0] == q_bias_len && ends[0] == q_bias_len + k_bias_len) {
-      ordered_slice[1] = slice;
-    } else if (starts[0] == q_bias_len + k_bias_len) {
-      ordered_slice[2] = slice;
-    } else {
+    auto iter = std::find(cumulative_input_len.begin(), cumulative_input_len.end(), starts[0]);
+    if (iter != cumulative_input_len.end()) {
+      size_t idx = iter - cumulative_input_len.begin();
+      if (visited[idx]) {
+        // this start length has already been visited
+        return false;
+      }
+      auto next = iter + 1;
+      if (next != cumulative_input_len.end() && (*next == ends[0] || idx == num_inputs - 1)) {
+        // found a match!
+        ordered_slice[idx] = slice;
+        visited[idx] = true;
+      } else {  // no match for ends
+        return false;
+      }
+    } else {  // no match for starts
       return false;
     }
   }
   int replace_cnt = 0;
-  for (auto slice_node : ordered_slice) {
-    Node& add_node = *graph.GetNode(slice_node->OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7})) {
-      return false;
-    }
+  for (auto slice_node : concat_outputs) {
+    Node& op_node = *graph.GetNode(slice_node->OutputNodesBegin()->Index());
     graph_utils::RemoveNodeOutputEdges(graph, *slice_node);
-    graph_utils::ReplaceNodeInput(add_node, 1, *(concat_inputs[replace_cnt]));
+    graph_utils::ReplaceNodeInput(op_node, 1, *(concat_inputs[replace_cnt]));
     replace_cnt++;
   }
   if (replace_cnt == 3) {
     //delete the slice nodes and concat node
     graph_utils::RemoveNodeOutputEdges(graph, concat);
     graph.RemoveNode(concat.Index());
-    for (auto slice_node : ordered_slice) {      
+    for (auto slice_node : ordered_slice) {
       graph.RemoveNode(slice_node->Index());
-    }    
+    }
     return true;
   }
   return false;

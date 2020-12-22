@@ -17,7 +17,7 @@ class ConcatSliceElimination : public GraphTransformer {
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 private:
-  static bool Fuse_Subgraph(Node& concat, Graph& graph, const logging::Logger& logger);
+  static bool FuseConcatSliceSubgraph(Node& concat, Graph& graph, const logging::Logger& logger);
 };
 
 }  // namespace onnxruntime
