@@ -17,6 +17,7 @@ from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, Tra
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 import _test_commons,_test_helpers
+from checkpoint._test_helpers import assert_all_states_close_ort
 
 
 ###############################################################################
@@ -964,31 +965,29 @@ def testORTTrainerStateDictWrapModelLossFn(loss_scaler, optimizer_config, gradie
     trainer = orttrainer.ORTTrainer(pt_model, model_desc, optimizer_config, loss_fn=loss_fn, options=opts)
 
     # Check state_dict keys before train. Must be empty
-    state_dict = checkpoint.experimental_state_dict(trainer)
+    state_dict = trainer.state_dict()
     assert state_dict == {}
 
     # Train once and check initial state
     trainer.train_step(x=data1, label=label1)
-    state_dict = checkpoint.experimental_state_dict(trainer)
-    assert all([weight in state_dict.keys() for weight in ['linear.bias', 'linear.weight']])
+    state_dict = trainer.state_dict()
+    assert all([weight in state_dict['model']['full_precision'].keys() for weight in ['linear.bias', 'linear.weight']])
 
     # Initialize training session 2 from state of Training 1
     torch.manual_seed(seed)
     set_seed(seed)
     trainer2 = orttrainer.ORTTrainer(pt_model, model_desc, optimizer_config, loss_fn=loss_fn, options=opts)
-    checkpoint.experimental_load_state_dict(trainer2, state_dict)
+    trainer2.load_state_dict(state_dict)
 
     # Verify state was loaded properly
-    for k,v in state_dict.items():
-        assert_allclose(v, trainer2._state_dict[k])
+    assert_all_states_close_ort(state_dict, trainer2._load_state_dict.args[0])
 
     # Perform a second step in both training session 1 and 2 and verify they match
     trainer.train_step(x=data2, label=label2)
-    state_dict = checkpoint.experimental_state_dict(trainer)
+    state_dict = trainer.state_dict()
     trainer2.train_step(x=data2, label=label2)
-    state_dict2 = checkpoint.experimental_state_dict(trainer2)
-    for k,v in state_dict.items():
-        assert_allclose(v, state_dict2[k])
+    state_dict2 = trainer2.state_dict()
+    assert_all_states_close_ort(state_dict, state_dict2)
 
 
 def testORTTrainerNonPickableModel():
