@@ -171,6 +171,7 @@ static std::vector<ITestCase*> GetAllTestCases() {
       dataDirs.push_back(std::move(p.path()));
     }
   }
+
   #if !defined(__amd64__) && !defined(_M_AMD64)
   // Should match "x86_disabled_tests" in onnxruntime/test/providers/cpu/model_tests.cc
   // However there are more tests skipped. TODO: bugs must be filed for difference in models.
