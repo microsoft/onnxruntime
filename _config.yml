@@ -5,6 +5,7 @@ plugins:
   - jekyll-toc
 kramdown:
   parse_block_html: true
+  toc_levels: "1,2,3"
 logo: "/images/ONNX-Runtime-logo.svg"
 aux_links:
   "Get started":
