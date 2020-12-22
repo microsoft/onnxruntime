@@ -21,11 +21,11 @@ struct VariadicElementwiseOpTraits;
                                                                     \
     static void ComputeFn(                                          \
         int32_t output_rank_or_simple_broadcast,                    \
-        const int64_t* lhs_padded_strides,                  \
+        const TArray<int64_t>* lhs_padded_strides,                  \
         const T* lhs_data,                                          \
-        const int64_t* rhs_padded_strides,                  \
+        const TArray<int64_t>* rhs_padded_strides,                  \
         const T* rhs_data,                                          \
-        const fast_divmod* fdm_output_strides,              \
+        const TArray<fast_divmod>* fdm_output_strides,              \
         const fast_divmod& fdm_H,                                   \
         const fast_divmod& fdm_C,                                   \
         T* output_data,                                             \
@@ -53,11 +53,11 @@ DEFINE_TRAITS(variadic_elementwise_ops::Max, Max)
 template <typename T, typename VariadicElementwiseOpTag>
 void Impl_General(
     int32_t output_rank_or_simple_broadcast,
-    const int64_t* lhs_padded_strides,
+    const TArray<int64_t>* lhs_padded_strides,
     const T* lhs_data,
-    const int64_t* rhs_padded_strides,
+    const TArray<int64_t>* rhs_padded_strides,
     const T* rhs_data,
-    const fast_divmod* fdm_output_strides,
+    const TArray<fast_divmod>* fdm_output_strides,
     const fast_divmod& fdm_H,
     const fast_divmod& fdm_C,
     T* output_data,
@@ -92,11 +92,11 @@ void Impl_NoBroadcastInputBatch(
 #define SPECIALIZE_IMPL(T, VariadicElementwiseOpTag)                     \
   template void Impl_General<T, VariadicElementwiseOpTag>(               \
       int32_t output_rank_or_simple_broadcast,                           \
-      const int64_t* lhs_padded_strides,                         \
+      const TArray<int64_t>* lhs_padded_strides,                         \
       const T* lhs_data,                                                 \
-      const int64_t* rhs_padded_strides,                         \
+      const TArray<int64_t>* rhs_padded_strides,                         \
       const T* rhs_data,                                                 \
-      const fast_divmod* fdm_output_strides,                     \
+      const TArray<fast_divmod>* fdm_output_strides,                     \
       const fast_divmod& fdm_H,                                          \
       const fast_divmod& fdm_C,                                          \
       T* output_data,                                                    \

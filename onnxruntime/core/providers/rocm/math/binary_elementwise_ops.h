@@ -14,28 +14,17 @@ struct BinaryElementwisePreparation {
   const Tensor* lhs_tensor = nullptr;
   const Tensor* rhs_tensor = nullptr;
   Tensor* output_tensor = nullptr;
-  int32_t output_rank_or_simple_broadcast = 0; // for no_broadcast|left_scalar|right_scalar cases, output_rank uses SimpleBroadcast enums
+  int32_t output_rank_or_simple_broadcast = 0;  // for no_broadcast|left_scalar|right_scalar cases, output_rank uses SimpleBroadcast enums
 
-  // TODO: Unlike to CUDA EP, "pass by pointer" has been used in ROCM EP since ROCm compiler has a perf issue with "pass by value".
-  // The fix for ROCm compiler will be released in ROCm 3.10
-  RocmKernel::RocmAsyncBuffer<int64_t> lhs_padded_strides;  // for lhs shape == output shape, this is nullptr
-  RocmKernel::RocmAsyncBuffer<int64_t> rhs_padded_strides;  // for rhs shape == output shape, this is nullptr
-  RocmKernel::RocmAsyncBuffer<fast_divmod> fdm_output_strides;
+  TArray<int64_t> lhs_padded_strides;
+  TArray<int64_t> rhs_padded_strides;
+  TArray<fast_divmod> fdm_output_strides;
 
   // these are for RightPerChannel case
   fast_divmod fdm_H;
   fast_divmod fdm_C;
 
-  BinaryElementwisePreparation(const RocmKernel* op_kernel) : lhs_padded_strides(op_kernel),
-                                                              rhs_padded_strides(op_kernel),
-                                                              fdm_output_strides(op_kernel) {}
-
-  Status CopyToGpu() {
-    ORT_RETURN_IF_ERROR(lhs_padded_strides.CopyToGpu());
-    ORT_RETURN_IF_ERROR(rhs_padded_strides.CopyToGpu());
-    ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
-    return Status::OK();
-  }
+  BinaryElementwisePreparation() {}
 
   Status BinaryElementwiseBroadcastPrepareHelper(const TensorShape& lhs_shape,
                                                  const TensorShape& rhs_shape,
@@ -53,8 +42,8 @@ struct BinaryElementwisePreparation {
     // early return if one operand is scalar
     if (lhs_shape.Size() == 1 || rhs_shape.Size() == 1) {
       output_rank_or_simple_broadcast = static_cast<int32_t>(lhs_shape.Size() == 1
-                                                                ? SimpleBroadcast::LeftScalar
-                                                                : SimpleBroadcast::RightScalar);
+                                                                 ? SimpleBroadcast::LeftScalar
+                                                                 : SimpleBroadcast::RightScalar);
       return Status::OK();
     }
 
@@ -85,66 +74,35 @@ struct BinaryElementwisePreparation {
 
     output_rank_or_simple_broadcast = out_rank;
 
-    // if (lhs_shape != output_shape) {
-    //   TensorPitches original_lhs_padded_strides(lhs_shape.GetDims(), out_rank);
-    //   lhs_padded_strides.size_ = gsl::narrow_cast<int32_t>(out_rank);
-    //   auto offset = out_rank - lhs_rank;
-    //   for (auto i = offset; i < out_rank; ++i) {
-    //     // the stride for broadcast dimension is kept as 0
-    //     if (lhs_shape.GetDims()[i - offset] != 1) {
-    //       lhs_padded_strides[i] = original_lhs_padded_strides[i];
-    //     }
-    //   }
-    // }
-
-    // if (rhs_shape != output_shape) {
-    //   TensorPitches original_rhs_padded_strides(rhs_shape.GetDims(), out_rank);
-    //   rhs_padded_strides.size_ = gsl::narrow_cast<int32_t>(out_rank);
-    //   auto offset = out_rank - rhs_rank;
-    //   for (auto i = offset; i < out_rank; ++i) {
-    //     // the stride for broadcast dimension is kept as 0
-    //     if (rhs_shape.GetDims()[i - offset] != 1) {
-    //       rhs_padded_strides[i] = original_rhs_padded_strides[i];
-    //     }
-    //   }
-    // }
-
-    // TensorPitches original_output_strides(output_shape.GetDims());
-    // fdm_output_strides.size_ = gsl::narrow_cast<int32_t>(out_rank);
-    // for (auto i = 0; i < out_rank; ++i) {
-    //   fdm_output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
-    // }
-
     if (lhs_shape != output_shape) {
       TensorPitches original_lhs_padded_strides(lhs_shape.GetDims(), out_rank);
-      lhs_padded_strides.AllocCpuPtr(out_rank);
+      lhs_padded_strides.SetSize(out_rank);
       auto offset = out_rank - lhs_rank;
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
         if (lhs_shape.GetDims()[i - offset] != 1) {
-          lhs_padded_strides.CpuPtr()[i] = original_lhs_padded_strides[i];
-        } else {
-          lhs_padded_strides.CpuPtr()[i] = 0;
+          lhs_padded_strides[i] = original_lhs_padded_strides[i];
         }
       }
     }
 
     if (rhs_shape != output_shape) {
       TensorPitches original_rhs_padded_strides(rhs_shape.GetDims(), out_rank);
-      rhs_padded_strides.AllocCpuPtr(out_rank);
+      rhs_padded_strides.SetSize(out_rank);
       auto offset = out_rank - rhs_rank;
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
         if (rhs_shape.GetDims()[i - offset] != 1) {
-          rhs_padded_strides.CpuPtr()[i] = original_rhs_padded_strides[i];
-        } else {
-          rhs_padded_strides.CpuPtr()[i] = 0;
+          rhs_padded_strides[i] = original_rhs_padded_strides[i];
         }
       }
     }
 
-    fdm_output_strides.AllocCpuPtr(out_rank);
-    ORT_RETURN_IF_NOT(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_shape.GetDims()));
+    TensorPitches original_output_strides(output_shape.GetDims());
+    fdm_output_strides.SetSize(out_rank);
+    for (auto i = 0; i < out_rank; ++i) {
+      fdm_output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+    }
 
     return Status::OK();
   }
@@ -262,11 +220,11 @@ class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
   CompareFunction(const OpKernelInfo& info) : BinaryElementwise(info) {}
 
   typedef void (*ImplCompare)(int32_t output_rank_or_simple_broadcast,
-                              const int64_t* lhs_padded_strides,
+                              const TArray<int64_t>* lhs_padded_strides,
                               const HipT* lhs_data,
-                              const int64_t* rhs_padded_strides,
+                              const TArray<int64_t>* rhs_padded_strides,
                               const HipT* rhs_data,
-                              const fast_divmod* fdm_output_strides,
+                              const TArray<fast_divmod>* fdm_output_strides,
                               const fast_divmod& fdm_H,
                               const fast_divmod& fdm_C,
                               bool* output_data,
