@@ -418,14 +418,14 @@ def generate_onnx_model_random_input(test_times, ref_input):
 
     return inputs
 
-def validate(all_ref_outputs, all_outputs, decimal):
+def validate(all_ref_outputs, all_outputs, rtol=0, atol=1.5):
     if len(all_ref_outputs) == 0:
         logger.info("No reference output provided.")
         return True, None
 
     logger.info('Reference {} results.'.format(len(all_ref_outputs)))
     logger.info('Predicted {} results.'.format(len(all_outputs)))
-    logger.info('decimal: {}'.format(decimal))
+    logger.info('rtol: {}, atol: {}'.format(rtol, atol))
 
     try:
         for i in range(len(all_outputs)):
@@ -438,8 +438,8 @@ def validate(all_ref_outputs, all_outputs, decimal):
 
                 # Compare the results with reference outputs
                 for ref_o, o in zip(ref_output, output):
-                    # abs(desired-actual) < 1.5 * 10**(-decimal)
-                    np.testing.assert_almost_equal(ref_o, o, decimal)
+                    # abs(desired-actual) < rtol * abs(desired) + atol
+                    np.testing.assert_allclose(ref_o, o, rtol, atol)
     except Exception as e:
         logger.error(e)
         return False, e
@@ -1094,8 +1094,7 @@ def run_onnxruntime(args, models):
                     try:
                         ort_outputs = inference_ort_and_get_prediction(name, sess, inputs)
 
-                        decimal = 0
-                        status = validate(ref_outputs, ort_outputs, decimal)
+                        status = validate(ref_outputs, ort_outputs)
                         if not status[0]:
                             update_fail_model_map(model_to_fail_ep, name, ep, 'result accuracy issue', status[1])
                             continue
