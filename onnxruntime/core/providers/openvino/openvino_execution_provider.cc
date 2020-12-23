@@ -65,6 +65,9 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
 #elif defined OPENVINO_2021_1
   result = openvino_ep::GetCapability_2021_1(graph_viewer,
                                              openvino_ep::BackendManager::GetGlobalContext().device_type);
+#elif defined OPENVINO_2021_2
+  result = openvino_ep::GetCapability_2021_2(graph_viewer,
+                                             openvino_ep::BackendManager::GetGlobalContext().device_type);
 #endif
 
   return result;
