@@ -24,14 +24,16 @@ __TEMP_ENABLE_METHOD_TIMING__ = False
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 T = TypeVar('T', bound='Module')
 
+
+def _get_device_index(device):
+    if type(device) == str:
+        # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
+        device = torch.device(device)
+    return 0 if device.index is None else device.index
+
+
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
-    def _get_device_index(device):
-        if type(device) == str:
-            # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
-            device = torch.device(device)
-        return 0 if device.index is None else device.index
-
     for idx, value_info in enumerate(model.graph.input):
         io_binding.bind_input(value_info.name, inputs[idx].device.type,
                               _get_device_index(inputs[idx].device),
@@ -40,7 +42,9 @@ def _create_iobinding(io_binding, inputs, model, device):
                               inputs[idx].data_ptr())
 
     for value_info in model.graph.output:
-        io_binding.bind_output(value_info.name, device if device.find(':') == -1 else device[:device.find(':')])
+        io_binding.bind_output(value_info.name, device if device.find(':') == -1 else device[:device.find(':')],
+                               device_id=_get_device_index(device))
+
 
 def _onnx_value_info_to_buffer_tensor(value_info, device):
     '''Create a torch zeroed tensor with the same shape and type of `value_info`'''
@@ -187,6 +191,13 @@ class ORTModule(torch.nn.Module):
             self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
             self._forward_session = onnxruntime.InferenceSession(self._onnx_forward.SerializeToString())
             self._backward_session = onnxruntime.InferenceSession(self._onnx_backward.SerializeToString())
+
+            if self._device.type == 'cuda':
+                # Configure the InferenceSessions to use the specific GPU on which the model is placed.
+                device_index = _get_device_index(next(iter(self._original_module.parameters())).device)
+                for sess in [self._forward_session, self._backward_session]:
+                    sess.set_providers(["CUDAExecutionProvider", "CPUExecutionProvider"],
+                                       [{"device_id": device_index}, {}])
 
             # IO binding
             # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
