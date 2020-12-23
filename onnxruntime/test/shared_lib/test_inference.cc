@@ -331,6 +331,7 @@ struct SliceCustomOpKernel {
     const OrtValue* input_to = ort_.KernelContext_GetInput(context, 2);
     OrtTensorTypeAndShapeInfo* input_X_info = ort_.GetTensorTypeAndShape(input_X);
     ONNXTensorElementDataType input_X_type = ort_.GetTensorElementType(input_X_info);
+    ort_.ReleaseTensorTypeAndShapeInfo(input_X_info);
 #if USE_CUDA
     int64_t slice_from = 0;
     int64_t slice_to = 0;
