@@ -34,6 +34,7 @@ standalone_trt_fp16 = "Standalone_TRT_fp16"
 
 ep_to_provider_list = {
     cpu: [cpu],
+    acl: [acl], 
     cuda: [cuda],
     cuda_fp16: [cuda],
     trt: [trt, cuda],
@@ -1227,8 +1228,8 @@ def build_status(status_dict, results, is_fail):
 def output_status(results, csv_filename):
     
     need_write_header = True 
-    #if os.path.exists(csv_filename):
-    #    need_write_header = False 
+    if os.path.exists(csv_filename):
+        need_write_header = False 
 
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["Model",
