@@ -15,7 +15,9 @@ struct ConvAttributes {
   explicit ConvAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info) {
     std::string auto_pad_str;
     auto status = info.GetAttr<std::string>("auto_pad", &auto_pad_str);
-    auto_pad = status.IsOK() ? StringToAutoPadType(auto_pad_str) : AutoPadType::NOTSET;
+    if (status.IsOK()) {
+      auto_pad = StringToAutoPadType(auto_pad_str);
+    }
 
     kernel_shape_specified = info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK();
 
@@ -26,7 +28,13 @@ struct ConvAttributes {
 
     status = info.GetAttrs<int64_t>("pads", pads);
     if (!status.IsOK()) {
+      // If pads are not explicitly provided, fill the container with all zeros
+      // so that we can compute and fill in pad values downstream
       pads.resize(kernel_shape_.size() * 2, 0);
+    } else {
+      // Pads are explicitly provided, make sure that auto_pad is NOTSET
+      ORT_ENFORCE(auto_pad == AutoPadType::NOTSET,
+                  "A Conv/ConvTranspose node has both 'auto_pad' and 'pads' attributes");
     }
 
     status = info.GetAttrs<int64_t>("dilations", dilations);
@@ -78,15 +86,17 @@ struct ConvAttributes {
     return Status::OK();
   }
 
-  Status ValidateInputShape(const TensorShape& input_shape, const TensorShape& weight_shape) const {
-    const int64_t C = input_shape[1];
-    const int64_t M = weight_shape[0];
-
+  Status ValidateInputShape(const TensorShape& input_shape,
+                            const TensorShape& weight_shape,
+                            bool channels_last = false) const {
     if (input_shape.NumDimensions() != weight_shape.NumDimensions()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
                              " X: ", input_shape.ToString().c_str(),
                              " W: ", weight_shape.ToString().c_str());
     }
+
+    const int64_t M = weight_shape[0];
+    const int64_t C = channels_last ? input_shape.GetDims().back() : input_shape[1];
 
     if (C != weight_shape[1] * group) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
@@ -284,7 +294,7 @@ struct ConvAttributes {
     return false;
   }
 
-  AutoPadType auto_pad;
+  AutoPadType auto_pad = AutoPadType::NOTSET;
   int64_t group;
   bool kernel_shape_specified;
   std::vector<int64_t> strides;

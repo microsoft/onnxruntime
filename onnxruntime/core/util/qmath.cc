@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/util/qmath.h"
 #include "core/common/common.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
 
 // fallback to gemmlowp when building for arm devices
 #ifndef MLAS_SUPPORTS_GEMM_U8X8
@@ -43,68 +44,32 @@ void QGemm(
     int M,
     int N,
     int K,
-    const uint8_t* lhs_data,
+    const uint8_t* A,
     int lda,
-    const uint8_t lhs_offset,
-    const uint8_t* rhs_data,
+    const uint8_t a_offset,
+    const uint8_t* B,
     int ldb,
-    const uint8_t rhs_offset,
-    bool rhs_signed,
-    int32_t* result_data,
+    const uint8_t b_offset,
+    bool b_signed,
+    int32_t* C,
     int ldc,
-    concurrency::ThreadPool* thread_pool) {
+    concurrency::ThreadPool* thread_pool,
+    const MLAS_QGEMM_OUTPUT_PROCESSOR* output_processor) {
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
-  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, rhs_signed, result_data, ldc, thread_pool);
+  MlasGemm(M, N, K, A, lda, a_offset, B, ldb, b_offset, b_signed, C, ldc, thread_pool, output_processor);
 #else
-  if (rhs_signed) {
-    QGemmWithEigen<uint8_t, int8_t, int32_t>(lhs_data, reinterpret_cast<const int8_t*>(rhs_data), result_data,
+  if (b_signed) {
+    QGemmWithEigen<uint8_t, int8_t, int32_t>(A, reinterpret_cast<const int8_t*>(B), C,
                                              M, N, K, lda, ldb, ldc,
-                                             lhs_offset, static_cast<int8_t>(rhs_offset));
+                                             a_offset, static_cast<int8_t>(b_offset));
   } else {
-    GemmlowpMultiplyu8u8_s32(lhs_data, rhs_data, result_data,
-                             lhs_offset, rhs_offset,
+    GemmlowpMultiplyu8u8_s32(A, B, C,
+                             a_offset, b_offset,
                              M, N, K, lda, ldb, ldc, thread_pool);
   }
-#endif
-}
 
-void QGemm(
-    int M,
-    int N,
-    int K,
-    const uint8_t* lhs_data,
-    int lda,
-    const uint8_t lhs_offset,
-    const uint8_t* rhs_data,
-    int ldb,
-    const uint8_t rhs_offset,
-    bool rhs_signed,
-    float* result_data,
-    int ldc,
-    const float* result_scale,
-    const float* bias,
-    concurrency::ThreadPool* thread_pool) {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-  MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(result_data, ldc, result_scale, bias);
-  MlasGemm(M, N, K,
-           lhs_data, lda, lhs_offset,
-           rhs_data, ldb, rhs_offset, rhs_signed,
-           reinterpret_cast<int32_t*>(result_data), ldc,
-           thread_pool,
-           &scale_bias_processor);
-#else
-  QGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, rhs_signed, reinterpret_cast<int32_t*>(result_data), ldc, thread_pool);
-  for (int m = 0; m < M; m++) {
-    if (bias != nullptr) {
-      for (int n = 0; n < N; n++) {
-        result_data[n] = static_cast<float>(reinterpret_cast<int32_t*>(result_data)[n]) * result_scale[0] + bias[n];
-      }
-    } else {
-      for (int n = 0; n < N; n++) {
-        result_data[n] = static_cast<float>(reinterpret_cast<int32_t*>(result_data)[n]) * result_scale[0];
-      }
-    }
-    result_data += ldc;
+  if (output_processor) {
+    output_processor->Process(C, 0, 0, M, N, ldc);
   }
 #endif
 }

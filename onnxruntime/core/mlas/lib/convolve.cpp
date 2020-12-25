@@ -1271,11 +1271,54 @@ MlasConvDepthwise(
     size_t OutputCount,
     size_t KernelSize
     )
+/*++
+
+Routine Description:
+
+    This routine implements the depthwise convolution operation.
+
+    The input tensor is organized in channels last format (NHWC) after applying
+    the Im2col transform, so the length of each row of the input tensor is
+    Channels times KernelSize. The number of columns of the input tensor is
+    OutputCount.
+
+    The filter tensor is organized in HW1O format, so the length of each row of
+    the filter tensor is Channels. The number of columns of the filter tensor
+    is KernelSize.
+
+Arguments:
+
+    Input - Supplies the input tensor in channels last format.
+
+    InputZeroPoint - Supplies the zero point offset of the input tensor.
+
+    Filter - Supplies the filter tensor.
+
+    FilterZeroPoint - Supplies the zero point offset of the filter tensor.
+
+    Output - Supplies the output tensor in channels last format.
+
+    Channels - Supplies the number of channels.
+
+    OutputCount - Supplies the number of channel sized output elements to
+        produce.
+
+    KernelSize - Supplies the total number of channel sized kernel elements to
+        consume.
+
+Return Value:
+
+    None.
+
+--*/
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     const __m128i ZeroVector = _mm_setzero_si128();
     const __m128i InputZeroPointVector = _mm_set1_epi16(InputZeroPoint);
     const __m128i FilterZeroPointVector = _mm_set1_epi16(FilterZeroPoint);
+#elif defined(MLAS_NEON_INTRINSICS)
+    const uint8x8_t InputZeroPointVector = vdup_n_u8(InputZeroPoint);
+    const uint8x8_t FilterZeroPointVector = vdup_n_u8(uint8_t(FilterZeroPoint));
 #endif
 
     while (OutputCount > 0) {
@@ -1321,6 +1364,46 @@ MlasConvDepthwise(
 
             _mm_storeu_si128((__m128i*)&Output[0], Accumulator0);
             _mm_storeu_si128((__m128i*)&Output[4], Accumulator1);
+            Output += 8;
+
+            ChannelOffset += 8;
+            c -= 8;
+        }
+
+#elif defined(MLAS_NEON_INTRINSICS)
+
+        while (c >= 8) {
+
+            int32x4_t Accumulator0 = vdupq_n_s32(0);
+            int32x4_t Accumulator1 = vdupq_n_s32(0);
+            size_t ChannelKernelOffset = ChannelOffset;
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                uint8x8_t InputVector = vld1_u8(&Input[ChannelKernelOffset]);
+                uint8x8_t FilterVector = vld1_u8(reinterpret_cast<const uint8_t*>(&Filter[ChannelKernelOffset]));
+
+                int16x8_t InputVector16 = vreinterpretq_s16_u16(vsubl_u8(InputVector, InputZeroPointVector));
+                int16x8_t FilterVector16;
+
+                if (std::is_signed<FilterType>::value) {
+                    FilterVector16 = vsubl_s8(vreinterpret_s8_u8(FilterVector), vreinterpret_s8_u8(FilterZeroPointVector));
+                } else {
+                    FilterVector16 = vreinterpretq_s16_u16(vsubl_u8(FilterVector, FilterZeroPointVector));
+                }
+
+                Accumulator0 = vmlal_s16(Accumulator0, vget_low_s16(InputVector16), vget_low_s16(FilterVector16));
+#if defined(MLAS_NEON64_INTRINSICS)
+                Accumulator1 = vmlal_high_s16(Accumulator1, InputVector16, FilterVector16);
+#else
+                Accumulator1 = vmlal_s16(Accumulator1, vget_high_s16(InputVector16), vget_high_s16(FilterVector16));
+#endif
+
+                ChannelKernelOffset += Channels;
+            }
+
+            vst1q_s32(&Output[0], Accumulator0);
+            vst1q_s32(&Output[4], Accumulator1);
             Output += 8;
 
             ChannelOffset += 8;

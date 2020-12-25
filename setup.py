@@ -44,9 +44,6 @@ if '--use_tensorrt' in sys.argv:
 elif '--use_cuda' in sys.argv:
     package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
     sys.argv.remove('--use_cuda')
-elif '--use_ngraph' in sys.argv:
-    package_name = 'onnxruntime-ngraph'
-    sys.argv.remove('--use_ngraph')
 elif '--use_openvino' in sys.argv:
     package_name = 'onnxruntime-openvino'
     sys.argv.remove('--use_openvino')
@@ -161,16 +158,13 @@ except ImportError as error:
 # Additional binaries
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
-  # DNNL & TensorRT EPs are built as shared libs
+  # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
   libs.extend(['libonnxruntime_providers_tensorrt.so'])
-  # nGraph Libs
-  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
-  # OpenVINO Libs
-  if package_name == 'onnxruntime-openvino':
-    if platform.system() == 'Linux':
-      libs.extend(['libovep_ngraph.so'])
+  libs.extend(['libonnxruntime_providers_openvino.so'])
+  # OpenVINO libs
+  libs.extend(['libovep_ngraph.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   if nightly_build:
@@ -185,12 +179,11 @@ elif platform.system() == "Darwin":
     libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
-  # DNNL & TensorRT EPs are built as shared libs
+  # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['onnxruntime_providers_shared.dll'])
   libs.extend(['onnxruntime_providers_dnnl.dll'])
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
-  # nGraph Libs
-  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
+  libs.extend(['onnxruntime_providers_openvino.dll'])
   # DirectML Libs
   libs.extend(['directml.dll'])
   # Nuphar Libs

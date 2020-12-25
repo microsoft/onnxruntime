@@ -1,9 +1,9 @@
-from collections import OrderedDict
 import numpy as np
 import onnx
 import os
 import torch
 import warnings
+from . import _checkpoint_storage, _utils
 
 
 ################################################################################
@@ -12,6 +12,9 @@ import warnings
 
 
 def experimental_state_dict(ort_trainer, include_optimizer_state=True):
+    warnings.warn("experimental_state_dict() will be deprecated soon. "
+                "Please use ORTTrainer.state_dict() instead.", DeprecationWarning)
+
     if not ort_trainer._training_session:
         warnings.warn("ONNX Runtime training session is not initialized yet. "
                         "Please run train_step or eval_step at least once before calling state_dict().")
@@ -35,6 +38,9 @@ def experimental_state_dict(ort_trainer, include_optimizer_state=True):
 
 
 def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
+    warnings.warn("experimental_load_state_dict() will be deprecated soon. "
+                "Please use ORTTrainer.load_state_dict() instead.", DeprecationWarning)
+
     # Note: It may happen ONNX model has not yet been initialized
     # In this case we cache a reference to desired state and delay the restore until after initialization
     # Unexpected behavior will result if the user changes the reference before initialization
@@ -65,6 +71,9 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
 
 
 def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None, include_optimizer_state=True):
+    warnings.warn("experimental_save_checkpoint() will be deprecated soon. "
+                "Please use ORTTrainer.save_checkpoint() instead.", DeprecationWarning)
+
     if checkpoint_state_dict is None:
         checkpoint_state_dict = {'model': experimental_state_dict(ort_trainer, include_optimizer_state)}
     else:
@@ -84,6 +93,9 @@ def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
 
 
 def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", strict=False):
+    warnings.warn("experimental_load_checkpoint() will be deprecated soon. "
+                "Please use ORTTrainer.load_checkpoint() instead.", DeprecationWarning)
+
     checkpoint_files = _list_checkpoint_files(
         checkpoint_dir, checkpoint_prefix)
     is_partitioned = False
@@ -97,6 +109,245 @@ def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
     else:
         return _load_single_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix, is_partitioned, strict)
 
+def _order_paths(paths):
+    """Reorders the given paths in ascending order of rank and return the ordered list"""
+
+    trainer_options_path_tuples = []
+    world_rank = _utils.state_dict_trainer_options_world_rank_key()
+
+    for path in paths:
+        trainer_options_path_tuples.append((_checkpoint_storage.load(path,
+            key=_utils.state_dict_trainer_options_key()), path))
+
+    ordered_paths = [path for _, path in sorted(trainer_options_path_tuples,
+        key=lambda trainer_options_path_pair: trainer_options_path_pair[0][world_rank])]
+
+    return ordered_paths
+
+def _add_or_update_sharded_key_for_zero(state_key, state_value, state_sub_dict,
+                               model_state_key, original_dim, sharded_states_original_dims):
+    """Add or update the record for the sharded state_key in the state_sub_dict"""
+
+    # record the original dimension for this state
+    sharded_states_original_dims[model_state_key] = original_dim
+
+    if state_key in state_sub_dict:
+        # state_dict already contains a record for this state
+        # since this state is sharded, concatenate the state value to
+        # the record in the state_dict
+        state_sub_dict[state_key] = \
+            np.concatenate((state_sub_dict[state_key], state_value))
+    else:
+        # create a new entry for this state in the state_dict
+        state_sub_dict[state_key] = state_value
+
+def _add_or_validate_unsharded_key_for_zero(state_key, state_value, state_sub_dict, mismatch_error_string):
+    """Add or validate the record for the unsharded state_key in the state_sub_dict"""
+
+    if state_key in state_sub_dict:
+        # state_dict already contains a record for this unsharded state.
+        # assert that all values are the same for this previously loaded state
+        assert (state_sub_dict[state_key] == state_value).all(), mismatch_error_string
+    else:
+        # create a new entry for this state in the state_sub_dict
+        state_sub_dict[state_key] = state_value
+
+def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, mixed_precision_enabled):
+    """Aggregates all model states from the rank_state_dict into state_dict"""
+
+    model = _utils.state_dict_model_key()
+    full_precision = _utils.state_dict_full_precision_key()
+    partition_info = _utils.state_dict_partition_info_key()
+    original_dim = _utils.state_dict_original_dimension_key()
+
+    # if there are no model states in the rank_state_dict, no model aggregation is needed
+    if model not in rank_state_dict:
+        return
+
+    if model not in state_dict:
+        state_dict[model] = {}
+
+    if full_precision not in state_dict[model]:
+        state_dict[model][full_precision] = {}
+
+    # iterate over all model state keys
+    for model_state_key, model_state_value in rank_state_dict[model][full_precision].items():
+        # full precision model states are sharded only when they exist in the partition_info subdict and mixed
+        # precision training was enabled. for full precision training, full precision model states are not sharded
+        if mixed_precision_enabled and (model_state_key in rank_state_dict[partition_info]):
+            # this model state is sharded since a record exists in the partition_info subdict
+            _add_or_update_sharded_key_for_zero(model_state_key, model_state_value,
+                state_dict[model][full_precision], model_state_key,
+                rank_state_dict[partition_info][model_state_key][original_dim], sharded_states_original_dims)
+        else:
+            # this model state is not sharded since a record for it does not exist in the partition_info subdict
+            _add_or_validate_unsharded_key_for_zero(model_state_key, model_state_value,
+                state_dict[model][full_precision], "Value mismatch for model state {}".format(model_state_key))
+
+def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict):
+    """Aggregates all optimizer states from the rank_state_dict into state_dict"""
+
+    optimizer = _utils.state_dict_optimizer_key()
+    partition_info = _utils.state_dict_partition_info_key()
+    original_dim = _utils.state_dict_original_dimension_key()
+    sharded_optimizer_keys = _utils.state_dict_sharded_optimizer_keys()
+
+    # if there are no optimizer states in the rank_state_dict, no optimizer aggregation is needed
+    if optimizer not in rank_state_dict:
+        return
+
+    if optimizer not in state_dict:
+        state_dict[optimizer] = {}
+
+    # iterate over all optimizer state keys
+    for model_state_key, optimizer_dict in rank_state_dict[optimizer].items():
+        for optimizer_key, optimizer_value in optimizer_dict.items():
+            if model_state_key not in state_dict[optimizer]:
+                state_dict[optimizer][model_state_key] = {}
+
+            if optimizer_key in sharded_optimizer_keys and model_state_key in rank_state_dict[partition_info]:
+                # this optimizer state is sharded since a record exists in the partition_info subdict
+                _add_or_update_sharded_key_for_zero(optimizer_key, optimizer_value,
+                    state_dict[optimizer][model_state_key], model_state_key,
+                    rank_state_dict[partition_info][model_state_key][original_dim], sharded_states_original_dims)
+            else:
+                # this optimizer state is not sharded since a record for it does not exist in the partition_info subdict
+                # or this optimizer key is not one of the sharded optimizer keys
+                _add_or_validate_unsharded_key_for_zero(optimizer_key, optimizer_value,
+                    state_dict[optimizer][model_state_key],
+                    "Value mismatch for model state {} and optimizer state {}".format(model_state_key, optimizer_key))
+
+def _reshape_states(sharded_states_original_dims, state_dict, mixed_precision_enabled):
+    """Reshape model and optimizer states in the state_dict according to dimensions in sharded_states_original_dims"""
+
+    model = _utils.state_dict_model_key()
+    full_precision = _utils.state_dict_full_precision_key()
+    optimizer = _utils.state_dict_optimizer_key()
+    sharded_optimizer_keys = _utils.state_dict_sharded_optimizer_keys()
+
+    for sharded_state_key, original_dim in sharded_states_original_dims.items():
+        # reshape model states to original_dim only when mixed precision is enabled
+        if mixed_precision_enabled and (model in state_dict):
+            state_dict[model][full_precision][sharded_state_key] = \
+                state_dict[model][full_precision][sharded_state_key].reshape(original_dim)
+
+        # reshape optimizer states to original_dim
+        if optimizer in state_dict:
+            for optimizer_key, optimizer_value in state_dict[optimizer][sharded_state_key].items():
+                if optimizer_key in sharded_optimizer_keys:
+                    state_dict[optimizer][sharded_state_key][optimizer_key] = optimizer_value.reshape(original_dim)
+
+def _aggregate_trainer_options(rank_state_dict, state_dict):
+    """Extracts trainer options from rank_state_dict and loads them accordingly on state_dict"""
+
+    state_dict[_utils.state_dict_trainer_options_key()] = {}
+
+    mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
+    zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
+    world_rank = _utils.state_dict_trainer_options_world_rank_key()
+    world_size = _utils.state_dict_trainer_options_world_size_key()
+    optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+
+    state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = \
+        rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
+    state_dict[_utils.state_dict_trainer_options_key()][zero_stage] = 0
+    state_dict[_utils.state_dict_trainer_options_key()][world_rank] = 0
+    state_dict[_utils.state_dict_trainer_options_key()][world_size] = 1
+    state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = \
+        rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
+
+def _to_pytorch_format(state_dict):
+    """Convert ORT state dictionary schema (hierarchical structure) to PyTorch state dictionary schema (flat structure)"""
+
+    pytorch_state_dict = {}
+    for model_state_key, model_state_value in \
+        state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()].items():
+        # convert numpy array to a torch tensor
+        pytorch_state_dict[model_state_key] = torch.tensor(model_state_value)
+    return pytorch_state_dict
+
+def aggregate_checkpoints(paths, pytorch_format=True):
+    """Aggregate checkpoint files and return a single state dictionary
+
+    Aggregates checkpoint files specified by paths and laods the checkpoint file one at a time merging
+    them into a single state dictionary.
+    The checkpoint files represented by paths must be saved through ORTTrainer.save_checkpoint() function.
+    The schema of the state_dict returned will be in the same as the one returned by ORTTrainer.state_dict()
+
+    Args:
+        paths: list of more than one file represented as strings where the checkpoint is saved
+        pytorch_format: boolean flag to select either ONNX Runtime or PyTorch state schema of the returned state_dict
+    Returns:
+        state_dict that can be loaded into an ORTTrainer or into a PyTorch model
+    """
+
+    # order the paths in ascending order of ranks
+    ordered_paths = _order_paths(paths)
+
+    state_dict = {}
+    sharded_states_original_dims = {}
+    world_rank = _utils.state_dict_trainer_options_world_rank_key()
+    mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
+    zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
+    world_size = _utils.state_dict_trainer_options_world_size_key()
+    optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+
+    loaded_mixed_precision = None
+    loaded_world_size = None
+    loaded_zero_stage = None
+    loaded_optimizer_name = None
+
+    for rank, path in enumerate(ordered_paths):
+        rank_state_dict = _checkpoint_storage.load(path)
+
+        assert _utils.state_dict_partition_info_key() in rank_state_dict, "Missing information: partition_info"
+        assert _utils.state_dict_trainer_options_key() in rank_state_dict, "Missing information: trainer_options"
+        assert rank == rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank], \
+            "Unexpected rank in file at path {}. Expected {}, got {}".\
+                format(path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank])
+        if loaded_mixed_precision is None:
+            loaded_mixed_precision = rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
+        else:
+            assert loaded_mixed_precision == rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision], \
+                "Mixed precision state mismatch among checkpoint files. File: {}".format(path)
+        if loaded_world_size is None:
+            loaded_world_size = rank_state_dict[_utils.state_dict_trainer_options_key()][world_size]
+        else:
+            assert loaded_world_size == rank_state_dict[_utils.state_dict_trainer_options_key()][world_size], \
+                "World size state mismatch among checkpoint files. File: {}".format(path)
+        if loaded_zero_stage is None:
+            loaded_zero_stage = rank_state_dict[_utils.state_dict_trainer_options_key()][zero_stage]
+        else:
+            assert loaded_zero_stage == rank_state_dict[_utils.state_dict_trainer_options_key()][zero_stage], \
+                "Zero stage mismatch among checkpoint files. File: {}".format(path)
+        if loaded_optimizer_name is None:
+            loaded_optimizer_name = rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
+        else:
+            assert loaded_optimizer_name == rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name], \
+                "Optimizer name mismatch among checkpoint files. File: {}".format(path)
+
+        # aggregate all model states
+        _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, loaded_mixed_precision)
+
+        if not pytorch_format:
+            # aggregate all optimizer states if pytorch_format is False
+            _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict)
+
+            # entry for trainer_options in the state_dict to perform other sanity checks
+            if _utils.state_dict_trainer_options_key() not in state_dict:
+                _aggregate_trainer_options(rank_state_dict, state_dict)
+
+            # entry for user_dict in the state_dict if not already present
+            if _utils.state_dict_user_dict_key() not in state_dict and \
+                _utils.state_dict_user_dict_key() in rank_state_dict:
+                state_dict[_utils.state_dict_user_dict_key()] = rank_state_dict[_utils.state_dict_user_dict_key()]
+
+    # reshape all the sharded tensors based on the original dimensions stored in sharded_states_original_dims
+    _reshape_states(sharded_states_original_dims, state_dict, loaded_mixed_precision)
+
+    # return a flat structure for PyTorch model in case pytorch_format is True
+    # else return the hierarchical structure for ORTTrainer
+    return _to_pytorch_format(state_dict) if pytorch_format else state_dict
 
 ################################################################################
 # Helper functions
@@ -160,6 +411,21 @@ def _get_checkpoint_name(prefix, is_partitioned, world_rank=None, world_size=Non
     return filename
 
 
+def _split_state_dict(state_dict):
+    optimizer_keys = ['Moment_1_', 'Moment_2_', 'Update_Count_', 'Step']
+    split_sd = {'optimizer': {}, 'fp32_param': {}, 'fp16_param': {}}
+    for k, v in state_dict.items():
+        mode = 'fp32_param'
+        for optim_key in optimizer_keys:
+            if k.startswith(optim_key):
+                mode = 'optimizer'
+                break
+        if k.endswith('_fp16'):
+            mode = 'fp16_param'
+        split_sd[mode][k] = v
+    return split_sd
+
+
 class _CombineZeroCheckpoint(object):
     def __init__(self, checkpoint_files, clean_state_dict=None):
 
@@ -169,47 +435,66 @@ class _CombineZeroCheckpoint(object):
         self.world_size = int(self.checkpoint_files[0].split('ZeRO')[1].split('.')[2]) + 1
         assert len(self.checkpoint_files) == self.world_size, f"Could not find {self.world_size} files"
         self.weight_shape_map = dict()
+        self.sharded_params = set()
 
-    def _is_sharded(self, name):
-        if '_view_' in name:
-            return True
-        return False
-
-    def _has_fp16_weights(self, state_dict):
-        for k in state_dict.keys():
-            if k.endswith('_fp16'):
-                return True
-        return False
-
-    def _split_moment_name(self, name):
+    def _split_name(self, name):
         name_split = name.split('_view_')
+        view_num = None
         if(len(name_split) > 1):
             view_num = int(name_split[1])
-        else:
-            view_num = None
-        weight_name = name_split[0].split('Moment_')[1][2:]
-        moment_num = int(name_split[0].split('Moment_')[1][0])
-        return moment_num, weight_name, view_num
+        optimizer_key = ''
+        mp_suffix = ''
+        if name_split[0].startswith('Moment_1'):
+            optimizer_key = 'Moment_1_'
+        elif name_split[0].startswith('Moment_2'):
+            optimizer_key = 'Moment_2_'
+        elif name_split[0].startswith('Update_Count'):
+            optimizer_key = 'Update_Count_'
+        elif name_split[0].endswith('_fp16'):
+            mp_suffix = '_fp16'
+        param_name = name_split[0]
+        if optimizer_key != '':
+            param_name = param_name.split(optimizer_key)[1]
+        param_name = param_name.split('_fp16')[0]
+        return param_name, optimizer_key, view_num, mp_suffix
 
     def _update_weight_statistics(self, name, value):
-        self.weight_shape_map[name] = value.size()  # original shape of tensor
+        if name not in self.weight_shape_map:
+            self.weight_shape_map[name] = value.size()  # original shape of tensor
 
-    def _reshape_tensors(self, state_dict, fp16):
-        for k, v in state_dict.items():
-            if k.startswith('Moment_'):
-                _, weight_name, _ = self._split_moment_name(k)
-                set_size = self.weight_shape_map[weight_name]
-                state_dict[k] = v.reshape(set_size)
-                state_dict[weight_name] = state_dict[weight_name].reshape(set_size)
-        return state_dict
+    def _reshape_tensor(self, key):
+        value = self.aggregate_state_dict[key]
+        weight_name, _, _, _ = self._split_name(key)
+        set_size = self.weight_shape_map[weight_name]
+        self.aggregate_state_dict[key] = value.reshape(set_size)
+
+    def _aggregate(self, param_dict):
+        for k, v in param_dict.items():
+            weight_name, optimizer_key, view_num, mp_suffix = self._split_name(k)
+            if view_num is not None:
+                # parameter is sharded
+                param_name = optimizer_key + weight_name + mp_suffix
+
+                if param_name in self.aggregate_state_dict and optimizer_key not in ['Update_Count_']:
+                    self.sharded_params.add(param_name)
+                    # Found a previous shard of the param, concatenate shards ordered by ranks
+                    self.aggregate_state_dict[param_name] = torch.cat((self.aggregate_state_dict[param_name], v))
+                else:
+                    self.aggregate_state_dict[param_name] = v
+            else:
+                if k in self.aggregate_state_dict:
+                    assert (self.aggregate_state_dict[k] == v).all(), "Unsharded params must have the same value"
+                else:
+                    self.aggregate_state_dict[k] = v
+                self._update_weight_statistics(weight_name, v)
 
     def aggregate_checkpoints(self):
-        checkpoint_dir = os.path.dirname(self.checkpoint_files[0])
+        warnings.warn("_CombineZeroCheckpoint.aggregate_checkpoints() will be deprecated soon. "
+                    "Please use aggregate_checkpoints() instead.", DeprecationWarning)
+
         checkpoint_prefix = self.checkpoint_files[0].split('.ZeRO')[0]
         self.aggregate_state_dict = dict()
 
-        is_fp16 = False
-        weight_offset = dict()
         for i in range(self.world_size):
             checkpoint_name = _get_checkpoint_name(checkpoint_prefix, True, i, self.world_size)
             rank_state_dict = torch.load(checkpoint_name, map_location=torch.device("cpu"))
@@ -219,63 +504,11 @@ class _CombineZeroCheckpoint(object):
             if self.clean_state_dict:
                 rank_state_dict = self.clean_state_dict(rank_state_dict)
 
-            if i == 0:
-                is_fp16 = self._has_fp16_weights(rank_state_dict)
+            rank_state_dict = _split_state_dict(rank_state_dict)
+            self._aggregate(rank_state_dict['fp16_param'])
+            self._aggregate(rank_state_dict['fp32_param'])
+            self._aggregate(rank_state_dict['optimizer'])
 
-            for k, v in rank_state_dict.items():
-                if k.startswith('Moment_'):
-                    moment_num, weight_name, view_num = self._split_moment_name(k)
-
-                    if self._is_sharded(k):
-                        clean_name = 'Moment_' + str(moment_num) + '_' + weight_name
-                        if clean_name in self.aggregate_state_dict:
-                            # Found a previous shard of the moment, concatenate shards ordered by ranks
-                            self.aggregate_state_dict[clean_name] = torch.cat((self.aggregate_state_dict[clean_name], v), 0)
-                        else:
-                            self.aggregate_state_dict[clean_name] = v
-                    else:
-                        # Moment is not sharded, add as is
-                        self.aggregate_state_dict[k] = v
-
-                    if is_fp16 and moment_num == 1:
-                        # FP32 weights are sharded, patch together based on moments
-                        if view_num == 0:
-                            # This FP32 weight's first shard is present on this rank,
-                            # flatten and add the weight's first view
-                            self.aggregate_state_dict[weight_name] = rank_state_dict[weight_name].view(-1)
-                            self._update_weight_statistics(weight_name, rank_state_dict[weight_name])
-                            weight_offset[weight_name] = v.numel()
-
-                        elif view_num == 1:
-                            # This FP32 weight is carryforward from previous rank
-                            # Get start and end of weight slice to be updated from this rank
-                            weight_start = weight_offset[weight_name]
-                            weight_end = weight_start + v.numel()
-
-                            if weight_start:
-                                old_value = self.aggregate_state_dict[weight_name]
-                                new_value = rank_state_dict[weight_name].view(-1)
-                                # patch the weight together
-                                self.aggregate_state_dict[weight_name] = torch.cat((old_value[:weight_start],
-                                                                                    new_value[weight_start:weight_end],
-                                                                                    old_value[weight_end:]), 0)
-
-                            # update offset for next view
-                            weight_offset[weight_name] = weight_end
-
-                elif k.startswith('Update_Count'):
-                    clean_name = k.split('_view_')[0]
-                    # add a single copy of the 'Update_Count' tensor for current weight
-                    if clean_name not in self.aggregate_state_dict:
-                        self.aggregate_state_dict[clean_name] = v
-
-                else:
-                    if k not in self.aggregate_state_dict:
-                        self.aggregate_state_dict[k] = v
-                        if not (k.endswith('_fp16') or k == 'Step'):
-                            # FP32 Weight
-                            self._update_weight_statistics(k, v)
-
-        final_state_dict = self._reshape_tensors(
-            self.aggregate_state_dict, is_fp16)
-        return final_state_dict
+        for k in self.sharded_params:
+            self._reshape_tensor(k)
+        return self.aggregate_state_dict

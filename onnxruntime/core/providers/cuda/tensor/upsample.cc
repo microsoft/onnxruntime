@@ -11,24 +11,31 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
+#define REGISTER_VERSIONED_TYPED_KERNEL(T, start, end)            \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Upsample,                                                   \
       kOnnxDomain,                                                \
-      7,                                                          \
-      9,                                                          \
+      start,                                                      \
+      end,                                                        \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Upsample<T>);
+      Upsample<T>)
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
-REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(int32_t)
-REGISTER_KERNEL_TYPED(uint8_t)
+REGISTER_VERSIONED_TYPED_KERNEL(float, 7, 8);
+REGISTER_VERSIONED_TYPED_KERNEL(double, 7, 8);
+REGISTER_VERSIONED_TYPED_KERNEL(MLFloat16, 7, 8);
+REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 7, 8);
+REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 7, 8);
+
+// Upsample was deprecated in opset 10
+REGISTER_VERSIONED_TYPED_KERNEL(float, 9, 9);
+REGISTER_VERSIONED_TYPED_KERNEL(double, 9, 9);
+REGISTER_VERSIONED_TYPED_KERNEL(MLFloat16, 9, 9);
+REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 9, 9);
+REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,

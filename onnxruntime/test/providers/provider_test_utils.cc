@@ -69,6 +69,53 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor,
 }
 
 template <>
+void Check<uint8_t>(const OpTester::Data& expected_data,
+                    const Tensor& output_tensor,
+                    const std::string& provider_type) {
+  auto& expected_tensor = expected_data.data_.Get<Tensor>();
+  auto* expected = expected_tensor.template Data<uint8_t>();
+  auto* output = output_tensor.template Data<uint8_t>();
+  auto size = output_tensor.Shape().Size();
+
+  bool has_abs_err = expected_data.absolute_error_.has_value();
+  bool has_rel_err = expected_data.relative_error_.has_value();
+
+  if (expected_data.sort_output_) {
+    // if order can be jumbled in the output of an operator, sort both the
+    // expected and output buffers prior to
+    // comparison this is a "best-effort" algo and should satisfy the
+    // requirement for the few ops that do require this
+    // support without investing in a more sophisticated infrastructure for the
+    // same
+    sort_expected_and_actual_buffers<uint8_t>(expected, output, size);
+  }
+
+  // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
+  // For any other EPs, we still expect an exact match for the results
+  if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
+    double threshold = has_abs_err
+                           ? expected_data.absolute_error_.value()
+                           : 0.0;
+
+    for (int i = 0; i < size; ++i) {
+      if (has_rel_err) {
+        EXPECT_NEAR(expected[i], output[i],
+                    expected_data.relative_error_.value() * expected[i])  // expected[i] is unsigned, can't be negative
+            << "i:" << i << ", provider_type: " << provider_type;
+      } else {  // has_abs_err
+        EXPECT_NEAR(expected[i], output[i], threshold)
+            << "i:" << i << ", provider_type: " << provider_type;
+      }
+    }
+  } else {
+    for (int i = 0; i < size; ++i) {
+      EXPECT_EQ(expected[i], output[i]) << "i:" << i
+                                        << ", provider_type: " << provider_type;
+    }
+  }
+}
+
+template <>
 void Check<double>(const OpTester::Data& expected_data,
                    const Tensor& output_tensor,
                    const std::string& provider_type) {
@@ -572,9 +619,8 @@ std::vector<MLValue> OpTester::ExecuteModel(
       }
     } else {
       if (expect_result == ExpectResult::kExpectFailure) {
-        // Disable expected_failure_string checks for MKL-DNN ,nGraph and OpenVINO EP's
+        // Disable expected_failure_string checks for MKL-DNN and OpenVINO EP's
         if (provider_type != kDnnlExecutionProvider &&
-            provider_type != kNGraphExecutionProvider &&
             provider_type != kOpenVINOExecutionProvider) {
           EXPECT_THAT(status.ErrorMessage(),
                       testing::HasSubstr(expected_failure_string));
@@ -741,7 +787,6 @@ void OpTester::Run(
         kCpuExecutionProvider,
         kCudaExecutionProvider,
         kDnnlExecutionProvider,
-        kNGraphExecutionProvider,
         kNupharExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
@@ -749,8 +794,7 @@ void OpTester::Run(
         kAclExecutionProvider,
         kArmNNExecutionProvider,
         kNnapiExecutionProvider,
-        kRocmExecutionProvider
-    };
+        kRocmExecutionProvider};
 
     bool has_run = false;
 
@@ -801,8 +845,6 @@ void OpTester::Run(
           execution_provider = DefaultCudaExecutionProvider();
         else if (provider_type == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider();
-        else if (provider_type == onnxruntime::kNGraphExecutionProvider)
-          execution_provider = DefaultNGraphExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
           execution_provider = DefaultOpenVINOExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
@@ -832,8 +874,7 @@ void OpTester::Run(
 
           // if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
-          if (provider_type == onnxruntime::kNGraphExecutionProvider ||
-              provider_type == onnxruntime::kOpenVINOExecutionProvider ||
+          if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider)
@@ -849,8 +890,7 @@ void OpTester::Run(
               }
             }
 
-            if (!valid)
-            {
+            if (!valid) {
               std::cerr << "No kernel registered from EP: " << provider_type << "for node: " << node.OpType() << std::endl;
               break;
             }

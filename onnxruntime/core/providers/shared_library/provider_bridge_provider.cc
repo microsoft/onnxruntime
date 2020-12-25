@@ -6,14 +6,16 @@
 #include "provider_api.h"
 #include <assert.h>
 #include <mutex>
+#include "core/providers/shared/common.h"
 
-extern "C" {
-void* Provider_GetHost();
-}
+// Override default new/delete so that we match the host's allocator
+void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
+void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }
+void operator delete(void* p, size_t /*size*/) { return Provider_GetHost()->HeapFree(p); }
 
 namespace onnxruntime {
 
-ProviderHost* g_host = reinterpret_cast<ProviderHost*>(Provider_GetHost());
+ProviderHost* g_host = Provider_GetHost();
 
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
@@ -38,15 +40,6 @@ struct OnUnload {
   }
 
 } g_on_unload;
-
-}  // namespace onnxruntime
-
-// Override default new/delete so that we match the host's allocator
-void* operator new(size_t n) { return onnxruntime::g_host->HeapAllocate(n); }
-void operator delete(void* p) { return onnxruntime::g_host->HeapFree(p); }
-void operator delete(void* p, size_t /*size*/) { return onnxruntime::g_host->HeapFree(p); }
-
-namespace onnxruntime {
 
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
@@ -113,6 +106,38 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
+AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+  return g_host->IExecutionProvider__GetAllocator(this, id, mem_type);
+}
+
+void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
+  g_host->IExecutionProvider__InsertAllocator(this, allocator);
+}
+
+std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                                                                                  const std::vector<const KernelRegistry*>& kernel_registries) const {
+  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
+}
+
+common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
+  return g_host->IExecutionProvider__Compile(this, fused_nodes, node_compute_funcs);
+}
+
+common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                           std::string& dll_path) {
+  return g_host->IExecutionProvider__Compile(this, fused_nodes, dll_path);
+}
+
+common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
+  return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
+}
+
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
+  return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
+}
+
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
@@ -122,17 +147,13 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
   return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
-std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer() {
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
   return g_host->CreateGPUDataTransfer();
 }
 #endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
-}
-
-Provider_IExecutionProvider::Provider_IExecutionProvider(const std::string& type) {
-  p_ = g_host->Create_IExecutionProvider_Router(this, type).release();
 }
 
 namespace logging {
@@ -155,6 +176,9 @@ Status::Status(StatusCategory category, int code, const char* msg) {
   ORT_ENFORCE(code != static_cast<int>(common::OK));
 
   state_ = onnxruntime::make_unique<State>(category, code, msg);
+}
+
+Status::Status(StatusCategory category, int code) : Status(category, code, "") {
 }
 
 int Status::Code() const noexcept {

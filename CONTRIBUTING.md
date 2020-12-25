@@ -1,7 +1,12 @@
 # Contributing
 
-We're always looking for your help to fix bugs and improve the product. Create a pull request and we'll be happy to take a look.
-Start by reading the [Engineering Design](./docs/InferenceHighLevelDesign.md). You can find the doxygen generated documentation [here](https://microsoft.github.io/onnxruntime/).
+We're always looking for your help to improve the product (bug fixes, new features, documentation, etc).
+
+## Contributing a code change
+* Start by reading the [Engineering Design](./docs/InferenceHighLevelDesign.md). More documentation can be found in the [docs folder](./docs/) and [here](https://microsoft.github.io/onnxruntime/).
+* If your change is non-trivial or introduces new public facing APIs (discussed in more detail below) please use the [feature request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=feature_request.md) to discuss it with the team and get consensus on the basic design and direction first. For all other changes, you can directly create a pull request (PR) and we'll be happy to take a look.
+* Make sure your PR adheres to the [PR Guidelines](./docs/PR_Guidelines.md) and [Coding Conventions and Standards](./docs/Coding_Conventions_and_Standards.md) established by the team.
+* If you're unsure about any of the above and want to contribute, you're welcome to [start a discussion](https://github.com/microsoft/onnxruntime/discussions) with the team.
 
 ## Proposing new public APIs
 
@@ -46,13 +51,6 @@ For making changes to the Windows Machine Learning WinRT API, please label your 
 * Binaries: We periodically produce signed prerelease binaries from the master branch to validate new features and APIs.  After the feature has been sufficiently validated as part of a prerelease package we will include it in the next stable binary release.
 * Note: After creating a pull request, you might not see a build getting triggered right away. One of the
 onnxruntime team members will trigger the build for you.
-
-## Coding guidelines
-
-Please see [Coding Conventions and Standards](./docs/Coding_Conventions_and_Standards.md)
-
-## Guidelines for creating a good PR (pull request)
-[PR Guidelines](./docs/PR_Guidelines.md)
 
 ## Licensing guidelines
 

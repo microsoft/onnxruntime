@@ -5,7 +5,9 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    /// Sets various runtime options. 
+    /// <summary>
+    ///  Sets various runtime options. 
+    /// </summary>
     public class RunOptions : SafeHandle
     {
         internal IntPtr Handle
@@ -16,13 +18,19 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-
+        /// <summary>
+        /// Default __ctor. Creates default RuntimeOptions
+        /// </summary>
         public RunOptions() 
             :base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRunOptions(out handle));
         }
 
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
@@ -85,6 +93,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Sets a flag to terminate all Run() calls that are currently using this RunOptions object 
         /// Default = false
         /// </summary>
+        /// <value>terminate flag value</value>
         public bool Terminate
         {
             get
@@ -109,7 +118,11 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         #region SafeHandle
-
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of RunOptions
+        /// </summary>
+        /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
              NativeMethods.OrtReleaseRunOptions(handle);

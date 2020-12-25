@@ -23,7 +23,11 @@ Abstract:
 
         .equ    .LGemmU8X8KernelFrame_ColumnSumBuffer, 0
         .equ    .LGemmU8X8KernelFrame_DepthValue, 8
+#if defined(__APPLE__)
+        .equ    .LGemmU8X8KernelFrame_ZeroMode, 12
+#else
         .equ    .LGemmU8X8KernelFrame_ZeroMode, 16
+#endif
 
         .text
 

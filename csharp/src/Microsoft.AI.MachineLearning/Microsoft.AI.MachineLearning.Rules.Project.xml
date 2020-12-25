@@ -13,11 +13,6 @@
                 Description="Suppresses binplacing the onnxruntime.dll from the Mirosoft.AI.MachineLearning NuGet distribution."
                 Category="General" />
 
-  <BoolProperty Name="DisableDirectMLDllCopy"
-                DisplayName="Disable directml.dll copy on build"
-                Description="Suppresses binplacing the directml.dll from the Mirosoft.AI.MachineLearning NuGet distribution."
-                Category="General" />
-
   <BoolProperty Name="UseWindowsMLStaticRuntime"
                 DisplayName="Use a dll that links statically to runtimes"
                 Description="Use a larger DLL that doesn't depend on installed versions of the vcruntime and CRT."

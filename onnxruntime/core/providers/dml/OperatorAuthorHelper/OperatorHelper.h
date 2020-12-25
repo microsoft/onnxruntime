@@ -1273,7 +1273,7 @@ class TileHelper {
     ML_CHECK_VALID_ARGUMENT(repeatsTensor.IsCpuData(), "Tile's repeats tensor must be CPU Tensor.");
 
     for (size_t i = 0; i < dimCount; ++i) {
-      ML_CHECK_VALID_ARGUMENT(repeatsData[i] > 0, "Repeat values should be > 0.");
+      ML_CHECK_VALID_ARGUMENT(repeatsData[i] >= 0, "Repeat values should be >= 0.");
       m_repeatsData.push_back(gsl::narrow_cast<uint32_t>(repeatsData[i]));
     }
 
