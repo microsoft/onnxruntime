@@ -16,8 +16,6 @@ Abstract:
 
 #include "mlasi.h"
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-
 void MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR::Process(
     const int32_t* C,
     size_t StartM,
@@ -238,5 +236,3 @@ Return Value:
         Output += LeadingDimensionOutput_;
     }
 }
-
-#endif // MLAS_SUPPORTS_GEMM_U8X8

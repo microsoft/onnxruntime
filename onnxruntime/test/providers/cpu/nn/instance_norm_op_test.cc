@@ -111,7 +111,11 @@ TEST(InstanceNormalizationOpTest, InstanceNorm_2) {
                                    1.88028F, 2.353724F, -0.25549555F,
                                    2.0837004F, 2.8466992F, 2.0773761F};
   test.AddOutput<float>("Y", input_dims, expected_output);
+#if defined(OPENVINO_CONFIG_MYRIAD) //Disabling this test on MYRIADX temporarily due to a bug
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+#endif
 }
 
 }  // namespace test

@@ -8,7 +8,8 @@ daysUntilClose: 7
 exemptLabels:
   - status:contributions-welcome 
   - status:more-info-needed 
-  - status:duplicate 
+  - status:duplicate
+  - type:enhancement
   
 # Label to use when marking an issue as stale
 staleLabel: stale

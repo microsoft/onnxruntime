@@ -19,7 +19,7 @@ echo "no" | $ANDROID_HOME/tools/bin/avdmanager create avd -n android_emulator -k
 echo "Starting emulator"
 
 # Start emulator in background using port 5682
-nohup $ANDROID_HOME/emulator/emulator -avd android_emulator -partition-size 2048 -memory 3072 -timezone America/Los_Angeles -no-snapshot -no-audio -no-boot-anim -no-window -port 5682 &
+nohup $ANDROID_HOME/emulator/emulator -avd android_emulator -partition-size 4096 -memory 4096 -timezone America/Los_Angeles -no-snapshot -no-audio -no-boot-anim -no-window -port 5682 &
 
 $ANDROID_HOME/platform-tools/adb start-server
 

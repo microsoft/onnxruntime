@@ -2,6 +2,7 @@ import copy
 from functools import partial
 import inspect
 import math
+import numpy as np
 from numpy.testing import assert_allclose
 import onnx
 import os
@@ -18,7 +19,6 @@ from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, Tra
                                       orttrainer_options as orttrainer_options
 
 import _test_commons, _test_helpers
-
 
 ###############################################################################
 # Helper functions ############################################################
@@ -394,20 +394,20 @@ def testToyBertCheckpointBasic():
     model = load_bert_onnx_model()
     model_desc = bert_model_description()
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-    sd = checkpoint.experimental_state_dict(trainer)
+    sd = trainer.state_dict()
 
     ## All initializers must be present in the state_dict
     ##  when the specified model for ORTTRainer is an ONNX model
     for param in trainer._onnx_model.graph.initializer:
-        assert param.name in sd
+        assert param.name in sd['model']['full_precision']
 
     ## Modify one of the state values and load into ORTTrainer
-    sd['bert.encoder.layer.0.attention.output.LayerNorm.weight'] += 10
-    checkpoint.experimental_load_state_dict(trainer, sd)
+    sd['model']['full_precision']['bert.encoder.layer.0.attention.output.LayerNorm.weight'] += 10
+    trainer.load_state_dict(sd)
 
     ## Save a checkpoint
-    ckpt_dir = _test_helpers._get_name("ort_ckpt")
-    checkpoint.experimental_save_checkpoint(trainer, ckpt_dir, 'bert_toy_save_test')
+    ckpt_dir = 'testdata'
+    trainer.save_checkpoint(os.path.join(ckpt_dir, 'bert_toy_save_test.ortcp'))
     del trainer
     del model
 
@@ -415,47 +415,11 @@ def testToyBertCheckpointBasic():
     model2 = load_bert_onnx_model()
     model_desc2 = bert_model_description()
     trainer2 = orttrainer.ORTTrainer(model2, model_desc2, optim_config, options=opts)
-    checkpoint.experimental_load_checkpoint(trainer2, ckpt_dir, 'bert_toy_save_test')
-    loaded_sd = checkpoint.experimental_state_dict(trainer2)
+    trainer2.load_checkpoint(os.path.join(ckpt_dir, 'bert_toy_save_test.ortcp'))
+    loaded_sd = trainer2.state_dict()
 
     # Assert whether original state and the one loaded from checkpoint matches
-    for k,v in loaded_sd.items():
-        assert torch.all(torch.eq(v, sd[k]))
-
-
-def testToyBertCheckpointLoadZero():
-    # Common setup
-    rtol = 1e-03
-    device = 'cuda'
-    seed = 1
-    torch.manual_seed(seed)
-    onnxruntime.set_seed(seed)
-    optim_config = optim.LambConfig()
-    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
-                                         'device' : {'id' : device},
-                                         'distributed' : {'allreduce_post_accumulation' : True}})
-
-    # Create ORTTrainer and save initial state in a dict
-    model = load_bert_onnx_model()
-    model_desc = bert_model_description()
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-    ckpt_dir = _test_helpers._get_name("ort_ckpt")
-    checkpoint.experimental_load_checkpoint(trainer, ckpt_dir, 'bert_toy_lamb')
-
-    # Expected values
-    expected_eval_loss = [10.997552871]
-    input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
-    segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
-    input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
-    masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
-    next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
-
-    # Actual values
-    actual_eval_loss = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
-    actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
-
-    # Check results
-    assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol)
+    _test_commons.assert_all_states_close_ort(sd, loaded_sd)
 
 
 def testToyBertCheckpointFrozenWeights():
@@ -481,21 +445,63 @@ def testToyBertCheckpointFrozenWeights():
     # Evaluate once to get a base loss
     loss = trainer.eval_step(*sample_input)
     # Save checkpoint
-    state_dict = checkpoint.experimental_state_dict(trainer)
+    state_dict = trainer.state_dict()
 
     # Load previous state into another instance of ORTTrainer
     model2 = load_bert_onnx_model()
     model_desc2 = bert_model_description()
     optim_config2 = optim.LambConfig()
     trainer2 = orttrainer.ORTTrainer(model2, model_desc2, optim_config2, options=opts)
-    checkpoint.experimental_load_state_dict(trainer2, state_dict)
+    trainer2.load_state_dict(state_dict)
     # Evaluate once to get a base loss
     ckpt_loss = trainer2.eval_step(*sample_input)
 
     # Must match as both trainers have the same dict state
     assert_allclose(loss.cpu(), ckpt_loss.cpu())
-    loaded_state_dict = checkpoint.experimental_state_dict(trainer2)
-    assert state_dict.keys() == loaded_state_dict.keys()
+    loaded_state_dict = trainer2.state_dict()
+    _test_commons.assert_all_states_close_ort(state_dict, loaded_state_dict)
+
+@pytest.mark.parametrize("optimizer, mixedprecision_enabled", [
+    (optim.LambConfig(), False),
+    (optim.AdamConfig(), False),
+    (optim.LambConfig(), True),
+    (optim.AdamConfig(), True),
+])
+def testToyBertLoadOptimState(optimizer, mixedprecision_enabled):
+    # Common setup
+    rtol = 1e-03
+    device = 'cuda'
+    seed = 1
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    optim_config = optimizer
+    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
+                                         'device' : {'id' : device},
+                                         'mixed_precision': {
+                                                'enabled': mixedprecision_enabled,
+                                            },
+                                         'distributed' : {'allreduce_post_accumulation' : True}})
+
+    # Create ORTTrainer and save initial state in a dict
+    model = load_bert_onnx_model()
+    model_desc = bert_model_description()
+    dummy_init_state = _test_commons.generate_dummy_optim_state(model, optimizer)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
+    trainer.load_state_dict(dummy_init_state)
+    
+    # Expected values
+    input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
+    segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
+    input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
+    masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
+    next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
+
+    # Actual values
+    _ = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
+    
+    actual_state_dict = trainer.state_dict()
+    del actual_state_dict['model']
+    _test_commons.assert_all_states_close_ort(actual_state_dict, dummy_init_state)
 
 @pytest.mark.parametrize("model_params", [
     (['bert.embeddings.LayerNorm.bias']),

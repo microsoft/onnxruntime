@@ -7,7 +7,8 @@
 namespace onnxruntime {
 namespace test {
 TEST(MemPatternPlannerTest, TraceAllocaitonTest) {
-  MemPatternPlanner planner;
+  const bool using_counters = false;  // we're not tracking start/end for use/re-use of each allocation via counters
+  MemPatternPlanner planner{using_counters};
   planner.TraceAllocation(0, 1024);
   planner.TraceAllocation(1, 256);
   planner.TraceAllocation(2, 512);

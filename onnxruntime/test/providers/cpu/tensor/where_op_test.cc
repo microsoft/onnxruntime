@@ -88,6 +88,7 @@ void WhereBroadcastTest(const T& x_value, const T& y_value) {
 
 TEST(WhereOpTest, BasicNumeric) {
   WhereBasicNumericTest<float>();
+  WhereBasicNumericTest<double>();
 }
 
 TEST(WhereOpTest, BasicString) {
@@ -106,6 +107,7 @@ TEST(WhereOpTest, BasicString) {
 
 TEST(WhereOpTest, Broadcast) {
   WhereBroadcastTest<float>(1.0f, 0.0f);
+  WhereBroadcastTest<double>(1.0f, 0.0f);
   WhereBroadcastTest<std::string>("true", "false");
 }
 
@@ -119,8 +121,7 @@ TEST(WhereOpTest, BroadcastDimWithZero) {
 
   test.AddOutput<int64_t>("output", {0, 3}, {});
 
-  // exclude NGraph as this isn't handled by that EP
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 TEST(WhereOpTest, BroadcastWithScalar) {
@@ -132,8 +133,6 @@ TEST(WhereOpTest, BroadcastWithScalar) {
 
   test.AddOutput<int64_t>("output", {1, 3}, {1, 1, 3});
 
-  // exclude NGraph as this isn't handled by that EP
-  //test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
   test.Run();
 }
 

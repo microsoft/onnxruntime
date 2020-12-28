@@ -33,8 +33,8 @@ static void RunOnnxOpsetTypedTest(
   }
   test.AddOutput<T>("output", output_dims, output);
   if (opset >= 11) {
-    // NGraph and TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
-    test.Run(expect, error_msg, {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+    // TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
+    test.Run(expect, error_msg, {kTensorrtExecutionProvider});
   }
   else {
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)

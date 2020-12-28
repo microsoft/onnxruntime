@@ -210,14 +210,13 @@ void RunConv2DWithBiasTest(bool all_input_initializer_except_x) {
   OpTester test("QLinearConv", 10);
   test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
-  // TODO: nGraph fails to handle the optional bias vector correctly.
   TestQLinearConvOp(test,
                     X, {1, 2, 5, 5},
                     W, {4, 2, 3, 3},
                     &B,
                     Y, {1, 4, 5, 5},
                     all_input_initializer_except_x,
-                    {kNGraphExecutionProvider});
+                    {});
 }
 
 TEST(QLinearConvTest, WithBias_2D) {
@@ -252,17 +251,16 @@ TEST(QLinearConvTest, WithGroup_2D) {
   test.AddAttribute("pads", std::vector<int64_t>{0, 0, 1, 1});
   test.AddAttribute("strides", std::vector<int64_t>{2, 2});
 
-  // TODO: nGraph rejects grouped convolutions with bias.
   TestQLinearConvOp(test,
                     X, {1, 6, 3, 5},
                     W, {6, 2, 2, 2},
                     &B,
                     Y, {1, 6, 2, 3},
                     false,
-                    {kNGraphExecutionProvider});
+                    {});
 }
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
 
 template <typename T1, typename T2>
 class QLinearConvOpTester {
@@ -391,7 +389,9 @@ class QLinearConvOpTester {
     Y_shape.push_back(output_channels);
     for (size_t n = 0; n < kernel_rank; n++) {
       Y_shape.push_back(((input_shape[n] + pads[n] + pads[kernel_rank + n]) -
-                        (dilations[n] * (kernel_shape[n] - 1) + 1)) / strides[n] + 1);
+                         (dilations[n] * (kernel_shape[n] - 1) + 1)) /
+                            strides[n] +
+                        1);
     }
     const int64_t* output_shape = Y_shape.data() + 2;
     Y_data.resize(ShapeSize(Y_shape));
@@ -466,22 +466,38 @@ class QLinearConvOpTester {
 
     test.AddInput<T1>("x", X_.shape_, X_.data_);
     test.AddInput<float>("x_scale", {}, X_.scale_, all_input_initializer_except_x);
-    test.AddInput<T1>("x_zero_point", {}, {X_.zero_point_});
+    test.AddInput<T1>("x_zero_point", {}, {X_.zero_point_}, all_input_initializer_except_x);
 
     const std::vector<int64_t> W_scale_shape{static_cast<int64_t>(W_.scale_.size())};
     test.AddInput<T2>("w", W_.shape_, W_.data_, all_input_initializer_except_x);
     test.AddInput<float>("w_scale", W_scale_shape, W_.scale_, all_input_initializer_except_x);
-    test.AddInput<T2>("w_zero_point", {}, {W_.zero_point_});
+    test.AddInput<T2>("w_zero_point", {}, {W_.zero_point_}, all_input_initializer_except_x);
 
     test.AddInput<float>("y_scale", {}, {output_scale_}, all_input_initializer_except_x);
-    test.AddInput<T1>("y_zero_point", {}, {output_zero_point_});
+    test.AddInput<T1>("y_zero_point", {}, {output_zero_point_}, all_input_initializer_except_x);
 
     if (!B_.empty()) {
       const std::vector<int64_t> B_shape{static_cast<int64_t>(B_.size())};
-      test.AddInput<int32_t>("b", B_shape, B_);
+      test.AddInput<int32_t>("b", B_shape, B_, all_input_initializer_except_x);
     }
 
-    test.AddOutput<uint8_t>("y", Y_shape, Y_data);
+    float abs_error = 0.0f;
+
+    // For quantized models, NNAPI's rounding is different than CPU provider
+    // Sometimes the result is within +/-1 of result of CPU provider
+    // For ONNX, we use rounding to nearest ties to even.
+    // For NNAPI, it is using std::round which is HALF_AWAY_FROM_ZERO, see
+    // https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/operations/Quantize.cpp
+    // Use 1 as abs_error which is the smallest possbile for uint8_t
+    //
+    // NOTE, for now the tolerance will only apply if the NNAPI is actually used,
+    // if for any reason the execution falls back to CPU, we still expect an exact match
+    // See, 'void Check<uint8_t>(...' in onnxruntime/test/providers/provider_test_utils.cc
+#ifdef USE_NNAPI
+    abs_error = 1.0f;
+#endif
+
+    test.AddOutput<uint8_t>("y", Y_shape, Y_data, false /* sort_output */, 0.0f /* rel_error */, abs_error);
 
     if (!pads_.empty()) {
       test.AddAttribute("pads", pads_);
@@ -701,7 +717,7 @@ TEST(QLinearConvTest, Conv2D_U8S8_Groups) {
 
 TEST(QLinearConvTest, Conv3D_U8S8_Groups) {
   QLinearConvOpTester<uint8_t, int8_t> test;
-  test.GenerateRandomInput({1, 4, 13, 17, 13}, .03f, 7);
+  test.GenerateRandomInput({2, 4, 13, 17, 13}, .03f, 7);
   test.GenerateRandomWeights({6, 2, 3, 3, 3}, .10f, 0);
   test.GenerateRandomBias();
   test.SetPads({1, 1, 1, 1, 1, 1});
@@ -723,25 +739,29 @@ TEST(QLinearConvTest, Conv2D_U8S8_Groups_PerChannel) {
 }
 
 TEST(QLinearConvTest, Conv2D_U8S8_Depthwise) {
-  QLinearConvOpTester<uint8_t, int8_t> test;
-  test.GenerateRandomInput({1, 24, 25, 25}, .03f, 12);
-  test.GenerateRandomWeights({24, 1, 5, 5}, .10f, 0);
-  test.GenerateRandomBias();
-  test.SetPads({2, 2, 2, 2});
-  test.SetGroups(24);
-  test.SetOutputScaleAndZeroPoint(.76f, 88);
-  test.Run();
+  for (int64_t channels : std::initializer_list<int64_t>{7, 8, 9, 16, 25}) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, channels, 25, 25}, .03f, 12);
+    test.GenerateRandomWeights({channels, 1, 5, 5}, .10f, 0);
+    test.GenerateRandomBias();
+    test.SetPads({2, 2, 2, 2});
+    test.SetGroups(channels);
+    test.SetOutputScaleAndZeroPoint(.76f, 88);
+    test.Run();
+  }
 }
 
 TEST(QLinearConvTest, Conv2D_U8U8_Depthwise) {
-  QLinearConvOpTester<uint8_t, uint8_t> test;
-  test.GenerateRandomInput({1, 30, 25, 25}, .03f, 12);
-  test.GenerateRandomWeights({30, 1, 3, 3}, .10f, 167);
-  test.GenerateRandomBias();
-  test.SetPads({2, 0, 2, 0});
-  test.SetGroups(30);
-  test.SetOutputScaleAndZeroPoint(.76f, 88);
-  test.Run();
+  for (int64_t channels : std::initializer_list<int64_t>{3, 8, 13, 24, 31}) {
+    QLinearConvOpTester<uint8_t, uint8_t> test;
+    test.GenerateRandomInput({1, channels, 25, 25}, .03f, 12);
+    test.GenerateRandomWeights({channels, 1, 3, 3}, .10f, 167);
+    test.GenerateRandomBias();
+    test.SetPads({2, 0, 2, 0});
+    test.SetGroups(channels);
+    test.SetOutputScaleAndZeroPoint(.76f, 88);
+    test.Run();
+  }
 }
 
 TEST(QLinearConvTest, Conv2D_U8S8_DepthwisePointwise) {
@@ -764,6 +784,44 @@ TEST(QLinearConvTest, Conv3D_U8S8_Depthwise) {
   test.SetGroups(16);
   test.SetOutputScaleAndZeroPoint(.85f, 112);
   test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias) {
+  for (int64_t channels = 1; channels <= 32; channels++) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, 8, 5, 5}, .05f, 4);
+    test.GenerateRandomWeights({channels, 8, 3, 3}, .125f, 0);
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 56);
+    test.Run();
+  }
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_Bias) {
+  for (int64_t channels = 1; channels <= 32; channels++) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, 8, 5, 5}, .05f, 4);
+    test.GenerateRandomWeights({channels, 8, 3, 3}, .125f, 0);
+    test.GenerateRandomBias();
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 56);
+    test.Run();
+  }
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_Bias_PerChannel) {
+  std::vector<float> weight_scales;
+  for (int64_t channels = 1; channels <= 32; channels++) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, 8, 5, 5}, .05f, 4);
+    test.GenerateRandomWeights({channels, 8, 3, 3}, .125f, 0);
+    weight_scales.push_back(.120f + .002f * static_cast<float>(channels));
+    test.SetWeightScales(weight_scales);
+    test.GenerateRandomBias();
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 56);
+    test.Run();
+  }
 }
 
 #endif

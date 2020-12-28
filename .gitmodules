@@ -25,9 +25,6 @@
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
 	url = https://gitlab.com/libeigen/eigen.git
-[submodule "cmake/external/horovod"]
-	path = cmake/external/horovod
-	url = https://github.com/horovod/horovod.git
 [submodule "cmake/external/cxxopts"]
 	path = cmake/external/cxxopts
 	url = https://github.com/jarro2783/cxxopts.git
