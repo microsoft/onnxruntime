@@ -406,7 +406,7 @@ static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& 
 
   // verify gradient accumulation operations exist
   if (config.gradient_accumulation_steps > 1) {
-    ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), k_weight_names.size());
+    ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), 1);
     ASSERT_EQ(GetOpCount(op_counts, k_inplace_accumulator_op_name), k_weight_names.size() * 2);
     ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
     ASSERT_EQ(opt_graph_outputs.count(OptimizerOutputKey::GradientAccumulation), 1);
@@ -414,16 +414,15 @@ static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& 
 
   // verify mixed precision operations exist
   if (config.use_mixed_precision) {
-    ASSERT_EQ(GetOpCount(op_counts, k_gradient_norm_op_name), 1);
-    ASSERT_EQ(GetOpCount(op_counts, k_is_all_finite_op_name), 1);
+    ASSERT_GT(GetOpCount(op_counts, k_gradient_norm_op_name), 0);
+    ASSERT_GT(GetOpCount(op_counts, k_is_all_finite_op_name), 0);
   }
 
   // verify allreduce operations exist
-  ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), k_weight_names.size());
   ASSERT_GT(GetOpCount(op_counts, k_adasum_op_name), 0);
 
   // verify in place adder operations exist
-  ASSERT_EQ(GetOpCount(op_counts, k_inplace_accumulator_op_name), k_weight_names.size());
+  ASSERT_GT(GetOpCount(op_counts, k_inplace_accumulator_op_name), 0);
 
   // verify optimizers exist
   ASSERT_EQ(GetOpCount(op_counts, k_adam_optimizer_op_name), k_weight_names.size());
