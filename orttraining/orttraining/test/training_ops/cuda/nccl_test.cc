@@ -52,7 +52,6 @@ static void RunNcclAllReduceTest(bool use_fp16, int local_size) {
   RandomValueGenerator random{42};
   OpTester test("NcclAllReduce", 1, onnxruntime::kMSDomain);
   test.AddBufferedInputOutput();
-  test.AddExtraDomainToVersion({{kOnnxDomain, -1}});
 
   const std::vector<std::vector<int64_t>> tensors_dims = {{2, 3}, {128}, {512}, {7, 13}, {1024, 3}};
   for (size_t i = 0; i < tensors_dims.size(); ++i) {
@@ -95,7 +94,6 @@ static void RunNcclReduceScatterTest(bool use_fp16, int local_size, int local_ra
   RandomValueGenerator random{42};
   OpTester test("NcclReduceScatter", 1, onnxruntime::kMSDomain);
   test.AddBufferedInputOutput();
-  test.AddExtraDomainToVersion({{kOnnxDomain, -1}});
 
   const std::vector<std::vector<int64_t>> tensors_dims = {{2, 3}, {5, 17}, {512}, {7, 13}, {256}};
 
@@ -160,7 +158,6 @@ static void RunNcclAllGatherTest(bool use_fp16, int local_size, int local_rank) 
   RandomValueGenerator random{42};
   OpTester test("NcclAllGather", 1, onnxruntime::kMSDomain);
   test.AddBufferedInputOutput();
-  test.AddExtraDomainToVersion({{kOnnxDomain, -1}});
 
   const std::vector<std::vector<int64_t>> tensors_dims = {{2, 3}, {5, 17}, {512}, {7, 13}, {256}};
 

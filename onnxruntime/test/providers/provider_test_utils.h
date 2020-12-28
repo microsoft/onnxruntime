@@ -438,8 +438,6 @@ class OpTester {
 
   void AddBufferedInputOutput();
 
-  void AddExtraDomainToVersion(const std::unordered_map<std::string, int>& extra_domain_to_version);
-
   std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
 
   // storing p_model as cache

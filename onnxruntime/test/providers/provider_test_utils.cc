@@ -444,7 +444,7 @@ void OpTester::AddNodes(
       std::vector<onnxruntime::NodeArg*> inputs = {input_def};
       std::vector<onnxruntime::NodeArg*> outputs = {&buffered_input};
 
-      graph.AddNode(buffered_input.Name(), "Identity", "", inputs, outputs, nullptr, kOnnxDomain);
+      graph.AddNode(buffered_input.Name(), "Duplicate", "", inputs, outputs, nullptr, kMSDomain);
       buffered_input_defs.push_back(&buffered_input);
     }
 
@@ -454,7 +454,7 @@ void OpTester::AddNodes(
       std::vector<onnxruntime::NodeArg*> inputs = {&buffered_output};
       std::vector<onnxruntime::NodeArg*> outputs = {output_def};
 
-      graph.AddNode(buffered_output.Name(), "Identity", "", inputs, outputs, nullptr, kOnnxDomain);
+      graph.AddNode(buffered_output.Name(), "Duplicate", "", inputs, outputs, nullptr, kMSDomain);
       buffered_output_defs.push_back(&buffered_output);
     }
   } else {
@@ -502,17 +502,11 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
 
 void OpTester::AddBufferedInputOutput() {
   enable_buffered_input_outputs_ = true;
-}
 
-void OpTester::AddExtraDomainToVersion(const std::unordered_map<std::string, int>& extra_domain_to_version) {
-  extra_domain_to_version_ = extra_domain_to_version;
-
-  // override onnx opset version to latest if opset is < 0
-  auto it = extra_domain_to_version_.find(kOnnxDomain);
-  if (it != extra_domain_to_version_.end() && it->second < 0) {
-    int latest_onnx_version =
-        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
-    it->second = latest_onnx_version;
+  // add kMSDomain to the graph, since the "Duplicate" nodes are needed for inputs/output
+  if (strcmp(domain_, kMSDomain) != 0 &&
+      extra_domain_to_version_.find(kMSDomain) == extra_domain_to_version_.end()) {
+    extra_domain_to_version_.insert({kMSDomain, 1});
   }
 }
 
