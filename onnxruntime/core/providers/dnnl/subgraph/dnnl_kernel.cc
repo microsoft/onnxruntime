@@ -10,9 +10,10 @@ namespace ort_dnnl {
 void DnnlKernel::InitDstReorderOutput(dnnl::engine& cpu_engine,
                                       dnnl::memory::data_type& data_type,
                                       std::vector<dnnl::primitive>& net,
-                                      std::vector<std::unordered_map<int, dnnl::memory>>& net_args) {
+                                      std::vector<std::unordered_map<int, dnnl::memory>>& net_args,
+                                      bool gpu_available) {
   // Allocate dst buffer if reorder is necessary
-  if (primitive_dst_desc_ != ort_source_desc_) {
+  if (primitive_dst_desc_ != ort_source_desc_ || gpu_available) {
     // reorder to ONNXRuntime format
     dnnl::memory::dims dst_dims_mkl(
         primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());

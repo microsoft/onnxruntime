@@ -13,6 +13,7 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/utils.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/debug_node_inputs_outputs_utils.h"
@@ -302,10 +303,16 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 #ifdef ENABLE_NVTX_PROFILE
       profile::NvtxRangeCreator node_compute_range(
-          MakeString(node.OpType(), ".", node.Index()), profile::Color::Blue);
+          MakeString(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Blue);
       node_compute_range.Begin();
 #endif
       ORT_TRY {
+#ifdef ENABLE_TRAINING
+        if (p_op_kernel->KernelDef().AllocateInputsContiguously()) {
+          ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
+        }
+#endif
+
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
       ORT_CATCH(const std::exception& ex) {

@@ -6,10 +6,17 @@
 
 # Maps model class name to a tuple of model class
 MODEL_CLASSES = [
-    'AutoModel',
-    'AutoModelWithLMHead',
-    'AutoModelForSequenceClassification',
-    'AutoModelForQuestionAnswering'
+    'AutoModel', 'AutoModelWithLMHead', 'AutoModelForSequenceClassification', 'AutoModelForQuestionAnswering'
+]
+
+# List of models that require external data saving for onnx export but do not require it when saving optimized onnx model
+# Very few models in the huggingface list require it for both: albert-xxlarge-v1, albert-xxlarge-v2
+# TODO: most of the models in the below exempt list having runtime issues when saving these optimized onnx models
+# using external data format. Need to address the issue in the future
+EXEMPT_MODELS = [
+    "gpt2-large", "gpt2-xl", "xlm-mlm-en-2048", "xlm-mlm-17-1280", "xlm-mlm-100-1280", "ctrl", "albert-xlarge-v1",
+    "albert-xlarge-v2", "t5-large", "t5-3b", "t5-11b", "xlm-roberta-large", "microsoft/DialoGPT-large",
+    "facebook/mbart-large-en-ro"
 ]
 
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
@@ -83,11 +90,11 @@ MODELS = {
     "albert-base-v1": (["input_ids"], 12, False, "bert"),
     "albert-large-v1": (["input_ids"], 12, False, "bert"),
     "albert-xlarge-v1": (["input_ids"], 12, True, "bert"),
-    "albert-xxlarge-v1": (["input_ids"], 12, True, "bert"),
+    #"albert-xxlarge-v1": (["input_ids"], 12, True, "bert"),
     "albert-base-v2": (["input_ids"], 12, False, "bert"),
     "albert-large-v2": (["input_ids"], 12, False, "bert"),
     "albert-xlarge-v2": (["input_ids"], 12, True, "bert"),
-    "albert-xxlarge-v2": (["input_ids"], 12, True, "bert"),
+    #"albert-xxlarge-v2": (["input_ids"], 12, True, "bert"),
     # T5
     "t5-small": (["input_ids"], 12, False, "bert"),
     "t5-base": (["input_ids"], 12, False, "bert"),
@@ -103,10 +110,10 @@ MODELS = {
     "flaubert/flaubert_base_cased": (["input_ids"], 11, False, "bert"),
     "flaubert/flaubert_large_cased": (["input_ids"], 11, False, "bert"),
     # Bart
-    #"facebook/bart-large": (["input_ids"], 11, False, "bert"),
-    #"facebook/bart-base": (["input_ids"], 11, False, "bert"),
-    #"facebook/bart-large-mnli": (["input_ids"], 11, False, "bert"),
-    #"facebook/bart-large-cnn": (["input_ids"], 11, False, "bert"),
+    "facebook/bart-large": (["input_ids"], 11, False, "bert"),
+    "facebook/bart-base": (["input_ids"], 11, False, "bert"),
+    "facebook/bart-large-mnli": (["input_ids"], 11, False, "bert"),
+    "facebook/bart-large-cnn": (["input_ids"], 11, False, "bert"),
     #"facebook/mbart-large-en-ro": (["input_ids"], 11, True, "bert"),
     # DialoGPT
     "microsoft/DialoGPT-small": (["input_ids"], 11, False, "gpt2"),

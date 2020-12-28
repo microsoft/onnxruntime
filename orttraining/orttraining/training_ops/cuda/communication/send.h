@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(ORT_USE_NCCL) || defined(USE_MPI)
 
 #pragma once
 #include "core/common/common.h"
-#include "core/providers/cuda/cuda_common.h"
-
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -21,12 +20,6 @@ public:
   Status ComputeInternal(OpKernelContext* context) const override;
 
 private:
-  void SendShapeInfo(
-      const int dst,
-      const int num_tensors,
-      size_t aggregated_aligned_tensor_bytes,
-      std::vector<size_t> prefix_tensor_shape_sizes,
-      std::vector<int64_t> aggregated_tensor_shapes) const;
   void SendData(
       OpKernelContext* ctx,
       const int dst,

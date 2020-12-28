@@ -573,7 +573,13 @@ protected:
         const float* Bias
         )
     {
-        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, &CScale, Bias, threadpool);
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(C, ldc, &CScale, Bias);
+        MlasGemm(M, N, K,
+                 A, lda, offa,
+                 B, ldb, offb, BIsSigned,
+                 reinterpret_cast<int32_t*>(C), ldc,
+                 threadpool,
+                 &scale_bias_processor);
     }
 };
 
@@ -638,7 +644,13 @@ protected:
         )
     {
         const void* PackedB = PackB(N, K, B, ldb, BIsSigned);
-        MlasGemm(M, N, K, A, lda, offa, PackedB, offb, BIsSigned, C, ldc, &CScale, Bias, threadpool);
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(C, ldc, &CScale, Bias);
+        MlasGemm(M, N, K,
+                 A, lda, offa,
+                 PackedB, offb, BIsSigned,
+                 reinterpret_cast<int32_t*>(C), ldc,
+                 threadpool,
+                 &scale_bias_processor);
     }
 
 private:
@@ -2703,6 +2715,180 @@ public:
     }
 };
 
+class MlasQLinearGlobalAveragePoolU8Test : public MlasTestBase {
+private:
+    MatrixGuardBuffer<uint8_t> BufferInput;
+    MatrixGuardBuffer<uint8_t> BufferOutput;
+    MatrixGuardBuffer<uint8_t> BufferOutputReference;
+
+    static
+    void
+    CalculateGlobalAvgPoolU8(
+        const uint8_t* x, int64_t batch, int64_t channel, int64_t hw, bool channel_last,
+        uint8_t* y, int32_t x_zero_point, float x_scale, int32_t y_zero_point, float y_scale
+        )
+    {
+        int32_t bias = -x_zero_point * gsl::narrow_cast<int32_t>(hw);
+        int64_t stride_image = channel_last ? channel : 1;
+        int64_t stride_channel = channel_last ? 1 : hw;
+
+        for (int64_t b = 0; b < batch; ++b) {
+            const uint8_t* bx = x + b * hw * channel;
+            uint8_t* by = y + b * channel;
+            for (int64_t c = 0; c < channel; ++c) {
+                const uint8_t* ix = bx + c * stride_channel;
+                int32_t sum = 0;
+                for (int64_t i = 0; i < hw; ++i) {
+                    sum += static_cast<int32_t>(*ix);
+                    ix += stride_image;
+                }
+                sum += bias;
+                int32_t r = static_cast<int32_t>(std::nearbyintf(x_scale * sum / static_cast<float>(hw) / y_scale));
+                r += y_zero_point;
+                r = std::min(255, r);
+                r = std::max(0, r);
+                by[c] = static_cast<uint8_t>(r);
+            }
+        }
+    }
+
+    static
+    void
+    CompareResultWithGold(
+        size_t Batch, size_t Channel,
+        uint8_t* Output, uint8_t* OutputReference, std::string& info
+        )
+    {
+        size_t n = 0;
+        for (size_t b =0; b < Batch; ++b) {
+            for (size_t c = 0; c < Channel; c++) {
+                int diff = abs((int)Output[n] - (int)OutputReference[n]);
+                if (diff > 1) {
+                    printf("Diff got %d @[%d,%d], Test:%s\n", diff, (int)b, (int)c, info.c_str());
+                }
+            }
+        }
+    }
+
+    static
+    std::string
+    GetTestInfo(
+        bool channel_last,
+        size_t Batch,
+        size_t Stride,
+        size_t Channel,
+        size_t ImageSize,
+        float InputScale,
+        uint8_t InputZeroPoint,
+        float OutputScale,
+        uint8_t OutputZeroPoint
+        )
+    {
+        std::stringstream ss;
+        ss << (channel_last ? "Nhwc_" : "Nchw_");
+        ss << Batch << "x [C=" << Stride << "-" << Channel << "] x" << ImageSize << "-";
+        ss << "(" << (int)InputZeroPoint << "," << InputScale << "," << (int)OutputZeroPoint << "," << OutputScale << ")";
+        return ss.str();
+    }
+
+    void
+    Test(
+        bool channel_last,
+        size_t Batch,
+        size_t Stride,
+        size_t Channel,
+        size_t ImageSize,
+        float InputScale,
+        uint8_t InputZeroPoint,
+        float OutputScale,
+        uint8_t OutputZeroPoint,
+        int32_t UnalignedOffset = 0
+        )
+    {
+        size_t N = Batch * Stride * ImageSize;
+        size_t ResultLen = Batch * Stride;
+        uint8_t* Input = BufferInput.GetBuffer(N);
+        uint8_t* Output = BufferOutput.GetBuffer(ResultLen);
+        uint8_t* Gold = BufferOutputReference.GetBuffer(ResultLen);
+        std::string test_info = GetTestInfo(
+            channel_last, Batch, Stride, Channel, ImageSize,
+            InputScale, InputZeroPoint, OutputScale, OutputZeroPoint);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+        std::uniform_int_distribution<int> distribution(0, 255);
+        for (size_t n = 0; n < N; n++) {
+            Input[n] = static_cast<uint8_t>(distribution(generator));
+        }
+        CalculateGlobalAvgPoolU8(
+            Input, Batch, Stride, ImageSize, channel_last,
+            Gold, InputZeroPoint, InputScale, OutputZeroPoint, OutputScale);
+
+        if (!channel_last) {
+          std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), ResultLen + UnalignedOffset));
+          MlasQLinearGlobalAveragePoolNchw(
+              Input, InputScale, InputZeroPoint, Output,
+              OutputScale, OutputZeroPoint, ResultLen, ImageSize, acc.data() + UnalignedOffset);
+        } else {
+          std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), Channel + UnalignedOffset));
+          std::vector<uint8_t> zero(MlasQLinearSafePaddingElementCount(sizeof(uint8_t), Channel + UnalignedOffset));
+          if (Stride == Channel) {
+            MlasQLinearGlobalAveragePoolNhwc(
+                Input, InputScale, InputZeroPoint, Output,
+                OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, Channel,
+                acc.data() + UnalignedOffset, zero.data() + UnalignedOffset);
+            } else {
+                for (size_t tc = 0; tc < Stride; tc += Channel) {
+                    size_t cg = ((tc + Channel <= Stride) ? Channel : (Stride - tc));
+                    MlasQLinearGlobalAveragePoolNhwc(
+                        Input + tc, InputScale, InputZeroPoint, Output + tc,
+                        OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, cg,
+                        acc.data() + UnalignedOffset, zero.data() + UnalignedOffset);
+                }
+            }
+        }
+
+        CompareResultWithGold(Batch, Channel, Output, Gold, test_info);
+    }
+
+ public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        static const uint8_t zero_points[] = {0, 18, 128, 231, 255};
+        static const float scales[] = {18.0f, 90.0f};
+        static const size_t Batch[] = {1, 3};
+        static const size_t Stride[] = {7, 8, 63, 256 };
+        static const size_t ImageSize[] = {7, 8, 64};
+        static int unalign_offset = 0;
+
+        for (int channel_last = 0; channel_last <= 1; ++channel_last) {
+            for (size_t b = 0; b < _countof(Batch); b++) {
+                for (size_t xzp = 0; xzp < _countof(zero_points); xzp++) {
+                    for (size_t yzp = 0; yzp < _countof(zero_points); yzp++) {
+                        for (size_t xs = 0; xs < _countof(scales); ++xs) {
+                            for (size_t ys = 0; ys < _countof(scales); ++ys) {
+                                for (size_t i = 0; i < _countof(ImageSize); i++) {
+                                    for (size_t s = 0; s < _countof(Stride); s++) {
+                                        Test(channel_last, Batch[b], Stride[s], Stride[s], ImageSize[i],
+                                             scales[xs], zero_points[xzp], scales[ys], zero_points[yzp], unalign_offset);
+                                        if (channel_last == 1 && Stride[s] > 32) {
+                                            Test(channel_last, Batch[b], Stride[s], 32, ImageSize[i],
+                                                 scales[xs], zero_points[xzp], scales[ys], zero_points[yzp], unalign_offset);
+                                        }
+                                        unalign_offset = (unalign_offset + 1) & 3;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+};
+
 class MlasFindMinMaxElementsTest : public MlasTestBase
 {
 private:
@@ -2752,6 +2938,92 @@ public:
     {
         for (size_t n = 1; n < 128; n++) {
             Test(n, -10.f, 10.f);
+        }
+    }
+};
+
+class MlasScaleOutputTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<int32_t> BufferInput;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutputRef;
+    MatrixGuardBuffer<float> BufferScale;
+
+    void
+    Test(
+        size_t M,
+        size_t N,
+        bool PerColumn,
+        bool AccumulateMode
+        )
+    {
+        int32_t* Input = BufferInput.GetBuffer(M * N);
+        float* Output = BufferOutput.GetBuffer(M * N);
+        float* OutputRef = BufferOutputRef.GetBuffer(M * N);
+        float* Scale = BufferScale.GetBuffer(PerColumn ? N : 1);
+
+        std::default_random_engine generator(static_cast<unsigned>(M * N));
+        std::uniform_real_distribution<float> real_distribution(-1.0f, 1.0f);
+        std::uniform_int_distribution<int32_t> int_distribution(std::numeric_limits<int16_t>::min(),
+                                                                std::numeric_limits<int16_t>::max());
+
+        for (size_t s = 0; s < M * N; s++) {
+
+            Input[s] = int_distribution(generator);
+            Output[s] = OutputRef[s] = real_distribution(generator);
+        }
+
+        for (size_t s = 0; s < (PerColumn ? N : 1); s++) {
+            Scale[s] = real_distribution(generator);
+        }
+
+        // Compute Reference Value
+        for (size_t m = 0; m < M; m++) {
+            for (size_t n = 0; n < N; n++) {
+
+                float current_scale = PerColumn ? Scale[n] : Scale[0];
+                if (AccumulateMode) {
+                    OutputRef[m * N + n] += Input[m * N + n] * current_scale;
+                } else {
+                    OutputRef[m * N + n] = Input[m * N + n] * current_scale;
+                }
+            }
+        }
+
+        // Compute Output with MLAS
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr,
+                                                               AccumulateMode ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+                                                               PerColumn ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+        OutputProcessor.Process(Input, 0, 0, M, N, N);
+
+        constexpr float epsilon = 1e-6f;
+
+        for (size_t n = 0; n < M * N; n++) {
+
+            float diff = std::fabs(Output[n] - OutputRef[n]);
+            if (diff > epsilon) {
+                printf("MlasScaleOutputTest: Output[%zu][%zu]:%.8f, OutputRef[%zu][%zu]:%.8f, for case M=%zu, N=%zu\n",
+                       n / N, n % N, Output[n], n / N, n % N, OutputRef[n], M, N);
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t m = 1; m < 18; m++) {
+
+            for (size_t n = 1; n < 18; n++) {
+
+                Test(m, n, true, true);
+                Test(m, n, true, false);
+                Test(m, n, false, true);
+                Test(m, n, false, false);
+            }
         }
     }
 };
@@ -2868,7 +3140,13 @@ main(
 
     printf("QLinearMul tests.\n");
     onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
-        [] (float a, float b) { return a * b; }, "*", MlasQLinearMul<int8_t>, MlasQLinearMul<uint8_t>)->ExecuteShort();
+        [](float a, float b) { return a * b; }, "*", MlasQLinearMul<int8_t>, MlasQLinearMul<uint8_t>)->ExecuteShort();
+
+    printf("MlasScaleOutput tests.\n");
+    onnxruntime::make_unique<MlasScaleOutputTest>()->ExecuteShort();
+
+    printf("MlasGlobalAveragePool tests.\n");
+    onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
 
     printf("Done.\n");
 

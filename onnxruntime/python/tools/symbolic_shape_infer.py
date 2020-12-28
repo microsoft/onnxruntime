@@ -343,7 +343,7 @@ class SymbolicShapeInference:
         symbolic_shape_inference._preprocess(self.tmp_mp_)
         symbolic_shape_inference.suggested_merge_ = self.suggested_merge_.copy()
         while symbolic_shape_inference.run_:
-            all_shapes_inferred = symbolic_shape_inference._infer_impl(self.tmp_mp_, self.sympy_data_.copy())
+            all_shapes_inferred = symbolic_shape_inference._infer_impl(self.sympy_data_.copy())
         symbolic_shape_inference._update_output_from_vi()
         if use_node_input:
             # if subgraph uses node input, it needs to update to merged dims
@@ -623,7 +623,8 @@ class SymbolicShapeInference:
                 self.sympy_data_[node.output[0]] = np.ones([int(x) for x in sympy_shape], dtype=np.int64) * numpy_helper.to_array(get_attribute(node, 'value', 0))
         else:
             # create new dynamic shape
-            sympy_shape = self._new_symbolic_shape(self._get_shape_rank(node,0), node)
+            # note input0 is a 1D vector of shape, the new symbolic shape has the rank of the shape vector length
+            sympy_shape = self._new_symbolic_shape(self._get_shape(node,0)[0], node)
 
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
                                                   vi.type.tensor_type.elem_type,
@@ -947,6 +948,8 @@ class SymbolicShapeInference:
             axes = get_attribute(node, 'axes')
             starts = get_attribute(node, 'starts')
             ends = get_attribute(node, 'ends')
+            if not axes:
+                axes = list(range(len(starts)))
             steps = [1]*len(axes)
         else:
             starts = as_list(self._try_get_value(node, 1), keep_none=True)
@@ -971,7 +974,6 @@ class SymbolicShapeInference:
                     new_sympy_shape[i] = self._new_symbolic_dim_from_output(node,0,i)
         else:
             for i,s,e,t in zip(axes, starts, ends, steps):
-                idx = handle_negative_axis(i, len(new_sympy_shape))
                 if is_literal(e):
                     if e >= self.int_max_:
                         e = new_sympy_shape[i]
@@ -979,7 +981,7 @@ class SymbolicShapeInference:
                         e = 0 if s > 0 else -1
                     elif is_literal(new_sympy_shape[i]):
                         if e < 0:
-                            e = e + new_sympy_shape[i]
+                            e = max(0, e + new_sympy_shape[i])
                         e = min(e, new_sympy_shape[i])
                     else:
                         if e > 0:
@@ -999,8 +1001,10 @@ class SymbolicShapeInference:
 
                 if is_literal(s) and int(s) < 0:
                     s = new_sympy_shape[i] + s
+                if is_literal(new_sympy_shape[i]) and is_literal(s):
+                    s = max(0, min(s, new_sympy_shape[i]))
 
-                new_sympy_shape[idx] = (e - s + t + (-1 if t > 0 else 1)) // t
+                new_sympy_shape[i] = (e - s + t + (-1 if t > 0 else 1)) // t
 
             self._update_computed_dims(new_sympy_shape)
 
@@ -1110,7 +1114,7 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(new_vi)
 
-    def _infer_impl(self, in_mp, start_sympy_data=None):
+    def _infer_impl(self, start_sympy_data=None):
         self.sympy_data_ = start_sympy_data or {}
         self.out_mp_.graph.ClearField('value_info')
         self._apply_suggested_merge(graph_input_only=True)
@@ -1138,7 +1142,23 @@ class SymbolicShapeInference:
         self.tmp_mp_.CopyFrom(self.out_mp_)
         self.tmp_mp_.graph.ClearField('initializer')
 
-        for node in self.out_mp_.graph.node:
+        # topological sort nodes, note there might be dead nodes so we check if all graph outputs are reached to terminate
+        sorted_nodes = []
+        sorted_known_vi = set([i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)])
+        if all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
+            # Loop/Scan will have all graph output in graph inputs, so don't do topological sort
+            sorted_nodes = self.out_mp_.graph.node
+        else:
+            while not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
+                old_sorted_nodes_len = len(sorted_nodes)
+                for node in self.out_mp_.graph.node:
+                    if (node.output[0] not in sorted_known_vi ) and all([i in sorted_known_vi for i in node.input if i]):
+                        sorted_known_vi.update(node.output)
+                        sorted_nodes.append(node)
+                if old_sorted_nodes_len == len(sorted_nodes) and not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
+                    raise Exception('Invalid model with cyclic graph')
+
+        for node in sorted_nodes:
             assert all([i in self.known_vi_ for i in node.input if i])
             self._onnx_infer_single_node(node)
             if node.op_type in self.dispatcher_:
@@ -1275,7 +1295,7 @@ class SymbolicShapeInference:
         all_shapes_inferred = False
         symbolic_shape_inference._preprocess(in_mp)
         while symbolic_shape_inference.run_:
-            all_shapes_inferred = symbolic_shape_inference._infer_impl(in_mp)
+            all_shapes_inferred = symbolic_shape_inference._infer_impl()
         symbolic_shape_inference._update_output_from_vi()
         if not all_shapes_inferred:
             raise Exception("Incomplete symbolic shape inference")

@@ -1,5 +1,6 @@
 #include "ort_test_session.h"
 #include <core/session/onnxruntime_cxx_api.h>
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -38,12 +39,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kNGraphExecutionProvider) {
-#ifdef USE_NGRAPH
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(session_options, "CPU"));
-#else
-    ORT_THROW("nGraph is not supported in this build");
-#endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
     OrtCUDAProviderOptions cuda_options{
@@ -51,9 +46,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
         std::numeric_limits<size_t>::max(),
         0,
-        !performance_test_config.run_config.do_cuda_copy_in_separate_stream
-    };
-  Ort::ThrowOnError(session_options.OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, &cuda_options));
+        !performance_test_config.run_config.do_cuda_copy_in_separate_stream};
+    session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
@@ -78,7 +72,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif

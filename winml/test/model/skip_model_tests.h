@@ -4,11 +4,11 @@
 //Need to file bugs for failing tests and add to reason. Before that happens, default reasons will be used.
 static const std::string disabledTestDefaultReason = "Model not working on CPU and GPU. Please file bug and replace this reason message.";
 static const std::string disabledGpuTestDefaultReason = "Model not working on GPU. Please file bug and replace this reason message.";
-static const std::string disabledx86TestDefaultReason = "Model not working on x86. Please file bug and replace this reason message.";
 
 // {"model test name", "reason for why it is happening and bug filed for it."}
 std::unordered_map<std::string, std::string> disabledTests(
-    {// Tier 3 models
+    {
+     // Tier 3 models
      {"mxnet_arcface_opset8", disabledTestDefaultReason},
      {"XGBoost_XGClassifier_sklearn_load_wine_opset7", disabledTestDefaultReason},
      {"XGBoost_XGClassifier_sklearn_load_breast_cancer_opset7", disabledTestDefaultReason},
@@ -109,24 +109,26 @@ std::unordered_map<std::string, std::string> disabledTests(
      {"coreml_DecisionTreeClassifier_sklearn_load_breast_cancer_opset7", disabledTestDefaultReason},
      {"coreml_DecisionTreeClassifier_OpenML_312_scene_opset7", disabledTestDefaultReason},
      {"coreml_DecisionTreeClassifier_OpenML_1464_blood_transfusion_opset7", disabledTestDefaultReason},
-     {"coreml_AgeNet_ImageNet_opset7", disabledTestDefaultReason}});
+     {"coreml_AgeNet_ImageNet_opset7", disabledTestDefaultReason}
+    });
 
 std::unordered_map<std::string, std::string> disabledGpuTests(
-    {{"LSTM_Seq_lens_unpacked_opset9", disabledGpuTestDefaultReason},
-     {"fp16_inception_v1_opset8", disabledGpuTestDefaultReason},
-     {"fp16_inception_v1_opset7", disabledGpuTestDefaultReason},
-     {"mlperf_ssd_mobilenet_300_opset10", disabledGpuTestDefaultReason},
-     {"mask_rcnn_opset10", disabledGpuTestDefaultReason},
-     {"faster_rcnn_opset10", disabledGpuTestDefaultReason},
-     {"BERT_Squad_opset10", disabledGpuTestDefaultReason}});
+    {
+     // Onnx zoo models
+     {"mask_rcnn_opset10", "Bug 31005388: mask_rcnn opset 10 onnx zoo model fails to evaluate on DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005388"},
+     {"faster_rcnn_opset10", "Bug 31005511: Failed to extract tensor data from evaluate result of faster_rcnn opset 10 model in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005511"},
 
-std::unordered_map<std::string, std::string> disabledx86Tests(
-    {{"mlperf_ssd_resnet34_1200_opset10", disabledx86TestDefaultReason},
-     {"mask_rcnn_opset10", disabledx86TestDefaultReason},
-     {"faster_rcnn_opset10", disabledx86TestDefaultReason},
-     {"test_vgg19_opset7", disabledx86TestDefaultReason},
-     {"test_vgg19_opset8", disabledx86TestDefaultReason},
-     {"coreml_VGG16_ImageNet_opset7", disabledx86TestDefaultReason},
-     {"GPT2_LM_HEAD_opset10", disabledx86TestDefaultReason},
-     {"GPT2_opset10", disabledx86TestDefaultReason},
-     {"BERT_Squad_opset10", disabledx86TestDefaultReason}});
+     // Tier 2 models
+     {"fp16_test_tiny_yolov2_opset7", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
+     {"fp16_coreml_FNS_Candy_opset7", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
+     {"mlperf_ssd_mobilenet_300_opset10", "Bug 31005624: mlperf_ssd_mobilenet_300 opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"}
+    });
+
+/*
+    model name -> (adapter name regex, skipped test reason)
+*/
+std::unordered_map<std::string, std::pair<std::string, std::string>> disabledGpuAdapterTests(
+    {
+      {"fp16_inception_v1_opset7", std::make_pair("AMD Radeon VII|Intel\\(R\\) (UHD )?Graphics|TITAN X", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA TITAN X (Pascal) https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
+      {"fp16_inception_v1_opset8", std::make_pair("AMD Radeon VII|Intel\\(R\\) (UHD )?Graphics|TITAN X", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA TITAN X (Pascal) https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
+    });

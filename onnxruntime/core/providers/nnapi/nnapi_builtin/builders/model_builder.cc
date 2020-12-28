@@ -8,6 +8,7 @@
 #include "helper.h"
 #include "model_builder.h"
 #include "op_builder.h"
+#include "op_support_checker.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -16,89 +17,16 @@ using namespace android::nn::wrapper;
 using std::vector;
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
-    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {
-  GetAllInitializers();
-  op_builders_ = CreateOpBuilders();
-}
+    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
 
 int32_t ModelBuilder::GetAndroidSdkVer() const {
   return nnapi_ ? nnapi_->android_sdk_version : 0;
 }
 
-bool ModelBuilder::IsNodeSupported(const Node& node) {
-  if (auto* op_builder = GetOpBuilder(node)) {
-    return op_builder->IsOpSupported(*this, node);
-  } else {
-    return false;
-  }
-}
-
-bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec, const GraphViewer& graph_viewer) {
-  if (!supported_node_vec.empty()) {
-    if (supported_node_vec.size() == 1) {
-      const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-      const auto* node(graph_viewer.GetNode(node_indices[supported_node_vec[0]]));
-      const auto& op = node->OpType();
-      // It is not worth it to perform a single Reshape/Dropout/Identity operator
-      // which is only copying the data in NNAPI
-      // If this is the case, let it fall back
-      if (op == "Reshape" ||
-          op == "Dropout" ||
-          op == "Identity") {
-        return false;
-      }
-    }
-    return true;
-  }
-  return false;
-}
-
-std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
-  std::vector<std::vector<int>> supported_node_vecs;
-  int32_t android_sdk_ver = GetAndroidSdkVer();
-#ifdef __ANDROID__
-  if (android_sdk_ver < 27) {
-    LOGS_DEFAULT(VERBOSE) << "Android API level "
-                          << android_sdk_ver
-                          << " is lower than 27";
-    return supported_node_vecs;
-  }
-#endif
-
-  std::vector<int> supported_node_vec;
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    bool supported = IsNodeSupported(*node);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node->OpType()
-                          << "] index: [" << i
-                          << "] name: [" << node->Name()
-                          << "] supported: [" << supported
-                          << "]";
-    if (supported) {
-      supported_node_vec.push_back(i);
-    } else {
-      if (IsValidSupportedNodesVec(supported_node_vec, graph_viewer_)) {
-        supported_node_vecs.push_back(supported_node_vec);
-        supported_node_vec.clear();
-      }
-    }
-  }
-
-  if (IsValidSupportedNodesVec(supported_node_vec, graph_viewer_))
-    supported_node_vecs.push_back(supported_node_vec);
-
-  LOGS_DEFAULT(VERBOSE) << "Support vectors size is " << supported_node_vecs.size();
-  for (const auto& group : supported_node_vecs)
-    LOGS_DEFAULT(VERBOSE) << "Support vector size is " << group.size();
-
-  return supported_node_vecs;
-}
-
 // Scalar operand is copied into the model, no need to persist
 #define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                      \
   Status ModelBuilder::AddOperandFromScalar(scalar_type value, uint32_t& index) { \
-    OperandType operandType(Type::op_type);                                       \
+    OperandType operandType(Type::op_type, vector<uint32_t>{});                   \
     ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operandType, index));                  \
     RETURN_STATUS_ON_ERROR_WITH_NOTE(                                             \
         nnapi_->ANeuralNetworksModel_setOperandValue(                             \
@@ -175,17 +103,11 @@ Status ModelBuilder::GetTargetDevices() {
   return Status::OK();
 }
 
-void ModelBuilder::GetAllInitializers() {
-  for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-    initializers_.emplace(pair.first, *pair.second);
-  }
-}
-
 void ModelBuilder::PreprocessInitializers() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (auto* op_builder = GetOpBuilder(*node)) {
+    if (const auto* op_builder = GetOpBuilder(*node)) {
       op_builder->AddInitializersToSkip(*this, *node);
     }
   }
@@ -201,7 +123,7 @@ void ModelBuilder::PreprocessActivations() {
       activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU);
     } else if (op_type == "Clip") {  // Relu1 or Relu6
       float min, max;
-      if (!GetClipMinMax(*this, *node, min, max))
+      if (!GetClipMinMax(GetInitializerTensors(), *node, min, max))
         continue;
 
       if (min == -1.0f && max == 1.0f) {
@@ -242,13 +164,14 @@ std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(con
 
 Status ModelBuilder::RegisterInitializers() {
   // First pass to get all the stats of the initializers
-  auto initializer_size = initializers_.size();
+  const auto& initializer_tensors(GetInitializerTensors());
+  auto initializer_size = initializer_tensors.size();
   std::vector<std::tuple<uint32_t, size_t, size_t>> initializers(initializer_size);
   size_t sizeAll = 0;
 
   int i = 0;
-  for (const auto& pair : initializers_) {
-    const auto& tensor = pair.second;
+  for (const auto& pair : initializer_tensors) {
+    const auto& tensor = *pair.second;
     const auto& name = tensor.name();
     if (Contains(skipped_initializers_, name))
       continue;
@@ -258,7 +181,12 @@ Status ModelBuilder::RegisterInitializers() {
       shape.push_back(SafeInt<uint32_t>(dim));
     }
 
-    ORT_RETURN_IF_NOT(!shape.empty(), "NNAPI does not support scalar initializer, tensor name, ", name);
+    // If we have an empty shape, this is a scalar initializer,
+    // since NNAPI will treat empty shape input as dynamic ranking input, (onnx does not support dynamic ranking)
+    // we will make the scalar initializer as a {1} tensor
+    if (shape.empty()) {
+      shape.push_back(1);
+    }
 
     Type type = Type::TENSOR_FLOAT32;
     switch (tensor.data_type()) {
@@ -291,8 +219,8 @@ Status ModelBuilder::RegisterInitializers() {
 
   // 2nd pass to copy all the initializers into shared memory
   size_t offset = 0;
-  for (const auto& pair : initializers_) {
-    const auto& tensor = pair.second;
+  for (const auto& pair : initializer_tensors) {
+    const auto& tensor = *pair.second;
     if (Contains(skipped_initializers_, tensor.name()))
       continue;
 
@@ -324,7 +252,7 @@ Status ModelBuilder::RegisterModelInputs() {
       if (Contains(operands_, input_name))
         continue;
 
-      if (Contains(initializers_, input_name))
+      if (Contains(GetInitializerTensors(), input_name))
         continue;
     }
 
@@ -337,8 +265,12 @@ Status ModelBuilder::RegisterModelInputs() {
       shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
     }
 
-    ORT_RETURN_IF_NOT(GetAndroidSdkVer() >= 29 || !shape.empty(),
-                      "0-rank input is only supported on Android API level 29+");
+    // If we have an empty shape, this is a scalar input,
+    // since NNAPI will treat empty shape input as dynamic ranking input, (onnx does not support dynamic ranking)
+    // we will make the scalar input as a {1} tensor
+    if (shape.empty()) {
+      shape.push_back(1);
+    }
 
     Type type = Type::TENSOR_FLOAT32;
     float scale = 0.0f;
@@ -399,6 +331,22 @@ Status ModelBuilder::RegisterModelOutputs() {
                              "The output of graph is not registered [", output_name, "]");
     }
 
+    // Since for now all the shapes are deterministic for NNAPI, it's impossible we can have unknown output shape
+    const auto* shape_proto = node_arg->Shape();
+    ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for output: ", output_name);
+    if (shape_proto->dim_size() == 0) {
+      // In NNAPI scalar output must have {1} shape
+      const auto& output_shape = shaper_[output_name];
+      ORT_RETURN_IF_NOT(output_shape.size() == 1 && output_shape[0] == 1,
+                        "scalar output [", output_name, "] must have {1} shape, ",
+                        " actual shape, ", Shape2String(output_shape));
+
+      // Record the scalar output
+      // Since within NNAPI the scalar outputs will have {1} shapes, and for ORT scalar outputs will have {} shapes,
+      // we need to change the shapes of these scalar outputs back to {} when NNAPI EP returns these values to ORT
+      nnapi_model_->AddScalarOutput(output_name);
+    }
+
     std::string nnapi_output_name = output_name;
     if (IsOperandNHWC(output_name)) {
       // We need to transpose the output still in nhwc back to nchw
@@ -429,6 +377,18 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
   RETURN_STATUS_ON_ERROR(
       nnapi_->ANeuralNetworksModel_addOperand(nnapi_model_->model_, &operand_type.operandType));
   index = next_index_++;
+
+  if (operand_type.channelQuant) {
+    if (GetAndroidSdkVer() < 29) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Per-channel quantization is only supported on Android API level 29+,",
+                             " system API level: ", GetAndroidSdkVer());
+    }
+
+    RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
+        nnapi_model_->model_, index, &operand_type.channelQuant->params));
+  }
+
   return Status::OK();
 }
 
@@ -493,7 +453,7 @@ Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (auto* op_builder = GetOpBuilder(*node)) {
+    if (const auto* op_builder = GetOpBuilder(*node)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -605,11 +565,12 @@ int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   return fuse_code;
 }
 
-IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
-  if (!Contains(op_builders_, node.OpType()))
+/* static */ const IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
+  const auto& op_builders = GetOpBuilders();
+  if (!Contains(op_builders, node.OpType()))
     return nullptr;
 
-  return op_builders_[node.OpType()].get();
+  return op_builders.at(node.OpType());
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
@@ -627,7 +588,7 @@ void ModelBuilder::RegisterNHWCOperand(const std::string& name) {
   nhwc_operands_.insert(name);
 }
 
-bool ModelBuilder::IsOperandNHWC(const std::string& name) {
+bool ModelBuilder::IsOperandNHWC(const std::string& name) const {
   return Contains(nhwc_operands_, name);
 }
 

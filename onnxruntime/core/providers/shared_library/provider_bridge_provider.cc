@@ -6,14 +6,16 @@
 #include "provider_api.h"
 #include <assert.h>
 #include <mutex>
+#include "core/providers/shared/common.h"
 
-extern "C" {
-void* Provider_GetHost();
-}
+// Override default new/delete so that we match the host's allocator
+void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
+void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }
+void operator delete(void* p, size_t /*size*/) { return Provider_GetHost()->HeapFree(p); }
 
 namespace onnxruntime {
 
-ProviderHost* g_host = reinterpret_cast<ProviderHost*>(Provider_GetHost());
+ProviderHost* g_host = Provider_GetHost();
 
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
@@ -39,16 +41,7 @@ struct OnUnload {
 
 } g_on_unload;
 
-}  // namespace onnxruntime
-
-// Override default new/delete so that we match the host's allocator
-void* operator new(size_t n) { return onnxruntime::g_host->HeapAllocate(n); }
-void operator delete(void* p) { return onnxruntime::g_host->HeapFree(p); }
-void operator delete(void* p, size_t /*size*/) { return onnxruntime::g_host->HeapFree(p); }
-
-namespace onnxruntime {
-
-Provider_AllocatorPtr CreateAllocator(const Provider_AllocatorCreationInfo& info) {
+AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
 }
 
@@ -85,13 +78,7 @@ int64_t TensorShape::Size() const {
 }
 
 int64_t TensorShape::SizeHelper(size_t start, size_t end) const {
-  // Must return 1 for an empty sequence
-  int64_t size = 1;
-  for (size_t i = start; i < end; i++) {
-    if ((*this)[i] < 0) return -1;
-    size *= (*this)[i];
-  }
-  return size;
+  return g_host->TensorShape__SizeHelper(this, start, end);
 }
 
 TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
@@ -104,51 +91,69 @@ TensorShape TensorShape::Slice(size_t dimstart) const {
 }
 
 std::string TensorShape::ToString() const {
-  std::string result;
-
-  result.append("{");
-  bool first = true;
-  for (auto dim : (*this)) {
-    if (!first) {
-      result.append(",");
-    }
-
-    result.append(std::to_string(dim));
-    first = false;
-  }
-  result.append("}");
-
-  return result;
+  return g_host->TensorShape__ToString(this);
 }
 
-Provider_AllocatorPtr CreateAllocator(Provider_AllocatorCreationInfo info) {
+AllocatorPtr CreateAllocator(AllocatorCreationInfo info) {
   return g_host->CreateAllocator(info);
 }
 
-std::unique_ptr<Provider_IAllocator> Provider_CreateCPUAllocator(const OrtMemoryInfo& info) {
+std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& info) {
   return g_host->CreateCPUAllocator(info);
 }
 
+bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
+  return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
+}
+
+AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+  return g_host->IExecutionProvider__GetAllocator(this, id, mem_type);
+}
+
+void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
+  g_host->IExecutionProvider__InsertAllocator(this, allocator);
+}
+
+std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                                                                                  const std::vector<const KernelRegistry*>& kernel_registries) const {
+  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
+}
+
+common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
+  return g_host->IExecutionProvider__Compile(this, fused_nodes, node_compute_funcs);
+}
+
+common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                           std::string& dll_path) {
+  return g_host->IExecutionProvider__Compile(this, fused_nodes, dll_path);
+}
+
+common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
+  return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
+}
+
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
+  return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
+}
+
 #ifdef USE_TENSORRT
-std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
+std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
 }
 
-std::unique_ptr<Provider_IAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
-std::unique_ptr<Provider_IDataTransfer> Provider_CreateGPUDataTransfer() {
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
   return g_host->CreateGPUDataTransfer();
 }
 #endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
-}
-
-Provider_IExecutionProvider::Provider_IExecutionProvider(const std::string& type) {
-  p_ = g_host->Create_IExecutionProvider_Router(this, type).release();
 }
 
 namespace logging {
@@ -173,6 +178,9 @@ Status::Status(StatusCategory category, int code, const char* msg) {
   state_ = onnxruntime::make_unique<State>(category, code, msg);
 }
 
+Status::Status(StatusCategory category, int code) : Status(category, code, "") {
+}
+
 int Status::Code() const noexcept {
   return IsOK() ? static_cast<int>(common::OK) : state_->code;
 }
@@ -181,29 +189,7 @@ const std::string& Status::ErrorMessage() const noexcept {
   return IsOK() ? EmptyString() : state_->msg;
 }
 
-std::string Status::ToString() const {
-  if (state_ == nullptr) {
-    return std::string("OK");
-  }
-
-  std::string result;
-
-  if (common::SYSTEM == state_->category) {
-    result += "SystemError";
-    result += " : ";
-    result += std::to_string(errno);
-  } else if (common::ONNXRUNTIME == state_->category) {
-    result += "[ONNXRuntimeError]";
-    result += " : ";
-    result += std::to_string(Code());
-    result += " : ";
-    result += StatusCodeToString(static_cast<StatusCode>(Code()));
-    result += " : ";
-    result += state_->msg;
-  }
-
-  return result;
-}
+std::string Status::ToString() const { return g_host->Status__ToString(this); }
 
 const std::string& Status::EmptyString() noexcept {
   static std::string s_empty;

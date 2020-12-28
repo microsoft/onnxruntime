@@ -76,43 +76,52 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(list, package_name, version):
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.4.0"/>'
+
     if (package_name == 'Microsoft.AI.MachineLearning'):
         list.append('<dependencies>')
 
         # Support .Net Core
-        list.append('<group targetFramework="NETCOREAPP">')
-        list.append('<dependency id="Microsoft.Windows.SDK.NET"' + ' version="10.0.18362.3-preview"/>')
-        list.append('<dependency id="Microsoft.Windows.CsWinRT"' + ' version="0.1.0-prerelease.200629.3"/>')
-        list.append('</group>')
-        # Support .Net Standard
-        list.append('<group targetFramework="NETSTANDARD">')
-        list.append('<dependency id="Microsoft.Windows.SDK.NET"' + ' version="10.0.18362.3-preview"/>')
-        list.append('<dependency id="Microsoft.Windows.CsWinRT"' + ' version="0.1.0-prerelease.200629.3"/>')
-        list.append('</group>')
-        # Support .Net Framework
-        list.append('<group targetFramework="NETFRAMEWORK">')
-        list.append('<dependency id="Microsoft.Windows.SDK.NET"' + ' version="10.0.18362.3-preview"/>')
-        list.append('<dependency id="Microsoft.Windows.CsWinRT"' + ' version="0.1.0-prerelease.200629.3"/>')
+        list.append('<group targetFramework="net5.0">')
+        list.append(dml_dependency)
         list.append('</group>')
         # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
         list.append('<group targetFramework="UAP10.0.16299">')
+        list.append(dml_dependency)
+        list.append('</group>')
+        # Support Native C++
+        list.append('<group targetFramework="native">')
+        list.append(dml_dependency)
         list.append('</group>')
 
         list.append('</dependencies>')
     else:
+        include_dml = package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
+
         list.append('<dependencies>')
         # Support .Net Core
         list.append('<group targetFramework="NETCOREAPP">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if include_dml:
+            list.append(dml_dependency)
         list.append('</group>')
         # Support .Net Standard
         list.append('<group targetFramework="NETSTANDARD">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if include_dml:
+            list.append(dml_dependency)
         list.append('</group>')
         # Support .Net Framework
         list.append('<group targetFramework="NETFRAMEWORK">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if include_dml:
+            list.append(dml_dependency)
         list.append('</group>')
+        # Support Native C++
+        if include_dml:
+            list.append('<group targetFramework="native">')
+            list.append(dml_dependency)
+            list.append('</group>')
 
         list.append('</dependencies>')
 
@@ -162,7 +171,7 @@ def generate_metadata(list, args):
 def generate_files(list, args):
     files_list = ['<files>']
 
-    is_cpu_package = args.package_name == 'Microsoft.ML.OnnxRuntime'
+    is_cpu_package = args.package_name in ['Microsoft.ML.OnnxRuntime', 'Microsoft.ML.OnnxRuntime.NoOpenMP']
     is_mklml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.MKLML'
     is_cuda_gpu_package = args.package_name == 'Microsoft.ML.OnnxRuntime.Gpu'
     is_dml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
@@ -185,6 +194,7 @@ def generate_files(list, args):
                               'providers_shared_lib': 'onnxruntime_providers_shared.dll',
                               'dnnl_ep_shared_lib': 'onnxruntime_providers_dnnl.dll',
                               'tensorrt_ep_shared_lib': 'onnxruntime_providers_tensorrt.dll',
+                              'openvino_ep_shared_lib': 'onnxruntime_providers_openvino.dll',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test.exe',
                               'onnx_test_runner': 'onnx_test_runner.exe'}
 
@@ -199,6 +209,7 @@ def generate_files(list, args):
                               'providers_shared_lib': 'libonnxruntime_providers_shared.so',
                               'dnnl_ep_shared_lib': 'libonnxruntime_providers_dnnl.so',
                               'tensorrt_ep_shared_lib': 'libonnxruntime_providers_tensorrt.so',
+                              'openvino_ep_shared_lib': 'libonnxruntime_providers_openvino.so',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test',
                               'onnx_test_runner': 'onnx_test_runner'}
 
@@ -267,12 +278,15 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
                                                             'microsoft.ai.machinelearning.winmd') +
                           '" target="lib\\uap\\Microsoft.AI.MachineLearning.winmd" />')
-        interop_dll = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll'
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_dll) +
-                          '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll" />')
-        interop_pdb = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb'
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_pdb) +
-                          '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
+        if args.target_architecture == 'x64' and not args.is_store_build:
+            interop_dll_path = 'Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.19041.0'
+            interop_dll = interop_dll_path + '\\Microsoft.AI.MachineLearning.Interop.dll'
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_dll) +
+                              '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.dll" />')
+            interop_pdb_path = 'Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.19041.0'
+            interop_pdb = interop_pdb_path + '\\Microsoft.AI.MachineLearning.Interop.pdb'
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_pdb) +
+                              '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
 
     # Process runtimes
     # Process onnxruntime import lib, dll, and pdb
@@ -288,14 +302,6 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'nuget-staging/usr/local/lib',
                           'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +
                           '\\native" />')
-
-    if includes_directml:
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') +
-                          runtimes + ' />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') +
-                          runtimes + ' />')
-        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.1.3.0\\LICENSE.txt') +
-                          '" target="DirectML_LICENSE.txt" />')
 
     if includes_winml:
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
@@ -329,6 +335,14 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['dnnl_ep_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+
+    if args.execution_provider == "openvino":
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['providers_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['openvino_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
     # process all other library dependencies
@@ -386,11 +400,12 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="' + build + '" />')
         # Process rules
         files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="' + build + '" />')
-        # Process .net standard 2.0 targets
-        interop_src = 'Microsoft.AI.MachineLearning.Interop'
-        interop_targets = 'Microsoft.AI.MachineLearning.targets'
-        windowsai_net20_targets = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_targets)
-        files_list.append('<file src=' + '"' + windowsai_net20_targets + '" target="build\\netstandard2.0" />')
+        # Process .net5.0 targets
+        if args.target_architecture == 'x64' and not args.is_store_build:
+            interop_src = 'Microsoft.AI.MachineLearning.Interop'
+            interop_targets = 'Microsoft.AI.MachineLearning.targets'
+            windowsai_net50_targets = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_targets)
+            files_list.append('<file src=' + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process props file

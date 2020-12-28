@@ -10,7 +10,7 @@
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 namespace onnxruntime {
@@ -31,6 +31,7 @@ struct TrainingParameters {
   std::string lr_params_feed_name = "Learning_Rate";
   std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
   std::unordered_map<std::string, std::unordered_map<std::string, int64_t>> optimizer_int_attributes_map;
+  onnxruntime::training::TrainingSession::OptimizerState optimizer_initial_state;
   bool use_fp16_moments = false;
 
   bool use_mixed_precision = false;
@@ -43,6 +44,7 @@ struct TrainingParameters {
   int gradient_accumulation_steps = 1;
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
+  int pipeline_parallel_size = 1;
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
@@ -53,6 +55,7 @@ struct TrainingParameters {
   bool gelu_recompute = false;
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
+  bool enable_adasum = false;
 };
 
 struct TrainingConfigurationResult {
@@ -65,11 +68,16 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   //TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size);
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size);
+
+  if (parameters.world_size % parameters.data_parallel_size != 0) {
+    throw std::runtime_error("Cannot split data parallel group because world_size is not divisible");
+  }
+
   if (parameters.world_size % parameters.horizontal_parallel_size != 0) {
     throw std::runtime_error("Cannot split horizontal parallel group because world_size is not divisible");
   }
 
-  auto data_group_size = parameters.world_size / parameters.horizontal_parallel_size;
+  auto data_group_size = parameters.world_size / (parameters.horizontal_parallel_size * parameters.pipeline_parallel_size);
   if (data_group_size != parameters.data_parallel_size) {
     LOGS(*(sess->GetLogger()), WARNING) << "data_parallel_size is not correct, tuned automatically to "
                                         << data_group_size;
@@ -130,7 +138,20 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // Need to have another option to support more values in the future.
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
+    // TODO reduction types
+    if (parameters.enable_adasum) {
+#ifdef USE_CUDA
+      opt.adasum_reduction_type = training::AdasumReductionType::GpuHierarchicalReduction;
+#else
+      opt.adasum_reduction_type = training::AdasumReductionType::CpuReduction;
+#endif
+    }
+
     config.optimizer_config = opt;
+  }
+
+  if (!parameters.optimizer_initial_state.empty()) {
+    config.init_optimizer_states = parameters.optimizer_initial_state;
   }
 
   config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
@@ -154,7 +175,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   return python_config_result;
 }
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const logging::Logger* logger) {
   LOGS(*logger, INFO) << "MPIContext::GetInstance().GetWorldRank(): " << MPIContext::GetInstance().GetWorldRank();
   LOGS(*logger, INFO) << "MPIContext::GetInstance().GetLocalRank(): " << MPIContext::GetInstance().GetLocalRank();
@@ -175,6 +196,21 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
   }
 }
 #endif
+
+std::unordered_map<std::string, std::unordered_map<std::string, py::object>> ConvertORTTensorMapToNumpy(std::unordered_map<std::string, NameMLValMap> c_tensor_state, const DataTransferManager& data_transfer_manager) {
+  std::unordered_map<std::string, std::unordered_map<std::string, py::object>> py_tensor_state;
+  for (const auto& layer1_item: c_tensor_state) {
+    py_tensor_state[layer1_item.first] = {};
+    for (const auto& layer2_item: layer1_item.second) {
+      assert(layer2_item.second.IsTensor());
+      py::object obj;
+      const Tensor& rtensor = layer2_item.second.Get<Tensor>();
+      GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
+      py_tensor_state[layer1_item.first].insert({layer2_item.first, obj});
+    }
+  }
+  return py_tensor_state;
+}
 
 void addObjectMethodsForTraining(py::module& m) {
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
@@ -201,9 +237,32 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("attn_dropout_recompute", &TrainingParameters::attn_dropout_recompute)
       .def_readwrite("gelu_recompute", &TrainingParameters::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingParameters::transformer_layer_recompute)
-      .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers);
+      .def_readwrite("number_recompute_layers", &TrainingParameters::number_recompute_layers)
+      .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
+      .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
+      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
+      .def("set_optimizer_initial_state",
+           [](TrainingParameters& parameters, const std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& py_state) -> void {
+             onnxruntime::training::TrainingSession::OptimizerState optim_state;
+             for (const auto& weight_it : py_state) {
+               auto state = weight_it.second;
+               NameMLValMap state_tensors;
+               for (auto& initializer : state) {
+                 OrtValue ml_value;
 
-#if defined(USE_NCCL)
+                 // InputDeflist is null because parameters havent been tied to session yet
+                 // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+                 CreateGenericMLValue(nullptr, GetAllocator(), "", initializer.second, &ml_value, true);
+                 ThrowIfPyErrOccured();
+                 state_tensors.emplace(initializer.first, ml_value);
+               }
+               optim_state.emplace(weight_it.first, state_tensors);
+             }
+             parameters.optimizer_initial_state = optim_state;
+           })
+      .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum);
+
+#if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
   m.def("get_mpi_context_local_size", []() -> int { return MPIContext::GetInstance().GetLocalSize(); });
   m.def("get_mpi_context_world_rank", []() -> int { return MPIContext::GetInstance().GetWorldRank(); });
@@ -237,7 +296,7 @@ void addObjectMethodsForTraining(py::module& m) {
         return onnxruntime::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 #ifdef _WIN32
         // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
         // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction
@@ -249,7 +308,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
         bool use_nccl = parameters.allreduce_post_accumulation;
         if (!use_nccl && parameters.world_size > 1)
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
@@ -265,7 +324,7 @@ void addObjectMethodsForTraining(py::module& m) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
         bool use_nccl = parameters.allreduce_post_accumulation;
         if (!use_nccl && parameters.world_size > 1)
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
@@ -295,6 +354,23 @@ void addObjectMethodsForTraining(py::module& m) {
         }
         return rmap;
       })
+      .def("get_model_state", [](PyTrainingSession* sess, bool include_mixed_precision_weights) {
+        std::unordered_map<std::string, NameMLValMap> model_state_tensors;
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetModelState(model_state_tensors, include_mixed_precision_weights));
+        auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
+        return ConvertORTTensorMapToNumpy(model_state_tensors, data_transfer_manager);
+      })
+      .def("get_optimizer_state", [](PyTrainingSession* sess) {
+        std::unordered_map<std::string, NameMLValMap> opt_state_tensors;
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetOptimizerState(opt_state_tensors));
+        auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
+        return ConvertORTTensorMapToNumpy(opt_state_tensors, data_transfer_manager);
+      })
+      .def("get_partition_info_map", [](PyTrainingSession* sess) {
+        std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>> part_info_map;
+        ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->GetPartitionInfoMap(part_info_map));
+        return part_info_map;
+      })
       .def("load_state", [](PyTrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
         NameMLValMap state_tensors;
         for (auto initializer : state) {
@@ -304,19 +380,7 @@ void addObjectMethodsForTraining(py::module& m) {
             throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
           }
           CreateGenericMLValue(px.second, GetAllocator(), initializer.first, initializer.second, &ml_value);
-          if (PyErr_Occurred()) {
-            PyObject *ptype, *pvalue, *ptraceback;
-            PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-            PyObject* pStr = PyObject_Str(ptype);
-            std::string sType = py::reinterpret_borrow<py::str>(pStr);
-            Py_XDECREF(pStr);
-            pStr = PyObject_Str(pvalue);
-            sType += ": ";
-            sType += py::reinterpret_borrow<py::str>(pStr);
-            Py_XDECREF(pStr);
-            throw std::runtime_error(sType);
-          }
+          ThrowIfPyErrOccured();
           state_tensors.insert(std::make_pair(initializer.first, ml_value));
         }
         ORT_THROW_IF_ERROR(static_cast<TrainingSession*>(sess->GetSessionHandle())->SetStateTensors(state_tensors, strict));

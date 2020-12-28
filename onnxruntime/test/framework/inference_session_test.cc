@@ -36,6 +36,7 @@
 #include "core/session/IOBinding.h"
 #include "core/session/device_allocator.h"
 #include "core/session/allocator_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
 #include "test/capturing_sink.h"
@@ -50,10 +51,12 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
+using namespace onnxruntime::concurrency;
+
 namespace {
 struct KernelRegistryAndStatus {
   std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
-  Status st;
+  onnxruntime::Status st;
 };
 }  // namespace
 namespace onnxruntime {
@@ -2341,7 +2344,7 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
@@ -2386,7 +2389,7 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
@@ -2547,7 +2550,7 @@ void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp
   std::array<double, num_tasks> input_double;
   input_double.fill(denormal_double);
 
-  tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
+  ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
     input_float[i] *= 2;
     input_double[i] *= 2;
   });

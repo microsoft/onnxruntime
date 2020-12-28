@@ -4,9 +4,22 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/compare_provider_test_utils.h"
+#include "core/providers/cpu/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace test {
+
+TEST(TransposeOpTest, IsTransposeReshapeTest) {
+  std::vector<int64_t> input_dims{1, 2, 3, 4, 1};
+  std::vector<size_t> perm{0, 1, 2, 3, 4};
+  ASSERT_TRUE(IsTransposeReshape(perm, input_dims));
+  perm = std::vector<size_t>{1, 2, 3, 0, 4};
+  ASSERT_TRUE(IsTransposeReshape(perm, input_dims));
+  perm = std::vector<size_t>{4, 1, 0, 2, 3};
+  ASSERT_TRUE(IsTransposeReshape(perm, input_dims));
+  perm = std::vector<size_t>{4, 1, 0, 3, 2};
+  ASSERT_FALSE(IsTransposeReshape(perm, input_dims));
+}
 
 // Some of the tests can't run on TensorrtExecutionProvider because of errors.
 // Those tests will fallback to other EPs.
@@ -124,11 +137,11 @@ TEST(TransposeOpTest, TwoDim_int16) {
       2, 5,
       3, 6};
 
-  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, true, false);
-  #else
-    TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
-  #endif
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, true, false);
+#else
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+#endif
 }
 
 TEST(TransposeOpTest, TwoDim_mlfloat16) {
@@ -241,6 +254,39 @@ TEST(TransposeOpTest, ThreeDimSuffix) {
       4.0f, 5.0f, 6.0f,
       4.1f, 5.1f, 6.1f,
       4.2f, 5.2f, 6.2f,
+      4.3f, 5.3f, 6.3f};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+}
+
+TEST(TransposeOpTest, TransposeReshape) {
+  std::vector<int64_t> input_shape({1, 4, 2, 1, 3});
+  std::vector<float> input_vals = {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+
+      1.1f, 2.1f, 3.1f,
+      4.1f, 5.1f, 6.1f,
+
+      1.2f, 2.2f, 3.2f,
+      4.2f, 5.2f, 6.2f,
+
+      1.3f, 2.3f, 3.3f,
+      4.3f, 5.3f, 6.3f};
+
+  std::vector<int64_t> perm = {1, 3, 2, 4, 0};
+  std::vector<int64_t> expected_shape({4, 1, 2, 3, 1});
+  auto expected_vals = {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+
+      1.1f, 2.1f, 3.1f,
+      4.1f, 5.1f, 6.1f,
+
+      1.2f, 2.2f, 3.2f,
+      4.2f, 5.2f, 6.2f,
+
+      1.3f, 2.3f, 3.3f,
       4.3f, 5.3f, 6.3f};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
@@ -419,7 +465,115 @@ TEST(TransposeOpTest, SingleAxisMovingInwardsBlockCopy) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
 
-#ifdef USE_CUDA
+TEST(TransposeOpTest, NDim) {
+  std::vector<int64_t> input_shape({2, 2, 2, 2});
+  std::vector<float> input_vals = {1.0f, 2.0f, 3.0f, 4.0f,
+                                   5.0f, 6.0f, 7.0f, 8.0f,
+                                   9.0f, 10.0f, 11.0f, 12.0f,
+                                   13.0f, 14.0f, 15.0f, 16.0f};
+
+  std::vector<int64_t> perm = {1, 0, 2, 3};
+  auto expected_vals = {1.0f, 2.0f, 3.0f, 4.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f};
+  TransposeTest(input_shape, input_vals, &perm, input_shape, expected_vals);
+
+  perm = {1, 0, 3, 2};
+  auto expected_vals2 = {1.0f, 3.0f, 2.0f, 4.0f,
+                         9.0f, 11.0f, 10.0f, 12.0f,
+                         5.0f, 7.0f, 6.0f, 8.0f,
+                         13.0f, 15.0f, 14.0f, 16.0f};
+  TransposeTest(input_shape, input_vals, &perm, input_shape, expected_vals2);
+}
+
+TEST(TransposeOpTest, DoTransposeImpl) {
+  std::vector<int64_t> input_shape({5, 2, 1, 3});
+  std::vector<float> input_vals(30);
+  for (auto it = input_vals.begin(); it != input_vals.end(); ++it) {
+    *it = static_cast<float>(std::distance(input_vals.begin(), it));
+  }
+  std::vector<int64_t> perm = {2, 1, 0, 3};
+  std::vector<int64_t> expected_shape({1, 2, 5, 3});
+  auto expected_vals = {0.0f, 1.0f, 2.0f, 6.0f, 7.0f, 8.0f,
+                        12.0f, 13.0f, 14.0f, 18.0f, 19.0f, 20.0f,
+                        24.0f, 25.0f, 26.0f, 3.0f, 4.0f, 5.0f,
+                        9.0f, 10.0f, 11.0f, 15.0f, 16.0f, 17.0f,
+                        21.0f, 22.0f, 23.0f, 27.0f, 28.0f, 29.0f};
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+}
+
+TEST(TransposeOpTest, DoTransposeImplString) {
+  std::vector<int64_t> input_shape({5, 2, 1, 3});
+  std::vector<std::string> input_vals(30);
+  for (auto it = input_vals.begin(); it != input_vals.end(); ++it) {
+    *it = std::string("n") + std::to_string(static_cast<int>(std::distance(input_vals.begin(), it)));
+  }
+  std::vector<int64_t> perm = {2, 1, 0, 3};
+  std::vector<int64_t> expected_shape({1, 2, 5, 3});
+  std::initializer_list<std::string> expected_vals = {"n0", "n1", "n2", "n6", "n7", "n8",
+                                                      "n12", "n13", "n14", "n18", "n19", "n20",
+                                                      "n24", "n25", "n26", "n3", "n4", "n5",
+                                                      "n9", "n10", "n11", "n15", "n16", "n17",
+                                                      "n21", "n22", "n23", "n27", "n28", "n29"};
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+}
+
+TEST(TransposeOpTest, DoTransposeEltWise) {
+  // Configuration where DoTransposeEltWise is called.
+  std::vector<int64_t> input_shape({2, 2, 2, 2});
+  std::vector<float> input_vals = {1.0f, 2.0f, 3.0f, 4.0f,
+                                   5.0f, 6.0f, 7.0f, 8.0f,
+                                   9.0f, 10.0f, 11.0f, 12.0f,
+                                   13.0f, 14.0f, 15.0f, 16.0f};
+
+  std::vector<int64_t> perm = {1, 0, 3, 2};
+  auto expected_vals2 = {1.0f, 3.0f, 2.0f, 4.0f,
+                         9.0f, 11.0f, 10.0f, 12.0f,
+                         5.0f, 7.0f, 6.0f, 8.0f,
+                         13.0f, 15.0f, 14.0f, 16.0f};
+  TransposeTest(input_shape, input_vals, &perm, input_shape, expected_vals2);
+
+  // Specific test which tests that function DoTransposeEltWise does not
+  // copy values outside the target buffer.
+  TensorShape tensor_shape(input_shape);
+  std::vector<size_t> stride(input_shape.size());
+  for (size_t i = 0; i < input_shape.size(); i++) {
+    size_t inpdim = perm[i];
+    if (inpdim + 1 < input_shape.size())
+      stride[i] = tensor_shape.SizeFromDimension(inpdim + 1);
+    else
+      stride[i] = 1;
+  }
+
+  std::vector<float> input_vals_end = {1.0f, 2.0f, 3.0f, 4.0f,
+                                       5.0f, 6.0f, 7.0f, 8.0f,
+                                       9.0f, 10.0f, 11.0f, 12.0f,
+                                       13.0f, 14.0f, 15.0f, 16.0f,
+                                       -1.0f, -1.0f};
+  std::vector<float> target(input_vals_end.size(), 17.0f);
+
+  std::vector<float> expected_vals3 = {1.0f, 3.0f, 2.0f, 4.0f,
+                                       9.0f, 11.0f, 10.0f, 12.0f,
+                                       5.0f, 7.0f, 6.0f, 8.0f,
+                                       13.0f, 15.0f, 14.0f, 16.0f,
+                                       17.0f, 17.0f};
+
+  DoTransposeEltWise(input_shape.size(), input_shape, 16,
+                     stride, (uint8_t*)input_vals_end.data(), (uint8_t*)target.data(),
+                     sizeof(float));
+  for (size_t i = 0; i < input_vals_end.size(); ++i) {
+    ASSERT_TRUE(target[i] == expected_vals3[i]);
+  }
+}
+
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
 static void TestTranspose(
     const std::vector<int64_t>& perm,
     const std::vector<int64_t>& x_dims,
@@ -435,7 +589,7 @@ static void TestTranspose(
   test.AddInput("X", x_dims, X_data);
   test.AddOutput("Y", y_dims, Y_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider, error_tolerance);
+  test.CompareWithCPU(kGpuExecutionProvider, error_tolerance);
 }
 
 TEST(TransposeOpTest, Transpose0213) {

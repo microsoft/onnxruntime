@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <sstream>
+
 // Struct to represent a physical device.
 struct OrtDevice {
   using DeviceType = int8_t;
@@ -11,7 +13,7 @@ struct OrtDevice {
 
   // Pre-defined device types.
   static const DeviceType CPU = 0;
-  static const DeviceType GPU = 1;  //CUDA or HIP
+  static const DeviceType GPU = 1;  // Nvidia or AMD
   static const DeviceType FPGA = 2;
 
   struct MemType {

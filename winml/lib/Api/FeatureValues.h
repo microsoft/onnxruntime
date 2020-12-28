@@ -381,6 +381,50 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
   else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
     auto tensorDescriptor = descriptor.as<winml::ITensorFeatureDescriptor>();
 
+    // Vector of IBuffer Input should be copied into the appropriate Tensor
+    if (auto buffers = inspectable.try_as<wfc::IIterable<wss::IBuffer>>()) {
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::Boolean) {
+        return winmlp::TensorBoolean::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::Float) {
+        return winmlp::TensorFloat::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::Double) {
+        return winmlp::TensorDouble::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::Float16) {
+        return winmlp::TensorFloat16Bit::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::UInt8) {
+        return winmlp::TensorUInt8Bit::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::Int8) {
+        return winmlp::TensorInt8Bit::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::UInt16) {
+        return winmlp::TensorUInt16Bit::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::Int16) {
+        return winmlp::TensorInt16Bit::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::UInt32) {
+        return winmlp::TensorUInt32Bit::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::Int32) {
+        return winmlp::TensorInt32Bit::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::UInt64) {
+        return winmlp::TensorUInt64Bit::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::Int64) {
+        return winmlp::TensorInt64Bit::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+      if (tensorDescriptor.TensorKind() == winml::TensorKind::Float16) {
+        return winmlp::TensorFloat16Bit::CreateFromBatchedBuffers(tensorDescriptor.Shape(), buffers);
+      }
+    }
+
+
     using TensorCreator = winml::ILearningModelFeatureValue (*)(BindingType, const wf::IInspectable& inspectable, const winml::ITensorFeatureDescriptor& descriptor);
     constexpr std::array<TensorCreator, 13> creators =
         {

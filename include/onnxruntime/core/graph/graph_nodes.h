@@ -21,22 +21,28 @@ class ValidNodes {
   template <typename TIterator>
   class NodeIterator;
 
+  // optional filtering function to return a subset of nodes
+  using NodeFilterFunc = std::function<bool(NodeIndex)>;
+
   /**
   Construct a ValidNodes instance to provide iteration over all valid nodes in the TNodesCollection
   @param[in] nodes Nodes to iterate, skipping invalid entries.
   */
-  explicit ValidNodes(TNodesContainer& nodes) noexcept : nodes_(nodes) {}
+  explicit ValidNodes(TNodesContainer& nodes) noexcept : nodes_(&nodes) {}
+
+  explicit ValidNodes(TNodesContainer& nodes, NodeFilterFunc&& filter_node_fn) noexcept
+      : nodes_(&nodes), filter_node_fn_{std::move(filter_node_fn)} {}
 
   using ConstNodeIterator = NodeIterator<typename TNodesContainer::const_iterator>;
   using MutableNodeIterator = NodeIterator<typename TNodesContainer::iterator>;
   using ConstReverseNodeIterator = NodeIterator<typename TNodesContainer::const_reverse_iterator>;
 
   ConstNodeIterator cbegin() const noexcept {
-    return {nodes_.cbegin(), nodes_.cend()};
+    return {nodes_->cbegin(), nodes_->cend(), filter_node_fn_};
   }
 
   ConstNodeIterator cend() const noexcept {
-    return {nodes_.cend(), nodes_.cend()};
+    return {nodes_->cend(), nodes_->cend(), filter_node_fn_};
   }
 
   ConstNodeIterator begin() const noexcept {
@@ -48,22 +54,28 @@ class ValidNodes {
   }
 
   ConstReverseNodeIterator rbegin() const noexcept {
-    return {nodes_.crbegin(), nodes_.crend()};
+    return {nodes_->crbegin(), nodes_->crend(), filter_node_fn_};
   }
 
   ConstReverseNodeIterator rend() const noexcept {
-    return {nodes_.crend(), nodes_.crend()};
+    return {nodes_->crend(), nodes_->crend(), filter_node_fn_};
   }
 
-  MutableNodeIterator begin() noexcept {
-    return {nodes_.begin(), nodes_.end()};
+  // we only allow mutable access if the container is non-const.
+  // we need to templatize the functions for enable_if to work at this level, but mandate T2 being TNodesContainer
+  template <typename T2 = TNodesContainer>
+  typename std::enable_if<!std::is_const<T2>::value, MutableNodeIterator>::type begin() noexcept {
+    static_assert(std::is_same<T2, TNodesContainer>::value, "Explicit specialization is not allowed");
+    return MutableNodeIterator(nodes_->begin(), nodes_->end(), filter_node_fn_);
   }
 
-  MutableNodeIterator end() noexcept {
-    return {nodes_.end(), nodes_.end()};
+  template <typename T2 = TNodesContainer>
+  typename std::enable_if<!std::is_const<T2>::value, MutableNodeIterator>::type end() noexcept {
+    static_assert(std::is_same<T2, TNodesContainer>::value, "Explicit specialization is not allowed");
+    return MutableNodeIterator(nodes_->end(), nodes_->end(), filter_node_fn_);
   }
 
-  bool empty() const noexcept { return nodes_.empty(); }
+  bool empty() const noexcept { return nodes_->empty(); }
 
   /**
   @class NodeIterator
@@ -88,9 +100,11 @@ class ValidNodes {
     using const_reference = const T&;
 
     /** Construct a NodeInterator and move to the first valid node. */
-    NodeIterator<TIterator>(const TIterator current, const TIterator end) noexcept : current_{current}, end_{end} {
+    NodeIterator<TIterator>(const TIterator current, const TIterator end, const NodeFilterFunc& filter_fn) noexcept
+        : current_{current}, end_{end}, apply_filter_{filter_fn != nullptr}, filter_func_{&filter_fn} {
       // skip to next valid node, stopping at end if none are found
-      while (current_ < end && *current_ == nullptr) {
+      while (current_ < end && (*current_ == nullptr ||
+                                (apply_filter_ && (*filter_func_)((*current_)->Index()) == true))) {
         ++current_;
       }
     }
@@ -106,7 +120,8 @@ class ValidNodes {
     void operator++() {
       if (current_ < end_) {
         while (++current_ != end_) {
-          if (*current_ != nullptr) break;
+          if (*current_ != nullptr && (!apply_filter_ || (*filter_func_)((*current_)->Index()) == false))
+            break;
         }
       }
     }
@@ -132,10 +147,15 @@ class ValidNodes {
    private:
     TIterator current_;
     TIterator end_;
+    bool apply_filter_;                  // store whether filter_func_ is not nullptr and contains a callable
+    const NodeFilterFunc* filter_func_;  // store as pointer so iterator is copyable
   };
 
  private:
-  TNodesContainer& nodes_;
+  gsl::not_null<TNodesContainer*> nodes_;  // always set by ctor
+
+  // no filtering if not set. this instance owns the filter func if set.
+  NodeFilterFunc filter_node_fn_;
 };
 
 /**
@@ -143,7 +163,20 @@ Class that provides iteration over all valid nodes in the Graph.
 */
 class GraphNodes : public ValidNodes<std::vector<std::unique_ptr<Node>>> {
  public:
-  GraphNodes(std::vector<std::unique_ptr<Node>>& nodes) : ValidNodes(nodes) {}
+  GraphNodes(std::vector<std::unique_ptr<Node>>& nodes) : ValidNodes(nodes) {
+  }
+};
+
+// Variant that only ever allows const access to nodes and optionally allows filtering of the nodes.
+class ConstGraphNodes : public ValidNodes<const std::vector<std::unique_ptr<Node>>> {
+ public:
+  ConstGraphNodes(const std::vector<std::unique_ptr<Node>>& nodes) : ValidNodes(nodes) {
+  }
+
+  ConstGraphNodes(const std::vector<std::unique_ptr<Node>>& nodes,
+                  GraphNodes::NodeFilterFunc&& filter_func)
+      : ValidNodes(nodes, std::move(filter_func)) {
+  }
 };
 
 }  // namespace onnxruntime

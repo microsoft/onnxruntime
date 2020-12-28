@@ -74,15 +74,6 @@ if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
 endif()
 
-# Disable certain pybind11 warnings while building using AppleClang 12 on macOS
-# TODO, remove this after switch to pybind11 2.6.0+
-if(APPLE AND ${CMAKE_CXX_COMPILER_ID} STREQUAL "AppleClang" AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0)
-  # https://github.com/pybind/pybind11/pull/2522
-  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-range-loop-analysis")
-  # https://github.com/pybind/pybind11/pull/2294
-  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-unused-value")
-endif()
-
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
@@ -95,11 +86,7 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_DNNL}
-    ${PROVIDERS_TENSORRT}
     ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_NGRAPH}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
@@ -107,6 +94,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
+    ${PROVIDERS_ROCM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -206,6 +194,9 @@ file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
     "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
 )
+file(GLOB onnxruntime_python_checkpoint_test_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/test/python/checkpoint/*.py"
+)
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
 )
@@ -244,6 +235,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -259,6 +251,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_test_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_checkpoint_test_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/checkpoint/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_backend_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend/
@@ -335,28 +330,11 @@ if (onnxruntime_USE_TENSORRT)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_tensorrt>
+        $<TARGET_FILE:onnxruntime_providers_tensorrt>
         $<TARGET_FILE:onnxruntime_providers_shared>
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
-
-if (onnxruntime_USE_NGRAPH)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_CODEGEN_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_CPU_BACKEND_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_IOMP5MD_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_MKLDNN_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_MKLML_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB}
-		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB_2}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
-endif()
-
 
 if (onnxruntime_USE_OPENVINO)
   if(NOT WIN32)
@@ -364,6 +342,8 @@ if (onnxruntime_USE_OPENVINO)
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
+          ${OPENVINO_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_openvino>
+          $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
     )
   endif()
@@ -374,6 +354,15 @@ if (onnxruntime_USE_TVM)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:tvm> $<TARGET_FILE:nnvm_compiler>
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_MKLML)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
@@ -395,7 +384,16 @@ if (onnxruntime_USE_DML)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/${DML_SHARED_LIB}
+        ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_NNAPI_BUILTIN)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_nnapi>
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

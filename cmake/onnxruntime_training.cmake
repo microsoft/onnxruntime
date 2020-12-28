@@ -9,6 +9,8 @@ file(GLOB_RECURSE onnxruntime_training_srcs
     "${ORTTRAINING_SOURCE_DIR}/core/framework/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/core/framework/tensorboard/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/framework/tensorboard/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/adasum/*"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/communication/*"
     "${ORTTRAINING_SOURCE_DIR}/core/session/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/session/*.cc"
 )
@@ -26,11 +28,6 @@ target_include_directories(onnxruntime_training PRIVATE ${CMAKE_CURRENT_BINARY_D
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-endif()
-
-if (onnxruntime_USE_HOROVOD)
-  message(${HOROVOD_INCLUDE_DIRS})
-  target_include_directories(onnxruntime_training PUBLIC ${HOROVOD_INCLUDE_DIRS})
 endif()
 
 set_target_properties(onnxruntime_training PROPERTIES FOLDER "ONNXRuntime")
@@ -64,9 +61,23 @@ target_include_directories(onnxruntime_training_runner PRIVATE ${CMAKE_CURRENT_B
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
-if(UNIX AND NOT APPLE)
-  target_compile_options(onnxruntime_training_runner PUBLIC "-Wno-maybe-uninitialized")
+
+if (onnxruntime_USE_ROCM)
+  add_definitions(-DUSE_ROCM=1)
+  target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_ROCM_HOME}/include)
 endif()
+
+check_cxx_compiler_flag(-Wno-maybe-uninitialized HAS_NO_MAYBE_UNINITIALIZED)
+if(UNIX AND NOT APPLE)
+  if (HAS_NO_MAYBE_UNINITIALIZED)
+    target_compile_options(onnxruntime_training_runner PUBLIC "-Wno-maybe-uninitialized")
+  endif()
+endif()
+
+if (onnxruntime_USE_ROCM)
+  target_compile_options(onnxruntime_training_runner PUBLIC -D__HIP_PLATFORM_HCC__=1)
+endif()
+
 set_target_properties(onnxruntime_training_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_runner_srcs} ${onnxruntime_perf_test_src})
 
@@ -85,6 +96,7 @@ set(ONNXRUNTIME_LIBS
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
+    ${PROVIDERS_ROCM}
     ${PROVIDERS_MKLDNN}
     onnxruntime_optimizer
     onnxruntime_providers
@@ -101,7 +113,9 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
 if(UNIX AND NOT APPLE)
-  target_compile_options(onnxruntime_training_mnist PUBLIC "-Wno-maybe-uninitialized")
+  if (HAS_NO_MAYBE_UNINITIALIZED)
+    target_compile_options(onnxruntime_training_mnist PUBLIC "-Wno-maybe-uninitialized")
+  endif()
 endif()
 target_link_libraries(onnxruntime_training_mnist PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_mnist PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -132,15 +146,13 @@ file(GLOB_RECURSE training_bert_src
 add_executable(onnxruntime_training_bert ${training_bert_src})
 
 if(UNIX AND NOT APPLE)
-  target_compile_options(onnxruntime_training_bert PUBLIC "-Wno-maybe-uninitialized")
+  if (HAS_NO_MAYBE_UNINITIALIZED)
+    target_compile_options(onnxruntime_training_bert PUBLIC "-Wno-maybe-uninitialized")
+  endif()
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
 target_include_directories(onnxruntime_training_bert PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
-
-if (onnxruntime_USE_HOROVOD)
-  target_include_directories(onnxruntime_training_bert PUBLIC ${HOROVOD_INCLUDE_DIRS})
-endif()
 
 target_link_libraries(onnxruntime_training_bert PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_bert PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -153,15 +165,13 @@ file(GLOB_RECURSE training_pipeline_poc_src
 add_executable(onnxruntime_training_pipeline_poc ${training_pipeline_poc_src})
 
 if(UNIX AND NOT APPLE)
-  target_compile_options(onnxruntime_training_pipeline_poc PUBLIC "-Wno-maybe-uninitialized")
+  if (HAS_NO_MAYBE_UNINITIALIZED)
+    target_compile_options(onnxruntime_training_pipeline_poc PUBLIC "-Wno-maybe-uninitialized")
+  endif()
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_training_pipeline_poc onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
 target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
-
-if (onnxruntime_USE_HOROVOD)
-  target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${HOROVOD_INCLUDE_DIRS})
-endif()
 
 target_link_libraries(onnxruntime_training_pipeline_poc PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_pipeline_poc PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -173,13 +183,12 @@ file(GLOB_RECURSE training_gpt2_src
 )
 add_executable(onnxruntime_training_gpt2 ${training_gpt2_src})
 if(UNIX AND NOT APPLE)
-  target_compile_options(onnxruntime_training_gpt2 PUBLIC "-Wno-maybe-uninitialized")
+  if (HAS_NO_MAYBE_UNINITIALIZED)
+    target_compile_options(onnxruntime_training_gpt2 PUBLIC "-Wno-maybe-uninitialized")
+  endif()
 endif()
 onnxruntime_add_include_to_target(onnxruntime_training_gpt2 onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
 target_include_directories(onnxruntime_training_gpt2 PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
-if (onnxruntime_USE_HOROVOD)
-  target_include_directories(onnxruntime_training_gpt2 PUBLIC ${HOROVOD_INCLUDE_DIRS})
-endif()
 target_link_libraries(onnxruntime_training_gpt2 PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_gpt2 PROPERTIES FOLDER "ONNXRuntimeTest")

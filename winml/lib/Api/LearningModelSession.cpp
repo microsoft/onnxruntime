@@ -352,7 +352,7 @@ LearningModelSession::EvaluateAsync(
   }
 
   // Get the Results on a background thread whenever they're ready
-  return GetResults(binding_impl, correlation_id, evaluation_complete_fence);
+  co_return GetResults(binding_impl, correlation_id, evaluation_complete_fence);
 }
 
 winml::LearningModelEvaluationResult

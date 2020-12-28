@@ -96,12 +96,14 @@ void DefaultFree(void* p) {
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
          provider_type == onnxruntime::kDnnlExecutionProvider ||
-         provider_type == onnxruntime::kNGraphExecutionProvider ||
          provider_type == onnxruntime::kNupharExecutionProvider ||
          provider_type == onnxruntime::kVitisAIExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||
          provider_type == onnxruntime::kNnapiExecutionProvider ||
-         provider_type == onnxruntime::kRknpuExecutionProvider;
+         provider_type == onnxruntime::kAclExecutionProvider ||
+         provider_type == onnxruntime::kArmNNExecutionProvider ||
+         provider_type == onnxruntime::kRknpuExecutionProvider ||
+         provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
 }
 
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
@@ -398,9 +400,6 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   }
 
   MLValueCopyInfo copy_info;
-  std::vector<SessionState::NodeInfo> node_info_vec;
-  ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
-
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
   copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
 
@@ -567,6 +566,36 @@ int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onn
       return onnx::TensorProto_DataType::TensorProto_DataType_UNDEFINED;
   }
 }
+
+#ifdef ENABLE_TRAINING
+common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context) {
+  const Tensor* prev_input = context->Input<Tensor>(0);
+  for (int i = 1; i < context->InputCount(); i++) {
+    const Tensor* curr_input = context->Input<Tensor>(i);
+
+    ORT_ENFORCE(prev_input->Shape().Size() >= 0);
+
+    const void* curr_address = curr_input->DataRaw();
+    const void* prev_address = prev_input->DataRaw();
+    const void* prev_end_address = reinterpret_cast<const char*>(prev_address) + prev_input->SizeInBytes();
+
+    void* aligned_address = const_cast<void*>(prev_end_address);
+    size_t dummy_space = kAllocAlignment * 2;
+    std::align(kAllocAlignment, 1, aligned_address, dummy_space);
+
+    if (!(curr_address == prev_end_address || curr_address == aligned_address)) {
+      const std::string node = context->GetNodeName().empty() ? context->GetOpType() : context->GetNodeName();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Contiguous memory checking failed on node ", node, ": ",
+                             "input #", i - 1, " address is ", prev_address, " and #bytes = ", prev_input->SizeInBytes(),
+                             ", input #", i, " address is ", curr_address);
+    }
+
+    prev_input = curr_input;
+  }
+  return Status::OK();
+}
+#endif
 
 }  // namespace utils
 }  // namespace onnxruntime

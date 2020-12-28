@@ -7,6 +7,11 @@
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/graph_transformer_utils.h"
+#include "orttraining/core/session/training_session.h"
+#endif
+
 #include "gtest/gtest.h"
 
 #include <algorithm>
@@ -81,6 +86,44 @@ TEST(CseTests, SimpleTest) {
   ASSERT_EQ(op_count.at("Add"), 2);
   ASSERT_EQ(op_count.at("Relu"), 1);
 }
+
+#ifdef ENABLE_TRAINING
+TEST(CseTests, SimpleTestTraining) {
+  auto model_uri = ORT_TSTR("testdata/transform/cse/cse1.onnx");
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
+
+  GraphTransformerManager graph_transformation_mgr(1);
+  // need to declare variables to avoid build error after making
+  // weights_to_train and updated_weight_names as non-const
+  std::unordered_set<std::string> weights_to_train;
+  std::unordered_map<std::string, std::string> updated_weight_names;
+  std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
+  auto transformers_to_register = training::transformer_utils::GeneratePreTrainingTransformers(
+      TransformerLevel::Level1, weights_to_train, {}, CPUExecutionProvider(CPUExecutionProviderInfo()), updated_weight_names, weight_partition_info);
+  for (auto& entry : transformers_to_register) {
+    ASSERT_TRUE(
+        graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1).IsOK());
+  }
+  ASSERT_TRUE(
+      graph_transformation_mgr.ApplyTransformers(model->MainGraph(), TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  Graph& graph = model->MainGraph();
+
+  const auto& graph_inputs = GetSortedNames(graph.GetInputs());
+  ASSERT_EQ(graph_inputs, (std::vector<std::string>{"x"}));
+
+  const auto& graph_outputs = GetSortedNames(graph.GetOutputs());
+  ASSERT_EQ(graph_outputs, (std::vector<std::string>{"Result"}));
+
+  auto op_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_count.at("MatMul"), 1);
+  ASSERT_EQ(op_count.at("Add"), 2);
+  ASSERT_EQ(op_count.at("Relu"), 1);
+}
+#endif
 
 TEST(CseTests, GraphOutput) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse_graph_output.onnx");

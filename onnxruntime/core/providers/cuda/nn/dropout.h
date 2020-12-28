@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/nn/dropout_impl.h"
 #include "core/providers/cuda/nn/dropout.h"
 #include "core/providers/common.h"
@@ -85,12 +85,12 @@ Status Dropout<trainable_dropout>::ComputeInternal(OpKernelContext* context) con
     const void* X_data = X->DataRaw();
     void* Y_data = Y->MutableDataRaw();
     if (Y_data != X_data) {
-      CUDA_CALL_THROW(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice));
     }
 
     // If mask is requested, return all 1s.
     if (mask != nullptr) {
-      ORT_ENFORCE(cudaMemset(mask->MutableData<bool>(), true, N * sizeof(bool)) == cudaSuccess);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask->MutableData<bool>(), true, N * sizeof(bool)));
     }
 
     return Status::OK();

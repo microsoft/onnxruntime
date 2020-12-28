@@ -75,7 +75,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
 }
 #endif
 
-TEST(GemmOpTest, GemmBroadcast) {
+static void TestGemmBroadcast(bool b_is_initializer) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -86,7 +86,7 @@ TEST(GemmOpTest, GemmBroadcast) {
   test.AddInput<float>("A", {2, 4},
                        {1.0f, 2.0f, 3.0f, 4.0f,
                         -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f), b_is_initializer);
   test.AddInput<float>("C", {3}, std::vector<float>{1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 12.0f, 13.0f,
@@ -98,7 +98,15 @@ TEST(GemmOpTest, GemmBroadcast) {
 #endif
 }
 
-TEST(GemmOpTest, GemmTrans) {
+TEST(GemmOpTest, GemmBroadcast) {
+  TestGemmBroadcast(false);
+}
+
+TEST(GemmOpTest, GemmBroadcastBIsInitializer) {
+  TestGemmBroadcast(true);
+}
+
+static void TestGemmTrans(bool b_is_initializer) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)1);
@@ -111,19 +119,28 @@ TEST(GemmOpTest, GemmTrans) {
                         2.0f, -2.0f,
                         3.0f, -3.0f,
                         4.0f, -4.0f});
-  test.AddInput<float>("B", {3, 4}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("B", {3, 4}, std::vector<float>(12, 1.0f), b_is_initializer);
   test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 11.0f, 11.0f,
                          -9.0f, -9.0f, -9.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_MYRIAD) 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#else
+  #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+  #else
   test.Run();
-#endif
+  #endif
+}
+
+TEST(GemmOpTest, GemmTrans) {
+  TestGemmTrans(false);
+}
+
+TEST(GemmOpTest, GemmTransBIsInitializer) {
+  TestGemmTrans(true);
 }
 
 // NNAPI EP's GEMM only works as A*B', add case only B is transposed
+// Also test NNAPI EP's handling of non-1D bias (C of Gemm)
 TEST(GemmOpTest, GemmTransB) {
   OpTester test("Gemm");
 
@@ -136,7 +153,32 @@ TEST(GemmOpTest, GemmTransB) {
                        {1.0f, 2.0f, 3.0f, 4.0f,
                         -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<float>("B", {3, 4}, std::vector<float>(12, 1.0f));
-  test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
+  test.AddInput<float>("C", {1, 3}, std::vector<float>(3, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 11.0f, 11.0f,
+                         -9.0f, -9.0f, -9.0f});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+  test.Run();
+#endif
+}
+
+// NNAPI EP's GEMM only works as A*B', add case only B is transposed
+// Also test NNAPI EP's handling of non-1D bias (C of Gemm) which is broadcastable but not valid for NNAPI
+TEST(GemmOpTest, GemmTransB_1) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)1);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {3, 4}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {2, 1}, std::vector<float>(2, 1.0f));
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 11.0f, 11.0f,
                          -9.0f, -9.0f, -9.0f});
@@ -298,8 +340,8 @@ TEST(GemmOpTest, GemmNoBiasOpset11) {
   test.AddOutput<float>("Y", {2, 3},
                         {10.0f, 10.0f, 10.0f,
                          -10.0f, -10.0f, -10.0f});
-  // NGraph and tensorRT don't seem to support missing bias
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+  // tensorRT don't seem to support missing bias
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(GemmOpTest, GemmWithAlphaOpset11) {
@@ -312,8 +354,8 @@ TEST(GemmOpTest, GemmWithAlphaOpset11) {
   test.AddInput<float>("B", {2, 2}, std::vector<float>(4, 1.0f));
   test.AddOutput<float>("Y", {2, 2},
                         {6.0f, 6.0f, 14.0f, 14.0f});
-  // NGraph and tensorRT don't seem to support missing bias
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+  // tensorRT don't seem to support missing bias
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

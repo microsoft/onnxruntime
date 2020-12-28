@@ -287,7 +287,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
                 mask_input_name = self.attention_mask.get_first_mask()
                 if unsqueeze_node.input[0] != mask_input_name:
-                    print("Cast input {} is not mask input{}".format(unsqueeze_node.input[0], mask_input_name))
+                    print("Cast input {} is not mask input {}".format(unsqueeze_node.input[0], mask_input_name))
                     continue
 
                 unsqueeze_added_1 = onnx.helper.make_node('Unsqueeze',
