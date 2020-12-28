@@ -49,7 +49,7 @@ bool IsDimensionSupported(const Node* node) {
   return true;
 }
 
-//Ops which are not supported by OpenVINO EP
+//Ops which are not by OpenVINO EP
 bool IsOpSupported(std::string name, std::string device) {
   std::set<std::string> common_supported_ops = {
       "Add",
@@ -274,14 +274,14 @@ static bool IsUnsupportedOpMode(const Node* node, const GraphViewer& graph_viewe
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
     if (GetInputCount(node, initializers) == 1)
       return true;
-    if (optype == "Max" || optype == "Min") {
-      for (size_t i = 0; i < node->InputDefs().size(); i++) {
-        auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
-        if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-            dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
-          return true;
+      if (optype == "Max" || optype == "Min") {
+        for (size_t i = 0; i < node->InputDefs().size(); i++) {
+          auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
+          if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
+              dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
+            return true;
+       }
       }
-    }
   } else if (optype == "Clip") {
     //Only float 16, float and double data types are supported
     const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
@@ -570,6 +570,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+      
     };
 
     std::set<int> supported_types_gpu = {

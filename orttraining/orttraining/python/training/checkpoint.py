@@ -12,6 +12,9 @@ from . import _checkpoint_storage, _utils
 
 
 def experimental_state_dict(ort_trainer, include_optimizer_state=True):
+    warnings.warn("experimental_state_dict() will be deprecated soon. "
+                "Please use ORTTrainer.state_dict() instead.", DeprecationWarning)
+
     if not ort_trainer._training_session:
         warnings.warn("ONNX Runtime training session is not initialized yet. "
                         "Please run train_step or eval_step at least once before calling state_dict().")
@@ -35,6 +38,9 @@ def experimental_state_dict(ort_trainer, include_optimizer_state=True):
 
 
 def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
+    warnings.warn("experimental_load_state_dict() will be deprecated soon. "
+                "Please use ORTTrainer.load_state_dict() instead.", DeprecationWarning)
+
     # Note: It may happen ONNX model has not yet been initialized
     # In this case we cache a reference to desired state and delay the restore until after initialization
     # Unexpected behavior will result if the user changes the reference before initialization
@@ -63,20 +69,11 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
     session_state = {name:state_dict[name].numpy() for name in state_dict}
     ort_trainer._training_session.load_state(session_state, strict)
 
-# Temporary function to test optimizer state loading
-def _experimental_load_optimizer_state(ort_trainer, optim_state_dict):
-    ort_trainer._optim_state_dict = optim_state_dict
-
-    # Note: It may happen ONNX model has not yet been initialized
-    # In this case we cache a reference to desired state and delay the restore until after initialization
-    # Unexpected behavior will result if the user changes the reference before initialization    
-    if not ort_trainer._training_session:
-        return
-
-    ort_trainer._init_session()
-
 
 def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None, include_optimizer_state=True):
+    warnings.warn("experimental_save_checkpoint() will be deprecated soon. "
+                "Please use ORTTrainer.save_checkpoint() instead.", DeprecationWarning)
+
     if checkpoint_state_dict is None:
         checkpoint_state_dict = {'model': experimental_state_dict(ort_trainer, include_optimizer_state)}
     else:
@@ -96,6 +93,9 @@ def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
 
 
 def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", strict=False):
+    warnings.warn("experimental_load_checkpoint() will be deprecated soon. "
+                "Please use ORTTrainer.load_checkpoint() instead.", DeprecationWarning)
+
     checkpoint_files = _list_checkpoint_files(
         checkpoint_dir, checkpoint_prefix)
     is_partitioned = False
@@ -256,6 +256,16 @@ def _aggregate_trainer_options(rank_state_dict, state_dict):
     state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = \
         rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
 
+def _to_pytorch_format(state_dict):
+    """Convert ORT state dictionary schema (hierarchical structure) to PyTorch state dictionary schema (flat structure)"""
+
+    pytorch_state_dict = {}
+    for model_state_key, model_state_value in \
+        state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()].items():
+        # convert numpy array to a torch tensor
+        pytorch_state_dict[model_state_key] = torch.tensor(model_state_value)
+    return pytorch_state_dict
+
 def aggregate_checkpoints(paths, pytorch_format=True):
     """Aggregate checkpoint files and return a single state dictionary
 
@@ -337,7 +347,7 @@ def aggregate_checkpoints(paths, pytorch_format=True):
 
     # return a flat structure for PyTorch model in case pytorch_format is True
     # else return the hierarchical structure for ORTTrainer
-    return state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()] if pytorch_format else state_dict
+    return _to_pytorch_format(state_dict) if pytorch_format else state_dict
 
 ################################################################################
 # Helper functions
@@ -479,6 +489,9 @@ class _CombineZeroCheckpoint(object):
                 self._update_weight_statistics(weight_name, v)
 
     def aggregate_checkpoints(self):
+        warnings.warn("_CombineZeroCheckpoint.aggregate_checkpoints() will be deprecated soon. "
+                    "Please use aggregate_checkpoints() instead.", DeprecationWarning)
+
         checkpoint_prefix = self.checkpoint_files[0].split('.ZeRO')[0]
         self.aggregate_state_dict = dict()
 
