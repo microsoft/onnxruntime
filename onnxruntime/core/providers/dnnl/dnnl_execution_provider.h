@@ -165,8 +165,6 @@ class DNNLExecutionProvider : public IExecutionProvider {
   }
 
  private:
-  mutable int subgraph_index_ = 0;
-
   // supported Dnnl Operators
   std::set<std::string> dnnl_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
                                      "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};

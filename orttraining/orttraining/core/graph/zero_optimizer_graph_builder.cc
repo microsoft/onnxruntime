@@ -10,11 +10,13 @@
 #include "core/optimizer/initializer.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 
+#include "orttraining/core/framework/distributed_run_context.h"
+
 namespace onnxruntime {
 namespace training {
 
 static bool IsNcclAvailable() {
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
   return true;
 #else
   return false;
@@ -80,7 +82,8 @@ static Status AddL2NormNcclAllReduce(
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {norm_squared},
                                   {allreduce_output},
-                                  NodeAttributes(),
+                                  {ONNX_NAMESPACE::MakeAttribute("group_type",
+                                                                 static_cast<int64_t>(WorkerGroupType::DataParallel))},
                                   allreduce_output.name)});
 
   // Sqrt the reduced L2 norm.
@@ -234,7 +237,8 @@ static Status AddParameterPartition(
     std::vector<OptimizerNodeConfig>& opt_configs,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
-    std::unordered_map<std::string, std::string>& updated_weight_names_map) {
+    std::unordered_map<std::string, std::string>& updated_weight_names_map,
+    std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info) {
   std::vector<bool> enabled;
   for (size_t i = 0; i < view_shapes.size(); i++) {
     if (view_shapes[i].Size() > 0) {
@@ -276,12 +280,16 @@ static Status AddParameterPartition(
     new_config.enabled = enabled[i];
 
     // Partition initial optimizer state
-    if (enabled[i] && !initial_states.empty()) {
-      ORT_ENFORCE(view_shapes.size() == 3, "Invalid view_shapes vector passed for partitioning.");
-      int64_t partition_offset = view_shapes[0].GetDims()[0];
-      int64_t partition_size = view_shapes[1].GetDims()[0];
-      new_config.initial_states = opt_config.initial_states;
-      PartitionOptimizerState(partition_offset, partition_size, new_config.initial_states);
+    if (enabled[i]) {
+      weight_partition_info[weight_argdef.name].view_name = weight_views[i].name;
+
+      if (!initial_states.empty()) {
+        ORT_ENFORCE(view_shapes.size() == 3, "Invalid view_shapes vector passed for partitioning.");
+        int64_t partition_offset = view_shapes[0].GetDims()[0];
+        int64_t partition_size = view_shapes[1].GetDims()[0];
+        new_config.initial_states = opt_config.initial_states;
+        PartitionOptimizerState(partition_offset, partition_size, new_config.initial_states);
+      }
     }
 
     if (opt_config.mixed_precision_weight_arg != nullptr) {
@@ -302,7 +310,8 @@ static Status ModifyParametersForOptimizerPartitioning(
     std::vector<ArgDef>& gradient_argdefs,
     ArgDef& padded_weight_argdef,
     ArgDef& padded_gradient_argdef,
-    std::unordered_map<std::string, std::string>& updated_weight_names_map) {
+    std::unordered_map<std::string, std::string>& updated_weight_names_map,
+    std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info) {
   ORT_ENFORCE(weight_argdefs.size() == gradient_argdefs.size());
   ORT_ENFORCE(weight_argdefs.size() == opt_configs.size());
 
@@ -388,7 +397,7 @@ static Status ModifyParametersForOptimizerPartitioning(
         // !!!! todo: some optimization here, can skip View
         std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
         AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes,
-                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
       } else if (tensor_start >= rank_start && tensor_end > rank_end) {
         int64_t bytes_for_current_rank = rank_end - offset;
         int64_t size_for_current_rank = std::min(bytes_for_current_rank / element_size, tensor_count);
@@ -397,7 +406,7 @@ static Status ModifyParametersForOptimizerPartitioning(
 
         std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
         AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes,
-                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
       } else {  // tensor_start < rank_start && tensor_end > rank_end
         int64_t bytes_for_previous_rank = rank_start - offset;
         int64_t bytes_for_current_rank = rank_end - rank_start;
@@ -409,7 +418,7 @@ static Status ModifyParametersForOptimizerPartitioning(
 
         std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
         AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes,
-                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map);
+                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
       }
     } else {
       // Parameter is handled by a different rank.
@@ -494,11 +503,13 @@ ZeROOptimizerGraphBuilder::ZeROOptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
     const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
-    std::unordered_map<std::string, std::string>& updated_weight_names_map)
+    std::unordered_map<std::string, std::string>& updated_weight_names_map,
+    std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info)
     : OptimizerGraphBuilder(opt_builder_registry,
                             opt_graph_config,
                             weight_names_to_opt_configs,
-                            updated_weight_names_map) {
+                            updated_weight_names_map,
+                            weight_partition_info) {
   ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1, "ZeRO optimizer graph builder can only be used for distributed training.");
   ORT_ENFORCE(opt_graph_config.use_nccl, "Distributed training with ZeRO is only supported with NCCL.");
   ORT_ENFORCE(IsNcclAvailable(), "Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
@@ -511,7 +522,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
-    std::unordered_set<std::string>& optimizer_state_initializer_names,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& optimizer_state_initializer_names,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);
@@ -529,7 +540,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   ArgDef padded_weight_argdef, padded_gradient_argdef;
   ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
       graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs,
-      padded_weight_argdef, padded_gradient_argdef, updated_weight_names_map_));
+      padded_weight_argdef, padded_gradient_argdef, updated_weight_names_map_, weight_partition_info_));
 
   // add Reducescatter for gradients
   if (padded_gradient_argdef.Exists()) {
