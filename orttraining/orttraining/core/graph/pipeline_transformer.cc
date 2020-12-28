@@ -58,12 +58,21 @@ void CreateFakeOutput(
     Graph& graph,                   // the graph of a pipeline stage.
     const std::string output_name,  // The fake output's name to add to the graph.
     const std::unordered_map<std::string, std::vector<int>>& sliced_schema) {
-  // TODO: fix it by passing in tensor types.
-  const ONNX_NAMESPACE::TensorProto_DataType element_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  // Type of the considered graph output.
+  const auto output_type_proto = graph.GetNodeArg(output_name)->TypeAsProto();
+  ORT_ENFORCE(output_type_proto->has_tensor_type(), "Only tensors are supported.");
+  ORT_ENFORCE(output_type_proto->tensor_type().has_elem_type(), "Tensor must have a valid element type.");
+
+  // Element type of the considered graph output.
+  const ONNX_NAMESPACE::TensorProto_DataType element_type =
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(output_type_proto->tensor_type().elem_type());
+
+  // Create type for fake output.
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(element_type);
   auto& seed_node_arg = graph.GetOrCreateNodeArg(output_name + "_seed", &type_proto);
 
+  // Create fake output.
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_name(seed_node_arg.Name());
   tensor_proto.set_data_type(element_type);
