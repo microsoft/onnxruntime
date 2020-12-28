@@ -3069,9 +3069,9 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["DynamicQuantizeLinear"], 1);
-  EXPECT_EQ(op_to_count["MatMulInteger"], 1);
-  EXPECT_EQ(op_to_count["Cast"], 1);
-  EXPECT_EQ(op_to_count["Mul"], 2);
+  EXPECT_EQ(op_to_count["MatMulInteger"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 0);
+  EXPECT_EQ(op_to_count["Mul"], 0);
   EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 3);
   EXPECT_EQ(op_to_count["Add"], 1);
 }

@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "distributed_run_context.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "core/common/common.h"
-
 namespace onnxruntime {
 namespace training {
 
@@ -15,7 +14,6 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
                                              int32_t horizontal_parallel_size,
                                              int32_t pipeline_stage_size) {
   // We only check world_size and world_rank since local_size and local_rank might not be set if using NCCL.
-  // TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(world_rank >= 0 && world_size > 0,
               "Fail to initialize DistributedRunContext due to invalid distributed run config");
 
@@ -96,14 +94,27 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   const int32_t data_group_id = calculate_linear_index(horizontal_parallel_size, 1, x, 0, z);
   const int32_t pipe_group_id = calculate_linear_index(horizontal_parallel_size, data_parallel_size, x, y, 0);
 
+  // Initialize Global Parallel Group
+  std::vector<int32_t> global_group_ranks;
+  for (auto r = 0; r < world_size; r++) {
+    global_group_ranks.push_back(r);
+  }
+
+  groups_[WorkerGroupType::GlobalParallel] = {global_group_ranks, 0,// Only one group in global parallel.
+                                              WorkerGroupType::GlobalParallel, world_rank};
+
   // Initialize Data Parallel Group
   const int32_t data_group_start_index = calculate_linear_index(horizontal_parallel_size, data_parallel_size, x, 0, z);
   std::vector<int32_t> data_group_ranks;
   for (auto r = 0; r < data_parallel_size; r++) {
     data_group_ranks.push_back(data_group_start_index + r * horizontal_parallel_size);
   }
+
   groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
                                             WorkerGroupType::DataParallel, y};
+
+  // Sort it to use afterwards
+  std::sort(data_group_ranks.begin(), data_group_ranks.end());
 
   // Horizontal Model Parallel Group
   const int32_t hori_group_start_index = calculate_linear_index(horizontal_parallel_size, data_parallel_size, 0, y, z);
@@ -126,7 +137,52 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   }
   groups_[WorkerGroupType::ModelParallel] = {pipeline_group_ranks, pipe_group_id,
                                              WorkerGroupType::ModelParallel, z};
-}
+  
+  // Node local parallel group
+  const int32_t node_group_id = params_.world_rank / params_.local_size;
+  std::vector<int32_t> node_group_ranks;
 
+  for (auto r = 0; r < local_size; r++) {
+    node_group_ranks.push_back((node_group_id) * local_size + r);
+  }
+
+  // The node local data parallel group will be the intersection between data parallel and node local groups.
+  std::vector<int32_t> node_data_parallel_group_ranks;
+  std::sort(node_group_ranks.begin(), node_group_ranks.end());
+  std::set_intersection(data_group_ranks.begin(),
+                        data_group_ranks.end(),
+                        node_group_ranks.begin(),
+                        node_group_ranks.end(),
+                        std::back_inserter(node_data_parallel_group_ranks));
+ 
+  auto index_in_node_data_parallel_group = std::find(node_data_parallel_group_ranks.begin(),
+                                                     node_data_parallel_group_ranks.end(),
+                                                     params_.world_rank);
+  const int32_t rank_in_owning_node_group = 
+    (index_in_node_data_parallel_group - node_data_parallel_group_ranks.begin()) % static_cast<int32_t>(node_data_parallel_group_ranks.size());
+
+  groups_[WorkerGroupType::NodeLocalDataParallel] = {node_data_parallel_group_ranks, node_group_id,
+                                                  WorkerGroupType::NodeLocalDataParallel, rank_in_owning_node_group};
+
+  // Cross node parallel group
+  const int32_t cross_node_group_id = params_.local_rank;
+  const int32_t rank_in_owning_cross_node_group = params_.world_rank / params_.local_size;
+  std::vector<int32_t> cross_node_group_ranks;
+  for (auto r = 0; r < (world_size / local_size); r++) {
+    cross_node_group_ranks.push_back(cross_node_group_id + local_size * r);
+  }
+
+  // The node local data parallel group will be the intersection between data parallel and cross node groups.
+  std::vector<int32_t> cross_node_data_parallel_group_ranks;
+  std::sort(cross_node_group_ranks.begin(), cross_node_group_ranks.end());
+  std::set_intersection(data_group_ranks.begin(),
+                        data_group_ranks.end(),
+                        cross_node_group_ranks.begin(),
+                        cross_node_group_ranks.end(),
+                        std::back_inserter(cross_node_data_parallel_group_ranks));
+
+  groups_[WorkerGroupType::CrossNodeDataParallel] = {cross_node_group_ranks, cross_node_group_id,
+                                                  WorkerGroupType::CrossNodeDataParallel, rank_in_owning_cross_node_group};
+}
 }  // namespace training
 }  // namespace onnxruntime

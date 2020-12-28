@@ -9,22 +9,17 @@
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/bfc_arena.h"
+#ifdef USE_CUDA
 #include "core/providers/cuda/cuda_allocator.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#endif
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/constant.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
-
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
-                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-                                                                               bool do_copy_in_default_stream = true);
-}
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -69,7 +64,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
         cxxopts::value<int>()->default_value("1"))
       ("seed", "Random seed.", cxxopts::value<int64_t>()->default_value("-1"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
-      ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
+      ("enable_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
       ("loss_scale", "Loss scaling, positive power of 2 values can improve fp16 convergence. "
         "Set it 0 to uses dynamic scaling; Other none-zero value will used as static scale",
@@ -124,7 +119,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     }
     params.lr_params.warmup_ratio = ratio;
 
-    params.use_adasum = flags["use_adasum"].as<bool>();
+    params.enable_adasum = flags["enable_adasum"].as<bool>();
 
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
@@ -312,8 +307,8 @@ void setup_training_params(GPT2Parameters& params) {
     params.data_parallel_size = data_group_size;
   }
 
-  params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
-  if (params.use_adasum)
+  params.enable_adasum = params.enable_adasum && (params.data_parallel_size > 1);
+  if (params.enable_adasum)
     std::cout << "Use Adsum for allreduce." << std::endl;
 #endif
 
@@ -344,9 +339,13 @@ void setup_training_params(GPT2Parameters& params) {
   params.model_type = "gpt2";
 
 #ifdef USE_CUDA
-  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
-  params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
-  params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+  {
+    CUDAExecutionProviderInfo info{};
+    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+
+    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(info));
+    params.input_allocator = std::make_shared<CUDAPinnedAllocator>(info.device_id, CUDA_PINNED);
+  }
 #endif
 
   params.use_nccl = true;

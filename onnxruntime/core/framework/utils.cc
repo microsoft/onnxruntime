@@ -575,16 +575,21 @@ common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context)
 
     ORT_ENFORCE(prev_input->Shape().Size() >= 0);
 
-    size_t input_element_count = static_cast<size_t>(prev_input->Shape().Size());
-    size_t input_element_size = prev_input->DataType()->Size();
-    size_t input_aligned_bytes = 0;
+    const void* curr_address = curr_input->DataRaw();
+    const void* prev_address = prev_input->DataRaw();
+    const void* prev_end_address = reinterpret_cast<const char*>(prev_address) + prev_input->SizeInBytes();
 
-    ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(input_element_count, input_element_size,
-                                                                        &input_aligned_bytes));
+    void* aligned_address = const_cast<void*>(prev_end_address);
+    size_t dummy_space = kAllocAlignment * 2;
+    std::align(kAllocAlignment, 1, aligned_address, dummy_space);
 
-    ORT_RETURN_IF_NOT(
-        curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + input_aligned_bytes ||
-        curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + prev_input->SizeInBytes());
+    if (!(curr_address == prev_end_address || curr_address == aligned_address)) {
+      const std::string node = context->GetNodeName().empty() ? context->GetOpType() : context->GetNodeName();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Contiguous memory checking failed on node ", node, ": ",
+                             "input #", i - 1, " address is ", prev_address, " and #bytes = ", prev_input->SizeInBytes(),
+                             ", input #", i, " address is ", curr_address);
+    }
 
     prev_input = curr_input;
   }

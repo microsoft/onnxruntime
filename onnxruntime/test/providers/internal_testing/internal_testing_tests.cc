@@ -175,23 +175,21 @@ TEST(InternalTestingEP, TestLoadOrtModelWithReducedOpCoverage) {
   const auto& func_mgr = session->GetSessionState().GetFuncMgr();
   NodeComputeInfo* compute_func = nullptr;
 
+  // the generated op type should have a hash for the model based on the model path
+  const std::string expected_op_type_prefix = "InternalTestingEP_9611636968429821767_";
+  int compiled_node_num = 0;
+
   for (const auto& node : graph.Nodes()) {
     EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
         << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
     if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
       EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
       EXPECT_NE(compute_func, nullptr);
+      EXPECT_EQ(node.OpType(), expected_op_type_prefix + std::to_string(compiled_node_num++));
     }
   }
 
   ExecuteMnist(*session, enable_custom_ep);
-}
-
-TEST(InternalTestingEP, TestMinimalRegistrationOfEPwithGetCapability) {
-  // TODO: In a full build we want to be able to call GetCapability for the NNAPI EP and produce an ORT format model
-  // with nodes correctly preserved. That requires being able to do a minimal registration of that EP where
-  // GetCapability is fully implemented, but Compile is a stub that just throws NOT_IMPLEMENTED if someone attempts
-  // to execute a model in that InferenceSession.
 }
 
 // count nodes assigned to the test EP and make sure they all have valid compute funcs

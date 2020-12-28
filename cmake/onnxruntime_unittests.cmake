@@ -139,6 +139,9 @@ function(AddTest)
   endif()
 endfunction(AddTest)
 
+# general program entrypoint for C++ unit tests
+set(onnxruntime_unittest_main_src "${TEST_SRC_DIR}/unittest_main/test_main.cc")
+
 #Do not add '${TEST_SRC_DIR}/util/include' to your include directories directly
 #Use onnxruntime_add_include_to_target or target_link_libraries, so that compile definitions
 #can propagate correctly.
@@ -196,6 +199,7 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/model/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/graph/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/session/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/framework/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
@@ -564,71 +568,64 @@ if(NOT TARGET onnxruntime)
 endif()
 
 if (onnxruntime_USE_CUDA)
-  add_library(onnxruntime_test_cuda_add_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_add.cu)
-  list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_add_lib)
+  add_library(onnxruntime_test_cuda_ops_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
+  list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_ops_lib)
 endif()
 
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
-  if (onnxruntime_ENABLE_TRAINING)
-    list(APPEND all_tests ${onnxruntime_test_training_src})
-  endif()
+if (onnxruntime_ENABLE_TRAINING)
+  list(APPEND all_tests ${onnxruntime_test_training_src})
+endif()
 
-  if (onnxruntime_USE_TVM)
-    list(APPEND all_tests ${onnxruntime_test_tvm_src})
-  endif()
-  if (onnxruntime_USE_OPENVINO)
-    list(APPEND all_tests ${onnxruntime_test_openvino_src})
-  endif()
-  # we can only have one 'main', so remove them all and add back the providers test_main as it sets
-  # up everything we need for all tests
-  file(GLOB_RECURSE test_mains CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/*/test_main.cc"
-    )
-  list(REMOVE_ITEM all_tests ${test_mains})
-  list(APPEND all_tests "${TEST_SRC_DIR}/providers/test_main.cc")
+if (onnxruntime_USE_TVM)
+  list(APPEND all_tests ${onnxruntime_test_tvm_src})
+endif()
+if (onnxruntime_USE_OPENVINO)
+  list(APPEND all_tests ${onnxruntime_test_openvino_src})
+endif()
 
-  # this is only added to onnxruntime_test_framework_libs above, but we use onnxruntime_test_providers_libs for the onnxruntime_test_all target.
-  # for now, add it here. better is probably to have onnxruntime_test_providers_libs use the full onnxruntime_test_framework_libs
-  # list given it's built on top of that library and needs all the same dependencies.
-  if(WIN32)
-    list(APPEND onnxruntime_test_providers_libs Advapi32)
-  endif()
+# this is only added to onnxruntime_test_framework_libs above, but we use onnxruntime_test_providers_libs for the onnxruntime_test_all target.
+# for now, add it here. better is probably to have onnxruntime_test_providers_libs use the full onnxruntime_test_framework_libs
+# list given it's built on top of that library and needs all the same dependencies.
+if(WIN32)
+  list(APPEND onnxruntime_test_providers_libs Advapi32)
+endif()
 
-  AddTest(
-    TARGET onnxruntime_test_all
-    SOURCES ${all_tests}
-    LIBS onnx_test_runner_common ${onnxruntime_test_providers_libs}  ${onnxruntime_test_common_libs}  re2::re2 onnx_test_data_proto
-    DEPENDS ${all_dependencies}
-  )
+AddTest(
+  TARGET onnxruntime_test_all
+  SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
+  LIBS onnx_test_runner_common ${onnxruntime_test_providers_libs}  ${onnxruntime_test_common_libs}  re2::re2 onnx_test_data_proto
+  DEPENDS ${all_dependencies}
+)
 
-  # the default logger tests conflict with the need to have an overall default logger
-  # so skip in this type of
-  target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
-  if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
-  endif()
-  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-    target_compile_options(onnxruntime_test_all PUBLIC "-Wno-unused-const-variable")
-  endif()
-  if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
-    target_compile_definitions(onnxruntime_test_all PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
-  endif()
-  if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
-    target_compile_definitions(onnxruntime_test_all PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
-  endif()
-  if (onnxruntime_USE_FEATURIZERS)
-    target_include_directories(onnxruntime_test_all PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/FeaturizersLibrary/src)
-  endif()
-  if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-    target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-  endif()
+# the default logger tests conflict with the need to have an overall default logger
+# so skip in this type of
+target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+endif()
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+  target_compile_options(onnxruntime_test_all PUBLIC "-Wno-unused-const-variable")
+endif()
+if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
+  target_compile_definitions(onnxruntime_test_all PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
+endif()
+if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
+  target_compile_definitions(onnxruntime_test_all PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
+endif()
+if (onnxruntime_USE_FEATURIZERS)
+  target_include_directories(onnxruntime_test_all PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/FeaturizersLibrary/src)
+endif()
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+endif()
 
-  if (onnxruntime_USE_ROCM)
-    target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_ROCM_HOME}/include/hiprand ${onnxruntime_ROCM_HOME}/include/rocrand)
-  endif()
+if (onnxruntime_USE_ROCM)
+  target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_ROCM_HOME}/include/hiprand ${onnxruntime_ROCM_HOME}/include/rocrand)
+endif()
 
-  set(test_data_target onnxruntime_test_all)
+set(test_data_target onnxruntime_test_all)
 
 
 #
@@ -864,14 +861,14 @@ if (onnxruntime_BUILD_SHARED_LIB)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
   endif()
   if (onnxruntime_USE_CUDA)
-    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_test_cuda_add_lib cudart)
+    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_test_cuda_ops_lib cudart)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
   endif()
   AddTest(DYN
           TARGET onnxruntime_shared_lib_test
-          SOURCES ${onnxruntime_shared_lib_test_SRC} ${TEST_SRC_DIR}/providers/test_main.cc
+          SOURCES ${onnxruntime_shared_lib_test_SRC} ${onnxruntime_unittest_main_src}
           LIBS ${onnxruntime_shared_lib_test_LIBS}
           DEPENDS ${all_dependencies}
   )
@@ -903,6 +900,24 @@ if (onnxruntime_BUILD_SHARED_LIB)
     )
   endif()
 endif()
+
+# the debug node IO functionality uses static variables, so it is best tested
+# in its own process
+if(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
+  AddTest(
+    TARGET onnxruntime_test_debug_node_inputs_outputs
+    SOURCES
+      "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
+      "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
+      "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
+      ${onnxruntime_unittest_main_src}
+    LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+    DEPENDS ${all_dependencies}
+  )
+
+  target_compile_definitions(onnxruntime_test_debug_node_inputs_outputs
+    PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
+endif(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
 
 #some ETW tools
 if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
