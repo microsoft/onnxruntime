@@ -36,6 +36,14 @@ def run_distributed_allreduce_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_distributed_nccl_tests(cwd, log):
+    log.debug('Running: distributed nccl tests')
+
+    command = [sys.executable, 'run_distributed_nccl_tests.py']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def main():
     import torch
     ngpus = torch.cuda.device_count()
