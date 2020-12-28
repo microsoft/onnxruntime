@@ -13,22 +13,23 @@
 namespace onnxruntime {
 namespace test {
 
-inline void TestActivationOp(const char* szOp, const std::vector<std::vector<float>>& input_vals_vec,
-                             std::function<float(float)> expected_func,
+template <typename T>
+inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>& input_vals_vec,
+                             std::function<T(T)> expected_func,
                              const std::unordered_map<std::string, float> attribs = {},
                              bool is_tensorrt_supported = true, int opset_version = 7,
                              const char* domain = kOnnxDomain) {
-  for (const std::vector<float>& input_vals : input_vals_vec) {
+  for (const std::vector<T>& input_vals : input_vals_vec) {
     OpTester test(szOp, opset_version, domain);
 
-    for (auto attr : attribs) test.AddAttribute(attr.first, attr.second);
+    for (auto attr : attribs) test.AddAttribute<float>(attr.first, attr.second);
     std::vector<int64_t> dims{(int64_t)input_vals.size()};
 
-    std::vector<float> expected_vals;
+    std::vector<T> expected_vals;
     for (const auto& iv : input_vals) expected_vals.push_back(expected_func(iv));
 
-    test.AddInput<float>("X", dims, input_vals);
-    test.AddOutput<float>("Y", dims, expected_vals);
+    test.AddInput<T>("X", dims, input_vals);
+    test.AddOutput<T>("Y", dims, expected_vals);
 
     // Disable TensorRT on unsupported tests
     std::unordered_set<std::string> excluded_providers;
@@ -74,10 +75,14 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<flo
 
 class ActivationOpTest : public ::testing::Test {
  protected:
-  std::vector<std::vector<float>> input_values{{-1.0f, 0, 1.0f,                                               // normal input values for activation
-                                                100.0f, -100.0f, 1000.0f, -1000.0f,                           // input values that leads to exp() overflow
-                                                FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,                         // min, denorm, -denorm
-                                                FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity()}};  // max, -max, inf
+  std::vector<std::vector<float>> input_values{{-1.0f, 0, 1.0f,                                                        // normal input values for activation
+                                                100.0f, -100.0f, 1000.0f, -1000.0f,                                    // input values that leads to exp() overflow
+                                                FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,                                  // min, denorm, -denorm
+                                                FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity()}};           // max, -max, inf
+  std::vector<std::vector<double>> input_values_double{{-1.0, 0, 1.0,                                                  // normal input values for activation
+                                                        100.0, -100.0, 1000.0, -1000.0,                                // input values that leads to exp() overflow
+                                                        DBL_MIN, DBL_MIN / 10, -DBL_MIN / 10,                          // min, denorm, -denorm
+                                                        DBL_MAX, -DBL_MAX, std::numeric_limits<double>::infinity()}};  // max, -max, inf
 
   void SetUp() override {
     float low = -1.0f, high = 1.0f;
