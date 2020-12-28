@@ -407,55 +407,8 @@ class OnnxModel:
     def convert_model_float32_to_float16(self, cast_input_output=True):
         """ Convert a graph to FLOAT16
         """
-        graph = self.model.graph
-        initializers = graph.initializer
-
-        for initializer in initializers:
-            if initializer.data_type == 1:
-                initializer.CopyFrom(
-                    numpy_helper.from_array(numpy_helper.to_array(initializer).astype(np.float16), initializer.name))
-
-        for node in graph.node:
-            if node.op_type in ['Constant', 'ConstantOfShape']:
-                for att in node.attribute:
-                    if att.name == 'value' and att.t.data_type == 1:
-                        att.CopyFrom(
-                            helper.make_attribute(
-                                "value", numpy_helper.from_array(numpy_helper.to_array(att.t).astype(np.float16))))
-            if node.op_type == 'Cast':
-                for att in node.attribute:
-                    if att.name == 'to' and att.i == 1:
-                        att.CopyFrom(helper.make_attribute("to", int(TensorProto.FLOAT16)))
-
-        if not cast_input_output:
-            self.change_input_output_float32_to_float16()
-            return
-
-        # Below assumes that we keep input and output data types.
-        # Add Cast node to convert input from float32 to float16.
-        for input_value_info in graph.input:
-            if input_value_info.type.tensor_type.elem_type == TensorProto.FLOAT:
-                initializer = self.get_initializer(input_value_info.name)
-                if initializer is not None:  # for compatibility for old converter/exporter
-                    input_value_info.type.tensor_type.elem_type = TensorProto.FLOAT16
-                else:
-                    cast_input = input_value_info.name
-                    cast_output = input_value_info.name + '_float16'
-                    self.replace_input_of_all_nodes(cast_input, cast_output)
-                    cast_node = helper.make_node('Cast', inputs=[cast_input], outputs=[cast_output])
-                    cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT16))])
-                    self.add_node(cast_node)
-
-        # Add Cast node to convert output from float16 back to float32.
-        for output_value_info in graph.output:
-            if output_value_info.type.tensor_type.elem_type == TensorProto.FLOAT:
-                cast_input = output_value_info.name + '_float16'
-                cast_output = output_value_info.name
-                self.replace_output_of_all_nodes(cast_output, cast_input)
-                self.replace_input_of_all_nodes(cast_output, cast_input)
-                cast_node = helper.make_node('Cast', inputs=[cast_input], outputs=[cast_output])
-                cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT))])
-                self.add_node(cast_node)
+        from onnxconverter_common.float16 import *
+        self.model = convert_float_to_float16(self.model, keep_io_types = cast_input_output)
 
     # create a new name for node
     def create_node_name(self, op_type, name_prefix=None):
