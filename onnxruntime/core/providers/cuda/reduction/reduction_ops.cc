@@ -1017,11 +1017,15 @@ REGISTER_KERNEL_HFD(ReduceLogSumExp)
 #define REGISTER_KERNEL_INT32(name) \
   REGISTER_KERNEL_TYPED(name, int32_t)
 
+#define REGISTER_KERNEL_DOUBLE(name) \
+  REGISTER_KERNEL_TYPED(name, double)
+
 REGISTER_KERNEL_INT32(ReduceL1)
 REGISTER_KERNEL_INT32(ReduceL2)
 REGISTER_KERNEL_INT32(ReduceMean)
-
 REGISTER_KERNEL_INT32(ReduceProd)
+
+REGISTER_KERNEL_DOUBLE(ReduceMean)
 
 }  // namespace cuda
 }  // namespace onnxruntime
