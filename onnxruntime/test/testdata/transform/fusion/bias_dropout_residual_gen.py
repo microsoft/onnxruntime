@@ -97,18 +97,3 @@ graph = helper.make_graph(
 
 model = helper.make_model(graph, producer_name='onnx-example', **kwargs)
 onnx.save(model, 'bias_dropout_residual_fusion_mismatch.onnx')
-
-# Create the model (ModelProto)
-bias = helper.make_node("Add", ["B", "A"], ["add0_out"], "add0")
-trainable_dropout = helper.make_node("TrainableDropout", ["add0_out", "ratio_const"], ["dropout_out", "mask"], "dropout0")
-residual = helper.make_node("Add", ["R", "dropout_out"], ["C"], "add1")
-
-graph = helper.make_graph(
-    [bias, trainable_dropout, residual],
-    "Bias_Dropout_Fusion",  #name
-    [A, B, R],
-    [C],
-    [ratio])
-
-model = helper.make_model(graph, producer_name='onnx-example', **kwargs)
-onnx.save(model, 'bias_trainabledropout_residual_fusion.onnx')
