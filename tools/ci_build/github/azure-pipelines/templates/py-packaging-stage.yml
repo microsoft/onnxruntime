@@ -20,13 +20,6 @@ parameters:
   type: boolean
   default: false
 
-- name: enable_linux_gpu_py35
-  displayName: >
-    Whether Linux GPU package is built for Python 3.5.
-    enable_linux_gpu must be true for this to have an effect.
-  type: boolean
-  default: true
-
 - name: enable_windows_cpu
   displayName: 'Whether Windows CPU package is built.'
   type: boolean
@@ -46,18 +39,6 @@ parameters:
   displayName: 'Whether Linux ARM package is built.'
   type: boolean
   default: true
-
-- name: docker_image_prefix
-  displayName: 'Prefix to use for docker image names.'
-  type: string
-  default: 'onnxruntime'
-
-- name: linux_gpu_dockerfile
-  displayName: >
-    Name of the Dockerfile to use for the Linux GPU build.
-    This should refer to a Dockerfile at tools/ci_build/github/linux/docker.
-  type: string
-  default: 'Dockerfile.manylinux2010_gpu'
 
 stages:
 - stage: Python_Packaging
@@ -312,17 +293,16 @@ stages:
 
       - template: set-python-manylinux-variables-step.yml
 
-      - task: CmdLine@2
-        inputs:
-          script: |
-            docker build --pull \
-              -t ${{ parameters.docker_image_prefix }}-manylinux-gpu-$(PythonVersion) \
-              --build-arg BUILD_USER=onnxruntimedev \
-              --build-arg BUILD_UID=$(id -u) \
-              --build-arg PYTHON_VERSION=$(PythonVersion) \
-              --build-arg BUILD_EXTR_PAR="${{ parameters.build_py_parameters }}" \
-              -f ${{ parameters.linux_gpu_dockerfile }} .
-          workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_gpu
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: >-
+            --build-arg PYTHON_VERSION=$(PythonVersion)
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-t
+            --build-arg BUILD_UID=$(id -u)
+          Repository: onnxruntimegpubuild
+
       - task: CmdLine@2
         inputs:
           script: |
@@ -336,7 +316,7 @@ stages:
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              ${{ parameters.docker_image_prefix }}-manylinux-gpu-$(PythonVersion) \
+              onnxruntimegpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
@@ -645,10 +625,6 @@ stages:
             PythonVersion: '3.6'
           Python37:
             PythonVersion: '3.7'
-          Python38:
-            PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true

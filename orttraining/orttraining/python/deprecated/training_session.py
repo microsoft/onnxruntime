@@ -38,6 +38,15 @@ class TrainingSession(InferenceSession):
     def get_state(self):
         return self._sess.get_state()
 
+    def get_model_state(self, include_mixed_precision_weights=False):
+        return self._sess.get_model_state(include_mixed_precision_weights)
+    
+    def get_optimizer_state(self):
+        return self._sess.get_optimizer_state()
+
+    def get_partition_info_map(self):
+        return self._sess.get_partition_info_map()
+
     def load_state(self, dict, strict=False):
         self._sess.load_state(dict, strict)
 

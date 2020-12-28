@@ -28,19 +28,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename U>
-void HostApplyLayerNorm(
-    const cudaDeviceProp& prop,
-    T* output,
-    U* mean,
-    U* invvar,
-    const T* input,
-    int64_t n1,
-    int64_t n2,
-    double epsilon,
-    const T* gamma,
-    const T* beta);
-
 template <typename T, typename U, bool simplified>
 void HostLayerNormGradient(
     const cudaDeviceProp& prop,

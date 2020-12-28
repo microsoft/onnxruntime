@@ -62,7 +62,7 @@ class DnnlConv : public DnnlKernel {
  public:
   DnnlConv(const DnnlNode& node,
            DNNLExecutionProvider* provider,
-           const Provider_NodeAttributes& attributes,
+           const NodeAttributes& attributes,
            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
@@ -335,7 +335,7 @@ class DnnlConv : public DnnlKernel {
           src_mem_ = parents_[0].get()->primitive_dst_mem_;
         }
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       if (primitive_src_desc_ != source_desc_) {
         dnnl::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
         auto pd = dnnl::memory::desc({{src_dims}, DnnnType<T>(), ort_source_format_});
@@ -381,7 +381,7 @@ class DnnlConv : public DnnlKernel {
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(conv_fwd_pd_.get()->dst_desc(), cpu_engine));
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(conv_fwd_pd_.get()->dst_desc(), gpu_engine));
     }
@@ -397,7 +397,7 @@ class DnnlConv : public DnnlKernel {
                             {DNNL_ARG_WEIGHTS, *filter_mem_},
                             {DNNL_ARG_BIAS, *bias_mem_},
                             {DNNL_ARG_DST, *primitive_dst_mem_}});
-      } else { // gpu_available_
+      } else {  // gpu_available_
         bias_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(conv_fwd_pd_.get()->bias_desc(), gpu_engine));
         net.push_back(dnnl::reorder(*bias_mem_, *bias_mem_gpu_));
@@ -417,7 +417,7 @@ class DnnlConv : public DnnlKernel {
         net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
                             {DNNL_ARG_WEIGHTS, *filter_mem_},
                             {DNNL_ARG_DST, *primitive_dst_mem_}});
-      } else { // gpu_available_
+      } else {  // gpu_available_
         net.push_back(*conv_fwd_);
         net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
                             {DNNL_ARG_WEIGHTS, *filter_mem_gpu_},
@@ -475,7 +475,7 @@ class DnnlConv : public DnnlKernel {
 
           provider_->SaveAllocatedMemory(std::move(filter_reorder_buffer));
           filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
-        } else { // gpu_available_
+        } else {  // gpu_available_
           filter_dst_mem = onnxruntime::make_unique<dnnl::memory>(
               dnnl::memory(conv_fwd_pd_->weights_desc(), dnnl_engine_gpu_));
 
@@ -510,7 +510,7 @@ class DnnlConv : public DnnlKernel {
     if (!gpu_available_) {
       filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
       filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
-    } else { // gpu_available_ 
+    } else {  // gpu_available_
 #ifdef USE_DNNL_GPU_OCL
       std::lock_guard<OrtMutex> lock(provider_->GetMutex());
       filter_mem_gpu_->set_ocl_mem_object(filter_dst_mem->get_ocl_mem_object());
@@ -557,7 +557,7 @@ class DnnlConv : public DnnlKernel {
         } else {
           primitive_dst_mem_->set_data_handle(dst_data);
         }
-      } else { // gpu_available_
+      } else {  // gpu_available_
         reorder_dst_mem_to_->set_data_handle(dst_data);
       }
     }
@@ -565,7 +565,7 @@ class DnnlConv : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const Provider_NodeAttributes& attributes,
+  void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     std::string auto_pad;
     auto attr = attributes.find(attributes_prefix + "auto_pad");

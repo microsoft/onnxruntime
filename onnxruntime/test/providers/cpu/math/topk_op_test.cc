@@ -4,6 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -434,6 +435,40 @@ TEST(TopKOperator, NthElement) {
   std::vector<int64_t> input_dimensions = {6};
   std::vector<float> expected_vals = {10.0f, 8.0f, 7.0f, 6.0f};
   std::vector<int64_t> expected_indices = {0, 1, 2, 5};
+  std::vector<int64_t> expected_dimensions = {4};
+  RunTest(11, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, NthElementHalf) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+
+  std::vector<float> input_vals_f = {10.0f, 8.0f, 7.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<float> expected_vals_f = {10.0f, 8.0f, 7.0f, 6.0f};
+  std::vector<MLFloat16> input_vals(6);
+  std::vector<MLFloat16> expected_vals(4);
+  ConvertFloatToMLFloat16(input_vals_f.data(), input_vals.data(), 6);
+  ConvertFloatToMLFloat16(expected_vals_f.data(), expected_vals.data(), 4);
+  std::vector<int64_t> input_dimensions = {6};
+  std::vector<int64_t> expected_indices = {0, 1, 2, 5};
+  std::vector<int64_t> expected_dimensions = {4};
+  RunTest(11, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, NthElementHalf_NegtiveVals) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+
+  std::vector<float> input_vals_f = {10.0f, -8.0f, -7.0f, -4.0f, -5.0f, -6.0f};
+  std::vector<float> expected_vals_f = {10.0f, -4.0f, -5.0f, -6.0f};
+  std::vector<MLFloat16> input_vals(6);
+  std::vector<MLFloat16> expected_vals(4);
+  ConvertFloatToMLFloat16(input_vals_f.data(), input_vals.data(), 6);
+  ConvertFloatToMLFloat16(expected_vals_f.data(), expected_vals.data(), 4);
+  std::vector<int64_t> input_dimensions = {6};
+  std::vector<int64_t> expected_indices = {0, 3, 4, 5};
   std::vector<int64_t> expected_dimensions = {4};
   RunTest(11, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
 }

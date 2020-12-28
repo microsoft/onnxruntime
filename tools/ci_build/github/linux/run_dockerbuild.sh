@@ -43,14 +43,10 @@ EXIT_CODE=1
 PYTHON_VER=${PYTHON_VER:=3.6}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
-if [[ -z "${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}" ]]; then
-    echo "Please specify an image cache container registry name (-i)."
-    exit 1
+GET_DOCKER_IMAGE_CMD="${SOURCE_ROOT}/tools/ci_build/get_docker_image.py"
+if [[ -n "${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}" ]]; then
+    GET_DOCKER_IMAGE_CMD="${GET_DOCKER_IMAGE_CMD} --container-registry ${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}"
 fi
-
-COMMON_GET_DOCKER_IMAGE_ARGS="--container-registry ${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}"
-
-GET_DOCKER_IMAGE_CMD="${SOURCE_ROOT}/tools/ci_build/get_docker_image.py ${COMMON_GET_DOCKER_IMAGE_ARGS}"
 DOCKER_CMD="docker"
 
 cd $SCRIPT_DIR/docker
@@ -84,9 +80,14 @@ else
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
             DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
-        [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]] && INSTALL_DEPS_EXTRA_ARGS="-m" || INSTALL_DEPS_EXTRA_ARGS=""
+        if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
+            INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
+        fi
+        if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
+            INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
+        fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg BUILD_EXTR_PAR=\"${BUILD_EXTR_PAR}\" --build-arg INSTALL_DEPS_EXTRA_ARGS=${INSTALL_DEPS_EXTRA_ARGS}" \
+            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\"" \
             --dockerfile $DOCKER_FILE --context .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 20.07

@@ -144,7 +144,14 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   // Try allocating less memory.
   while (mem_addr == nullptr) {
     bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
-    if (bytes < rounded_bytes)
+
+    // give up if we can't satisfy the requested size, or we're attempting an allocation of less than 8K.
+    //
+    // the latter protects against an infinite loop that occurs when bytes is less than 2560. at that point the 10%
+    // reduction to 2304 bytes is undone by rounding to a 256 boundary in RoundedBytes, leading to an infinite loop.
+    // the 8K value is just to give up a little earlier vs. getting all the way down to 2560 bytes.
+    // If we can't allocate 8K, we're pretty much dead.
+    if (bytes < rounded_bytes || bytes < 8 * 1024)
       break;
 
     mem_addr = safe_alloc(bytes);
