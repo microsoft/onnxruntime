@@ -1861,6 +1861,25 @@ TEST(ReductionOpTest, ArgMin) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ArgMin_Double_Type) {
+  OpTester test("ArgMin", 11);
+  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<double>("data", {3, 2, 2},
+                       {1.0, 2.0,
+                        3.0, 4.0,
+
+                        5.0, 6.0,
+                        7.0, 8.0,
+
+                        9.0, 10.0,
+                        11.0, 12.0});
+  test.AddOutput<int64_t>("reduced", {1, 2, 2},
+                          {0, 0,
+                           0, 0});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ArgMin_do_not_keepdims) {
   OpTester test("ArgMin");
   test.AddAttribute("axis", (int64_t)0);
