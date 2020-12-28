@@ -7,6 +7,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "orttraining/core/graph/graph_augmenter.h"
+#include "core/framework/utils.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 namespace onnxruntime {
 namespace training {
@@ -29,10 +30,11 @@ static Status AddNcclReduceScatterForGradients(
   }
 
   // Add NCCL ReduceScatter node.
+  int64_t allreduce_index = utils::GenerateCollectiveIndex() + 1000;
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclReduceScatter", kMSDomain, 1},
                                   gradient_argdefs,
                                   reducescatter_outputs,
-                                  NodeAttributes(),
+                                  std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("index", allreduce_index)}),
                                   "NcclReduceScatter")});
 
   gradient_argdefs = std::move(reducescatter_outputs);
@@ -49,10 +51,11 @@ static Status AddNcclAllGatherForWeights(
   }
 
   // Add NCCL AllGather node.
+  int64_t allreduce_index = utils::GenerateCollectiveIndex() + 1000;
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllGather", kMSDomain, 1},
                                   weight_argdefs,
                                   allgather_outputs,
-                                  NodeAttributes(),
+                                  std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("index", allreduce_index)}),
                                   "NcclAllGather")});
 
   weight_argdefs = std::move(allgather_outputs);
@@ -74,12 +77,13 @@ static Status AddL2NormNcclAllReduce(
                                   NodeAttributes(),
                                   norm_squared.name)});
 
+  int64_t allreduce_index = utils::GenerateCollectiveIndex() + 1000;
   // AllReduce the squared L2 norms.
   ArgDef allreduce_output(norm_argdef.name + "_AllReduce_Out", norm_argdef.type_proto);
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {norm_squared},
                                   {allreduce_output},
-                                  NodeAttributes(),
+                                  {ONNX_NAMESPACE::MakeAttribute("index", allreduce_index)},
                                   allreduce_output.name)});
 
   // Sqrt the reduced L2 norm.
@@ -108,7 +112,7 @@ static std::vector<ArgDef> AddViewForParameter(
     ArgDef shape_argdef(argdef.name + "_view_shape_" + std::to_string(i),
                         graph_defs.CreateTypeProto({dims}, ONNX_NAMESPACE::TensorProto_DataType_INT64));
     graph_defs.AddInitializers({CreateTensorProto<int64_t>(shape_argdef.name, shape.GetDims(), {dims})});
-
+    // std::cout << "AddViewForParameter Loop " << i << argdef.name << std::endl;
     auto dtype = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(argdef.type_proto->tensor_type().elem_type());
     ArgDef view_argdef(argdef.name + "_view_" + std::to_string(i),
                        graph_defs.CreateTypeProto(shape.GetDims(), dtype));
@@ -180,8 +184,22 @@ static Status ModifyParametersForOptimizerPartitioning(
   ORT_ENFORCE(weight_argdefs.size() == gradient_argdefs.size());
   ORT_ENFORCE(weight_argdefs.size() == opt_configs.size());
 
+  const auto elem_type = gradient_argdefs[0].type_proto->tensor_type().elem_type();
+  size_t element_size = 0;
+  if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+    std::cout << "weight data type is float " << std::endl; 
+    element_size = 4;
+  } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+    std::cout << "weight data type is float16 " << std::endl; 
+    element_size = 2;
+  } else {
+    ORT_ENFORCE(false, "Unsupported datatype in gradient tensor");
+  }
+
   // Compute total element count to reduce.
   int64_t total_count = 0;
+  int64_t total_bytes = 0;
+  int64_t total_alloc_buffer_byte_cout = 0;
   for (size_t i = 0; i < weight_argdefs.size(); i++) {
     ArgDef weight_argdef = weight_argdefs[i];
     ORT_ENFORCE(weight_argdef.type_proto != nullptr);
@@ -194,15 +212,24 @@ static Status ModifyParametersForOptimizerPartitioning(
     const TensorShape& gradient_shape = utils::GetTensorShapeFromTensorShapeProto(gradient_shape_proto);
 
     ORT_ENFORCE(weight_shape == gradient_shape);
+    ORT_ENFORCE(gradient_argdef.type_proto->tensor_type().elem_type() == elem_type);
+    size_t bytes = 0;
+    ORT_ENFORCE(IAllocator::CalcMemSizeForArrayWithAlignment<256>(weight_shape.Size(), element_size, &bytes));
+
+    total_bytes += bytes;
     total_count += weight_shape.Size();
   }
+
+  total_alloc_buffer_byte_cout = total_bytes / element_size;
+
+  // pengwa: be noted, weight_args are not necessarily be allocated continously
 
   // Compute split points for parameters.
   // Note: the alignment here needs to be kept in-sync with the alignment in nccl_kernels.cc
   const int data_parallel_group_rank = opt_graph_config.data_parallel_group_rank;
   const int data_parallel_group_size = opt_graph_config.data_parallel_group_size;
   const int64_t alignment = data_parallel_group_size * 32;
-  const int64_t padded_count = total_count + alignment - (total_count % alignment);
+  const int64_t padded_count = total_alloc_buffer_byte_cout + alignment - (total_count % alignment);
   const int64_t rank_count = padded_count / data_parallel_group_size;
   const int64_t rank_start = data_parallel_group_rank * rank_count;
   const int64_t rank_end = rank_start + rank_count;
@@ -226,8 +253,10 @@ static Status ModifyParametersForOptimizerPartitioning(
 
     const auto& tensor_shape_proto = weight_argdef.type_proto->tensor_type().shape();
     const TensorShape& tensor_shape = utils::GetTensorShapeFromTensorShapeProto(tensor_shape_proto);
-    const int64_t tensor_count = tensor_shape.Size();
-
+    size_t tensor_bytes = 0;
+    ORT_ENFORCE(IAllocator::CalcMemSizeForArrayWithAlignment<256>(tensor_shape.Size(), element_size, &tensor_bytes));
+    const int64_t tensor_count = static_cast<int64_t>(tensor_bytes / element_size);
+    // std::cout << weight_argdef.name << ", offset: " << offset << ", rank_start: " << rank_start << ", rank_end: " << rank_end << ", offset + tensor_count: " << offset + tensor_count << std::endl;
     if (offset < rank_end && offset + tensor_count > rank_start) {
       // Parameter is handled by this rank.  There are 4 cases:
       // 1. parameter is fully handled by this rank
@@ -399,8 +428,10 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
           gradient_norm_inputs.push_back(gradient_argdefs[i]);
         }
       }
-      ORT_RETURN_IF_ERROR(AddGradientNorm(
-        nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef, global_gradient_norm_output_name + "_prior_mega_all_reduce"));
+      ONNX_NAMESPACE::TensorProto_DataType grad_type =
+        static_cast<ONNX_NAMESPACE::TensorProto_DataType>(gradient_argdefs[0].type_proto->tensor_type().elem_type());
+      ORT_RETURN_IF_ERROR(AddGradientNormMegatron(
+        nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef, global_gradient_norm_output_name + "_prior_mega_all_reduce", grad_type));
       ORT_RETURN_IF_ERROR(AddL2NormBetweenMegatronRanksNcclAllReduce(global_grad_norm_argdef, graph_defs, global_gradient_norm_output_name + "_prior_dp_all_reduce"));
       ORT_RETURN_IF_ERROR(AddL2NormNcclAllReduce(global_grad_norm_argdef, graph_defs, global_gradient_norm_output_name));
     } else {

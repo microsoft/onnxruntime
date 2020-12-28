@@ -35,16 +35,22 @@ class MegatronTransformer : public GraphTransformer {
 
   Status TransformBARTSelfAttention(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
                                     std::vector<Node*>& nodes_to_clear_shape,
-                                    std::unordered_set<Node*>& dropout_nodes_to_transform, int32_t& counter) const;
+                                    std::unordered_set<Node*>& dropout_nodes_to_transform, int32_t& counter, NodeIndex node_index) const;
 
   Status TransformBARTMLP(Graph& graph, bool& modified, int graph_level,
                           const logging::Logger& logger,
                           std::vector<Node*>& nodes_to_clear_shape,
-                          std::unordered_set<Node*>& dropout_nodes_to_transform, int32_t& counter) const;
+                          std::unordered_set<Node*>& dropout_nodes_to_transform, int32_t& counter, NodeIndex node_index) const;
 
   Status TransformDropout(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
                           std::unordered_set<Node*>& dropout_nodes_to_transform, int32_t& counter) const;
 
+
+  Status DoTransformBART(Graph& graph, bool& modified, int graph_level,
+                                             const logging::Logger& logger,
+                                             std::vector<Node*>& nodes_to_clear_shape,
+                                             std::unordered_set<Node*>& dropout_nodes_to_transform, int32_t& mlp_counter, int32_t& attn_counter) const;
+                                             
   bool PartitionWeightByColumn(const Graph& graph, const NodeArg& input_arg,
                                ONNX_NAMESPACE::TensorProto& initializer_partition,
                                int stride = 1) const;

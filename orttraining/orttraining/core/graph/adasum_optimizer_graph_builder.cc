@@ -3,6 +3,7 @@
 
 #include "orttraining/core/graph/adasum_optimizer_graph_builder.h"
 #include "orttraining/core/framework/distributed_run_context.h"
+#include "core/framework/utils.h"
 namespace onnxruntime {
 namespace training {
 

@@ -810,6 +810,9 @@ class PlannerImpl {
       }
     }
 
+    return Status::OK();
+  }
+
   // Whether a given NodeArg has fence or not.
   // If the buffer is reused, need to check whether original OrtValue has fence or not.
   bool HasFence(const onnxruntime::NodeArg* arg) {

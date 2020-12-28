@@ -122,6 +122,13 @@ class OptimizerGraphBuilder {
       ArgDef& grad_norm_argdef,
       std::string output_name);
 
+  Status AddGradientNormMegatron(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    const std::vector<ArgDef>& grad_argdefs,
+    GraphAugmenter::GraphDefs& graph_defs,
+    ArgDef& grad_norm_argdef, std::string output_name, 
+    ONNX_NAMESPACE::TensorProto_DataType grad_type);
+
   Status AddFiniteGradientCheck(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const std::vector<ArgDef>& grad_norm_argdefs,

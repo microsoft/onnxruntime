@@ -1541,6 +1541,29 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp,
                            const std::function<bool(const Node* from, const Node* to)>& stop) const {
+
+  std::map<int64_t, NodeIndex> all_reduce_ops;
+  std::unordered_map<NodeIndex, std::vector<NodeIndex>> all_reduce_dependency_relation;
+  auto& nodes_in_original_order = Nodes();
+  std::for_each(nodes_in_original_order.cbegin(), nodes_in_original_order.cend(),
+                [&](const Node& node) {
+                  if (node.OpType().compare("NcclAllReduce") == 0 || node.OpType().compare("MegatronG") == 0 ||
+                  node.OpType().compare("NcclAllGather") == 0  || node.OpType().compare("NcclReduceScatter") == 0)  {
+                    auto node_index = node.Index();
+                    int64_t all_reduce_global_index = node.GetAttributes().at("index").i();
+                    if (all_reduce_ops.find(all_reduce_global_index) != all_reduce_ops.end()) {
+                      ORT_THROW("Duplicate " + node.OpType() + " global index." + std::to_string(all_reduce_global_index));
+                    }
+                    all_reduce_ops.insert(std::pair<int64_t, NodeIndex>(all_reduce_global_index, node_index));
+                  }
+                });
+
+  std::vector<NodeIndex> all_reduce_as_now;
+  for (auto it = all_reduce_ops.begin(); it != all_reduce_ops.end(); ++it) {
+    all_reduce_dependency_relation.insert(std::pair<NodeIndex, std::vector<NodeIndex>>(it->second, all_reduce_as_now));
+    all_reduce_as_now.push_back(it->second);
+  }
+
   using WorkEntry = std::pair<const Node*, bool>;  // bool represents leave or not
   std::vector<WorkEntry> stack(from.size());
   for (size_t i = 0; i < from.size(); i++) {
@@ -1577,6 +1600,16 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
         if (stop && stop(&n, &(*iter))) continue;
         sorted_nodes.push_back(&(*iter));
       }
+
+      if (all_reduce_dependency_relation.find(n.Index()) != all_reduce_dependency_relation.end()) {
+        //std::cout << "handle ReverseDFSFrom for all reduce node " << n.Name() << std::endl;
+        const std::vector<NodeIndex>& allreduce_inputs = all_reduce_dependency_relation[n.Index()];
+        for (size_t index = 0; index < allreduce_inputs.size(); ++index) {
+          const NodeIndex idx = allreduce_inputs[index];
+          sorted_nodes.push_back(GetNode(idx));  
+        }
+      }
+
       std::sort(sorted_nodes.begin(), sorted_nodes.end(), comp);
       for (const auto* in : sorted_nodes) {
         const NodeIndex idx = in->Index();
@@ -1592,6 +1625,18 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
           stack.emplace_back(GetNode(idx), false);
         }
       }
+
+      if (all_reduce_dependency_relation.find(n.Index()) != all_reduce_dependency_relation.end()) {
+        //std::cout << "handle ReverseDFSFrom for all reduce node without comp" << n.Name() << std::endl;
+        const std::vector<NodeIndex>& allreduce_inputs = all_reduce_dependency_relation[n.Index()];
+        for (size_t index = 0; index < allreduce_inputs.size(); ++index) {
+          const NodeIndex idx = allreduce_inputs[index];
+          if (!visited[idx]) {
+            stack.emplace_back(GetNode(idx), false);
+          }
+        }
+      }
+
     }
   }
 }
@@ -1660,7 +1705,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
                     return edge.GetNode().OpType() != kConstant;
                   });
 
-                  if (!has_inputs) {
+                  if (!has_inputs && node.OpType().compare("NcclAllReduce") != 0 && node.OpType().compare("MegatronG") != 0) {
                     // add to the topological list, and ensure we skip these nodes when walking the graph
                     nodes_in_topological_order_.push_back(index);
                     processed_nodes.insert(index);
@@ -1669,6 +1714,34 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
                     nodes_added_for_processing.insert(index);
                   }
                 });
+
+  std::map<int64_t, NodeIndex> all_reduce_ops;
+  std::unordered_map<NodeIndex, std::vector<NodeIndex>> all_reduce_dependency_relation;
+  std::for_each(nodes_in_original_order.cbegin(), nodes_in_original_order.cend(),
+                [&](const Node& node) {
+                  if (node.OpType().compare("NcclAllReduce") == 0 || node.OpType().compare("MegatronG") == 0 ||
+                  node.OpType().compare("NcclAllGather") == 0  || node.OpType().compare("NcclReduceScatter") == 0) {
+                    auto node_index = node.Index();
+                    // std::cout << " enter 1111 for " << node.Name() << std::endl;
+                    int64_t all_reduce_global_index = node.GetAttributes().at("index").i();
+                    if (all_reduce_ops.find(all_reduce_global_index) != all_reduce_ops.end()) {
+                      ORT_THROW("Duplicate NcclAllReduce global index." + std::to_string(all_reduce_global_index));
+                    }
+                    all_reduce_ops.insert(std::pair<int64_t, NodeIndex>(all_reduce_global_index, node_index));
+                  }
+                });
+
+  std::vector<NodeIndex> all_reduce_as_now;
+  for (auto it = all_reduce_ops.begin(); it != all_reduce_ops.end(); ++it) {
+    all_reduce_dependency_relation.insert(std::pair<NodeIndex, std::vector<NodeIndex>>(it->second, all_reduce_as_now));
+    all_reduce_as_now.push_back(it->second);
+  }
+
+  // for(auto it = all_reduce_dependency_relation.begin(); it != all_reduce_dependency_relation.end(); ++it) {
+  //   const Node* n = GetNode(it->first);
+  //   int64_t all_reduce_global_index = n->GetAttributes().at("index").i();
+  //   std::cout << "===== node " << n->Name() << " with attr " << all_reduce_global_index << " has those as dependency: " << it->second.size() << std::endl;
+  // }
 
   // start at the bottom and work our way up the graph
   for (auto iter = Nodes().begin(); iter != Nodes().end(); ++iter) {
@@ -1683,6 +1756,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
     stack.pop();
 
     if (processed_nodes.find(current) != processed_nodes.end()) {
+      //  std::cout << "skipped processed node " << GetNode(current)->Name() << std::endl;
       continue;
     }
 
@@ -1692,6 +1766,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
       nodes_in_topological_order_.push_back(current);
       processed_nodes.insert(current);
       output_nodes.erase(current);
+      //  std::cout << "processed node " << GetNode(current)->Name() << std::endl;
       continue;
     }
 
@@ -1699,20 +1774,41 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
     if (!node) {
       continue;
     }
-
+    //  std::cout << "normal pass " << node->Name() <<std::endl;
     stack.push(current);
     output_nodes.insert(current);
 
     for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
       const NodeIndex idx = (*iter).Index();
       if (output_nodes.find(idx) != output_nodes.end()) {
-        Status status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
-        return status;
+        //Status status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic 1111. node " + node->Name() + " has input in output nodes "  + GetNode(idx)->Name());
+        //return status;
+        ORT_THROW("This is an invalid model. Error: the graph is not acyclic 1111. node " + node->Name() + " has input in output nodes "  + GetNode(idx)->Name());
       }
 
       // avoid re-processing nodes
       if (nodes_added_for_processing.find(idx) == nodes_added_for_processing.end()) {
         stack.push(idx);
+        // std::cout << "push node " << GetNode(idx)->Name() << " to the top of the stack 1 " << node->Name() << std::endl;
+      }
+    }
+
+    if (all_reduce_dependency_relation.find(current) != all_reduce_dependency_relation.end()) {
+      // std::cout << "handle topo sort for all reduce node " << node->Name() << std::endl;
+      const std::vector<NodeIndex>& allreduce_inputs = all_reduce_dependency_relation[current];
+      for (size_t index = 0; index < allreduce_inputs.size(); ++index) {
+        const NodeIndex idx = allreduce_inputs[index];
+        if (output_nodes.find(idx) != output_nodes.end()) {
+          //Status status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic 2222. node " + node->Name() + " has input in output nodes "  + GetNode(idx)->Name());
+          //return status;
+          ORT_THROW("This is an invalid model. Error: the graph is not acyclic 2222. node " + node->Name() + " has input in output nodes "  + GetNode(idx)->Name());
+        }
+
+        // avoid re-processing nodes
+        if (nodes_added_for_processing.find(idx) == nodes_added_for_processing.end()) {
+          stack.push(idx);
+          //  std::cout << "push node " << GetNode(idx)->Name() << " to the top of the stack 2 " << node->Name() << std::endl;
+        } 
       }
     }
 
@@ -2780,6 +2876,7 @@ std::string Graph::GenerateNodeArgName(const std::string& base_name) {
   generated_node_arg_names_.insert(new_name);
   return new_name;
 }
+
 
 static flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std::vector<const NodeArg*>& src) {

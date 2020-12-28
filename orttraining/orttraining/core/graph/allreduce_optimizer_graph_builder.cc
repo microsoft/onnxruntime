@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "core/framework/utils.h"
 #include "orttraining/core/graph/allreduce_optimizer_graph_builder.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 namespace onnxruntime {
@@ -103,11 +103,12 @@ static Status AddNcclAllReduceForGradients(
     allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", allreduced_gradient_type_proto);
   }
 
+  int64_t allreduce_index = utils::GenerateCollectiveIndex() + 1000;
   // Add NCCL Allreduce node.
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   input_gradient_argdef,
                                   allreduce_outputs,
-                                  NodeAttributes(),
+                                  {ONNX_NAMESPACE::MakeAttribute("index", allreduce_index)},
                                   "NcclAllReduce")});
 
   gradient_argdefs = allreduce_outputs;
@@ -194,8 +195,10 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
       } else {
         gradient_norm_inputs = gradient_argdefs;
       }
-      ORT_RETURN_IF_ERROR(AddGradientNorm(
-        nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef, global_gradient_norm_output_name + "_prior_mega_all_reduce"));
+      ONNX_NAMESPACE::TensorProto_DataType grad_type =
+        static_cast<ONNX_NAMESPACE::TensorProto_DataType>(gradient_argdefs[0].type_proto->tensor_type().elem_type());
+      ORT_RETURN_IF_ERROR(AddGradientNormMegatron(
+        nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef, global_gradient_norm_output_name + "_prior_mega_all_reduce", grad_type));
       ORT_RETURN_IF_ERROR(AddL2NormBetweenMegatronRanksNcclAllReduce(global_grad_norm_argdef, graph_defs, global_gradient_norm_output_name));
     } else {
       ORT_RETURN_IF_ERROR(AddGradientNorm(

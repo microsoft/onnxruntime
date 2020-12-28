@@ -9,7 +9,7 @@
 
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
-
+#include "core/framework/utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "orttraining/core/framework/distributed_run_context.h"
@@ -1307,11 +1307,18 @@ IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetMegatronFGradient) {
+  auto attributes = SrcNodeAttributes();
+  ORT_ENFORCE(attributes.find("bp_index") != attributes.end());
+  auto index = attributes.at("bp_index").i();
+  int64_t target_index = static_cast<int64_t>(999 - index);
   return std::vector<NodeDef>{
       NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
               {GO(0)},
               {GI(0)},
-              {MakeAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel))})};
+              std::vector<AttributeProto>(
+                {ONNX_NAMESPACE::MakeAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel)),
+                ONNX_NAMESPACE::MakeAttribute("index", target_index)})
+              )};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetMegatronGGradient) {

@@ -151,5 +151,7 @@ int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
 
+int64_t GenerateCollectiveIndex();
+
 }  // namespace utils
 }  // namespace onnxruntime

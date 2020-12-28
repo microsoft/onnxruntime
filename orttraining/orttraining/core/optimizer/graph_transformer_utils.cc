@@ -56,7 +56,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     std::unordered_set<std::string>& weights_to_train,
     const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration& config,
     const IExecutionProvider& execution_provider,
-    std::unordered_map<std::string, std::string>& updated_weight_names,
+    std::unordered_map<std::string, std::string>& /*updated_weight_names*/,
     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
@@ -99,13 +99,13 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, compatible_eps, weights_to_train));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<ConcatSliceElimination>(compatible_eps));
-      auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
-      if (horizontal_parallel_size > 1) {
-        LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
-        transformers.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
-            training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
-            horizontal_parallel_size, updated_weight_names, weights_to_train, compatible_eps));
-      }
+      // auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
+      // if (horizontal_parallel_size > 1) {
+      //   LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
+      //   transformers.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
+      //       training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
+      //       horizontal_parallel_size, updated_weight_names, weights_to_train, compatible_eps));
+      // }
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
 
       if (config.gelu_recompute) {

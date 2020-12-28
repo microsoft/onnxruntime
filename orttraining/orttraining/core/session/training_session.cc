@@ -20,6 +20,7 @@
 #include "orttraining/core/graph/tensorboard_transformer.h"
 #include "orttraining/core/graph/pipeline_transformer.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
+#include "orttraining/core/optimizer/megatron_transformer.h"
 
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
@@ -244,6 +245,9 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
+                                                      config_result));
+
+  ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
                                                       config_result));
 
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
@@ -550,6 +554,42 @@ Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
         graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
+  return common::Status::OK();
+}
+
+Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+                                                        const TrainingConfiguration::GraphTransformerConfiguration& /*config*/,
+                                                        TrainingConfigurationResult& config_result_out) {
+
+  // a note, previously, megatron transformation are done in different iterations, for different blocks,
+  // this is because, some graph matching logic requires other transformers work done. 
+  // now we move all megatron related at the end, we assume just need one single optimizaiton pass.
+  auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
+
+  if (horizontal_parallel_size == 1) {
+    return common::Status::OK();
+  }
+
+  GraphTransformerManager graph_transformation_mgr{1};
+
+  std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register;
+  std::unordered_set<std::string> compatible_eps = {};
+  if (horizontal_parallel_size > 1) {
+    LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
+    transformers_to_register.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
+        training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
+        horizontal_parallel_size, config_result_out.weight_name_map_after_graph_transform, weights_to_train, compatible_eps));
+  }
+
+  // Generate and register transformers for level
+  for (auto& entry : transformers_to_register) {
+    graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1);
+  }
+
+  // apply transformers
+  Graph& graph = model_->MainGraph();
+  ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
+        graph, TransformerLevel::Level1, *session_logger_));
   return common::Status::OK();
 }
 
@@ -904,20 +944,21 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
     }
   }
 
+  int d = DistributedRunContext::RankInGroup(training::WorkerGroupType::DataParallel);
   int r = DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel);
   static int a = 0;
-  if (r == 0 && a == 0) {
+  if (a == 0 && d == 0) {
     std::cout << "before first run saving " << std::endl;
-    Save("before_first_run_" + std::to_string(r) + ".onnx", SaveOption::NO_RELOAD);
+    Save("before_first_run_" + std::to_string(d) + "_" + std::to_string(r) + ".onnx", SaveOption::NO_RELOAD);
     a += 1;
   }
 
-  static int b = 0;
-  if (r == 1 && b == 0) {
-    std::cout << "before first run saving " << std::endl;
-    Save("before_first_run_" + std::to_string(r) + ".onnx", SaveOption::NO_RELOAD);
-    b += 1;
-  }
+  // static int b = 0;
+  // if (r == 1 && b == 0) {
+  //   std::cout << "before first run saving " << std::endl;
+  //   Save("before_first_run_" + std::to_string(r) + ".onnx", SaveOption::NO_RELOAD);
+  //   b += 1;
+  // }
 
   // Call Run in inferenceSession
   return InferenceSession::Run(run_options, io_binding);

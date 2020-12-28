@@ -398,6 +398,10 @@ class TrainingSession : public InferenceSession {
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
                                                  TrainingConfigurationResult& config_result_out);
 
+  common::Status ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                                 TrainingConfigurationResult& config_result_out);
+
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
                                   GraphTransformerManager& transformer_manager,

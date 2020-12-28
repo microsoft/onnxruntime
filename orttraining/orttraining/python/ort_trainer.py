@@ -888,19 +888,19 @@ class ORTTrainer():
             # if the gradient is usable.
             self.output_desc_with_all_fp_16_or_fp32_gradients_finite = [
                 *self.model_desc_.outputs_,
-                IODescription("Moment_1_reduceall", [], torch.float),
-                IODescription("Moment_2_reduceall", [], torch.float),
-                IODescription("Weight_reduceall", [], torch.float),
-                IODescription("Gradient_reduceall", [], torch.float),
+                # IODescription("Moment_1_reduceall", [], torch.float),
+                # IODescription("Moment_2_reduceall", [], torch.float),
+                # IODescription("Weight_reduceall", [], torch.float),
+                # IODescription("Gradient_reduceall", [], torch.float),
                 IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float),
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool),]
         else:
             self.output_desc_with_all_fp_16_or_fp32_gradients_finite = [
                 *self.model_desc_.outputs_,
-                IODescription("Moment_1_reduceall", [], torch.float),
-                IODescription("Moment_2_reduceall", [], torch.float),
-                IODescription("Weight_reduceall", [], torch.float),
-                IODescription("Gradient_reduceall", [], torch.float),
+                # IODescription("Moment_1_reduceall", [], torch.float),
+                # IODescription("Moment_2_reduceall", [], torch.float),
+                # IODescription("Weight_reduceall", [], torch.float),
+                # IODescription("Gradient_reduceall", [], torch.float),
                 IODescription(get_global_gradient_norm_arg_name(self.session), [], torch.float)
                 ]
 

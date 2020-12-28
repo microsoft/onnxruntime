@@ -589,5 +589,10 @@ common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context)
   return Status::OK();
 }
 
+int64_t GenerateCollectiveIndex(){
+  static int64_t index = 0;
+  return ++index;
+}
+
 }  // namespace utils
 }  // namespace onnxruntime

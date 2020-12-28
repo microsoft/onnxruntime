@@ -962,6 +962,9 @@ Example 4:
       .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
+      .Attr("index", "int value",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
       .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
@@ -978,6 +981,9 @@ Example 4:
       .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
+      .Attr("index", "int value",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
       .Output(0, "output", "gathered tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
@@ -992,6 +998,9 @@ Example 4:
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("index", "int value",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced and scattered", "T", OpSchema::Variadic)
@@ -2076,6 +2085,9 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .Input(0, "input", "The input data as Tensor.", "T")
       .Output(0, "output", "The output.", "T")
+      .Attr("bp_index", "int value",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -2088,6 +2100,9 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("index", "int value",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "The input data as Tensor.", "T")

@@ -8,6 +8,7 @@
 #include <functional>
 #include <iterator>
 
+#include "core/framework/utils.h"
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
@@ -211,11 +212,12 @@ ArgDef OptimizerGraphBuilder::AddAllReduceForSampleCount(
     TypeProto* allreduced_sacle_type_proto = graph_defs.CopyTypeProto(scale_argdef);
     ArgDef reduced_scale_argdef = ArgDef(scale_argdef.name + "_AllReduce_Out", allreduced_sacle_type_proto);
     
+    int64_t allreduce_index = utils::GenerateCollectiveIndex() + 1000;
     // Add NCCL Allreduce node.
     graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                     {scale_argdef},
                                     {reduced_scale_argdef},
-                                    NodeAttributes(),
+                                    {ONNX_NAMESPACE::MakeAttribute("index", allreduce_index)},
                                     nodearg_name_generator("NcclAllReduce_allreduce_scale"))});
 
     scale_argdef = reduced_scale_argdef;
@@ -435,12 +437,15 @@ Status OptimizerGraphBuilder::AddL2NormBetweenMegatronRanksNcclAllReduce(
                                   NodeAttributes(),
                                   norm_squared.name)});
 
+  int64_t allreduce_index = utils::GenerateCollectiveIndex() + 1000;
   //AllReduce the squared L2 norms.
   ArgDef allreduce_output(norm_argdef.name + "_AllReduce_Out", norm_argdef.type_proto);
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {norm_squared},
                                   {allreduce_output},
-                                  {ONNX_NAMESPACE::MakeAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel))},
+                                  std::vector<AttributeProto>(
+                                    {ONNX_NAMESPACE::MakeAttribute("group_type", static_cast<int64_t>(training::WorkerGroupType::HorizontalParallel)),
+                                     ONNX_NAMESPACE::MakeAttribute("index", allreduce_index)}),
                                   allreduce_output.name)});
 
   // Sqrt the reduced L2 norm.
@@ -489,6 +494,24 @@ Status OptimizerGraphBuilder::AddGradientNorm(
                                   static_cast<int>(ExecutionPriority::GLOBAL_LOW)}});
 
   return Status::OK();
+}
+
+Status OptimizerGraphBuilder::AddGradientNormMegatron(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    const std::vector<ArgDef>& grad_argdefs,
+    GraphAugmenter::GraphDefs& graph_defs,
+    ArgDef& grad_norm_argdef, std::string output_name, 
+    ONNX_NAMESPACE::TensorProto_DataType grad_type) {
+
+  if (grad_argdefs.size() == 0) {
+    grad_norm_argdef = ArgDef{"empty_megatron_norm_placeholder",
+                    graph_defs.CreateTypeProto({}, grad_type)};
+    graph_defs.AddInitializers({CreateTensorProto<float>(grad_norm_argdef.name, 0.0f, {})});
+    return Status::OK();
+  }
+  else {
+    return AddGradientNorm(nodearg_name_generator, grad_argdefs, graph_defs, grad_norm_argdef, output_name);
+  }
 }
 
 Status OptimizerGraphBuilder::AddFiniteGradientCheck(
@@ -661,8 +684,10 @@ Status OptimizerGraphBuilder::BuildInternal(
           gradient_norm_inputs.push_back(gradient_argdefs[megatron_partitioned_weight_grad_index_[i]]);
         }
       }
-      ORT_RETURN_IF_ERROR(AddGradientNorm(
-          nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef, global_gradient_norm_output_name + "_prior_mega_reduce"));
+      ONNX_NAMESPACE::TensorProto_DataType grad_type =
+        static_cast<ONNX_NAMESPACE::TensorProto_DataType>(gradient_argdefs[0].type_proto->tensor_type().elem_type());
+      ORT_RETURN_IF_ERROR(AddGradientNormMegatron(
+          nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef, global_gradient_norm_output_name + "_prior_mega_reduce", grad_type));
       ORT_RETURN_IF_ERROR(AddL2NormBetweenMegatronRanksNcclAllReduce(global_grad_norm_argdef, graph_defs, global_gradient_norm_output_name));
     } else {
       ORT_RETURN_IF_ERROR(AddGradientNorm(
