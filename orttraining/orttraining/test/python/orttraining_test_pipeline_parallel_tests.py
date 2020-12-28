@@ -32,7 +32,7 @@ def main():
 
     log.info("Running distributed computation tests.")
 
-    command = ['mpirun',  '-n', '4', 'python', './orttraining_test_parallel_parallel_train_simple_model.py',
+    command = ['mpirun',  '-n', '4', 'python', './orttraining_test_parallel_train_simple_model.py',
                '-s', '10',
                '-n', '2']
 
