@@ -28,8 +28,11 @@ void TestGemmNoTrans(bool b_is_initializer) {
   test.Run();
 }
 
-TEST(GemmOpTest, GemmNoTrans) {
+TEST(GemmOpTest, GemmNoTrans_float) {
   TestGemmNoTrans<float>(false);
+}
+
+TEST(GemmOpTest, GemmNoTrans_double) {
   TestGemmNoTrans<double>(false);
 }
 
