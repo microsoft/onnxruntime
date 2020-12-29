@@ -1863,7 +1863,7 @@ TEST(ReductionOpTest, ArgMin) {
 
 TEST(ReductionOpTest, ArgMin_Double_Type) {
   OpTester test("ArgMin", 11);
-  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("axis", (int64_t)1);
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
                         {1.0, 2.0,
@@ -1874,28 +1874,30 @@ TEST(ReductionOpTest, ArgMin_Double_Type) {
 
                          9.0, 10.0,
                          11.0, 12.0});
-  test.AddOutput<int64_t>("reduced", {1, 2, 2},
+  test.AddOutput<int64_t>("reduced", {3, 1, 2},
                           {0, 0,
+                           0, 0,
                            0, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMin_Double_Precision) {
   OpTester test("ArgMin", 11);
-  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("axis", (int64_t)1);
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
-                        {1.0 + 1e-10, 2.0,
-                         3.0, 4.0 - 0.5e-10,
+                        {1.0 + 1e-10, 3.0,
+                         1.0, 3.0 - 0.5e-10,
 
-                         1.0, 2 + 1e-10,
-                         3.0 + 1e-10, 4 - 1e-10,
+                         1.0, 3.0 + 1e-10,
+                         1 + 1e-10, 3 - 1e-10,
 
-                         1.0 + 2e-10, 2 - 1e-10,
-                         3.0 - 1e-10, 4.0});
-  test.AddOutput<int64_t>("reduced", {1, 2, 2},
-                          {1, 2,
-                           2, 1});
+                         1.0 + 2e-10, 3.0 - 1e-10,
+                         1 - 1e-10, 3.0});
+  test.AddOutput<int64_t>("reduced", {3, 1, 2},
+                          {1, 1,
+                           0, 1,
+                           1, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
 
