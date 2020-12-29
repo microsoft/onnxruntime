@@ -37,7 +37,6 @@ FAIL_MODEL_FILE = ".fail_model_map"
 LATENCY_FILE = ".latency_map"
 METRICS_FILE = ".metrics_map"
 
-
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     model_path = "--onnx=" + model_path
     input_shape = []
@@ -112,7 +111,7 @@ def get_latency_result(runtimes, batch_size):
     }
 
 
-def get_ort_session_inputs_and_outptus(name, session, ort_input):
+def get_ort_session_inputs_and_outputs(name, session, ort_input):
 
     sess_inputs = {}
     sess_outputs = None
@@ -161,7 +160,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
         repeat_times += 1 # add warn-up run
 
     for ort_input in ort_inputs:
-        sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
+        sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
             logger.info("ORT session inputs:")
             logger.info(sess_inputs)
@@ -190,7 +189,7 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
 
     ort_outputs = []
     for ort_input in ort_inputs:
-        sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
+        sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
             logger.info("ORT session inputs:")
             logger.info(sess_inputs)
@@ -405,8 +404,6 @@ def validate(all_ref_outputs, all_outputs, decimal):
     logger.info('Reference {} results.'.format(len(all_ref_outputs)))
     logger.info('Predicted {} results.'.format(len(all_outputs)))
     logger.info('decimal {}'.format(decimal))
-    # print(np.array(all_ref_outputs).shape)
-    # print(np.array(all_outputs).shape)
 
     try:
         for i in range(len(all_outputs)):
@@ -416,8 +413,6 @@ def validate(all_ref_outputs, all_outputs, decimal):
             for j in range(len(outputs)):
                 ref_output = ref_outputs[j]
                 output = outputs[j]
-                # print(ref_output)
-                # print(output)
 
                 # Compare the results with reference outputs up to x decimal places
                 for ref_o, o in zip(ref_output, output):
@@ -606,8 +601,6 @@ def update_fail_model_map_ori(model_to_fail_ep, fail_results, model_name, ep, e_
         update_fail_report(fail_results, model_name, ep_, e_type, error_message_)
         model_to_fail_ep[model_name][ep_] = e_type
 
-
-
 def skip_ep(model_name, ep, model_to_fail_ep):
 
     if model_name not in model_to_fail_ep:
@@ -631,19 +624,19 @@ def read_map_from_file(map_file):
 
     return data
 
-def write_map_to_file(model_to_fail_ep, file_name):
-    existed_model_to_fail_ep = {}
+def write_map_to_file(result, file_name):
+    existed_result = {}
     if os.path.exists(file_name):
-        existed_model_to_fail_ep = read_map_from_file(file_name)
+        existed_result = read_map_from_file(file_name)
     
-    for model, ep_list in model_to_fail_ep.items():
-        if model in existed_model_to_fail_ep:
-            existed_model_to_fail_ep[model] = {** existed_model_to_fail_ep[model], ** model_to_fail_ep[model]} 
+    for model, ep_list in result.items():
+        if model in existed_result:
+            existed_result[model] = {** existed_result[model], ** result[model]} 
         else:
-            existed_model_to_fail_ep[model] = model_to_fail_ep[model]
+            existed_result[model] = result[model]
 
     with open(file_name, 'w') as file:
-        file.write(json.dumps(existed_model_to_fail_ep)) # use `json.loads` to do the reverse
+        file.write(json.dumps(existed_result)) # use `json.loads` to do the reverse
 
 
 def get_system_info():
@@ -778,10 +771,10 @@ def parse_models_info_from_directory(path, models):
             parse_models_info_from_directory(os.path.join(path, dir), models)
     
 
-def parse_models_info_from_file(path, models):
+def parse_models_info_from_file(default_dir, path, models):
 
     # default working directory
-    root_working_directory = "/home/hcsuser/perf/"
+    root_working_directory = default_dir
 
     with open(path) as f:
         data = json.load(f)
@@ -1021,7 +1014,6 @@ def run_onnxruntime(args, models):
                 result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
                 if result:
                     success_results.append(result)
-                    logger.info(result)
 
                     latency_result[ep] = {}
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
@@ -1178,6 +1170,98 @@ def output_fail(model_to_fail_ep, csv_filename):
 
     logger.info(f"Failing results are saved to csv file: {csv_filename}")
     
+def read_success_from_file(success_file):
+    success_results = []
+    with open(success_file) as success:
+       csv_reader = csv.DictReader(success)
+       for row in csv_reader: 
+           success_results.append(row)
+
+    success_json = json.loads(json.dumps(success_results, indent=4))
+    return success_json
+
+def add_status_dict(status_dict, model_name, ep, status): 
+    if model_name not in status_dict:
+        status_dict[model_name] = {}
+    status_dict[model_name][ep] = status
+
+def build_status(status_dict, results, is_fail):
+        
+        if is_fail:
+            for model, model_info in results.items():
+                for ep, ep_info in model_info.items(): 
+                    model_name = model
+                    ep = ep
+                    status = 'Fail'
+                    add_status_dict(status_dict, model_name, ep, status)
+        else: 
+            for result in results: 
+                model_name = result['model_name']
+                ep = result['device']
+                status = 'Pass'
+                add_status_dict(status_dict, model_name, ep, status)
+
+        return status_dict
+
+def output_status(results, csv_filename):
+    
+    need_write_header = True 
+    if os.path.exists(csv_filename):
+        need_write_header = False 
+
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        column_names = ["Model",
+                        "CPU",
+                        "CUDA fp32",
+                        "TRT fp32",
+                        "Standalone TRT fp32",
+                        "CUDA fp16",
+                        "TRT fp16",
+                        "Standalone TRT fp16"
+                        ]
+        csv_writer = csv.writer(csv_file)
+
+        if need_write_header:
+            csv_writer.writerow(column_names)
+    
+        cpu = ""
+        cuda_fp32 = ""
+        trt_fp32 = ""
+        standalone_fp32 = ""
+        cuda_fp16 = ""
+        trt_fp16 = ""
+        standalone_fp16 = ""
+        
+        for model_name, ep_dict in results.items():
+            for ep, status in ep_dict.items():
+                if ep == "CPUExecutionProvider": 
+                    cpu = status 
+                elif ep == "CUDAExecutionProvider": 
+                    cuda_fp32 = status
+                elif ep == "TensorrtExecutionProvider": 
+                    trt_fp32 = status
+                elif ep == "Standalone_TRT":
+                    standalone_fp32 = status
+                elif ep == "CUDAExecutionProvider_fp16": 
+                    cuda_fp16 = status
+                elif ep == "TensorrtExecutionProvider_fp16":
+                    trt_fp16 = status
+                elif ep == "Standalone_TRT_fp16": 
+                    standalone_fp16 = status
+                else: 
+                    continue
+                    
+            row = [model_name,
+                   cpu, 
+                   cuda_fp32, 
+                   trt_fp32, 
+                   standalone_fp32, 
+                   cuda_fp16, 
+                   trt_fp16, 
+                   standalone_fp16
+                   ]
+            csv_writer.writerow(row)
+
 def output_latency(results, csv_filename):
     need_write_header = True 
     if os.path.exists(csv_filename):
@@ -1391,6 +1475,8 @@ def str2bool(v):
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("-d", "--default_dir", required=False, default="~/", help="Perf folder path")
+    
     parser.add_argument("-m", "--model_source", required=False, default="model_list.json", help="Model source: (1) model list file (2) model directory.")
 
     parser.add_argument("-r", "--running_mode", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
@@ -1429,6 +1515,14 @@ def setup_logger(verbose):
         coloredlogs.install(fmt='%(message)s')
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
+def parse_models_helper(args, models): 
+    if ".json" in args.model_source:
+        logger.info("Parsing model information from file ...")
+        parse_models_info_from_file(args.default_dir, args.model_source, models)
+    else:
+        logger.info("Parsing model information from directory ...")
+        parse_models_info_from_directory(args.model_source, models)
+
 def main():
     args = parse_arguments()
     setup_logger(False)
@@ -1437,13 +1531,7 @@ def main():
     logger.info("\n\nStart perf run ...\n")
 
     models = {}
-
-    if ".json" in args.model_source:
-        logger.info("Parsing model information from file ...")
-        parse_models_info_from_file(args.model_source, models)
-    else:
-        logger.info("Parsing model information from directory ...")
-        parse_models_info_from_directory(args.model_source, models)
+    parse_models_helper(args, models)
 
     if not os.path.exists("symbolic_shape_infer.py"):
         p1 = subprocess.Popen(["sudo", "wget", "https://raw.githubusercontent.com/microsoft/onnxruntime/master/onnxruntime/python/tools/symbolic_shape_infer.py"])
@@ -1473,7 +1561,7 @@ def main():
         Path(path).mkdir(parents=True, exist_ok=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-
+    
     if len(model_to_fail_ep) > 0:
         logger.info("\n============================================")
         logger.info("========== Failing Models/EPs ==============")
@@ -1493,12 +1581,11 @@ def main():
         # add_improvement_information(model_to_latency)
         pp.pprint(model_to_latency)
         write_map_to_file(model_to_latency, LATENCY_FILE)
-
         if args.write_test_result:
             csv_filename = args.benchmark_latency_csv if args.benchmark_latency_csv else f"benchmark_latency_{time_stamp}.csv"
             csv_filename = os.path.join(path, csv_filename)
             output_latency(model_to_latency, csv_filename)
-
+    
     if success_results:
         csv_filename = args.benchmark_success_csv if args.benchmark_success_csv else f"benchmark_success_{time_stamp}.csv"
         csv_filename = os.path.join(path, csv_filename)

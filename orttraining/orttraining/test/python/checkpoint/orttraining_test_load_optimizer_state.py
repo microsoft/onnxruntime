@@ -20,37 +20,28 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import onnxruntime
 from onnxruntime.training import checkpoint, optim
-from _test_helpers import distributed_setup, load_model_optim_state_and_eval, split_state_dict, aggregate_states, global_fp16_fp32_atol
-from _test_commons import get_optim_state_from_state_dict
+from _test_helpers import distributed_setup, load_model_optim_state_and_eval, aggregate_states
+from _test_commons import assert_all_states_close_ort
 
 def verify_optimizer_state_match(device, opts, checkpoint_dir,  world_rank, use_lamb=False):
-    expected_optim_state, trainer_state = load_model_optim_state_and_eval(device, opts, use_lamb)
-    trainer_state = split_state_dict(trainer_state)
-    # round about way of checking optimizer states. Save state dicts into temporary folder, read them and aggregate them.
+    expected_optim_state, trainer_optim_state = load_model_optim_state_and_eval(device, opts, use_lamb)
+
+    # verify optimizer states are matching by:
+    # - Saving the state dictionaries for each rank in the zero run in a pickle file.
+    # - Loading them one by one and aggregating them into a single state dictionary
+    # - Comparing this aggregated state dictionary with the full dummy optimizer dictionary (expected_optim_state)
+    # created by load_model_optim_state_and_eval
+
     with open(os.path.join(checkpoint_dir, 'distributed_state_'+str(world_rank)+'.pkl'), "wb") as f:
-        pickle.dump(trainer_state, f)
+        pickle.dump(trainer_optim_state, f)
     dist.barrier()
 
     if world_rank == 0:
-        num_states = len(glob.glob1(checkpoint_dir, "distributed_state*"))
-        optimizer_states = dict()
-        for rank in range(num_states):
-            rank_state_dict = None
-            with open(os.path.join(checkpoint_dir, 'distributed_state_'+str(rank)+'.pkl'), 'rb') as f:
-                rank_state_dict = pickle.load(f)
+        # aggregate states and compare
+        aggregated_state_dict = aggregate_states(checkpoint_dir, filename_prefix='distributed_state', state_dict_key_name=None)
 
-            # collect optimizer states for later comparison since they are sharded
-            aggregate_states(optimizer_states, rank_state_dict['optimizer'])
-
-        # compare optimizer states
-        optimizer_config = optim.LambConfig() if use_lamb else optim.AdamConfig()
-        actual_optim_state = get_optim_state_from_state_dict(optimizer_states, optimizer_config)
-        assert actual_optim_state.keys() == expected_optim_state.keys()
-        for param_name, a_state in actual_optim_state.items():
-            for k, v in a_state.items():
-                assert_allclose(v.reshape(expected_optim_state[param_name][k].shape),
-                                expected_optim_state[param_name][k], 
-                                err_msg=f"Optimizer state mismatch for param {param_name}, key {k}")
+        # compare all states
+        assert_all_states_close_ort(aggregated_state_dict, expected_optim_state, reshape_states=True)
 
     dist.barrier()
     os.remove(os.path.join(checkpoint_dir, 'distributed_state_'+str(world_rank)+'.pkl'))

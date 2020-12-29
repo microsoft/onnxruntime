@@ -21,10 +21,7 @@ def main():
     pp = pprint.PrettyPrinter(indent=4)
 
     models = {}
-    if ".json" in args.model_source:
-        parse_models_info_from_file(args.model_source, models)
-    else:
-        parse_models_info_from_directory(args.model_source, models)
+    parse_models_helper(args, models)
 
     model_to_fail_ep = {}
 
@@ -33,6 +30,7 @@ def main():
     benchmark_metrics_csv = 'metrics_' + commit + '.csv'
     benchmark_success_csv = 'success_' + commit + '.csv' 
     benchmark_latency_csv = 'latency_' + commit + '.csv'
+    benchmark_status_csv = 'status_' + commit + '.csv'
 
     for model, model_info in models.items():
         logger.info("\n" + "="*40 + "="*len(model))
@@ -43,14 +41,13 @@ def main():
         
         model_list_file = os.path.join(os.getcwd(), model +'.json')
         write_model_info_to_file([model_info], model_list_file)
-
-
         ep_list = ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
 
         for ep in ep_list:
             if args.running_mode == "validate":
                 p = subprocess.run(["python3",
                                     "benchmark.py",
+                                    "-d", args.default_dir,
                                     "-r", args.running_mode,
                                     "-m", model_list_file,
                                     "--ep", ep,
@@ -61,6 +58,7 @@ def main():
             elif args.running_mode == "benchmark":
                 p = subprocess.run(["python3",
                                     "benchmark.py",
+                                    "-d", args.default_dir,
                                     "-r", args.running_mode,
                                     "-m", model_list_file,
                                     "--ep", ep,
@@ -68,14 +66,13 @@ def main():
                                     "-o", args.perf_result_path,
                                     "--write_test_result", "false",
                                     "--benchmark_latency_csv", benchmark_latency_csv,
-                                    "--benchmark_success_csv", benchmark_success_csv])
+                                    "--benchmark_success_csv", benchmark_success_csv]) 
             logger.info(p)
 
             if p.returncode != 0:
                 error_type = "runtime error" 
                 error_message = "perf script exited with returncode = " + str(p.returncode)
                 logger.error(error_message)
-
                 update_fail_model_map(model_to_fail_ep, model, ep, error_type, error_message)
                 write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)
                 logger.info(model_to_fail_ep)
@@ -98,7 +95,6 @@ def main():
 
             logger.info(model_to_fail_ep)
 
-
         logger.info("\n=========================================")
         logger.info("========== Models/EPs metrics  ==========")
         logger.info("=========================================")
@@ -108,6 +104,25 @@ def main():
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
 
     elif args.running_mode == "benchmark":
+        logger.info("\n=======================================================")
+        logger.info("=========== Models/EPs Status (accumulated) ===========")
+        logger.info("=======================================================")
+
+        model_status = {}
+        success_path = os.path.join(path, benchmark_success_csv)
+        if os.path.exists(success_path):
+            model_success = read_success_from_file(success_path)
+            is_fail = False
+            model_status = build_status(model_status, model_success, is_fail)
+        if os.path.exists(FAIL_MODEL_FILE):
+            model_fail = read_map_from_file(FAIL_MODEL_FILE)
+            is_fail = True
+            model_status = build_status(model_status, model_fail, is_fail)
+        
+        pp.pprint(model_status)
+        output_status(model_status, os.path.join(path, benchmark_status_csv)) 
+        logger.info("\nSaved model status results to {}".format(benchmark_status_csv)) 
+
         logger.info("\n=======================================================")
         logger.info("=========== Models/EPs latency (accumulated)  ===========")
         logger.info("=======================================================")
