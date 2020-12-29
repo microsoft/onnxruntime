@@ -4,6 +4,7 @@
 // if we can't load an ORT format model we can't really test anything
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 
+#include "core/common/make_unique.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
@@ -17,6 +18,8 @@
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
+
+#include "core/session/onnxruntime_cxx_api.h"
 
 #include "gtest/gtest.h"
 
@@ -237,16 +240,16 @@ static void DumpOrtModelAsJson(const std::string& model_uri) {
   std::ofstream(model_uri + ".json") << json;
 }
 */
-/* The full build was causing the following error because the graph node array has some empyt (blank) node at some indices for certain ORT designs
-       onnx runtime exception : Satisfied, but should not be : node == nullptr
-       session_state.cc : 814 onnxruntime::SessionState::LoadFromOrtFormatCan't find node with index 4. Invalid ORT format model.
-  The bug was due to loading an ORT format model in a full build, allowing optimizers to run, but trying to use the saved kernel information.
-  As the optimizer removed some leaving gaps in the graph node vector.
-  The build has been fixed in InferenceSession code. The following test case to catch this error.
-*/
 
+/* 
+Validate we don't run optimizers on an ORT format model in a full build. The optimizers will remove nodes,
+which will create a mismatch with the saved kernel information and result in a runtime error. 
+We could take steps to handle this scenario in a full build, but for consistency we choose to not run optimizers 
+on any ORT format model.
+*/
 TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("mnist.onnx.ort");
+  // we have tests that use a pre-created minst.onnx.ort, so make the naming for the unit test generated file clearer
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/mnist.onnx.test_output.ort");
   SaveAndCompareModels("testdata/mnist.onnx", ort_file);
 
   // DumpOrtModelAsJson(ToMBString(ort_file));
@@ -257,8 +260,8 @@ TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
-  vector<float> data(28*28, 0.0);
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1,1,28,28}, data,
+  vector<float> data(28 * 28, 0.0);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1, 1, 28, 28}, data,
                        &ml_value);
   test_info.inputs.insert(std::make_pair("Input3", ml_value));
 
@@ -267,14 +270,13 @@ TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
   test_info.output_verifier = [](const std::vector<OrtValue>& fetches) {
     const auto& output = fetches[0].Get<Tensor>();
     ASSERT_TRUE(output.Shape().NumDimensions() == 2);
-    // ASSERT_TRUE(output.Data<float>()[0] == 125.f);
   };
 
   RunOrtModel(test_info);
 }
 
 TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("ort_github_issue_4031.onnx.ort");
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/ort_github_issue_4031.onnx.test_output.ort");
   SaveAndCompareModels("testdata/ort_github_issue_4031.onnx", ort_file);
 
   // DumpOrtModelAsJson(ToMBString(ort_file));
@@ -301,7 +303,8 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
 }
 
 TEST(OrtModelOnlyTests, SparseInitializerHandling) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("sparse_initializer_handling.onnx.ort");
+  const std::basic_string<ORTCHAR_T> ort_file =
+      ORT_TSTR("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx.test_output.ort");
   SaveAndCompareModels("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx", ort_file);
 
   SessionOptions so;
@@ -322,7 +325,8 @@ TEST(OrtModelOnlyTests, SparseInitializerHandling) {
 
 #if !defined(DISABLE_ML_OPS)
 TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("sklearn_bin_voting_classifier_soft_converted.ort");
+  const std::basic_string<ORTCHAR_T> ort_file =
+      ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft_converted.test_output.ort");
   SaveAndCompareModels("testdata/sklearn_bin_voting_classifier_soft.onnx", ort_file);
 
   OrtModelTestInfo test_info;
@@ -361,6 +365,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 
   RunOrtModel(test_info);
 }
+
 #endif  // #if !defined(DISABLE_ML_OPS)
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 

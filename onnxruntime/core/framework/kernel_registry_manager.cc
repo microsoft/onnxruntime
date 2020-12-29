@@ -45,14 +45,12 @@ Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& executio
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistry> kernel_registry) {
   if (nullptr == kernel_registry) {
     return;
   }
   custom_kernel_registries_.push_front(kernel_registry);
 }
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type) {
@@ -86,14 +84,12 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
     return Status(ONNXRUNTIME, FAIL, create_error_message("The node is not placed on any Execution Provider. "));
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   for (auto& registry : custom_kernel_registries_) {
     status = registry->TryFindKernel(node, std::string(), kernel_def_hash, kernel_create_info);
     if (status.IsOK()) {
       return status;
     }
   }
-#endif
 
   KernelRegistry* p = nullptr;
   auto iter = provider_type_to_registry_.find(ptype);

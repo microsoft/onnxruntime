@@ -10,8 +10,6 @@ file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
 if (onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_framework_src_exclude
     "${ONNXRUNTIME_ROOT}/core/framework/provider_bridge_ort.cc"
-    "${ONNXRUNTIME_INCLUDE_DIR}/core/framework/customregistry.h"
-    "${ONNXRUNTIME_ROOT}/core/framework/customregistry.cc"
     "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.h"
     "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.cc"
   )
