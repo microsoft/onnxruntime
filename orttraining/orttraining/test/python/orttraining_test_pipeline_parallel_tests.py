@@ -3,46 +3,34 @@
 # Licensed under the MIT License.
 
 import sys
-import argparse
-
-from _test_commons import run_subprocess
-
+import torch
 import logging
+from _test_commons import _distributed_run
 
 logging.basicConfig(
     format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
     level=logging.DEBUG)
-log = logging.getLogger("Build")
+log = logging.getLogger('DistributedTests')
 
-
-def parse_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--cwd", help="cwd")
-    return parser.parse_args()
-
-
+# This function should be used to call all DxHxP parallel test scripts.
 def main():
-    import torch
     ngpus = torch.cuda.device_count()
 
-    # TODO: currently the CI machine only has 4 GPUs for parallel tests.
-    # Fill in more pipeline partition options when the machine has different GPUs counts.
-    if ngpus != 4:
-        return 0
+    # Test scripts for parallel tests.
+    distributed_test_files = ['./orttraining_test_parallel_train_simple_model.py']
+    # parallel_test_process_number[i] is the number of processes needed to run distributed_test_files[i].
+    distributed_test_process_counts = [4]
 
-    log.info("Running distributed computation tests.")
-
-    command = ['mpirun',  '-n', '4', 'python', './orttraining_test_parallel_train_simple_model.py',
-               '-s', '10',
-               '-n', '2']
-
-    args = parse_arguments()
-    cwd = args.cwd
-    log.debug('RUN: ' + ' '.join(command))
-    run_subprocess(command, cwd=cwd, log=log)
+    log.info('Running parallel training tests.')
+    for test_file, process_count in zip(distributed_test_files, distributed_test_process_counts):
+        if ngpus < process_count:
+            log.info('SKIP: ' + test_file)
+            continue
+        log.debug('RUN: ' + test_file)
+        _distributed_run(test_file, None, None, process_count)
 
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())

@@ -1,20 +1,13 @@
-import argparse
-import time
+import torch
+from onnxruntime.capi._pybind_state import get_mpi_context_world_rank, get_mpi_context_world_size
 from onnxruntime.training import ORTTrainer, ORTTrainerOptions, optim
 from torch import nn
-import torch
-from mpi4py import MPI
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-total_ranks = comm.Get_size()
+
+# Get MPI setting.
+rank = get_mpi_context_world_rank()
+total_ranks = get_mpi_context_world_size()
 
 torch.manual_seed(0)
-
-parser = argparse.ArgumentParser(description='Process some integers.')
-parser.add_argument('-s', type=int, help='number of pipeline steps')
-parser.add_argument('-n', type=int, help='number of pipeline stages')
-args = parser.parse_args()
-
 
 class Mlp(nn.Module):
     def __init__(self, d_in, d_hidden, d_out):
@@ -55,24 +48,25 @@ def apply_loss(p, y):
     return loss(p, y)
 
 
-# Load number of stages from command line args.
-# # of micro-batches.
-num_pipeline_steps = args.s
-# Compute batch size for sub-batches.
+# Number of micro-batches.
+num_pipeline_steps = 10
+# Number of pipeline stages.
+num_pipeline_stages = 2
+
+# Compute batch size for micro-batches.
 n_slice = int(n / num_pipeline_steps)
 
 cuda_device = 'cuda:' + str(rank)
 # Schema used when running the original batch.
 schema = {'inputs': [('x', ['n', 'd_in']), ('target', ['n'])], 'outputs': [
     ('loss', [], True), ('output', ['n', d_out])]}
-# Actual schema used when running sub-batches.
+# Actual schema used when running micro-batches.
 pipeline_schema = {'x': [n_slice, d_in], 'target': [
     n_slice], 'output': [n_slice, d_out], 'loss': []}
 # Describe which axis to slice along for each sliced tensor.
 sliced_axes = {'x': 0, 'target': 0, 'output': 0}
 
 adam_config = optim.AdamConfig(lr=0.1)
-num_pipeline_stages = args.n
 
 # # Specify configuration for pipeline parallel training.
 trainer_config = ORTTrainerOptions({
@@ -98,12 +92,8 @@ trainer_config = ORTTrainerOptions({
 
 
 # Define pipeline stage partition by specifying cut points.
-if num_pipeline_stages == 2:
-    # 2-stage cut. It's a cut on tensor "12".
-    trainer_config.distributed.pipeline_cut_info_string = '12'
-elif num_pipeline_stages == 3:
-    # 3-stage cut. There is one cut on tensor "11" and other cut on tensor "15".
-    trainer_config.distributed.pipeline_cut_info_string = '11,15'
+# 2-stage cut. It's a cut on tensor "12".
+trainer_config.distributed.pipeline_cut_info_string = '12'
 
 trainer = ORTTrainer(model, schema, adam_config, apply_loss, trainer_config)
 
