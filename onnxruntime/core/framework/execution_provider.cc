@@ -77,19 +77,22 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
 #if !defined(ORT_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with fused Node is not implemented by " + type_);
 }
 
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::string& /*dll_path*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with fused Node and dll path is not implemented by " + type_);
 }
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with FusedNodeAndGraph is not implemented by " + type_);
 }
 #endif
 

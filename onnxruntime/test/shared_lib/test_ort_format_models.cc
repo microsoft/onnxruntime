@@ -22,6 +22,11 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
+#ifdef USE_CUDA
+  OrtCUDAProviderOptions cuda_options{0};
+  session_options.AppendExecutionProvider_CUDA(cuda_options);
+#endif
+
   Ort::Session session(env, model_uri.c_str(), session_options);
 
   MockedOrtAllocator allocator;
@@ -44,7 +49,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
                             &output_name, 1);
 
-  ASSERT_EQ(ort_outputs.size(), 1);
+  ASSERT_EQ(ort_outputs.size(), size_t(1));
   const auto& output_tensor = &ort_outputs[0];
 
   auto type_info = output_tensor->GetTensorTypeAndShapeInfo();
@@ -63,7 +68,11 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   const std::basic_string<ORTCHAR_T> onnx_file = ORT_TSTR("testdata/foo_1.onnx");
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.test_output.ort");
 
+#ifdef USE_CUDA
+  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
+#else
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+#endif
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
@@ -73,6 +82,11 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
     so.Add(custom_op_domain);
     so.SetLogId("CustomOp");
     so.SetOptimizedModelFilePath(ort_file.c_str());
+
+#ifdef USE_CUDA
+    OrtCUDAProviderOptions cuda_options{0};
+    so.AppendExecutionProvider_CUDA(cuda_options);
+#endif
 
     Ort::Session session(*ort_env, onnx_file.c_str(), so);
   }
@@ -92,6 +106,9 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
 }
 #endif  // if !defined(ORT_MINIMAL_BUILD)
 
+// the saved ORT format model has the CPU EP assigned to the custom op node, so we only test if we're not using the
+// CUDA EP for the test.
+#ifndef USE_CUDA
 TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
 
@@ -112,4 +129,6 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
 
   TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
 }
+#endif
+
 #endif  // #if defined(ENABLE_ORT_FORMAT_LOAD)
