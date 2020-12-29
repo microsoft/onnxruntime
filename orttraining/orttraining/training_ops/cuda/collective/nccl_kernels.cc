@@ -10,12 +10,6 @@ NcclAllReduce::NcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
 Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
-  for (int i = 0; i < context->InputCount(); i++) {
-    const Tensor* input_tensor = context->Input<Tensor>(i);
-    Tensor* output_tensor = context->Output(i, input_tensor->Shape());
-    ORT_ENFORCE(input_tensor->DataRaw() == output_tensor->DataRaw());
-  }
-
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
 
@@ -32,6 +26,10 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   size_t input_count = num_bytes / onnx_type->Size();
   ORT_ENFORCE(num_bytes % onnx_type->Size() == 0);
 
+  for (int i = 0; i < context->InputCount(); i++) {
+    context->Output(i, context->Input<Tensor>(i)->Shape());
+  }
+
   ncclDataType_t dtype = GetNcclDataType(onnx_type);
 #ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
@@ -43,15 +41,6 @@ NcclAllGather::NcclAllGather(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
 Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
-  for (int i = 0; i < context->InputCount(); i++) {
-    const Tensor* input_tensor = context->Input<Tensor>(i);
-    Tensor* output_tensor = context->Output(i, input_tensor->Shape());
-    ORT_ENFORCE(input_tensor->DataRaw() == output_tensor->DataRaw());
-
-    // TODO: temporary hack until View is improved (it doesn't work with Alias)
-    output_tensor->SetByteOffset(input_tensor->ByteOffset());
-  }
-
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
   const int rank = nccl_->Rank(group_type_);
@@ -86,13 +75,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
 #ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclAllGather(fusion_data_rank_offset, output_tensor->MutableDataRaw(), rank_count, dtype, comm, stream));
 #endif
-  return Status::OK();
-}
 
-NcclReduceScatter::NcclReduceScatter(const OpKernelInfo& info) : NcclKernel(info) {
-}
-
-Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   for (int i = 0; i < context->InputCount(); i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
     Tensor* output_tensor = context->Output(i, input_tensor->Shape());
@@ -100,8 +83,22 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
 
     // TODO: temporary hack until View is improved (it doesn't work with Alias)
     output_tensor->SetByteOffset(input_tensor->ByteOffset());
+
+    // Copy AllGather results to outputs if needed
+    const void* input_data = input_tensor->DataRaw();
+    void* output_data = output_tensor->MutableDataRaw();
+    if (input_data != output_data) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, input_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
+    }
   }
 
+  return Status::OK();
+}
+
+NcclReduceScatter::NcclReduceScatter(const OpKernelInfo& info) : NcclKernel(info) {
+}
+
+Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
   const int rank = nccl_->Rank(group_type_);
@@ -131,11 +128,26 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   const int64_t rank_start = rank * rank_bytes;
 
   // ReduceScatter
-  Tensor* output_tensor = context->Output(0, first_tensor->Shape());
-  void* fusion_data_rank_offset = reinterpret_cast<char*>(output_tensor->MutableDataRaw()) + rank_start;
+  void* fusion_data_rank_offset = const_cast<char*>(start_address) + rank_start;
 #ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclReduceScatter(start_address, fusion_data_rank_offset, rank_count, dtype, ncclSum, comm, stream));
 #endif
+
+  for (int i = 0; i < context->InputCount(); i++) {
+    const Tensor* input_tensor = context->Input<Tensor>(i);
+    Tensor* output_tensor = context->Output(i, input_tensor->Shape());
+
+    // TODO: temporary hack until View is improved (it doesn't work with Alias)
+    output_tensor->SetByteOffset(input_tensor->ByteOffset());
+
+    // Copy ReduceScatter results to outputs if needed
+    const void* input_data = input_tensor->DataRaw();
+    void* output_data = output_tensor->MutableDataRaw();
+    if (input_data != output_data) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, input_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
+    }
+  }
+
   return Status::OK();
 }
 

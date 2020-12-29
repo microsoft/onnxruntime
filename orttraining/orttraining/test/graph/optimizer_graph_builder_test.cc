@@ -110,36 +110,6 @@ class ZeroOptimizerGraphBuilderTest : public testing::Test {
   ZeroOptimizerGraphBuilderTest() {}
 };
 
-Status SetUpZeroGraph(Graph& graph, std::vector<std::string>& weight_names, const std::vector<int64_t>& weight_dims) {
-  std::unordered_set<std::string> weight_and_gradient_names{};
-
-  for (size_t i = 0; i < weight_dims.size(); ++i) {
-    const std::string weight_name = "weight_" + std::to_string(i);
-    const std::string gradient_name = GradientBuilderBase::GradientName(weight_name);
-
-    ONNX_NAMESPACE::TensorProto weight_initializer = CreateTensorProto<float>(weight_name, 0.1f, {weight_dims[i]});
-    ONNX_NAMESPACE::TensorProto gradient_initializer = CreateTensorProto<float>(gradient_name, 0.01f, {weight_dims[i]});
-
-    ONNX_NAMESPACE::TypeProto float_tensor_type{};
-    float_tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    float_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(weight_dims[i]);
-
-    graph.GetOrCreateNodeArg(weight_name, &float_tensor_type);
-    graph.AddInitializedTensor(weight_initializer);
-
-    graph.GetOrCreateNodeArg(gradient_name, &float_tensor_type);
-    graph.AddInitializedTensor(gradient_initializer);
-
-    weight_and_gradient_names.emplace(weight_name);
-    weight_and_gradient_names.emplace(gradient_name);
-    weight_names.emplace_back(weight_name);
-  }
-
-  Graph::ResolveOptions resolve_options{};
-  resolve_options.initializer_names_to_preserve = &weight_and_gradient_names;
-  return graph.Resolve(resolve_options);
-}
-
 std::unordered_map<std::string, OptimizerNodeConfig> GetOptInfoMap(const std::string& optim_name,
                                                                    const std::vector<std::string>& weight_names = k_weight_names) {
   std::unordered_map<std::string, OptimizerNodeConfig> result{};
@@ -510,6 +480,36 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_WithGradientAccumulation_WithMixedPr
   config.use_mixed_precision = true;
   config.loss_scale_input_name = k_loss_scaling_factor_name;
   TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
+
+Status SetUpZeroGraph(Graph& graph, std::vector<std::string>& weight_names, const std::vector<int64_t>& weight_dims) {
+  std::unordered_set<std::string> weight_and_gradient_names{};
+
+  for (size_t i = 0; i < weight_dims.size(); ++i) {
+    const std::string weight_name = "weight_" + std::to_string(i);
+    const std::string gradient_name = GradientBuilderBase::GradientName(weight_name);
+
+    ONNX_NAMESPACE::TensorProto weight_initializer = CreateTensorProto<float>(weight_name, 0.1f, {weight_dims[i]});
+    ONNX_NAMESPACE::TensorProto gradient_initializer = CreateTensorProto<float>(gradient_name, 0.01f, {weight_dims[i]});
+
+    ONNX_NAMESPACE::TypeProto float_tensor_type{};
+    float_tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    float_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(weight_dims[i]);
+
+    graph.GetOrCreateNodeArg(weight_name, &float_tensor_type);
+    graph.AddInitializedTensor(weight_initializer);
+
+    graph.GetOrCreateNodeArg(gradient_name, &float_tensor_type);
+    graph.AddInitializedTensor(gradient_initializer);
+
+    weight_and_gradient_names.emplace(weight_name);
+    weight_and_gradient_names.emplace(gradient_name);
+    weight_names.emplace_back(weight_name);
+  }
+
+  Graph::ResolveOptions resolve_options{};
+  resolve_options.initializer_names_to_preserve = &weight_and_gradient_names;
+  return graph.Resolve(resolve_options);
 }
 
 static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config,

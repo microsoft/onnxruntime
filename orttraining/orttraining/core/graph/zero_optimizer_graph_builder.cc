@@ -389,7 +389,7 @@ static Status ModifyParametersForOptimizerPartitioning(
         new_gradient_argdefs.push_back(gradient_argdef);
       } else if (tensor_start < rank_start && tensor_end <= rank_end) {
         int64_t bytes_for_previous_rank = rank_start - tensor_start;
-        int64_t size_for_previous_rank = std::min(bytes_for_previous_rank / element_size, tensor_count);
+        int64_t size_for_previous_rank = std::min<int64_t>(bytes_for_previous_rank / element_size, tensor_count);
         int64_t size_for_current_rank = tensor_count - size_for_previous_rank;
 
         ORT_ENFORCE(size_for_current_rank > 0);
@@ -400,7 +400,7 @@ static Status ModifyParametersForOptimizerPartitioning(
                               new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
       } else if (tensor_start >= rank_start && tensor_end > rank_end) {
         int64_t bytes_for_current_rank = rank_end - offset;
-        int64_t size_for_current_rank = std::min(bytes_for_current_rank / element_size, tensor_count);
+        int64_t size_for_current_rank = std::min<int64_t>(bytes_for_current_rank / element_size, tensor_count);
         int64_t size_for_next_rank = tensor_count - size_for_current_rank;
         ORT_ENFORCE(size_for_current_rank > 0);
 
@@ -411,8 +411,8 @@ static Status ModifyParametersForOptimizerPartitioning(
         int64_t bytes_for_previous_rank = rank_start - offset;
         int64_t bytes_for_current_rank = rank_end - rank_start;
 
-        int64_t size_for_previous_rank = std::min(bytes_for_previous_rank / element_size, tensor_count);
-        int64_t size_for_current_rank = std::min(bytes_for_current_rank / element_size, tensor_count - size_for_previous_rank);
+        int64_t size_for_previous_rank = std::min<int64_t>(bytes_for_previous_rank / element_size, tensor_count);
+        int64_t size_for_current_rank = std::min<int64_t>(bytes_for_current_rank / element_size, tensor_count - size_for_previous_rank);
         int64_t size_for_next_rank = tensor_count - size_for_previous_rank - size_for_current_rank;
         ORT_ENFORCE(size_for_current_rank > 0);
 
@@ -455,7 +455,7 @@ static Status ModifyParametersForOptimizerPartitioning(
     // gradient padding
     ArgDef padding_size_argdef("gradient_padding_size",
                                graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_INT64));
-    graph_defs.AddInitializers({CreateTensorProto<int64_t>(padding_size_argdef.name, {padding_size}, {1})});
+    graph_defs.AddInitializers({CreateTensorProto<int64_t>(padding_size_argdef.name, std::vector<int64_t>{padding_size}, {1})});
     ArgDef gradient_padding_argdef("contiguous_gradient_buffer_padding",
                                    graph_defs.CreateTypeProto({padding_size}, ONNX_NAMESPACE::TensorProto_DataType(elem_type)));
 
