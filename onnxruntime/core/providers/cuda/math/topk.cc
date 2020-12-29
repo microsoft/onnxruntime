@@ -7,29 +7,36 @@
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    TopK,
-    kOnnxDomain,
-    1,9,
-    kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    TopK<false>);
+#define REGISTER_TYPED_TOPK(type)                                                                                             \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                    \
+      TopK,                                                                                                                   \
+      kOnnxDomain,                                                                                                            \
+      1, 9,                                                                                                                   \
+      type,                                                                                                                   \
+      kCudaExecutionProvider,                                                                                                 \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),                                        \
+      TopK<false>);                                                                                                           \
+                                                                                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                    \
+      TopK,                                                                                                                   \
+      kOnnxDomain,                                                                                                            \
+      10, 10,                                                                                                                 \
+      type,                                                                                                                   \
+      kCudaExecutionProvider,                                                                                                 \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()), \
+      TopK<true>);                                                                                                            \
+                                                                                                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                    \
+      TopK,                                                                                                                   \
+      kOnnxDomain,                                                                                                            \
+      11,                                                                                                                     \
+      type,                                                                                                                   \
+      kCudaExecutionProvider,                                                                                                 \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()), \
+      TopK<true>);
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    TopK,
-    kOnnxDomain,
-    10,10,
-    kCudaExecutionProvider,
-    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    TopK<true>);
-
-ONNX_OPERATOR_KERNEL_EX(
-    TopK,
-    kOnnxDomain,
-    11,
-    kCudaExecutionProvider,
-    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    TopK<true>);
+REGISTER_TYPED_TOPK(float);
+REGISTER_TYPED_TOPK(double);
 
 template <bool inputk>
 TopK<inputk>::TopK(const OpKernelInfo& info) : CudaKernel(info) {
