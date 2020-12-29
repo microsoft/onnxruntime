@@ -449,7 +449,7 @@ static Status ModifyParametersForOptimizerPartitioning(
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
       graph_defs.AddInitializers({CreateTensorProto<float>(weight_padding_argdef.name, 0.0f, {padding_size})});
     } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-      graph_defs.AddInitializers({CreateTensorProto<MLFloat16>(weight_padding_argdef.name, MLFloat16(0.0f), {padding_size})});
+      graph_defs.AddInitializers({CreateTensorProto<MLFloat16>(weight_padding_argdef.name, MLFloat16(math::floatToHalf(0.0f)), {padding_size})});
     }
 
     // gradient padding
@@ -463,7 +463,7 @@ static Status ModifyParametersForOptimizerPartitioning(
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
       zero_scaler = ONNX_NAMESPACE::ToTensor<float>(0.f);
     } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-      zero_scaler = ONNX_NAMESPACE::ToTensor<MLFloat16>(MLFloat16(0.f));
+      zero_scaler = ONNX_NAMESPACE::ToTensor<MLFloat16>(MLFloat16(math::floatToHalf(0.f)));
     }
     zero_scaler.clear_dims();
     zero_scaler.add_dims(1);

@@ -79,7 +79,6 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   for (int i = 0; i < context->InputCount(); i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
     Tensor* output_tensor = context->Output(i, input_tensor->Shape());
-    ORT_ENFORCE(input_tensor->DataRaw() == output_tensor->DataRaw());
 
     // TODO: temporary hack until View is improved (it doesn't work with Alias)
     output_tensor->SetByteOffset(input_tensor->ByteOffset());
