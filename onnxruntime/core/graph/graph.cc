@@ -3421,7 +3421,7 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
       } 
       else
       {
-        int dst_implicit_input_idx = dst_idx - node->InputDefs().size();
+        int dst_implicit_input_idx = (int)dst_idx - node->InputDefs().size();
         ORT_ENFORCE(dst_implicit_input_idx < (int)node->ImplicitInputDefs().size());
         auto it = input_indexes.find(node->ImplicitInputDefs()[dst_implicit_input_idx]->Name());
         if (it != input_indexes.cend()) {
