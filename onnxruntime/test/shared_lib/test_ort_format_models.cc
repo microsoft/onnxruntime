@@ -23,7 +23,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   session_options.Add(custom_op_domain);
 
 #ifdef USE_CUDA
-  OrtCUDAProviderOptions cuda_options{0};
+  OrtCUDAProviderOptions cuda_options{};
   session_options.AppendExecutionProvider_CUDA(cuda_options);
 #endif
 
@@ -84,7 +84,7 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
     so.SetOptimizedModelFilePath(ort_file.c_str());
 
 #ifdef USE_CUDA
-    OrtCUDAProviderOptions cuda_options{0};
+    OrtCUDAProviderOptions cuda_options{};
     so.AppendExecutionProvider_CUDA(cuda_options);
 #endif
 
