@@ -37,8 +37,11 @@ TEST(GemmOpTest, GemmNoTrans_double) {
 }
 
 // NNAPI EP requires weight to be an initializer
-TEST(GemmOpTest, GemmNoTransBIsInitializer) {
+TEST(GemmOpTest, GemmNoTransBIsInitializer_float) {
   TestGemmNoTrans<float>(true);
+}
+
+TEST(GemmOpTest, GemmNoTransBIsInitializer_double) {
   TestGemmNoTrans<double>(true);
 }
 
@@ -363,8 +366,11 @@ void TestGemmFalseBroadcast() {
   test.Run();
 }
 
-TEST(GemmOpTest, GemmFalseBroadcast) {
+TEST(GemmOpTest, GemmFalseBroadcast_float) {
   TestGemmFalseBroadcast<float>();
+}
+
+TEST(GemmOpTest, GemmFalseBroadcast_double) {
   TestGemmFalseBroadcast<double>();
 }
 
