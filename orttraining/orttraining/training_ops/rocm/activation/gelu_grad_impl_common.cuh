@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
 #include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
 
 namespace onnxruntime {
-namespace cuda {
+namespace rocm {
 
 template <typename T>
 __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::Default) {
@@ -42,5 +42,5 @@ __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::
   return dY * static_cast<T>(dg1 + dg2 + dg3);
 }
 
-}  // namespace cuda
+}  // namespace rocm
 }  // namespace onnxruntime
