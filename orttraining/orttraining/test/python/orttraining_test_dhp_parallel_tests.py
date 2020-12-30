@@ -16,8 +16,9 @@ log = logging.getLogger('DistributedTests')
 def main():
     ngpus = torch.cuda.device_count()
 
-    # Test scripts for parallel tests.
-    distributed_test_files = ['./orttraining_test_parallel_train_simple_model.py']
+    # Declare test scripts for parallel tests.
+    # New test scripts should be added to "dhp_parallel" folder.
+    distributed_test_files = ['./dhp_parallel/orttraining_test_parallel_train_simple_model.py']
     # parallel_test_process_number[i] is the number of processes needed to run distributed_test_files[i].
     distributed_test_process_counts = [4]
 

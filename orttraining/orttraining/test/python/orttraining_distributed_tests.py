@@ -38,7 +38,7 @@ def run_distributed_allreduce_tests(cwd, log):
 def run_pipeline_parallel_tests(cwd, log):
     log.debug('Running: pipeline parallel tests')
 
-    command = [sys.executable, 'orttraining_test_pipeline_parallel_tests.py']
+    command = [sys.executable, 'orttraining_test_dhp_parallel_tests.py']
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
