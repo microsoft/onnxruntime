@@ -26,7 +26,7 @@ namespace cuda {
       KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()), \
       TopK<true>);                                                                                                            \
                                                                                                                               \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                    \
       TopK,                                                                                                                   \
       kOnnxDomain,                                                                                                            \
       11,                                                                                                                     \
