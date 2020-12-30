@@ -1,3 +1,4 @@
+import onnxruntime
 import torch
 from onnxruntime.capi._pybind_state import get_mpi_context_world_rank, get_mpi_context_world_size
 from onnxruntime.training import ORTTrainer, ORTTrainerOptions, optim
