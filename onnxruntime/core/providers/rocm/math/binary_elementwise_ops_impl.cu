@@ -57,21 +57,21 @@ namespace rocm {
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, T)                                         \
   template void Impl_##x<T>(int32_t output_rank,                                          \
-                            const int64_t* lhs_padded_strides, const T* lhs_data, \
-                            const int64_t* rhs_padded_strides, const T* rhs_data, \
-                            const fast_divmod* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
+                            const TArray<int64_t>* lhs_padded_strides, const T* lhs_data, \
+                            const TArray<int64_t>* rhs_padded_strides, const T* rhs_data, \
+                            const TArray<fast_divmod>* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, T1)                                         \
   template void ImplT1_##x<T, T1>(int32_t output_rank,                                           \
-                                  const int64_t* lhs_padded_strides, const T* lhs_data,  \
-                                  const int64_t* rhs_padded_strides, const T1* rhs_data, \
-                                  const fast_divmod* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
+                                  const TArray<int64_t>* lhs_padded_strides, const T* lhs_data,  \
+                                  const TArray<int64_t>* rhs_padded_strides, const T1* rhs_data, \
+                                  const TArray<fast_divmod>* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(x, T, T1, T2)                                         \
   template void ImplT2_##x<T, T1, T2>(int32_t output_rank,                                           \
-                                      const int64_t* lhs_padded_strides, const T1* lhs_data, \
-                                      const int64_t* rhs_padded_strides, const T2* rhs_data, \
-                                      const fast_divmod* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
+                                      const TArray<int64_t>* lhs_padded_strides, const T1* lhs_data, \
+                                      const TArray<int64_t>* rhs_padded_strides, const T2* rhs_data, \
+                                      const TArray<fast_divmod>* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, uint32_t)     \
@@ -81,6 +81,13 @@ namespace rocm {
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, half)         \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, float)        \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, double)
+
+#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1_ILHFD(x, T) \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, int32_t)    \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, int64_t)    \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, half)       \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, float)      \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T1(x, T, double)
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_OIL(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, bool)     \
