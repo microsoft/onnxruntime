@@ -7,32 +7,32 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_TYPED_TOPK(T)                                                                                                                                                     \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                                                                         \
-      TopK,                                                                                                                                                                        \
-      kOnnxDomain,                                                                                                                                                                 \
-      1, 9,                                                                                                                                                                        \
-      T,                                                                                                                                                                           \
-      kCudaExecutionProvider,                                                                                                                                                      \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                                                                                                    \
-      TopK<false>);                                                                                                                                                                \
-                                                                                                                                                                                   \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                                                                         \
-      TopK,                                                                                                                                                                        \
-      kOnnxDomain,                                                                                                                                                                 \
-      10, 10,                                                                                                                                                                      \
-      T,                                                                                                                                                                           \
-      kCudaExecutionProvider,                                                                                                                                                      \
-      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
-      TopK<true>);                                                                                                                                                                 \
-                                                                                                                                                                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                                                   \
-      TopK,                                                                                                                                                                        \
-      kOnnxDomain,                                                                                                                                                                 \
-      11,                                                                                                                                                                          \
-      T,                                                                                                                                                                           \
-      kCudaExecutionProvider,                                                                                                                                                      \
-      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
+#define REGISTER_TYPED_TOPK(TV)                                                                                                                                                     \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                                                                          \
+      TopK,                                                                                                                                                                         \
+      kOnnxDomain,                                                                                                                                                                  \
+      1, 9,                                                                                                                                                                         \
+      TV,                                                                                                                                                                           \
+      kCudaExecutionProvider,                                                                                                                                                       \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TV>()),                                                                                                    \
+      TopK<false>);                                                                                                                                                                 \
+                                                                                                                                                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                                                                          \
+      TopK,                                                                                                                                                                         \
+      kOnnxDomain,                                                                                                                                                                  \
+      10, 10,                                                                                                                                                                       \
+      TV,                                                                                                                                                                           \
+      kCudaExecutionProvider,                                                                                                                                                       \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::GetTensorType<TV>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
+      TopK<true>);                                                                                                                                                                  \
+                                                                                                                                                                                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                                                    \
+      TopK,                                                                                                                                                                         \
+      kOnnxDomain,                                                                                                                                                                  \
+      11,                                                                                                                                                                           \
+      TV,                                                                                                                                                                           \
+      kCudaExecutionProvider,                                                                                                                                                       \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::GetTensorType<TV>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
       TopK<true>);
 
 REGISTER_TYPED_TOPK(float);
