@@ -258,7 +258,7 @@ jobs:
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.BinariesDirectory):/build \
-        onnxruntime_distributed_tests_image \
+        onnxruntime_e2e_test_image \
           /build/RelWithDebInfo/launch_test.py \
             --cmd_line_with_args "python orttraining_distributed_tests.py" \
             --cwd /build/RelWithDebInfo \
