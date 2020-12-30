@@ -153,9 +153,6 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument(
-        "--enable_training_python_frontend_e2e_tests", action="store_true",
-        help="Enable the pytorch frontend training tests.")
-    parser.add_argument(
         "--enable_training_pipeline_e2e_tests", action="store_true",
         help="Enable the pipeline c++ e2e tests.")
     parser.add_argument(
