@@ -18,7 +18,7 @@ from distutils.version import LooseVersion
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
-sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
+sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
 
 from util import run  # noqa: E402
