@@ -6,7 +6,7 @@
 #include <memory>
 #include <map>
 #include <list>
-#include <stack>
+#include <vector>
 #include <memory.h>
 
 #include "core/platform/ort_mutex.h"
@@ -99,7 +99,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
     return fwd_kernel_map_.at(key);
   }
 
-  std::stack<std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_conv_stack;
+  std::vector<std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_conv_stack;
 #endif  // ENABLE_TRAINING
  private:
   // dnnl weights(filer data) memory blocks from first iteration
