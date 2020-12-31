@@ -219,20 +219,10 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "80d452484c5409444b0ec19383faa84bb7a4d351",
+          "commitHash": "59a2ac2745d8a57ac94c6accced73620d59fb844",
           "repositoryUrl": "https://github.com/pybind/pybind11.git"
         },
         "comments": "git submodule at cmake/external/onnx/third_party/pybind11"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
-          "repositoryUrl": "https://github.com/wjakob/clang-cindex-python3"
-        },
-        "comments": "git submodule at cmake/external/onnx/third_party/pybind11/tools/clang"
       }
     },
     {
