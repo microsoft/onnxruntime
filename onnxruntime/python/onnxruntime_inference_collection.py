@@ -441,3 +441,10 @@ class OrtValue:
         Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
         '''
         return self._ortvalue.numpy()
+
+    def to_dlpack(self):
+        '''
+        Returns a DLPack object from the OrtValue.
+        Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
+        '''
+        return self._ortvalue.to_dlpack()
