@@ -57,12 +57,6 @@ struct OrtStatus {
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_MKLML
-#define BACKEND_MKLML "-MKL-ML"
-#else
-#define BACKEND_MKLML ""
-#endif
-
 #if USE_MIGRAPHX
 #define BACKEND_MIGRAPHX "-MIGRAPHX"
 #else
@@ -135,7 +129,7 @@ struct OrtStatus {
 #define BACKEND_DML ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
