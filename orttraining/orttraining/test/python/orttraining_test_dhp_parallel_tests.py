@@ -30,10 +30,11 @@ def main():
             continue
         log.debug('RUN: ' + test_file)
 
-        command = ['mpirun', '-n', process_count, sys.executable, test_file]
+        command = ['mpirun', '-n', str(process_count), sys.executable, test_file]
         # The current working directory is set in
         # onnxruntime/orttraining/orttraining/test/python/orttraining_distributed_tests.py
-        run_subprocess(command, cwd=os.getcwd())
+
+        run_subprocess(command, cwd=os.getcwd()).check_returncode()
 
     return 0
 
