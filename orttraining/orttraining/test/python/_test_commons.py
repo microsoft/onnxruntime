@@ -18,8 +18,8 @@ def _single_run(execution_file, scenario, checkopint_dir = None):
         cmd += ['--checkpoint_dir', checkopint_dir]
     assert subprocess.call(cmd) == 0
 
-def _distributed_run(execution_file, scenario, checkopint_dir = None, n_processes = None):
-    ngpus = n_processes if n_processes else torch.cuda.device_count()
+def _distributed_run(execution_file, scenario, checkopint_dir = None):
+    ngpus = torch.cuda.device_count()
     cmd = ['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, execution_file]
     if scenario:
         cmd += ['--scenario', scenario]

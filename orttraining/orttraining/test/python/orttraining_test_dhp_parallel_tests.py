@@ -2,10 +2,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import logging
+import os
 import sys
 import torch
-import logging
-from _test_commons import _distributed_run
+from _test_commons import run_subprocess
 
 logging.basicConfig(
     format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
@@ -25,10 +26,14 @@ def main():
     log.info('Running parallel training tests.')
     for test_file, process_count in zip(distributed_test_files, distributed_test_process_counts):
         if ngpus < process_count:
-            log.info('SKIP: ' + test_file)
+            log.info('No enough GPUs. SKIP: ' + test_file)
             continue
         log.debug('RUN: ' + test_file)
-        _distributed_run(test_file, None, None, process_count)
+
+        command = ['mpirun', '-n', process_count, sys.executable, test_file]
+        # The current working directory is set in
+        # onnxruntime/orttraining/orttraining/test/python/orttraining_distributed_tests.py
+        run_subprocess(command, cwd=os.getcwd())
 
     return 0
 
