@@ -358,15 +358,6 @@ if (onnxruntime_USE_TVM)
   )
 endif()
 
-if (onnxruntime_USE_MKLML)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
-endif()
-
 if (onnxruntime_USE_NUPHAR)
   file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
