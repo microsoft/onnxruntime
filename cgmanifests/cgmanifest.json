@@ -343,7 +343,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "bc8ce45b35ade9b8f08d88d4d9fdfd12b4f6f310",
+               "commitHash": "56195b3a67d988fa9c6eafdc459d92f0909f4782",
                "repositoryUrl": "https://github.com/pypa/manylinux"
             },
             "comments": "For building our CI build docker image"
