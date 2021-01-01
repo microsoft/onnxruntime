@@ -750,7 +750,7 @@ TEST(CApiTest, io_binding_cuda) {
   #endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
-  #ifdef USE_CUDA
+  #ifdef USE_TENSORRT
     Ort::MemoryInfo info_cuda("Tensorrt", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
   #else
     Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
