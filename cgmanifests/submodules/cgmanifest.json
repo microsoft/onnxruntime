@@ -5,6 +5,17 @@
       "Component": {
         "Type": "other",
         "other": {
+          "Name": "patchelf",
+          "Version": "0.12",
+          "DownloadUrl": "https://github.com/NixOS/patchelf/archive/0.12.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
           "Name": "automake",
           "Version": "1.16.2",
           "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.2.tar.gz"
@@ -27,9 +38,31 @@
       "Component": {
         "Type": "other",
         "other": {
-          "Name": "sqlite",
-          "Version": "3330000",
-          "DownloadUrl": "https://www.sqlite.org/2020/sqlite-autoconf-3330000.tar.gz"
+          "Name": "sqlite_autoconf",
+          "Version": "3340000",
+          "DownloadUrl": "https://www.sqlite.org/2020/sqlite-autoconf-3340000.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "cmake",
+          "Version": "3.18.3",
+          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.18.3/cmake-3.18.3.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "libxcrypt",
+          "Version": "4.4.17",
+          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.17.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -39,8 +72,8 @@
         "Type": "other",
         "other": {
           "Name": "git",
-          "Version": "2.29.1",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.29.1.tar.gz"
+          "Version": "2.30.0",
+          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.30.0.tar.gz"
         },
         "comments": "manylinux dependency"
       }
