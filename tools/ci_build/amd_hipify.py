@@ -224,6 +224,7 @@ provider_excluded_files = [
 ]
 
 training_ops_excluded_files = [
+                    'activation/gelu_grad_impl_common.cuh',
                     'collective/adasum_kernels.cc',
                     'collective/adasum_kernels.h',
                     'collective/nccl_common.cc',
