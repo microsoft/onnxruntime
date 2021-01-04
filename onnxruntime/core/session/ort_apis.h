@@ -97,6 +97,8 @@ ORT_API_STATUS_IMPL(ModelMetadataGetDomain, _In_ const OrtModelMetadata* model_m
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(ModelMetadataGetDescription, _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(ModelMetadataGetGraphDescription, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(ModelMetadataLookupCustomMetadataMap, _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _In_ const char* key, _Outptr_result_maybenull_ char** value);
 

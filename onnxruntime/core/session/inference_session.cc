@@ -1745,6 +1745,7 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   // save model metadata
   model_metadata_.producer_name = model.ProducerName();
   model_metadata_.description = model.DocString();
+  model_metadata_.graph_description = model.GraphDocString();
   model_metadata_.domain = model.Domain();
   model_metadata_.version = model.ModelVersion();
   model_metadata_.custom_metadata_map = model.MetaData();

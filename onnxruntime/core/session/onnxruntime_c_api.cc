@@ -1030,6 +1030,16 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetDescription,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetGraphDescription,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
+  API_IMPL_BEGIN
+  auto description = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->graph_description;
+  *value = StrDup(description, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::ModelMetadataLookupCustomMetadataMap, _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _In_ const char* key, _Outptr_result_maybenull_ char** value) {
   API_IMPL_BEGIN
@@ -2073,6 +2083,7 @@ static constexpr OrtApi ort_api_1_to_6 = {
     // End of Version 6 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 7 - In development, feel free to add/remove/rearrange here
+    &OrtApis::ModelMetadataGetGraphDescription,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

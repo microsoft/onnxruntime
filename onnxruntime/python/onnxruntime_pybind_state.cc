@@ -1599,6 +1599,7 @@ facilitate the comparison.)pbdoc")
       .def_readwrite("graph_name", &ModelMetadata::graph_name, "graph name")
       .def_readwrite("domain", &ModelMetadata::domain, "ONNX domain")
       .def_readwrite("description", &ModelMetadata::description, "description of the model")
+      .def_readwrite("graph_description", &ModelMetadata::graph_description, "description of the graph hosted in the model")
       .def_readwrite("version", &ModelMetadata::version, "version of the model")
       .def_readwrite("custom_metadata_map", &ModelMetadata::custom_metadata_map, "additional metadata");
 

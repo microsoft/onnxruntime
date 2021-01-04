@@ -2852,7 +2852,11 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto nodes = builder.CreateVector(nodes_vec);
   auto node_edges = builder.CreateVector(node_edges_vec);
 
+  auto doc_string = experimental::utils::SaveStringToOrtFormat(
+      builder, graph_proto_->has_doc_string(), graph_proto_->doc_string());
+
   fbs::GraphBuilder gb(builder);
+  gb.add_doc_string(doc_string);
   gb.add_initializers(initializers);
   gb.add_node_args(node_args);
   gb.add_nodes(nodes);

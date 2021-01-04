@@ -192,6 +192,8 @@ table Graph{
   inputs:[string];
   outputs:[string];
   sparse_initializers:[SparseTensor];
+  
+  doc_string:string;
 }
 
 table Model {

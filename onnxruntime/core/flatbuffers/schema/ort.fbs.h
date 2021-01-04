@@ -1660,7 +1660,8 @@ struct Graph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_NODE_EDGES = 12,
     VT_INPUTS = 14,
     VT_OUTPUTS = 16,
-    VT_SPARSE_INITIALIZERS = 18
+    VT_SPARSE_INITIALIZERS = 18,
+    VT_DOC_STRING = 20
   };
   const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::Tensor>> *initializers() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::Tensor>> *>(VT_INITIALIZERS);
@@ -1686,6 +1687,9 @@ struct Graph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>> *sparse_initializers() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>> *>(VT_SPARSE_INITIALIZERS);
   }
+  const flatbuffers::String *doc_string() const {
+    return GetPointer<const flatbuffers::String *>(VT_DOC_STRING);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_INITIALIZERS) &&
@@ -1710,6 +1714,8 @@ struct Graph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_SPARSE_INITIALIZERS) &&
            verifier.VerifyVector(sparse_initializers()) &&
            verifier.VerifyVectorOfTables(sparse_initializers()) &&
+           VerifyOffset(verifier, VT_DOC_STRING) &&
+           verifier.VerifyString(doc_string()) &&
            verifier.EndTable();
   }
 };
@@ -1742,6 +1748,9 @@ struct GraphBuilder {
   void add_sparse_initializers(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>>> sparse_initializers) {
     fbb_.AddOffset(Graph::VT_SPARSE_INITIALIZERS, sparse_initializers);
   }
+  void add_doc_string(flatbuffers::Offset<flatbuffers::String> doc_string) {
+    fbb_.AddOffset(Graph::VT_DOC_STRING, doc_string);
+  }
   explicit GraphBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1763,8 +1772,10 @@ inline flatbuffers::Offset<Graph> CreateGraph(
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeEdge>>> node_edges = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> inputs = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> outputs = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>>> sparse_initializers = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>>> sparse_initializers = 0,
+    flatbuffers::Offset<flatbuffers::String> doc_string = 0) {
   GraphBuilder builder_(_fbb);
+  builder_.add_doc_string(doc_string);
   builder_.add_sparse_initializers(sparse_initializers);
   builder_.add_outputs(outputs);
   builder_.add_inputs(inputs);
@@ -1785,7 +1796,8 @@ inline flatbuffers::Offset<Graph> CreateGraphDirect(
     const std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeEdge>> *node_edges = nullptr,
     const std::vector<flatbuffers::Offset<flatbuffers::String>> *inputs = nullptr,
     const std::vector<flatbuffers::Offset<flatbuffers::String>> *outputs = nullptr,
-    const std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>> *sparse_initializers = nullptr) {
+    const std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>> *sparse_initializers = nullptr,
+    const char *doc_string = nullptr) {
   auto initializers__ = initializers ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::Tensor>>(*initializers) : 0;
   auto node_args__ = node_args ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::ValueInfo>>(*node_args) : 0;
   auto nodes__ = nodes ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::Node>>(*nodes) : 0;
@@ -1793,6 +1805,7 @@ inline flatbuffers::Offset<Graph> CreateGraphDirect(
   auto inputs__ = inputs ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*inputs) : 0;
   auto outputs__ = outputs ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*outputs) : 0;
   auto sparse_initializers__ = sparse_initializers ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>>(*sparse_initializers) : 0;
+  auto doc_string__ = doc_string ? _fbb.CreateString(doc_string) : 0;
   return onnxruntime::experimental::fbs::CreateGraph(
       _fbb,
       initializers__,
@@ -1802,7 +1815,8 @@ inline flatbuffers::Offset<Graph> CreateGraphDirect(
       node_edges__,
       inputs__,
       outputs__,
-      sparse_initializers__);
+      sparse_initializers__,
+      doc_string__);
 }
 
 struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
