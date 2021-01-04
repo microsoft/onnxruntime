@@ -265,7 +265,7 @@ void NhwcTransformerImpl::TransformSplit(Node& node) {
       // direct return on invalid axis
       return;
     }
-    if (axis > 1) {
+    if (axis >= 1) {
       axis = (axis == 1LL) ? (nhwc_input->rank_ - 1) : (axis - 1);
     } else if (axis > - nhwc_input->rank_ && axis < 0) {
       axis = (axis == -(nhwc_input->rank_ - 1)) ? (- 1) : (axis - 1);

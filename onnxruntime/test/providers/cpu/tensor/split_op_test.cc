@@ -264,6 +264,18 @@ ShapeAndFloatData CreateInput(std::vector<int64_t> shape) {
   return input;
 }
 
+template <typename T>
+ShapeAndData<T> CreateTypedInput(std::vector<int64_t> shape) {
+  auto size = TensorShape(shape).Size();
+
+  T i = static_cast<T>(0), increment = static_cast<T>(1);
+  // generate the elements for the data starting at 1
+  std::vector<T> data;
+  std::generate_n(std::back_inserter(data), size, [&]() { return i += increment; });
+
+  return ShapeAndData<T>{shape, data};
+}
+
 TEST(SplitOperatorTest, Axis2EqualSplit) {
   const int64_t axis = 2;
   std::vector<ShapeAndFloatData> outputs;
@@ -567,5 +579,52 @@ SplitAxis2()
 SplitMiddleDimension()
 
 */
+
+// test split for uint8_t data that has leading and trailing dimensions
+TEST(SplitOperatorTest, Uint8Axis1SplitMiddleDimensionUnequally) {
+  const int64_t axis = 1;
+  std::vector<ShapeAndData<uint8_t>> outputs;
+
+  ShapeAndData<uint8_t> input = CreateTypedInput<uint8_t>({2, 4, 4});
+
+  std::vector<int64_t> splits{1, 3};
+
+  outputs.push_back({{2, 1, 4},
+                     {1, 2, 3, 4,
+
+                      17, 18, 19, 20}});
+
+  outputs.push_back({{2, 3, 4},
+                     {5, 6, 7, 8,
+                      9, 10, 11, 12,
+                      13, 14, 15, 16,
+
+                      21, 22, 23, 24,
+                      25, 26, 27, 28,
+                      29, 30, 31, 32}});
+
+  RunTest<uint8_t>(axis, splits, input, outputs, false);
+}
+
+// test split for uint8_t data on the last axis equally
+TEST(SplitOperatorTest, Uint8NegativeAxis) {
+  const int64_t axis = -1;
+  std::vector<ShapeAndData<uint8_t>> outputs;
+
+  ShapeAndData<uint8_t> input = {{2, 4},
+                                 {1, 2, 3, 4,
+                                  5, 6, 7, 8}};
+
+  outputs.push_back({{2, 2},
+                     {1, 2,
+                      5, 6}});
+
+  outputs.push_back({{2, 2},
+                     {3, 4,
+                      7, 8}});
+
+  RunTest<uint8_t>(axis, {}, input, outputs, false);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

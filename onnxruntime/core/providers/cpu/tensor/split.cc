@@ -19,6 +19,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
                                           DataTypeImpl::GetTensorType<int64_t>(),
+                                          DataTypeImpl::GetTensorType<uint8_t>(),
                                           DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
@@ -45,6 +46,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
                                           DataTypeImpl::GetTensorType<int64_t>(),
+                                          DataTypeImpl::GetTensorType<uint8_t>(),
                                           DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
