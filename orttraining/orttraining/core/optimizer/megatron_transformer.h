@@ -27,32 +27,48 @@ class MegatronTransformer : public GraphTransformer {
                    const logging::Logger& logger) const override;
 
  private:
-  Status TransformMLP(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                      std::vector<Node*>& nodes_to_clear_shape,
-                      int32_t& counter) const;
+  // GPT2 Pattern Match
+  Status TransformGPT2MLP(Graph& graph, bool& modified,
+                          std::vector<Node*>& nodes_to_clear_shape,
+                          int32_t& counter,
+                          NodeIndex node_index) const;
 
-  Status TransformSelfAttention(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
+  Status TransformGPT2Attention(Graph& graph, bool& modified,
                                 std::vector<Node*>& nodes_to_clear_shape,
                                 std::unordered_set<Node*>& dropout_nodes_to_transform,
-                                int32_t& counter) const;
+                                int32_t& counter,
+                                NodeIndex node_index) const;
 
-  Status TransformBARTSelfAttention(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                                    std::vector<Node*>& nodes_to_clear_shape,
-                                    std::unordered_set<Node*>& dropout_nodes_to_transform, int32_t& counter) const;
-
-  Status TransformBARTMLP(Graph& graph, bool& modified, int graph_level,
-                          const logging::Logger& logger,
+  // BART Pattern Match
+  Status TransformBARTMLP(Graph& graph, bool& modified,
                           std::vector<Node*>& nodes_to_clear_shape,
-                          std::unordered_set<Node*>& dropout_nodes_to_transform, int32_t& counter) const;
+                          std::unordered_set<Node*>& dropout_nodes_to_transform,
+                          int32_t& counter,
+                          NodeIndex node_index) const;
 
-  Status TransformDropout(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                          std::unordered_set<Node*>& dropout_nodes_to_transform, int32_t& counter) const;
+  Status TransformBARTAttention(Graph& graph, bool& modified,
+                                std::vector<Node*>& nodes_to_clear_shape,
+                                std::unordered_set<Node*>& dropout_nodes_to_transform,
+                                int32_t& counter,
+                                NodeIndex node_index) const;
+
+  // Shared Utilities
+  Status DoTransform(Graph& graph, bool& modified, int graph_level,
+                     const logging::Logger& logger,
+                     std::vector<Node*>& nodes_to_clear_shape,
+                     std::unordered_set<Node*>& dropout_nodes_to_transform) const;
+
+  Status TransformDropout(Graph& graph, bool& modified, int graph_level,
+                          const logging::Logger& logger,
+                          std::unordered_set<Node*>& dropout_nodes_to_transform,
+                          int32_t& counter) const;
 
   bool PartitionWeightByColumn(const Graph& graph, const NodeArg& input_arg,
                                ONNX_NAMESPACE::TensorProto& initializer_partition,
                                int stride = 1) const;
 
-  bool PartitionWeightByRow(const Graph& graph, const NodeArg& input_arg, ONNX_NAMESPACE::TensorProto& initializer_partition) const;
+  bool PartitionWeightByRow(const Graph& graph, const NodeArg& input_arg,
+                            ONNX_NAMESPACE::TensorProto& initializer_partition) const;
 
   const int32_t horizontal_parallel_rank_;
   const int32_t horizontal_parallel_size_;
