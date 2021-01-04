@@ -150,9 +150,9 @@ def main():
 
     # DeepSpeed-related settings
     parser.add_argument('--local_rank',
-                                                type=int,
-                                                default=-1,
-                                                help='local rank passed from distributed launcher')
+                        type=int,
+                        required=True,
+                        help='local rank passed from distributed launcher')
     parser = deepspeed.add_config_arguments(parser)
     
     args = parser.parse_args()
