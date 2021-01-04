@@ -29,5 +29,4 @@
         "reduce_bucket_size": 500000000
     },
     "zero_allow_untested_optimizer": true
-  }
-  
+}
