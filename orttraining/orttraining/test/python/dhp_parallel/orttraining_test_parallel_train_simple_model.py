@@ -1,3 +1,9 @@
+# Add onnxruntime path as system path.
+# Otherwise, "import onnxruntime" may fail.
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import onnxruntime
 import torch
 from onnxruntime.capi._pybind_state import get_mpi_context_world_rank, get_mpi_context_world_size
