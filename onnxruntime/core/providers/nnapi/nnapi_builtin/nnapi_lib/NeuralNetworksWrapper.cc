@@ -32,10 +32,22 @@ OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale,
   };
 }
 
-OperandType::OperandType(const OperandType& other) {
-  type = other.type;
-  dimensions = other.dimensions;
-  operandType = other.operandType;
+OperandType::OperandType(Type type, const std::vector<uint32_t>& d, SymmPerChannelQuantParams&& channelQuant)
+    : type(type), dimensions(d), channelQuant(std::move(channelQuant)) {
+  operandType = {
+      .type = static_cast<int32_t>(type),
+      .dimensionCount = static_cast<uint32_t>(dimensions.size()),
+      .dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr,
+      .scale = 0.0f,
+      .zeroPoint = 0,
+  };
+}
+
+OperandType::OperandType(const OperandType& other)
+    : operandType(other.operandType),
+      type(other.type),
+      dimensions(other.dimensions),
+      channelQuant(other.channelQuant) {
   operandType.dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr;
 }
 
@@ -44,6 +56,7 @@ OperandType& OperandType::operator=(const OperandType& other) {
     type = other.type;
     dimensions = other.dimensions;
     operandType = other.operandType;
+    channelQuant = other.channelQuant;
     operandType.dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr;
   }
 

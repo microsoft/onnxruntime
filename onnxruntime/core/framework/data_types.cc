@@ -727,6 +727,14 @@ const char* DataTypeImpl::ToString(MLDataType type) {
 #endif
 }
 
+std::vector<std::string> DataTypeImpl::ToString(const std::vector<MLDataType>& types) {
+  std::vector<std::string> type_strs;
+  for (const auto& type : types) {
+    type_strs.push_back(DataTypeImpl::ToString(type));
+  }
+  return type_strs;
+}
+
 const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
