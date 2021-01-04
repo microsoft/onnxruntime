@@ -1,3 +1,13 @@
+"""Test for a simple ORTModule using the high-level DeepSpeed API.
+
+To run on the local GPU(s):
+
+```
+$ pip install deepspeed
+$ deepspeed orttraining_test_ortmodule_mnist_deepspeed.py \
+    --deepspeed_config=orttraining_test_ortmodule_mnist_deepspeed_config.json
+```
+"""
 import argparse
 import logging
 import torch
@@ -25,7 +35,8 @@ class NeuralNet(torch.nn.Module):
 
 
 def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
-    print('\n======== Epoch {:} / {:} with batch size {:} ========'.format(epoch+1, args.epochs, model.train_batch_size()))
+    print('\n======== Epoch {:} / {:} with batch size {:} ========'.format(
+        epoch+1, args.epochs, model.train_batch_size()))
     model.train()
     # Measure how long the training epoch takes.
     t0 = time.time()
@@ -36,7 +47,7 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
 
     for iteration, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
-        data = data.reshape(data.shape[0], -1)
+        data = data.reshape(data.shape[0], -1).half()
 
         optimizer.zero_grad()
         if args.pytorch_only:
@@ -87,7 +98,7 @@ def test(args, model, device, loss_fn, test_loader):
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
-            data = data.reshape(data.shape[0], -1)
+            data = data.reshape(data.shape[0], -1).half()
             output = model(data)
 
             # Stats
