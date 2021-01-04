@@ -1127,7 +1127,7 @@ TEST(CApiTest, model_metadata) {
     allocator.get()->Free(description);
 
     char* graph_description = model_metadata.GetGraphDescription(allocator.get());
-    ASSERT_TRUE(strcmp("", graph_description) == 0);
+    ASSERT_TRUE(strcmp("graph description", graph_description) == 0);
     allocator.get()->Free(graph_description);
 
     int64_t version = model_metadata.GetVersion();
