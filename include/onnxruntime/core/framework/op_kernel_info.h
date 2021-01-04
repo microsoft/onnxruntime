@@ -47,6 +47,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   common::Status GetFusedFuncs(NodeComputeInfo*& compute_info) const;
 
+  const Path& OpKernelInfo::GetModelPath() const noexcept;
+
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);

@@ -164,6 +164,10 @@ const std::string& GraphViewer::Description() const noexcept {
                                    : filter_info_->GetMetaDef()->name;
 }
 
+const Path& GraphViewer::ModelPath() const noexcept {
+  return graph_->ModelPath();
+}
+
 bool GraphViewer::GetInitializedTensor(const std::string& tensor_name,
                                        const ONNX_NAMESPACE::TensorProto*& value) const {
   // if we are using filtered subgraph, the initializer has to be part of the subgraph

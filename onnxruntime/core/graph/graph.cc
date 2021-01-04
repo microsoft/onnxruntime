@@ -430,6 +430,10 @@ void Node::SetPriority(int priority) noexcept {
   priority_ = priority;
 }
 
+const Path& Node::ModelPath() const noexcept {
+  return graph_->ModelPath();
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 const Function* Node::GetFunctionBody(bool try_init_func_body) {

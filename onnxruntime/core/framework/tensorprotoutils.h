@@ -7,7 +7,9 @@
 #include <type_traits>
 
 #include "core/common/common.h"
+#include "core/common/path.h"
 #include "core/common/status.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/mem_buffer.h"
@@ -58,8 +60,17 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
+Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                 const ORTCHAR_T* tensor_proto_dir,
+                                 std::unique_ptr<uint8_t[]>& unpacked_tensor,
+                                 size_t& tensor_data_length);
+
 template <typename T>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const ORTCHAR_T* tensor_proto_dir, size_t expected_size,
+                                     /*out*/ T* p_data);
+template <typename T>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const ORTCHAR_T* tensor_proto_dir, const void* raw_data, size_t raw_data_len,
                     /*out*/ T* p_data, size_t expected_size);
 
 // Convert the NodeProto from a Constant node into a TensorProto that can be used as an initializer
@@ -109,6 +120,13 @@ inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
          ten_proto.has_raw_data();  // XXX: Figure out how to do in proto3
 }
 
+inline bool HasExternalData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
+  // Can not be UNDEFINED and can not be STRING but test for STRING is usually performed separately
+  // to return an error
+  return ten_proto.data_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED &&
+         ten_proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL;
+}
+
 inline bool HasDataType(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return ten_proto.data_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
@@ -128,7 +146,6 @@ inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto)
 inline bool HasName(const ONNX_NAMESPACE::SparseTensorProto& ten_proto) {
   return ten_proto.values().has_name(); // XXX
 }
-
 
 inline bool HasKeyType(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
   return map_proto.key_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
@@ -221,10 +238,11 @@ inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
 
 // UnpackTensor from either raw data or the type specific data field.
 template <typename T>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ T* p_data, size_t expected_size) {
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path, /*out*/ T* p_data, size_t expected_size) {
+  auto tensor_proto_path = model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str();
   return HasRawData(tensor)
-             ? UnpackTensor(tensor, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
-             : UnpackTensor(tensor, nullptr, 0, p_data, expected_size);
+             ? UnpackTensor(tensor, tensor_proto_path, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
+             : UnpackTensor(tensor, tensor_proto_path,nullptr, 0, p_data, expected_size);
 }
 
 /**
@@ -236,6 +254,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ T* p_data
  * @returns                 Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                                     const ORTCHAR_T* initializer_dir,
                                      std::unique_ptr<uint8_t[]>& unpacked_tensor,
                                      size_t& tensor_byte_size) ORT_MUST_USE_RESULT;
 

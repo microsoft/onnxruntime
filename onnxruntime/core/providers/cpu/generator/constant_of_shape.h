@@ -51,7 +51,7 @@ class ConstantOfShapeBase {
     }
   }
 
-  void SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto&);
+  void SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto&, const Path& model_path);
 };
 
 class ConstantOfShape final : public ConstantOfShapeBase, public OpKernel {

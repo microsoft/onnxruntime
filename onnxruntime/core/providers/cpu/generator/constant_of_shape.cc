@@ -32,23 +32,21 @@ ONNX_CPU_OPERATOR_KERNEL(
 #define FETCH_VALUE_DATA(c_type)                                                                            \
   {                                                                                                         \
     c_type val;                                                                                             \
-    auto unpack_status = UnpackTensor(t_proto, raw_data, raw_data_len, &val, 1);                            \
+    auto unpack_status = UnpackTensor(t_proto, model_path, &val, 1);                                        \
     ORT_ENFORCE(unpack_status.IsOK(), "Value attribute unpacking failed:", unpack_status.ErrorMessage());   \
     SetValue(sizeof(c_type), reinterpret_cast<void*>(&val));                                                \
   }
 
-void onnxruntime::ConstantOfShapeBase::SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto& t_proto) {
+void onnxruntime::ConstantOfShapeBase::SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto& t_proto, const Path& model_path) {
   using namespace utils;
   ORT_ENFORCE(utils::HasDataType(t_proto));
   ORT_ENFORCE(TensorProto::DataType_IsValid(t_proto.data_type()));
   const auto tensor_type = static_cast<TensorProto_DataType>(t_proto.data_type());
-  const void* const raw_data = utils::HasRawData(t_proto) ? t_proto.raw_data().data() : nullptr;
-  const size_t raw_data_len = utils::HasRawData(t_proto) ? t_proto.raw_data().size() : 0;
   switch (tensor_type) {
     case TensorProto::BOOL:
       FETCH_VALUE_DATA(bool);
       break;
-    case TensorProto::FLOAT:
+    case TensorProto::FLOAT: 
       FETCH_VALUE_DATA(float);
       break;
     case TensorProto::FLOAT16:
@@ -89,19 +87,18 @@ void onnxruntime::ConstantOfShapeBase::SetValueFromTensorProto(const ONNX_NAMESP
 
 #undef FETCH_VALUE_DATA
 
-
 template <class T>
 inline void FilloutOutput(T value, void* output_data, size_t size) {
   auto out = gsl::make_span(reinterpret_cast<T*>(output_data), size);
   std::fill(out.begin(), out.end(), value);
 }
 
-ConstantOfShapeBase::ConstantOfShapeBase(const OpKernelInfo& info){
+ConstantOfShapeBase::ConstantOfShapeBase(const OpKernelInfo& info) {
   TensorProto t_proto;
   if (info.GetAttr<TensorProto>("value", &t_proto).IsOK()) {
     ORT_ENFORCE(t_proto.dims_size() == 1, "Must have a single dimension");
     ORT_ENFORCE(t_proto.dims()[0] == 1, "Must have a single dimension of 1");
-    SetValueFromTensorProto(t_proto);
+    SetValueFromTensorProto(t_proto, info.GetModelPath());
   } else {
     float f_value = 0.f;
     SetValue(sizeof(float), reinterpret_cast<void*>(&f_value));
@@ -128,7 +125,6 @@ Status ConstantOfShapeBase::PrepareCompute(OpKernelContext* ctx, Tensor** output
 }
 
 Status ConstantOfShape::Compute(OpKernelContext* ctx) const {
-
   Tensor* output_tensor = nullptr;
   ORT_RETURN_IF_ERROR(PrepareCompute(ctx, &output_tensor));
 

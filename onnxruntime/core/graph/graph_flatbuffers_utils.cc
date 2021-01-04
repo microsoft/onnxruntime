@@ -46,7 +46,7 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     std::unique_ptr<uint8_t[]> unpacked_tensor;
     size_t tensor_byte_size = 0;
     ORT_RETURN_IF_ERROR(
-        onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor, tensor_byte_size));
+        onnxruntime::utils::UnpackInitializerData(initializer, nullptr, unpacked_tensor, tensor_byte_size));
     raw_data = builder.CreateVector(unpacked_tensor.get(), tensor_byte_size);
   }
 

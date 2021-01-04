@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/eye_like.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/util/math_cpuonly.h"
 
 using namespace ::onnxruntime::common;

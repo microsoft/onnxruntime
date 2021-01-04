@@ -108,6 +108,9 @@ class Node {
   /** Gets the domain of the OperatorSet that specifies the operator returned by #OpType. */
   const std::string& Domain() const noexcept { return domain_; }
 
+  /** Gets the path of the owning model if any. */
+  const Path& ModelPath() const noexcept;
+
   /** Gets the Node's execution priority.
   @remarks Lower value means higher priority  */
   int Priority() const noexcept { return priority_; };
@@ -149,6 +152,7 @@ class Node {
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept { return func_body_; }
+
 #endif
 
   /**
