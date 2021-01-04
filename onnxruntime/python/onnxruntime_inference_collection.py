@@ -444,3 +444,7 @@ class OrtValue:
 
     def to_dlpack(self):
         return self._ortvalue.to_dlpack()
+
+    @staticmethod
+    def from_dlpack(dlmtensor):
+        return C.OrtValue.from_dlpack(dlmtensor)

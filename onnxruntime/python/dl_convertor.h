@@ -12,9 +12,12 @@
 namespace onnxruntime {
 namespace python {
 
-DLManagedTensor* ort_value_to_dlpack(const OrtValue& ml_value);
+DLManagedTensor* ortvalue_to_dlpack(const OrtValue& ml_value);
 DLDataType get_dlpack_data_type(const OrtValue& ml_value);
 DLContext get_dlpack_context(const OrtValue& ml_value, const int64_t& device_id);
+
+onnxruntime::MLDataType get_ortvalue_data_type(const DLDataType& dtype);
+OrtValue ortvalue_from_dlpack(const DLManagedTensor* src, AllocatorPtr alloc);
 
 }  // namespace python
 }  // namespace onnxruntime

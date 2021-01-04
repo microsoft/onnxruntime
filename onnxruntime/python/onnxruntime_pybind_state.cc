@@ -1307,10 +1307,38 @@ void addObjectMethods(py::module& m, Environment& env) {
         return obj;
       })
       .def("to_dlpack", [](OrtValue* ml_value) -> py::object {
-        DLManagedTensor* dlmanaged_tensor = ort_value_to_dlpack(*ml_value);
+        DLManagedTensor* dlmanaged_tensor = ortvalue_to_dlpack(*ml_value);
         return py::reinterpret_steal<py::object>(
             PyCapsule_New(dlmanaged_tensor, "dltensor", dlpack_capsule_destructor));
+      })
+      .def("from_dlpack", [](py::object data) -> py::object{
+        DLManagedTensor * dlMTensor = (DLManagedTensor *)PyCapsule_GetPointer(data.ptr(), "dltensor");
+        auto ml_value = ortvalue_from_dlpack(dlMTensor, GetAllocator());
+        std::cout << ml_value.IsTensor() << std::endl;
+        // Make sure this capsule will never be used again.
+        // PyCapsule_SetName(data.ptr(), "used_dltensor");
+        py::object obj;
+
+        const auto& dims = ml_value.Get<Tensor>().Shape().GetDims();
+        std::cout << std::endl << " bora " << std::endl;
+        for (auto dim : dims) {
+          std::cout << dim << std::endl;
+        }
+        std::cout << std::endl << " acabou " << std::endl;
+        // return py::cast(ml_value);
+        // py::object obj = static_cast<py::object>(ml_value);
+        // return obj;
+        // return py::reinterpret_steal<py::object>();
+// #ifdef USE_CUDA
+        // GetPyObjFromTensor(ml_value.Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
+// #else
+        GetPyObjFromTensor(ml_value.Get<Tensor>(), obj, nullptr, nullptr);
+// #endif
+
+        return obj;
       });
+
+
 
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
   session_io_binding

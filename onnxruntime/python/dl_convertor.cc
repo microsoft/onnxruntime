@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "python/dl_convertor.h"
+// #include "onnx-ml.pb.h"
+#include "onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace python {
@@ -87,7 +89,7 @@ DLContext get_dlpack_context(const OrtValue& ml_value, const int64_t& device_id)
       ctx.device_type = DLDeviceType::kDLGPU;
       break;
     default:
-      ORT_THROW("Cannot pack tensors on this device.");
+      ORT_THROW("Cannot pack tensors on this device: " + location.device.Type());
   }
 
   return ctx;
@@ -102,7 +104,7 @@ void deleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg
 
 // This function returns a shared_ptr to memory managed DLpack tensor
 // constructed out of OrtValue.
-DLManagedTensor* ort_value_to_dlpack(const OrtValue& ml_value) {
+DLManagedTensor* ortvalue_to_dlpack(const OrtValue& ml_value) {
   ORT_ENFORCE(ml_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
   OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
   const Tensor& tensor = ml_value.Get<Tensor>();
@@ -118,6 +120,158 @@ DLManagedTensor* ort_value_to_dlpack(const OrtValue& ml_value) {
   ort_dlmanaged_tensor->tensor.dl_tensor.strides = nullptr;
   ort_dlmanaged_tensor->tensor.dl_tensor.byte_offset = 0;
   return &(ort_dlmanaged_tensor->tensor);
+}
+
+onnxruntime::MLDataType get_ortvalue_data_type(const DLDataType& dtype) {
+  onnxruntime::MLDataType ml_dtype;
+
+  if (dtype.lanes != 1) {
+    ORT_THROW("ONNX Runtime does not support lanes != 1");
+  }
+
+  switch (dtype.code) {
+    case DLDataTypeCode::kDLUInt:
+      switch (dtype.bits) {
+        case 8:
+          ml_dtype = DataTypeImpl::GetTensorType<uint8_t>();
+          break;
+        default:
+          ORT_THROW("Unsupported kUInt bits " + dtype.bits);
+      }
+      break;
+    case DLDataTypeCode::kDLInt:
+      switch (dtype.bits) {
+        case 8:
+          ml_dtype = DataTypeImpl::GetTensorType<int8_t>();
+          break;
+        case 16:
+          ml_dtype = DataTypeImpl::GetTensorType<int16_t>();
+          break;
+        case 32:
+          ml_dtype = DataTypeImpl::GetTensorType<int>();
+          break;
+        case 64:
+          ml_dtype = DataTypeImpl::GetTensorType<int64_t>();
+          break;
+        default:
+          ORT_THROW("Unsupported kInt bits " + dtype.bits);
+      }
+      break;
+    case DLDataTypeCode::kDLFloat:
+      switch (dtype.bits) {
+        case 16:
+          ml_dtype = DataTypeImpl::GetTensorType<MLFloat16>();
+          break;
+        case 32:
+          ml_dtype = DataTypeImpl::GetTensorType<float>();
+          break;
+        case 64:
+          ml_dtype = DataTypeImpl::GetTensorType<double>();
+          break;
+        default:
+          ORT_THROW("Unsupported kFloat bits " + dtype.bits);
+      }
+      break;
+    default:
+      ORT_THROW("Unsupported code " + dtype.code);
+  }
+
+  return ml_dtype;
+}
+
+onnx::TensorProto_DataType get_ortvalue_data_type2(const DLDataType& dtype) {
+  onnx::TensorProto_DataType ml_dtype;
+
+  if (dtype.lanes != 1) {
+    ORT_THROW("ONNX Runtime does not support lanes != 1");
+  }
+
+  switch (dtype.code) {
+    case DLDataTypeCode::kDLUInt:
+      switch (dtype.bits) {
+        case 8:
+          ml_dtype = data_types_internal::ToTensorDataType<uint8_t>();
+          break;
+        default:
+          ORT_THROW("Unsupported kUInt bits " + dtype.bits);
+      }
+      break;
+    // case DLDataTypeCode::kDLInt:
+    //   switch (dtype.bits) {
+    //     case 8:
+    //       ml_dtype = ToTensorDataType<int8_t>();
+    //       break;
+    //     case 16:
+    //       ml_dtype = DataTypeImpl::GetTensorType<int16_t>();
+    //       break;
+    //     case 32:
+    //       ml_dtype = DataTypeImpl::GetTensorType<int>();
+    //       break;
+    //     case 64:
+    //       ml_dtype = DataTypeImpl::GetTensorType<int64_t>();
+    //       break;
+    //     default:
+    //       ORT_THROW("Unsupported kInt bits " + dtype.bits);
+    //   }
+    //   break;
+    // case DLDataTypeCode::kDLFloat:
+    //   switch (dtype.bits) {
+    //     case 16:
+    //       ml_dtype = DataTypeImpl::GetTensorType<MLFloat16>();
+    //       break;
+    //     case 32:
+    //       ml_dtype = DataTypeImpl::GetTensorType<float>();
+    //       break;
+    //     case 64:
+    //       ml_dtype = DataTypeImpl::GetTensorType<double>();
+    //       break;
+    //     default:
+    //       ORT_THROW("Unsupported kFloat bits " + dtype.bits);
+    //   }
+    //   break;
+    default:
+      ORT_THROW("Unsupported code " + dtype.code);
+  }
+
+  return ml_dtype;
+}
+
+// static OrtDevice getORTDevice(const DLContext& ctx) {
+//   switch (ctx.device_type) {
+//     case DLDeviceType::kDLCPU:
+//       return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0);
+//     case DLDeviceType::kDLGPU:
+//       return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, ctx.device_id);
+//     case DLDeviceType::kDLCPUPinned:
+//       return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::CUDA_PINNED, ctx.device_id);
+//     default:
+//       ORT_THROW("Unsupported device_type: " + ctx.device_type);
+//   }
+// }
+
+void deleter2(void* arg) { delete static_cast<OrtDLManagedTensor*>((static_cast<DLManagedTensor*>(arg)->manager_ctx)); }
+
+OrtValue ortvalue_from_dlpack(const DLManagedTensor* src, AllocatorPtr alloc) {
+  // OrtDevice device = getORTDevice(src->dl_tensor.ctx);
+  auto dtype = get_ortvalue_data_type2(src->dl_tensor.dtype);
+  auto deleter3 = [src](void*) -> void *{
+    src->deleter(const_cast<DLManagedTensor*>(src));
+    return nullptr;
+  };
+  (void)deleter3;
+
+    // return at::from_blob(src->dl_tensor.data,
+    //     IntArrayRef(src->dl_tensor.shape, src->dl_tensor.ndim),
+    //     deleter,
+    //     at::device(device).dtype(stype));
+
+  // OrtValue p_mlvalue = OrtValue(static_cast<void*>(src->dl_tensor.data),
+  //                               static_cast<onnxruntime::MLDataType>(dtype),
+  //                               static_cast<onnxruntime::DeleteFunc>(deleter2));
+
+  // auto x = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(dtype->TypeAsProto()->tensor_type().elem_type());
+  OrtValue p_mlvalue = Ort::Value::CreateTensor(alloc, src->dl_tensor.shape, src->dl_tensor.ndim, dtype);
+  return p_mlvalue;
 }
 
 }  // namespace python
