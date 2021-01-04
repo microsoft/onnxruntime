@@ -1661,7 +1661,6 @@ TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
-  Model::Save(*p_model, "concat_slice_transformed.onnx");
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Concat"] == 0);
   ASSERT_TRUE(op_to_count["Slice"] == 0);
