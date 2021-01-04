@@ -189,15 +189,19 @@ class ORTModule(torch.nn.Module):
             self._onnx_forward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_forward_model())
             self._onnx_backward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_backward_model())
             self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
-            self._forward_session = onnxruntime.InferenceSession(self._onnx_forward.SerializeToString())
-            self._backward_session = onnxruntime.InferenceSession(self._onnx_backward.SerializeToString())
 
             if self._device.type == 'cuda':
                 # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-                device_index = _get_device_index(next(iter(self._original_module.parameters())).device)
-                for sess in [self._forward_session, self._backward_session]:
-                    sess.set_providers(["CUDAExecutionProvider", "CPUExecutionProvider"],
-                                       [{"device_id": device_index}, {}])
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                provider_options = [{"device_id": str(self._device.index)}, {}]
+            elif self._device.type == 'cpu':
+                providers = ["CPUExecutionProvider"]
+                provider_options = [{}]
+
+            self._forward_session = onnxruntime.InferenceSession(
+                self._onnx_forward.SerializeToString(), providers=providers, provider_options=provider_options)
+            self._backward_session = onnxruntime.InferenceSession(
+                self._onnx_backward.SerializeToString(), providers=providers, provider_options=provider_options)
 
             # IO binding
             # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
