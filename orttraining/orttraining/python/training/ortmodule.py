@@ -190,11 +190,12 @@ class ORTModule(torch.nn.Module):
             self._onnx_backward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_backward_model())
             self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
 
-            if self._device.type == 'cuda':
+            model_device = torch.device(self._device)
+            if model_device.type == 'cuda':
                 # Configure the InferenceSessions to use the specific GPU on which the model is placed.
                 providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-                provider_options = [{"device_id": str(self._device.index)}, {}]
-            elif self._device.type == 'cpu':
+                provider_options = [{"device_id": str(model_device)}, {}]
+            elif model_device.type == 'cpu':
                 providers = ["CPUExecutionProvider"]
                 provider_options = [{}]
 
