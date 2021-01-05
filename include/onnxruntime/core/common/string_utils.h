@@ -50,6 +50,20 @@ std::string MakeString(const Args&... args) {
   return ss.str();
 }
 
+/**
+ * Makes a string by concatenating string representations of the arguments.
+ * This version uses the current locale.
+ */
+template <typename... Args>
+std::string MakeStringLite(const Args&... args) {
+  std::ostringstream ss;
+  // the following line causes a binary size increase
+  //ss.imbue(std::locale::classic());
+  // just use the current locale for this lite version
+  detail::MakeStringImpl(ss, args...);
+  return ss.str();
+}
+
 // MakeString versions for already-a-string types.
 
 inline std::string MakeString(const std::string& str) {
