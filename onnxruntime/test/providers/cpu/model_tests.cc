@@ -49,7 +49,6 @@ TEST_P(ModelTest, Run) {
   ASSERT_NE(pos, std::string::npos);
   std::string provider_name = ToMBString(param.substr(0, pos));
   std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
-  std::cout << model_path << std::endl;
   double per_sample_tolerance = 1e-3;
   // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
   // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
@@ -126,9 +125,10 @@ TEST_P(ModelTest, Run) {
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
   if (provider_name == "nuphar") {
+    // https://msdata.visualstudio.com/Vienna/_workitems/edit/1000703
     broken_tests.insert({"fp16_test_tiny_yolov2", "Computed value is off by a bit more than tol."});
-    broken_tests.insert({"keras2coreml_Repeat_ImageNet", "Argument arg_name has an unsatisfied constraint."});
-    broken_tests.insert({"fp16_coreml_FNS-Candy", ""});
+    broken_tests.insert({"keras2coreml_Repeat_ImageNet", "this test fails with Nuphar EP."});
+    broken_tests.insert({"fp16_coreml_FNS-Candy", "this test fails with Nuphar EP."});
   }
 
   if (provider_name == "nnapi") {
