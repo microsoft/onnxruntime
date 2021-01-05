@@ -2,7 +2,7 @@ parameters:
   AgentPool : 'Linux-CPU'
   JobName : 'Linux_CI_Dev'
   SubmoduleCheckoutMode: ''
-  RunDockerBuildArgs: '-o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
+  RunDockerBuildArgs: '-o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--build_wheel"'
   DoNodejsPack: 'false'
   DoNugetPack: 'false'
   NuPackScript: ''

@@ -63,23 +63,23 @@ option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
-option(onnxruntime_USE_MKLML "Build the default cpu provider with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
-option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
-option(onnxruntime_USE_JEMALLOC "Use jemalloc" OFF)
 option(onnxruntime_MSVC_STATIC_RUNTIME "Compile for the static CRT" OFF)
 option(onnxruntime_GCC_STATIC_CPP_RUNTIME "Compile for the static libstdc++" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
+
 option(onnxruntime_USE_TVM "Build tvm for code-gen" OFF)
+option(onnxruntime_USE_LLVM "Build tvm with LLVM" OFF)
+
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
 option(onnxruntime_USE_AVX2 "Use AVX2 instructions" OFF)
 option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
-option(onnxruntime_USE_LLVM "Build tvm with LLVM" OFF)
+
 option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
@@ -126,16 +126,9 @@ option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with suppor
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 
-# training options
-option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
-option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
-option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
-option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
-option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
 option(onnxruntime_USE_VALGRIND "Build with valgrind hacks" OFF)
-option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
 # A special build option only used for gathering code coverage info
 option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
@@ -143,6 +136,15 @@ option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mo
 # options for security fuzzing
 # build configuration for fuzz testing is in onnxruntime_fuzz_test.cmake
 option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
+
+# training options
+option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
+option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
+option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
+option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
+option(onnxruntime_USE_MPI "Build with MPI support" OFF)
+
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
 # using the MSVC compiler and on windows OS.
@@ -202,12 +204,7 @@ if(onnxruntime_USE_OPENMP)
   if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    include_directories(${OpenMP_CXX_INCLUDE_DIR})
-    # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
-    # Disable the options to build mklml/NGraph and OpenMP together.
-    if((WIN32 OR APPLE) AND onnxruntime_USE_MKLML)
-      message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
-    endif()
+    include_directories(${OpenMP_CXX_INCLUDE_DIR})    
   else()
     message(WARNING "Flag --use_openmp is specified, but OpenMP is not found in current build environment. Setting it to OFF.")
     set(onnxruntime_USE_OPENMP OFF)
@@ -792,8 +789,7 @@ if (onnxruntime_USE_ARMNN)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
 endif()
 
-# MKLML
-if (onnxruntime_USE_DNNL OR onnxruntime_USE_MKLML)
+if (onnxruntime_USE_DNNL)
   include(dnnl)
 endif()
 
@@ -809,28 +805,12 @@ if (onnxruntime_USE_TVM)
   if (onnxruntime_USE_OPENMP)
     set(USE_OPENMP "gnu")
   endif()
-  if (onnxruntime_USE_MKLML)
-    set(USE_OPENMP "intel")
-    # make sure MKLML in ORT is used by TVM
-    if (WIN32)
-      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_IMPORT_LIB})
-    else()
-      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB})
-    endif()
-  endif()
 
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
   set_target_properties(nnvm_compiler PROPERTIES FOLDER "External/tvm")
-
-  if (onnxruntime_USE_MKLML)
-    add_dependencies(tvm project_mklml)
-    add_dependencies(tvm_topi project_mklml)
-    add_dependencies(tvm_runtime project_mklml)
-    add_dependencies(nnvm_compiler project_mklml)
-  endif()
 
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
@@ -880,21 +860,6 @@ endif()
 set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")
 set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
 
-if (onnxruntime_USE_MKLML)
-  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
-  if (WIN32 OR APPLE)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
-  else()
-    if(onnxruntime_USE_OPENMP)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_gnu)
-    else()
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
-  include_directories(${MKLML_INCLUDE_DIR})
-  link_directories(${MKLML_LIB_DIR})
-endif()
 
 # fix a warning in onnx code we can't do anything about
 if (MSVC)

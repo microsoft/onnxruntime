@@ -25,7 +25,8 @@ jobs:
         -m
       DisplayName: 'Build'
 
-    # all distributed tests
+    # Entry point for all distributed CI tests.
+    # Refer to orttraining/orttraining/test/python/how_to_add_distributed_ci_pipeline_tests.md for guidelines on how to add new tests to this pipeline.
   - script: |
       docker run \
         --gpus all \
