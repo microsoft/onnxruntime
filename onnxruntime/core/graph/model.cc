@@ -624,8 +624,8 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, producer_version, fbs_model.producer_version());
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, domain, fbs_model.domain());
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, doc_string, fbs_model.doc_string());
-  if (fbs_model.graph() && fbs_model.graph()->doc_string()) {
-    model->model_proto_.mutable_graph()->set_doc_string(fbs_model.graph()->doc_string()->c_str());
+  if (fbs_model.graph_doc_string()) {
+    model->model_proto_.mutable_graph()->set_doc_string(fbs_model.graph_doc_string()->c_str());
   }
   model->model_proto_.set_model_version(fbs_model.model_version());
   model->model_proto_.set_ir_version(fbs_model.ir_version());
@@ -634,9 +634,7 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   experimental::utils::LoadStringFromOrtFormat(model->producer_version_, fbs_model.producer_version());
   experimental::utils::LoadStringFromOrtFormat(model->domain_, fbs_model.domain());
   experimental::utils::LoadStringFromOrtFormat(model->doc_string_, fbs_model.doc_string());
-  if (fbs_model.graph() && fbs_model.graph()->doc_string()) {
-    model->graph_doc_string_ = fbs_model.graph()->doc_string()->c_str();
-  }
+  experimental::utils::LoadStringFromOrtFormat(model->graph_doc_string_, fbs_model.graph_doc_string());
   model->model_version_ = fbs_model.model_version();
   model->ir_version_ = fbs_model.ir_version();
 #endif
