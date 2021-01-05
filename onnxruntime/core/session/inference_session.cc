@@ -1359,14 +1359,13 @@ static common::Status CheckTypes(MLDataType actual, MLDataType expected) {
   if (actual == expected) {
     return Status::OK();
   }
-#ifdef ORT_NO_RTTI
-  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unexpected input data type");
-#else
+
+  //auto actual_name = std::string(DataTypeImpl::ToString(actual));
+  //auto expected_name = std::string(DataTypeImpl::ToString(expected));
   auto actual_name = std::string(typeid(*actual).name());
   auto expected_name = std::string(typeid(*expected).name());
   return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                 "Unexpected input data type. Actual: (" + actual_name + ") , expected: (" + expected_name + ")");
-#endif
 }
 
 common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,

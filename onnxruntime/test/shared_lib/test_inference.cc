@@ -743,18 +743,18 @@ TEST(CApiTest, io_binding_cuda) {
   };
 
   Ort::SessionOptions session_options;
-  #ifdef USE_TENSORRT
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
-  #else
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
-  #endif
+#ifdef USE_TENSORRT
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
+#else
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
-  #ifdef USE_TENSORRT
-    Ort::MemoryInfo info_cuda("Tensorrt", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-  #else
-    Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-  #endif
+#ifdef USE_TENSORRT
+  Ort::MemoryInfo info_cuda("Tensorrt", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#else
+  Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#endif
 
   Ort::Allocator cuda_allocator(session, info_cuda);
   auto allocator_info = cuda_allocator.GetInfo();
@@ -1296,3 +1296,34 @@ TEST(CApiTest, TestSharingOfInitializer) {
                     expected_values_y,
                     nullptr);
 }
+
+#ifndef ORT_NO_RTTI
+TEST(CApiTest, TestIncorrectInputTypeToModel) {
+  // simple inference test
+  // prepare inputs (incorrect type)
+  Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  double data[] = {2., 1., 4., 3., 6., 5.};
+  const int data_len = sizeof(data) / sizeof(data[0]);
+  const int64_t shape[] = {3, 2};
+  const size_t shape_len = sizeof(shape) / sizeof(shape[0]);
+  Ort::Value val = Ort::Value::CreateTensor<double>(mem_info, data, data_len, shape, shape_len);
+
+  std::vector<const char*> input_names{"X"};
+  const char* output_names[] = {"Y"};
+  Ort::SessionOptions session_options;
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+  bool exception_thrown = false;
+  try {
+    auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), &val, 1, output_names, 1);
+  } catch (Ort::Exception ex) {
+    exception_thrown = true;
+    const char* exception_string = ex.what();
+    ASSERT_TRUE(strcmp(exception_string,
+                       "Unexpected input data type. Actual: (class onnxruntime::PrimitiveDataType<double>) , "
+                       "expected: (class onnxruntime::PrimitiveDataType<float>)") == 0);
+  }
+
+  ASSERT_TRUE(exception_thrown);
+}
+#endif

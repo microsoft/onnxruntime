@@ -723,6 +723,8 @@ const char* DataTypeImpl::ToString(MLDataType type) {
 #ifdef ORT_NO_RTTI
   return "(unknown type)";
 #else
+  // TODO: name() method of `type_info` class is implementation dependent
+  // and may return a mangled non-human readable string which may have to be unmangled
   return typeid(*type).name();
 #endif
 }
