@@ -1,14 +1,13 @@
 import os
 import onnx
-from onnxmltools.utils import load_model, save_model
 import glob
 import scipy.io
 import numpy as np
-from onnxruntime.quantization import get_calibrator, TRTResNet50DataReader, TRTResNet50Evaluator, generate_calibration_table, write_calibration_table
+from onnxruntime.quantization import get_calibrator, ImageNetDataReader, ImageClassificationEvaluator, generate_calibration_table, write_calibration_table
 
 def get_prediction_evaluation(model_path, input_name, batch_size, dataset_path, dataset_offset, dataset_size, synset_id, providers=["TensorrtExecutionProvider"]):
-    data_reader = TRTResNet50DataReader(dataset_path, start_index=dataset_offset, end_index=dataset_offset+dataset_size, stride=dataset_size, batch_size=batch_size, model_path=model_path, input_name=input_name)
-    evaluator = TRTResNet50Evaluator(model_path, synset_id, data_reader, providers=providers)
+    data_reader = ImageNetDataReader(dataset_path, start_index=dataset_offset, end_index=dataset_offset+dataset_size, stride=dataset_size, batch_size=batch_size, model_path=model_path, input_name=input_name)
+    evaluator = ImageClassificationEvaluator(model_path, synset_id, data_reader, providers=providers)
     evaluator.predict()
     result = evaluator.get_result()
     evaluator.evaluate(result)
@@ -18,7 +17,7 @@ def get_calibration_table(model_path, input_name, batch_size, augmented_model_pa
     start_index = 0
     stride=calibration_dataset_size
     for i in range(0, calibration_dataset_size, stride):
-        data_reader = TRTResNet50DataReader(dataset_path,start_index=start_index, end_index=start_index+stride, stride=stride, batch_size=batch_size, model_path=augmented_model_path, input_name=input_name)
+        data_reader = ImageNetDataReader(dataset_path,start_index=start_index, end_index=start_index+stride, stride=stride, batch_size=batch_size, model_path=augmented_model_path, input_name=input_name)
         calibrator.set_data_reader(data_reader)
         generate_calibration_table(calibrator, model_path, augmented_model_path, False, data_reader)
         start_index += stride
@@ -53,7 +52,12 @@ def get_synset_id(dataset_path, offset, dataset_size):
         seq_num.append(int(file.split("_")[-1].split(".")[0]))
     id = np.array([id[index-1] for index in seq_num])       
     synset_id = np.array([synset_to_id[id_to_synset[index]] for index in id])
-    return synset_id
+
+    # one-hot encoding
+    synset_id_onehot = np.zeros((len(synset_id), 1000), dtype=np.float32)
+    for i, id in enumerate(synset_id):
+        synset_id_onehot[i, id] = 1.0
+    return synset_id_onehot
 
 def convert_model_batch_to_dynamic(model_path):
     model = onnx.load(model_path)
@@ -66,7 +70,7 @@ def convert_model_batch_to_dynamic(model_path):
         model = onnx.shape_inference.infer_shapes(model)        
         model_name = model_path.split(".")
         model_path = model_name[0] + "_dynamic.onnx"
-        save_model(model, model_path)
+        onnx.save(model, model_path)
     return [model_path, input_name]
 
 def get_dataset_size(dataset_path, calibration_dataset_size):

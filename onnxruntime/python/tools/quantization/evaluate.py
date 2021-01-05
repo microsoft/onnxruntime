@@ -10,7 +10,6 @@ from .calibrate import CalibrationDataReader, calibrate
 import onnxruntime
 import numpy as np
 import glob
-from keras.utils import to_categorical
 
 class YoloV3Evaluator: 
     def __init__(self, model_path,
@@ -316,11 +315,10 @@ class TRTResNet50Evaluator:
     def evaluate(self, prediction_results):
         batch_size = len(prediction_results[0][0])
         total_val_images = len(prediction_results) * batch_size
-        y_truth = to_categorical(self.synset_id, 1000)
         y_prediction = np.empty((total_val_images, 1000), dtype=np.float32)
         i = 0
         for res in prediction_results:
             y_prediction[i:i + batch_size,:] = res[0]
             i = i + batch_size     
-        print("top 1: ", self.top_k_accuracy(y_truth, y_prediction, k=1))   
-        print("top 5: ", self.top_k_accuracy(y_truth, y_prediction, k=5))
+        print("top 1: ", self.top_k_accuracy(self.synset_id, y_prediction, k=1))   
+        print("top 5: ", self.top_k_accuracy(self.synset_id, y_prediction, k=5))

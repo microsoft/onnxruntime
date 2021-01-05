@@ -135,7 +135,7 @@ def yolov3_vision_preprocess_func(images_folder, height, width, start_index=0, s
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data, batch_filenames, image_size_list
 
-def trt_resnet50_preprocess_func(images_folder, height, width, start_index=0, size_limit=0):
+def imagenet_preprocess_func(images_folder, height, width, start_index=0, size_limit=0):
     '''
     Loads a batch of images and preprocess them
     parameter images_folder: path to folder storing images

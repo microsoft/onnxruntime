@@ -1,5 +1,5 @@
 from onnxruntime.quantization import CalibrationDataReader 
-from .preprocessing import yolov3_preprocess_func, yolov3_vision_preprocess_func, trt_resnet50_preprocess_func
+from .preprocessing import yolov3_preprocess_func, yolov3_vision_preprocess_func, imagenet_preprocess_func
 import onnxruntime
 from argparse import Namespace
 import os
@@ -229,7 +229,7 @@ class YoloV3VisionDataReader(YoloV3DataReader):
 
         return batches
 
-class TRTResNet50DataReader(CalibrationDataReader):
+class ImageNetDataReader(CalibrationDataReader):
     def __init__(self, image_folder,
                        width=224,
                        height=224,
@@ -295,7 +295,7 @@ class TRTResNet50DataReader(CalibrationDataReader):
     def load_serial(self):
         width = self.width 
         height = self.width 
-        nchw_data_list, filename_list, image_size_list = trt_resnet50_preprocess_func(self.image_folder, height, width, self.start_index, self.stride)
+        nchw_data_list, filename_list, image_size_list = imagenet_preprocess_func(self.image_folder, height, width, self.start_index, self.stride)
         input_name = self.input_name
 
         data = []
@@ -315,7 +315,7 @@ class TRTResNet50DataReader(CalibrationDataReader):
         batches = []
         for index in range(0, stride, batch_size):
             start_index = self.start_index + index 
-            nchw_data_list, filename_list, image_size_list = trt_resnet50_preprocess_func(self.image_folder, height, width, start_index, batch_size)
+            nchw_data_list, filename_list, image_size_list = imagenet_preprocess_func(self.image_folder, height, width, start_index, batch_size)
 
             if nchw_data_list.size == 0:
                 break
