@@ -50,10 +50,7 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
         data = data.reshape(data.shape[0], -1).half()
 
         optimizer.zero_grad()
-        if args.pytorch_only:
-            probability = model(data)
-        else:
-            probability = model(data)
+        probability = model(data)
 
         if args.view_graphs:
             import torchviz
