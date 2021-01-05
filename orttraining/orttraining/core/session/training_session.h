@@ -431,11 +431,10 @@ class TrainingSession : public InferenceSession {
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
                                    pipeline::PipelineTensorNames& pipeline_tensor_names);
 
-  common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config);
 
   common::Status ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
-                                                              const TrainingConfiguration::GraphTransformerConfiguration& config,
                                                               TrainingConfigurationResult& config_result_out);
 
   /** configure initial transformers for training */

@@ -274,8 +274,7 @@ Status TrainingSession::ConfigureForTraining(
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
 
-  ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
-                                                                   config_result));
+  ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config_result));
 
   weight_partition_info_ = config_result.weight_partition_info;
 
@@ -578,7 +577,7 @@ static Status AddGradientAccumulationNodes(Graph& graph,
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
-Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
                                                         const TrainingConfiguration::GraphTransformerConfiguration& config) {
   GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
@@ -654,7 +653,6 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
 }
 
 Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
-                                                                     const TrainingConfiguration::GraphTransformerConfiguration& /*config*/,
                                                                      TrainingConfigurationResult& config_result_out) {
   const auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
   if (horizontal_parallel_size == 1) {
