@@ -99,7 +99,7 @@ class DnnlReluGrad : public DnnlKernel {
 
       xgrad_shape = TensorShape(xgradshape, xgraddim);
 
-      if (xgrad_shape.NumDimensions() == 0) {
+      if (xgrad_shape.Size() == 0) {
         primitive_created_status_ = Status(common::ONNXRUNTIME,
                                            common::INVALID_ARGUMENT,
                                            "Shape of size zero " + xgrad_shape.ToString());
@@ -132,7 +132,7 @@ class DnnlReluGrad : public DnnlKernel {
 
       x_shape = TensorShape(xshape, xdim);
 
-      if (x_shape.NumDimensions() == 0) {
+      if (x_shape.Size() == 0) {
         primitive_created_status_ = Status(common::ONNXRUNTIME,
                                            common::INVALID_ARGUMENT,
                                            "Shape of size zero " + x_shape.ToString());

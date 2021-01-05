@@ -70,8 +70,10 @@ class SubgraphPrimitive : public PrimitiveBase {
  private:
   void CreateKernels(const SubgraphParams& params) {
     for (const auto& dnnl_node : params.subgraph->dnnl_nodes) {
+#ifdef ENABLE_TRAINING
       if (dnnl_node.node_index == 0)
         params.provider->fwd_conv_stack.clear();
+#endif  // ENABLE_TRAINING
       if (dnnl_node.name == "Conv") {
         std::ostringstream os;
         os << "Conv-" << dnnl_node.node_index << "-";

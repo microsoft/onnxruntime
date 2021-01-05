@@ -60,7 +60,7 @@ class DnnlRelu : public DnnlKernel {
 
       x_shape = TensorShape(xshape, xdim);
 
-      if (x_shape.NumDimensions() == 0) {
+      if (x_shape.Size() == 0) {
         primitive_created_status_ = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Shape of size zero " + x_shape.ToString());
         return;
       }
