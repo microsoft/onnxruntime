@@ -1,6 +1,5 @@
 import os
 import onnx
-from onnxmltools.utils import load_model, save_model
 import glob
 import scipy.io
 import numpy as np
@@ -66,7 +65,7 @@ def convert_model_batch_to_dynamic(model_path):
         model = onnx.shape_inference.infer_shapes(model)        
         model_name = model_path.split(".")
         model_path = model_name[0] + "_dynamic.onnx"
-        save_model(model, model_path)
+        onnx.save(model, model_path)
     return [model_path, input_name]
 
 def get_dataset_size(dataset_path, calibration_dataset_size):
