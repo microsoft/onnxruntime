@@ -420,7 +420,7 @@ class TrainingSession : public InferenceSession {
                                 const std::vector<std::string>& norm_nodes,
                                 const bool dump_convergence_metrics);
 
-  virtual Status PartitionGraphForPipeline(
+  virtual common::Status PartitionGraphForPipeline(
       const int32_t pipeline_stage_id,
       const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
       const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
@@ -447,7 +447,7 @@ class TrainingSession : public InferenceSession {
   //  3. Backward operators' descriptions are all "Backward pass". This assumption is used to
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
-  virtual Status SetEventSynchronization(
+  virtual common::Status SetEventSynchronization(
       const int32_t pipeline_stage_id,
       const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
       const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
@@ -559,19 +559,25 @@ class PipelineTrainingSession final : public TrainingSession {
   ~PipelineTrainingSession();
 
  protected:
-  Status PartitionGraphForPipeline(
+  common::Status PartitionGraphForPipeline(
       const int32_t pipeline_stage_id,
       const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
       const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
       const std::unordered_set<std::string>& weight_names_to_train,
       std::unordered_set<std::string>& filtered_config_weight_names_to_train) override;
 
-  Status SetEventSynchronization(
+  common::Status SetEventSynchronization(
       const int32_t pipeline_stage_id,
       const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
       const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
       const std::unordered_set<std::string>& weight_names_to_train,
       optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result) override;
+
+  // Set some PipelineContext fields based on configuration result
+  // returned by TrainingSession::ConfigureForTraining.
+  common::Status SetPipelineContext(const TrainingConfigurationResult& config_result);
+
+  common::Status SetExtraDataDependency();
 
   void CreatePipelineEvents(
       const bool traning_mode,

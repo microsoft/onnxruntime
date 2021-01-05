@@ -765,6 +765,47 @@ Status TransformGraphForPipeline(
   return Status::OK();
 }
 
+// See header file for this function's doc.
+void SetDataDependency(
+    Graph& graph,
+    Node& postponed_node,                             // node should happen after computing dependent_args.
+    const std::vector<NodeArg*>& dependent_node_args  // extra data-dependency to add to "postponed_node"
+    ) {
+  // "postponed_node"'s original inputs + "dependent_args"
+  std::vector<NodeArg*> pass_through_inputs;
+  // the mirror of "postponed_node"'s original inputs + "dependent_args"
+  std::vector<NodeArg*> pass_through_outputs;
+
+  // Step 1: For each downstream operator, we add its original inputs to PassThrough.
+  //          Then, we replace the original inputs with the corresponding outputs produced by PassThrough.
+  for (auto& node_arg : postponed_node.MutableInputDefs()) {
+    // Skip non-existing inputs.
+    if (!node_arg->Exists())
+      continue;
+    ORT_ENFORCE(node_arg, "Non-existing NodeArg cannot be used as input of PassThrough.");
+    NodeArg* mirror_node_arg = &CreateNodeArg(graph, *node_arg);
+    pass_through_inputs.push_back(node_arg);
+    pass_through_outputs.push_back(mirror_node_arg);
+    node_arg = mirror_node_arg;
+  }
+
+  // Step 2: Add dependents to PassThrough so that PassThrough will be computed after generating dependents.
+  for (auto& node_arg : dependent_node_args) {
+    ORT_ENFORCE(node_arg->Exists(), "Non-existing NodeArg cannot be used as input of PassThrough.");
+    // Retrieve NodeArg by name.
+    NodeArg* mirror_node_arg = &CreateNodeArg(graph, *node_arg);
+    pass_through_inputs.push_back(node_arg);
+    // This mirror variable is not used by optimizer, so we don't need node_arg = mirror_node_arg.
+    pass_through_outputs.push_back(mirror_node_arg);
+  }
+
+  // Step 3: Create PassThrough.
+  graph.AddNode(graph.GenerateNodeName("OrderingPassThrough"),
+                "PassThrough", "", pass_through_inputs, pass_through_outputs, nullptr, kMSDomain);
+
+  graph.Resolve();
+}
+
 // This function is used when you want to create a scalar constant in a graph.
 // It may create a NodeArg so that other Node can references its value.
 // It also cerates an initializer to store its value.
