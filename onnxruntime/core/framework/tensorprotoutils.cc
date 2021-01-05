@@ -888,8 +888,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   return status;
 }
 
-
-#if !defined (ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD)
 // Determines if this is a type specific zero
 using IsZeroFunc = bool (*)(const void*);
 // Copy element
@@ -996,8 +995,8 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
 
 #endif  // !ORT_MINIMAL_BUILD
 
-template common::Status GetSizeInBytesFromTensorProto<256>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                           size_t* out);
+template common::Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                                       size_t* out);
 template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
 #define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                                         \

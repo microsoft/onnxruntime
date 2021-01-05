@@ -3,6 +3,7 @@ import onnx
 import os
 import torch
 import warnings
+from . import _checkpoint_storage, _utils
 
 
 ################################################################################
@@ -11,6 +12,9 @@ import warnings
 
 
 def experimental_state_dict(ort_trainer, include_optimizer_state=True):
+    warnings.warn("experimental_state_dict() will be deprecated soon. "
+                "Please use ORTTrainer.state_dict() instead.", DeprecationWarning)
+
     if not ort_trainer._training_session:
         warnings.warn("ONNX Runtime training session is not initialized yet. "
                         "Please run train_step or eval_step at least once before calling state_dict().")
@@ -34,6 +38,9 @@ def experimental_state_dict(ort_trainer, include_optimizer_state=True):
 
 
 def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
+    warnings.warn("experimental_load_state_dict() will be deprecated soon. "
+                "Please use ORTTrainer.load_state_dict() instead.", DeprecationWarning)
+
     # Note: It may happen ONNX model has not yet been initialized
     # In this case we cache a reference to desired state and delay the restore until after initialization
     # Unexpected behavior will result if the user changes the reference before initialization
@@ -62,20 +69,11 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
     session_state = {name:state_dict[name].numpy() for name in state_dict}
     ort_trainer._training_session.load_state(session_state, strict)
 
-# Temporary function to test optimizer state loading
-def _experimental_load_optimizer_state(ort_trainer, optim_state_dict):
-    ort_trainer._optim_state_dict = optim_state_dict
-
-    # Note: It may happen ONNX model has not yet been initialized
-    # In this case we cache a reference to desired state and delay the restore until after initialization
-    # Unexpected behavior will result if the user changes the reference before initialization    
-    if not ort_trainer._training_session:
-        return
-
-    ort_trainer._init_session()
-
 
 def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", checkpoint_state_dict=None, include_optimizer_state=True):
+    warnings.warn("experimental_save_checkpoint() will be deprecated soon. "
+                "Please use ORTTrainer.save_checkpoint() instead.", DeprecationWarning)
+
     if checkpoint_state_dict is None:
         checkpoint_state_dict = {'model': experimental_state_dict(ort_trainer, include_optimizer_state)}
     else:
@@ -95,6 +93,9 @@ def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
 
 
 def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", strict=False):
+    warnings.warn("experimental_load_checkpoint() will be deprecated soon. "
+                "Please use ORTTrainer.load_checkpoint() instead.", DeprecationWarning)
+
     checkpoint_files = _list_checkpoint_files(
         checkpoint_dir, checkpoint_prefix)
     is_partitioned = False
@@ -108,6 +109,245 @@ def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
     else:
         return _load_single_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix, is_partitioned, strict)
 
+def _order_paths(paths):
+    """Reorders the given paths in ascending order of rank and return the ordered list"""
+
+    trainer_options_path_tuples = []
+    world_rank = _utils.state_dict_trainer_options_world_rank_key()
+
+    for path in paths:
+        trainer_options_path_tuples.append((_checkpoint_storage.load(path,
+            key=_utils.state_dict_trainer_options_key()), path))
+
+    ordered_paths = [path for _, path in sorted(trainer_options_path_tuples,
+        key=lambda trainer_options_path_pair: trainer_options_path_pair[0][world_rank])]
+
+    return ordered_paths
+
+def _add_or_update_sharded_key_for_zero(state_key, state_value, state_sub_dict,
+                               model_state_key, original_dim, sharded_states_original_dims):
+    """Add or update the record for the sharded state_key in the state_sub_dict"""
+
+    # record the original dimension for this state
+    sharded_states_original_dims[model_state_key] = original_dim
+
+    if state_key in state_sub_dict:
+        # state_dict already contains a record for this state
+        # since this state is sharded, concatenate the state value to
+        # the record in the state_dict
+        state_sub_dict[state_key] = \
+            np.concatenate((state_sub_dict[state_key], state_value))
+    else:
+        # create a new entry for this state in the state_dict
+        state_sub_dict[state_key] = state_value
+
+def _add_or_validate_unsharded_key_for_zero(state_key, state_value, state_sub_dict, mismatch_error_string):
+    """Add or validate the record for the unsharded state_key in the state_sub_dict"""
+
+    if state_key in state_sub_dict:
+        # state_dict already contains a record for this unsharded state.
+        # assert that all values are the same for this previously loaded state
+        assert (state_sub_dict[state_key] == state_value).all(), mismatch_error_string
+    else:
+        # create a new entry for this state in the state_sub_dict
+        state_sub_dict[state_key] = state_value
+
+def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, mixed_precision_enabled):
+    """Aggregates all model states from the rank_state_dict into state_dict"""
+
+    model = _utils.state_dict_model_key()
+    full_precision = _utils.state_dict_full_precision_key()
+    partition_info = _utils.state_dict_partition_info_key()
+    original_dim = _utils.state_dict_original_dimension_key()
+
+    # if there are no model states in the rank_state_dict, no model aggregation is needed
+    if model not in rank_state_dict:
+        return
+
+    if model not in state_dict:
+        state_dict[model] = {}
+
+    if full_precision not in state_dict[model]:
+        state_dict[model][full_precision] = {}
+
+    # iterate over all model state keys
+    for model_state_key, model_state_value in rank_state_dict[model][full_precision].items():
+        # full precision model states are sharded only when they exist in the partition_info subdict and mixed
+        # precision training was enabled. for full precision training, full precision model states are not sharded
+        if mixed_precision_enabled and (model_state_key in rank_state_dict[partition_info]):
+            # this model state is sharded since a record exists in the partition_info subdict
+            _add_or_update_sharded_key_for_zero(model_state_key, model_state_value,
+                state_dict[model][full_precision], model_state_key,
+                rank_state_dict[partition_info][model_state_key][original_dim], sharded_states_original_dims)
+        else:
+            # this model state is not sharded since a record for it does not exist in the partition_info subdict
+            _add_or_validate_unsharded_key_for_zero(model_state_key, model_state_value,
+                state_dict[model][full_precision], "Value mismatch for model state {}".format(model_state_key))
+
+def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict):
+    """Aggregates all optimizer states from the rank_state_dict into state_dict"""
+
+    optimizer = _utils.state_dict_optimizer_key()
+    partition_info = _utils.state_dict_partition_info_key()
+    original_dim = _utils.state_dict_original_dimension_key()
+    sharded_optimizer_keys = _utils.state_dict_sharded_optimizer_keys()
+
+    # if there are no optimizer states in the rank_state_dict, no optimizer aggregation is needed
+    if optimizer not in rank_state_dict:
+        return
+
+    if optimizer not in state_dict:
+        state_dict[optimizer] = {}
+
+    # iterate over all optimizer state keys
+    for model_state_key, optimizer_dict in rank_state_dict[optimizer].items():
+        for optimizer_key, optimizer_value in optimizer_dict.items():
+            if model_state_key not in state_dict[optimizer]:
+                state_dict[optimizer][model_state_key] = {}
+
+            if optimizer_key in sharded_optimizer_keys and model_state_key in rank_state_dict[partition_info]:
+                # this optimizer state is sharded since a record exists in the partition_info subdict
+                _add_or_update_sharded_key_for_zero(optimizer_key, optimizer_value,
+                    state_dict[optimizer][model_state_key], model_state_key,
+                    rank_state_dict[partition_info][model_state_key][original_dim], sharded_states_original_dims)
+            else:
+                # this optimizer state is not sharded since a record for it does not exist in the partition_info subdict
+                # or this optimizer key is not one of the sharded optimizer keys
+                _add_or_validate_unsharded_key_for_zero(optimizer_key, optimizer_value,
+                    state_dict[optimizer][model_state_key],
+                    "Value mismatch for model state {} and optimizer state {}".format(model_state_key, optimizer_key))
+
+def _reshape_states(sharded_states_original_dims, state_dict, mixed_precision_enabled):
+    """Reshape model and optimizer states in the state_dict according to dimensions in sharded_states_original_dims"""
+
+    model = _utils.state_dict_model_key()
+    full_precision = _utils.state_dict_full_precision_key()
+    optimizer = _utils.state_dict_optimizer_key()
+    sharded_optimizer_keys = _utils.state_dict_sharded_optimizer_keys()
+
+    for sharded_state_key, original_dim in sharded_states_original_dims.items():
+        # reshape model states to original_dim only when mixed precision is enabled
+        if mixed_precision_enabled and (model in state_dict):
+            state_dict[model][full_precision][sharded_state_key] = \
+                state_dict[model][full_precision][sharded_state_key].reshape(original_dim)
+
+        # reshape optimizer states to original_dim
+        if optimizer in state_dict:
+            for optimizer_key, optimizer_value in state_dict[optimizer][sharded_state_key].items():
+                if optimizer_key in sharded_optimizer_keys:
+                    state_dict[optimizer][sharded_state_key][optimizer_key] = optimizer_value.reshape(original_dim)
+
+def _aggregate_trainer_options(rank_state_dict, state_dict):
+    """Extracts trainer options from rank_state_dict and loads them accordingly on state_dict"""
+
+    state_dict[_utils.state_dict_trainer_options_key()] = {}
+
+    mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
+    zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
+    world_rank = _utils.state_dict_trainer_options_world_rank_key()
+    world_size = _utils.state_dict_trainer_options_world_size_key()
+    optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+
+    state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = \
+        rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
+    state_dict[_utils.state_dict_trainer_options_key()][zero_stage] = 0
+    state_dict[_utils.state_dict_trainer_options_key()][world_rank] = 0
+    state_dict[_utils.state_dict_trainer_options_key()][world_size] = 1
+    state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = \
+        rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
+
+def _to_pytorch_format(state_dict):
+    """Convert ORT state dictionary schema (hierarchical structure) to PyTorch state dictionary schema (flat structure)"""
+
+    pytorch_state_dict = {}
+    for model_state_key, model_state_value in \
+        state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()].items():
+        # convert numpy array to a torch tensor
+        pytorch_state_dict[model_state_key] = torch.tensor(model_state_value)
+    return pytorch_state_dict
+
+def aggregate_checkpoints(paths, pytorch_format=True):
+    """Aggregate checkpoint files and return a single state dictionary
+
+    Aggregates checkpoint files specified by paths and laods the checkpoint file one at a time merging
+    them into a single state dictionary.
+    The checkpoint files represented by paths must be saved through ORTTrainer.save_checkpoint() function.
+    The schema of the state_dict returned will be in the same as the one returned by ORTTrainer.state_dict()
+
+    Args:
+        paths: list of more than one file represented as strings where the checkpoint is saved
+        pytorch_format: boolean flag to select either ONNX Runtime or PyTorch state schema of the returned state_dict
+    Returns:
+        state_dict that can be loaded into an ORTTrainer or into a PyTorch model
+    """
+
+    # order the paths in ascending order of ranks
+    ordered_paths = _order_paths(paths)
+
+    state_dict = {}
+    sharded_states_original_dims = {}
+    world_rank = _utils.state_dict_trainer_options_world_rank_key()
+    mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
+    zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
+    world_size = _utils.state_dict_trainer_options_world_size_key()
+    optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+
+    loaded_mixed_precision = None
+    loaded_world_size = None
+    loaded_zero_stage = None
+    loaded_optimizer_name = None
+
+    for rank, path in enumerate(ordered_paths):
+        rank_state_dict = _checkpoint_storage.load(path)
+
+        assert _utils.state_dict_partition_info_key() in rank_state_dict, "Missing information: partition_info"
+        assert _utils.state_dict_trainer_options_key() in rank_state_dict, "Missing information: trainer_options"
+        assert rank == rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank], \
+            "Unexpected rank in file at path {}. Expected {}, got {}".\
+                format(path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank])
+        if loaded_mixed_precision is None:
+            loaded_mixed_precision = rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
+        else:
+            assert loaded_mixed_precision == rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision], \
+                "Mixed precision state mismatch among checkpoint files. File: {}".format(path)
+        if loaded_world_size is None:
+            loaded_world_size = rank_state_dict[_utils.state_dict_trainer_options_key()][world_size]
+        else:
+            assert loaded_world_size == rank_state_dict[_utils.state_dict_trainer_options_key()][world_size], \
+                "World size state mismatch among checkpoint files. File: {}".format(path)
+        if loaded_zero_stage is None:
+            loaded_zero_stage = rank_state_dict[_utils.state_dict_trainer_options_key()][zero_stage]
+        else:
+            assert loaded_zero_stage == rank_state_dict[_utils.state_dict_trainer_options_key()][zero_stage], \
+                "Zero stage mismatch among checkpoint files. File: {}".format(path)
+        if loaded_optimizer_name is None:
+            loaded_optimizer_name = rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
+        else:
+            assert loaded_optimizer_name == rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name], \
+                "Optimizer name mismatch among checkpoint files. File: {}".format(path)
+
+        # aggregate all model states
+        _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, loaded_mixed_precision)
+
+        if not pytorch_format:
+            # aggregate all optimizer states if pytorch_format is False
+            _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict)
+
+            # entry for trainer_options in the state_dict to perform other sanity checks
+            if _utils.state_dict_trainer_options_key() not in state_dict:
+                _aggregate_trainer_options(rank_state_dict, state_dict)
+
+            # entry for user_dict in the state_dict if not already present
+            if _utils.state_dict_user_dict_key() not in state_dict and \
+                _utils.state_dict_user_dict_key() in rank_state_dict:
+                state_dict[_utils.state_dict_user_dict_key()] = rank_state_dict[_utils.state_dict_user_dict_key()]
+
+    # reshape all the sharded tensors based on the original dimensions stored in sharded_states_original_dims
+    _reshape_states(sharded_states_original_dims, state_dict, loaded_mixed_precision)
+
+    # return a flat structure for PyTorch model in case pytorch_format is True
+    # else return the hierarchical structure for ORTTrainer
+    return _to_pytorch_format(state_dict) if pytorch_format else state_dict
 
 ################################################################################
 # Helper functions
@@ -201,7 +441,7 @@ class _CombineZeroCheckpoint(object):
         name_split = name.split('_view_')
         view_num = None
         if(len(name_split) > 1):
-            view_num = int(name_split[1])           
+            view_num = int(name_split[1])
         optimizer_key = ''
         mp_suffix = ''
         if name_split[0].startswith('Moment_1'):
@@ -249,6 +489,9 @@ class _CombineZeroCheckpoint(object):
                 self._update_weight_statistics(weight_name, v)
 
     def aggregate_checkpoints(self):
+        warnings.warn("_CombineZeroCheckpoint.aggregate_checkpoints() will be deprecated soon. "
+                    "Please use aggregate_checkpoints() instead.", DeprecationWarning)
+
         checkpoint_prefix = self.checkpoint_files[0].split('.ZeRO')[0]
         self.aggregate_state_dict = dict()
 

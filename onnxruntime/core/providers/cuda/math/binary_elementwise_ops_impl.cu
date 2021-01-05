@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cuda_runtime.h>
-#include "binary_elementwise_ops_impl.h"
+#include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"

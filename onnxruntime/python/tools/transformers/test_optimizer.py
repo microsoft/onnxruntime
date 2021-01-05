@@ -383,6 +383,9 @@ class TestBertOptimization(unittest.TestCase):
     def test_huggingface_dialogpt_fusion(self):
         self._test_optimizer_on_huggingface_model("microsoft/DialoGPT-small", [0, 12, 0, 12, 0, 25, 0])
 
+    def test_huggingface_bart_fusion(self):
+        self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
+    
     def test_bert_base_cased_from_tf(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 1)
         self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 2)

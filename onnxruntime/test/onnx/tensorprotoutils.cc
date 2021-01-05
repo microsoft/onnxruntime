@@ -11,8 +11,10 @@
 #include "mem_buffer.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
+#include "core/common/string_utils.h"
 #include "core/framework/data_types.h"
 #include "core/framework/endian.h"
+#include "core/framework/allocator.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
 #include "callback.h"
@@ -24,37 +26,6 @@ struct OrtStatus {
 
 namespace onnxruntime {
 namespace test {
-
-//From core common
-inline void MakeStringInternal(std::ostringstream& /*ss*/) noexcept {
-}
-
-template <typename T>
-inline void MakeStringInternal(std::ostringstream& ss, const T& t) noexcept {
-  ss << t;
-}
-
-template <typename T, typename... Args>
-inline void MakeStringInternal(std::ostringstream& ss, const T& t, const Args&... args) noexcept {
-  ::onnxruntime::MakeStringInternal(ss, t);
-  ::onnxruntime::MakeStringInternal(ss, args...);
-}
-
-template <typename... Args>
-std::string MakeString(const Args&... args) {
-  std::ostringstream ss;
-  ::onnxruntime::MakeStringInternal(ss, args...);
-  return std::string(ss.str());
-}
-
-// Specializations for already-a-string types.
-template <>
-inline std::string MakeString(const std::string& str) {
-  return str;
-}
-inline std::string MakeString(const char* p_str) {
-  return p_str;
-}
 
 std::vector<int64_t> GetTensorShapeFromTensorProto(const onnx::TensorProto& tensor_proto) {
   const auto& dims = tensor_proto.dims();
@@ -457,7 +428,7 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
   return Status::OK();
 }
 
-template Status GetSizeInBytesFromTensorProto<256>(const onnx::TensorProto& tensor_proto, size_t* out);
+template Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const onnx::TensorProto& tensor_proto, size_t* out);
 template Status GetSizeInBytesFromTensorProto<0>(const onnx::TensorProto& tensor_proto, size_t* out);
 }  // namespace test
 }  // namespace onnxruntime

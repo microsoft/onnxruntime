@@ -35,15 +35,26 @@ namespace onnxruntime {
       alias, newVersion,                                                                                        \
       KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), x<float>);
 
+#define REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(alias, x, sinceVersion, firstEnd, newVersion, type) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                                         \
+      alias, sinceVersion, firstEnd, type,                                                                          \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), x<type>);       \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                   \
+      alias, newVersion, type,                                                                                      \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), x<type>);
+
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Elu, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(HardSigmoid, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 6);
-REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL_ALIAS(Relu, Relu, 6, 12, 13);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Relu, Relu, 6, 12, 13, float);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Relu, Relu, 6, 12, 13, double);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Selu, 6);
-REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL_ALIAS(Sigmoid, Sigmoid, 6, 12, 13);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Sigmoid, Sigmoid, 6, 12, 13, float);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Sigmoid, Sigmoid, 6, 12, 13, double);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Softplus, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Softsign, 1);
-REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL_ALIAS(Tanh, Tanh, 6, 12, 13);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Tanh, Tanh, 6, 12, 13, float);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Tanh, Tanh, 6, 12, 13, double);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 10);
 
 namespace functors {

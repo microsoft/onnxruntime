@@ -331,6 +331,7 @@ struct SliceCustomOpKernel {
     const OrtValue* input_to = ort_.KernelContext_GetInput(context, 2);
     OrtTensorTypeAndShapeInfo* input_X_info = ort_.GetTensorTypeAndShape(input_X);
     ONNXTensorElementDataType input_X_type = ort_.GetTensorElementType(input_X_info);
+    ort_.ReleaseTensorTypeAndShapeInfo(input_X_info);
 #if USE_CUDA
     int64_t slice_from = 0;
     int64_t slice_to = 0;
@@ -728,7 +729,7 @@ TEST(CApiTest, io_binding) {
   binding.ClearBoundOutputs();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
 TEST(CApiTest, io_binding_cuda) {
   struct CudaMemoryDeleter {
     explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
@@ -742,10 +743,19 @@ TEST(CApiTest, io_binding_cuda) {
   };
 
   Ort::SessionOptions session_options;
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  #ifdef USE_TENSORRT
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
+  #else
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  #endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
-  Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  #ifdef USE_TENSORRT
+    Ort::MemoryInfo info_cuda("Tensorrt", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  #else
+    Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  #endif
+
   Ort::Allocator cuda_allocator(session, info_cuda);
   auto allocator_info = cuda_allocator.GetInfo();
   ASSERT_TRUE(info_cuda == allocator_info);
