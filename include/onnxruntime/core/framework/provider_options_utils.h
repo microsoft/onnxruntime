@@ -25,7 +25,7 @@ template <typename TEnum>
 Status EnumToName(const EnumNameMapping<TEnum>& mapping, TEnum value, std::string& name) {
   const auto it = std::find_if(
       mapping.begin(), mapping.end(),
-      [&value](const auto& entry) {
+      [&value](const std::pair<TEnum, std::string>& entry) {
         return entry.first == value;
       });
   ORT_RETURN_IF(
@@ -50,7 +50,7 @@ Status NameToEnum(
     const EnumNameMapping<TEnum>& mapping, const std::string& name, TEnum& value) {
   const auto it = std::find_if(
       mapping.begin(), mapping.end(),
-      [&name](const auto& entry) {
+      [&name](const std::pair<TEnum, std::string>& entry) {
         return entry.second == name;
       });
   ORT_RETURN_IF(
