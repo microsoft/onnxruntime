@@ -3042,7 +3042,7 @@ private:
     MatrixGuardBuffer<OutputType> BufferOutputReference;
 
     void
-        GenerateReference(
+    GenerateReference(
         const float* Input,
         OutputType* OutputReference,
         size_t N,

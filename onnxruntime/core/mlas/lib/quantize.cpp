@@ -273,7 +273,8 @@ MlasQuantizeLinearS8Kernal(
     size_t N,
     float Scale,
     int8_t ZeroPoint
-){
+    )
+{
     MlasQuantizeLinearKernel<int8_t>(Input, Output, N, Scale, ZeroPoint);
 }
 
