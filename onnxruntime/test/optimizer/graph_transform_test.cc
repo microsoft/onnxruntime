@@ -67,6 +67,12 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+  
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#endif
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
@@ -2400,13 +2406,13 @@ struct BiasSoftmaxFusionTester {
   BiasSoftmaxFusionTester(
       const PathString& model_uri,
       onnxruntime::logging::Logger* logger,
-      bool on_cuda_ = true) : logger_(logger), graph_transformation_mgr_{5} {
+      bool on_gpu_ = true) : logger_(logger), graph_transformation_mgr_{5} {
     model_load_ = Model::Load(model_uri, p_model_, nullptr, *logger_);
 
     // move to cuda since fusion only takes place in that case
-    if (on_cuda_) {
+    if (on_gpu_) {
       for (auto& node : p_model_->MainGraph().Nodes()) {
-        node.SetExecutionProviderType(kCudaExecutionProvider);
+        node.SetExecutionProviderType(kGpuExecutionProvider);
       }
     }
 
@@ -2449,7 +2455,7 @@ struct BiasSoftmaxFusionTester {
   }
 };
 
-TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_CudaOnly) {
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_GpuOnly) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get(), false);
   tester.TestNoFusionOccurs();
