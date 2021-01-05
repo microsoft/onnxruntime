@@ -123,7 +123,8 @@ class NupharExecutionProvider : public IExecutionProvider {
 
   Status SaveInitializer(
       const std::string& name,
-      const ONNX_NAMESPACE::TensorProto* proto) const;
+      const ONNX_NAMESPACE::TensorProto* proto,
+      const Path& model_path) const;
 
  private:
   // TODO move this to another place
