@@ -141,6 +141,27 @@ def distributed_zero_mixed_precision_lamb(world_rank, world_size, device, checkp
             }
     create_orttrainer_and_save_checkpoint(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank))
 
+
+@distributed_setup
+def distributed_megatron_mixed_precision_lamb(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_megatron/mixed_precision/lamb/'):
+    opts = {
+                'device' : {'id' : device},
+                'mixed_precision':
+                {
+                    'enabled': True
+                },
+                'distributed' :
+                {
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'horizontal_parallel_size': world_size
+                },
+                'debug' : {'deterministic_compute': True}
+            }
+    create_orttrainer_and_save_checkpoint(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank))
+
+
 function_map = {
     'single_node_full_precision': single_node_full_precision,
     'single_node_mixed_precision': single_node_mixed_precision,

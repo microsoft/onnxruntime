@@ -14,6 +14,7 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Optional, Any, Dict
 import json
+import glob
 
 import unittest
 
@@ -267,7 +268,11 @@ def prepare_model(args, device):
                                                 'world_rank': max(0, args.local_rank),
                                                 'world_size': args.world_size,
                                                 'local_rank': max(0, args.local_rank),
-                                                'horizontal_parallel_size' : args.world_size,
+                                                'horizontal_parallel_size' : 2,
+                                                'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
+                    },
                                                 'allreduce_post_accumulation': args.allreduce_post_accumulation},
                                             'lr_scheduler': lr_scheduler
                                             })
@@ -372,11 +377,14 @@ def do_pretrain(args):
                     
                     print("Step:{} Average Loss = {}".format(global_step, average_loss / divisor))
 
-                if global_step >= args.max_steps or global_step >= force_to_stop_max_steps:
+                if training_steps >= args.max_steps or training_steps >= force_to_stop_max_steps:
                     if tb_writer:
                         tb_writer.close()
 
                     final_loss = average_loss / (args.log_freq * args.gradient_accumulation_steps)
+                    fname = os.path.join(args.output_dir, "bart_ckpt_" + str(args.world_rank) + ".ortpt")
+                    print(fname)
+                    model.save_checkpoint(fname)
                     return final_loss
 
                 average_loss = 0
@@ -384,6 +392,79 @@ def do_pretrain(args):
         del train_dataloader
 
         epoch += 1
+
+def do_eval(args):
+    if is_main_process(args) and args.tensorboard_logdir:
+        tb_writer = SummaryWriter(log_dir=args.tensorboard_logdir)
+        tb_writer.add_text("args", to_json_string(args))
+        tb_writer.add_hparams(to_sanitized_dict(args), metric_dict={})
+    else:
+        tb_writer = None
+
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    ort.set_seed(args.seed)
+
+    device, args = setup_training(args)
+
+    model, task = prepare_model(args, device)
+
+    logger.info("Running training: Batch size = %d, initial LR = %f", args.train_batch_size, args.lr[0])
+
+    most_recent_ckpts_paths = []
+    average_loss = 0.0
+    epoch = 0
+    training_steps = 0
+
+    pool = ProcessPoolExecutor(1)
+    while True:
+        epoch_itr = get_train_iterator(
+            task,
+            args,
+            1,
+            # sharded data: get train iterator for next epoch
+            load_dataset=True,
+            # don't cache epoch iterators for sharded datasets
+            disable_iterator_cache=task.has_sharded_data("train"),
+            )
+        itr = epoch_itr.next_epoch_itr(
+            fix_batches_to_gpus=args.fix_batches_to_gpus,
+            shuffle=(epoch_itr.next_epoch_idx > args.curriculum),
+        )
+        update_freq = (
+            args.update_freq[epoch_itr.epoch - 1]
+            if epoch_itr.epoch <= len(args.update_freq)
+            else args.update_freq[-1]
+        )
+        itr = iterators.GroupedIterator(itr, update_freq)
+        if getattr(args, "tpu", False):
+            itr = utils.tpu_data_loader(itr)
+        progress = progress_bar.progress_bar(
+            itr,
+            log_format=args.log_format,
+            log_interval=args.log_interval,
+            epoch=epoch_itr.epoch,
+            tensorboard_logdir=(
+                args.tensorboard_logdir if distributed_utils.is_master(args) else None
+            ),
+            default_log_format=("tqdm" if not args.no_progress_bar else "simple"),
+        )
+        for step, batch in enumerate(progress):
+            training_steps += 1
+
+            net_input = batch[0]['net_input']
+            src_tokens = pad_to_len(net_input['src_tokens'], args).to(device)
+            prev_output_tokens = pad_to_len(net_input['prev_output_tokens'], args).to(device)
+            target = pad_to_len(batch[0]['target'], args).view(-1).to(device)
+
+            loss = model.eval_step(src_tokens, prev_output_tokens, target)
+            checkpoint_file_name = 'bart_ckpt_*.ortpt'
+            checkpoint_files = glob.glob(os.path.join(args.output_dir, checkpoint_file_name))
+            model.load_checkpoint(*checkpoint_files)
+            return
+            
+        del train_dataloader
 
 
 def generate_tensorboard_logdir(root_dir): 
@@ -405,7 +486,7 @@ class ORTBertPretrainTest():
         self.tensorboard_dir = '/tmp/bert_pretrain_results'
 
     def test_pretrain_throughput(self):
-        self.train_batch_size = 2
+        self.train_batch_size = 8
         self.gradient_accumulation_steps = 1
 
         logger.info("self.gradient_accumulation_steps = %d", self.gradient_accumulation_steps)
@@ -433,7 +514,42 @@ class ORTBertPretrainTest():
         parser = options.get_training_parser()
         add_ort_args(parser)
         args, extras = options.parse_args_and_arch(parser, [self.data] + args, parse_known=True)
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir, exist_ok = True)
         do_pretrain(args)
+    
+    def test_pretrain_load(self):
+        self.train_batch_size = 8
+        self.gradient_accumulation_steps = 1
+
+        logger.info("self.gradient_accumulation_steps = %d", self.gradient_accumulation_steps)
+
+        # only to run on few optimization step because we only want to make sure there is no throughput regression
+        self.max_steps = 10
+        args = {
+            "arch" : 'bart_base',
+            "task" : 'translation',
+            "input_dir" : self.data,
+            "local_rank" : self.local_rank,
+            "world_rank" : self.world_rank,
+            "world_size" : self.world_size,
+            "max_steps" : self.max_steps,
+            "lr" : self.lr,
+            "train_batch_size" : self.train_batch_size,
+            "gradient_accumulation_steps" : self.gradient_accumulation_steps,
+            "fp16" : self.fp16,
+            "allreduce_post_accumulation" : self.allreduce_post_accumulation,
+            "tensorboard-logdir" : self.tensorboard_dir,
+            "output_dir" : self.output_dir,
+            "force_num_layers" : 1,
+            }
+        args = to_list(args)
+        parser = options.get_training_parser()
+        add_ort_args(parser)
+        args, extras = options.parse_args_and_arch(parser, [self.data] + args, parse_known=True)
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir, exist_ok = True)
+        do_eval(args)
 
 
 # to do parallel training:
@@ -462,4 +578,11 @@ if __name__ == "__main__":
         test.world_rank = local_rank
         test.world_size = world_size
     
-    test.test_pretrain_throughput()
+        test.test_pretrain_throughput()
+    
+    else:
+        test.local_rank = 0
+        test.world_rank = 0
+        test.world_size = 1
+
+        test.test_pretrain_load()

@@ -289,6 +289,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
             if (buffer != nullptr) {
               buffers_[location] = BufferUniquePtr(buffer, alloc);
+              std::cout << "Static allocation passed:" << mem_patterns_->patterns[i].PeakSize() <<"\n" << std::flush;
+            } else {
+              std::cout << "Static allocation failed\n" << std::flush;
             }
 
             // log size of activation. Keep it commented out for now to avoid log flooding.
