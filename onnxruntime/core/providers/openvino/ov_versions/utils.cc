@@ -40,16 +40,20 @@ bool IsOpSupportedOnlyInModel(std::string name) {
       "Concat",
       "ConstantOfShape",
       "Dropout",
+      "Expand",
       "EyeLike",
       "Exp",
+      "GatherND",
       "Identity",
       "NonMaxSuppression",
       "NonZero",
       "Not",
       "OneHot",
       "Pad",
+      "Range",
       "ReduceMin",
       "Resize",
+      "Round",
       "Shape",
       "Split",
       "TopK"};
@@ -171,13 +175,15 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     // Collect all inputs and outputs
     node->ForEachDef(
         [&input_args, &ordered_input_args, &output_args](const NodeArg& node_arg, bool is_input) {
-          if (is_input) {
-            if (!input_args.count(node_arg.Name())) {
-              ordered_input_args.push_back(node_arg.Name());
+          if(node_arg.Name() != ""){
+            if (is_input) {
+              if (!input_args.count(node_arg.Name())) {
+                ordered_input_args.push_back(node_arg.Name());
+              }
+              input_args.insert(node_arg.Name());
+            } else {
+              output_args.insert(node_arg.Name());
             }
-            input_args.insert(node_arg.Name());
-          } else {
-            output_args.insert(node_arg.Name());
           }
         },
         true);
