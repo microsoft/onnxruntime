@@ -3,14 +3,70 @@
 
 #pragma once
 
+#include <algorithm>
 #include <functional>
+#include <type_traits>
 #include <unordered_map>
+#include <vector>
 
 #include "core/common/common.h"
 #include "core/common/parse_string.h"
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {
+
+template <typename TEnum>
+using EnumNameMapping = std::vector<std::pair<TEnum, std::string>>;
+
+/**
+ * Given a mapping and an enumeration value, gets the corresponding name.
+ */
+template <typename TEnum>
+Status EnumToName(const EnumNameMapping<TEnum>& mapping, TEnum value, std::string& name) {
+  const auto it = std::find_if(
+      mapping.begin(), mapping.end(),
+      [&value](const auto& entry) {
+        return entry.first == value;
+      });
+  ORT_RETURN_IF(
+      it == mapping.end(),
+      "Failed to map enum value to name: ", static_cast<typename std::underlying_type<TEnum>::type>(value));
+  name = it->second;
+  return Status::OK();
+}
+
+template <typename TEnum>
+std::string EnumToName(const EnumNameMapping<TEnum>& mapping, TEnum value) {
+  std::string name;
+  ORT_THROW_IF_ERROR(EnumToName(mapping, value, name));
+  return name;
+}
+
+/**
+ * Given a mapping and a name, gets the corresponding enumeration value.
+ */
+template <typename TEnum>
+Status NameToEnum(
+    const EnumNameMapping<TEnum>& mapping, const std::string& name, TEnum& value) {
+  const auto it = std::find_if(
+      mapping.begin(), mapping.end(),
+      [&name](const auto& entry) {
+        return entry.second == name;
+      });
+  ORT_RETURN_IF(
+      it == mapping.end(),
+      "Failed to map enum name to value: ", name);
+  value = it->first;
+  return Status::OK();
+}
+
+template <typename TEnum>
+TEnum NameToEnum(const EnumNameMapping<TEnum>& mapping, const std::string& name) {
+  TEnum value;
+  ORT_THROW_IF_ERROR(NameToEnum(mapping, name, value));
+  return value;
+}
+
 class ProviderOptionsParser {
  public:
   /**
@@ -52,6 +108,30 @@ class ProviderOptionsParser {
         name,
         [&dest](const std::string& value_str) -> Status {
           return ParseString(value_str, dest);
+        });
+  }
+
+  /**
+   * Adds a parser for a particular provider option value which maps an
+   * enumeration name to a value and assigns it to the given reference.
+   *
+   * IMPORTANT: This function stores references to the mapping and destination
+   * variables. The caller must ensure that the references are valid when
+   * Parse() is called!
+   *
+   * @param name The provider option name.
+   * @param mapping The enumeration value to name mapping.
+   * @param dest The destination variable reference.
+   *
+   * @return The current ProviderOptionsParser instance.
+   */
+  template <typename EnumType>
+  ProviderOptionsParser& AddAssignmentToEnumReference(
+      const std::string& name, const EnumNameMapping<EnumType>& mapping, EnumType& dest) {
+    return AddValueParser(
+        name,
+        [&mapping, &dest](const std::string& value_str) -> Status {
+          return NameToEnum(mapping, value_str, dest);
         });
   }
 

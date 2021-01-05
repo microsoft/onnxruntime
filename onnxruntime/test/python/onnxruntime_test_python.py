@@ -117,7 +117,7 @@ class TestInferenceSession(unittest.TestCase):
                     'arena_extend_strategy', ['kNextPowerOfTwo', 'kSameAsRequested'])
 
                 test_get_and_set_option_with_values(
-                    'cudnn_conv_algo_search', [0, 1, 2])
+                    'cudnn_conv_algo_search', ["DEFAULT", "EXHAUSTIVE", "HEURISTIC"])
 
                 test_get_and_set_option_with_values(
                     'do_copy_in_default_stream', [0, 1])

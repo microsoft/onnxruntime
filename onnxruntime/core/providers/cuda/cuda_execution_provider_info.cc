@@ -19,6 +19,19 @@ constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
 }  // namespace provider_option_names
 }  // namespace cuda
 
+namespace {
+EnumNameMapping<OrtCudnnConvAlgoSearch> ort_cudnn_conv_algo_search_mapping{
+    {OrtCudnnConvAlgoSearch::EXHAUSTIVE, "EXHAUSTIVE"},
+    {OrtCudnnConvAlgoSearch::HEURISTIC, "HEURISTIC"},
+    {OrtCudnnConvAlgoSearch::DEFAULT, "DEFAULT"},
+};
+
+EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
+    {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
+    {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
+};
+}  // namespace
+
 CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   CUDAExecutionProviderInfo info{};
 
@@ -39,20 +52,12 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                 return Status::OK();
               })
           .AddAssignmentToReference(cuda::provider_option_names::kMemLimit, info.cuda_mem_limit)
-          .AddAssignmentToReference(cuda::provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy)
-          .AddValueParser(
+          .AddAssignmentToEnumReference(
+              cuda::provider_option_names::kArenaExtendStrategy,
+              arena_extend_strategy_mapping, info.arena_extend_strategy)
+          .AddAssignmentToEnumReference(
               cuda::provider_option_names::kCudnnConvAlgoSearch,
-              [&info](const std::string& value_str) -> Status {
-                int cudnn_conv_algo_search_val{};
-                ORT_RETURN_IF_ERROR(ParseString(value_str, cudnn_conv_algo_search_val));
-                ORT_RETURN_IF_NOT(
-                    cudnn_conv_algo_search_val == OrtCudnnConvAlgoSearch::EXHAUSTIVE ||
-                        cudnn_conv_algo_search_val == OrtCudnnConvAlgoSearch::HEURISTIC ||
-                        cudnn_conv_algo_search_val == OrtCudnnConvAlgoSearch::DEFAULT,
-                    "Invalid OrtCudnnConvAlgoSearch value: ", cudnn_conv_algo_search_val);
-                info.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(cudnn_conv_algo_search_val);
-                return Status::OK();
-              })
+              ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)
           .AddAssignmentToReference(cuda::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .Parse(options));
 
@@ -63,8 +68,10 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
   const ProviderOptions options{
       {cuda::provider_option_names::kDeviceId, MakeString(info.device_id)},
       {cuda::provider_option_names::kMemLimit, MakeString(info.cuda_mem_limit)},
-      {cuda::provider_option_names::kArenaExtendStrategy, MakeString(info.arena_extend_strategy)},
-      {cuda::provider_option_names::kCudnnConvAlgoSearch, MakeString(static_cast<int>(info.cudnn_conv_algo_search))},
+      {cuda::provider_option_names::kArenaExtendStrategy,
+       EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
+      {cuda::provider_option_names::kCudnnConvAlgoSearch,
+       EnumToName(ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
       {cuda::provider_option_names::kDoCopyInDefaultStream, MakeString(info.do_copy_in_default_stream)},
   };
 

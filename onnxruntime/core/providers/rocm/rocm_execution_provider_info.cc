@@ -15,6 +15,13 @@ constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 }  // namespace provider_option_names
 }  // namespace rocm
 
+namespace {
+EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
+    {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
+    {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
+};
+}  // namespace
+
 ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   ROCMExecutionProviderInfo info{};
 
@@ -23,7 +30,9 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
           // TODO validate info.device_id
           .AddAssignmentToReference(rocm::provider_option_names::kDeviceId, info.device_id)
           .AddAssignmentToReference(rocm::provider_option_names::kMemLimit, info.hip_mem_limit)
-          .AddAssignmentToReference(rocm::provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy)
+          .AddAssignmentToEnumReference(
+              rocm::provider_option_names::kArenaExtendStrategy,
+              arena_extend_strategy_mapping, info.arena_extend_strategy)
           .Parse(options));
 
   return info;
@@ -33,7 +42,8 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
   const ProviderOptions options{
       {rocm::provider_option_names::kDeviceId, MakeString(info.device_id)},
       {rocm::provider_option_names::kMemLimit, MakeString(info.hip_mem_limit)},
-      {rocm::provider_option_names::kArenaExtendStrategy, MakeString(info.arena_extend_strategy)},
+      {rocm::provider_option_names::kArenaExtendStrategy,
+       EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
   };
 
   return options;
