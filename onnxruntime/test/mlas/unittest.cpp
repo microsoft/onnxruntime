@@ -3033,6 +3033,80 @@ public:
     }
 };
 
+template<typename OutputType>
+class MlasQuantizeLinearTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<OutputType> BufferOutput;
+    MatrixGuardBuffer<OutputType> BufferOutputReference;
+
+    void
+        GenerateReference(
+        const float* Input,
+        OutputType* OutputReference,
+        size_t N,
+        float Scale,
+        OutputType ZeroPoint
+        )
+    {
+        for (size_t n = 0; n < N; n++) {
+            float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
+            FloatValue = std::max(FloatValue, float(std::numeric_limits<OutputType>::min()));
+            FloatValue = std::min(FloatValue, float(std::numeric_limits<OutputType>::max()));
+            OutputReference[n] = (OutputType)FloatValue;
+        }
+    }
+
+    void
+    Test(
+        size_t N
+        )
+    {
+        float* Input = BufferInput.GetBuffer(N);
+        OutputType* Output = BufferOutput.GetBuffer(N);
+        OutputType* OutputReference = BufferOutputReference.GetBuffer(N);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+
+        std::uniform_real_distribution<float> min_gen(-10.f, -10e-3f);
+        float MinimumValue = min_gen(generator);
+
+        std::uniform_real_distribution<float> max_gen(10e-3f, 10.f);
+        float MaximumValue = max_gen(generator);
+
+        float Scale = (MaximumValue - MinimumValue) / 512.f;
+
+        std::uniform_int_distribution<int32_t> zp_distribution(std::numeric_limits<OutputType>::min(), std::numeric_limits<OutputType>::max());
+        OutputType ZeroPoint = static_cast<OutputType>(zp_distribution(generator));
+
+        std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
+        for (size_t n = 0; n < N; n++) {
+            Input[n] = distribution(generator);
+        }
+
+        GenerateReference(Input, OutputReference, N, Scale, ZeroPoint);
+        MlasQuantizeLinear(Input, Output, N, Scale, ZeroPoint);
+
+        for (size_t n = 0; n < N; n++) {
+            if (Output[n] != OutputReference[n]) {
+                printf("exp difference: size=%u, index=%u, output=%d, expected=%d\n", unsigned(N), unsigned(n), Output[n], OutputReference[n]);
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t n = 1; n <= 512; n++) {
+            Test(n);
+        }
+    }
+};
+
 void
 RunThreadedTests(
     void
@@ -3150,6 +3224,10 @@ main(
 
     printf("MlasGlobalAveragePool tests.\n");
     onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
+
+    printf("MlasQuantizeLinear tests.\n");
+    onnxruntime::make_unique<MlasQuantizeLinearTest<int8_t>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQuantizeLinearTest<uint8_t>>()->ExecuteShort();
 
     printf("Done.\n");
 

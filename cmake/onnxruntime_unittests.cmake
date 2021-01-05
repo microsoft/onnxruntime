@@ -751,7 +751,8 @@ if(onnxruntime_BUILD_BENCHMARKS)
     ${BENCHMARK_DIR}/eigen.cc
     ${BENCHMARK_DIR}/gelu.cc
     ${BENCHMARK_DIR}/activation.cc
-    ${BENCHMARK_DIR}/reduceminmax.cc)
+    ${BENCHMARK_DIR}/reduceminmax.cc
+    ${BENCHMARK_DIR}/quantize_linear.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
   if(WIN32)
     target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
