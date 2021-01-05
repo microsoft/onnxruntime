@@ -20,65 +20,21 @@ Abstract:
 
 #include "mlasi.h"
 
+template<typename OutputType>
+void
+MLASCALL
+MlasQuantizeLinearKernel(
+    const float* Input,
+    OutputType* Output,
+    size_t N,
+    float Scale,
+    OutputType ZeroPoint
+);
+
+
 //
 // QuantizeLinear implementation using AVX512 intrinsics.
 //
-
-MLAS_FORCEINLINE
-__m512i
-MlasQuantizeLinearVector(
-    __m512 FloatVector,
-    __m512 ScaleVector,
-    __m512 MinimumValueVector,
-    __m512 MaximumValueVector,
-    __m512i ZeroPointVector) {
-  //
-  // Scale the input vector and clamp the values to the minimum and maximum
-  // range (adjusted by the zero point value).
-  //
-
-  FloatVector = _mm512_div_ps(FloatVector, ScaleVector);
-  // N.B. MINPS and MAXPS returns the value from the second vector if the
-  // value from the first vector is a NaN.
-  FloatVector = _mm512_max_ps(FloatVector, MinimumValueVector);
-  FloatVector = _mm512_min_ps(FloatVector, MaximumValueVector);
-
-  //
-  // Convert the float values to integer using "round to nearest even" and
-  // then shift the output range using the zero point value.
-  //
-  // N.B. Assumes MXCSR has been configured with the default rounding mode of
-  // "round to nearest even".
-  auto IntegerVector = _mm512_cvtps_epi32(FloatVector);
-  IntegerVector = _mm512_add_epi32(IntegerVector, ZeroPointVector);
-
-  return IntegerVector;
-}
-
-template <typename OutputType>
-void
-MlasQuantizeLinearPackBytes(
-    __m512i IntegerVector,
-    OutputType* base_addr);
-
-template <>
-MLAS_FORCEINLINE
-void
-MlasQuantizeLinearPackBytes<uint8_t>(
-    __m512i IntegerVector,
-    uint8_t* base_addr) {
-  // to do: signed to uint8
-  _mm512_mask_cvtusepi32_storeu_epi8(base_addr, 0xFFFF, IntegerVector);
-}
-
-template <>
-MLAS_FORCEINLINE
-void
-MlasQuantizeLinearPackBytes<int8_t>(
-    __m512i IntegerVector,
-    int8_t* base_addr) {
-  _mm512_mask_cvtsepi32_storeu_epi8(base_addr, 0xFFFF, IntegerVector);
-}
 
 template <typename OutputType>
 void
@@ -184,12 +140,7 @@ Return Value:
       N -= 16;
   }
 
-  for (size_t n = 0; n < N; n++) {
-      float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
-      FloatValue = std::max(FloatValue, float(MinimumValue));
-      FloatValue = std::min(FloatValue, float(MaximumValue));
-      Output[n] = (OutputType)(int32_t)FloatValue;
-  }
+  MlasQuantizeLinearKernel(Input, Output, N, Scale, ZeroPoint);
 }
 
 void
