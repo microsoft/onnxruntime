@@ -224,9 +224,9 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
-  // only support CUDA execution provider
+  // only support GPU execution provider
   auto& cep = GetCompatibleExecutionProviders();
-  if (cep.size() > 0 && cep.find(kCudaExecutionProvider) == cep.end())
+  if (cep.size() > 0 && cep.find(kCudaExecutionProvider) == cep.end() && cep.find(kRocmExecutionProvider) == cep.end())
     return Status::OK();
 
   for (auto node_index : node_topology_list) {
