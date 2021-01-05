@@ -140,6 +140,8 @@ Return Value:
     this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
     this->QLinearAddS8Kernel = MlasQLinearAddS8Kernel;
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
+    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernal;
+    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernal;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
@@ -263,6 +265,8 @@ Return Value:
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
                     this->NchwcBlockSize = 16;
                     this->PreferredBufferAlignment = 64;
+                    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernalAVX512;
+                    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernalAVX512;
 
                     //
                     // Check if the processor supports AVX512 core features

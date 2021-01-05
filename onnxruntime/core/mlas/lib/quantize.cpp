@@ -133,7 +133,7 @@ MlasQuantizeLinearPackBytes<int8_t>(
 template<typename OutputType>
 void
 MLASCALL
-MlasQuantizeLinear(
+MlasQuantizeLinearKernel(
     const float* Input,
     OutputType* Output,
     size_t N,
@@ -265,7 +265,32 @@ Return Value:
 
 #endif
 
-template
+void
+MLASCALL
+MlasQuantizeLinearS8Kernal(
+    const float* Input,
+    int8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+){
+    MlasQuantizeLinearKernel<int8_t>(Input, Output, N, Scale, ZeroPoint);
+}
+
+void
+MLASCALL
+MlasQuantizeLinearU8Kernal(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+)
+{
+    MlasQuantizeLinearKernel<uint8_t>(Input, Output, N, Scale, ZeroPoint);
+}
+
+template<>
 void
 MLASCALL
 MlasQuantizeLinear<int8_t>(
@@ -274,9 +299,17 @@ MlasQuantizeLinear<int8_t>(
     size_t N,
     float Scale,
     int8_t ZeroPoint
-    );
+    )
+{
+#if defined(MLAS_TARGET_AMD64)
+    MlasPlatform.QuantizeLinearS8Kernel(
+#else
+    MlasQuantizeLinearS8Kernal(
+#endif
+        Input, Output, N, Scale, ZeroPoint);
+}
 
-template
+template<>
 void
 MLASCALL
 MlasQuantizeLinear<uint8_t>(
@@ -285,7 +318,15 @@ MlasQuantizeLinear<uint8_t>(
     size_t N,
     float Scale,
     uint8_t ZeroPoint
-    );
+    )
+{
+#if defined(MLAS_TARGET_AMD64)
+    MlasPlatform.QuantizeLinearU8Kernel(
+#else
+    MlasQuantizeLinearU8Kernal(
+#endif
+        Input, Output, N, Scale, ZeroPoint);
+}
 
 #if defined(MLAS_SSE2_INTRINSICS)
 

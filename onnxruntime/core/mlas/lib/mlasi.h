@@ -489,6 +489,30 @@ void
 
 typedef MLAS_QLINEAR_BINARY_OP_U8_KERNEL* PMLAS_QLINEAR_BINARY_OP_U8_KERNEL;
 
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_U8_KERNEL)(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    );
+
+typedef MLAS_QUANTIZE_LINEAR_U8_KERNEL* PMLAS_QUANTIZE_LINEAR_U8_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_S8_KERNEL)(
+    const float* Input,
+    int8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    );
+
+typedef MLAS_QUANTIZE_LINEAR_S8_KERNEL* PMLAS_QUANTIZE_LINEAR_S8_KERNEL;
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -581,6 +605,8 @@ extern "C" {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32Kernel;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8Kernel;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8Kernal;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8Kernal;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
@@ -593,6 +619,8 @@ extern "C" {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelAvx;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8KernelAvx2;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8KernelAvx2;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernalAVX512;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernalAVX512;
 #endif
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
@@ -713,6 +741,8 @@ struct MLAS_PLATFORM {
     PMLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL ComputeLogSoftmaxOutputF32Kernel;
     PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL ReduceMaximumF32Kernel;
     PMLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL ReduceMinimumMaximumF32Kernel;
+    PMLAS_QUANTIZE_LINEAR_S8_KERNEL QuantizeLinearS8Kernel;
+    PMLAS_QUANTIZE_LINEAR_U8_KERNEL QuantizeLinearU8Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
 #endif
