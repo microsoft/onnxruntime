@@ -2,7 +2,7 @@
 title: TensorRT
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 1
+nav_order: 2
 ---
 
 # TensorRT Execution Provider

@@ -2,7 +2,7 @@
 title: ARM NN
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 8
+nav_order: 9
 ---
 
 ## ArmNN Execution Provider
