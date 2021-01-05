@@ -577,7 +577,9 @@ static void TestConversion(bool use_1D_indices,
   auto node = CreateConstantNode<T>(use_1D_indices, inserter, expected);
 
   TensorProto dense;
-  utils::ConstantNodeProtoToTensorProto(node, dense);
+  // Path is required for loading external data
+  // Using empty path here since the data is not external
+  utils::ConstantNodeProtoToTensorProto(node, Path(), dense);
 
   gsl::span<const T> expected_span = gsl::make_span<const T>(expected.data(), expected.size());
   checker(expected_span, dense);
@@ -736,10 +738,13 @@ static void TestDenseToSparseConversion(
         checker) {
   std::vector<T> expected_values;
   std::vector<int64_t> expected_indicies;
+  // Path is required for loading external data
+  // Using empty path here since the data is not external
+  Path model_path;
   TensorProto dense_tensor = CreateDenseTensor(inserter, expected_values, expected_indicies);
 
   SparseTensorProto sparse_tensor;
-  utils::DenseTensorToSparseTensorProto(dense_tensor, sparse_tensor);
+  utils::DenseTensorToSparseTensorProto(dense_tensor, external_data_path, sparse_tensor);
 
   gsl::span<const T>
       expected_values_span = gsl::make_span(expected_values.data(), expected_values.size());

@@ -60,31 +60,53 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
+// Read external data for tensor in unint8_t* form and return Status::OK() if the data is read successfully.
+// Uses the tensor_proto_dir to construct the full path for external data. If tensor_proto_dir == nullptr
+// then uses the current directory instead.
+// This function does not unpack string_data of an initializer tensor
 Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  const ORTCHAR_T* tensor_proto_dir,
                                  std::unique_ptr<uint8_t[]>& unpacked_tensor,
                                  size_t& tensor_data_length);
 
+// Unpack tensor which contains external data. Uses the tensor_proto_dir to construct the full path for external data.
+// If tensor_proto_dir == nullptr then uses the current directory instead.
+// This function does not unpack string_data of a tensor
 template <typename T>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
                                     const ORTCHAR_T* tensor_proto_dir, size_t expected_size,
-                                     /*out*/ T* p_data);
+                                    /*out*/ T* p_data);
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const ORTCHAR_T* tensor_proto_dir, const void* raw_data, size_t raw_data_len,
                     /*out*/ T* p_data, size_t expected_size);
 
-// Convert the NodeProto from a Constant node into a TensorProto that can be used as an initializer
+// Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
+// If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
+// the data location is external. i.e. it does not load the external data.
+// However if AttributeProto contains SparseTensorProto then it converts the data into dense tensor proto
+// (including loading external data when applicable).
+// model_path is used for contructing full path for external_data
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
+                                              const Path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor);
 
 // Convert a SparseTensorProto to a dense TensorProto
+// If the SparseTensorProto contains external data then it loads the data and converts to dense tensor proto
+// The resulting TensorProto will contain the data as raw data.
+// model_path is used for contructing full path for external_data
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
+                                                   const Path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense);
 
 #if !defined(ORT_MINIMAL_BUILD)
+// Convert a TensorProto to a SparseTensorProto
+// If the tensorproto contains external data then it loads the data and converts to sparse tensor
+// The resulting SparseTensorProto will contain the data as raw data
+// model_path is used for contructing full path for external_data
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense,
+                                              const Path& model_path,
                                               ONNX_NAMESPACE::SparseTensorProto& sparse);
-#endif // !ORT_MINIMAL_BUILD
+#endif  // !ORT_MINIMAL_BUILD
 
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
   return dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue;
@@ -144,7 +166,7 @@ inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto)
 }
 
 inline bool HasName(const ONNX_NAMESPACE::SparseTensorProto& ten_proto) {
-  return ten_proto.values().has_name(); // XXX
+  return ten_proto.values().has_name();  // XXX
 }
 
 inline bool HasKeyType(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
@@ -236,25 +258,28 @@ inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
   return node_proto.has_name();
 }
 
-// UnpackTensor from either raw data or the type specific data field.
+// UnpackTensor from raw data, external data or the type specific data field.
+// Uses the model path to construct the full path for loading external data. In case when model_path is empty
+// it uses current directory.
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path, /*out*/ T* p_data, size_t expected_size) {
-  auto tensor_proto_path = model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str();
+  auto tensor_proto_path = model_path.ParentPath().ToPathString().c_str();
   return HasRawData(tensor)
              ? UnpackTensor(tensor, tensor_proto_path, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
-             : UnpackTensor(tensor, tensor_proto_path,nullptr, 0, p_data, expected_size);
+             : UnpackTensor(tensor, tensor_proto_path, nullptr, 0, p_data, expected_size);
 }
 
 /**
  * Unpack the data from an initializer tensor
  * Please note, this function does not unpack string_data of an initializer tensor
  * @param initializer       given initializer tensor
+ * @param initializer_dir   model_path to construct external data dir path. When this is empty, current dir is used.
  * @param unpacked_tensor   the data from the initaizlier in uint8_t* form
  * @param tensor_byte_size  the byte size of the unpacked_tensor
  * @returns                 Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
-                                     const ORTCHAR_T* initializer_dir,
+                                     const Path& model_path,
                                      std::unique_ptr<uint8_t[]>& unpacked_tensor,
                                      size_t& tensor_byte_size) ORT_MUST_USE_RESULT;
 

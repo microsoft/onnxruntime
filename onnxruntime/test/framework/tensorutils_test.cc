@@ -16,7 +16,7 @@ namespace test {
 
 //T must be float for double, and it must match with the 'type' argument
 template <typename T>
-void test_unpack_float_tensor(TensorProto_DataType type) {
+void test_unpack_float_tensor(TensorProto_DataType type, const Path& model_path) {
   TensorProto float_tensor_proto;
   float_tensor_proto.set_data_type(type);
   T f[4] = {1.1f, 2.2f, 3.3f, 4.4f};
@@ -27,7 +27,7 @@ void test_unpack_float_tensor(TensorProto_DataType type) {
   }
   float_tensor_proto.set_raw_data(rawdata, len);
   T float_data2[4];
-  auto status = UnpackTensor(float_tensor_proto, float_data2, 4);
+  auto status = UnpackTensor(float_tensor_proto, model_path, float_data2, 4);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(1.1f, float_data2[0]);
   EXPECT_EQ(2.2f, float_data2[1]);
@@ -37,20 +37,24 @@ void test_unpack_float_tensor(TensorProto_DataType type) {
 
 TEST(TensorParseTest, TensorUtilsTest) {
   TensorProto bool_tensor_proto;
+  // Path is required for loading external data.
+  // Using empty path here since this test does not test
+  // external data utils
+  Path model_path;
   bool_tensor_proto.set_data_type(TensorProto_DataType_BOOL);
   bool_tensor_proto.add_int32_data(1);
 
   bool bool_data[1];
-  auto status = UnpackTensor(bool_tensor_proto, bool_data, 1);
+  auto status = UnpackTensor(bool_tensor_proto, model_path, bool_data, 1);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(bool_data[0]);
 
   float float_data[1];
-  status = UnpackTensor(bool_tensor_proto, float_data, 1);
+  status = UnpackTensor(bool_tensor_proto, model_path, float_data, 1);
   EXPECT_FALSE(status.IsOK());
 
-  test_unpack_float_tensor<float>(TensorProto_DataType_FLOAT);
-  test_unpack_float_tensor<double>(TensorProto_DataType_DOUBLE);
+  test_unpack_float_tensor<float>(TensorProto_DataType_FLOAT, model_path);
+  test_unpack_float_tensor<double>(TensorProto_DataType_DOUBLE, model_path);
 
   TensorProto string_tensor_proto;
   string_tensor_proto.set_data_type(TensorProto_DataType_STRING);
@@ -58,12 +62,12 @@ TEST(TensorParseTest, TensorUtilsTest) {
   string_tensor_proto.add_string_data("b");
 
   std::string string_data[2];
-  status = UnpackTensor(string_tensor_proto, string_data, 2);
+  status = UnpackTensor(string_tensor_proto, model_path, string_data, 2);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ("a", string_data[0]);
   EXPECT_EQ("b", string_data[1]);
 
-  status = UnpackTensor(bool_tensor_proto, string_data, 2);
+  status = UnpackTensor(bool_tensor_proto, model_path, string_data, 2);
   EXPECT_FALSE(status.IsOK());
 }
 
@@ -111,7 +115,8 @@ static void TestConstantNodeConversion(const std::string& attrib_name,
       [&input, &add_data](AttributeProto& attrib) { add_data(attrib, input); });
 
   TensorProto tp;
-  EXPECT_STATUS_OK(utils::ConstantNodeProtoToTensorProto(c, tp));
+  Path model_path;
+  EXPECT_STATUS_OK(utils::ConstantNodeProtoToTensorProto(c, model_path, tp));
 
   EXPECT_THAT(get_data(tp), ::testing::ContainerEq(input));
 }
