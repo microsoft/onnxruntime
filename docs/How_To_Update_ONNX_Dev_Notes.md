@@ -15,18 +15,12 @@ git add onnx
 2. Update [cgmanifests/submodules/cgmanifest.json](/cgmanifests/submodules/cgmanifest.json).
 This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) for instructions.
 
-3. Update [tools/ci_build/github/linux/docker/scripts/install_onnx.sh](/tools/ci_build/github/linux/docker/scripts/install_onnx.sh).
-Search 'for version2tag', update the commit hashes. The list should contain every release version from ONNX 1.2, and the latest one in our cmake/external/onnx folder.
+3. Update the commit id of onnx for building the linux image for CI pipelines
+- [manylinux image requirements](onnxruntime/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt)
+- [all other linux image requirements](onnxruntime/tools/ci_build/github/linux/docker/scripts/requirements.txt)
 
-4. If there is any change to `cmake/external/onnx/onnx/*.in.proto`, update onnxruntime/core/protobuf as follows : 
-```
-- Apply these changes to onnxruntime/core/protobuf/*.in.proto
-- Copy cmake/external/onnx/onnx/gen_proto.py to onnxruntime/core/protobuf and use this script to generate the new \*.proto and \*.proto3 files
-- Regenerate csharp/test/Microsoft.ML.OnnxRuntime.Tests/OnnxMl.cs
-```
+4. Send PR and run CI builds
 
-5. Send you PR, and run the CI builds.
-
-6. If there is any unitest failure, caught by onnx_test_runner. Please also update
-- [onnxruntime/test/onnx/main.cc](/onnxruntime/test/onnx/main.cc)
-- [onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc)
+5. If there are any test failures because of the new ops that are coming in as part of the onnx commit bump, update test filters to filter tests for these ops. These tests need to be added back after ort implements these ops.
+- c++ test filters [onnxruntime/test/onnx/test_filters.h](onnxruntime/test/onnx/test_filters.h)
+- python andf nodejs test filters [onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc)
