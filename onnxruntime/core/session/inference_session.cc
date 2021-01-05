@@ -1398,7 +1398,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
       auto expected_element_type = expected_type->AsTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "Tensor"));
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "tensor"));
 
       // check for shape
       const auto& expected_shape = iter->second.tensor_shape;
@@ -1414,7 +1414,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
       const SparseTensor& sparse_tensor = input_ml_value.Get<SparseTensor>();
       auto input_element_type = sparse_tensor.Values().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "SparseTensor"));
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "sparse_tensor"));
       // Check shape
       const auto& expected_shape = iter->second.tensor_shape;
       if (expected_shape.NumDimensions() > 0) {
@@ -1428,7 +1428,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
       auto expected_element_type = expected_type->AsSequenceTensorBase()->GetElementType();
       auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "TensorSequence"));
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "seq"));
     } else {
       auto input_type = input_ml_value.Type();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_type, expected_type, ""));
