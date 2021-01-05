@@ -180,10 +180,12 @@ class Test_PostPasses(unittest.TestCase):
                       warmup_proportion=0.01,
                       batch_size=13,
                       seq_len=7)
-
+        
+        dataset_len = 100
         dataloader = create_ort_test_dataloader(model_desc.inputs_,
                                                 args.batch_size,
                                                 args.seq_len,
+                                                dataset_len,
                                                 device)
         learning_rate = torch.tensor(1.0e+0, dtype=torch.float32).to(device)
         for b in dataloader:

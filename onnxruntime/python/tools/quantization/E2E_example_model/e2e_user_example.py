@@ -10,13 +10,11 @@ from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
-from quantize import quantize, QuantizationMode
-from calibrate import calibrate
-from calibrate import CalibrationDataReader
+from onnxruntime.quantization import quantize_static, calibrate, CalibrationDataReader
 
 
 class ResNet50DataReader(CalibrationDataReader):
-    def __init__(self,calibration_image_folder,augmented_model_path='augmented_model.onnx'): 
+    def __init__(self, calibration_image_folder, augmented_model_path='augmented_model.onnx'):
         self.image_folder = calibration_image_folder
         self.augmented_model_path = augmented_model_path
         self.preprocess_flag = True
@@ -27,12 +25,12 @@ class ResNet50DataReader(CalibrationDataReader):
         if self.preprocess_flag:
             self.preprocess_flag = False
             session = onnxruntime.InferenceSession(self.augmented_model_path, None)
-            (_,height,width,_) = session.get_inputs()[0].shape
-            nhwc_data_list = preprocess_func(self.image_folder,height,width,size_limit = 0)
+            (_, height, width, _) = session.get_inputs()[0].shape
+            nhwc_data_list = preprocess_func(self.image_folder, height, width, size_limit=0)
             input_name = session.get_inputs()[0].name
-            self.datasize = len(nhwc_data_list)           
-            self.enum_data_dicts = iter([{input_name:nhwc_data_list[i]} for i in range(self.datasize)])
-        return next(self.enum_data_dicts,None)
+            self.datasize = len(nhwc_data_list)
+            self.enum_data_dicts = iter([{input_name: nhwc_data} for nhwc_data in nhwc_data_list])
+        return next(self.enum_data_dicts, None)
 
 
 def preprocess_func(images_folder, height, width, size_limit=0):
@@ -64,18 +62,13 @@ def preprocess_func(images_folder, height, width, size_limit=0):
 
 
 def main():
-    model_path = './resnet50_v1.onnx'
-    calibration_dataset_path = './calibration_data_set'
-    dr = ResNet50DataReader(calibration_dataset_path)
-    #call calibrate to generate quantization dictionary containing the zero point and scale values
-    quantization_params_dict = calibrate(model_path,dr)
-    calibrated_quantized_model = quantize(onnx.load(model_path),
-                                          quantization_mode=QuantizationMode.QLinearOps,
-                                          force_fusions=True,
-                                          quantization_params=quantization_params_dict)
+    input_model_path = './resnet50_v1.onnx'
     output_model_path = './calibrated_quantized_model.onnx'
-    onnx.save(calibrated_quantized_model, output_model_path)
+    calibration_dataset_path = './test_images'
+    dr = ResNet50DataReader(calibration_dataset_path)
+    quantize_static(input_model_path, output_model_path, dr)
     print('Calibrated and quantized model saved.')
 
+
 if __name__ == '__main__':
-   main()
+    main()

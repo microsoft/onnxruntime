@@ -5,14 +5,17 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <sstream>
-#include "core/framework/session_state.h"
-#include "core/graph/model.h"
 #include "gtest/gtest.h"
+
+#include "core/framework/session_state.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "test/framework/model_builder_utils.h"
 #include "core/framework/allocation_planner.h"
-#include "core/util/thread_utils.h"
+#include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/util/thread_utils.h"
+
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
@@ -254,8 +257,7 @@ class PlannerTest : public ::testing::Test {
     // CreatePlan is called inside FinalizeSessionState and usually the initializers are removed following that.
     // Leave initializers so we can duplicate the call to CreatePlan from here to validate.
     const bool remove_initializers = false;
-    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {},
-                                          remove_initializers);
+    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, nullptr, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
@@ -453,14 +455,17 @@ TEST_F(PlannerTest, PlanOutputTest) {
 
   CreatePlan();
 
-  try {
+  ORT_TRY {
     std::ostringstream output;
     output << std::make_pair(&GetPlan(), &GetState());
     auto output_size = output.str().size();
     // Currently, we don't check details of the output, as it may change over time.
     EXPECT_GT(output_size, 0u);
-  } catch (const std::exception& ex) {
-    EXPECT_TRUE(false) << "Exception in producing output: " << ex.what();
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      EXPECT_TRUE(false) << "Exception in producing output: " << ex.what();
+    });
   }
 }
 

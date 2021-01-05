@@ -2,10 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/activation/activations.h"
+#include "core/providers/cpu/math/element_wise_ops.h"
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/activations.h"
 #endif
 #include "core/mlas/inc/mlas.h"
+
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
@@ -16,6 +19,43 @@ namespace onnxruntime {
     out.reset(p);                             \
     return Status::OK();                      \
   }
+
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL_ALIAS(alias, x, sinceVersion) \
+  ONNX_CPU_OPERATOR_KERNEL(                                             \
+      alias, sinceVersion,                                              \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), x<float>);
+
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL(x, sinceVersion) REGISTER_UNARY_ELEMENTWISE_KERNEL_ALIAS(x, x, sinceVersion)
+
+#define REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL_ALIAS(alias, x, sinceVersion, firstEnd, newVersion)         \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                                           \
+      alias, sinceVersion, firstEnd,                                                                            \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), x<float>); \
+  ONNX_CPU_OPERATOR_KERNEL(                                                                                     \
+      alias, newVersion,                                                                                        \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), x<float>);
+
+#define REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(alias, x, sinceVersion, firstEnd, newVersion, type) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                                         \
+      alias, sinceVersion, firstEnd, type,                                                                          \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), x<type>);       \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                   \
+      alias, newVersion, type,                                                                                      \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), x<type>);
+
+REGISTER_UNARY_ELEMENTWISE_KERNEL(Elu, 6);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(HardSigmoid, 6);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 6);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Relu, Relu, 6, 12, 13, float);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Relu, Relu, 6, 12, 13, double);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(Selu, 6);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Sigmoid, Sigmoid, 6, 12, 13, float);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Sigmoid, Sigmoid, 6, 12, 13, double);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(Softplus, 1);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(Softsign, 1);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Tanh, Tanh, 6, 12, 13, float);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL_ALIAS(Tanh, Tanh, 6, 12, 13, double);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 10);
 
 namespace functors {
 template <typename T>
@@ -49,16 +89,13 @@ template Status ElementWiseRangedTransform<float>::Create(const std::string& typ
 
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL(x, sinceVersion) REGISTER_UNARY_ELEMENTWISE_KERNEL_ALIAS(x, x, sinceVersion)
 
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Elu, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(HardSigmoid, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Relu, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Selu, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Sigmoid, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Softplus, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Softsign, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Tanh, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 10);
+#define REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL_ALIAS(alias, x, sinceVersion, firstEnd, newVersion)         \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                                           \
+      alias, sinceVersion, firstEnd,                                                                            \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), x<float>); \
+  ONNX_CPU_OPERATOR_KERNEL(                                                                                     \
+      alias, newVersion,                                                                                        \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), x<float>);
 
 namespace functors {
 template <>

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/multi_tensor/common.cuh"
 
 namespace onnxruntime {
@@ -21,8 +21,8 @@ struct MultiTensorReduceL2 {
   void operator()(ChunkGroup<1> chunk_group, TOut* output);
 };
 
-template<typename T>
-void ScalarSqrt(T* input, T* output);
+template<typename Tin, typename Tout>
+void ScalarSqrt(Tin* input, Tout* output);
 
 }  // namespace cuda
 }  // namespace onnxruntime

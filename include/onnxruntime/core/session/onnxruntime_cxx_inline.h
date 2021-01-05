@@ -14,7 +14,7 @@ inline void ThrowOnError(const OrtApi& ort, OrtStatus* status) {
     std::string error_message = ort.GetErrorMessage(status);
     OrtErrorCode error_code = ort.GetErrorCode(status);
     ort.ReleaseStatus(status);
-    throw Ort::Exception(std::move(error_message), error_code);
+    ORT_CXX_API_THROW(std::move(error_message), error_code);
   }
 }
 
@@ -27,6 +27,10 @@ template <typename T>
 struct TypeToTensorType;
 template <>
 struct TypeToTensorType<float> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+template <>
+struct TypeToTensorType<Float16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
+template <>
+struct TypeToTensorType<BFloat16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16; };
 template <>
 struct TypeToTensorType<double> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE; };
 template <>
@@ -286,16 +290,45 @@ inline void IoBinding::ClearBoundOutputs() {
   GetApi().ClearBoundOutputs(p_);
 }
 
-inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
-  ThrowOnError(GetApi().CreateEnv(default_warning_level, logid, &p_));
+inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
+  ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
 }
 
-inline Env::Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param) {
-  ThrowOnError(GetApi().CreateEnvWithCustomLogger(logging_function, logger_param, default_warning_level, logid, &p_));
+inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
+  ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
+  if (strcmp(logid, "onnxruntime-node") == 0) {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
+  } else {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+  }
 }
 
-inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_warning_level, _In_ const char* logid) {
-  ThrowOnError(GetApi().CreateEnvWithGlobalThreadPools(default_warning_level, logid, tp_options, &p_));
+inline Env::Env(OrtLoggingLevel logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param) {
+  ThrowOnError(GetApi().CreateEnvWithCustomLogger(logging_function, logger_param, logging_level, logid, &p_));
+  if (strcmp(logid, "onnxruntime-node") == 0) {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
+  } else {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+  }
+}
+
+inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel logging_level, _In_ const char* logid) {
+  ThrowOnError(GetApi().CreateEnvWithGlobalThreadPools(logging_level, logid, tp_options, &p_));
+  if (strcmp(logid, "onnxruntime-node") == 0) {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
+  } else {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+  }
+}
+
+inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
+                OrtLoggingLevel logging_level, _In_ const char* logid) {
+  ThrowOnError(GetApi().CreateEnvWithCustomLoggerAndGlobalThreadPools(logging_function, logger_param, logging_level, logid, tp_options, &p_));
+  if (strcmp(logid, "onnxruntime-node") == 0) {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
+  } else {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+  }
 }
 
 inline Env& Env::EnableTelemetryEvents() {
@@ -305,6 +338,11 @@ inline Env& Env::EnableTelemetryEvents() {
 
 inline Env& Env::DisableTelemetryEvents() {
   ThrowOnError(GetApi().DisableTelemetryEvents(p_));
+  return *this;
+}
+
+inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg) {
+  ThrowOnError(GetApi().CreateAndRegisterAllocator(p_, mem_info, arena_cfg));
   return *this;
 }
 
@@ -442,6 +480,21 @@ inline SessionOptions& SessionOptions::AddConfigEntry(const char* config_key, co
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AddInitializer(const char* name, const OrtValue* ort_val) {
+  ThrowOnError(GetApi().AddInitializer(p_, name, ort_val));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CUDA(p_, &provider_options));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpenVINO(p_, &provider_options));
+  return *this;
+}
+
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
 }
@@ -510,6 +563,12 @@ inline char* Session::GetOverridableInitializerName(size_t index, OrtAllocator* 
 inline char* Session::EndProfiling(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionEndProfiling(p_, allocator, &out));
+  return out;
+}
+
+inline uint64_t Session::GetProfilingStartTimeNs() const {
+  uint64_t out;
+  ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(p_, &out));
   return out;
 }
 
@@ -615,6 +674,36 @@ inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() con
   const OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToTensorInfo(p_, &out));
   return Unowned<TensorTypeAndShapeInfo>(const_cast<OrtTensorTypeAndShapeInfo*>(out));
+}
+
+inline Unowned<SequenceTypeInfo> TypeInfo::GetSequenceTypeInfo() const {
+  const OrtSequenceTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToSequenceTypeInfo(p_, &out));
+  return Unowned<SequenceTypeInfo>{const_cast<OrtSequenceTypeInfo*>(out)};
+}
+
+inline TypeInfo SequenceTypeInfo::GetSequenceElementType() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetSequenceElementType(p_, &output));
+  return TypeInfo{output};
+}
+
+inline Unowned<MapTypeInfo> TypeInfo::GetMapTypeInfo() const {
+  const OrtMapTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(p_, &out));
+  return Unowned<MapTypeInfo>{const_cast<OrtMapTypeInfo*>(out)};
+}
+
+inline ONNXTensorElementDataType MapTypeInfo::GetMapKeyType() const {
+  ONNXTensorElementDataType out;
+  ThrowOnError(GetApi().GetMapKeyType(p_, &out));
+  return out;
+}
+
+inline TypeInfo MapTypeInfo::GetMapValueType() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetMapValueType(p_, &output));
+  return TypeInfo{output};
 }
 
 inline ONNXType TypeInfo::GetONNXType() const {
@@ -733,10 +822,10 @@ const T* Value::GetTensorData() const {
 }
 
 template <typename T>
-inline T Value::At(const std::initializer_list<size_t>& location) {
+inline T& Value::At(const std::vector<int64_t>& location) {
+  static_assert(!std::is_same<T, std::string>::value, "this api does not support std::string");
   T* out;
-  std::vector<size_t> location_ = location;
-  ThrowOnError(GetApi().TensorAt(p_, location_.data(), location_.size(), (void**)&out));
+  ThrowOnError(GetApi().TensorAt(p_, location.data(), location.size(), (void**)&out));
   return *out;
 }
 
@@ -863,7 +952,8 @@ inline size_t CustomOpApi::KernelContext_GetOutputCount(const OrtKernelContext* 
   return out;
 }
 
-inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
+inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index,
+                                                      _In_ const int64_t* dim_values, size_t dim_count) {
   OrtValue* out;
   ThrowOnError(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
   return out;
@@ -883,4 +973,7 @@ inline std::vector<std::string> GetAvailableProviders() {
   ThrowOnError(api.ReleaseAvailableProviders(providers, len));
   return available_providers;
 }
+
+SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
+
 }  // namespace Ort

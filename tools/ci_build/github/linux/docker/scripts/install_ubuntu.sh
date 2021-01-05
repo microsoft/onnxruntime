@@ -47,7 +47,7 @@ if [ "$OS_VERSION" = "16.04" ]; then
         libicu55 \
         libtinfo-dev \
         libtool \
-        mpich libmpich-dev \
+        openssh-server \
         aria2 \
         bzip2 \
         unzip \
@@ -80,7 +80,7 @@ else # ubuntu18.04
         libicu60 \
         libtinfo-dev \
         libtool \
-        mpich libmpich-dev \
+        openssh-server \
         aria2 \
         bzip2 \
         unzip \
@@ -104,7 +104,7 @@ if [ "$SYS_LONG_BIT" = "64" ]; then
   aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VERSION}/packages-microsoft-prod.deb
   dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
   apt-get update
-  apt-get install -y dotnet-sdk-2.2
+  apt-get install -y dotnet-sdk-2.1
   rm -rf /tmp/dotnet
 fi
 

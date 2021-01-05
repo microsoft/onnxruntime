@@ -3,7 +3,6 @@
 
 #include "orttraining/training_ops/cpu/controlflow/wait.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -14,9 +13,6 @@ void wait_event_in_tensor(const Tensor& event_id_tensor) {
   if (event_id != -1) {
     // Wait the event to be recorded by a RecordEvent operator.
     OrtEventPool::GetInstance().WaitEvent(event_id);
-    // BUGBUG: seems this would cause hang when a event is being waited more than once
-    // Destory the recorded event.
-    OrtEventPool::GetInstance().ResetEvent(event_id);
   }
 }
 
@@ -28,7 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .Alias(AliasRange<1, 0>(0, 1024)),
+        .VariadicAlias(1, 0),  // outputs and inputs are mapped one to one, with input offset by 1
     WaitEvent);
 
 Status WaitEvent::Compute(OpKernelContext* ctx) const {

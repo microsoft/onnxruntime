@@ -28,6 +28,16 @@ void WinMLTelemetryHelper::LogWinMLShutDown() {
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }
 
+void WinMLTelemetryHelper::LogWinMLSuspended() {
+  WinMLTraceLoggingWrite(
+      provider_,
+      "WinMLSuspended",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
+      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}
+
 void WinMLTelemetryHelper::LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line) {
   if (!telemetry_enabled_)
     return;
@@ -136,8 +146,8 @@ void WinMLTelemetryHelper::SetNamedDimensionOverride(
       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
       //Telemetry info
       TraceLoggingUInt8(WINML_TLM_NAMED_DIMENSION_OVERRIDE_VERSION, "schemaVersion"),
-      // num threads info
-      TraceLoggingWideString(name.c_str(), "dimension name"),
-      TraceLoggingInt32(value, "override value"),
+      // named dimension override info
+      TraceLoggingWideString(name.c_str(), "dimensionName"),
+      TraceLoggingInt32(value, "overrideValue"),
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }

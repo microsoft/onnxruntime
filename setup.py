@@ -44,9 +44,6 @@ if '--use_tensorrt' in sys.argv:
 elif '--use_cuda' in sys.argv:
     package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
     sys.argv.remove('--use_cuda')
-elif '--use_ngraph' in sys.argv:
-    package_name = 'onnxruntime-ngraph'
-    sys.argv.remove('--use_ngraph')
 elif '--use_openvino' in sys.argv:
     package_name = 'onnxruntime-openvino'
     sys.argv.remove('--use_openvino')
@@ -65,6 +62,9 @@ elif '--use_acl' in sys.argv:
 elif '--use_armnn' in sys.argv:
     package_name = 'onnxruntime-armnn'
     sys.argv.remove('--use_armnn')
+elif '--use_dml' in sys.argv:
+    package_name = 'onnxruntime-dml'
+    sys.argv.remove('--use_dml')
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -158,16 +158,13 @@ except ImportError as error:
 # Additional binaries
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
-  # DNNL & TensorRT EPs are built as shared libs
+  # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
   libs.extend(['libonnxruntime_providers_tensorrt.so'])
-  # nGraph Libs
-  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
-  # OpenVINO Libs
-  if package_name == 'onnxruntime-openvino':
-    if platform.system() == 'Linux':
-      libs.extend(['libovep_ngraph.so'])
+  libs.extend(['libonnxruntime_providers_openvino.so'])
+  # OpenVINO libs
+  libs.extend(['libovep_ngraph.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   if nightly_build:
@@ -182,12 +179,13 @@ elif platform.system() == "Darwin":
     libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
-  # DNNL & TensorRT EPs are built as shared libs
+  # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['onnxruntime_providers_shared.dll'])
   libs.extend(['onnxruntime_providers_dnnl.dll'])
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
-  # nGraph Libs
-  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
+  libs.extend(['onnxruntime_providers_openvino.dll'])
+  # DirectML Libs
+  libs.extend(['directml.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
   if nightly_build:
@@ -230,13 +228,14 @@ packages = [
     'onnxruntime.datasets',
     'onnxruntime.tools',
     'onnxruntime.quantization',
+    'onnxruntime.quantization.operators',
+    'onnxruntime.transformers',
 ]
 
-# TODO: thiagofc: Temporary 'experimental' namespace for new PyTorch front-end
 if '--enable_training' in sys.argv:
-    packages.extend(['onnxruntime.experimental',
-                     'onnxruntime.experimental.amp',
-                     'onnxruntime.experimental.optim'])
+    packages.extend(['onnxruntime.training',
+                     'onnxruntime.training.amp',
+                     'onnxruntime.training.optim'])
     sys.argv.remove('--enable_training')
 
 package_data = {}

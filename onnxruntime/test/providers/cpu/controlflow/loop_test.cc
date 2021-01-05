@@ -92,7 +92,11 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
   bool is_cond_1d = options.subgraph_cond_1d_tensor;
   bool is_iter_num_1d = options.subgraph_iter_num_1d_tensor;
 
-  Model model("Loop subgraph", false, DefaultLoggingManager().DefaultLogger());
+  // Loop tests use unsqueeze operator in it's subgraph. Unsqueeze was updated in opset13
+  // This test can continue to use opset12 or can be updated to use the latest opset once
+  // unsqueeze op13 implementation is done.
+  Model model("Loop subgraph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 12}},
+              {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -681,7 +685,7 @@ TEST(Loop, SubgraphTypeOverride) {
   options.override_types = true;
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider}, &session_run_options, nullptr,
-           ExecutionMode::ORT_SEQUENTIAL, {}, options);
+           ExecutionMode::ORT_SEQUENTIAL, options);
 }
 
 // Regression test that a subgraph input overrides an outer scope value of the same name.
@@ -1043,6 +1047,120 @@ TEST(Loop, MixedExecutionProviders) {
   ExitDueToCond(options);
 }
 #endif
+
+// Test sequence as Loop carried dependency (opset-13 allows this)
+TEST(Loop, SequenceAsLoopCarriedDependency) {
+  auto create_subgraph = []() {
+    Model model("sequence in Loop subgraph carried dependency", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    /* Subgraph Adds inserted_tensor (float tensor) to a sequence across iterations
+
+    Inputs: iter_num, cond_in, loop_var_0_in
+
+          loop_var_0_in   inserted_tensor          cond_in            iter_num   
+                |             |                      |                (unused)   
+         [SequenceInsert]-----/                  [Identity] 
+                |                                    |
+                |                                 cond_out   
+           loop_var_0_out 
+   */
+
+    // graph inputs types.
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto float_tensor_sequence;
+    auto* tensor_type = float_tensor_sequence
+                            .mutable_sequence_type()
+                            ->mutable_elem_type()
+                            ->mutable_tensor_type();
+
+    tensor_type->set_elem_type(TensorProto_DataType_FLOAT);
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto float_tensor;
+    float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+    float_tensor.mutable_tensor_type()->mutable_shape()->add_dim();
+
+    // graph inputs
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+    auto& loop_var_0_in = graph.GetOrCreateNodeArg("loop_var_0_in", &float_tensor_sequence);
+
+    // graph outputs
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& loop_var_0_out = graph.GetOrCreateNodeArg("loop_var_0_out", &float_tensor_sequence);
+
+    // outer scope values. need type but not shape.
+    auto& inserted_tensor = graph.GetOrCreateNodeArg("inserted_tensor", &float_tensor);
+
+    // add it to the outer scope so that we don't end up with it being considered a graph input
+    graph.AddOuterScopeNodeArg("inserted_tensor");
+
+    // cond_in -> cond_out
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+
+      graph.AddNode("cond_in_identity", "Identity", "Forward cond_in to cond_out", inputs, outputs);
+    }
+
+    // iter_num_in -> loop_var_0_out
+    {
+      inputs = {&loop_var_0_in, &inserted_tensor};
+      outputs = {&loop_var_0_out};
+
+      graph.AddNode("loop_var_out", "SequenceInsert", "append to sequence across iterations", inputs, outputs);
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in, &loop_var_0_in});
+    graph.SetOutputs({&cond_out, &loop_var_0_out});
+
+    // add an initializer for the tensor that will be inserted into the sequence on every iterations
+    {
+      TensorProto inserted_tensor_proto;
+      inserted_tensor_proto.set_name("inserted_tensor");
+      inserted_tensor_proto.add_dims(1);
+      inserted_tensor_proto.add_float_data(1.f);
+      inserted_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+      graph.AddInitializedTensor(inserted_tensor_proto);
+    }
+
+    auto status = graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  OpTester test("Loop", 13);
+  auto body = create_subgraph();
+  test.AddAttribute<GraphProto>("body", body);
+
+  test.AddInput<int64_t>("M", {1}, {3});
+  test.AddInput<bool>("cond", {1}, {true});
+
+  SeqTensors<float> seq_input;
+  test.AddSeqInput("loop_var_0_orig", seq_input);
+
+  SeqTensors<float> seq_output;
+  seq_output.AddTensor({1}, {1.f});
+  seq_output.AddTensor({1}, {1.f});
+  seq_output.AddTensor({1}, {1.f});
+  test.AddSeqOutput("loop_var_0_final", seq_output);
+
+  // Disable TensorRT on unsupported data type BOOL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
 
 }  // namespace test
 }  // namespace onnxruntime

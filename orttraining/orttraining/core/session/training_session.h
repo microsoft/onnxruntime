@@ -11,15 +11,31 @@
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/graph/gradient_config.h"
+#include "orttraining/models/runner/pipeline.h"
 
 namespace onnxruntime {
 namespace training {
+
+constexpr char SHARED_OPTIMIZER_STATES_KEY[] = "shared_optimizer_state";
 
 class TrainingSession : public InferenceSession {
  public:
   typedef std::unordered_map<std::string /*OpType*/,
                              std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
       ImmutableWeights;
+    
+  typedef std::unordered_map<std::string /* Model weight name*/,
+                             NameMLValMap /* 'Moment_1': OrtValue, 'Moment_2': OrtValue etc...*/>
+                            OptimizerState;
+  
+  /**
+   * Partition information of each paritioned weight
+   */
+  struct PartitionInfo {
+    std::vector<int64_t> original_dim;
+    int megatron_row_partition = -1;
+    std::string view_name;
+  };
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {}
@@ -64,14 +80,26 @@ class TrainingSession : public InferenceSession {
       int horizontal_parallel_size{1};
       // The number of pipeline stages.
       int pipeline_parallel_size{1};
+
+      int pipeline_stage_id{0};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};
 
     struct MixedPrecisionConfiguration {
-      // Whether to use FP16 initializers.
-      bool use_fp16_initializers{};
-      ONNX_NAMESPACE::TensorProto_DataType fp16_type{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16};
+      // Whether to use mixed precision initializers.
+      bool use_mixed_precision_initializers{};
+      MixedPrecisionDataType mixed_precision_type{MixedPrecisionDataType::FP16};
+
+      bool layernorm_stash_as_fp32{true};
+      
+      ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType() const {
+        switch (mixed_precision_type) {
+          case MixedPrecisionDataType::FP16: return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+          case MixedPrecisionDataType::BF16: return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+          default: return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+        }  
+      }
     };
     // The mixed precision configuration.
     // If not provided, mixed precision is disabled.
@@ -120,10 +148,10 @@ class TrainingSession : public InferenceSession {
       std::function<std::unordered_map<std::string, float>(const std::string&)> weight_attributes_generator{};
       std::function<std::unordered_map<std::string, int64_t>(const std::string&)> weight_int_attributes_generator{};
 
-      // Whether to use FP16 moments.
-      bool use_fp16_moments{};
-      // Whether to use FP16 for the all reduce.
-      bool do_all_reduce_in_fp16{};
+      // Whether to use mixed precision moments.
+      bool use_mixed_precision_moments{};
+      // Whether to use mixed precision type for the all reduce.
+      bool do_all_reduce_in_mixed_precision_type{};
       // Whether to use NCCL.
       bool use_nccl{};
       // Whether to partition the optimizer state.
@@ -136,6 +164,11 @@ class TrainingSession : public InferenceSession {
     // The optimizer configuration.
     // If not provided, no optimizer is added.
     optional<OptimizerConfiguration> optimizer_config{};
+
+    // optional initial states for optimizer
+    // These states are partitioned wherever the weights are partitioned for eg in Zero, Megatron
+    // This is loaded into the optimizer initializers when the optimizer graph is created
+    optional<OptimizerState> init_optimizer_states{};
 
     // struct to describe a specific edge. An edge is not the same as a node_arg. Edge represents a connection between two operators.
     // For example, an operator A's output tensor T is connecting to another operator B's input, then this constructs
@@ -164,11 +197,19 @@ class TrainingSession : public InferenceSession {
       // Otherwise, use true to trigger ORT's pipeline partition.
       bool do_partition;
       // Tensors to fetch as specified by the user.
-      // Each pipeline stage should pick up some strings from this field..
+      // Each pipeline stage should pick up some strings from this field.
       std::vector<std::string> fetch_names;
       // cut_list contains the list of CutInfo to make the graph partitions.
       // cut_list[i] contains the CutInfo to make the partition between stage i and stage i+1
       std::vector<CutInfo> cut_list;
+      // Alternative for partition. We map each operator's string identifier to
+      // a stage identifier. We identify operators using the name of any of
+      // their outputs. All operators in the graph must be in the domain of this
+      // map.
+      std::map<std::string, int> op_id_to_stage;
+
+      // The base path at which to save the intermediate partitioned input model (forward pass only).
+      optional<PathString> partitioned_model_path{};
     };
 
     // If pipeline is enabled, this field's has_value() returns true.
@@ -178,10 +219,14 @@ class TrainingSession : public InferenceSession {
     struct GraphTransformerConfiguration {
       // Whether to enable GELU approximation which is faster but produces different results.
       bool enable_gelu_approximation{false};
-      // Enable checkpointing of attention dropout to save memory
-      bool attn_dropout_checkpoint{false};
-      // Enable checkpointing of Gelu activation output to save memory
-      bool gelu_checkpoint{false};
+      // Enable recompute of attention dropout to save memory
+      bool attn_dropout_recompute{false};
+      // Enable recompute of Gelu activation output to save memory
+      bool gelu_recompute{false};
+      // Enable recompute of transformer layer ouput to save memory
+      bool transformer_layer_recompute{false};
+      // Number of layers to apply recompute
+      int number_recompute_layers{0};
     };
 
     GraphTransformerConfiguration graph_transformer_config{};
@@ -213,21 +258,8 @@ class TrainingSession : public InferenceSession {
       // Index of obtained pipeline stage. The first stage is indexed by 0.
       int pipeline_stage_id;
       // The names of pipeline events in model's input list.
-      // The are defined in order of being called.
-      std::string forward_waited_event_name;
-      std::string forward_waited_event_after_recv_name;
-      std::string forward_recorded_event_before_send_name;
-      std::string forward_recorded_event_name;
-      std::string backward_waited_event_name;
-      std::string backward_waited_event_after_recv_name;
-      std::string backward_recorded_event_before_send_name;
-      std::string backward_recorded_event_name;
-
-      std::string forward_wait_output_name;
-      std::string forward_record_output_name;
-      std::string backward_wait_output_name;
-      std::string backward_record_output_name;
-
+      // This field also includes the first output name of each event operator.
+      pipeline::PipelineTensorNames pipeline_tensor_names;
       // Tensors to feed at this pipeline stage.
       std::vector<std::string> feed_names;
       // Tensors to fetch at this pipeline stage.
@@ -238,6 +270,11 @@ class TrainingSession : public InferenceSession {
     // The pipeline configuration output.
     // This is only set if an pipeline is enabled.
     optional<PipelineConfigurationResult> pipeline_config_result;
+
+    // Mapped initialized names after weight partitioning for example MegatronTransformer
+    std::unordered_map<std::string, std::string> weight_name_map_after_graph_transform{};
+
+    std::unordered_map<std::string, PartitionInfo> weight_partition_info;
   };
 
   /**
@@ -287,6 +324,12 @@ class TrainingSession : public InferenceSession {
    * @return The status of the operation.
    */
   common::Status GetStateTensors(NameMLValMap& state_tensors);
+
+  common::Status GetOptimizerState(std::unordered_map<std::string, NameMLValMap>& opt_state_tensors);
+
+  common::Status GetModelState(std::unordered_map<std::string, NameMLValMap>& model_state_tensors, bool include_mixed_precision_weights = false);
+
+  common::Status GetPartitionInfoMap(std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>>& part_info_map);
 
   /** Gets the DataTransferManager instance. */
   const DataTransferManager& GetDataTransferManager() const;
@@ -370,8 +413,8 @@ class TrainingSession : public InferenceSession {
   //
   // After this function, the resulted computation is
   //
-  //  WaitEvent --> Recv --> WaitEvent --> Forward --> RecordEvent --> Send --> RecordEvent -->
-  //  WaitEvent --> Recv --> WaitEvent --> Backward --> RecordEvent --> Send --> RecordEvent
+  //  WaitEvent --> Recv --> RecordEvent --> WaitEvent --> Forward --> RecordEvent --> WaitEvent --> Send --> RecordEvent -->
+  //  WaitEvent --> Recv --> RecordEvent --> WaitEvent --> Backward --> RecordEvent --> WaitEvent --> Send --> RecordEvent
   //
   // As you can see, some event operators are inserted. For each event operator, its dependent
   // event tensor name is written to an input references, for example, "forward_waited_event_name".
@@ -383,26 +426,18 @@ class TrainingSession : public InferenceSession {
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
-                                   std::string& forward_waited_event_name,
-                                   std::string& forward_recorded_event_name,
-                                   std::string& backward_waited_event_name,
-                                   std::string& backward_recorded_event_name,
-                                   std::string& forward_wait_output_name,
-                                   std::string& forward_record_output_name,
-                                   std::string& backward_wait_output_name,
-                                   std::string& backward_record_output_name,
-                                   std::string& forward_waited_event_after_recv_name,
-                                   std::string& forward_recorded_event_before_send_name,
-                                   std::string& backward_waited_event_after_recv_name,
-                                   std::string& backward_recorded_event_before_send_name);
+                                   pipeline::PipelineTensorNames& pipeline_tensor_names);
 
-  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
+  common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                                 TrainingConfigurationResult& config_result_out);
 
   /** configure initial transformers for training */
-  void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
-                                  const std::unordered_set<std::string>& weights_to_train,
+  void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
+                                  GraphTransformerManager& transformer_manager,
+                                  std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                  TrainingConfigurationResult& config_result_out,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
@@ -434,13 +469,12 @@ class TrainingSession : public InferenceSession {
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
-  @param use_fp16_initializer specify whether fp16 initialier is created.
-  @param fp32_weight_name_to_fp16_node_arg the map between weights and FP16 weights.
+  @param mixed_precision_config The mixed precision configuration.
+  @param fp32_weight_name_to_mixed_precision_node_arg the map between weights and mixed precision weights.
   */
   common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
-                                      bool use_fp16_initializer,
-                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg,
-                                      ONNX_NAMESPACE::TensorProto_DataType fp16_type);
+                                      const TrainingConfiguration::MixedPrecisionConfiguration& mixed_precision_config,
+                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_mixed_precision_node_arg);
 
   /** Discover all trainable initializers by reverse DFS starting from a given tensor (for example, the loss value)
   @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table
@@ -471,8 +505,11 @@ class TrainingSession : public InferenceSession {
 
   std::unordered_set<std::string> weights_to_train_;
   // names of additional initializers to be included in checkpoints
+  std::unordered_map<std::string, std::string> updated_weight_names_map_;
   std::unordered_set<std::string> opt_state_initializer_names_;
-  std::unordered_set<std::string> fp16_weight_initializer_names_;
+  std::unordered_map<std::string, std::string> weight_to_mixed_precision_map_;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping_;
+  std::unordered_map<std::string, TrainingSession::PartitionInfo> weight_partition_info_;
 
   bool is_mixed_precision_enabled_;
   optional<std::string> external_loss_name_;

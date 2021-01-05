@@ -32,9 +32,9 @@ class TransformerModel(nn.Module):
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, input1):
-        if self.input1_mask is None or self.input1_mask.size(0) != len(input1):
+        if self.input1_mask is None or self.input1_mask.size(0) != input1.size(0):
             device = input1.device
-            mask = self._generate_square_subsequent_mask(len(input1)).to(device)
+            mask = self._generate_square_subsequent_mask(input1.size(0)).to(device)
             self.input1_mask = mask
 
         input1 = self.encoder(input1) * math.sqrt(self.ninp)

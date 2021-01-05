@@ -15,5 +15,11 @@ class Group final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+class PassThrough : public OpKernel {
+ public:
+  PassThrough(const OpKernelInfo& info) : OpKernel(info) {}
+  Status Compute(OpKernelContext* context) const override;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

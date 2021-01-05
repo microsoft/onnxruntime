@@ -162,10 +162,11 @@ class PosixThread : public EnvThread {
  private:
   static void* ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
-    try {
+    ORT_TRY {
       // Ignore the returned value for now
       p->start_address(p->index, p->param);
-    } catch (std::exception&) {
+    }
+    ORT_CATCH(const std::exception&) {
       p->param->Cancel();
     }
     return nullptr;
@@ -184,12 +185,6 @@ class PosixEnv : public Env {
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override {
     return new PosixThread(name_prefix, index, start_address, param, thread_options);
-  }
-  Task CreateTask(std::function<void()> f) override {
-    return Task{std::move(f)};
-  }
-  void ExecuteTask(const Task& t) override {
-    t.f();
   }
 
   int GetNumCpuCores() const override {

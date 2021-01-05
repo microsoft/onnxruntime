@@ -83,6 +83,7 @@ class WinMLTelemetryHelper {
   }
 
   void LogWinMLShutDown();
+  void LogWinMLSuspended();
   void LogRuntimeError(HRESULT hr, std::string message, PCSTR file, PCSTR function, int line);
   void LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line);
   void LogRegisterOperatorKernel(
@@ -103,6 +104,7 @@ class WinMLTelemetryHelper {
       uint32_t value);
   void EndRuntimeSession() { ++runtime_session_id_; };
   bool IsMeasureSampled();
+  int GetRuntimeSessionId() { return runtime_session_id_; }
 
  private:
   void RestartTimer() {

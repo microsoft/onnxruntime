@@ -27,10 +27,6 @@ class CPUExecutionProvider : public IExecutionProvider {
  public:
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info)
       : IExecutionProvider{onnxruntime::kCpuExecutionProvider} {
-    DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                                [](int) { return onnxruntime::make_unique<TAllocator>(); },
-                                                std::numeric_limits<size_t>::max()};
-
     bool create_arena = info.create_arena;
 
 #ifdef USE_JEMALLOC
@@ -39,12 +35,15 @@ class CPUExecutionProvider : public IExecutionProvider {
 #endif
     //JEMalloc already has memory pool, so just use device allocator.
     create_arena = false;
-#elif !(defined(__amd64__) || defined(_M_AMD64))
+#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
     //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
     create_arena = false;
 #endif
 
-    InsertAllocator(CreateAllocator(device_info, 0, create_arena));
+    AllocatorCreationInfo device_info{[](int) { return onnxruntime::make_unique<TAllocator>(); },
+                                      0, create_arena};
+
+    InsertAllocator(CreateAllocator(device_info));
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;

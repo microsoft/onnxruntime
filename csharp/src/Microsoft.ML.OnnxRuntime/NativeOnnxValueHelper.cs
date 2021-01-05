@@ -83,60 +83,16 @@ namespace Microsoft.ML.OnnxRuntime
     {
         public static void GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
         {
-            switch (elemType)
+            TensorElementTypeInfo result = TensorBase.GetElementTypeInfo(elemType);
+            if(result != null)
             {
-                case TensorElementType.Float:
-                    type = typeof(float);
-                    width = sizeof(float);
-                    break;
-                case TensorElementType.Double:
-                    type = typeof(double);
-                    width = sizeof(double);
-                    break;
-                case TensorElementType.Int16:
-                    type = typeof(short);
-                    width = sizeof(short);
-                    break;
-                case TensorElementType.UInt16:
-                    type = typeof(ushort);
-                    width = sizeof(ushort);
-                    break;
-                case TensorElementType.Int32:
-                    type = typeof(int);
-                    width = sizeof(int);
-                    break;
-                case TensorElementType.UInt32:
-                    type = typeof(uint);
-                    width = sizeof(uint);
-                    break;
-                case TensorElementType.Int64:
-                    type = typeof(long);
-                    width = sizeof(long);
-                    break;
-                case TensorElementType.UInt64:
-                    type = typeof(ulong);
-                    width = sizeof(ulong);
-                    break;
-                case TensorElementType.UInt8:
-                    type = typeof(byte);
-                    width = sizeof(byte);
-                    break;
-                case TensorElementType.Int8:
-                    type = typeof(sbyte);
-                    width = sizeof(sbyte);
-                    break;
-                case TensorElementType.String:
-                    type = typeof(string);
-                    width = sizeof(byte);
-                    break;
-                case TensorElementType.Bool:
-                    type = typeof(bool);
-                    width = sizeof(bool);
-                    break;
-                default:
-                    type = null;
-                    width = 0;
-                    break;
+                type = result.TensorType;
+                width = result.TypeSize;
+            }
+            else
+            {
+                type = null;
+                width = 0;
             }
         }
     }

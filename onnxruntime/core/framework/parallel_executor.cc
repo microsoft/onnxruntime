@@ -190,10 +190,19 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     VLOGS(logger, 1) << "Computing kernel: " << node.Name();
 
     // Execute the kernel.
-    try {
+    ORT_TRY {
+#ifdef ENABLE_TRAINING
+      if (p_op_kernel->KernelDef().AllocateInputsContiguously()) {
+        ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
+      }
+#endif
+
       status = p_op_kernel->Compute(&op_kernel_context);
-    } catch (const std::exception& ex) {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+      });
     }
 
     if (!status.IsOK()) {
@@ -285,7 +294,7 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
     out_standings_++;
   }
 
-  executor_pool_->Schedule([this, p_node_index, &session_state, &logger]() {
+  onnxruntime::concurrency::ThreadPool::Schedule(executor_pool_, [this, p_node_index, &session_state, &logger]() {
     auto create_exception_message = [p_node_index, &session_state](const std::exception* ex) {
       const auto* node = session_state.GetGraphViewer().GetNode(p_node_index);
 
@@ -295,11 +304,15 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
     };
 
     Status status;
-    try {
+    ORT_TRY {
       status = ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
-    } catch (const std::exception& ex) {
-      status = create_exception_message(&ex);
-    } catch (...) {
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = create_exception_message(&ex);
+      });
+    }
+    ORT_CATCH(...) {
       // catch node processing failure exceptions here to prevent app crash.
       status = create_exception_message(nullptr);
     }

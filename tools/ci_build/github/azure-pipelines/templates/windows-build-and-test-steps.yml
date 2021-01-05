@@ -29,7 +29,7 @@ steps:
       displayName: 'Test ${{parameters.buildConfig}}'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{parameters.buildConfig}} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --build_shared_lib  --enable_onnx_tests --test ${{parameters.buildAdditionalParams}}'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{parameters.buildConfig}} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --build_shared_lib --enable_onnx_tests --test ${{parameters.buildAdditionalParams}}'
         workingFolder: '$(Build.BinariesDirectory)'
 
     - task: PublishTestResults@2

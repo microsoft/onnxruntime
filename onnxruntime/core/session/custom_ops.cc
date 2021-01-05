@@ -7,7 +7,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
-#include "core/framework/customregistry.h"
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -58,7 +57,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
     if (*size >= value.size() + 1) {
       std::memcpy(out, value.data(), value.size());
       out[value.size()] = '\0';
-      *size = value.size();
+      *size = value.size() + 1;
       return nullptr;
     } else {
       *size = value.size() + 1;
@@ -68,13 +67,16 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
   return onnxruntime::ToOrtStatus(status);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/customregistry.h"
+
 namespace onnxruntime {
 
 struct CustomOpKernel : OpKernel {
-  CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
+  CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
     if (op_.version > ORT_API_VERSION)
-      throw std::invalid_argument("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
+      ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
+    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<const OrtKernelInfo*>(&info));
   }
 
   ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
@@ -88,16 +90,25 @@ struct CustomOpKernel : OpKernel {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpKernel);
 
-  OrtCustomOp& op_;
+  const OrtCustomOp& op_;
   void* op_kernel_;
 };
 
 common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_domains, std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
-
   for (auto& domain : op_domains) {
-    if (domain->domain_[0])
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(domain->domain_, 1, 1000);
+    // Domain is not empty - add it to the DomainToVersion ONNX map
+    // If domain is empty, it is assumed to be part of the ONNX domain
+    if (domain->domain_[0]) {
+      // Add it to the DomainToVersion ONNX map if it doesn't already exist
+      // For example, two sessions using the same session_options should not add the same custom op domain to the version map twice
+      auto& domain_to_version_range_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+      const auto& domain_to_version_map = domain_to_version_range_instance.Map();
+
+      if (domain_to_version_map.find(domain->domain_) == domain_to_version_map.end()) {
+        domain_to_version_range_instance.AddDomainToVersion(domain->domain_, 1, 1000);
+      }
+    }
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
 
@@ -107,19 +118,20 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       auto input_count = op->GetInputTypeCount(op);
       for (size_t i = 0; i < input_count; i++) {
         auto type = op->GetInputType(op, i);
-
         schema.Input(i, "A", "Description",
+                     ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type ? "T" :
                      DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
       }
 
       auto output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
         auto type = op->GetOutputType(op, i);
-
         schema.Output(i, "A", "Description",
+                      ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type ? "T":
                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
       }
 
+      schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
       schema.SetDomain(domain->domain_);
       schema.SinceVersion(1);
       schema.AllowUncheckedAttributes();
@@ -128,15 +140,15 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
-          .SinceVersion(1);
+          .SinceVersion(1)
+          .TypeConstraint("T", DataTypeImpl::AllTensorTypes());
+
       if (const char* provider_type = op->GetExecutionProviderType(op))
         def_builder.Provider(provider_type);
       else
         def_builder.Provider(onnxruntime::kCpuExecutionProvider);
-
       KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
       KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
-
       output->RegisterCustomKernel(create_info);
     }
 
@@ -149,3 +161,5 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

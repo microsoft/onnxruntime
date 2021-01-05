@@ -8,7 +8,6 @@ from onnx import helper, numpy_helper
 import onnxruntime as onnxrt
 import os
 from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
-from pathlib import Path
 import shutil
 import sys
 import subprocess
@@ -47,6 +46,7 @@ def generate_gemm_inputs_initializers(graph, config, added_inputs_initializers={
     input_shape_b = ['seq'] + shape_b if extend else shape_b
     input_shape_c = ['seq'] + shape_c if extend else shape_c
 
+    np.random.seed(12345)
     a = np.random.ranf(shape_a).astype(np.float32)
     b = np.random.ranf(shape_b).astype(np.float32)
     c = np.random.ranf(shape_c).astype(np.float32) if config['withC'] else np.array(0)
@@ -363,7 +363,7 @@ class TestNuphar(unittest.TestCase):
         # run onnx_test_runner to verify results
         # use -M to disable memory pattern
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-n', 'bidaf', cwd], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-c', '1', '-j', '1', '-n', 'bidaf', cwd], check=True, cwd=cwd)
 
         # test AOT on the quantized model
         if os.name not in ['nt', 'posix']:
@@ -426,7 +426,7 @@ class TestNuphar(unittest.TestCase):
         bert_squad_dir = os.path.join(cwd, 'download_sample_10')
         bert_squad_model = os.path.join(bert_squad_dir, 'bertsquad10.onnx')
         subprocess.run([
-            sys.executable, '-m', 'onnxruntime.nuphar.symbolic_shape_infer', '--input', bert_squad_model, '--output',
+            sys.executable, '-m', 'onnxruntime.tools.symbolic_shape_infer', '--input', bert_squad_model, '--output',
             bert_squad_model, '--auto_merge', '--int_max=1000000'
         ],
                        check=True,
@@ -532,7 +532,6 @@ class TestNuphar(unittest.TestCase):
         assert np.allclose(first_lstm_data_output, scan_batch_data_output)
 
     def test_gemm_to_matmul(self):
-        model_cnt = 0
         gemm_model_name_prefix = "gemm_model"
         matmul_model_name_prefix = "matmul_model"
         common_config = {
@@ -582,7 +581,6 @@ class TestNuphar(unittest.TestCase):
             assert np.allclose(expected_y, actual_y)
 
     def test_gemm_to_matmul_with_scan(self):
-        model_cnt = 0
         gemm_model_name_prefix = "gemm_scan_model"
         matmul_model_name_prefix = "matmul_scan_model"
 
@@ -667,21 +665,8 @@ class TestNuphar(unittest.TestCase):
             sess = onnxrt.InferenceSession(matmul_model_name)
             actual_y = sess.run([], test_inputs)
 
-            assert np.allclose(expected_y, actual_y)
+            assert np.allclose(expected_y, actual_y, atol=1e-7)
             print("finished " + matmul_model_name)
-
-    def test_symbolic_shape_infer(self):
-        cwd = os.getcwd()
-        test_model_dir = os.path.join(cwd, '..', 'models')
-        for filename in Path(test_model_dir).rglob('*.onnx'):
-            if filename.name.startswith('.'):
-                continue  # skip some bad model files
-            subprocess.run([
-                sys.executable, '-m', 'onnxruntime.nuphar.symbolic_shape_infer', '--input',
-                str(filename), '--auto_merge', '--int_max=100000', '--guess_output_rank'
-            ],
-                           check=True,
-                           cwd=cwd)
 
 
 if __name__ == '__main__':

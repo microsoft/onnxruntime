@@ -21,6 +21,27 @@ is as follows
    * Create env using ```CreateEnvWithGlobalThreadPools()```
    * Create session and call ```DisablePerSessionThreads()``` on the session options object
    * Call ```Run()``` as usual
+* **Share allocator(s) between sessions:**
+   * *Description*: This feature allows multiple sessions in the same process to use the same allocator(s).
+   * *Scenario*: You've several sessions in the same process and see high memory usage. One of the reasons for this is as follows. Each session creates its own CPU allocator which is arena based by default. [ORT implements](onnxruntime/core/framework/bfc_arena.h) a simplified version of an arena allocator that is based on [Doug Lea's best-first with coalescing algorithm](http://gee.cs.oswego.edu/dl/html/malloc.html). Each allocator lives in its own session. It allocates a large region of memory during init time and thereafter it chunks, coalesces and extends this initial region as per allocation/deallocation demands. Overtime the arena ends up with unused chunks of memory per session. Moreover, the memory allocated by the arena is never returned to the system; once allocated it always remains allocated. All these factors add up when using multiple sessions (each with its own arena) thereby increasing the overall memory consumption of the process. Hence it becomes important to share the arena allocator between sessions.
+   * *Usage*:
+      * Create and register a shared allocator with the env using the ```CreateAndRegisterAllocator``` API. This allocator is then reused by all sessions that use the same env instance unless a session
+chooses to override this by setting ```session_state.use_env_allocators``` to "0".
+      * Set ```session.use_env_allocators``` to "1" for each session that wants to use the env registered allocators.
+      * See test ```TestSharedAllocatorUsingCreateAndRegisterAllocator``` in
+     onnxruntime/test/shared_lib/test_inference.cc for an example.
+      * Configuring *OrtArenaCfg*:
+         * Default values for these configs can be found in the [BFCArena class](onnxruntime/core/framework/bfc_arena.h).
+         * ```initial_chunk_size_bytes```: This is the size of the region that the arena allocates first. Chunks are handed over to allocation requests from this region. If the logs show that the arena is getting extended a lot more than expected, you're better off choosing a big enough initial size for this.
+         * ```max_mem```: This is the maximum amount of memory the arena allocates. If a chunk cannot be serviced by any existing region, the arena extends itself by allocating one more region depending on available memory (max_mem - allocated_so_far). An error is returned if available memory is less than the requested extension.
+         * ```arena_extend_strategy```: This can take only 2 values currently: kSameAsRequested or kNextPowerOfTwo. As the name suggests kNextPowerOfTwo (the default) extends the arena by a power of 2, while kSameAsRequested extends by a size that is the same as the allocation request each time. kSameAsRequested is suited for more advanced configurations where you know the expected memory usage in advance.
+         * ```max_dead_bytes_per_chunk```: This controls whether a chunk is split to service an allocation request. Currently if the difference between the chunk size and requested size is less than this value, the chunk is not split. This has the potential to waste memory by keeping a part of the chunk unused (hence called dead bytes) throughout the process thereby increasing the memory usage (until this chunk is returned to the arena).
+
+* **Share initializer(s) between sessions:**
+   * *Description*: This feature allows a user to share the same instance of an initializer across
+multiple sessions.
+   * *Scenario*: You've several models that use the same set of initializers except the last few layers of the model and you load these models in the same process. When every model (session) creates a separate instance of the same initializer, it leads to excessive and wasteful memory usage since in this case it's the same initializer. You want to optimize memory usage while having the flexibility to allocate the initializers (possibly even store them in shared memory). 
+   * *Example Usage*: Use the ```AddInitializer``` API to add a pre-allocated initializer to session options before calling ```CreateSession```. Use the same instance of session options to create several sessions allowing the initializer(s) to be shared between the sessions. See [C API sample usage (TestSharingOfInitializer)](../onnxruntime/test/shared_lib/test_inference.cc) and [C# API sample usage (TestWeightSharingBetweenSessions)](../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs).
 
 ## Usage Overview
 

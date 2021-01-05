@@ -8,9 +8,10 @@
 
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/bfc_arena.h"
+#include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
@@ -18,13 +19,6 @@
 namespace onnxruntime {
 
 const int CPU_ALLOCATOR_DEVICE_ID = 0;
-
-// Information needed to construct CUDA execution providers.
-struct CUDAExecutionProviderInfo {
-  OrtDevice::DeviceId device_id{0};
-  size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
-  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
-};
 
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
@@ -52,9 +46,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
   }
-  curandGenerator_t PerThreadCurandGenerator() {
-    return GetPerThreadContext().CurandGenerator();
-  }
 
   template <typename T>
   const T* GetConstOnes(size_t count) {
@@ -68,7 +59,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
@@ -78,16 +69,17 @@ class CUDAExecutionProvider : public IExecutionProvider {
       const onnxruntime::GraphViewer& graph,
       const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
-  int GetDeviceId() const { return device_id_; }
+  int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
-  void UpdateProviderOptionsInfo();
+  int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo; }
+
+  ProviderOptions GetProviderOptions() const override {
+    return CUDAExecutionProviderInfo::ToProviderOptions(info_);
+  }
 
  private:
-  OrtDevice::DeviceId device_id_;
+  CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
-  size_t cuda_mem_limit_;
-  ArenaExtendStrategy arena_extend_strategy_;
-
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
     std::vector<void*> cpu_ptrs;
@@ -107,10 +99,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
-    }
-
-    curandGenerator_t CurandGenerator() const {
-      return curand_generator_;
     }
 
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
@@ -146,7 +134,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
    private:
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
-    curandGenerator_t curand_generator_ = nullptr;
 
     // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
     // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory

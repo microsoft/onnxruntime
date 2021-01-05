@@ -5,9 +5,9 @@ parameters:
   DoDataDownload: true
 steps:
     - task: NuGetToolInstaller@0
-      displayName: Use Nuget 4.9
+      displayName: Use Nuget 5.7.0
       inputs:
-        versionSpec: 4.9.4
+        versionSpec: 5.7.0
     # - task: UniversalPackages@0
     #   displayName: 'Download python'
     #   inputs:

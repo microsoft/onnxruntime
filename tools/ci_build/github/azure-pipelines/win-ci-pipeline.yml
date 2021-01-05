@@ -15,7 +15,8 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    setVcvars: true    
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -38,6 +39,16 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
+     set ORT_DOXY_SRC=$(Build.SourcesDirectory)
+     set ORT_DOXY_OUT=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+     mkdir %ORT_DOXY_SRC% 
+     mkdir %ORT_DOXY_OUT%
+     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
+     
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'API Documentation Check and generate'
+
+  - script: |
      python -m pip install -q pyopenssl setuptools wheel numpy flake8
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
@@ -52,9 +63,9 @@ jobs:
     displayName: 'Install ONNX'
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4
+      versionSpec: 5.7.0
 
   - task: NuGetCommand@2
     displayName: 'NuGet restore'
@@ -101,7 +112,7 @@ jobs:
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: '$(BuildConfig)'
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'      
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: DotNetCoreCLI@2
     displayName: 'Build C#'    
@@ -152,13 +163,6 @@ jobs:
 
 - job: 'x86_build'
   pool: 'Win-CPU-2019'
-  strategy:
-    maxParallel: 2
-    matrix:
-      debug:
-        BuildConfig: 'Debug'
-      release:
-        BuildConfig: 'RelWithDebInfo'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -166,7 +170,9 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
-    setVcvars: true    
+    setVcvars: true
+    BuildConfig: 'RelWithDebInfo'
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -228,9 +234,9 @@ jobs:
   - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4  
+      versionSpec: 5.7.0
 
 
   - task: DotNetCoreCLI@2
@@ -290,13 +296,6 @@ jobs:
    
 - job: 'x86_no_contrib_ops'
   pool: 'Win-CPU-2019'
-  strategy:
-    maxParallel: 2
-    matrix:
-      debug:
-        BuildConfig: 'Debug'
-      release:
-        BuildConfig: 'RelWithDebInfo'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -304,7 +303,9 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
-    setVcvars: true    
+    setVcvars: true
+    BuildConfig: 'RelWithDebInfo'
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -366,9 +367,9 @@ jobs:
   - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4  
+      versionSpec: 5.7.0
    
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
@@ -417,13 +418,6 @@ jobs:
 
 - job: 'build_x64_no_contrib_ops'
   pool: 'Win-CPU-2019'
-  strategy:
-    maxParallel: 2
-    matrix:
-      debug:
-        BuildConfig: 'Debug'
-      release:
-        BuildConfig: 'RelWithDebInfo'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -431,7 +425,9 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    setVcvars: true    
+    setVcvars: true
+    BuildConfig: 'RelWithDebInfo'
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -493,9 +489,9 @@ jobs:
   - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4  
+      versionSpec: 5.7.0
 
    
   - task: DotNetCoreCLI@2

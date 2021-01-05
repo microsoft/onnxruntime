@@ -6,8 +6,30 @@
 
 #include <vector>
 #include <cmath>
+#include <mutex>
 
 static const char* c_OpDomain = "test.customop";
+
+struct OrtCustomOpDomainDeleter {
+  explicit OrtCustomOpDomainDeleter(const OrtApi* ort_api) {
+    ort_api_ = ort_api;
+  }
+  void operator()(OrtCustomOpDomain* domain) const {
+    ort_api_->ReleaseCustomOpDomain(domain);
+  }
+
+  const OrtApi* ort_api_;
+};
+
+using OrtCustomOpDomainUniquePtr = std::unique_ptr<OrtCustomOpDomain, OrtCustomOpDomainDeleter>;
+static std::vector<OrtCustomOpDomainUniquePtr> ort_custom_op_domain_container;
+static std::mutex ort_custom_op_domain_mutex;
+
+static void AddOrtCustomOpDomainToContainer(OrtCustomOpDomain* domain, const OrtApi* ort_api) {
+  std::lock_guard<std::mutex> lock(ort_custom_op_domain_mutex);
+  auto ptr = std::unique_ptr<OrtCustomOpDomain, OrtCustomOpDomainDeleter>(domain, OrtCustomOpDomainDeleter(ort_api));
+  ort_custom_op_domain_container.push_back(std::move(ptr));
+}
 
 struct OrtTensorDimensions : std::vector<int64_t> {
   OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
@@ -17,12 +39,10 @@ struct OrtTensorDimensions : std::vector<int64_t> {
   }
 };
 
-
 struct KernelOne {
   KernelOne(OrtApi api)
-     :api_(api),
-     ort_(api_)
-  {
+      : api_(api),
+        ort_(api_) {
   }
 
   void Compute(OrtKernelContext* context) {
@@ -86,7 +106,7 @@ struct KernelTwo {
 };
 
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) {
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
     return new KernelOne(api);
   };
 
@@ -101,7 +121,7 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
 } c_CustomOpOne;
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) {
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
     return new KernelTwo(api);
   };
 
@@ -115,7 +135,6 @@ struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
 
 } c_CustomOpTwo;
 
-
 OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
   OrtCustomOpDomain* domain = nullptr;
   const OrtApi* ortApi = api->GetApi(ORT_API_VERSION);
@@ -123,6 +142,8 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   if (auto status = ortApi->CreateCustomOpDomain(c_OpDomain, &domain)) {
     return status;
   }
+
+  AddOrtCustomOpDomainToContainer(domain, ortApi);
 
   if (auto status = ortApi->CustomOpDomain_Add(domain, &c_CustomOpOne)) {
     return status;

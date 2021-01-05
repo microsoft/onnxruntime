@@ -5,6 +5,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "gsl/gsl-lite.hpp"
 #include "dnnl.hpp"
+#include "dnnl_debug.h"
 #include <unordered_map>
 #include <list>
 
@@ -20,10 +21,50 @@ dnnl::memory::data_type DnnnType<float>() {
   return dnnl::memory::data_type::f32;
 }
 
-static dnnl::engine& GetEngine() {
-  static dnnl::engine cpu_engine = dnnl::engine(dnnl::engine::kind::cpu, 0);
-  return cpu_engine;
-}
+class DnnlEngineInstance {
+ private:
+  static DnnlEngineInstance* instance;
+  std::unordered_map<dnnl::engine::kind, dnnl::engine> dnnl_engine_map;
+
+  DnnlEngineInstance() {
+    dnnl::engine engine;
+    try {
+      engine = dnnl::engine(dnnl::engine::kind::cpu, 0);
+      if (engine) {
+        dnnl_engine_map.insert(std::make_pair(dnnl::engine::kind::cpu, engine));
+      }
+    } catch (const std::exception& e) {
+      LOGS_DEFAULT(ERROR) << e.what() << std::endl;
+      throw;
+    }
+    try {
+      engine = dnnl::engine(dnnl::engine::kind::gpu, 0);
+      if (engine) {
+        dnnl_engine_map.insert(std::make_pair(dnnl::engine::kind::gpu, engine));
+      }
+    } catch (const std::exception& e) {
+      LOGS_DEFAULT(INFO) << e.what() << std::endl;
+    }
+  }
+
+ public:
+  DnnlEngineInstance(DnnlEngineInstance& other) = delete;
+  void operator=(const DnnlEngineInstance&) = delete;
+  static DnnlEngineInstance* getInstance() {
+    if (!instance)
+      instance = new DnnlEngineInstance();
+    return instance;
+  }
+
+  const std::unordered_map<dnnl::engine::kind, dnnl::engine>& getEngineMap() {
+    return dnnl_engine_map;
+  }
+
+  const dnnl::engine& getEngine(dnnl::engine::kind kind) {
+    std::unordered_map<dnnl::engine::kind, dnnl::engine>::iterator iter = dnnl_engine_map.find(kind);
+    return iter->second;
+  }
+};
 
 static void AddDimsToKey(std::string& key, const dnnl::memory::dims& dims) {
   key.append(1, '#');

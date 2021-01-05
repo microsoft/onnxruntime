@@ -4,7 +4,11 @@
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/framework/bfc_arena.h"
 #include "core/platform/env.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#endif
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
@@ -17,13 +21,8 @@
 #include <mutex>
 #include <tuple>
 
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
-                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
-}
-
 using namespace onnxruntime;
+using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
@@ -49,6 +48,16 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>()->default_value("100"))
       ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("0.01"))
+      ("display_loss_steps", "How often to dump loss into tensorboard", cxxopts::value<size_t>()->default_value("10"))
+      ("use_nccl", "Whether to use NCCL for distributed training.", cxxopts::value<bool>()->default_value("false"))
+      ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
+      ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
+      ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
+      ("cut_group_info", "Specify the cutting info for graph partition (pipeline only). An example of a cut_group_info of "
+      "size two is: 1393:407-1463/1585/1707,2369:407-2439/2561/2683. Here, the cut info is split by ',', with the first "
+      "cut_info equal to 1393:407-1463/1585/1707, and second cut_info equal to 2369:407-2439/2561/2683. Each CutEdge is "
+      "seperated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
+      "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("evaluation_period", "How many training steps to make before making an evaluation.",
         cxxopts::value<size_t>()->default_value("1"));
   // clang-format on
@@ -68,16 +77,81 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     }
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
 
+    params.shuffle_data = false;
+    params.is_perf_test = false;
+
     auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto log_dir = flags["log_dir"].as<std::string>();
     params.train_data_dir.assign(train_data_dir.begin(), train_data_dir.end());
     params.log_dir.assign(log_dir.begin(), log_dir.end());
     params.use_profiler = flags.count("use_profiler") > 0;
+    params.display_loss_steps = flags["display_loss_steps"].as<size_t>();
+    params.data_parallel_size = flags["data_parallel_size"].as<int>();
+    params.horizontal_parallel_size = flags["horizontal_parallel_size"].as<int>();
+    // pipeline_parallel_size controls the number of pipeline's stages.
+    // pipeline_parallel_size=1 means no model partition, which means all processes run
+    // the same model. We only partition model when pipeline_parallel_size > 1.
+    params.pipeline_parallel_size = flags["pipeline_parallel_size"].as<int>();
+    ORT_RETURN_IF_NOT(params.data_parallel_size > 0, "data_parallel_size must > 0");
+    ORT_RETURN_IF_NOT(params.horizontal_parallel_size > 0, "horizontal_parallel_size must > 0");
+    ORT_RETURN_IF_NOT(params.pipeline_parallel_size > 0, "pipeline_parallel_size must > 0");
 
+    // If user doesn't provide partitioned model files, a cut list should be provided for ORT to do partition
+    // online. If the pipeline contains n stages, the cut list should be of length (n-1), in order to cut the
+    // graph into n partitions.
+    if (params.pipeline_parallel_size > 1) {
+      auto cut_info_groups = flags["cut_group_info"].as<std::vector<std::string>>();
+
+      ORT_RETURN_IF_NOT(static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
+                        "cut_info length plus one must match pipeline parallel size");
+
+      auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
+        std::vector<std::string> result;
+        size_t pos = 0;
+        std::string token;
+        while ((pos = input_str.find(delimiter)) != std::string::npos) {
+          token = input_str.substr(0, pos);
+          result.emplace_back(token);
+          input_str.erase(0, pos + delimiter.length());
+        }
+        // push the last split of substring into result.
+        result.emplace_back(input_str);
+        return result;
+      };
+
+      auto process_cut_info = [&](std::string& cut_info_string) {
+        TrainingSession::TrainingConfiguration::CutInfo cut_info;
+        const std::string edge_delimiter = ":";
+        const std::string consumer_delimiter = "/";
+        const std::string producer_consumer_delimiter = "-";
+
+        auto cut_edges = process_with_delimiter(cut_info_string, edge_delimiter);
+        for (auto& cut_edge : cut_edges) {
+          auto process_edge = process_with_delimiter(cut_edge, producer_consumer_delimiter);
+          if (process_edge.size() == 1) {
+            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0]};
+            cut_info.emplace_back(edge);
+          } else {
+            ORT_ENFORCE(process_edge.size() == 2);
+            auto consumer_list = process_with_delimiter(process_edge[1], consumer_delimiter);
+
+            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0], consumer_list};
+            cut_info.emplace_back(edge);
+          }
+        }
+        return cut_info;
+      };
+
+      for (auto& cut_info : cut_info_groups) {
+        TrainingSession::TrainingConfiguration::CutInfo cut = process_cut_info(cut_info);
+        params.pipeline_partition_cut_list.emplace_back(cut);
+      }
+    }
+    params.use_nccl = flags["use_nccl"].as<bool>();
 #ifdef USE_CUDA
     bool use_cuda = flags.count("use_cuda") > 0;
     if (use_cuda) {
-      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(0));
+      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(CUDAExecutionProviderInfo{}));
     }
 #endif
   } catch (const exception& e) {
@@ -143,7 +217,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   };
 
   std::shared_ptr<EventWriter> tensorboard;
-  if (!params.log_dir.empty() && params.mpi_context.world_rank == 0)
+  if (!params.log_dir.empty() && MPIContext::GetInstance().GetWorldRank() == 0)
     tensorboard = std::make_shared<EventWriter>(params.log_dir);
 
   params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string /**/) {
@@ -183,12 +257,12 @@ int main(int argc, char* args[]) {
   setup_training_params(params);
 
   // setup data
-  auto device_count = params.mpi_context.world_size;
+  auto device_count = MPIContext::GetInstance().GetWorldSize();
   std::vector<string> feeds{"X", "labels"};
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
   std::string mnist_data_path = ToMBString(params.train_data_dir);
-  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, params.mpi_context.world_rank /* shard_to_load */, device_count /* total_shards */);
+  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
 
   if (testData->NumSamples() == 0) {
     printf("Warning: No data loaded - run cancelled.\n");

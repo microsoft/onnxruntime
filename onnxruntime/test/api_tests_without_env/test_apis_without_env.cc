@@ -53,12 +53,15 @@ TEST(TestSessionOptions, SetIntraOpNumThreadsWithoutEnv) {
 
 int main(int argc, char** argv) {
   int status = 0;
-  try {
+  ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
     status = RUN_ALL_TESTS();
-  } catch (const std::exception& ex) {
-    std::cerr << ex.what();
-    status = -1;
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      std::cerr << ex.what();
+      status = -1;
+    });
   }
 
 #ifndef USE_ONNXRUNTIME_DLL

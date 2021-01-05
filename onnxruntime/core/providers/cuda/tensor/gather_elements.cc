@@ -12,7 +12,19 @@ namespace cuda {
 ONNX_OPERATOR_KERNEL_EX(
     GatherElements,
     kOnnxDomain,
-    11,
+    13,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
+    GatherElements);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    GatherElements,
+    kOnnxDomain,
+    11, 12,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -36,7 +48,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   const int64_t indices_size = indices_shape.Size();
 
   // Handle negative axis if any
-  const int64_t axis = static_cast<int64_t>(HandleNegativeAxis(axis_, input_rank));
+  const int64_t axis = HandleNegativeAxis(axis_, input_rank);
 
   // Validate input shapes and ranks (invoke the static method in the CPU GatherElements kernel that hosts the shared checks)
   auto status = onnxruntime::GatherElements::ValidateInputShapes(input_shape, indices_shape, axis);
@@ -56,38 +68,26 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   TArray<fast_divmod> fdm_indices_strides(indices_rank);
   TensorPitches indices_strides(indices_dims);
   for (auto i = 0; i < indices_rank; i++) {
-    fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
+    fdm_indices_strides[i] = fast_divmod(gsl::narrow_cast<int>(indices_strides[i]));
   }
 
-  size_t element_size = input_tensor->DataType()->Size();
+  const size_t element_size = input_tensor->DataType()->Size();
+  const size_t index_element_size = indices_tensor->DataType()->Size();
 
-  if (indices_tensor->IsDataType<int32_t>()) {
-    const int32_t* indices_data = indices_tensor->template Data<int32_t>();
-    GatherElementsImpl<int32_t>(
+  if (indices_tensor->IsDataType<int32_t>() ||
+      indices_tensor->IsDataType<int64_t>()) {
+    GatherElementsImpl(
         input_rank,
         input_tensor->DataRaw(),
         input_dims[axis],
         gpu_input_strides,
-        indices_data,
+        indices_tensor->DataRaw(),
         indices_size,
         fdm_indices_strides,
         axis,
         output_tensor->MutableDataRaw(),
-        element_size);
-    return Status::OK();
-  } else if (indices_tensor->IsDataType<int64_t>()) {
-    const int64_t* indices_data = indices_tensor->template Data<int64_t>();
-    GatherElementsImpl<int64_t>(
-        input_rank,
-        input_tensor->DataRaw(),
-        input_dims[axis],
-        gpu_input_strides,
-        indices_data,
-        indices_size,
-        fdm_indices_strides,
-        axis,
-        output_tensor->MutableDataRaw(),
-        element_size);
+        element_size,
+        index_element_size);
     return Status::OK();
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GatherElements op: Type of 'indices' must be int32 or int64");

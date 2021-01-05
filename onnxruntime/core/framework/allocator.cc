@@ -15,7 +15,7 @@ namespace onnxruntime {
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
   bool ok = true;
 
-  try {
+  ORT_TRY {
     SafeInt<size_t> alloc_size(size);
     if (alignment == 0) {
       *out = alloc_size * nmemb;
@@ -23,12 +23,14 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
       size_t alignment_mask = alignment - 1;
       *out = (alloc_size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
     }
-  } catch (const OnnxRuntimeException& ex) {
-    // overflow in calculating the size thrown by SafeInt.
-    LOGS_DEFAULT(ERROR) << ex.what();
-    ok = false;
   }
-
+  ORT_CATCH(const OnnxRuntimeException& ex) {
+    // overflow in calculating the size thrown by SafeInt.
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGS_DEFAULT(ERROR) << ex.what();
+      ok = false;
+    });
+  }
   return ok;
 }
 
@@ -66,6 +68,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
   } else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
     *out = new OrtMemoryInfo(
         onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
+        id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::TRT) == 0) {
+    *out = new OrtMemoryInfo(
+        onnxruntime::TRT, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1,
+        mem_type1);
+  } else if (strcmp(name1, onnxruntime::TRT_PINNED) == 0) {
+    *out = new OrtMemoryInfo(
+        onnxruntime::TRT_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
         id1, mem_type1);
   } else {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");

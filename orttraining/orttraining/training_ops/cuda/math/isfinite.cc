@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "isfinite.h"
+#include "orttraining/training_ops/cuda/math/isfinite.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -44,7 +44,6 @@ REGISTER_ISFINITE_KERNEL_TYPED(double)
       T,                                                             \
       kCudaExecutionProvider,                                        \
       KernelDefBuilder()                                             \
-          .OutputMemoryType<OrtMemTypeCPUOutput>(0)                  \
           .TypeConstraint("V", DataTypeImpl::GetTensorType<T>())     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()), \
       IsAllFiniteOp<T>);
@@ -56,11 +55,11 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   // Get Input tensor count.
   const auto total_tensor_count = context->InputCount();
 
-  // Allocate GPU memory to capture the result computed by GPU kernel.
-  // The GPU result will be copied later to the output which locates
-  // on CPU memory.
-  IAllocatorUniquePtr<bool> deviceOutput = GetScratchBuffer<bool>(1);
-  CUDA_RETURN_IF_ERROR(cudaMemset(deviceOutput.get(), int(true), sizeof(bool)));
+  // Initialize the output to true.  GPU kernel will set it
+  // to false if any value in any tensor is non-finite.
+  Tensor& output = *context->Output(0, {});
+  auto* output_data = reinterpret_cast<ToCudaType<bool>::MappedType*>(output.template MutableData<bool>());
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output_data, int(true), sizeof(bool)));
 
   std::vector<std::vector<void*>> grouped_tensor_pointers(total_tensor_count);
   std::vector<int> tensor_sizes(total_tensor_count);
@@ -74,20 +73,10 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
   typedef IsAllFiniteFunctor<TSrcCuda> TFunctor;
   TFunctor functor;
 
-  // Check if all values are finite and write true to deviceOutput.
+  // Check if all values are finite and write true to output.
   // Otherwise, false will be written.
-  launch_multi_tensor_functor<1, TFunctor, bool*>(
-      2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, deviceOutput.get());
-
-  // Copy GPU result in deviceOutput to CPU memory.
-  // Per this operator's schema, it's output is in CPU memory.
-  Tensor& output = *context->Output(0, {});
-  CUDA_RETURN_IF_ERROR(
-      cudaMemcpy(
-          output.MutableData<bool>(),
-          deviceOutput.get(),
-          sizeof(bool),
-          cudaMemcpyDeviceToHost));
+  launch_multi_tensor_functor<1, TFunctor>(
+      2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, output_data);
 
   return Status::OK();
 }

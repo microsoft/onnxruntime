@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "TestCaseResult.h"
+#include "core/common/common.h"
+#include <iostream>
 
 void TestCaseResult::SetResult(size_t task_id, EXECUTE_RESULT r) {
-  std::lock_guard<std::mutex> guard(result_mutex_);
+  ORT_ENFORCE(task_id < execution_result_.size(), "Index out of bounds");
   if (execution_result_[task_id] == EXECUTE_RESULT::NOT_SET) {
     execution_result_[task_id] = r;
   } else if (r != EXECUTE_RESULT::SUCCESS && execution_result_[task_id] == EXECUTE_RESULT::SUCCESS) {
@@ -12,3 +14,8 @@ void TestCaseResult::SetResult(size_t task_id, EXECUTE_RESULT r) {
     execution_result_[task_id] = r;
   }
 }
+
+std::ostream& operator<<(std::ostream& os, EXECUTE_RESULT result) {
+  return os << "EXECUTION_RESULT: " << static_cast<int>(result);
+}
+

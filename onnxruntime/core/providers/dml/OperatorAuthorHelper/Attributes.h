@@ -15,6 +15,7 @@ namespace AttrName
     static constexpr const char* Axis = "axis";
     static constexpr const char* AxisW = "axis_w";
     static constexpr const char* BatchAxis = "batch_axis";
+    static constexpr const char* BatchDimensions = "batch_dims";
     static constexpr const char* Beta = "beta";
     static constexpr const char* Bias = "bias";
     static constexpr const char* BlockSize = "blocksize";
@@ -32,6 +33,7 @@ namespace AttrName
     static constexpr const char* Dtype = "dtype";
     static constexpr const char* Ends = "ends";
     static constexpr const char* Epsilon = "epsilon";
+    static constexpr const char* Equation = "equation";
     static constexpr const char* ExcludeOutside = "exclude_outside";
     static constexpr const char* Exclusive = "exclusive";
     static constexpr const char* Exponent = "exponent";
@@ -45,6 +47,7 @@ namespace AttrName
     static constexpr const char* InputForget = "input_forget";
     static constexpr const char* K = "k";
     static constexpr const char* KeepDims = "keepdims";
+    static constexpr const char* SelectLastIndex = "select_last_index";
     static constexpr const char* KernelShape = "kernel_shape";
     static constexpr const char* LinearBeforeReset = "linear_before_reset";
     static constexpr const char* Lambda = "lambd"; // Deliberate typo to match ONNX spec.
@@ -57,12 +60,15 @@ namespace AttrName
     static constexpr const char* NearestMode = "nearest_mode";
     static constexpr const char* NormalizeVariance = "normalize_variance";
     static constexpr const char* P = "p";
+    static constexpr const char* OutputHeight = "output_height";
     static constexpr const char* OutputShape = "output_shape";
     static constexpr const char* OutputPadding = "output_padding";
+    static constexpr const char* OutputWidth = "output_width";
     static constexpr const char* Pads = "pads";
     static constexpr const char* PooledShape = "pooled_shape";
     static constexpr const char* Reverse = "reverse";
     static constexpr const char* SampleSize = "sample_size";
+    static constexpr const char* SamplingRatio = "sampling_ratio";
     static constexpr const char* Scale = "scale";
     static constexpr const char* Scales = "scales";
     static constexpr const char* Seed = "seed";

@@ -13,19 +13,27 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
 
+  const void* input_data = context->Input<Tensor>(0)->DataRaw();
+  void* output_data = context->Output(0, context->Input<Tensor>(0)->Shape())->MutableDataRaw();
+  MLDataType onnx_type = context->Input<Tensor>(0)->DataType();
+
+  // Although we assumed the memory address is contiguous for the input, ORT pads activation tensors to 64 bytes aligned
+  // and initializers to 256 bytes aligned. There are tiny padding gaps in the contiguous buffer space.
+  // We have to AllReduce on the entire buffer, including the padding space.
+  const Tensor* last_tensor = context->Input<Tensor>(context->InputCount() - 1);
+  int8_t* end_address = (int8_t*)last_tensor->DataRaw() + last_tensor->SizeInBytes();
+  size_t num_bytes = end_address - (int8_t*)input_data;
+  size_t input_count = num_bytes / onnx_type->Size();
+  ORT_ENFORCE(num_bytes % onnx_type->Size() == 0);
+
   for (int i = 0; i < context->InputCount(); i++) {
-    const Tensor* input_tensor = context->Input<Tensor>(i);
-    auto onnx_type = input_tensor->DataType();
-    const void* input_data = input_tensor->DataRaw();
-    size_t input_count = input_tensor->Shape().Size();
-
-    Tensor* output_tensor = context->Output(i, input_tensor->Shape());
-    void* output_data = output_tensor->MutableDataRaw();
-
-    ncclDataType_t dtype = GetNcclDataType(onnx_type);
-    NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
+    context->Output(i, context->Input<Tensor>(i)->Shape());
   }
 
+  ncclDataType_t dtype = GetNcclDataType(onnx_type);
+#ifdef ORT_USE_NCCL
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
+#endif
   return Status::OK();
 }
 
@@ -86,7 +94,9 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
 
   // AllGather.
   const void* fusion_data_rank_offset = (const int8_t*)fusion_data + rank_start;
+#ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclAllGather(fusion_data_rank_offset, fusion_data, rank_count, dtype, comm, stream));
+#endif
 
   // Copy AllGather results to outputs.
   offset = 0;
@@ -171,8 +181,9 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
 
   // ReduceScatter.
   void* fusion_data_rank_offset = (int8_t*)fusion_data + rank_start;
+#ifdef ORT_USE_NCCL
   NCCL_RETURN_IF_ERROR(ncclReduceScatter(fusion_data, fusion_data_rank_offset, rank_count, dtype, ncclSum, comm, stream));
-
+#endif
   // Copy this rank's ReduceScatter results to outputs.
   offset = 0;
   for (int i = 0; i < context->InputCount(); i++) {
@@ -204,21 +215,14 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-static std::vector<std::pair<int, int>> AliasRange(int start, int end) {
-  std::vector<std::pair<int, int>> aliases;
-  for (int i = start; i < end; i++) {
-    aliases.push_back(std::pair<int, int>(i, i));
-  }
-  return aliases;
-}
-
 ONNX_OPERATOR_KERNEL_EX(
     NcclAllReduce,
     kMSDomain,
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
+        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllReduce);
 
@@ -228,7 +232,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
+        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllGather);
 
@@ -238,7 +243,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
+        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclReduceScatter);
 

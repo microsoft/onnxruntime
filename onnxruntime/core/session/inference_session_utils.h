@@ -2,10 +2,18 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include "core/flatbuffers/schema/ort.fbs.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+//
+// Includes to parse json session config from onnx model file
+//
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/framework/session_options.h"
 #include "core/common/common.h"
+
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 28020)
@@ -16,20 +24,25 @@
 #endif
 
 using json = nlohmann::json;
+#endif
 
 namespace onnxruntime {
 
 namespace inference_session_utils {
 
-static constexpr const char* kOrtConfigKey = "ort_config";
-static constexpr const char* kSessionOptionsKey = "session_options";
+// need this value to be accessible in all builds in order to report error for attempted usage in a minimal build
 static constexpr const char* kOrtLoadConfigFromModelEnvVar = "ORT_LOAD_CONFIG_FROM_MODEL";
 
-}  // namespace inference_session_utils
+#if !defined(ORT_MINIMAL_BUILD)
+//
+// Code to parse json session config from onnx model file
+//
+static constexpr const char* kOrtConfigKey = "ort_config";
+static constexpr const char* kSessionOptionsKey = "session_options";
 
-class InferenceSessionUtils {
+class JsonConfigParser {
  public:
-  InferenceSessionUtils(const logging::Logger& logger) : logger_(logger) {
+  JsonConfigParser(const logging::Logger& logger) : logger_(logger) {
   }
 
   Status ParseOrtConfigJsonInModelProto(const ONNX_NAMESPACE::ModelProto& model_proto);
@@ -52,4 +65,7 @@ class InferenceSessionUtils {
   bool is_ort_config_json_available_ = false;
 };
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+}  // namespace inference_session_utils
 }  // namespace onnxruntime

@@ -2,37 +2,93 @@
 
 OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel integrated GPUs and Intel<sup>®</sup> Movidius<sup>TM</sup> Vision Processing Units (VPUs). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
-## Build
+### Build
 For build instructions, please see the [BUILD page](../../BUILD.md#openvino).
 
-## Onnxruntime Graph Optimization level
+## Runtime configuration options
+---
+
+OpenVINO EP can be configured with certain options at runtime that control the behavior of the EP. These options can be set as key-value pairs as below:-
+
+### Python API
+Key-Value pairs for config options can be set using the Session.set_providers API as follows:-
+
+```
+session = onnxruntime.InferenceSession(<path_to_model_file>, options)
+session.set_providers(['OpenVINOExecutionProvider'], [{Key1 : Value1, Key2 : Value2, ...}])
+```
+*Note that this causes the InferenceSession to be re-initialized, which may cause model recompilation and hardware re-initialization*
+
+### C/C++ API
+All the options shown below are passed to SessionOptionsAppendExecutionProvider_OpenVINO() API and populated in the struct OrtOpenVINOProviderOptions in an example shown below, for example for CPU device type:-
+
+```
+OrtOpenVINOProviderOptions options;
+options.device_type = "CPU_FP32";
+options.enable_vpu_fast_compile = 0;
+options.device_id = "";
+options.num_of_threads = 8;
+SessionOptionsAppendExecutionProvider_OpenVINO(session_options, &options);
+```
+
+### Available configuration options
+The following table lists all the available configuratoin optoins and the Key-Value pairs to set them:-
+
+| **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
+| --- | --- | --- | --- | --- |
+| device_type | string | CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32, Any valid Hetero combination, Any valid Multi-Device combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
+| device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvinotoolkit.org/latest/classInferenceEngine_1_1Core.html#acb212aa879e1234f51b845d2befae41c). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
+| enable_vpu_fast_compile | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices. During initialization of the VPU device with compiled model, Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format. This in-turn speeds up model initialization time. However, enabling this option may slowdown inference due to some of the optimizations not being fully applied, so caution is to be exercised while enabling this option. |
+| num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. This option when set actually makes those number of free InferRequests made available in the pool so that each thread has a separate InferRequest available thus enabling Multi-threading during inference. Note: This option is not to set the num_of_threads for inferencing, it is to just set number of free InferRequests that should be made available. |
+
+Valid Hetero or Multi-Device combination's:
+HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
+MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
+The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
+
+A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-Device Build.
+
+Example:
+HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU
+
+## Other configuration settings
+### Onnxruntime Graph Optimization level
 OpenVINO backend performs both hardware dependent as well as independent optimizations to the graph to infer it with on the target hardware with best possible performance. In most of the cases it has been observed that passing in the graph from the input model as is would lead to best possible optimizations by OpenVINO. For this reason, it is advised to turn off high level optimizations performed by ONNX Runtime before handing the graph over to OpenVINO backend. This can be done using Session options as shown below:-
 
-1. Python API
+### Python API
 ```
 options = onnxruntime.SessionOptions()
 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 sess = onnxruntime.InferenceSession(<path_to_model_file>, options)
 ```
 
-2. C++ API
+### C/C++ API
 ```
 SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 ```
 
-## Dynamic device selection
+### Deprecated: Dynamic device type selection
+**Note: This API has been deprecated. Please use the mechanism mentioned above to set the 'device-type' option.**
 When ONNX Runtime is built with OpenVINO Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
 
 Note. This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
-1. Python API
+
+### Python API
 ```
 import onnxruntime
 onnxruntime.capi._pybind_state.set_openvino_device("<harware_option>")
 # Create session after this
 ```
-2. C/C++ API
+*This property persists and gets applied to new sessions until it is explicity unset. To unset, assign a null string ("").*
+
+### C/C++ API
+
+Append the settings string "<hardware_option>" to the EP settings string. Example shown below for the CPU_FP32 option:
 ```
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "<hardware_option>"));
+std::string settings_str;
+...
+settings_str.append("CPU_FP32");
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, settings_str.c_str()));
 ```
 
 ## ONNX Layers supported using OpenVINO
@@ -47,8 +103,8 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Acos | Yes | No | No |
 | Acosh | Yes | No | No |
 | Add | Yes | Yes | Yes |
-| ArgMax | Yes | No | No |
-| ArgMin | Yes | No | No |
+| ArgMax | Yes | Yes | Yes |
+| ArgMin | Yes | No | Yes |
 | Asin | Yes | Yes | No |
 | Asinh | Yes | Yes | No |
 | Atan | Yes | Yes | No |
@@ -56,6 +112,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | AveragePool | Yes | Yes | Yes |
 | BatchNormalization | Yes | Yes | Yes |
 | Cast | Yes | Yes | Yes |
+| Ceil | No | Yes | No |
 | Clip | Yes | Yes | Yes |
 | Concat | Yes | Yes | Yes |
 | Constant | Yes | Yes | Yes |
@@ -71,9 +128,11 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Equal | Yes | Yes | Yes |
 | Erf | Yes | Yes | Yes |
 | Exp | Yes | Yes | Yes |
+| Expand | No | No | Yes |
 | Flatten | Yes | Yes | Yes |
 | Floor | Yes | Yes | Yes |
 | Gather | Yes | Yes | Yes |
+| GatherND | No | No | Yes |
 | Gemm | Yes | Yes | Yes |
 | GlobalAveragePool | Yes | Yes | Yes |
 | GlobalLpPool | Yes | Yes | No |
@@ -91,12 +150,15 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Min | Yes | Yes | Yes |
 | Mul | Yes | Yes | Yes |
 | Neg | Yes | Yes | Yes |
-| Not | Yes | Yes | No |
+| NonMaxSuppression | No | No | Yes |
+| NonZero | Yes | No | Yes |
+| Not | Yes | Yes | Yes |
 | OneHot | Yes | Yes | Yes |
 | Pad | Yes | Yes | Yes |
 | Pow | Yes | Yes | Yes |
 | PRelu | Yes | Yes | Yes |
 | Reciprocal | Yes | Yes | Yes |
+| Range | No | No | Yes |
 | ReduceLogSum | Yes | No | Yes |
 | ReduceMax | Yes | Yes | Yes |
 | ReduceMean | Yes | Yes | Yes |
@@ -106,7 +168,10 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | ReduceSumSquare | Yes | No | Yes |
 | Relu | Yes | Yes | Yes |
 | Reshape | Yes | Yes | Yes |
-| Resize | Yes | No | No |
+| Resize | Yes | No | Yes |
+| RoiAlign | No | No | Yes |
+| Scatter | No | No | Yes |
+| ScatterElements | No | No | Yes |
 | Selu | Yes | Yes | No |
 | Shape | Yes | Yes | Yes |
 | Sigmoid | Yes | Yes | Yes |
@@ -127,6 +192,8 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | TopK | Yes | Yes | Yes |
 | Transpose | Yes | Yes | Yes |
 | Unsqueeze | Yes | Yes | Yes |
+| Upsample | Yes | No | No |
+| Where | No | No | Yes |
 
 ## Topology Support
 
@@ -162,6 +229,7 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | zfnet512 | Yes | Yes | Yes | Yes* |
 | arcface | Yes | Yes | Yes | Yes* |
 
+
 ## Image Recognition Networks
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
 | --- | --- | --- | --- | --- |
@@ -172,39 +240,45 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | --- | --- | --- | --- | --- |
 | tiny_yolov2 | Yes | Yes | Yes | Yes* |
 
+## Image Manipulation Networks
+| **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
+| --- | --- | --- | --- | --- |
+| mosaic | Yes | No | No | No* |
+| candy | Yes | No | No | No* |
+| rain_princess | Yes | No | No | No* |
+| pointilism | Yes | No | No | No* |
+| udnie | Yes | No | No | No* |
+
 *FPGA only runs in HETERO mode wherein the layers that are not supported on FPGA fall back to OpenVINO CPU.
+
+## Inferencing on FP16 Models
+FP16 models can be inferenced on a VPU with device_type = "MYRIAD_FP16" and on GPU with
+device_type = "GPU_FP16"
 
 ## CSharp API
 
-To use csharp api for openvino execution provider create a custom nuget package. Two nuget packages will be created
-Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../../BUILD.md##build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../../BUILD.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
 
-1. Windows
+## Multi-threading for OpenVINO EP
 
-Build a custom nuget package for windows.
-```
-.\build.bat --config Debug --build --use_openvino $Device --build_csharp
-msbuild csharp\OnnxRuntime.CSharp.proj /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Openvino /p:Configuration=Debug /t:CreatePackage
-```
-The msbuild log will show the paths of the nuget packages created. 
+OpenVINO Execution Provider enables thread-safe deep learning inference
 
-2. Linux
+## Heterogeneous Execution for OpenVINO EP
 
-We currently do not have a process to build directly in Linux. But we can
-copy shared library <ORT linux repo>/build/Linux/<config>/libonnxruntime.so
-to onnxruntime source repository in windows and execute the same commands 
-above to get custom nuget package for linux. Two nuget packages will be 
-created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+The heterogeneous Execution enables computing for inference on one network on several devices. Purposes to execute networks in heterogeneous mode
 
-On Linux Machine
-```
-./build.sh --config Debug --build_shared_lib --use_openvino $Device 
-```
+To utilize accelerators power and calculate heaviest parts of network on accelerator and execute not supported layers on fallback devices like CPU
+To utilize all available hardware more efficiently during one inference
 
-On Windows Machine
-```
-cp libonnxruntime.so onnxruntime/ 
-.\build.bat --config Debug --build --use_openvino $Device --build_csharp
-msbuild csharp\OnnxRuntime.CSharp.proj /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Openvino /p:Configuration=Debug /t:CreatePackage
-```
-The msbuild log will show the path of the nuget packages created. 
+For more information on Heterogeneous plugin of OpenVINO, please refer to the following
+[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_supported_plugins_HETERO.html).
+
+## Multi-Device Execution for OpenVINO EP
+
+Multi-Device plugin automatically assigns inference requests to available computational devices to execute the requests in parallel. Potential gains are as follows
+
+Improved throughput that multiple devices can deliver (compared to single-device execution)
+More consistent performance, since the devices can now share the inference burden (so that if one device is becoming too busy, another device can take more of the load)
+
+For more information on Multi-Device plugin of OpenVINO, please refer to the following
+[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_supported_plugins_MULTI.html#introducing_multi_device_execution).

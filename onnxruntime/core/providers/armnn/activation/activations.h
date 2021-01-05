@@ -23,8 +23,9 @@ template <typename T>
 class Relu : public OpKernel {
  public:
   explicit Relu(const OpKernelInfo& info) : OpKernel(info) {
-  	provider_ = (const_cast<ArmNNExecutionProvider*>(
+    provider_ = (const_cast<ArmNNExecutionProvider*>(
         static_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
+    run = Relu<T>::initRuntime();
   }
 
   ~Relu() {
@@ -34,11 +35,11 @@ class Relu : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   static armnn::IRuntimePtr initRuntime(){
-  	if (Relu::run)
-  		return std::move(Relu::run);
+    if(Relu::run)
+      return std::move(Relu::run);
     armnn::IRuntime::CreationOptions options;
     return std::move(armnn::IRuntime::Create(options));
-	}
+  }
 
  private:
   static thread_local std::map<OpKernel*, armnn::NetworkId> reluLayers;

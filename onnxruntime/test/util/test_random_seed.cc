@@ -4,43 +4,35 @@
 #include "test/util/include/test_random_seed.h"
 
 #include <chrono>
-#include <iostream>
-#include <sstream>
 
-#include "core/platform/env.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace test {
 
-namespace {
-RandomSeedType LoadRandomSeed() {
-  // parse from environment variable
-  {
-    const std::string value_str = Env::Default().GetEnvironmentVar(
-        GetTestRandomSeedEnvironmentVariableName());
-
-    if (!value_str.empty()) {
-      std::istringstream is{value_str};
-      RandomSeedType parsed_value;
-      if (is >> std::noskipws >> parsed_value && is.eof()) {
-        return parsed_value;
-      } else {
-        std::cerr << GetTestRandomSeedEnvironmentVariableName()
-                  << " was set but not able to be parsed: \""
-                  << value_str << "\"\n";
-      }
-    }
+RandomSeedType GetTestRandomSeed() {
+  static const auto fixed_random_seed =
+      ParseEnvironmentVariable<RandomSeedType>(test_random_seed_env_vars::kValue);
+  if (fixed_random_seed.has_value()) {
+    // use fixed value
+    return fixed_random_seed.value();
   }
 
-  // generate from time
-  return static_cast<RandomSeedType>(
-      std::chrono::steady_clock::now().time_since_epoch().count());
-}
-}  // namespace
+  auto generate_from_time = []() {
+    return static_cast<RandomSeedType>(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+  };
 
-RandomSeedType GetTestRandomSeed() {
-  static const RandomSeedType test_random_seed = LoadRandomSeed();
-  return test_random_seed;
+  static const auto use_cached =
+      !ParseEnvironmentVariableWithDefault<bool>(test_random_seed_env_vars::kDoNotCache, false);
+  if (use_cached) {
+    // initially generate from current time
+    static const auto static_random_seed = generate_from_time();
+    return static_random_seed;
+  }
+
+  // generate from current time
+  return generate_from_time();
 }
 
 }  // namespace test

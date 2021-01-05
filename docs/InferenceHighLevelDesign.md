@@ -109,10 +109,27 @@ Developers can now choose which API works best for their scenario.
 
 You can also choose to use runtimes included in the Windows OS, or use the redist nuget to ship the runtime with the app.
 
-|Distribution|Inbox|App nuget|
+|Distribution|Inbox|App NuGet|
 |--|--|--|
 |Disk footprint| Included in the OS| Included in the App|
 |Servicing fixes| Serviced by OS updates| Serviced by the App|
 |Execution Providers| CPU & DirectML EP | App chosen EP|
 |Compatability testing| Tested with OS flights against supported GPU's and CPU's | App performs compatibility testing|
 |Opset| Refreshed in OS updates| App chooses|
+
+ 
+### Using the NuGet WinRT API with other C-API distributions
+The WinRT API NuGet is distributed with a curated build of the OnnxRuntime engine. App developers may wish to use the WinRT API, but find themselves limited to the functionality provided by the curated OnnxRuntime engine distributed as part of the WinRT API NuGet package. This can happen because the OnnxRuntime engine shipped with the WinRT API NuGet package only contains the CPU and DML execution providers.
+
+App developers may additionally wish to use a custom build-from-source version of the OnnxRuntime engine as well, or use a prebuilt version of the OnnxRuntime engine from another distribution source like the Micorosoft.ML.OnnxRuntime.MKLML distribution.
+
+To enable this, the WinRT API NuGet has been made to be compatible with a set of OnnxRuntime engines that ship in different NuGet packages.
+
+Please refer to the following table listing the distributions with compatible OnnxRuntime engines.
+- [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime)
+- [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML/)
+- [Microsoft.ML.OnnxRuntime.MKLML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML)
+
+Note that compatible distributions must match in release version.
+
+In order to use compatible engines, replace the onnxruntime.dll with the desired engine binary and its associated binaries.

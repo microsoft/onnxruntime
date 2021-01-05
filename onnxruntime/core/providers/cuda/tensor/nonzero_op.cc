@@ -11,10 +11,18 @@ namespace cuda {
 
 // kernel builder functions
 #define NONZERO_TYPED_KERNEL_WITH_TYPE_NAME(type, type_name)                       \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                         \
+      NonZero,                                                                     \
+      kOnnxDomain,                                                                 \
+      9, 12,                                                                       \
+      type_name,                                                                   \
+      kCudaExecutionProvider,                                                      \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+      NonZero<type>)                                                               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                   \
       NonZero,                                                                     \
       kOnnxDomain,                                                                 \
-      9,                                                                           \
+      13,                                                                          \
       type_name,                                                                   \
       kCudaExecutionProvider,                                                      \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \

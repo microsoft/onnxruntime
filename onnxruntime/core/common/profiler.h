@@ -54,12 +54,20 @@ class Profiler {
   TimePoint StartTime() const;
 
   /*
-   Whether data collection and output from this profiler is enabled.
-   */
+  Whether data collection and output from this profiler is enabled.
+  */
   bool IsEnabled() const {
     return enabled_;
   }
-
+  /*
+  Return the stored start time of profiler.
+  On some platforms, this timer may not be as precise as nanoseconds
+  For instance, on Windows and MacOS, the precision (high_resolution_clock) will be ~100ns
+  */
+  uint64_t GetStartTimeNs() const {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+      profiling_start_time_.time_since_epoch()).count();
+  }
   /*
   Record a single event. Time is measured till the call of this function from
   the start_time.

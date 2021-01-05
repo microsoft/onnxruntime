@@ -13,7 +13,7 @@ class DnnlPool : public DnnlKernel {
  public:
   DnnlPool(const DnnlNode& node,
            DNNLExecutionProvider* provider,
-           const Provider_NodeAttributes& attributes,
+           const NodeAttributes& attributes,
            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     op_name_ = node.name;
     ReadAttributes(attributes, attributes_prefix);
@@ -21,8 +21,24 @@ class DnnlPool : public DnnlKernel {
 
   void CreatePrimitives(const OrtCustomOpApi* api,
                         OrtKernelContext* context,
-                        dnnl::engine& cpu_engine, std::vector<dnnl::primitive>& net,
+                        const std::unordered_map<dnnl::engine::kind, dnnl::engine>& dnnl_engine, std::vector<dnnl::primitive>& net,
                         std::vector<std::unordered_map<int, dnnl::memory>>& net_args) override {
+    dnnl::engine cpu_engine;
+    dnnl::engine engine_to_use;
+    std::unordered_map<dnnl::engine::kind, dnnl::engine>::const_iterator iter = dnnl_engine.find(dnnl::engine::kind::cpu);
+    if (iter != dnnl_engine.end()) {
+      cpu_engine = (dnnl::engine)iter->second;
+      engine_to_use = cpu_engine;
+    }
+    gpu_available_ = false;
+    dnnl::engine gpu_engine;
+    iter = dnnl_engine.find(dnnl::engine::kind::gpu);
+    if (iter != dnnl_engine.end()) {
+      gpu_engine = (dnnl::engine)(iter->second);
+      gpu_available_ = true;
+      engine_to_use = gpu_engine;
+      LOGS_DEFAULT(INFO) << "gpu engine found" << std::endl;
+    }
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
@@ -59,12 +75,17 @@ class DnnlPool : public DnnlKernel {
       ort_source_desc_ = parents_[0].get()->ort_source_desc_;
       source_desc_ = parents_[0].get()->primitive_dst_desc_;
 
-      if (source_desc_ == ort_source_desc_) {
-        // reorder for better performance
-        dnnl::memory::format_tag fmt = GetAVXFormat(src_dims_mkl);
-        src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-            dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), fmt));
-      } else {
+      if (!gpu_available_) {
+        if (source_desc_ == ort_source_desc_) {
+          // reorder for better performance
+          dnnl::memory::format_tag fmt = GetAVXFormat(src_dims_mkl);
+          src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+              dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), fmt));
+        } else {
+          src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+              dnnl::memory::desc(parents_[0].get()->primitive_dst_mem_->get_desc()));
+        }
+      } else {  // gpu_available_
         src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
             dnnl::memory::desc(parents_[0].get()->primitive_dst_mem_->get_desc()));
       }
@@ -107,17 +128,26 @@ class DnnlPool : public DnnlKernel {
                                     strides_mkl, kernel_mkl,
                                     padding_left_mkl, padding_right_mkl));
 
-    fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::primitive_desc>(
-        dnnl::pooling_forward::primitive_desc(*fwd_desc_, cpu_engine));
-
-    if (mklnode_ptr_->parent_nodes.empty()) {
-      // Sub-graph's first node. Read input from input buffer
-      src_mem_ = onnxruntime::make_unique<dnnl::memory>(
-          dnnl::memory(fwd_primitive_desc_.get()->src_desc(), cpu_engine, nullptr));
-    } else {
-      // Sub-graph's inner node. set input to parent's output
-      src_mem_ = parents_[0].get()->primitive_dst_mem_;
+    if (!gpu_available_) {
+      fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::primitive_desc>(
+          dnnl::pooling_forward::primitive_desc(*fwd_desc_, cpu_engine));
+    } else {  // gpu_available_
+      fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::primitive_desc>(
+          dnnl::pooling_forward::primitive_desc(*fwd_desc_, gpu_engine));
     }
+
+    //if (mklnode_ptr_->parent_nodes.empty()) {
+    //  // Sub-graph's first node. Read input from input buffer
+    //  src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+    //      dnnl::memory(fwd_primitive_desc_.get()->src_desc(), cpu_engine, nullptr));
+    //} else {
+    //  // Sub-graph's inner node. set input to parent's output
+    //  src_mem_ = parents_[0].get()->primitive_dst_mem_;
+    //}
+    //if (gpu_available_) {
+    //  src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+    //      dnnl::memory(fwd_primitive_desc_.get()->src_desc(), gpu_engine));
+    //}
 
     primitive_src_desc_ = fwd_primitive_desc_.get()->src_desc();
     primitive_dst_desc_ = fwd_primitive_desc_.get()->dst_desc();
@@ -125,60 +155,102 @@ class DnnlPool : public DnnlKernel {
     src_size_ = fwd_primitive_desc_.get()->src_desc().get_size();
     dst_size_ = fwd_primitive_desc_.get()->dst_desc().get_size();
 
-    // reorder source memory for best performance (AVX512);
-    if (primitive_src_desc_ != source_desc_) {
-      dnnl::memory::dims src_dims(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
-      auto pd = dnnl::memory::desc(source_desc_);
+    if (!gpu_available_) {
+      // reorder source memory for best performance (AVX512);
+      if (primitive_src_desc_ != source_desc_) {
+        dnnl::memory::dims src_dims(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
+        auto pd = dnnl::memory::desc(source_desc_);
 
-      if (mklnode_ptr_->parent_nodes.empty())
-        src_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
-            dnnl::memory(pd, cpu_engine, nullptr));
-      else
-        src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
+        if (mklnode_ptr_->parent_nodes.empty())
+          src_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(pd, cpu_engine, nullptr));
+        else
+          src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
 
-      src_mem_ = onnxruntime::make_unique<dnnl::memory>(
-          dnnl::memory(fwd_primitive_desc_->src_desc(), cpu_engine, nullptr));
-      net.push_back(dnnl::reorder(*src_mem_from_, *src_mem_));
-      net_args.push_back({{DNNL_ARG_FROM, *src_mem_from_},
-                          {DNNL_ARG_TO, *src_mem_}});
-    } else {
-      if (mklnode_ptr_->parent_nodes.empty()) {
         src_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(fwd_primitive_desc_->src_desc(), cpu_engine, nullptr));
+        net.push_back(dnnl::reorder(*src_mem_from_, *src_mem_));
+        net_args.push_back({{DNNL_ARG_FROM, *src_mem_from_},
+                            {DNNL_ARG_TO, *src_mem_}});
       } else {
-        src_mem_ = parents_[0].get()->primitive_dst_mem_;
+        if (mklnode_ptr_->parent_nodes.empty()) {
+          src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(fwd_primitive_desc_->src_desc(), cpu_engine, nullptr));
+        } else {
+          src_mem_ = parents_[0].get()->primitive_dst_mem_;
+        }
+      }
+    } else {  // gpu_available_
+      if (primitive_src_desc_ != source_desc_) {
+        dnnl::memory::dims src_dims(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
+        auto pd = dnnl::memory::desc(source_desc_);
+
+        if (mklnode_ptr_->parent_nodes.empty()) {
+          src_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(pd, cpu_engine, nullptr));
+        } else {
+          src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
+        }
+        src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+            dnnl::memory(fwd_primitive_desc_->src_desc(), gpu_engine));
+        net.push_back(dnnl::reorder(*src_mem_from_, *src_mem_gpu_));
+        net_args.push_back({{DNNL_ARG_FROM, *src_mem_from_},
+                            {DNNL_ARG_TO, *src_mem_gpu_}});
+      } else {
+        if (mklnode_ptr_->parent_nodes.empty()) {
+          src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(fwd_primitive_desc_->src_desc(), cpu_engine, nullptr));
+          src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(fwd_primitive_desc_->src_desc(), gpu_engine));
+          net.push_back(dnnl::reorder(*src_mem_, *src_mem_gpu_));
+          net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
+                              {DNNL_ARG_DST, *src_mem_gpu_}});
+        } else {
+          src_mem_gpu_ = parents_[0].get()->primitive_dst_mem_;
+        }
       }
     }
 
-    if (mklnode_ptr_->output_index >= 0) {
-      // last node of sub-graph. need to allocate memory for output_tensor
-      if (primitive_dst_desc_ != ort_source_desc_) {
-        // reorder neded. Use primitive output as input to reorder and
-        // allocate buffer for reorder output, final output of this subgraph
+    if (!gpu_available_) {
+      if (mklnode_ptr_->output_index >= 0) {
+        // last node of sub-graph. need to allocate memory for output_tensor
+        if (primitive_dst_desc_ != ort_source_desc_) {
+          // reorder neded. Use primitive output as input to reorder and
+          // allocate buffer for reorder output, final output of this subgraph
+          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
+        } else {
+          // Last node but re-order not needed. Allocate buffer to output of this node
+          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine, nullptr));
+        }
+      } else {
+        // Intermediate node. Use Dnnl kernel internal memory for output and
+        // use this as input to next node.
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
-      } else {
-        // Last node but re-order not needed. Allocate buffer to output of this node
-        primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
-            dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine, nullptr));
       }
-    } else {
-      // Intermediate node. Use Dnnl kernel internal memory for output and
-      // use this as input to next node.
+    } else {  // gpu_available_
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
-          dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
+          dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), gpu_engine));
     }
     pool_fwd_ = onnxruntime::make_unique<dnnl::pooling_forward>(
         dnnl::pooling_forward(*fwd_primitive_desc_));
 
-    net.push_back(*pool_fwd_);
-    net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
-                        {DNNL_ARG_DST, *primitive_dst_mem_}});
+    if (!gpu_available_) {
+      net.push_back(*pool_fwd_);
+      net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
+                          {DNNL_ARG_DST, *primitive_dst_mem_}});
+    } else {  // gpu_available_
+      net.push_back(*pool_fwd_);
+      net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
+                          {DNNL_ARG_DST, *primitive_dst_mem_}});
+    }
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
       dnnl::memory::data_type t = DnnnType<T>();
-      InitDstReorderOutput(cpu_engine, t, net, net_args);
+      InitDstReorderOutput(cpu_engine, t, net, net_args, gpu_available_);
     }
   }
 
@@ -197,9 +269,11 @@ class DnnlPool : public DnnlKernel {
         src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
       }
 
-      auto src_size = fwd_primitive_desc_.get()->src_desc().get_size();
-      src_reorder_buffer_ = Provider_IAllocator::MakeUniquePtr<void>(alloc_, src_size);
-      src_mem_->set_data_handle(src_reorder_buffer_.get());
+      if (!gpu_available_) {
+        auto src_size = fwd_primitive_desc_.get()->src_desc().get_size();
+        src_reorder_buffer_ = IAllocator::MakeUniquePtr<void>(alloc_, src_size);
+        src_mem_->set_data_handle(src_reorder_buffer_.get());
+      }
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
@@ -218,17 +292,21 @@ class DnnlPool : public DnnlKernel {
       OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
       T* dst_data = ort.GetTensorMutableData<T>(output);
 
-      if (primitive_dst_desc_ != ort_source_desc_) {
+      if (!gpu_available_) {
+        if (primitive_dst_desc_ != ort_source_desc_) {
+          reorder_dst_mem_to_->set_data_handle(dst_data);
+        } else {
+          primitive_dst_mem_->set_data_handle(dst_data);
+        }
+      } else {  // gpu_available_
         reorder_dst_mem_to_->set_data_handle(dst_data);
-      } else {
-        primitive_dst_mem_->set_data_handle(dst_data);
       }
     }
     return Status::OK();
   }
 
  private:
-  void ReadAttributes(const Provider_NodeAttributes& attributes,
+  void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
@@ -297,6 +375,7 @@ class DnnlPool : public DnnlKernel {
   size_t dst_size_;
 
   std::shared_ptr<dnnl::memory> src_mem_;
+  std::shared_ptr<dnnl::memory> src_mem_gpu_;
 
   std::unique_ptr<dnnl::pooling_forward::desc> fwd_desc_;
   std::unique_ptr<dnnl::memory::desc> src_md_;
@@ -309,13 +388,15 @@ class DnnlPool : public DnnlKernel {
   std::unique_ptr<dnnl::memory> dst_mem_from_;
   std::unique_ptr<dnnl::memory> dst_mem_to_;
 
+  bool gpu_available_;
+
  private:
   dnnl::memory::format_tag GetAVXFormat(const dnnl::memory::dims& src_dims_mkl) {
     bool is_2D = src_dims_mkl.size() == 4 ? true : false;
     dnnl::memory::format_tag fmt = dnnl::memory::format_tag::any;
-    if (CPUIDInfo::GetCPUIDInfo().HasAVX512f()) {
+    if (!gpu_available_ && CPUIDInfo::GetCPUIDInfo().HasAVX512f()) {
       fmt = is_2D ? dnnl::memory::format_tag::nChw16c : dnnl::memory::format_tag::nCdhw16c;
-    } else if (CPUIDInfo::GetCPUIDInfo().HasAVX2() && (src_dims_mkl[1] % 8 == 0)) {
+    } else if (!gpu_available_ && CPUIDInfo::GetCPUIDInfo().HasAVX2() && (src_dims_mkl[1] % 8 == 0)) {
       fmt = is_2D ? dnnl::memory::format_tag::nChw8c : dnnl::memory::format_tag::ncdhw;
     } else {
       fmt = is_2D ? dnnl::memory::format_tag::nchw : dnnl::memory::format_tag::ncdhw;

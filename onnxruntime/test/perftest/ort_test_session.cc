@@ -1,5 +1,6 @@
 #include "ort_test_session.h"
 #include <core/session/onnxruntime_cxx_api.h>
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -38,15 +39,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kNGraphExecutionProvider) {
-#ifdef USE_NGRAPH
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(session_options, "CPU"));
-#else
-    ORT_THROW("nGraph is not supported in this build");
-#endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    OrtCUDAProviderOptions cuda_options{
+        0,
+        static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
+        std::numeric_limits<size_t>::max(),
+        0,
+        !performance_test_config.run_config.do_cuda_copy_in_separate_stream};
+    session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
@@ -63,7 +64,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
- } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+  } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, ""));
 #else
@@ -71,7 +72,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
@@ -92,7 +93,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
-                                                                   performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+                                                                     performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
@@ -117,8 +118,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.DisableMemPattern();
   session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
 
-  if(performance_test_config.run_config.intra_op_num_threads > 0){
-    fprintf(stdout, "Setting intra_op_num_threads to %d\n",   performance_test_config.run_config.intra_op_num_threads);
+  if (performance_test_config.run_config.intra_op_num_threads > 0) {
+    fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
     session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
   }
 
@@ -133,6 +134,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.EnableProfiling(performance_test_config.run_config.profile_file.c_str());
   if (!performance_test_config.run_config.optimized_model_path.empty())
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
+  if (performance_test_config.run_config.set_denormal_as_zero)
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
 
   size_t output_count = session_.GetOutputCount();
@@ -174,7 +178,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
       auto allocator = static_cast<OrtAllocator*>(Ort::AllocatorWithDefaultOptions());
       Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
                                                          input_node_dim.size(), tensor_info.GetElementType());
-      PreLoadTestData(0, i, input_tensor.release());
+      PreLoadTestData(0, i, std::move(input_tensor));
     }
   }
   return true;

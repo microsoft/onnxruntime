@@ -4,6 +4,8 @@
 #include "core/providers/cuda/tensor/onehot.h"
 #include "core/providers/cpu/tensor/onehot.h"
 
+using namespace onnxruntime::common;
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -64,7 +66,7 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   auto* output_data = reinterpret_cast<CudaT_Out*>(output->MutableData<out_type>());
 
   if (values_data[0] == CudaT_Out(0.f)) {
-    CUDA_RETURN_IF_ERROR(cudaMemset(output->MutableDataRaw(), 0, output->SizeInBytes()));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output->MutableDataRaw(), 0, output->SizeInBytes()));
     OneHotWithZeroOffValueImpl(indices_data,
                                fdm_suffix,
                                depth_val,

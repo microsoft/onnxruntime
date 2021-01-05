@@ -5,7 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/platform/ort_mutex.h"
-#include "core/framework/op_kernel.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include <list>
@@ -160,8 +160,8 @@ class Conv : public CudaKernel {
 
  private:
   ConvAttributes conv_attrs_;
-
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
+  constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
 };
 
 }  // namespace cuda

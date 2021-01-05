@@ -3,7 +3,6 @@ build
 build_host_protoc
 build_android
 build_ios
-build_*
 .build_debug/*
 .build_release/*
 distribute/*
@@ -15,6 +14,7 @@ cmake-build-debug
 gen
 *~
 .vs
+.DS_Store
 TestResults/
 .idea/
 onnxruntime.egg-info

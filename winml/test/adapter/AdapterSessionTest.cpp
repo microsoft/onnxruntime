@@ -33,6 +33,9 @@ OrtEnv* ort_env;
 
 void AdapterSessionTestSetup() {
   winrt::init_apartment();
+#ifdef BUILD_INBOX
+  winrt_activation_handler = WINRT_RoGetActivationFactory;
+#endif
   WINML_EXPECT_HRESULT_SUCCEEDED(Microsoft::WRL::MakeAndInitialize<_winml::OnnxruntimeEngineFactory>(engine_factory.put()));
   WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory->GetOrtEnvironment(&ort_env));
   WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api = engine_factory->UseWinmlAdapterApi());
@@ -223,7 +226,7 @@ void CopyInputAcrossDevices() {
   constexpr size_t input_tensor_size = [&dimensions]() {
     size_t size = 1;
     for (auto dim : dimensions)
-      size *= dim;
+      size *= static_cast<size_t>(dim);
     return size;
   } ();
 
@@ -259,7 +262,7 @@ void CopyInputAcrossDevices_DML() {
   constexpr size_t input_tensor_size = [&dimensions]() {
     size_t size = 1;
     for (auto dim : dimensions)
-      size *= dim;
+      size *= static_cast<size_t>(dim);
     return size;
   } ();
 

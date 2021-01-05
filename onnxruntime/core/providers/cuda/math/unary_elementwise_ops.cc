@@ -13,6 +13,17 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
   return Status::OK();
 }
 
+#define UNARY_ELEMENTWISE_REGISTER_VERSIONED_KERNEL(x, startver, endver, T)     \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      x,                                                                        \
+      kOnnxDomain,                                                              \
+      startver,                                                                 \
+      endver,                                                                   \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      x<T>);
+
 #define UNARY_ELEMENTWISE_REGISTER_KERNEL(x, ver, T)                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       x,                                                                        \
@@ -46,6 +57,9 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
     return Status::OK();                                                                                   \
   }
 
+#define UNARY_OP_VERSIONED_TYPED(name, startver, endver, T)               \
+  UNARY_ELEMENTWISE_REGISTER_VERSIONED_KERNEL(name, startver, endver, T)
+
 #define UNARY_OP_TYPED(name, ver, T)              \
   UNARY_ELEMENTWISE_REGISTER_KERNEL(name, ver, T) \
   UNARY_ELEMENTWISE_COMPUTE(name, T)
@@ -68,6 +82,25 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
 // D: double
 // O: bool
 
+#define UNARY_OP_VERSIONED_HFD(name, startver, endver)        \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, float)     \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, double)
+
+#define UNARY_OP_VERSIONED_CSILHFD(name, startver, endver)  \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, int8_t)  \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, int16_t) \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, int32_t) \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, int64_t) \
+  UNARY_OP_VERSIONED_HFD(name, startver, endver)
+
+#define UNARY_OP_VERSIONED_BWUZCSILHFD(name, startver, endver) \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, uint8_t)    \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, uint16_t)   \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, uint32_t)   \
+  UNARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t)   \
+  UNARY_OP_VERSIONED_CSILHFD(name, startver, endver)
+
 #define UNARY_OP_HFD(name, ver)        \
   UNARY_OP_TYPED(name, ver, MLFloat16) \
   UNARY_OP_TYPED(name, ver, float)     \
@@ -87,15 +120,26 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
   UNARY_OP_TYPED(name, ver, uint64_t)   \
   UNARY_OP_CSILHFD(name, ver)
 
-UNARY_OP_BWUZCSILHFD(Abs, 6)
-UNARY_OP_CSILHFD(Neg, 6)
-UNARY_OP_HFD(Floor, 6)
-UNARY_OP_HFD(Ceil, 6)
-UNARY_OP_HFD(Reciprocal, 6)
-UNARY_OP_HFD(Sqrt, 6)
-UNARY_OP_HFD(Log, 6)
-UNARY_OP_HFD(Exp, 6)
-UNARY_OP_HFD(Erf, 9)
+UNARY_OP_VERSIONED_BWUZCSILHFD(Abs, 6, 12)
+UNARY_OP_VERSIONED_CSILHFD(Neg, 6, 12)
+UNARY_OP_VERSIONED_HFD(Floor, 6, 12)
+UNARY_OP_VERSIONED_HFD(Ceil, 6, 12)
+UNARY_OP_VERSIONED_HFD(Reciprocal, 6, 12)
+UNARY_OP_VERSIONED_HFD(Sqrt, 6, 12)
+UNARY_OP_VERSIONED_HFD(Log, 6, 12)
+UNARY_OP_VERSIONED_HFD(Exp, 6, 12)
+UNARY_OP_VERSIONED_HFD(Erf, 9, 12)
+
+UNARY_OP_BWUZCSILHFD(Abs, 13)
+UNARY_OP_CSILHFD(Neg, 13)
+UNARY_OP_HFD(Floor, 13)
+UNARY_OP_HFD(Ceil, 13)
+UNARY_OP_HFD(Reciprocal, 13)
+UNARY_OP_HFD(Sqrt, 13)
+UNARY_OP_HFD(Log, 13)
+UNARY_OP_HFD(Exp, 13)
+UNARY_OP_HFD(Erf, 13)
+
 UNARY_LOGICALOP_TYPED(Not, 1, bool)
 UNARY_OP_HFD(Round, 11)
 

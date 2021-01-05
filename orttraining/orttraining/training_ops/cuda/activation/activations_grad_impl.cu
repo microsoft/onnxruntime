@@ -24,6 +24,13 @@ struct OP_FastGeluGrad : public CtxGeluGrad {
   }
 };
 
+template <typename T>
+struct OP_ReluGrad : public CtxReluGrad {
+  __device__ __inline__ T operator()(const T& dy, const T& x) const {
+    return x > T {0} ? dy : T {0};
+  }
+};
+
 #define BINARY_ELEMENTWISE_IMPL(name)                                                  \
   BINARY_ELEMENTWISE_IMPL_DECLARATION(name) {                                          \
     BinaryElementWiseNoBroadcastImpl(lhs_data, rhs_data,                               \

@@ -201,8 +201,8 @@ namespace ImageTestHelper {
         // Copy from Cpu to GPU
         D3D12_SUBRESOURCE_DATA CPUData = {};
         CPUData.pData = reinterpret_cast<BYTE*>(pCPUTensor);
-        CPUData.RowPitch = bufferbytesize;
-        CPUData.SlicePitch = bufferbytesize;
+        CPUData.RowPitch = static_cast<LONG_PTR>(bufferbytesize);
+        CPUData.SlicePitch = static_cast<LONG_PTR>(bufferbytesize);
         UpdateSubresources(cmdList.get(), pGPUResource.get(), imageUploadHeap.get(), 0, 0, 1, &CPUData);
 
         // Close the command list and execute it to begin the initial GPU setup.
@@ -274,6 +274,8 @@ namespace ImageTestHelper {
         // So we use error rate.
         UINT errors = 0;
         for (uint32_t i = 0; i < size; i++, pActualByte++, pExpectedByte++) {
+            // Only the check the first three channels, which are (B, G, R)
+            if((i + 1) % 4 == 0) continue;
             auto diff = (*pActualByte - *pExpectedByte);
             if (diff > epsilon) {
                 errors++;

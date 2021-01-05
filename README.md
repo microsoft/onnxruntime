@@ -5,6 +5,8 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20CPU%20CI%20Pipeline?label=Linux+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=11)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/orttraining-linux-ci-pipeline?label=Linux+CPU+Training)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=86)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/orttraining-linux-gpu-ci-pipeline?label=Linux+GPU+Training)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=84)
 
 **ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more. **[aka.ms/onnxruntime](https://aka.ms/onnxruntime)**
 
@@ -110,7 +112,7 @@ The following are required for usage of the official published packages.
 
 * Default GPU (CUDA)
   * The default GPU build requires CUDA runtime libraries being installed on the system:
-    * Version: **CUDA 10.1** and **cuDNN 7.6.5**
+    * Version: **CUDA 10.2** and **cuDNN 8.0.3**
   * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
 
 ### Build from Source
@@ -128,14 +130,14 @@ For production scenarios, it's strongly recommended to build only from an [offic
 
 |API|Supported Versions|Samples|
 |---|---|---|
-[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7, 3.8 (3.8 excludes Win GPU and Linux ARM)<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
+[Python](https://aka.ms/onnxruntime-python)| 3.6, 3.7, 3.8, 3.9 (3.8/3.9 excludes Win GPU and Linux ARM)<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
 |[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
 |[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
 |[C](docs/C_API.md)| | [Samples](./samples#CC)|
 |[WinRT](docs/WinRT_API.md) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
 |[Java](docs/Java_API.md)|8+|[Samples](./samples#Java)| 
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.4-2.7| [Samples](https://ankane.org/tensorflow-ruby)|
-|[Javascript (node.js)](./nodejs) |12.x | [Samples](./nodejs/examples/README.md) |
+|[Javascript (node.js)](./nodejs) |12.x | [Samples](./samples/nodejs) |
 
 ### Supported Accelerators
 
@@ -143,7 +145,7 @@ For production scenarios, it's strongly recommended to build only from an [offic
 
 |CPU|GPU|IoT/Edge/Mobile|Other|
 |---|---|---|---|
-|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML *(build option)*</li></ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li><li>[AMD MIGraphX](./docs/execution_providers/MIGraphX-ExecutionProvider.md)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li><li>[ARM-NN](./docs/execution_providers/ArmNN-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md) - (*preview*)</li><li>[Rockchip NPU](./docs/execution_providers/RKNPU-ExecutionProvider.md) (*preview*)</li><li>[Xilinx Vitis-AI](./docs/execution_providers/Vitis-AI-ExecutionProvider.md) (*preview*)</li></ul>| 
+|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>Intel MKL-ML *(build option)*</li></ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li><li>[AMD MIGraphX](./docs/execution_providers/MIGraphX-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li><li>[ARM-NN](./docs/execution_providers/ArmNN-ExecutionProvider.md) (*preview*)</li><li>[Rockchip NPU](./docs/execution_providers/RKNPU-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md) - (*preview*)</li><li>[Xilinx Vitis-AI](./docs/execution_providers/Vitis-AI-ExecutionProvider.md) (*preview*)</li></ul>| 
 
 * [Roadmap: Upcoming accelerators](./docs/Roadmap.md#accelerators-and-execution-providers)
 * [Extensibility: Add an execution provider](docs/AddingExecutionProvider.md)
@@ -190,25 +192,34 @@ _NOTE: The current API is experimental and expected to see significant changes i
   import torch
   ...
   import onnxruntime
-  from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
+  from onnxruntime.training import ORTTrainer, optim
 
   # Model definition
-  class Net(torch.nn.Module):
-    def __init__(self, D_in, H, D_out):
+  class NeuralNet(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
       ...
-    def forward(self, x):
+    def forward(self, data):
       ...
 
-  model = Net(D_in, H, H_out)
-  criterion = torch.nn.Functional.cross_entropy
-  description = ModelDescription(...)
-  optimizer = 'SGDOptimizer'
-  trainer = ORTTrainer(model, criterion, description, optimizer, ...)
+  model = NeuralNet(input_size=784, hidden_size=500, num_classes=10)
+  criterion = torch.nn.Functional.cross_entropy 
+  model_description = {'inputs':  [('data', ['in', 'batch_size']),
+                                   ('target', ['label_x_batch_size'])],
+                       'outputs': [('loss', [], True),
+                                   ('output', ['out', 'batch_size'])]}
+
+  optimizer_config = optim.AdamConfig(lr=learning_rate)
+
+  trainer = ORTTrainer(model,              # model
+                       model_description,  # model description
+                       optimizer_config,   # optimizer configuration
+                       criterion)          # loss function
 
   # Training Loop
   for t in range(1000):
     # forward + backward + weight update
-    loss, y_pred = trainer.train_step(x, y, learning_rate)
+    loss, y_pred = trainer.train_step(input_data, target_labels, learning_rate)
+    total_loss += loss.item()
     ...
   ```
 

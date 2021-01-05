@@ -40,6 +40,9 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
     case AllocKind::kShare:
       out << "Share";
       break;
+    case AllocKind::kNotSet:
+      out << "NotSet";
+      break;
   }
   return out;
 }
@@ -144,7 +147,13 @@ class PlannerImpl {
   struct OrtValueInfo {
     const onnxruntime::NodeArg* p_def_site;  // the (unique) NodeArg corresponding to the MLValue
     int usecount = 0;                        // static reference-count
-    OrtValueIndex reused_buffer_index;       // index of original buffer to reuse
+
+    // This is initialized to -1 to ensure that if ProcessDef is somehow not called, planning
+    // will fail more cleanly.  This is also used as a temporary workaround to detect the
+    // case that the DML provider has removed initilizers from the graph during partitioning.
+    // Removing initializers is a temporary measure needed to limit the number of copies of
+    // tensors in GPU memory.
+    OrtValueIndex reused_buffer_index = -1;  // index of original buffer to reuse
   };
 
   // ort_value_info_ is indexed by an OrtValueIndex
@@ -176,6 +185,12 @@ class PlannerImpl {
     return ort_value_info_[n].usecount;
   }
   int& UseCount(const OrtValueName& name) { return UseCount(Index(name)); }
+
+  int DecrementUseCount(OrtValueIndex n) {
+    int& use_count = --UseCount(n);
+    assert(use_count >= 0);
+    return use_count;
+  }
 
   OrtValueIndex& Buffer(OrtValueIndex n) {
     ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size());
@@ -234,6 +249,21 @@ class PlannerImpl {
             *reusable_input = Index(p_input_arg->Name());
             return true;
           }
+        }
+      }
+    }
+
+    const optional<std::pair<int, int>>& variadic_alias_offsets = ci.kernel_def->VariadicAlias();
+    if (variadic_alias_offsets.has_value()) {
+      int input_offset = variadic_alias_offsets.value().first;
+      int output_offset = variadic_alias_offsets.value().second;
+      // we _must_ reuse this input to satisfy aliasing requirement: (e.g., for AllReduce)
+      int alias_input_index = output_arg_num - output_offset + input_offset;
+      if (alias_input_index >= 0 && static_cast<size_t>(alias_input_index) < input_args.size()) {
+        auto p_input_arg = input_args[alias_input_index];
+        if (p_input_arg->Exists()) {
+          *reusable_input = Index(p_input_arg->Name());
+          return true;
         }
       }
     }
@@ -464,8 +494,10 @@ class PlannerImpl {
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
         ++UseCount(index);
+        auto allocator = exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i));
+        ORT_ENFORCE(allocator);
         plan_.SetLocation(static_cast<size_t>(index),
-                          exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i))->Info());
+                          allocator->Info());
       }
 
       // if sync is needed, mark allocation plan as create_fence_if_async=true
@@ -501,19 +533,25 @@ class PlannerImpl {
   Status GeneratePlanForWeights() {
     auto& weights = graph_viewer_.GetAllInitializedTensors();
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
-    for (auto& node : graph_viewer_.Nodes()) {
-      ORT_RETURN_IF_ERROR(onnxruntime::Node::ForEachWithIndex(
+    for (const auto& node : graph_viewer_.Nodes()) {
+      auto status = onnxruntime::Node::ForEachWithIndex(
           node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
-            try {
+            auto sub_status = Status::OK();
+            ORT_TRY {
               auto& def_name = def.Name();
               if (!weights.count(def_name)) return Status::OK();
               auto wt_index = Index(def_name);
               locations[wt_index].emplace_back(GetLocationForNodeInput(index, node));
-            } catch (std::exception& ex) {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
             }
-            return Status::OK();
-          }));
+            ORT_CATCH(const std::exception& ex) {
+              ORT_HANDLE_EXCEPTION([&]() {
+                sub_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+              });
+            }
+            return sub_status;
+          });
+
+      ORT_RETURN_IF_ERROR(status);
     }
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];
@@ -619,6 +657,7 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
+          AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
@@ -626,9 +665,14 @@ class PlannerImpl {
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           Reuse(reused, current, AllocKind::kReuse);
+          OrtValueIndex original = Buffer(reused);
+          if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+            AllocPlan(original).program_counter.AddStart(program_counter);
+          }
         } else {
           // otherwise: allocate a new buffer for this output
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
+          AllocPlan(current).program_counter.AddStart(program_counter);
         }
       }
 
@@ -637,8 +681,14 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-          if (0 == --UseCount(original))
+          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+          // See comments in the OrtValueInfo definition.
+          if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
+            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+              AllocPlan(original).program_counter.AddEnd(program_counter);
+            }
+          }
         }
       }
 
@@ -646,8 +696,14 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-          if (0 == --UseCount(original))
+          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+          // See comments in the OrtValueInfo definition.
+          if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
+            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+              AllocPlan(original).program_counter.AddEnd(program_counter);
+            }
+          }
         }
       }
 
@@ -656,12 +712,77 @@ class PlannerImpl {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
-          if (0 == --UseCount(original))
+          if (0 == DecrementUseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
+            if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
+              AllocPlan(original).program_counter.AddEnd(program_counter);
+            }
+          }
         }
       }
     }
     return Status::OK();
+  }
+
+#ifdef ENABLE_TRAINING
+  bool AllocateInputsContiguously(const Node& node) const {
+    const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
+    if (ci.kernel_def == nullptr) {
+      return false;
+    }
+
+    return ci.kernel_def->AllocateInputsContiguously();
+  }
+
+  // Compute allocation order for tensors that are required to be allocated contiguously.
+  Status ComputeAllocationOrder() {
+    std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
+    std::vector<OrtValueIndex>& initializer_allocation_order(plan_.initializer_allocation_order);
+    std::vector<OrtValueIndex>& activation_allocation_order(plan_.activation_allocation_order);
+    for (auto& step : execution_plan) {
+      const auto* pnode = graph_viewer_.GetNode(step.node_index);
+      if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find the node ", step.node_index);
+      if (!AllocateInputsContiguously(*pnode)) continue;
+      // This node has requested inputs be allocated contiguously.
+      const auto& input_defs = pnode->InputDefs();
+      onnxruntime::AllocKind input_kind = AllocKind::kAllocateStatically;
+      bool set_input_kind = true;
+      for (const auto& node_input : input_defs) {
+        if (!node_input->Exists()) continue;
+        const auto current_idx = Index(node_input->Name());
+        const auto& current_plan = AllocPlan(current_idx);
+        const auto actual_idx = current_plan.alloc_kind == AllocKind::kReuse ? current_plan.reused_buffer : current_idx;
+        const auto& actual_plan = AllocPlan(actual_idx);
+        if (set_input_kind) {
+          input_kind = actual_plan.alloc_kind;
+          set_input_kind = false;
+        }
+
+        if ((actual_plan.alloc_kind == AllocKind::kAllocateStatically) && (input_kind != AllocKind::kAllocateStatically))
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "AllocateInputsContiguously() requires all inputs to be initializers, or all inputs to be non-initializers.");
+
+        if (actual_plan.alloc_kind == AllocKind::kAllocateStatically) {
+          if (std::find(initializer_allocation_order.begin(), initializer_allocation_order.end(), actual_idx) == initializer_allocation_order.end())
+            initializer_allocation_order.push_back(actual_idx);
+        } else {
+          if (std::find(activation_allocation_order.begin(), activation_allocation_order.end(), actual_idx) == activation_allocation_order.end())
+            activation_allocation_order.push_back(actual_idx);
+        }
+      }
+    }
+    return Status::OK();
+  }
+#endif
+
+  void VerifyMemoryTimeSchedule() {
+    size_t idx = 0;
+    for (const auto& entry : plan_.allocation_plan) {
+      if (entry.alloc_kind == AllocKind::kAllocate) {
+        ORT_ENFORCE(entry.program_counter.HasValidEntries(), "Invalid program_counter entries at index ", idx);
+      }
+
+      ++idx;
+    }
   }
 
   // Whether a given NodeArg has fence or not.
@@ -735,6 +856,18 @@ class PlannerImpl {
 
     if (has_prev_dealloc_point)
       plan_.execution_plan[prev_dealloc_point].free_to_index = current - 1;
+
+    size_t program_counter = 0;
+    for (auto& node_plan : plan_.execution_plan) {
+      for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
+        auto ml_value_idx = plan_.to_be_freed[index];
+        if (AllocPlan(ml_value_idx).alloc_kind == AllocKind::kAllocate) {
+          ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter.Ends().back() == program_counter);
+        }
+      }
+
+      program_counter += 1;
+    }
   }
 
   static bool IsNonTensor(const onnxruntime::NodeArg& nodearg) {
@@ -746,7 +879,7 @@ class PlannerImpl {
 };  // namespace onnxruntime
 
 Status PlannerImpl::CreatePlan() {
-  auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder();
+  auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_.GetExecutionOrder());
 
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
 
@@ -767,8 +900,17 @@ Status PlannerImpl::CreatePlan() {
   // Determine nodes that need fence check. This needs to be done after ComputeUseCounts and ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
+#ifdef ENABLE_TRAINING
+  // Determine allocation order for weights and activations. This needs to be done after ComputeReusePlan.
+  ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
+#endif
+
   // convert information in the freelist_ into a deallocation plan in required format
   GenerateDeallocationPlan();
+
+  // Ensure Memory-Time schedule is valid. This should be called at the end because memory start/end timestamps
+  // are updated until GenerateDeallocationPlan is finished.
+  VerifyMemoryTimeSchedule();
 
   return Status::OK();
 }
