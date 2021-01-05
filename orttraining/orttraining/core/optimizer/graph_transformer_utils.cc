@@ -9,6 +9,7 @@
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/computation_reduction.h"
+#include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -95,6 +96,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       }
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, compatible_eps, weights_to_train));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
+      transformers.emplace_back(onnxruntime::make_unique<ConcatSliceElimination>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
 
       if (config.gelu_recompute) {
