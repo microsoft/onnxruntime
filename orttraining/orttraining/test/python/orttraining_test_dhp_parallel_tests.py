@@ -26,8 +26,8 @@ def main():
     log.info('Running parallel training tests.')
     for test_file, process_count in zip(distributed_test_files, distributed_test_process_counts):
         if ngpus < process_count:
-            log.info('No enough GPUs. SKIP: ' + test_file)
-            continue
+            log.error('Machine Configuration Error. More GPUs are needed to run ' + test_file)
+            return 1
         log.debug('RUN: ' + test_file)
 
         command = ['mpirun', '-n', str(process_count), sys.executable, test_file]
