@@ -127,6 +127,7 @@ TEST_P(ModelTest, Run) {
 
   if (provider_name == "nuphar") {
     broken_tests.insert({"fp16_test_tiny_yolov2", "Computed value is off by a bit more than tol."});
+    broken_tests.insert({"keras2coreml_Repeat_ImageNet", "Argument arg_name has an unsatisfied constraint."});
   }
 
   if (provider_name == "nnapi") {
