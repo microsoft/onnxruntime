@@ -744,7 +744,7 @@ static void TestDenseToSparseConversion(
   TensorProto dense_tensor = CreateDenseTensor(inserter, expected_values, expected_indicies);
 
   SparseTensorProto sparse_tensor;
-  utils::DenseTensorToSparseTensorProto(dense_tensor, external_data_path, sparse_tensor);
+  utils::DenseTensorToSparseTensorProto(dense_tensor, model_path, sparse_tensor);
 
   gsl::span<const T>
       expected_values_span = gsl::make_span(expected_values.data(), expected_values.size());
