@@ -134,3 +134,51 @@ def yolov3_vision_preprocess_func(images_folder, height, width, start_index=0, s
 
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data, batch_filenames, image_size_list
+
+def trt_resnet50_preprocess_func(images_folder, height, width, start_index=0, size_limit=0):
+    '''
+    Loads a batch of images and preprocess them
+    parameter images_folder: path to folder storing images
+    parameter height: image height in pixels
+    parameter width: image width in pixels
+    parameter start_index: image index to start with   
+    parameter size_limit: number of images to load. Default is 0 which means all images are picked.
+    return: list of matrices characterizing multiple images
+    '''
+
+    def preprocess_images(input, channels=3, height=224, width=224):
+        image = input.resize((width, height), Image.ANTIALIAS)
+        input_data = np.asarray(image).astype(np.float32)
+        if len(input_data.shape) != 2:
+            input_data = input_data.transpose([2, 0, 1])       
+        else:
+            input_data = np.stack([input_data] * 3)
+        mean = np.array([0.079, 0.05, 0]) + 0.406
+        std = np.array([0.005, 0, 0.001]) + 0.224
+        for channel in range(input_data.shape[0]):
+            input_data[channel, :, :] = (input_data[channel, :, :] / 255 - mean[channel]) / std[channel]
+        return input_data
+
+    image_names = os.listdir(images_folder)
+    image_names.sort() 
+    if size_limit > 0 and len(image_names) >= size_limit:
+        end_index = start_index + size_limit
+        if end_index > len(image_names):
+            end_index = len(image_names)       
+        batch_filenames = [image_names[i] for i in range(start_index, end_index)]
+    else:
+        batch_filenames = image_names
+
+    unconcatenated_batch_data = []
+    image_size_list = []
+
+    for image_name in batch_filenames:  
+        image_filepath = images_folder + '/' + image_name
+        img = Image.open(image_filepath) 
+        image_data = preprocess_images(img)
+        image_data = np.expand_dims(image_data, 0)
+        unconcatenated_batch_data.append(image_data)
+        image_size_list.append(np.array([img.size[1], img.size[0]], dtype=np.float32).reshape(1, 2))
+
+    batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
+    return batch_data, batch_filenames, image_size_list

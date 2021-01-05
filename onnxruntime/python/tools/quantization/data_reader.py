@@ -1,5 +1,5 @@
 from onnxruntime.quantization import CalibrationDataReader 
-from .preprocessing import yolov3_preprocess_func, yolov3_vision_preprocess_func
+from .preprocessing import yolov3_preprocess_func, yolov3_vision_preprocess_func, trt_resnet50_preprocess_func
 import onnxruntime
 from argparse import Namespace
 import os
@@ -229,3 +229,104 @@ class YoloV3VisionDataReader(YoloV3DataReader):
 
         return batches
 
+class TRTResNet50DataReader(CalibrationDataReader):
+    def __init__(self, image_folder,
+                       width=224,
+                       height=224,
+                       start_index=0,
+                       end_index=0,
+                       stride=1,
+                       batch_size=1,
+                       model_path='augmented_model.onnx',
+                       input_name='data'):
+        '''
+        :param image_folder: image dataset folder
+        :param width: image width
+        :param height: image height 
+        :param start_index: start index of images
+        :param end_index: end index of images
+        :param stride: image size of each data get 
+        :param batch_size: batch size of inference
+        :param model_path: model name and path
+        :param input_name: model input name
+        '''
+
+        self.image_folder = image_folder + "/val"
+        self.model_path = model_path
+        self.preprocess_flag = True
+        self.enum_data_dicts = iter([])
+        self.datasize = 0
+        self.width = width
+        self.height = height
+        self.start_index = start_index
+        self.end_index = len(os.listdir(self.image_folder)) if end_index == 0 else end_index
+        self.stride = stride if stride >= 1 else 1
+        self.batch_size = batch_size
+        self.input_name = input_name
+
+    def get_dataset_size(self):
+        return len(os.listdir(self.image_folder))
+
+    def get_input_name(self):
+        if self.input_name:
+            return
+        session = onnxruntime.InferenceSession(self.model_path, providers=['CPUExecutionProvider'])
+        self.input_name = session.get_inputs()[0].name
+
+    def get_next(self):
+        iter_data = next(self.enum_data_dicts, None)
+        if iter_data:
+            return iter_data
+
+        self.enum_data_dicts = None
+        if self.start_index < self.end_index:      
+            if self.batch_size == 1:
+                data = self.load_serial()
+            else:
+                data = self.load_batches()
+
+            self.start_index += self.stride
+            self.enum_data_dicts = iter(data)
+
+            return next(self.enum_data_dicts, None)
+        else:
+            return None
+          
+    def load_serial(self):
+        width = self.width 
+        height = self.width 
+        nchw_data_list, filename_list, image_size_list = trt_resnet50_preprocess_func(self.image_folder, height, width, self.start_index, self.stride)
+        input_name = self.input_name
+
+        data = []
+        for i in range(len(nchw_data_list)):
+            nhwc_data = nchw_data_list[i]
+            file_name = filename_list[i]
+            data.append({input_name: nhwc_data})
+        return data
+
+    def load_batches(self):
+        width = self.width 
+        height = self.height 
+        batch_size = self.batch_size
+        stride = self.stride
+        input_name = self.input_name
+
+        batches = []
+        for index in range(0, stride, batch_size):
+            start_index = self.start_index + index 
+            nchw_data_list, filename_list, image_size_list = trt_resnet50_preprocess_func(self.image_folder, height, width, start_index, batch_size)
+
+            if nchw_data_list.size == 0:
+                break
+
+            nchw_data_batch = []
+            for i in range(len(nchw_data_list)):
+                nhwc_data = np.squeeze(nchw_data_list[i], 0)
+                nchw_data_batch.append(nhwc_data)
+            batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
+            data = {input_name: batch_data}
+
+            batches.append(data)
+
+        return batches
