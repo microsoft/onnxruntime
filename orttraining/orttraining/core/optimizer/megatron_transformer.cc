@@ -116,9 +116,10 @@ static uint32_t HashName(const std::string& name) {
 bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const NodeArg& input_arg,
                                                   ONNX_NAMESPACE::TensorProto& initializer_partition,
                                                   int stride) const {
+  std::string original_name = input_arg.Name();
   const ONNX_NAMESPACE::TensorProto* tensor_proto;
-  if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
-    LOGS_DEFAULT(WARNING) << "PartitionWeightByColumn: " << input_arg.Name() << " is not an initializer";
+  if (!graph.GetInitializedTensor(original_name, tensor_proto)) {
+    LOGS_DEFAULT(WARNING) << "PartitionWeightByColumn: " << original_name << " is not an initializer";
     return false;
   }
   auto data_type = tensor_proto->data_type();
@@ -130,11 +131,11 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   if (rank == 2 && utils::HasDimValue(shape->dim(0)) && utils::HasDimValue(shape->dim(1))) {
     row_count = shape->dim(0).dim_value();
     column_count = shape->dim(1).dim_value();
-    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{row_count, column_count};
+    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{row_count, column_count};
   } else if (rank == 1) {
     row_count = 1;
     column_count = shape->dim(0).dim_value();
-    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{column_count};
+    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{column_count};
   } else {
     LOGS_DEFAULT(WARNING) << "Initializer tensor's rank is " << rank << " (expected to be 1 or 2).";
     return false;
@@ -150,7 +151,8 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* a_weight = initializer->data<float>();
 
-  std::string new_initializer_name = input_arg.Name() + "_column_rank_" + std::to_string(horizontal_parallel_rank_);
+
+  std::string new_initializer_name = original_name + "_column_rank_" + std::to_string(horizontal_parallel_rank_);
 
   initializer_partition.set_name(new_initializer_name);
   initializer_partition.set_data_type(data_type);
@@ -179,15 +181,17 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   }
 
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
-  weight_partition_info_[new_initializer_name].megatron_row_partition = 0;
+  weight_partition_info_[original_name].megatron_row_partition = 0;
+  weight_partition_info_[original_name].view_name = new_initializer_name;
   return true;
 }
 
 bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg& input_arg,
                                                ONNX_NAMESPACE::TensorProto& initializer_partition) const {
+  std::string original_name = input_arg.Name();
   const ONNX_NAMESPACE::TensorProto* tensor_proto;
-  if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
-    LOGS_DEFAULT(WARNING) << "PartitionWeightByRow: " << input_arg.Name() << " is not an initializer";
+  if (!graph.GetInitializedTensor(original_name, tensor_proto)) {
+    LOGS_DEFAULT(WARNING) << "PartitionWeightByRow: " << original_name << " is not an initializer";
     return false;
   }
 
@@ -200,11 +204,11 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   if (rank == 2 && utils::HasDimValue(shape->dim(0)) && utils::HasDimValue(shape->dim(1))) {
     row_count = shape->dim(0).dim_value();
     column_count = shape->dim(1).dim_value();
-    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{row_count, column_count};
+    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{row_count, column_count};
   } else if (rank == 1) {
     row_count = shape->dim(0).dim_value();
     column_count = 1;
-    weight_partition_info_[input_arg.Name()].original_dim = std::vector<int64_t>{row_count};
+    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{row_count};
   } else {
     LOGS_DEFAULT(WARNING) << "Initializer tensor's rank is more than " << rank
                           << " (expected to be 1 or 2).";
@@ -219,7 +223,7 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* a_weight = initializer->data<float>();
 
-  std::string new_initializer_name = input_arg.Name() + "_row_rank_" + std::to_string(horizontal_parallel_rank_);
+  std::string new_initializer_name = original_name + "_row_rank_" + std::to_string(horizontal_parallel_rank_);
 
   initializer_partition.set_name(new_initializer_name);
   initializer_partition.set_data_type(data_type);
@@ -238,7 +242,8 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   const int64_t row_index_offset = horizontal_parallel_rank_ * row_partition;
   memcpy(result.data(), a_weight + row_index_offset * column_count, sizeof(float) * element_count);
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
-  weight_partition_info_[new_initializer_name].megatron_row_partition = 1;
+  weight_partition_info_[original_name].megatron_row_partition = 1;
+  weight_partition_info_[original_name].view_name = new_initializer_name;
   return true;
 }
 
@@ -390,45 +395,51 @@ Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified,
       return skip_status;
     }
 
-    if (second_op->OpType().compare("Transpose") != 0) {
-      return skip_status;
-    }
-  } else {
-    return skip_status;
-  }
-  // check if transpose is only 2-dim
-  if (!optimizer_utils::IsAttributeWithExpectedValues(*second_op, "perm", {1LL, 0LL})) {
-    return skip_status;
-  }
-  ProviderType provider_type = node.GetExecutionProviderType();
+    std::cout << "BARTMLP: MatMul passed \n";
 
-  Node* biasgelu_node_ptr = graph.GetNode(node.OutputNodesBegin()->Index());
-  Node& biasgelu_node = *biasgelu_node_ptr;
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(biasgelu_node, "BiasGelu", {1}, kMSDomain) ||
-      biasgelu_node.GetExecutionProviderType() != provider_type ||
-      biasgelu_node.GetOutputEdgesCount() != 1) {
-    return skip_status;
-  }
-  Node& dropout_node = *graph.GetNode(biasgelu_node.OutputNodesBegin()->Index());
-  if (!IsExpectedOpAndProvider(dropout_node, dropout_info, provider_type)) {
-    return skip_status;
-  }
-  Node& matmul2_node = *graph.GetNode(dropout_node.OutputNodesBegin()->Index());
-  if (!IsExpectedOpAndProvider(matmul2_node, matmul_info, provider_type)) {
-    return skip_status;
-  }
-  Node& add_node = *graph.GetNode(matmul2_node.OutputNodesBegin()->Index());
-  if (!IsExpectedOpAndProvider(add_node, add_info, provider_type)) {
-    return skip_status;
-  }
-  Node& dropout2_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
-  if (!IsExpectedOpAndProvider(dropout2_node, dropout_info, provider_type)) {
-    return skip_status;
-  }
-  Node* transpose_op_ptr = const_cast<Node*>(graph.GetProducerNode(matmul2_node.MutableInputDefs()[1]->Name()));
-  if (transpose_op_ptr == nullptr || !IsExpectedOpAndProvider(*transpose_op_ptr, transpose_info, provider_type)) {
-    return skip_status;
-  }
+    Node* biasgelu_node_ptr = graph.GetNode(node.OutputNodesBegin()->Index());
+    Node& biasgelu_node = *biasgelu_node_ptr;
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(biasgelu_node, "BiasGelu", {1}, kMSDomain) ||
+        biasgelu_node.GetExecutionProviderType() != provider_type ||
+        biasgelu_node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+    std::cout << "BARTMLP: BiasGelu passed \n";
+
+    // Either Dropout->Matmul or just Matmul
+    Node* dropout_node = nullptr;
+    Node* next_node = graph.GetNode(biasgelu_node.OutputNodesBegin()->Index());
+    if (IsExpectedOpAndProvider(*next_node, dropout_info, provider_type)) {
+      dropout_node = next_node;
+      next_node = graph.GetNode(dropout_node->OutputNodesBegin()->Index());
+    }
+    if (!IsExpectedOpAndProvider(*next_node, matmul_info, provider_type)) {
+      continue;
+    }
+    Node& matmul2_node = *next_node;
+    std::cout << "BARTMLP: MatMul2 passed \n";
+
+    Node& add_node = *graph.GetNode(matmul2_node.OutputNodesBegin()->Index());
+    if (!IsExpectedOpAndProvider(add_node, add_info, provider_type)) {
+      continue;
+    }
+    std::cout << "BARTMLP: Add passed \n";
+
+    Node& dropout2_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
+    if (!IsExpectedOpAndProvider(dropout2_node, dropout_info, provider_type)) {
+      continue;
+    }
+
+    std::cout << "BARTMLP: Dropout2 passed \n";
+    Node* transpose_op_ptr = const_cast<Node*>(graph.GetProducerNode(matmul2_node.MutableInputDefs()[1]->Name()));
+    if (transpose_op_ptr == nullptr || !IsExpectedOpAndProvider(*transpose_op_ptr, transpose_info, provider_type)) {
+      continue;
+    }
+
+    std::cout << "BARTMLP: TP MatMul2 passed \n";
+
+    nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, second_op, &biasgelu_node, dropout_node,
+                                                             &matmul2_node, transpose_op_ptr});
 
   nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, second_op, &biasgelu_node, &dropout_node,
                                                            &matmul2_node, transpose_op_ptr});
@@ -446,11 +457,43 @@ Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified,
     return skip_status;
   }
 
-  auto dense_wo_weight_arg = transpose_op_ptr->MutableInputDefs()[0];
-  ONNX_NAMESPACE::TensorProto dense_wo_weight_initializer_partition;
-  if (!PartitionWeightByColumn(graph, *dense_wo_weight_arg, dense_wo_weight_initializer_partition)) {
-    return skip_status;
-  }
+    NodeArg& dense_wi_weight_partition_arg = graph_utils::AddInitializer(graph, dense_wi_weight_initializer_partition);
+    graph_utils::ReplaceNodeInput(*second_op, 0, dense_wi_weight_partition_arg);
+    updated_weight_names_.insert({dense_wi_weight_arg->Name(), dense_wi_weight_partition_arg.Name()});
+
+    NodeArg& dense_wi_bias_partition_arg = graph_utils::AddInitializer(graph, dense_wi_bias_initializer_partition);
+    graph_utils::ReplaceNodeInput(biasgelu_node, 1, dense_wi_bias_partition_arg);
+    updated_weight_names_.insert({dense_wi_bias_arg->Name(), dense_wi_bias_partition_arg.Name()});
+
+    NodeArg& dense_wo_weight_partition_arg = graph_utils::AddInitializer(graph, dense_wo_weight_initializer_partition);
+    graph_utils::ReplaceNodeInput(*transpose_op_ptr, 0, dense_wo_weight_partition_arg);
+    updated_weight_names_.insert({dense_wo_weight_arg->Name(), dense_wo_weight_partition_arg.Name()});
+
+    graph.RemoveInitializedTensor(dense_wi_weight_arg->Name());
+    graph.RemoveInitializedTensor(dense_wi_bias_arg->Name());
+    graph.RemoveInitializedTensor(dense_wo_weight_arg->Name());
+
+    if (dropout_node) {
+      dropout_nodes_to_transform.insert(dropout_node);
+    }
+
+    const std::vector<NodeArg*> mlp_f_input_defs{node.MutableInputDefs()[0]};
+    auto mlp_f_type_info = *node.MutableInputDefs()[0]->TypeAsProto();
+    auto& mlp_f_out_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("BART_MLP_MegatronF_Output"), &mlp_f_type_info);
+    Node& mlp_f_node = graph.AddNode(graph.GenerateNodeName("BART_MLP_MegatronF"),
+                                     "MegatronF",
+                                     "MLP MegatronF",
+                                     mlp_f_input_defs,
+                                     {&mlp_f_out_arg}, {}, kMSDomain);
+    counter++;
+    mlp_f_node.SetExecutionProviderType(node.GetExecutionProviderType());
+    const Node::EdgeEnd* edge = graph_utils::GetInputEdge(node, 0);
+    if (nullptr == edge) {  // handle input/initializer
+      graph_utils::ReplaceNodeInput(node, 0, *(mlp_f_node.MutableOutputDefs()[0]));
+    } else {
+      auto input_node = const_cast<Node*>(&edge->GetNode());
+      graph_utils::ReplaceDownstreamNodeInput(graph, *input_node, edge->GetSrcArgIndex(), mlp_f_node, 0);
+    }
 
   NodeArg& dense_wi_weight_partition_arg = graph_utils::AddInitializer(graph, dense_wi_weight_initializer_partition);
   graph_utils::ReplaceNodeInput(*second_op, 0, dense_wi_weight_partition_arg);
@@ -1217,15 +1260,17 @@ Status MegatronTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_le
                   .IsOK());
 
   auto& graph_inputs = graph.GetInputs();
-  for (auto& node : nodes_to_clear_shape) {
-    auto& inputs = node->MutableInputDefs();
-    for (auto* input : inputs)
-      if (std::find(graph_inputs.begin(), graph_inputs.end(), input) == graph_inputs.end())
-        input->ClearShape();
+  for (auto node : nodes_to_clear_shape) {
+    if (node != nullptr) {
+      auto& inputs = node->MutableInputDefs();
+      for (auto* input : inputs)
+        if (std::find(graph_inputs.begin(), graph_inputs.end(), input) == graph_inputs.end())
+          input->ClearShape();
 
-    for (auto* output : node->MutableOutputDefs())
-      if (std::find(graph_inputs.begin(), graph_inputs.end(), output) == graph_inputs.end())
-        output->ClearShape();
+      for (auto* output : node->MutableOutputDefs())
+        if (std::find(graph_inputs.begin(), graph_inputs.end(), output) == graph_inputs.end())
+          output->ClearShape();
+    }
   }
 
   for (auto x : updated_weight_names_) {

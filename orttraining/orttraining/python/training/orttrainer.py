@@ -564,8 +564,11 @@ class ORTTrainer(object):
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
             if n not in [i.name for i in self._onnx_model.graph.initializer]]
         if unused_frozen_weights:
-            raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(
+            # raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(
+            #     unused_frozen_weights))
+            print("{} params from 'frozen_weights' not found in the ONNX model.".format(
                 unused_frozen_weights))
+
 
         # Get loss name from model description
         loss_name = [item.name for item in self.model_desc.outputs if item.is_loss]
@@ -922,6 +925,8 @@ class ORTTrainer(object):
         world_rank = _utils.state_dict_trainer_options_world_rank_key()
         world_size = _utils.state_dict_trainer_options_world_size_key()
         optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+        D_size = _utils.state_dict_trainer_options_data_parallel_size_key()
+        H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()
 
         state_dict[_utils.state_dict_trainer_options_key()] = {}
         state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = self.options.mixed_precision.enabled
@@ -930,6 +935,8 @@ class ORTTrainer(object):
         state_dict[_utils.state_dict_trainer_options_key()][world_rank] = self.options.distributed.world_rank
         state_dict[_utils.state_dict_trainer_options_key()][world_size] = self.options.distributed.world_size
         state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = self.optim_config.name
+        state_dict[_utils.state_dict_trainer_options_key()][D_size] = self.options.distributed.data_parallel_size
+        state_dict[_utils.state_dict_trainer_options_key()][H_size] = self.options.distributed.horizontal_parallel_size
 
     def state_dict(self, pytorch_format=False):
         """Returns a dictionary with model, and optionally, optimizer states
@@ -1075,6 +1082,8 @@ class ORTTrainer(object):
         if pytorch_format:
             if self.options.distributed.deepspeed_zero_optimization.stage > 0:
                 warnings.warn("Incomplete state_dict: ZeRO enabled", UserWarning)
+            if self.options.distributed.horizontal_parallel_size > 1:
+                warnings.warn("Incomplete state_dict: Megatron enabled", UserWarning)
             # if pytorch_format is true, return a flat dictionary with only model states
             # which is compatible with a PyTorch model
             return state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()]
@@ -1086,7 +1095,7 @@ class ORTTrainer(object):
         self._extract_trainer_options(state_dict)
 
         # add partition information in case of a distributed run
-        if self.options.distributed.deepspeed_zero_optimization.stage > 0:
+        if self.options.distributed.deepspeed_zero_optimization.stage > 0 or self.options.distributed.horizontal_parallel_size > 1:
             state_dict[_utils.state_dict_partition_info_key()] = self._training_session.get_partition_info_map()
 
         return state_dict
@@ -1302,7 +1311,8 @@ class ORTTrainer(object):
         """Checks if aggregation is required for the loading the state_dict into the ORTTrainer"""
 
         # To load states in the backend, aggregation is required for every ZeRO checkpoint
-        return loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0
+        return loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0 or \
+                loaded_trainer_options[_utils.state_dict_trainer_options_horizontal_parallel_size_key()] > 1
 
     def load_checkpoint(self, *paths, strict=True):
         """Loads the saved checkpoint state dictionary into the ORTTrainer

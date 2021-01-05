@@ -419,11 +419,12 @@ Status TrainingSession::ConfigureForTraining(
       LOGS(*session_logger_, INFO) << weight_name_to_not_train;
     }
   }
-
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
-
-  ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config_result));
-
+  ORT_IGNORE_RETURN_VALUE(Save(
+            "pre_transformed.onnx", SaveOption::NO_RELOAD));
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
+                                                      config_result));
+  ORT_IGNORE_RETURN_VALUE(Save(
+          "post_transformed.onnx", SaveOption::NO_RELOAD));
   weight_partition_info_ = config_result.weight_partition_info;
 
   // Save the model after graph transformations
@@ -444,6 +445,14 @@ Status TrainingSession::ConfigureForTraining(
       weight_names_to_train.erase(config_result.weight_name_map_after_graph_transform.at(weight_name_to_not_train));
     } else {
       weight_names_to_train.erase(weight_name_to_not_train);
+    }
+  }
+  for (auto x : config_result.weight_name_map_after_graph_transform) {
+    auto old_initializer_name = x.first;
+    auto new_initializer_name = x.second;
+    if (weight_names_to_train.find(old_initializer_name) != weight_names_to_train.end()) {
+      weight_names_to_train.erase(old_initializer_name);
+      weight_names_to_train.insert(new_initializer_name);
     }
   }
 
@@ -1095,18 +1104,18 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   std::unordered_set<std::string> fp_tensor_names{};
   fp_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
-  // Add zero sharded weights, only needed for fp32 weights in mixed precision run
-  for (const auto& weight_sharded_pair : updated_weight_names_map_) {
-    fp_tensor_names.erase(weight_sharded_pair.first);  // remove the original name
-    fp_tensor_names.insert(weight_sharded_pair.second);
+  // Add sharded weights
+  for (const auto& weight : weight_partition_info_) {
+    fp_tensor_names.erase(weight.first); // remove the original name
+    fp_tensor_names.insert(weight.second.view_name);
   }
   NameMLValMap fp_weights;
   GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
-  // Change key from sharded_name to weight_name
-  for (const auto& weight_sharded_pair : updated_weight_names_map_) {
-    const auto& it = fp_weights.find(weight_sharded_pair.second);
-    ORT_ENFORCE(it != fp_weights.end(), "Cannot find weight: " + weight_sharded_pair.second + " in updated_weight_names_map_");
-    fp_weights[weight_sharded_pair.first] = it->second;
+  // Change key from sharded_name to weight_name using partition_info
+  for (const auto& weight : weight_partition_info_) {
+    const auto& it = fp_weights.find(weight.second.view_name);
+    ORT_ENFORCE(it != fp_weights.end(), "Cannot find weight: " + weight.second.view_name + " in weight_partition_info_");
+    fp_weights[weight.first] = it->second;
     fp_weights.erase(it);
   }
   model_state_tensors["full_precision"] = fp_weights;
