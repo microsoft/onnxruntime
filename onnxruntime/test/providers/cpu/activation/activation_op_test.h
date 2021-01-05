@@ -68,17 +68,6 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       excluded_providers.insert(kNnapiExecutionProvider);
     }
 #endif
-
-#if defined(USE_NUPHAR)
- if (!std::is_same<T, float>::value) {
-    int sigmoid = strcmp(szOp, "Sigmoid");
-    int tanh = strcmp(szOp, "Tanh");
-    // nuphar implementation uses float constants which does not work with other types.
-    if (sigmoid == 0 || tanh == 0) {
-      excluded_providers.insert(kNupharExecutionProvider);
-    }
- }
-#endif
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   }
 }
