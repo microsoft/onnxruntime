@@ -455,6 +455,40 @@ TEST(NhwcTransformerTests, ConvSplit) {
   }
 }
 
+TEST(NhwcTransformerTests, ConvPad) {
+  std::vector<std::string> pad_modes = {"constant", "reflect", "edge"};
+  for (const auto& mode : pad_modes) {
+    auto build_test_case = [&](NhwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<uint8_t>({1, 23, 13, 13});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* pads_const = helper.MakeScalarInitializer<uint8_t>(131);
+      auto* pads_arg = helper.MakeInitializer<int64_t>({8LL}, {0, 0, 1, 1, 0, 0, 1, 1});
+      auto* pad_output_arg = helper.MakeIntermediate();
+      auto* conv2_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      Node& conv1_node = helper.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                            {30, 23, 3, 3}, .02f, 126,
+                                                            conv1_output_arg, .37f, 131);
+      conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      Node& pad_node = helper.AddNode("Pad", {conv1_output_arg, pads_arg, pads_const}, {pad_output_arg});
+      pad_node.AddAttribute("mode", mode);
+      helper.AddQLinearConvNode<uint8_t>(pad_output_arg, .37f, 131,
+                                         {16, 30, 3, 3}, .015f, 129,
+                                         conv2_output_arg, .37f, 131);
+      helper.AddDequantizeLinearNode(conv2_output_arg, .37f, 131, output_arg);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    NhwcTransformerTester(build_test_case, check_nhwc_graph);
+  }
+}
+
 TEST(NhwcTransformerTests, ConvBlockActivation) {
   auto test_case = [&](uint32_t extra_edges) {
     auto build_test_case = [&](NhwcTestHelper& helper) {
