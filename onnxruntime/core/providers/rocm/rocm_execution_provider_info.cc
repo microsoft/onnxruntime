@@ -16,7 +16,7 @@ constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 }  // namespace rocm
 
 namespace {
-EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
+const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
 };

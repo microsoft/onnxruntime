@@ -20,13 +20,13 @@ constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
 }  // namespace cuda
 
 namespace {
-EnumNameMapping<OrtCudnnConvAlgoSearch> ort_cudnn_conv_algo_search_mapping{
+const EnumNameMapping<OrtCudnnConvAlgoSearch> ort_cudnn_conv_algo_search_mapping{
     {OrtCudnnConvAlgoSearch::EXHAUSTIVE, "EXHAUSTIVE"},
     {OrtCudnnConvAlgoSearch::HEURISTIC, "HEURISTIC"},
     {OrtCudnnConvAlgoSearch::DEFAULT, "DEFAULT"},
 };
 
-EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
+const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
 };
