@@ -148,6 +148,7 @@ void TestInference(Ort::Env& env, T model_uri,
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
+static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
@@ -1320,10 +1321,10 @@ TEST(CApiTest, TestIncorrectInputTypeToModel) {
     exception_thrown = true;
     const char* exception_string = ex.what();
     ASSERT_TRUE(strcmp(exception_string,
-                       "Unexpected input data type. Actual: (class onnxruntime::PrimitiveDataType<double>) , "
-                       "expected: (class onnxruntime::PrimitiveDataType<float>)") == 0);
+                       "Unexpected input data type. Actual: (tensor(double)) , expected: (tensor(float))") == 0);
   }
 
   ASSERT_TRUE(exception_thrown);
 }
+
 #endif
