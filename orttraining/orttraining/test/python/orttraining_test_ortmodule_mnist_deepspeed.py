@@ -1,3 +1,13 @@
+"""Test for a simple ORTModule using the high-level DeepSpeed API.
+
+To run on the local GPU(s):
+
+```
+$ pip install deepspeed
+$ deepspeed orttraining_test_ortmodule_mnist_deepspeed.py \
+    --deepspeed_config=orttraining_test_ortmodule_mnist_deepspeed_config.json
+```
+"""
 import argparse
 import logging
 import torch
@@ -7,6 +17,7 @@ from torchvision import datasets, transforms
 import onnxruntime
 from onnxruntime.training import ORTModule
 
+import deepspeed
 
 class NeuralNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
@@ -24,7 +35,8 @@ class NeuralNet(torch.nn.Module):
 
 
 def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
-    print('\n======== Epoch {:} / {:} with batch size {:} ========'.format(epoch+1, args.epochs, args.batch_size))
+    print('\n======== Epoch {:} / {:} with batch size {:} ========'.format(
+        epoch+1, args.epochs, model.train_batch_size()))
     model.train()
     # Measure how long the training epoch takes.
     t0 = time.time()
@@ -34,10 +46,8 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
     total_loss = 0
 
     for iteration, (data, target) in enumerate(train_loader):
-        if iteration == args.train_steps:
-            break
         data, target = data.to(device), target.to(device)
-        data = data.reshape(data.shape[0], -1)
+        data = data.reshape(data.shape[0], -1).half()
 
         optimizer.zero_grad()
         probability = model(data)
@@ -54,8 +64,8 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
         # from the tensor.
         total_loss += loss.item()
 
-        loss.backward()
-        optimizer.step()
+        model.backward(loss)
+        model.step()
 
         # Stats
         if iteration % args.log_interval == 0:
@@ -85,7 +95,7 @@ def test(args, model, device, loss_fn, test_loader):
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
-            data = data.reshape(data.shape[0], -1)
+            data = data.reshape(data.shape[0], -1).half()
             output = model(data)
 
             # Stats
@@ -135,6 +145,13 @@ def main():
     parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
                         help='Log level (default: WARNING)')
 
+    # DeepSpeed-related settings
+    parser.add_argument('--local_rank',
+                        type=int,
+                        required=True,
+                        help='local rank passed from distributed launcher')
+    parser = deepspeed.add_config_arguments(parser)
+    
     args = parser.parse_args()
 
 
@@ -144,16 +161,14 @@ def main():
 
     # TODO: CUDA support is broken due to copying from PyTorch into ORT
     if not args.no_cuda and torch.cuda.is_available():
-        device = "cuda"
+        device = "cuda:" + str(args.local_rank)
     else:
         device = "cpu"
 
     ## Data loader
-    train_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=True, download=True,
-                                            transform=transforms.Compose([transforms.ToTensor(),
-                                                                          transforms.Normalize((0.1307,), (0.3081,))])),
-                                            batch_size=args.batch_size,
-                                            shuffle=True)
+    train_set = datasets.MNIST('./data', train=True, download=True,
+                               transform=transforms.Compose([transforms.ToTensor(),
+                                                             transforms.Normalize((0.1307,), (0.3081,))]))
     test_loader = None
     if args.test_batch_size > 0:
         test_loader = torch.utils.data.DataLoader(
@@ -178,8 +193,12 @@ def main():
         logging.basicConfig(level=numeric_level)
     else:
         print('Training MNIST on vanilla PyTorch....')
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
 
+    model, optimizer, train_loader, _ = deepspeed.initialize(
+        args=args,model=model,
+        model_parameters=[p for p in model.parameters() if p.requires_grad],
+        training_data=train_set)
+    
     # Train loop
     total_training_time, total_test_time, epoch_0_training = 0, 0, 0
     for epoch in range(0, args.epochs):
