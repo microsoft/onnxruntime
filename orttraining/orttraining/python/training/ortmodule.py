@@ -9,9 +9,9 @@ import warnings
 import numpy as np
 from inspect import signature
 
-# Needed to re-implement PyTorch's cpu,cuda,to methods
-from torch import Tensor, device, dtype
 from torch.utils.dlpack import from_dlpack
+
+# Needed to re-implement PyTorch's cpu,cuda,to methods
 from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
 
 from onnxruntime.capi import _pybind_state as C
@@ -24,14 +24,39 @@ __TEMP_ENABLE_METHOD_TIMING__ = False
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 T = TypeVar('T', bound='Module')
 
+
+def _get_device_index(device):
+    if isinstance(device, str):
+        # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
+        device = torch.device(device)
+    elif isinstance(device, int):
+        return device
+    return 0 if device.index is None else device.index
+
+def _get_device_str(device):
+    if isinstance(device, str):
+        # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
+        if device.find(':') == -1:
+            device += ':' + str(torch.cuda.current_device())
+    elif isinstance(device, int):
+        device = 'cuda:' + str(device)
+    elif isinstance(device, torch.device):
+        if device.index is None:
+            device = device.type + ':' + str(torch.cuda.current_device())
+        else:
+            device = device.type + ':' + str(device.index)
+    else:
+        raise ('Unsupported device type')
+    return device
+
+def _get_default_device_str(type):
+    if type == 'cuda':
+        return 'cuda:' + str(torch.cuda.current_device())
+    else:
+        return 'cpu'
+
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
-    def _get_device_index(device):
-        if type(device) == str:
-            # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
-            device = torch.device(device)
-        return 0 if device.index is None else device.index
-
     for idx, value_info in enumerate(model.graph.input):
         io_binding.bind_input(value_info.name, inputs[idx].device.type,
                               _get_device_index(inputs[idx].device),
@@ -40,7 +65,9 @@ def _create_iobinding(io_binding, inputs, model, device):
                               inputs[idx].data_ptr())
 
     for value_info in model.graph.output:
-        io_binding.bind_output(value_info.name, device if device.find(':') == -1 else device[:device.find(':')])
+        io_binding.bind_output(value_info.name, device.type,
+                               device_id=_get_device_index(device))
+
 
 def _onnx_value_info_to_buffer_tensor(value_info, device):
     '''Create a torch zeroed tensor with the same shape and type of `value_info`'''
@@ -98,60 +125,50 @@ class ORTModule(torch.nn.Module):
 
     def cpu(self: T) -> T:
         '''Thin layer to capture device for ORTModule IO bindings'''
-        if self._device != 'cpu':
+
+        if self._device.type != 'cpu':
             self._require_export = True
-            self._device = 'cpu'
+            self._device = torch.device('cpu')
+
         return super(ORTModule, self).cpu()
 
-    def cuda(self: T, device: Optional[Union[int, device]] = None) -> T:
+    def cuda(self: T, device: Optional[Union[int, torch.device]] = None) -> T:
         '''Thin layer to capture device for ORTModule IO bindings'''
-        if device:
-            device = str(device)
-        else:
-            device = 'cuda'
-        if self._device != str(device):
+
+        if device is None:
+            if _get_device_str(self._device) != _get_default_device_str('cuda'):
+                self._require_export = True
+                self._device = torch.device(_get_default_device_str('cuda'))
+        elif _get_device_str(self._device) != _get_device_str(device):
             self._require_export = True
-            self._device = device
+            self._device = torch.device(_get_device_str(device))
+
         return super(ORTModule, self).cuda(device)
 
     @overload
-    def to(self: T, device: Optional[Union[int, device]] = ...,
-           dtype: Optional[Union[dtype, str]] = ...,
+    def to(self: T, device: Optional[Union[int, torch.device]] = ...,
+           dtype: Optional[Union[torch.dtype, str]] = ...,
            non_blocking: bool = ...) -> T:
-        '''Thin layer to capture device for ORTModule IO bindings'''
-        if device:
-            device = str(device)
-        else:
-            device = None
-        if self._device != str(device) and device is not None:
-            self._require_export = True
-            self._device = device
-        return super(ORTModule, self).to(device, dtype, non_blocking)
+        ...
 
     @overload
-    def to(self: T, dtype: Union[dtype, str], non_blocking: bool = ...) -> T:
-        '''Thin layer to capture device for ORTModule IO bindings'''
-        # TODO: Should we do anything?
-        self._require_export = False
-        return super(ORTModule, self).to(dtype, non_blocking)
+    def to(self: T, dtype: Union[torch.dtype, str], non_blocking: bool = ...) -> T:
+        ...
 
     @overload
-    def to(self: T, tensor: Tensor, non_blocking: bool = ...) -> T:
-        '''Thin layer to capture device for ORTModule IO bindings'''
-        # TODO: Long shot by sending model to tensor's device
-        device = None
-        if tensor:
-            device = str(tensor.device)
-        if self._device != str(device) and device is not None:
-            self._require_export = True
-            self._device = device
-        return super(ORTModule, self).to(tensor, non_blocking)
+    def to(self: T, tensor: torch.Tensor, non_blocking: bool = ...) -> T:
+        ...
 
     def to(self, *args, **kwargs):
         '''Thin layer to capture device for ORTModule IO bindings'''
-        # TODO: Should we do anything?
-        self._require_export = False
-        return super(ORTModule, self).to(args, kwargs)
+
+        device, _, _, _ = torch._C._nn._parse_to(*args, **kwargs)
+        if device:
+            device_str = _get_device_str(device)
+            if _get_device_str(self._device) != device_str:
+                self._require_export = True
+                self._device = torch.device(device_str)
+        return super(ORTModule, self).to(*args, **kwargs)
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -185,8 +202,21 @@ class ORTModule(torch.nn.Module):
             self._onnx_forward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_forward_model())
             self._onnx_backward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_backward_model())
             self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
-            self._forward_session = onnxruntime.InferenceSession(self._onnx_forward.SerializeToString())
-            self._backward_session = onnxruntime.InferenceSession(self._onnx_backward.SerializeToString())
+
+            providers = None
+            provider_options = None
+            if self._device.type == 'cuda':
+                # Configure the InferenceSessions to use the specific GPU on which the model is placed.
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                provider_options = [{"device_id": str(self._device.index)}]
+            elif self._device.type == 'cpu':
+                providers = ["CPUExecutionProvider"]
+                provider_options = [{}]
+
+            self._forward_session = onnxruntime.InferenceSession(
+                self._onnx_forward.SerializeToString(), providers=providers, provider_options=provider_options)
+            self._backward_session = onnxruntime.InferenceSession(
+                self._onnx_backward.SerializeToString(), providers=providers, provider_options=provider_options)
 
             # IO binding
             # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
@@ -216,7 +246,7 @@ class ORTModule(torch.nn.Module):
                 # Use IO binding
                 _create_iobinding(self._forward_io_binding, inputs,
                                   self._onnx_forward,
-                                  str(self._device))
+                                  self._device)
 
                 # Run
                 self._forward_session.run_with_iobinding(self._forward_io_binding)
@@ -253,7 +283,7 @@ class ORTModule(torch.nn.Module):
                 backward_grad_output = tuple(grad_output_dict[name] for name in self._onnx_graphs_info.backward_output_grad_names)
                 _create_iobinding(self._backward_io_binding, [*ctx.saved_tensors, *backward_grad_output],
                                    self._onnx_backward,
-                                   str(self._device))
+                                   self._device)
 
                 # Run
                 self._backward_session.run_with_iobinding(self._backward_io_binding)
