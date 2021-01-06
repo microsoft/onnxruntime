@@ -41,7 +41,10 @@ class MyGPT2Model(GPT2Model):
         super().__init__(config)
 
     def forward(self, input_ids, position_ids, attention_mask, *past):
-        return super().forward(input_ids, position_ids=position_ids, attention_mask=attention_mask, past_key_values=past)
+        return super().forward(input_ids,
+                               position_ids=position_ids,
+                               attention_mask=attention_mask,
+                               past_key_values=past)
 
 
 class MyGPT2LMHeadModel(GPT2LMHeadModel):
@@ -51,7 +54,10 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
         super().__init__(config)
 
     def forward(self, input_ids, position_ids, attention_mask, *past):
-        return super().forward(input_ids, position_ids=position_ids, attention_mask=attention_mask, past_key_values=past)
+        return super().forward(input_ids,
+                               position_ids=position_ids,
+                               attention_mask=attention_mask,
+                               past_key_values=past)
 
 
 class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
