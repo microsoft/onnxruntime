@@ -1253,7 +1253,14 @@ void addObjectMethods(py::module& m, Environment& env) {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
 
-        return DataTypeImpl::ToString(ml_value->Get<Tensor>().DataType());
+        // Currently only "tensor" OrtValues are supported
+        std::ostringstream ostr;
+        ostr << "tensor";
+        ostr << "(";
+        ostr << DataTypeImpl::ToString(ml_value->Get<Tensor>().DataType());
+        ostr << ")";
+
+        return ostr.str();
       })
       .def("is_tensor", [](OrtValue* ml_value) -> bool {
         return ml_value->IsTensor();
