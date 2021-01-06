@@ -577,6 +577,8 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto domain = builder.CreateSharedString(model_proto_.domain());
   auto doc_string = experimental::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_doc_string(), model_proto_.doc_string());
+  auto graph_doc_string = experimental::utils::SaveStringToOrtFormat(
+      builder, model_proto_.has_graph() && model_proto_.graph().has_doc_string(), model_proto_.graph().doc_string());
 
   std::vector<flatbuffers::Offset<fbs::OperatorSetId>> op_set_ids_vec;
   op_set_ids_vec.reserve(model_proto_.opset_import().size());
@@ -600,6 +602,7 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   mb.add_domain(domain);
   mb.add_model_version(model_proto_.model_version());
   mb.add_doc_string(doc_string);
+  mb.add_graph_doc_string(graph_doc_string);
   mb.add_graph(fbs_graph);
 
   // add graph
