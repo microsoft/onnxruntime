@@ -210,60 +210,27 @@ Return Value:
     }
 }
 
-#else
-
-//
-// QuantizeLinear implementation using the C++ runtime.
-//
-
-template<typename OutputType>
+template
 void
 MLASCALL
-MlasQuantizeLinear(
+MlasQuantizeLinearKernel<int8_t>(
     const float* Input,
-    OutputType* Output,
+    int8_t* Output,
     size_t N,
     float Scale,
-    OutputType ZeroPoint
-    )
-/*++
+    int8_t ZeroPoint
+    );
 
-Routine Description:
-
-    This routine quantizes the input buffer using the supplied quantization
-    parameters.
-
-Arguments:
-
-    Input - Supplies the input buffer.
-
-    Output - Supplies the output buffer.
-
-    N - Supplies the number of elements to process.
-
-    Scale - Supplies the quantization scale.
-
-    ZeroPoint - Supplies the quantization zero point value.
-
-Return Value:
-
-    None.
-
---*/
-{
-    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
-    constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
-
-    for (size_t n = 0; n < N; n++) {
-
-        float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
-        FloatValue = std::max(FloatValue, float(MinimumValue));
-        FloatValue = std::min(FloatValue, float(MaximumValue));
-        Output[n] = (OutputType)(int32_t)FloatValue;
-    }
-}
-
-#endif
+template
+void
+MLASCALL
+MlasQuantizeLinearKernel<uint8_t>(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    );
 
 void
 MLASCALL
@@ -328,6 +295,82 @@ MlasQuantizeLinear<uint8_t>(
 #endif
         Input, Output, N, Scale, ZeroPoint);
 }
+
+#else
+
+//
+// QuantizeLinear implementation using the C++ runtime.
+//
+
+template<typename OutputType>
+void
+MLASCALL
+MlasQuantizeLinear(
+    const float* Input,
+    OutputType* Output,
+    size_t N,
+    float Scale,
+    OutputType ZeroPoint
+    )
+/*++
+
+Routine Description:
+
+    This routine quantizes the input buffer using the supplied quantization
+    parameters.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    N - Supplies the number of elements to process.
+
+    Scale - Supplies the quantization scale.
+
+    ZeroPoint - Supplies the quantization zero point value.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
+    constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
+
+    for (size_t n = 0; n < N; n++) {
+
+        float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
+        FloatValue = std::max(FloatValue, float(MinimumValue));
+        FloatValue = std::min(FloatValue, float(MaximumValue));
+        Output[n] = (OutputType)(int32_t)FloatValue;
+    }
+}
+
+template
+void
+MLASCALL
+MlasQuantizeLinear<int8_t>(
+    const float* Input,
+    int8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    );
+
+template
+void
+MLASCALL
+MlasQuantizeLinear<uint8_t>(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    );
+#endif
 
 #if defined(MLAS_SSE2_INTRINSICS)
 
