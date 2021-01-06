@@ -100,11 +100,29 @@ def post_processing(outputs_path, outputs_path_other):
         print(line)
 
 if __name__ == '__main__':
+    # Below example shows how to use this helper to investigate parity issue of gpt-2 fp32 and fp16 onnx model
+    # Please build ORT with --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON !!
     multiprocessing.set_start_method('spawn')
-    print("Prepare inputs, models and compare")
-    # input_fp16 = Gpt2Helper.get_dummy_inputs(...), input_fp32 = inputs_fp16.to_fp32()
-    # generate_outputs_files(...)
-    # post_processing(...)
+
+    # Generate Inputs
+    sequence_length = 8
+    past_sequence_length = 8
+    batch_size = 5
+    dummy_inputs_fp16 = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length, 12, 768, 12, 50257, device = torch.device("cpu"), float16=True)
+    dummy_inputs_fp32 = dummy_inputs_fp16.to_fp32()
+
+    # Get GPT-2 model from huggingface using convert_to_onnx.py
+    os.system('python convert_to_onnx.py -m gpt2 --output gpt2_fp32.onnx -o -p fp32 --use_gpu')
+    os.system('python convert_to_onnx.py -m gpt2 --output gpt2_fp16.onnx -o -p fp16 --use_gpu')
+
+    # Specify the directory to dump the node's I/O
+    outputs_path_fp32_gpu = "./fp32_gpu"
+    outputs_path_fp16_gpu = "./fp16_gpu"
+    generate_outputs_files("./gpt2_fp32.onnx", dummy_inputs_fp32, outputs_path_fp32_gpu, use_gpu=True)
+    generate_outputs_files("./gpt2_fp16.onnx", dummy_inputs_fp16, outputs_path_fp16_gpu, use_gpu=True)
+
+    # Compare each node's I/O value and sort based on average rtol
+    post_processing(outputs_path_fp16_gpu, outputs_path_fp32_gpu)
 
 
 
