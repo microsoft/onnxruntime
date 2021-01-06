@@ -21,6 +21,7 @@
 #include "orttraining/core/graph/tensorboard_transformer.h"
 #include "orttraining/core/graph/pipeline_transformer.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
+#include "orttraining/core/optimizer/megatron_transformer.h"
 
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
@@ -85,12 +86,12 @@ Status SetupOptimizerParams(
     }
 
     // check if initial optimizer states have been provided for weight
-    if (config.init_optimizer_states){
+    if (config.init_optimizer_states) {
       const auto optim_state_it = config.init_optimizer_states->find(weight_name);
       if (optim_state_it != config.init_optimizer_states->end()) {
         opt_node_config.initial_states = optim_state_it->second;
       }
-    }    
+    }
 
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
   }
@@ -117,7 +118,7 @@ Status SetupOptimizerParams(
   opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
 
   // check if shared initial optimizer states have been provided
-  if (config.init_optimizer_states){
+  if (config.init_optimizer_states) {
     const auto optim_state_it = config.init_optimizer_states->find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
     if (optim_state_it != config.init_optimizer_states->end()) {
       opt_graph_config.shared_optimizer_states = std::move(optim_state_it->second);
@@ -146,7 +147,6 @@ void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>&
           << "Couldn't find any consumer node for weight " << name << ", exclude it from training.";
   }
 }
-
 
 const std::string TrainingSession::training_mode_string_ = "training_mode";
 
@@ -180,14 +180,12 @@ Status TrainingSession::ConfigureForTraining(
   for (int i = 0; i < WorkerGroupType::WorkerGroupTypeCount; i++) {
     if (!mpi_groups[i].is_group_initialized && MPIContext::GetInstance().GetWorldSize() > 1) {
       MPIContext::GetInstance().AddMPIGroup(static_cast<WorkerGroupType>(i),
-        DistributedRunContext::GetInstance().GetWorkerGroup(static_cast<WorkerGroupType>(i)));
+                                            DistributedRunContext::GetInstance().GetWorkerGroup(static_cast<WorkerGroupType>(i)));
     }
   }
 #endif
 
-  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ?
-                              DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) :
-                              -1;
+  const int32_t pipeline_stage_id = config.pipeline_config.has_value() ? DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) : -1;
 
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
@@ -198,17 +196,17 @@ Status TrainingSession::ConfigureForTraining(
     const auto& cut_list = config.pipeline_config.value().cut_list;
     if (cut_list.size() > 0) {
       ORT_RETURN_IF_ERROR(
-        GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
+          GetDeviceAssignmentMap(model_->MainGraph(), cut_list, op_to_stage, n_stages));
     } else {
       const auto& id_to_stage = config.pipeline_config.value().op_id_to_stage;
       ORT_RETURN_IF_ERROR(
-        GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
+          GetDeviceAssignmentMap(model_->MainGraph(), id_to_stage, op_to_stage, n_stages));
     }
 
     auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::ModelParallel);
     ORT_RETURN_IF_ERROR(
-      ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
-                                        pipeline_stage_id, n_stages, ranks));
+        ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
+                                          pipeline_stage_id, n_stages, ranks));
 
     if (config.pipeline_config.value().partitioned_model_path.has_value()) {
       // Save the partitioned file out.
@@ -274,8 +272,9 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
-                                                      config_result));
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
+
+  ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config_result));
 
   weight_partition_info_ = config_result.weight_partition_info;
 
@@ -287,7 +286,7 @@ Status TrainingSession::ConfigureForTraining(
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
       !filtered_config_weight_names_to_train.empty()
-          ? filtered_config_weight_names_to_train
+          ? trainable_initializers
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
 
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
@@ -518,8 +517,8 @@ static Status BuildGradientGraphInternal(Graph& graph,
   if (p_weight_to_mixed_precision_map != nullptr) {
     names_to_train = std::unordered_set<std::string>{};
     std::transform((*p_weight_to_mixed_precision_map).begin(), (*p_weight_to_mixed_precision_map).end(),
-                  std::inserter(names_to_train, names_to_train.begin()),
-                  [](auto pair){ return pair.second; });
+                   std::inserter(names_to_train, names_to_train.begin()),
+                   [](auto pair) { return pair.second; });
   } else {
     names_to_train = node_arg_names_to_train;
   }
@@ -552,8 +551,8 @@ static Status BuildOptimizerInternal(Graph& graph,
   ORT_RETURN_IF_ERROR(optimizer_graph_builder->Build(
       graph, weight_to_opt_mapping, opt_graph_outputs));
   // set opt_state_initializer_names from weight_to_opt_mapping
-  for (const auto& weight_set: weight_to_opt_mapping) {
-    for (const auto& optimizer_name_item: weight_set.second) {
+  for (const auto& weight_set : weight_to_opt_mapping) {
+    for (const auto& optimizer_name_item : weight_set.second) {
       opt_state_initializer_names.emplace(optimizer_name_item.second);
     }
   }
@@ -578,9 +577,8 @@ static Status AddGradientAccumulationNodes(Graph& graph,
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
-Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
-                                                        const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                        TrainingConfigurationResult& config_result_out) {
+Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+                                                        const TrainingConfiguration::GraphTransformerConfiguration& config) {
   GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
@@ -589,7 +587,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::
   // Create execution frame for executing constant nodes.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config, config_result_out);
+  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config);
 
   // apply transformers
   Graph& graph = model_->MainGraph();
@@ -603,16 +601,15 @@ Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::
 // Registers all the pre transformers with transformer manager
 void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execution_provider,
                                                  GraphTransformerManager& transformer_manager,
-                                                 std::unordered_set<std::string>& weights_to_train,
+                                                 const std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                 TrainingConfigurationResult& config_result_out,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
 
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, config, execution_provider, config_result_out.weight_name_map_after_graph_transform, config_result_out.weight_partition_info, custom_list);
+        level, weights_to_train, config, execution_provider, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
@@ -653,6 +650,34 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
       add_transformers(level);
     }
   }
+}
+
+Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+                                                                     TrainingConfigurationResult& config_result_out) {
+  const auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
+  if (horizontal_parallel_size == 1) {
+    return common::Status::OK();
+  }
+
+  GraphTransformerManager graph_transformation_mgr{1};
+  std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register;
+  std::unordered_set<std::string> compatible_eps = {};
+  LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
+  transformers_to_register.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
+      training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
+      horizontal_parallel_size, config_result_out.weight_name_map_after_graph_transform, weights_to_train,
+      config_result_out.weight_partition_info, compatible_eps));
+
+  // Generate and register transformers for level
+  for (auto& entry : transformers_to_register) {
+    graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1);
+  }
+
+  // apply transformers
+  Graph& graph = model_->MainGraph();
+  ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
+      graph, TransformerLevel::Level1, *session_logger_));
+  return common::Status::OK();
 }
 
 Status TrainingSession::AddGistEncoding() {
@@ -738,8 +763,7 @@ Status TrainingSession::EnableMixedPrecision(
       weights_to_train.cbegin(), weights_to_train.cend(),
       std::inserter(weight_to_mixed_precision_map, weight_to_mixed_precision_map.begin()),
       [&fp32_weight_name_to_mixed_precision_node_arg](const std::string& name) {
-        return fp32_weight_name_to_mixed_precision_node_arg.find(name) != fp32_weight_name_to_mixed_precision_node_arg.end() ?
-               std::make_pair(name, fp32_weight_name_to_mixed_precision_node_arg[name]->Name()) : std::make_pair(name, name);
+        return fp32_weight_name_to_mixed_precision_node_arg.find(name) != fp32_weight_name_to_mixed_precision_node_arg.end() ? std::make_pair(name, fp32_weight_name_to_mixed_precision_node_arg[name]->Name()) : std::make_pair(name, name);
       });
   weight_to_mixed_precision_map_ = std::move(weight_to_mixed_precision_map);
 
@@ -757,8 +781,7 @@ Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
                                                  loss_function_output_name,
                                                  weights_to_train_,
-                                                 weight_to_mixed_precision_map_.empty() ?
-                                                      nullptr : &weight_to_mixed_precision_map_,
+                                                 weight_to_mixed_precision_map_.empty() ? nullptr : &weight_to_mixed_precision_map_,
                                                  gradient_graph_config_,
                                                  logger));
 
@@ -880,8 +903,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
                                                    actual_loss_name,
                                                    weights_to_train_,
-                                                   weight_to_mixed_precision_map_.empty() ?
-                                                      nullptr : &weight_to_mixed_precision_map_,
+                                                   weight_to_mixed_precision_map_.empty() ? nullptr : &weight_to_mixed_precision_map_,
                                                    gradient_graph_config_,
                                                    *session_logger_));
 
@@ -920,7 +942,7 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
   // weight_to_opt_mapping_ is in the format of {weight_name: {prefix: full_optimizer_name, ..}, ..}
   for (const auto& weight_map : weight_to_opt_mapping_) {
     std::unordered_set<std::string> opt_names;
-    for (const auto& opt_pair: weight_map.second) {
+    for (const auto& opt_pair : weight_map.second) {
       opt_names.emplace(opt_pair.second);
     }
     NameMLValMap curr_opt_tensors;
@@ -928,7 +950,7 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
     GetSessionState().GetInitializedTensors(opt_names, allow_missing, curr_opt_tensors);
     opt_state_tensors[weight_name] = {};
     // Keep only prefix in returned value
-    for (const auto& opt_pair: weight_map.second) {
+    for (const auto& opt_pair : weight_map.second) {
       const auto& opt_prefix = opt_pair.first;
       const auto& opt_name = opt_pair.second;
       opt_state_tensors[weight_name][opt_prefix] = curr_opt_tensors[opt_name];
@@ -950,14 +972,14 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   fp_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
   // Add zero sharded weights, only needed for fp32 weights in mixed precision run
-  for (const auto& weight_sharded_pair: updated_weight_names_map_) {
-    fp_tensor_names.erase(weight_sharded_pair.first); // remove the original name
+  for (const auto& weight_sharded_pair : updated_weight_names_map_) {
+    fp_tensor_names.erase(weight_sharded_pair.first);  // remove the original name
     fp_tensor_names.insert(weight_sharded_pair.second);
   }
   NameMLValMap fp_weights;
   GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
   // Change key from sharded_name to weight_name
-  for (const auto& weight_sharded_pair: updated_weight_names_map_) {
+  for (const auto& weight_sharded_pair : updated_weight_names_map_) {
     const auto& it = fp_weights.find(weight_sharded_pair.second);
     ORT_ENFORCE(it != fp_weights.end(), "Cannot find weight: " + weight_sharded_pair.second + " in updated_weight_names_map_");
     fp_weights[weight_sharded_pair.first] = it->second;
@@ -968,14 +990,14 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
     std::unordered_set<std::string> mp_tensor_names{};
     std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
     std::transform(weight_to_mixed_precision_map_.begin(), weight_to_mixed_precision_map_.end(),
-                  std::inserter(mixed_precision_weight_initializer_names, mixed_precision_weight_initializer_names.begin()),
-                  [](auto pair){ return pair.second; });
+                   std::inserter(mixed_precision_weight_initializer_names, mixed_precision_weight_initializer_names.begin()),
+                   [](auto pair) { return pair.second; });
     mp_tensor_names.insert(
         mixed_precision_weight_initializer_names.begin(), mixed_precision_weight_initializer_names.end());
     NameMLValMap mp_weights;
     GetSessionState().GetInitializedTensors(mp_tensor_names, allow_missing, mp_weights);
     // Change key from fp16_name to weight_name
-    for (const auto& weight_fp16_pair: weight_to_mixed_precision_map_) {
+    for (const auto& weight_fp16_pair : weight_to_mixed_precision_map_) {
       const auto& it = mp_weights.find(weight_fp16_pair.second);
       ORT_ENFORCE(it != mp_weights.end(), "Cannot find weight: " + weight_fp16_pair.second + " in weight_to_mixed_precision_map_");
       mp_weights[weight_fp16_pair.first] = it->second;
@@ -990,8 +1012,8 @@ common::Status TrainingSession::GetPartitionInfoMap(std::unordered_map<std::stri
   for (const auto& weight : weight_partition_info_) {
     const auto& weight_name = weight.first;
     std::transform(weight_partition_info_[weight_name].original_dim.begin(), weight_partition_info_[weight_name].original_dim.end(),
-                  std::inserter(part_info_map[weight_name]["original_dim"], part_info_map[weight_name]["original_dim"].end()),
-                  [](const int64_t& dim) { return (int)dim; });
+                   std::inserter(part_info_map[weight_name]["original_dim"], part_info_map[weight_name]["original_dim"].end()),
+                   [](const int64_t& dim) { return (int)dim; });
     part_info_map[weight_name]["megatron_row_partition"] = std::vector<int>{weight_partition_info_[weight_name].megatron_row_partition};
   }
   return Status::OK();
@@ -1166,8 +1188,8 @@ std::unordered_set<std::string> TrainingSession::GetStateTensorNames() const {
       opt_state_initializer_names_.begin(), opt_state_initializer_names_.end());
   std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
   std::transform(weight_to_mixed_precision_map_.begin(), weight_to_mixed_precision_map_.end(),
-                std::inserter(mixed_precision_weight_initializer_names, mixed_precision_weight_initializer_names.begin()),
-                [](auto pair){ return pair.second; });
+                 std::inserter(mixed_precision_weight_initializer_names, mixed_precision_weight_initializer_names.begin()),
+                 [](auto pair) { return pair.second; });
   checkpointed_tensor_names.insert(
       mixed_precision_weight_initializer_names.begin(), mixed_precision_weight_initializer_names.end());
   return checkpointed_tensor_names;
