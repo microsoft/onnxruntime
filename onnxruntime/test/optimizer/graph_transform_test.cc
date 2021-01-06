@@ -66,9 +66,9 @@ using namespace std;
 using namespace ONNX_NAMESPACE;
 
 #if USE_ROCM
-constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+constexpr const char* kGpuExecutionProvider = onnxruntime::kRocmExecutionProvider;
 #else
-constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+constexpr const char* kGpuExecutionProvider = onnxruntime::kCudaExecutionProvider;
 #endif
 
 namespace onnxruntime {
