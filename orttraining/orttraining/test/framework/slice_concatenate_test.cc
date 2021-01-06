@@ -206,6 +206,7 @@ TEST(PipelineParallel, FloatTensorSlice3d) {
   CompareVector(sliced_vector, {-3.0f, 4.0f, 7.0f, 8.0f});
 }
 
+#ifdef USE_CUDA
 TEST(PipelineParallel, FloatTensorSlice3dGpu) {
   std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
 
@@ -227,6 +228,143 @@ TEST(PipelineParallel, FloatTensorSlice3dGpu) {
   sliced_vector = CreateVector(training::SliceTensor(value, 1, 1, 2, session));
   CompareVector(sliced_vector, {-3.0f, 4.0f, 7.0f, 8.0f});
 }
+#endif
+
+TEST(PipelineParallel, FloatTensorConcat1d) {
+  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+
+  CreateFakeGraph(model->MainGraph());
+
+  onnxruntime::SessionOptions so;
+  onnxruntime::InferenceSession session(so, GetEnvironment());
+  InitializeSession(session, *model);
+
+  std::vector<float> vector0{0.f, 1.f};
+  std::vector<float> vector1{2.f, 3.f};
+  std::vector<float> vector2{4.f, 5.f};
+
+  std::vector<OrtValue> values;
+  for (auto& vector : {vector0, vector1, vector2}) {
+    auto value = CreateTensorValue({2}, vector, false);
+    values.push_back(value);
+  }
+
+  auto result_vector = CreateVector(training::ConcatenateTensors(values, 0, session));
+  CompareVector(result_vector, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f});
+}
+
+TEST(PipelineParallel, FloatTensorConcat2d) {
+  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+
+  CreateFakeGraph(model->MainGraph());
+
+  onnxruntime::SessionOptions so;
+  onnxruntime::InferenceSession session(so, GetEnvironment());
+  InitializeSession(session, *model);
+
+  std::vector<float> vector0{0.f, 1.f, 2.f, 3.f};
+  std::vector<float> vector1{4.f, 5.f, 6.f, 7.f};
+  std::vector<float> vector2{8.f, 9.f, 10.f, 11.f};
+
+  std::vector<OrtValue> values;
+  for (auto& vector : {vector0, vector1, vector2}) {
+    auto value = CreateTensorValue({2, 2}, vector, false);
+    values.push_back(value);
+  }
+
+  auto result_vector_axis_0 = CreateVector(training::ConcatenateTensors(values, 0, session));
+  CompareVector(result_vector_axis_0, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f});
+
+  auto result_vector_axis_1 = CreateVector(training::ConcatenateTensors(values, 1, session));
+  CompareVector(result_vector_axis_1, {0.f, 1.f, 4.f, 5.f, 8.f, 9.f, 2.f, 3.f, 6.f, 7.f, 10.f, 11.f});
+}
+
+TEST(PipelineParallel, FloatTensorConcat3d) {
+  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+
+  CreateFakeGraph(model->MainGraph());
+
+  onnxruntime::SessionOptions so;
+  onnxruntime::InferenceSession session(so, GetEnvironment());
+  InitializeSession(session, *model);
+
+  std::vector<float> vector0{0.f, 1.f, 2.f, 3.f};
+  std::vector<float> vector1{4.f, 5.f, 6.f, 7.f};
+  std::vector<float> vector2{8.f, 9.f, 10.f, 11.f};
+
+  std::vector<OrtValue> values;
+  for (auto& vector : {vector0, vector1, vector2}) {
+    auto value = CreateTensorValue({2, 1, 2}, vector, false);
+    values.push_back(value);
+  }
+
+  auto result_vector_axis_0 = CreateVector(training::ConcatenateTensors(values, 0, session));
+  CompareVector(result_vector_axis_0, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f});
+
+  auto result_vector_axis_1 = CreateVector(training::ConcatenateTensors(values, 1, session));
+  CompareVector(result_vector_axis_1, {0.f, 1.f, 4.f, 5.f, 8.f, 9.f, 2.f, 3.f, 6.f, 7.f, 10.f, 11.f});
+
+  auto result_vector_axis_2 = CreateVector(training::ConcatenateTensors(values, 2, session));
+  CompareVector(result_vector_axis_2, {0.f, 1.f, 4.f, 5.f, 8.f, 9.f, 2.f, 3.f, 6.f, 7.f, 10.f, 11.f});
+}
+
+TEST(PipelineParallel, FloatTensorConcat3dMore) {
+  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+
+  CreateFakeGraph(model->MainGraph());
+
+  onnxruntime::SessionOptions so;
+  onnxruntime::InferenceSession session(so, GetEnvironment());
+  InitializeSession(session, *model);
+
+  std::vector<float> vector0{0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
+  std::vector<float> vector1{8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f};
+  std::vector<float> vector2{16.f, 17.f, 18.f, 19.f, 20.f, 21.f, 22.f, 23.f};
+
+  std::vector<OrtValue> values;
+  for (auto& vector : {vector0, vector1, vector2}) {
+    auto value = CreateTensorValue({2, 2, 2}, vector, false);
+    values.push_back(value);
+  }
+
+  auto result_vector_axis_0 = CreateVector(training::ConcatenateTensors(values, 0, session));
+  CompareVector(result_vector_axis_0, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f,
+                                       8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f,
+                                       16.f, 17.f, 18.f, 19.f, 20.f, 21.f, 22.f, 23.f});
+
+  auto result_vector_axis_1 = CreateVector(training::ConcatenateTensors(values, 1, session));
+  CompareVector(result_vector_axis_1, {0.f, 1.f, 2.f, 3.f, 8.f, 9.f, 10.f, 11.f, 16.f, 17.f, 18.f, 19.f,
+                                       4.f, 5.f, 6.f, 7.f, 12.f, 13.f, 14.f, 15.f, 20.f, 21.f, 22.f, 23.f});
+
+  auto result_vector_axis_2 = CreateVector(training::ConcatenateTensors(values, 2, session));
+  CompareVector(result_vector_axis_2, {0.f, 1.f, 8.f, 9.f, 16.f, 17.f, 2.f, 3.f, 10.f, 11.f, 18.f, 19.f,
+                                       4.f, 5.f, 12.f, 13.f, 20.f, 21.f, 6.f, 7.f, 14.f, 15.f, 22.f, 23.f});
+}
+
+#ifdef USE_CUDA
+TEST(PipelineParallel, FloatTensorConcat1dGpu) {
+  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+
+  CreateFakeGraph(model->MainGraph());
+
+  onnxruntime::SessionOptions so;
+  onnxruntime::InferenceSession session(so, GetEnvironment());
+  InitializeSession(session, *model);
+
+  std::vector<float> vector0{0.f, 1.f};
+  std::vector<float> vector1{2.f, 3.f};
+  std::vector<float> vector2{4.f, 5.f};
+
+  std::vector<OrtValue> values;
+  for (auto& vector : {vector0, vector1, vector2}) {
+    auto value = CreateTensorValue({2}, vector, true);
+    values.push_back(value);
+  }
+
+  auto result_vector = CreateVector(training::ConcatenateTensors(values, 0, session));
+  CompareVector(result_vector, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f});
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
