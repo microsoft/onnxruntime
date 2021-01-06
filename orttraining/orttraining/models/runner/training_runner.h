@@ -65,6 +65,8 @@ class TrainingRunner {
     bool is_perf_test;
     bool shuffle_data;
     size_t batch_size;
+    int op;
+    std::string gist_compr;
     size_t eval_batch_size;
     size_t num_train_steps;
     size_t evaluation_period;

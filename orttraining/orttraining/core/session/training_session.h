@@ -121,7 +121,9 @@ class TrainingSession : public InferenceSession {
     // The GIST configuration.
     // If not provided, GIST is disabled.
     optional<GistConfiguration> gist_config{};
-
+    
+    int op_flag;
+    std::string compr_type;
     struct TensorboardConfiguration {
       // The summary name.
       std::string summary_name{};
@@ -390,7 +392,7 @@ class TrainingSession : public InferenceSession {
       std::string* loss_scale_input_name,
       std::string& actual_loss_name);
 
-  common::Status AddGistEncoding();
+  common::Status AddGistEncoding(int op_flag, std::string compr_type);
 
   /** Add tensorboard summary nodes to the graph.
   @param summary_name name for the merged summary node.

@@ -181,34 +181,70 @@ TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
 }
 
 TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
+  // Setup training session configuration including GIST config (op_flag 9 ensures GIST will be applied to all possible supported node types)
   auto config = MakeBasicTrainingConfig();
-  config.gist_config = TrainingSession::TrainingConfiguration::GistConfiguration{};
-  PathString backprop_model_file;
-  ASSERT_STATUS_OK(BuildBackPropGraph(ORIGINAL_MODEL_PATH, config, backprop_model_file));
-
-  std::cout << "Loading model file = " << ToMBString(backprop_model_file) << "\n";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(onnxruntime::Model::Load(backprop_model_file, p_model, nullptr, DefaultLoggingManager().DefaultLogger()));
-
-  const Graph& graph = p_model->MainGraph();
-  bool found_encoder = false;
-  bool found_decoder = false;
-  for (auto& node : graph.Nodes()) {
-    const std::string& node_name = node.Name();
-    std::cout << "Node name='" << node_name << "' op_type=" << node.OpType() << "\n";
-    if (node_name.find(onnxruntime::GistEncodeDecode::GIST_ENCODER_NODE_NAME_BASE) != std::string::npos) {
-      found_encoder = true;
-      std::cout << "Found encoder node " << node_name << "\n";
-    } else if (node_name.find(onnxruntime::GistEncodeDecode::GIST_DECODER_NODE_NAME_BASE) != std::string::npos) {
-      found_decoder = true;
-      std::cout << "Found decoder node " << node_name << "\n";
-    }
-  }
-  ASSERT_TRUE(found_encoder);
-  ASSERT_TRUE(found_decoder);
+  TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+  config.gist_config = gist;
+  config.op_flag = 9;
+  config.compr_type = "GistPack8";
+  
+  // Create backward graph with gist transformations
+  const PathString& forward_model_file = ORIGINAL_MODEL_PATH;
+  std::unique_ptr<Environment> env;
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
   SessionOptions so{};
-  RunTrainingSessionWithChecks(so, backprop_model_file);
+  TrainingSession training_session{so, *env};
+
+  std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
+
+  ORT_THROW_IF_ERROR(training_session.Load(forward_model_file));
+
+  TrainingSession::TrainingConfigurationResult config_result{};
+  ORT_THROW_IF_ERROR(training_session.ConfigureForTraining(config, config_result));
+
+  // Run training session with checks
+  std::pair<common::Status, const ModelMetadata*> res = training_session.GetModelMetadata();
+  ORT_THROW_IF_ERROR(res.first);
+  ORT_ENFORCE(res.second != nullptr);
+  auto model_metadata = res.second;
+  std::cout << "Loaded " << model_metadata->graph_name << '\n';
+  
+  // Add cuda execution provider for gist encode/decode nodes
+  CUDAExecutionProviderInfo xp_info;
+  ASSERT_STATUS_OK(training_session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
+  
+  ORT_THROW_IF_ERROR(training_session.Initialize());
+
+  std::vector<MLValue> gradient_fetches;
+  RunOptions run_options;
+  run_options.run_log_verbosity_level = so.session_log_verbosity_level;
+  run_options.run_tag = so.session_logid;
+  run_options.training_mode = true;
+
+  // Create dummy feeds
+  std::vector<int64_t> image_dims = {1, 784};
+  std::vector<int64_t> label_dims = {1, 10};
+  std::vector<float> image_value(784, 1);
+  std::vector<float> label_value(10, 1);
+
+  MLValue imageMLValue;
+  TrainingUtil::CreateCpuMLValue(image_dims, image_value, &imageMLValue);
+  MLValue labelMLValue;
+  TrainingUtil::CreateCpuMLValue(label_dims, label_value, &labelMLValue);
+
+  auto fw_feeds = std::make_pair<std::vector<std::string>, std::vector<MLValue>>({"X", "labels"}, {imageMLValue, labelMLValue});
+
+  auto output_names_include_gradients = GetModelOutputNames(training_session);
+  std::vector<std::string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
+
+  auto start_time = std::chrono::high_resolution_clock::now();
+
+  ORT_THROW_IF_ERROR(training_session.Run(run_options, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches));
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto elapsed = TimeDiffMicroSeconds(start_time, end_time);
+  std::cout << "Training session run completed in " << elapsed << " microseconds.\n";
 }
 
 TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
