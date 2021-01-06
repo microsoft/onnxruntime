@@ -1,5 +1,135 @@
 jobs:
-- job: Linux_Build
+- job: Linux_Build_ManyLinux
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool: Linux-CPU
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        mkdir -p $HOME/.onnx
+        docker run --rm \
+          --volume /data/onnx:/data/onnx:ro \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume /data/models:/build/models:ro \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --cmake_generator Ninja \
+              --config Debug Release \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --build_wheel \
+              --use_openmp \
+              --enable_onnx_tests \
+              --enable_symbolic_shape_infer_tests \
+              --enable_pybind --build_java --build_nodejs
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+#DNNL
+- job: Linux_py_Wheels
+  timeoutInMinutes: 180
+  workspace:
+    clean: all
+  pool: Linux-CPU
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        mkdir -p $HOME/.onnx
+        docker run --rm \
+          --volume /data/onnx:/data/onnx:ro \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume /data/models:/build/models:ro \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build \
+              --config Debug Release \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --enable_pybind \
+              --use_openmp \
+              --enable_onnx_tests \
+              --use_dnnl \
+              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+#OpenVino
+- template: templates/linux-ci.yml
+  parameters:
+    AgentPool : 'Linux-CPU'
+    JobName: 'Linux_CI_Dev'
+    RunDockerBuildArgs: '-o ubuntu18.04 -d openvino -v 2021.2 -r $(Build.BinariesDirectory) -x "--use_openvino CPU_FP32 --build_wheel"'
+    DoNugetPack:  'false'
+    ArtifactName: 'drop-linux'
+    TimeoutInMinutes: 120
+
+- job: Linux_CentOS_Build
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -41,6 +171,183 @@ jobs:
               --enable_onnx_tests \
               --enable_symbolic_shape_infer_tests \
               --enable_pybind --build_java --build_nodejs
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+- job: Linux_CentOS_No_Contrib_Ops
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool: Linux-CPU
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecentoscpubuild
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        mkdir -p $HOME/.onnx
+        docker run --rm \
+          --volume /data/onnx:/data/onnx:ro \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume /data/models:/build/models:ro \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecentoscpubuild \
+            python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --cmake_generator Ninja \
+              --config Release \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --build_wheel \
+              --enable_onnx_tests \
+              --disable_contrib_ops  --disable_ml_ops
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+# This CI has 4 major steps
+# 1. Build full ORT, install the full ORT python wheel and use it to generate ort format test models
+#    and include ops config file for step 3
+# 2. Build minimal ORT including all the kernels and disable exceptions.
+#    This step is build only to safe-guard the --disable_exceptions option.
+# 3. Build minimal ORT include only the kernels using the include ops config file from step 1,
+#    and the models from <repo root>/onnxruntime/test/testdata/, run UT, and use onnx_test_runner to
+#    test the ort format models generated in step 1.
+#    Exceptions are enabled in this step to help debugging in case of CI failure.
+# 4. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions
+#    This step is to report the baseline binary size for Android
+- job: Linux_CPU_Minimal_Build_E2E
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool: Linux-CPU
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecentoscpubuild
+
+  - task: CmdLine@2
+    displayName: Build full onnxruntime and generate ORT format test files
+    inputs:
+      script: |
+        # Create a folder for all test data
+        mkdir -p $HOME/.test_data
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecentoscpubuild \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
+      workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    displayName: Build minimal onnxruntime and disable exception
+    inputs:
+      script: |
+        # We will try to build the ORT minimal with exception disabled
+        # Only the building process is verified here, no test will be performed
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecentoscpubuild \
+            python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --cmake_generator Ninja \
+              --config Debug\
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --skip_tests \
+              --minimal_build \
+              --disable_exceptions
+      workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    displayName: Build minimal onnxruntime and run tests, exception enabled
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecentoscpubuild \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh
+      workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    displayName: Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
+    inputs:
+      script: |
+        # Create a folder for all test data
+        mkdir -p $HOME/.test_data
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $ANDROID_HOME:/android_home \
+          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          -e BUILD_SOURCEVERSION=$(Build.SourceVersion) \
+          -e BUILD_ID=$(Build.BuildId) \
+          -e BUILD_REASON=$(Build.Reason) \
+          -e DASHBOARD_MYSQL_ORT_PASSWORD=$(dashboard-mysql-ort-password) \
+          onnxruntimecentoscpubuild \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
