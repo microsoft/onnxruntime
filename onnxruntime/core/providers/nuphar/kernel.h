@@ -155,7 +155,7 @@ class NupharKernelState {
   NUPHAR_OP(ScaledTanh, 1, DataTypeImpl::AllIEEEFloatTensorTypes())                         \
   NUPHAR_OP(Selu, 6, DataTypeImpl::AllIEEEFloatTensorTypes())                               \
   NUPHAR_OP(Shape, 1, DataTypeImpl::AllFixedSizeTensorTypes())                              \
-  NUPHAR_OP(Sigmoid, 6, DataTypeImpl::AllIEEEFloatTensorTypes())                            \
+  NUPHAR_OP(Sigmoid, 6, {DataTypeImpl::GetTensorType<float>()})                             \
   NUPHAR_VERSIONED_OP(Slice, 1, 9, DataTypeImpl::AllFixedSizeTensorTypes())                 \
   NUPHAR_OP(Slice, 10, DataTypeImpl::AllFixedSizeTensorTypes())                             \
   NUPHAR_OP(Slice, 11, DataTypeImpl::AllFixedSizeTensorTypes())                             \
@@ -170,7 +170,7 @@ class NupharKernelState {
   NUPHAR_OP(Sqrt, 6, DataTypeImpl::AllIEEEFloatTensorTypes())                               \
   NUPHAR_OP(Sub, 7, DataTypeImpl::AllFixedSizeTensorTypes())                                \
   NUPHAR_OP(Sum, 8, DataTypeImpl::AllFixedSizeTensorTypes())                                \
-  NUPHAR_OP(Tanh, 6, DataTypeImpl::AllFixedSizeTensorTypes())                               \
+  NUPHAR_OP(Tanh, 6, {DataTypeImpl::GetTensorType<float>()})                                \
   NUPHAR_OP(ThresholdedRelu, 1, DataTypeImpl::AllFixedSizeTensorTypes())                    \
   NUPHAR_OP(Tile, 6, DataTypeImpl::AllFixedSizeTensorTypes())                               \
   NUPHAR_OP(Transpose, 1, DataTypeImpl::AllFixedSizeTensorTypes())                          \

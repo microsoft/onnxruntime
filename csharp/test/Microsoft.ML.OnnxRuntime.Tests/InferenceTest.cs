@@ -1823,6 +1823,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 Assert.Equal("This is a test model with a valid ORT config Json", modelMetadata.Description);
 
+                Assert.Equal("graph description", modelMetadata.GraphDescription);
+
                 Assert.Equal(2, modelMetadata.CustomMetadataMap.Keys.Count);
                 Assert.Equal("dummy_value", modelMetadata.CustomMetadataMap["dummy_key"]);
                 Assert.Equal("{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}",

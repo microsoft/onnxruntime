@@ -23,6 +23,7 @@
 #include "orttraining/core/graph/gradient_builder_base.h"
 #include "orttraining/core/session/tensor_helper.h"
 #include "orttraining/models/runner/training_util.h"
+#include "orttraining/core/optimizer/megatron_transformer.h"
 
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
@@ -352,8 +353,9 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
-                                                      config_result));
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
+
+  ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config_result));
 
   weight_partition_info_ = config_result.weight_partition_info;
 
@@ -365,7 +367,7 @@ Status TrainingSession::ConfigureForTraining(
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
       !filtered_config_weight_names_to_train.empty()
-          ? filtered_config_weight_names_to_train
+          ? trainable_initializers
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
 
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
@@ -637,9 +639,8 @@ static Status AddGradientAccumulationNodes(Graph& graph,
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
-Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
-                                                        const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                        TrainingConfigurationResult& config_result_out) {
+Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+                                                        const TrainingConfiguration::GraphTransformerConfiguration& config) {
   GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
@@ -648,7 +649,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::
   // Create execution frame for executing constant nodes.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config, config_result_out);
+  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config);
 
   // apply transformers
   Graph& graph = model_->MainGraph();
@@ -662,16 +663,15 @@ Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::
 // Registers all the pre transformers with transformer manager
 void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execution_provider,
                                                  GraphTransformerManager& transformer_manager,
-                                                 std::unordered_set<std::string>& weights_to_train,
+                                                 const std::unordered_set<std::string>& weights_to_train,
                                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                 TrainingConfigurationResult& config_result_out,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
 
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, weights_to_train, config, execution_provider, config_result_out.weight_name_map_after_graph_transform, config_result_out.weight_partition_info, custom_list);
+        level, weights_to_train, config, execution_provider, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
@@ -712,6 +712,34 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
       add_transformers(level);
     }
   }
+}
+
+Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+                                                                     TrainingConfigurationResult& config_result_out) {
+  const auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
+  if (horizontal_parallel_size == 1) {
+    return common::Status::OK();
+  }
+
+  GraphTransformerManager graph_transformation_mgr{1};
+  std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register;
+  std::unordered_set<std::string> compatible_eps = {};
+  LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
+  transformers_to_register.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
+      training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
+      horizontal_parallel_size, config_result_out.weight_name_map_after_graph_transform, weights_to_train,
+      config_result_out.weight_partition_info, compatible_eps));
+
+  // Generate and register transformers for level
+  for (auto& entry : transformers_to_register) {
+    graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1);
+  }
+
+  // apply transformers
+  Graph& graph = model_->MainGraph();
+  ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
+      graph, TransformerLevel::Level1, *session_logger_));
+  return common::Status::OK();
 }
 
 Status TrainingSession::AddGistEncoding() {

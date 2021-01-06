@@ -23,11 +23,11 @@ class TrainingSession : public InferenceSession {
   typedef std::unordered_map<std::string /*OpType*/,
                              std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
       ImmutableWeights;
-    
+
   typedef std::unordered_map<std::string /* Model weight name*/,
                              NameMLValMap /* 'Moment_1': OrtValue, 'Moment_2': OrtValue etc...*/>
-                            OptimizerState;
-  
+      OptimizerState;
+
   /**
    * Partition information of each paritioned weight
    */
@@ -454,16 +454,17 @@ class TrainingSession : public InferenceSession {
       const std::unordered_set<std::string>& weight_names_to_train,
       optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result);
 
-  common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                 TrainingConfigurationResult& config_result_out);
+  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
+
+  common::Status ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+                                                              TrainingConfigurationResult& config_result_out);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
                                   GraphTransformerManager& transformer_manager,
-                                  std::unordered_set<std::string>& weights_to_train,
+                                  const std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                  TrainingConfigurationResult& config_result_out,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
