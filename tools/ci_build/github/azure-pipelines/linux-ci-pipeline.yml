@@ -59,8 +59,7 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-#DNNL
-- job: Linux_py_Wheels
+- job: Linux_CI_DNNL
   timeoutInMinutes: 180
   workspace:
     clean: all
@@ -123,7 +122,7 @@ jobs:
 - template: templates/linux-ci.yml
   parameters:
     AgentPool : 'Linux-CPU'
-    JobName: 'Linux_CI_Dev'
+    JobName: 'Linux_CI_OpenVino'
     RunDockerBuildArgs: '-o ubuntu18.04 -d openvino -v 2021.2 -r $(Build.BinariesDirectory) -x "--use_openvino CPU_FP32 --build_wheel"'
     DoNugetPack:  'false'
     ArtifactName: 'drop-linux'
