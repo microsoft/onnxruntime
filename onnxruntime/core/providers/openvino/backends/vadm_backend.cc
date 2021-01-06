@@ -10,6 +10,8 @@
 #include <inference_engine.hpp>
 
 #include "core/providers/shared_library/provider_api.h"
+#include <ngraph/pass/convert_fp32_to_fp16.hpp>
+#include <ngraph/pass/constant_folding.hpp>
 
 #include "../contexts.h"
 #include "../backend_utils.h"
@@ -43,9 +45,11 @@ VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
   // sets number of maximum parallel inferences
   num_inf_reqs_ = 8;
 
+#if defined(OPENVINO_2020_2) || defined(OPENVINO_2020_3)
   ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-
   SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
+#endif
+
   std::map<std::string, std::string> config;
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -53,7 +57,56 @@ VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
   }
 #endif
 
-#if defined(OPENVINO_2020_4)
+#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
+  InferenceEngine::Core ie;
+  const std::string model = model_proto.SerializeAsString();
+  InferenceEngine::Blob::Ptr blob = {nullptr};
+  //Reading the Network
+  try {
+    cnn_network_ = ie.ReadNetwork(model, blob);
+    LOGS_DEFAULT(INFO) << "Read network Done";
+  } catch (const std::exception& exp) {
+    ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(exp.what()));
+  } catch (...) {
+    ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
+  }
+  std::shared_ptr<ngraph::Function> ng_function;
+  ng_function = cnn_network_.getFunction();
+
+#ifndef NDEBUG
+  if (IsDebugEnabled()) {
+    std::fstream outfile(subgraph_context.subgraph_name + "_static.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+    model_proto.SerializeToOstream(outfile);
+  }
+#endif
+
+  if (global_context.device_type.find("GPU") != std::string::npos &&
+      subgraph_context.precision == InferenceEngine::Precision::FP16) {
+    //FP16 transformations
+    ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
+    ng_function->validate_nodes_and_infer_types();
+  }
+
+  if (!global_context.is_wholly_supported_graph) {
+    std::map<std::string, std::string> result_to_output;
+    for (auto& result : ng_function->get_results()) {
+      result_to_output[result->get_friendly_name()] = result->input_value(0).get_node_shared_ptr()->get_friendly_name();
+    }
+
+    ngraph::pass::ConstantFolding().run_on_function(ng_function);
+    auto& results = const_cast<::ngraph::ResultVector&>(ng_function->get_results());
+    size_t index = results.size() - 1;
+    for (auto it = results.rbegin(); it != results.rend(); ++it) {
+      if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
+        const_outputs_map_[result_to_output.at((*it)->get_friendly_name())] = const_node;
+        results.erase(results.begin() + index);
+      }
+      --index;
+    }
+  }
+
+  SetIODefs(model_proto, std::make_shared<InferenceEngine::CNNNetwork>(ng_function), subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
+
   if (const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
 #endif
@@ -74,7 +127,11 @@ VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
       config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
 #endif
       try {
+      #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
+        exe_network = global_context_.ie_core.LoadNetwork(cnn_network_, hw_target, config);
+      #elif
         exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
+      #endif
       } catch (const InferenceEngine::details::InferenceEngineException& e) {
         ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
       } catch (...) {
@@ -108,7 +165,11 @@ VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
 #endif
     InferenceEngine::ExecutableNetwork exe_network;
     try {
+    #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
+      exe_network = global_context_.ie_core.LoadNetwork(cnn_network_, hw_target, config);
+    #elif
       exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
+    #endif
     } catch (const InferenceEngine::details::InferenceEngineException& e) {
       ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
     } catch (...) {
@@ -133,7 +194,11 @@ VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
 void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context,
                                       size_t batch_slice_idx, size_t infer_req_idx) {
   auto infer_request = infer_requests_[infer_req_idx];
+#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
+  auto graph_input_info = cnn_network_.getInputsInfo();
+#elif
   auto graph_input_info = ie_cnn_network_->getInputsInfo();
+#endif
 
   size_t index = 0;
   for (auto input_info_iter = graph_input_info.begin();
@@ -177,7 +242,11 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
   } catch (...) {
     ORT_THROW(log_tag + " Exception with completing Inference");
   }
+#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
+  auto graph_output_info = cnn_network_.getOutputsInfo();
+#elif
   auto graph_output_info = ie_cnn_network_->getOutputsInfo();
+#endif
 
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
