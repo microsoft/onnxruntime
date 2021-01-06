@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from orttraining_test_orttrainer_frontend import _load_pytorch_transformer_model
+from _test_commons import _load_pytorch_transformer_model
 from onnxruntime.training import amp, checkpoint, optim, orttrainer, _checkpoint_storage
 import numpy as np
 import onnx
@@ -600,6 +600,103 @@ def test_checkpoint_aggregation(load_mock):
     state_dict1 = {
         'model': {
             'full_precision': {
+                'optimizer_sharded': np.array([1, 2, 3]),
+                'non_sharded': np.array([11, 22, 33])
+            }
+        },
+        'optimizer': {
+            'optimizer_sharded': {
+                'Moment_1': np.array([9, 8, 7]),
+                'Moment_2': np.array([99, 88, 77]),
+                'Step': np.array([5])
+            },
+            'non_sharded': {
+                'Moment_1': np.array([666, 555, 444]),
+                'Moment_2': np.array([6666, 5555, 4444]),
+                'Step': np.array([55])
+            }
+        },
+        'trainer_options': {
+            'mixed_precision': np.bool_(False),
+            'world_rank': np.int64(0),
+            'world_size': np.int64(1),
+            'zero_stage': np.int64(0),
+            'optimizer_name': b'Adam'
+        },
+        'partition_info': {
+            'optimizer_sharded': {'original_dim': np.array([2, 3])}
+        }
+    }
+
+    state_dict2 = {
+        'model': {
+            'full_precision': {
+                'optimizer_sharded': np.array([1, 2, 3]),
+                'non_sharded': np.array([11, 22, 33])
+            }
+        },
+        'optimizer': {
+            'optimizer_sharded': {
+                'Moment_1': np.array([6, 5, 4]),
+                'Moment_2': np.array([66, 55, 44]),
+                'Step': np.array([5])
+            },
+            'non_sharded': {
+                'Moment_1': np.array([666, 555, 444]),
+                'Moment_2': np.array([6666, 5555, 4444]),
+                'Step': np.array([55])
+            }
+        },
+        'trainer_options': {
+            'mixed_precision': np.bool_(False),
+            'world_rank': np.int64(1),
+            'world_size': np.int64(1),
+            'zero_stage': np.int64(0),
+            'optimizer_name': b'Adam'
+        },
+        'partition_info': {
+            'optimizer_sharded': {'original_dim': np.array([2, 3])}
+        }
+    }
+
+    load_mock.side_effect = [trainer_options1, trainer_options2, state_dict1, state_dict2]
+    state_dict = checkpoint.aggregate_checkpoints(['abc', 'def'], pytorch_format=False)
+
+    assert (state_dict['model']['full_precision']['optimizer_sharded'] == np.array([1, 2, 3])).all()
+    assert (state_dict['model']['full_precision']['non_sharded'] == np.array([11, 22, 33])).all()
+    assert (state_dict['optimizer']['optimizer_sharded']['Moment_1'] == np.array([[9, 8, 7], [6, 5, 4]])).all()
+    assert (state_dict['optimizer']['optimizer_sharded']['Moment_2'] == np.array([[99, 88, 77], [66, 55, 44]])).all()
+    assert (state_dict['optimizer']['optimizer_sharded']['Step'] == np.array([5])).all()
+    assert (state_dict['optimizer']['non_sharded']['Moment_1'] == np.array([666, 555, 444])).all()
+    assert (state_dict['optimizer']['non_sharded']['Moment_2'] == np.array([6666, 5555, 4444])).all()
+    assert (state_dict['optimizer']['non_sharded']['Step'] == np.array([55])).all()
+
+    assert state_dict['trainer_options']['mixed_precision'] == False
+    assert state_dict['trainer_options']['world_rank'] == 0
+    assert state_dict['trainer_options']['world_size'] == 1
+    assert state_dict['trainer_options']['zero_stage'] == 0
+    assert state_dict['trainer_options']['optimizer_name'] == b'Adam'
+
+@patch('onnxruntime.training._checkpoint_storage.load')
+def test_checkpoint_aggregation_mixed_precision(load_mock):
+    trainer_options1 = {
+        'mixed_precision': np.bool_(True),
+        'world_rank': np.int64(0),
+        'world_size': np.int64(2),
+        'zero_stage': np.int64(1),
+        'optimizer_name': b'Adam'
+    }
+    trainer_options2 = {
+        'mixed_precision': np.bool_(True),
+        'world_rank': np.int64(1),
+        'world_size': np.int64(2),
+        'zero_stage': np.int64(1),
+        'optimizer_name': b'Adam'
+    }
+
+    state_dict1 = {
+        'model': {
+            'full_precision': {
                 'sharded': np.array([1, 2, 3]),
                 'non_sharded': np.array([11, 22, 33])
             }
@@ -617,7 +714,7 @@ def test_checkpoint_aggregation(load_mock):
             }
         },
         'trainer_options': {
-            'mixed_precision': np.bool_(False),
+            'mixed_precision': np.bool_(True),
             'world_rank': np.int64(0),
             'world_size': np.int64(1),
             'zero_stage': np.int64(0),
@@ -648,7 +745,7 @@ def test_checkpoint_aggregation(load_mock):
             }
         },
         'trainer_options': {
-            'mixed_precision': np.bool_(False),
+            'mixed_precision': np.bool_(True),
             'world_rank': np.int64(1),
             'world_size': np.int64(1),
             'zero_stage': np.int64(0),
@@ -671,7 +768,7 @@ def test_checkpoint_aggregation(load_mock):
     assert (state_dict['optimizer']['non_sharded']['Moment_2'] == np.array([6666, 5555, 4444])).all()
     assert (state_dict['optimizer']['non_sharded']['Step'] == np.array([55])).all()
 
-    assert state_dict['trainer_options']['mixed_precision'] == False
+    assert state_dict['trainer_options']['mixed_precision'] == True
     assert state_dict['trainer_options']['world_rank'] == 0
     assert state_dict['trainer_options']['world_size'] == 1
     assert state_dict['trainer_options']['zero_stage'] == 0

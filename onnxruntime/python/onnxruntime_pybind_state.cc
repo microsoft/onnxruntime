@@ -57,12 +57,6 @@ struct OrtStatus {
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_MKLML
-#define BACKEND_MKLML "-MKL-ML"
-#else
-#define BACKEND_MKLML ""
-#endif
-
 #if USE_MIGRAPHX
 #define BACKEND_MIGRAPHX "-MIGRAPHX"
 #else
@@ -135,7 +129,7 @@ struct OrtStatus {
 #define BACKEND_DML ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -1259,7 +1253,14 @@ void addObjectMethods(py::module& m, Environment& env) {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
 
-        return DataTypeImpl::ToString(ml_value->Get<Tensor>().DataType());
+        // Currently only "tensor" OrtValues are supported
+        std::ostringstream ostr;
+        ostr << "tensor";
+        ostr << "(";
+        ostr << DataTypeImpl::ToString(ml_value->Get<Tensor>().DataType());
+        ostr << ")";
+
+        return ostr.str();
       })
       .def("is_tensor", [](OrtValue* ml_value) -> bool {
         return ml_value->IsTensor();
@@ -1605,6 +1606,7 @@ facilitate the comparison.)pbdoc")
       .def_readwrite("graph_name", &ModelMetadata::graph_name, "graph name")
       .def_readwrite("domain", &ModelMetadata::domain, "ONNX domain")
       .def_readwrite("description", &ModelMetadata::description, "description of the model")
+      .def_readwrite("graph_description", &ModelMetadata::graph_description, "description of the graph hosted in the model")
       .def_readwrite("version", &ModelMetadata::version, "version of the model")
       .def_readwrite("custom_metadata_map", &ModelMetadata::custom_metadata_map, "additional metadata");
 

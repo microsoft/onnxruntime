@@ -510,6 +510,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual('squeezenet_old', modelmeta.graph_name)
         self.assertEqual('', modelmeta.domain)
         self.assertEqual('', modelmeta.description)
+        self.assertEqual('', modelmeta.graph_description)
 
     def testProfilerWithSessionOptions(self):
         so = onnxrt.SessionOptions()

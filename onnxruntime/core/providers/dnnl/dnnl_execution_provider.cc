@@ -17,7 +17,7 @@ constexpr const char* DNNL = "Dnnl";
 constexpr const char* DNNL_CPU = "DnnlCpu";
 
 DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kDnnlExecutionProvider} {
+    : IExecutionProvider{onnxruntime::kDnnlExecutionProvider, true} {
   AllocatorCreationInfo default_memory_info(
       {[](int) {
         return onnxruntime::CreateCPUAllocator(OrtMemoryInfo(DNNL, OrtAllocatorType::OrtDeviceAllocator));
@@ -356,8 +356,9 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
                                           std::vector<std::unique_ptr<ComputeCapability>>& result) const {
   std::string graph_fused_nodes;
   std::string node_list;
-  std::string subgraph_id = std::to_string(subgraph_index_);
-  subgraph_index_++;
+  uint64_t model_hash = 0;
+  int id = GenerateMetaDefId(graph_viewer, model_hash);
+  std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
 
   // This is a list of initializers that subgraph considers as constants.
   // Example weights, reshape shape etc.
@@ -377,7 +378,7 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
 
   auto meta_def = ::onnxruntime::IndexedSubGraph_MetaDef::Create();
   meta_def->attributes()["initializers"] = *initializers;
-  meta_def->name() = "DnnlCustomOp" + std::to_string(subgraph_index_);
+  meta_def->name() = "DnnlCustomOp_" + subgraph_id;
   meta_def->domain() = kMSDomain;
   meta_def->since_version() = 1;
   meta_def->status() = ONNX_NAMESPACE::EXPERIMENTAL;

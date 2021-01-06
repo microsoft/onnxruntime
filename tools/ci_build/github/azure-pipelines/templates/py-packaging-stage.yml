@@ -52,8 +52,6 @@ stages:
       pool: Linux-CPU
       strategy:
         matrix:
-          Python35:
-            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -127,8 +125,6 @@ stages:
       pool: Linux-CPU
       strategy:
         matrix:
-          Python35:
-            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -203,8 +199,6 @@ stages:
       pool: Linux-GPU-CUDA10
       strategy:
         matrix:
-          Python35:
-            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -352,8 +346,6 @@ stages:
       pool: 'Win-CPU-2019'
       strategy:
         matrix:
-          Python35:
-            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -482,8 +474,6 @@ stages:
       pool: 'Win-CPU-2019'
       strategy:
         matrix:
-          Python35:
-            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -619,8 +609,6 @@ stages:
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
       strategy:
         matrix:
-          Python35:
-            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -736,8 +724,6 @@ stages:
         vmImage: 'macOS-10.14'
       strategy:
         matrix:
-          Python35:
-            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -803,8 +789,6 @@ stages:
             PythonVersion: '3.7'
           Py36:
             PythonVersion: '3.6'
-          Py35:
-            PythonVersion: '3.5'
       steps:
       - checkout: self
         clean: true

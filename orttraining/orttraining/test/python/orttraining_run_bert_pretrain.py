@@ -15,6 +15,7 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Optional, Any, Dict
 import json
+import glob
 
 import unittest
 
@@ -30,7 +31,7 @@ from concurrent.futures import ProcessPoolExecutor
 import onnxruntime as ort
 from onnxruntime.training import amp, optim, orttrainer
 from onnxruntime.training.optim import PolyWarmupLRScheduler, LinearWarmupLRScheduler
-from onnxruntime.training.checkpoint import experimental_save_checkpoint, _list_checkpoint_files, _CombineZeroCheckpoint
+from onnxruntime.training.checkpoint import aggregate_checkpoints
 
 # need to override torch.onnx.symbolic_opset12.nll_loss to handle ignore_index == -100 cases.
 # the fix for ignore_index == -100 cases is already in pytorch master.
@@ -411,7 +412,7 @@ def prepare_model(args, device):
 
     model = BertForPreTraining(config)
     if args.init_state_dict is not None:
-        model.load_state_dict(args.init_state_dict, strict=False)
+        model.load_state_dict(args.init_state_dict)
     model_desc = bert_model_description(config)
 
     lr_scheduler = LinearWarmupLRScheduler(total_steps=int(args.max_steps), warmup=args.warmup_proportion)
@@ -437,8 +438,8 @@ def prepare_model(args, device):
                                                 'world_size': args.world_size,
                                                 'local_rank': max(0, args.local_rank),
                                                 'allreduce_post_accumulation': args.allreduce_post_accumulation,
-                                                'deepspeed_zero_optimization': {'stage': args.deepspeed_zero_stage}},
-                                                'enable_adasum': False,
+                                                'deepspeed_zero_optimization': {'stage': args.deepspeed_zero_stage},
+                                                'enable_adasum': False},
                                             'lr_scheduler': lr_scheduler
                                             })
 
@@ -549,7 +550,7 @@ def do_pretrain(args):
 
                     if global_step >= args.max_steps:
                         if args.save_checkpoint:
-                            experimental_save_checkpoint(model, args.output_dir)
+                            model.save_checkpoint(os.path.join(args.output_dir, 'checkpoint-{}.ortcp'.format(args.world_rank)))
                         final_loss = average_loss / (args.log_freq * args.gradient_accumulation_steps)
                         return final_loss
 
@@ -693,11 +694,8 @@ class ORTBertPretrainTest(unittest.TestCase):
 
         # on rank 0, load the trained state
         if args.world_rank == 0:
-            checkpoint_files = _list_checkpoint_files(self.output_dir, "ORT_checkpoint")
-            ckpt_agg = _CombineZeroCheckpoint(checkpoint_files)
-            final_state_dict = ckpt_agg.aggregate_checkpoints()
-
-            args.init_state_dict = final_state_dict
+            checkpoint_files = glob.glob(os.path.join(self.output_dir, 'checkpoint*.ortcp'))
+            args.init_state_dict = aggregate_checkpoints(checkpoint_files, pytorch_format=True)
 
         torch.distributed.barrier()
 
