@@ -65,14 +65,14 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 
-namespace onnxruntime {
-namespace test {
-  
 #if USE_ROCM
 constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #else
 constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
 #endif
+
+namespace onnxruntime {
+namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
