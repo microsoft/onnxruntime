@@ -39,7 +39,7 @@ static void BM_QuantizeLinearAVX512(benchmark::State& state) {
   float* data = GenerateArrayWithRandomValue<float>(batch_size, -1, 1);
 
   for (auto _ : state) {
-    MlasQuantizeLinearU8KernalAVX512(data, output, batch_size, 2.f / 512.f, 1);
+    MlasQuantizeLinearU8KernelAvx512F(data, output, batch_size, 2.f / 512.f, 1);
   }
   aligned_free(data);
   aligned_free(output);

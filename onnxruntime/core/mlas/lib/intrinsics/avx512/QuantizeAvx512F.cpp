@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    quantize_avx512.cpp
+    QuantizeAvx512F.cpp
 
 Abstract:
 
-    This module implements routines to quantize buffers with AVX512.
+    This module implements routines to quantize buffers with AVX512F instructions.
 
     For quantization formula as specified in the ONNX operator documentation is:
 
@@ -18,7 +18,7 @@ Abstract:
 
 --*/
 
-#include "mlasi.h"
+#include "../mlasi.h"
 
 template<typename OutputType>
 void
@@ -39,7 +39,7 @@ MlasQuantizeLinearKernel(
 template <typename OutputType>
 void
 MLASCALL
-MlasQuantizeLinearAVX512(
+MlasQuantizeLinearAvx512F(
     const float* Input,
     OutputType* Output,
     size_t N,
@@ -147,7 +147,7 @@ Return Value:
 
 void
 MLASCALL
-MlasQuantizeLinearU8KernalAVX512(
+MlasQuantizeLinearU8KernelAvx512F(
     const float* Input,
     uint8_t* Output,
     size_t N,
@@ -155,12 +155,12 @@ MlasQuantizeLinearU8KernalAVX512(
     uint8_t ZeroPoint
     )
 {
-    MlasQuantizeLinearAVX512<uint8_t>(Input, Output, N, Scale, ZeroPoint);
+    MlasQuantizeLinearAvx512F<uint8_t>(Input, Output, N, Scale, ZeroPoint);
 }
 
 void
 MLASCALL
-MlasQuantizeLinearS8KernalAVX512(
+MlasQuantizeLinearS8KernelAvx512F(
     const float* Input,
     int8_t* Output,
     size_t N,
@@ -168,5 +168,5 @@ MlasQuantizeLinearS8KernalAVX512(
     int8_t ZeroPoint
     )
 {
-    MlasQuantizeLinearAVX512<int8_t>(Input, Output, N, Scale, ZeroPoint);
+    MlasQuantizeLinearAvx512F<int8_t>(Input, Output, N, Scale, ZeroPoint);
 }
