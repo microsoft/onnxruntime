@@ -165,11 +165,16 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   //We did not divide by acc step, instead, we divide by total sample across all accumulation batches.
   // todo : make this scale optional.
   //const float scale = 1.0f / total_num_accumulations; 
+
+  // faster ArgDef fused_gradient_argdef;
+  // faster ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
+  // faster                                            opt_graph_config_.AllReduceDataType(), false));
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, output_gradient_argdef, graph_defs,
                                               opt_graph_config_.AllReduceDataType()));
 
   // add Allreduce for gradients
   if (opt_graph_config_.use_nccl) {
+    //faster ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, gradient_argdefs, graph_defs));
     ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, output_gradient_argdef, graph_defs));
     if (divide_sample_after_all_reduce == true) {
       ORT_RETURN_IF_ERROR(ScaleGradWithSampleCount(nodearg_name_generator, gradient_argdefs, graph_defs, grad_multi_factor));

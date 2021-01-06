@@ -948,8 +948,13 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
   int r = DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel);
   static int a = 0;
   if (a == 0 && d == 0) {
+      std::string file_name = "before_first_run_" + std::to_string(d) + "_" + std::to_string(r) + ".onnx";
+      const std::string target_path = Env::Default().GetEnvironmentVar("ORT_DEBUG_RUN_GRAPH_DUMP_PATH");
+      if (!target_path.empty()) {
+        file_name = target_path + "/" + file_name;
+      }
     std::cout << "before first run saving " << std::endl;
-    Save("before_first_run_" + std::to_string(d) + "_" + std::to_string(r) + ".onnx", SaveOption::NO_RELOAD);
+    Save(file_name, SaveOption::NO_RELOAD);
     a += 1;
   }
 
