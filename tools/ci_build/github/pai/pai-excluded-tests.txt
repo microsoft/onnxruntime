@@ -59,6 +59,7 @@ ReductionOpTest.ReduceMax_do_not_keepdims
 ReductionOpTest.ReduceMax_do_not_keepdims_2 
 ReductionOpTest.ReduceMax_keepdims 
 ReductionOpTest.ReduceMax 
+ReductionOpTest.ReduceMax_double 
 ReductionOpTest.ReduceMax_int32 
 ReductionOpTest.ReduceMean_default_axes_keepdims 
 ReductionOpTest.ReduceMean_default_axes_keepdims_double
@@ -80,6 +81,7 @@ ReductionOpTest.ReduceMin_do_not_keepdims
 ReductionOpTest.ReduceMin_do_not_keepdims_2 
 ReductionOpTest.ReduceMin_keepdims 
 ReductionOpTest.ReduceMin 
+ReductionOpTest.ReduceMin_double 
 ReductionOpTest.ReduceMin_int32 
 ReductionOpTest.ReduceSum 
 ReductionOpTest.ReduceSum_double 
@@ -117,7 +119,9 @@ ReductionOpTest.ArgMin_Double_Precision
 ReductionOpTest.ArgMin_do_not_keepdims 
 ReductionOpTest.ArgMin_do_not_keepdims_2 
 ReductionOpTest.ReduceInfMax
+ReductionOpTest.ReduceInfMax_double
 ReductionOpTest.ReduceInfMin
+ReductionOpTest.ReduceInfMin_double
 ReductionOpTest.ReduceInfSum
 ReductionOpTest.ReduceInfLogSum
 ReductionOpTest.ReduceInfLogSumExp
