@@ -48,7 +48,7 @@ Whether to do copies in the default stream or use separate streams. The recommen
 ```python
 import onnxruntime as ort
 
-model_path = 'model.onnx'
+model_path = '<path to model>'
 
 providers = [
     ('CUDAExecutionProvider', {
