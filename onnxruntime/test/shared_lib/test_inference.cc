@@ -743,18 +743,18 @@ TEST(CApiTest, io_binding_cuda) {
   };
 
   Ort::SessionOptions session_options;
-  #ifdef USE_TENSORRT
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
-  #else
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
-  #endif
+#ifdef USE_TENSORRT
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
+#else
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
-  #ifdef USE_TENSORRT
-    Ort::MemoryInfo info_cuda("Tensorrt", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-  #else
-    Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-  #endif
+#ifdef USE_TENSORRT
+  Ort::MemoryInfo info_cuda("Tensorrt", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#else
+  Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#endif
 
   Ort::Allocator cuda_allocator(session, info_cuda);
   auto allocator_info = cuda_allocator.GetInfo();
@@ -1126,6 +1126,10 @@ TEST(CApiTest, model_metadata) {
     ASSERT_TRUE(strcmp("This is a test model with a valid ORT config Json", description) == 0);
     allocator.get()->Free(description);
 
+    char* graph_description = model_metadata.GetGraphDescription(allocator.get());
+    ASSERT_TRUE(strcmp("graph description", graph_description) == 0);
+    allocator.get()->Free(graph_description);
+
     int64_t version = model_metadata.GetVersion();
     ASSERT_TRUE(version == 1);
 
@@ -1164,6 +1168,11 @@ TEST(CApiTest, model_metadata) {
     char* description = model_metadata.GetDescription(allocator.get());
     ASSERT_TRUE(strcmp("", description) == 0);
     allocator.get()->Free(description);
+
+    // Graph description is empty
+    char* graph_description = model_metadata.GetGraphDescription(allocator.get());
+    ASSERT_TRUE(strcmp("", graph_description) == 0);
+    allocator.get()->Free(graph_description);
 
     // Model does not contain custom metadata map
     int64_t num_keys_in_custom_metadata_map;
