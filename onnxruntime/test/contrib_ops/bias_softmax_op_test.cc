@@ -13,10 +13,10 @@
 namespace onnxruntime {
 namespace test {
 
-#if USE_CUDA
-constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_ROCM
+#if USE_ROCM
 constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#else
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
 #endif
 
 // followed example of fastgelu_op_test.cc
