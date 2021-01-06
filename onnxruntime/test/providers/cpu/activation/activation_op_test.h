@@ -68,7 +68,6 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       excluded_providers.insert(kNnapiExecutionProvider);
     }
 #endif
-
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   }
 }
