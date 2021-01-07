@@ -72,8 +72,9 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("use_fp16_moments", "Whether to use fp16 version of moments.", cxxopts::value<bool>()->default_value("false"))
       ("use_fp16_initializer", "FP16 weights will be created. Otherwise, cast nodes will be inserted for converting weights from FP32 to FP16",
         cxxopts::value<bool>()->default_value("true"))
-      ("op", "Gist op", cxxopts::value<int>()->default_value("0"))
       ("use_gist", "Use GIST encoding/decoding.")
+      ("op", "Gist op", cxxopts::value<int>()->default_value("0"))
+      ("gist_compr", "Gist compression type", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("max_seq_length",
         "The maximum total input sequence length after WordPiece tokenization. "
         "Sequences longer than this will be truncated, and sequences shorter "
@@ -126,6 +127,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
     params.op = flags["op"].as<int>();
+    params.gist_compr = flags["gist_compr"].as<std::string>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {

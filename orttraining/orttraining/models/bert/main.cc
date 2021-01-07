@@ -122,7 +122,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("use_gist", "Use GIST encoding/decoding.")
       ("op", "Gist op", cxxopts::value<int>()->default_value("0"))
-      ("gist_compr", "Gist compression type", cxxopts::value<string>()->default_value("GistPack8"))
+      ("gist_compr", "Gist compression type", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("max_profile_records", "Maximum number of runtime profile data records to collect. 0 means use the default value.",
         cxxopts::value<size_t>()->default_value("0"))
       ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))

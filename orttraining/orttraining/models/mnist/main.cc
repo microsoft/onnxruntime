@@ -44,6 +44,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("use_gist", "Use GIST encoding/decoding.")
       ("op", "Gist op", cxxopts::value<int>()->default_value("0"))
+      ("gist_compr", "Gist compression type", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("use_cuda", "Use CUDA execution provider for training.", cxxopts::value<bool>()->default_value("false"))
       ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("2000"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
@@ -72,6 +73,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
     params.op = flags["op"].as<int>();
+    params.gist_compr = flags["gist_compr"].as<std::string>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
