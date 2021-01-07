@@ -23,6 +23,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value.h"
+#include "core/providers/get_execution_providers.h"
 #include "core/session/environment.h"
 #include "core/framework/callback.h"
 #include "core/framework/tensorprotoutils.h"
@@ -1713,19 +1714,20 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
                     _In_ int* providers_length) {
   API_IMPL_BEGIN
   const size_t MAX_LEN = 30;
-  int available_count = (int)(sizeof(providers_available) / sizeof(char*));
-  char** out = (char**)malloc(available_count * sizeof(char*));
+  const auto& available_providers = GetAvailableExecutionProviderNames();
+  const int available_count = gsl::narrow<int>(available_providers.size());
+  char** const out = (char**)malloc(available_count * sizeof(char*));
   if (out) {
     for (int i = 0; i < available_count; i++) {
       out[i] = (char*)malloc((MAX_LEN + 1) * sizeof(char));
       if (out[i]) {
 #ifdef _MSC_VER
-        strncpy_s(out[i], MAX_LEN, providers_available[i], MAX_LEN);
+        strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
         out[i][MAX_LEN] = '\0';
 #elif defined(__APPLE__)
-        strlcpy(out[i], providers_available[i], MAX_LEN);
+        strlcpy(out[i], available_providers[i].c_str(), MAX_LEN);
 #else
-        strncpy(out[i], providers_available[i], MAX_LEN);
+        strncpy(out[i], available_providers[i].c_str(), MAX_LEN);
         out[i][MAX_LEN] = '\0';
 #endif
       }
@@ -1734,7 +1736,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   *providers_length = available_count;
   *out_ptr = out;
   API_IMPL_END
-  return NULL;
+  return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
