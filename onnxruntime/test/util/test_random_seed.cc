@@ -24,7 +24,7 @@ RandomSeedType GetTestRandomSeed() {
   };
 
   static const auto use_cached =
-      !ParseEnvironmentVariable<bool>(test_random_seed_env_vars::kDoNotCache, false);
+      !ParseEnvironmentVariableWithDefault<bool>(test_random_seed_env_vars::kDoNotCache, false);
   if (use_cached) {
     // initially generate from current time
     static const auto static_random_seed = generate_from_time();

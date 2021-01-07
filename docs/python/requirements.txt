@@ -1,0 +1,8 @@
+keras
+keras-onnx
+sphinx
+sphinx-gallery
+pyquickhelper
+tensorflow
+tensorflow-onnx
+

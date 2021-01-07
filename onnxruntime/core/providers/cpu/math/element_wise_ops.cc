@@ -153,7 +153,9 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Ceil, 6, 12, float, Ceil);
 REG_ELEMENTWISE_TYPED_KERNEL(Ceil, 13, float, Ceil);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Reciprocal, 6, 12, float, Reciprocal);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Reciprocal, 6, 12, double, Reciprocal);
 REG_ELEMENTWISE_TYPED_KERNEL(Reciprocal, 13, float, Reciprocal);
+REG_ELEMENTWISE_TYPED_KERNEL(Reciprocal, 13, double, Reciprocal);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, float, Sqrt);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, double, Sqrt);
@@ -172,12 +174,17 @@ REG_ELEMENTWISE_TYPED_KERNEL(Exp, 13, float, Exp);
 REG_ELEMENTWISE_TYPED_KERNEL(Exp, 13, double, Exp);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Log, 6, 12, float, Log);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Log, 6, 12, double, Log);
 REG_ELEMENTWISE_TYPED_KERNEL(Log, 13, float, Log);
+REG_ELEMENTWISE_TYPED_KERNEL(Log, 13, double, Log);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sum, 6, 7, float, Sum_6);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sum, 6, 7, double, Sum_6);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sum, 8, 12, float, Sum_8);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sum, 8, 12, double, Sum_8);
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
 REG_ELEMENTWISE_TYPED_KERNEL(Sum, 13, float, Sum_8);
+REG_ELEMENTWISE_TYPED_KERNEL(Sum, 13, double, Sum_8);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Max, 6, 7, float, Max_6);
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 8, 11, Max_8, float, double);
@@ -465,49 +472,49 @@ Pow::Compute(OpKernelContext* context) const {
   return s;
 }
 
-template <>
-Status Sum_6<float>::Compute(OpKernelContext* ctx) const {
+template <typename T>
+Status Sum_6<T>::Compute(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
   ORT_ENFORCE(input_count >= 1, "Must have 1 or more inputs");
   auto& data_0 = *ctx->Input<Tensor>(0);
   auto& shape = data_0.Shape();
-  auto sum = EigenMap<float>(*ctx->Output(0, shape));
+  auto sum = EigenMap<T>(*ctx->Output(0, shape));
 
   if (input_count == 1) {
-    sum = EigenMap<float>(data_0);
+    sum = EigenMap<T>(data_0);
   } else {
     auto& data_1 = *ctx->Input<Tensor>(1);
     ORT_ENFORCE(data_1.Shape() == shape, "All inputs must have the same shape");
 
-    sum = EigenMap<float>(data_0) + EigenMap<float>(data_1);
+    sum = EigenMap<T>(data_0) + EigenMap<T>(data_1);
     for (int index = 2; index < input_count; index++) {
       auto& data_n = *ctx->Input<Tensor>(index);
       ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
-      sum += EigenMap<float>(data_n);
+      sum += EigenMap<T>(data_n);
     }
   }
 
   return Status::OK();
 }
 
-template <>
-Status Sum_8<float>::Compute(OpKernelContext* context) const {
+template <typename T>
+Status Sum_8<T>::Compute(OpKernelContext* context) const {
   const auto typed_allocator = [](const TensorAllocator& tensor_allocator, const TensorShape& shape) {
-    return tensor_allocator.Allocate<float>(shape);
+    return tensor_allocator.Allocate<T>(shape);
   };
 
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<float>() =
-            per_iter_bh.ScalarInput0<float>() + per_iter_bh.EigenInput1<float>().array();
+        per_iter_bh.OutputEigen<T>() =
+            per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
       },
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<float>() =
-            per_iter_bh.EigenInput0<float>().array() + per_iter_bh.ScalarInput1<float>();
+        per_iter_bh.OutputEigen<T>() =
+            per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
       },
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<float>() =
-            per_iter_bh.EigenInput0<float>() + per_iter_bh.EigenInput1<float>();
+        per_iter_bh.OutputEigen<T>() =
+            per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
       }};
 
   int input_count = Node().InputArgCount().front();

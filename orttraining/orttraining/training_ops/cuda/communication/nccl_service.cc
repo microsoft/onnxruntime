@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 
 #include "core/common/common.h"
 #include "core/profile/context.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include <iostream>
 #include <nccl.h>
