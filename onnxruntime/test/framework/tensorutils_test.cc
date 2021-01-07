@@ -124,7 +124,7 @@ static void test_unpack_external_tensor(TensorProto_DataType type, const Path& m
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
   // Validate data
-  for (int i = 0; i < test_data.size(); i++) {
+  for (size_t i = 0; i < test_data.size(); i++) {
     ASSERT_EQ(val[i], test_data[i]);
   }
 }
