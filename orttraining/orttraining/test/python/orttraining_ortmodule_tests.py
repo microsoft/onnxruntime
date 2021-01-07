@@ -21,13 +21,21 @@ def parse_arguments():
     return parser.parse_args()
 
 
+def run_ortmodule_api_tests(cwd, log):
+    log.debug('Running: ORTModule-API tests')
+
+    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_ortmodule_api.py']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def main():
     args = parse_arguments()
     cwd = args.cwd
 
     log.info("Running ortmodule tests pipeline")
 
-    # TODO: add ortmodule tests
+    run_ortmodule_api_tests(cwd, log)
 
     return 0
 
