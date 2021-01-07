@@ -28,9 +28,9 @@ void SetIODefs(const ONNX_NAMESPACE::Provider_ModelProto& model_proto,
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::Provider_ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
-void ValidateCNNNetwork(const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map, std::shared_ptr<ngraph::Function> ng_function);
+InferenceEngine::CNNNetwork CreateCNNNetwork1(const Provider_ModelProto& model_proto, const SubGraphContext& subgraph_context, InferenceEngine::CNNNetwork cnn_network);
 
-void DumpOnnxModelProto(const Provider_ModelProto& model_proto, std::string file_name);
+void ValidateCNNNetwork(const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map, std::shared_ptr<ngraph::Function> ng_function);
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 

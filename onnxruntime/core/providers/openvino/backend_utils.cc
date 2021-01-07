@@ -80,6 +80,27 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
   }
 }
 
+InferenceEngine::CNNNetwork CreateCNNNetwork1(const Provider_ModelProto& model_proto, const SubGraphContext& subgraph_context, InferenceEngine::CNNNetwork cnn_network) {
+#ifndef NDEBUG
+  if (IsDebugEnabled()) {
+    DumpOnnxModelProto(model_proto, subgraph_context.subgraph_name + "_static.onnx");
+  }
+#endif
+  InferenceEngine::Core ie;
+  const std::string model = model_proto.SerializeAsString();
+  InferenceEngine::Blob::Ptr blob = {nullptr};
+  //Reading the Network
+  try {
+    cnn_network = ie.ReadNetwork(model, blob);
+    LOGS_DEFAULT(INFO) << "Read network Done";
+  } catch (const std::exception& exp) {
+    ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(exp.what()));
+  } catch (...) {
+    ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
+  }
+  return cnn_network;
+}
+
 void ValidateCNNNetwork(const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map, std::shared_ptr<ngraph::Function> ng_function) {
   if (global_context.device_type.find("GPU") != std::string::npos &&
       subgraph_context.precision == InferenceEngine::Precision::FP16) {

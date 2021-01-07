@@ -56,25 +56,8 @@ VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
 #endif
 
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
-#ifndef NDEBUG
-  if (IsDebugEnabled()) {
-    DumpOnnxModelProto(model_proto, subgraph_context_.subgraph_name + "_static.onnx");
-  }
-#endif
-  InferenceEngine::Core ie;
-  const std::string model = model_proto.SerializeAsString();
-  InferenceEngine::Blob::Ptr blob = {nullptr};
-  //Reading the Network
-  try {
-    cnn_network_ = ie.ReadNetwork(model, blob);
-    LOGS_DEFAULT(INFO) << "Read network Done";
-  } catch (const std::exception& exp) {
-    ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(exp.what()));
-  } catch (...) {
-    ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
-  }
-  std::shared_ptr<ngraph::Function> ng_function;
-  ng_function = cnn_network_.getFunction();
+  cnn_network_ = CreateCNNNetwork1(model_proto, subgraph_context_, cnn_network_);
+  std::shared_ptr<ngraph::Function> ng_function = cnn_network_.getFunction();
   ValidateCNNNetwork(global_context, subgraph_context, const_outputs_map_, ng_function);
   SetIODefs(model_proto, std::make_shared<InferenceEngine::CNNNetwork>(ng_function), subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
 
