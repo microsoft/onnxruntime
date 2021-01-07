@@ -89,20 +89,20 @@ class Model {
   Version IrVersion() const;
 
   // Get model's producer name.
-  // Return null pointer if not specified.
-  const std::string& ProducerName() const;
+  // Returns empty string if not specified.
+  const std::string ProducerName() const;
   // Set model's producer name.
   void SetProducerName(const std::string& producer_name);
 
   // Get model's producer version.
-  // Return null pointer if not specified.
-  const std::string& ProducerVersion() const;
+  // Returns empty string if not specified.
+  const std::string ProducerVersion() const;
   // Set model's producer version.
   void SetProducerVersion(const std::string& producer_version);
 
   // Get model's domain.
-  // Return null pointer if not specified.
-  const std::string& Domain() const;
+  // Returns empty string if not specified.
+  const std::string Domain() const;
   // Set models' domain.
   void SetDomain(const std::string& domain);
 
@@ -113,34 +113,43 @@ class Model {
   void SetModelVersion(onnxruntime::Version model_version);
 
   // Get model's doc string.
-  // Return null pointer if not specified.
-  const std::string& DocString() const;
+  // Returns empty string if not specified.
+  const std::string DocString() const;
   // Set models' doc string.
   void SetDocString(const std::string& doc_string);
+
+  // Get graph's doc string.
+  // Returns empty string if not specified.
+  const std::string GraphDocString() const;
+
 #else
   // Get model's IR version.
   // Return <kNoVersion> if not specified.
   Version IrVersion() const { return ir_version_; }
 
   // Get model's producer name.
-  // Return null pointer if not specified.
-  const std::string& ProducerName() const { return producer_name_; }
+  // Returns empty string if not specified.
+  const std::string ProducerName() const { return producer_name_; }
 
   // Get model's producer version.
-  // Return null pointer if not specified.
-  const std::string& ProducerVersion() const { return producer_version_; }
+  // Returns empty string if not specified.
+  const std::string ProducerVersion() const { return producer_version_; }
 
   // Get model's domain.
-  const std::string& Domain() const { return domain_; }
+  // Returns empty string if not specified.
+  const std::string Domain() const { return domain_; }
 
   // Get model's version.
   // Return null pointer if not specified.
   Version ModelVersion() const { return model_version_; }
 
   // Get model's doc string.
-  // Return null pointer if not specified.
-  const std::string& DocString() const { return doc_string_; }
+  // Returns empty string if not specified.
+  const std::string DocString() const { return doc_string_; }
 
+  // Get graph's doc string.
+  // Returns empty string if not specified.
+  const std::string GraphDocString() const { return graph_doc_string_; }
 #endif
 
   const ModelMetaData& MetaData() const noexcept;
@@ -248,6 +257,7 @@ class Model {
   int64_t ir_version_ = kNoVersion;
   std::string domain_;
   std::string doc_string_;
+  std::string graph_doc_string_;
 #endif
 
   // This is a duplication of <model_proto_.metadata_props()>.

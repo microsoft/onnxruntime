@@ -288,7 +288,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     12, 12,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
     Pow);
 
 ONNX_OPERATOR_KERNEL_EX(

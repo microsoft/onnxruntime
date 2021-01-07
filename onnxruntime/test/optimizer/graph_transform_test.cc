@@ -19,6 +19,7 @@
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -1648,6 +1649,23 @@ TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
   }
 }
 
+// Test eliminating redundant Concat-Slice pattern.
+TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
+  auto model_uri = MODEL_FOLDER "concat_slice_basic_test.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConcatSliceElimination>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Concat"] == 0);
+  ASSERT_TRUE(op_to_count["Slice"] == 0);
+}
+
 TEST_F(GraphTransformationTests, ExpandElimination) {
   auto model_uri = MODEL_FOLDER "expand_elimination.onnx";
   std::shared_ptr<Model> model;
@@ -3069,9 +3087,9 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["DynamicQuantizeLinear"], 1);
-  EXPECT_EQ(op_to_count["MatMulInteger"], 1);
-  EXPECT_EQ(op_to_count["Cast"], 1);
-  EXPECT_EQ(op_to_count["Mul"], 2);
+  EXPECT_EQ(op_to_count["MatMulInteger"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 0);
+  EXPECT_EQ(op_to_count["Mul"], 0);
   EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 3);
   EXPECT_EQ(op_to_count["Add"], 1);
 }

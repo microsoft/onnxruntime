@@ -20,7 +20,7 @@ class DnnlKernel {
     name_ = node.name;
     mklnode_ptr_ = std::make_shared<DnnlNode>(node);
     provider_ = provider;
-    alloc_ = provider_->Provider_GetAllocator(0, OrtMemTypeDefault);
+    alloc_ = provider_->GetAllocator(0, OrtMemTypeDefault);
   }
   virtual ~DnnlKernel(){};
 
@@ -45,7 +45,7 @@ class DnnlKernel {
   virtual Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) = 0;
 
  protected:
-  virtual void ReadAttributes(const Provider_NodeAttributes& attributes,
+  virtual void ReadAttributes(const NodeAttributes& attributes,
                               const std::string attributes_prefix = "") {
     ORT_UNUSED_PARAMETER(attributes);
     ORT_UNUSED_PARAMETER(attributes_prefix);

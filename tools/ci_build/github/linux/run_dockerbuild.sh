@@ -43,14 +43,10 @@ EXIT_CODE=1
 PYTHON_VER=${PYTHON_VER:=3.6}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
-if [[ -z "${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}" ]]; then
-    echo "Please specify an image cache container registry name (-i)."
-    exit 1
+GET_DOCKER_IMAGE_CMD="${SOURCE_ROOT}/tools/ci_build/get_docker_image.py"
+if [[ -n "${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}" ]]; then
+    GET_DOCKER_IMAGE_CMD="${GET_DOCKER_IMAGE_CMD} --container-registry ${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}"
 fi
-
-COMMON_GET_DOCKER_IMAGE_ARGS="--container-registry ${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}"
-
-GET_DOCKER_IMAGE_CMD="${SOURCE_ROOT}/tools/ci_build/get_docker_image.py ${COMMON_GET_DOCKER_IMAGE_ARGS}"
 DOCKER_CMD="docker"
 
 cd $SCRIPT_DIR/docker

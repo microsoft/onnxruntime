@@ -33,6 +33,7 @@
 
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
+#include "core/common/make_string.h"
 #include "core/common/make_unique.h"
 #include "core/common/status.h"
 
@@ -117,42 +118,42 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // Throw an exception with optional message.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
-#define ORT_THROW(...)                                                                       \
-  do {                                                                                       \
-    std::cerr << ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                   \
-                                                     ::onnxruntime::MakeString(__VA_ARGS__)) \
-                     .what()                                                                 \
-              << std::endl;                                                                  \
-    abort();                                                                                 \
+#define ORT_THROW(...)                                                                           \
+  do {                                                                                           \
+    std::cerr << ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                       \
+                                                     ::onnxruntime::MakeStringLite(__VA_ARGS__)) \
+                     .what()                                                                     \
+              << std::endl;                                                                      \
+    abort();                                                                                     \
   } while (false)
 
 // Just in order to mark things as not implemented. Do not use in final code.
-#define ORT_NOT_IMPLEMENTED(...)                                                                \
-  do {                                                                                          \
-    std::cerr << ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__)) \
-                     .what()                                                                    \
-              << std::endl;                                                                     \
-    abort();                                                                                    \
+#define ORT_NOT_IMPLEMENTED(...)                                                                    \
+  do {                                                                                              \
+    std::cerr << ::onnxruntime::NotImplementedException(::onnxruntime::MakeStringLite(__VA_ARGS__)) \
+                     .what()                                                                        \
+              << std::endl;                                                                         \
+    abort();                                                                                        \
   } while (false)
 
 // Check condition.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
-#define ORT_ENFORCE(condition, ...)                                                            \
-  do {                                                                                         \
-    if (!(condition)) {                                                                        \
-      std::cerr << ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,       \
-                                                       ::onnxruntime::MakeString(__VA_ARGS__)) \
-                       .what()                                                                 \
-                << std::endl;                                                                  \
-      abort();                                                                                 \
-    }                                                                                          \
+#define ORT_ENFORCE(condition, ...)                                                                \
+  do {                                                                                             \
+    if (!(condition)) {                                                                            \
+      std::cerr << ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,           \
+                                                       ::onnxruntime::MakeStringLite(__VA_ARGS__)) \
+                       .what()                                                                     \
+                << std::endl;                                                                      \
+      abort();                                                                                     \
+    }                                                                                              \
   } while (false)
 
-#define ORT_THROW_EX(ex, ...)                                                              \
-  do {                                                                                     \
-    std::cerr << #ex << "(" << ::onnxruntime::MakeString(__VA_ARGS__) << ")" << std::endl; \
-    abort();                                                                               \
+#define ORT_THROW_EX(ex, ...)                                                                  \
+  do {                                                                                         \
+    std::cerr << #ex << "(" << ::onnxruntime::MakeStringLite(__VA_ARGS__) << ")" << std::endl; \
+    abort();                                                                                   \
   } while (false)
 
 #else
@@ -167,11 +168,11 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
 #define ORT_THROW(...) \
-  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, ::onnxruntime::MakeString(__VA_ARGS__))
+  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, ::onnxruntime::MakeStringLite(__VA_ARGS__))
 
 // Just in order to mark things as not implemented. Do not use in final code.
 #define ORT_NOT_IMPLEMENTED(...) \
-  throw ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__))
+  throw ::onnxruntime::NotImplementedException(::onnxruntime::MakeStringLite(__VA_ARGS__))
 
 // Check condition.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
@@ -179,7 +180,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #define ORT_ENFORCE(condition, ...)                                           \
   if (!(condition))                                                           \
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition, \
-                                            ::onnxruntime::MakeString(__VA_ARGS__))
+                                            ::onnxruntime::MakeStringLite(__VA_ARGS__))
 
 #define ORT_THROW_EX(ex, ...) \
   throw ex(__VA_ARGS__)
@@ -189,21 +190,21 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #define ORT_MAKE_STATUS(category, code, ...)                     \
   ::onnxruntime::common::Status(::onnxruntime::common::category, \
                                 ::onnxruntime::common::code,     \
-                                ::onnxruntime::MakeString(__VA_ARGS__))
+                                ::onnxruntime::MakeStringLite(__VA_ARGS__))
 
 // Check condition. if met, return status.
-#define ORT_RETURN_IF(condition, ...)                                                     \
-  if (condition) {                                                                        \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,                                             \
-                           "Satisfied, but should not be: " #condition "\n",              \
-                           ORT_WHERE.ToString(), ::onnxruntime::MakeString(__VA_ARGS__)); \
+#define ORT_RETURN_IF(condition, ...)                                                         \
+  if (condition) {                                                                            \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,                                                 \
+                           "Satisfied, but should not be: " #condition "\n",                  \
+                           ORT_WHERE.ToString(), ::onnxruntime::MakeStringLite(__VA_ARGS__)); \
   }
 
 // Check condition. if not met, return status.
-#define ORT_RETURN_IF_NOT(condition, ...)                                                 \
-  if (!(condition)) {                                                                     \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not satisfied: " #condition "\n",          \
-                           ORT_WHERE.ToString(), ::onnxruntime::MakeString(__VA_ARGS__)); \
+#define ORT_RETURN_IF_NOT(condition, ...)                                                     \
+  if (!(condition)) {                                                                         \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not satisfied: " #condition "\n",              \
+                           ORT_WHERE.ToString(), ::onnxruntime::MakeStringLite(__VA_ARGS__)); \
   }
 
 // Macros to disable the copy and/or move ctor and assignment methods
@@ -260,36 +261,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #else
 #define GSL_SUPPRESS(tag)
 #endif
-
-inline void MakeStringInternal(std::ostringstream& /*ss*/) noexcept {
-}
-
-template <typename T>
-inline void MakeStringInternal(std::ostringstream& ss, const T& t) noexcept {
-  ss << t;
-}
-
-template <typename T, typename... Args>
-inline void MakeStringInternal(std::ostringstream& ss, const T& t, const Args&... args) noexcept {
-  ::onnxruntime::MakeStringInternal(ss, t);
-  ::onnxruntime::MakeStringInternal(ss, args...);
-}
-
-template <typename... Args>
-std::string MakeString(const Args&... args) {
-  std::ostringstream ss;
-  ::onnxruntime::MakeStringInternal(ss, args...);
-  return std::string(ss.str());
-}
-
-// Specializations for already-a-string types.
-template <>
-inline std::string MakeString(const std::string& str) {
-  return str;
-}
-inline std::string MakeString(const char* p_str) {
-  return p_str;
-}
 
 inline long long TimeDiffMicroSeconds(TimePoint start_time) {
   auto end_time = std::chrono::high_resolution_clock::now();

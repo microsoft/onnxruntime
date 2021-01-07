@@ -5,8 +5,7 @@
 
 #include "gsl/gsl"
 #include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/rocm_kernel.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
 namespace onnxruntime {
