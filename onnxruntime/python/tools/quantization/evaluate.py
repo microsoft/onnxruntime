@@ -9,7 +9,6 @@
 from .calibrate import CalibrationDataReader, calibrate
 import onnxruntime
 import numpy as np
-import glob
 
 class YoloV3Evaluator: 
     def __init__(self, model_path,
@@ -267,58 +266,3 @@ class YoloV3VisionEvaluator(YoloV3Evaluator):
                 image_width= image_size_batch[i][batch_i][1]
                 image_id = image_id_batch[i][batch_i]
                 self.set_bbox_prediction(bboxes, scores, image_height, image_width, image_id)
-
-class TRTResNet50Evaluator: 
-    def __init__(self, model_path, synset_id, 
-                       data_reader: CalibrationDataReader,
-                       providers=["TensorrtExecutionProvider"]                       
-                       ):
-        '''
-        :param model_path: ONNX model to validate
-        :param synset_id: ILSVRC2012 synset id        
-        :param data_reader: user implemented object to read in and preprocess calibration dataset
-                            based on CalibrationDataReader Interface
-        :param providers: ORT execution provider type
-        '''
-
-        self.model_path = model_path
-        self.data_reader = data_reader
-        self.providers = providers 
-        self.prediction_result_list = []
-        self.synset_id = synset_id
-
-    def get_result(self):
-        return self.prediction_result_list
-
-    def predict(self):
-        sess_options = onnxruntime.SessionOptions()
-        sess_options.log_severity_level = 0
-        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL      
-        session = onnxruntime.InferenceSession(self.model_path, sess_options=sess_options, providers=self.providers)
-
-        inference_outputs_list = []
-        while True:
-            inputs = self.data_reader.get_next()
-            if not inputs:
-                break          
-            output = session.run(None, inputs)
-            inference_outputs_list.append(output)     
-        self.prediction_result_list = inference_outputs_list          
-
-    def top_k_accuracy(self, truth, prediction, k=1):
-        '''From https://github.com/chainer/chainer/issues/606        
-        '''
-
-        y = np.argsort(prediction)[:,-k:]
-        return np.any(y.T == truth.argmax(axis=1), axis=0).mean()
-
-    def evaluate(self, prediction_results):
-        batch_size = len(prediction_results[0][0])
-        total_val_images = len(prediction_results) * batch_size
-        y_prediction = np.empty((total_val_images, 1000), dtype=np.float32)
-        i = 0
-        for res in prediction_results:
-            y_prediction[i:i + batch_size,:] = res[0]
-            i = i + batch_size     
-        print("top 1: ", self.top_k_accuracy(self.synset_id, y_prediction, k=1))   
-        print("top 5: ", self.top_k_accuracy(self.synset_id, y_prediction, k=5))
