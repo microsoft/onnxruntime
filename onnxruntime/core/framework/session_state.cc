@@ -233,14 +233,14 @@ Status SessionState::GetInitializedTensors(
           "Failed to get OrtValue index from name: ", status.ErrorMessage());
       continue;
     }
-    if (initialized_tensors_.find(idx) != initialized_tensors_.end()){
+    if (initialized_tensors_.find(idx) != initialized_tensors_.end()) {
       result.emplace(weight_name, initialized_tensors_.at(idx));
     } else {
       ORT_RETURN_IF_NOT(
           allow_missing_weights,
           "Failed to get initializer with name: ", weight_name, " and index:", idx);
       continue;
-    }    
+    }
   }
   retrieved_weights = std::move(result);
   return Status::OK();
@@ -393,6 +393,12 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
                                                const std::vector<int>& feed_mlvalue_idxs,
                                                MemoryPatternGroup* output,
                                                std::unordered_map<int, TensorShape>& resolved_shapes) const {
+  /*if ((getpid() % 4 == 0)) {
+    bool c = true;
+    while (c) {
+    }
+  }*/
+
   std::map<std::string, TensorShape> feeds;
   for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
     std::string name;
@@ -460,7 +466,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
 
       const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-      mem_planner.TraceAllocation(ml_value_idx, counter, size);
+      mem_planner.TraceAllocation(ml_value_idx, counter, size, true);
     }
   }
 
