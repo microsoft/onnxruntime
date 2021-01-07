@@ -291,7 +291,8 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor, tensor_byte_size));
+          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                    unpacked_tensor, tensor_byte_size));
       src = unpacked_tensor.get();
       break;
     }
@@ -371,7 +372,8 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor, tensor_byte_size));
+          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                    unpacked_tensor, tensor_byte_size));
       src = unpacked_tensor.get();
       break;
     }
@@ -498,7 +500,8 @@ static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const 
   size_t tensor_byte_size;
   const auto& zero_point_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
   ORT_RETURN_IF_ERROR(
-      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, unpacked_tensor, tensor_byte_size));
+      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                unpacked_tensor, tensor_byte_size));
   zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
   return Status::OK();
 }

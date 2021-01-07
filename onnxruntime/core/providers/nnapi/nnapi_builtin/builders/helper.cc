@@ -231,7 +231,8 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
 
         std::unique_ptr<uint8_t[]> unpacked_tensor;
         size_t tensor_byte_size;
-        auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, unpacked_tensor, tensor_byte_size);
+        auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, node.ModelPath(),
+                                                                unpacked_tensor, tensor_byte_size);
         if (!status.IsOK()) {
           LOGS_DEFAULT(ERROR) << "QLinearConv erro when unpack zero tensor:" << status.ErrorMessage();
           return false;
