@@ -13,18 +13,18 @@ namespace {
 template <typename T>
 void TestSuccessfulParse(const std::string& input, const T& expected_value) {
   T value;
-  ASSERT_TRUE(TryParseString(input, value));
+  ASSERT_TRUE(TryParseStringWithClassicLocale(input, value));
   EXPECT_EQ(value, expected_value);
 }
 
 template <typename T>
 void TestFailedParse(const std::string& input) {
   T value;
-  EXPECT_FALSE(TryParseString(input, value));
+  EXPECT_FALSE(TryParseStringWithClassicLocale(input, value));
 }
 }  // namespace
 
-TEST(StringUtilsTest, TryParseString) {
+TEST(StringUtilsTest, TryParseStringWithClassicLocale) {
   TestSuccessfulParse("-1", -1);
   TestSuccessfulParse("42", 42u);
   TestSuccessfulParse("2.5", 2.5f);
@@ -83,9 +83,9 @@ std::istream& operator>>(std::istream& is, S& s) {
 TEST(StringUtilsTest, MakeStringAndTryParseStringWithCustomType) {
   S s;
   s.i = 42;
-  const auto str = MakeString(s);
+  const auto str = MakeStringWithClassicLocale(s);
   S parsed_s;
-  ASSERT_TRUE(TryParseString(str, parsed_s));
+  ASSERT_TRUE(TryParseStringWithClassicLocale(str, parsed_s));
   ASSERT_EQ(parsed_s, s);
 }
 
