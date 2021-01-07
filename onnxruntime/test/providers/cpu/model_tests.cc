@@ -124,6 +124,13 @@ TEST_P(ModelTest, Run) {
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
+  if (provider_name == "nuphar") {
+    // https://msdata.visualstudio.com/Vienna/_workitems/edit/1000703
+    broken_tests.insert({"fp16_test_tiny_yolov2", "Computed value is off by a bit more than tol."});
+    broken_tests.insert({"keras2coreml_Repeat_ImageNet", "this test fails with Nuphar EP."});
+    broken_tests.insert({"fp16_coreml_FNS-Candy", "this test fails with Nuphar EP."});
+  }
+
   if (provider_name == "nnapi") {
     broken_tests.insert({"scan9_sum", "Error with the extra graph"});
     broken_tests.insert({"scan_sum", "Error with the extra graph"});
