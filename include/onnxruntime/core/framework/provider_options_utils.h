@@ -107,7 +107,7 @@ class ProviderOptionsParser {
     return AddValueParser(
         name,
         [&dest](const std::string& value_str) -> Status {
-          return ParseString(value_str, dest);
+          return ParseStringWithClassicLocale(value_str, dest);
         });
   }
 
