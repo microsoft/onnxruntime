@@ -393,12 +393,6 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
                                                const std::vector<int>& feed_mlvalue_idxs,
                                                MemoryPatternGroup* output,
                                                std::unordered_map<int, TensorShape>& resolved_shapes) const {
-  /*if ((getpid() % 4 == 0)) {
-    bool c = true;
-    while (c) {
-    }
-  }*/
-
   std::map<std::string, TensorShape> feeds;
   for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
     std::string name;
