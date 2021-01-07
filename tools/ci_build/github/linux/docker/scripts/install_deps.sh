@@ -117,6 +117,12 @@ ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
 if [ $DEVICE_TYPE = "gpu" ]; then
   if [[ $INSTALL_DEPS_TRAINING = true ]]; then
     ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/requirements.txt}
+    # pip runs through the requirements.txt twice. First time downloading the packages and running each package's
+    # setup.py and the second time actually installing it.
+    # deepspeed has `import torch` in its setup.py. So having deepspeed as a part of requirements.txt even though torch
+    # package has already been collected results in an error.
+    # Work around is to install deepspeed separately after the requirements.txt is installed through secondary_requirements.txt
+    ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/secondary_requirements.txt}
   fi
   if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
     source ${0/%install_deps.sh/install_openmpi.sh}
