@@ -84,23 +84,27 @@ trainer_config = ORTTrainerOptions({
         'id': cuda_device
     },
     'distributed': {
-        'world_size': total_ranks,
-        'world_rank': rank,
-        'data_parallel_size': int(total_ranks / num_pipeline_stages),
-        'horizontal_parallel_size': 1,
-        'pipeline_parallel_size': int(num_pipeline_stages),
-        'num_pipeline_micro_batches': num_pipeline_steps,
-        'sliced_schema': pipeline_schema,
-        'sliced_axes': sliced_axes,
-        'sliced_tensor_names': ['x', 'target', 'output'],
-        'allreduce_post_accumulation': True
+        'rank_config': {
+            'world_size': total_ranks,
+            'world_rank': rank,
+            'data_parallel_size': int(total_ranks / num_pipeline_stages),
+            'horizontal_parallel_size': 1,
+            'pipeline_parallel_size': int(num_pipeline_stages)
+        },
+        'pipeline_parallel_config': {
+            'num_pipeline_micro_batches': num_pipeline_steps,
+            'sliced_schema': pipeline_schema,
+            'sliced_axes': sliced_axes,
+            'sliced_tensor_names': ['x', 'target', 'output'],
+            # Define pipeline stage partition by specifying cut points.
+            # 2-stage cut. It's a cut on tensor "12".
+            'pipeline_cut_info_string': '12'
+        },
+        'optimizer_config': {
+            'allreduce_post_accumulation': True
+        }
     }
 })
-
-
-# Define pipeline stage partition by specifying cut points.
-# 2-stage cut. It's a cut on tensor "12".
-trainer_config.distributed.pipeline_cut_info_string = '12'
 
 trainer = ORTTrainer(model, schema, adam_config, apply_loss, trainer_config)
 

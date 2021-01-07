@@ -52,99 +52,111 @@ class ORTTrainerOptions(object):
                         }
                     }
                 },
-                'distributed' : {
-                    'type' : 'dict',
+                'distributed': {
+                    'type': 'dict',
+                    'default_setter': lambda _: {},
                     'required': False,
-                    'default' : {},
-                    'schema' : {
-                        'world_rank' : {
-                            'type' : 'integer',
-                            'min' : 0,
-                            'default' : 0
-                        },
-                        'world_size' : {
-                            'type' : 'integer',
-                            'min' : 1,
-                            'default' : 1
-                        },
-                        'local_rank' : {
-                            'type' : 'integer',
-                            'min' : 0,
-                            'default' : 0
-                        },
-                        'data_parallel_size' : {
-                            'type' : 'integer',
-                            'min' : 1,
-                            'default' : 1
-                        },
-                        'horizontal_parallel_size' : {
-                            'type' : 'integer',
-                            'min' : 1,
-                            'default' : 1
-                        },
-                        'pipeline_parallel_size' : {
-                            'type' : 'integer',
-                            'min' : 1,
-                            'default' : 1
-                        },
-                        'num_pipeline_micro_batches' : {
-                            'type' : 'integer',
-                            'min' : 1,
-                            'default' : 1
-                        },
-                        'pipeline_cut_info_string': {
-                            'type': 'string',
-                            'default': ''
-                        },
-                        'allreduce_post_accumulation' : {
-                            'type' : 'boolean',
-                            'default' : False
-                        },
-                        'deepspeed_zero_optimization' : {
-                            'type' : 'dict',
-                            'default': {},
+                    'schema': {
+                        'rank_config' : {
+                            'type': 'dict',
+                            'default_setter': lambda _: {},
                             'required': False,
                             'schema': {
-                                'stage': {
+                                'world_rank': {
                                     'type': 'integer',
                                     'min': 0,
-                                    'max': 1,
                                     'default': 0
                                 },
+                                'world_size': {
+                                    'type': 'integer',
+                                    'min': 1,
+                                    'default': 1
+                                },
+                                'local_rank': {
+                                    'type': 'integer',
+                                    'min': 0,
+                                    'default': 0
+                                },
+                                'data_parallel_size': {
+                                    'type': 'integer',
+                                    'min': 1,
+                                    'default': 1
+                                },
+                                'horizontal_parallel_size': {
+                                    'type': 'integer',
+                                    'min': 1,
+                                    'default': 1
+                                },
+                                'pipeline_parallel_size': {
+                                    'type': 'integer',
+                                    'min': 1,
+                                    'default': 1
+                                }
                             }
                         },
-                        'enable_adasum' : {
-                            'type' : 'boolean',
-                            'default' : False
-                        },
-                        'sliced_schema' : {
+                        'pipeline_parallel_config' : {
                             'type': 'dict',
+                            'default_setter': lambda _: {},
                             'required': False,
                             'schema': {
-                                # the keys in `sliced_schema` are strings.
-                                'keysrules': {'type': 'string'},
-                                # the values in `sliced_schema` are lists of integers.
-                                'valuesrules': {
-                                    'type': 'list',
-                                    'schema': {'type': 'integer'}
-                                }
-                            },
-                            'default_setter': lambda _: {}
-                        },
-                        'sliced_axes' : {
-                            'type': 'dict',
-                            'default': {},
-                            'schema': {
-                                'keysrules': {'type': 'string'},
-                                'valuesrules': {
+                                'num_pipeline_micro_batches': {
                                     'type': 'integer',
-                                    'default': 0
+                                    'min': 1,
+                                    'default': 1
+                                },
+                                'pipeline_cut_info_string': {
+                                    'type': 'string',
+                                    'default': ''
+                                },
+                                'sliced_schema': {
+                                    'type': 'dict',
+                                    'default': {},
+                                    'keysrules': {'type': 'string'},
+                                    'valuesrules': {
+                                        'type': 'list',
+                                        'schema': {'type': 'integer'}
+                                    }
+                                },
+                                'sliced_axes': {
+                                    'type': 'dict',
+                                    'default': {},
+                                    'keysrules': {'type': 'string'},
+                                    'valuesrules': {'type': 'integer'}
+                                },
+                                'sliced_tensor_names': {
+                                    'type': 'list',
+                                    'schema': {'type': 'string'},
+                                    'default': []
                                 }
                             }
-                        },
-                        'sliced_tensor_names' : {
-                            'type': 'list',
-                            'schema': {'type': 'string'}
+                        }
+                        'optimizer_config' : {
+                            'type': 'dict',
+                            'default_setter': lambda _: {},
+                            'required': False,
+                            'schema': {
+                                'allreduce_post_accumulation': {
+                                    'type': 'boolean',
+                                    'default': False
+                                },
+                                'deepspeed_zero_optimization': {
+                                    'type': 'dict',
+                                    'default_setter': lambda _: {},
+                                    'required': False,
+                                    'schema': {
+                                        'stage': {
+                                            'type': 'integer',
+                                            'min': 0,
+                                            'max': 1,
+                                            'default': 0
+                                        },
+                                    }
+                                },
+                                'enable_adasum': {
+                                    'type': 'boolean',
+                                    'default': False
+                                }
+                            }
                         }
                     }
                 },
@@ -476,85 +488,106 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'default_setter': lambda _: {},
         'required': False,
         'schema': {
-            'world_rank': {
-                'type': 'integer',
-                'min': 0,
-                'default': 0
-            },
-            'world_size': {
-                'type': 'integer',
-                'min': 1,
-                'default': 1
-            },
-            'local_rank': {
-                'type': 'integer',
-                'min': 0,
-                'default': 0
-            },
-            'data_parallel_size': {
-                'type': 'integer',
-                'min': 1,
-                'default': 1
-            },
-            'horizontal_parallel_size': {
-                'type': 'integer',
-                'min': 1,
-                'default': 1
-            },
-            'pipeline_parallel_size': {
-                'type': 'integer',
-                'min': 1,
-                'default': 1
-            },
-            'num_pipeline_micro_batches': {
-                'type': 'integer',
-                'min': 1,
-                'default': 1
-            },
-            'pipeline_cut_info_string': {
-                'type': 'string',
-                'default': ''
-            },
-            'allreduce_post_accumulation': {
-                'type': 'boolean',
-                'default': False
-            },
-            'deepspeed_zero_optimization': {
+            'rank_config' : {
                 'type': 'dict',
                 'default_setter': lambda _: {},
                 'required': False,
                 'schema': {
-                    'stage': {
+                    'world_rank': {
                         'type': 'integer',
                         'min': 0,
-                        'max': 1,
                         'default': 0
                     },
+                    'world_size': {
+                        'type': 'integer',
+                        'min': 1,
+                        'default': 1
+                    },
+                    'local_rank': {
+                        'type': 'integer',
+                        'min': 0,
+                        'default': 0
+                    },
+                    'data_parallel_size': {
+                        'type': 'integer',
+                        'min': 1,
+                        'default': 1
+                    },
+                    'horizontal_parallel_size': {
+                        'type': 'integer',
+                        'min': 1,
+                        'default': 1
+                    },
+                    'pipeline_parallel_size': {
+                        'type': 'integer',
+                        'min': 1,
+                        'default': 1
+                    }
                 }
             },
-            'enable_adasum': {
-                'type': 'boolean',
-                'default': False
-            },
-            'sliced_schema': {
+            'pipeline_parallel_config' : {
                 'type': 'dict',
-                'default': {},
-                'keysrules': {'type': 'string'},
-                'valuesrules': {
-                    'type': 'list',
-                    'schema': {'type': 'integer'}
+                'default_setter': lambda _: {},
+                'required': False,
+                'schema': {
+                    'num_pipeline_micro_batches': {
+                        'type': 'integer',
+                        'min': 1,
+                        'default': 1
+                    },
+                    'pipeline_cut_info_string': {
+                        'type': 'string',
+                        'default': ''
+                    },
+                    'sliced_schema': {
+                        'type': 'dict',
+                        'default': {},
+                        'keysrules': {'type': 'string'},
+                        'valuesrules': {
+                            'type': 'list',
+                            'schema': {'type': 'integer'}
+                        }
+                    },
+                    'sliced_axes': {
+                        'type': 'dict',
+                        'default': {},
+                        'keysrules': {'type': 'string'},
+                        'valuesrules': {'type': 'integer'}
+                    },
+                    'sliced_tensor_names': {
+                        'type': 'list',
+                        'schema': {'type': 'string'},
+                        'default': []
+                    }
                 }
             },
-            'sliced_axes': {
+            'optimizer_config' : {
                 'type': 'dict',
-                'default': {},
-                'keysrules': {'type': 'string'},
-                'valuesrules': {'type': 'integer'}
-            },
-            'sliced_tensor_names': {
-                'type': 'list',
-                'schema': {'type': 'string'},
-                'default': []
+                'default_setter': lambda _: {},
+                'required': False,
+                'schema': {
+                    'allreduce_post_accumulation': {
+                        'type': 'boolean',
+                        'default': False
+                    },
+                    'deepspeed_zero_optimization': {
+                        'type': 'dict',
+                        'default_setter': lambda _: {},
+                        'required': False,
+                        'schema': {
+                            'stage': {
+                                'type': 'integer',
+                                'min': 0,
+                                'max': 1,
+                                'default': 0
+                            },
+                        }
+                    },
+                    'enable_adasum': {
+                        'type': 'boolean',
+                        'default': False
+                    }
+                }
             }
         }
     },

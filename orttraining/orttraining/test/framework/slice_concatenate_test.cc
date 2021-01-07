@@ -75,7 +75,7 @@ void InitializeSession(onnxruntime::InferenceSession& session, onnxruntime::Mode
   model.ToProto().SerializeToOstream(&buffer);
 
   // Load model.
-  session.Load(buffer);
+  ASSERT_STATUS_OK(session.Load(buffer));
 
 // Initialize the session.
 #if defined(USE_CUDA)
