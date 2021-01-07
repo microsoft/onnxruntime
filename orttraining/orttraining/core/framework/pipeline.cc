@@ -373,7 +373,7 @@ void PipelineScheduler::MapStageIdToMpiRank() {
         // The code below maps stage ID to MPI's world rank.
         task.this_rank = stage_id_to_rank_id_map_.at(task.this_rank);
 
-        // Similarly, We do the mapping for peer's rank to know which process to communicate with
+        // Similarly, we do the mapping for peer's rank to know which process to communicate with
         // in runtime.
         task.peer_rank = stage_id_to_rank_id_map_.at(task.peer_rank);
       }

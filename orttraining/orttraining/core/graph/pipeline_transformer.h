@@ -83,5 +83,5 @@ void SetDataDependency(
     Node& postponed_node,
     const std::vector<NodeArg*>& dependent_node_args);
 
-}  // namvoidespace training
+}  // namespace training
 }  // namespace onnxruntime
