@@ -26,7 +26,9 @@ bool IsDebugEnabled() {
 #ifdef _WIN32
   size_t env_name_len = 0;
   char* env_name = nullptr;
-  return (_dupenv_s(&env_name, &env_name_len, "ORT_OPENVINO_ENABLE_DEBUG") == 0 && env_name != nullptr);
+  bool res = (_dupenv_s(&env_name, &env_name_len, "ORT_OPENVINO_ENABLE_DEBUG") == 0 && env_name != nullptr);
+  free(env_name);
+  return res;
 #else
   return (std::getenv("ORT_OPENVINO_ENABLE_DEBUG") != nullptr);
 #endif
@@ -34,7 +36,6 @@ bool IsDebugEnabled() {
 void DumpOnnxModelProto(const Provider_ModelProto& model_proto, std::string file_name) {
   std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto.SerializeToOstream(outfile);
-  outfile.close();
 }
 
 #endif
@@ -75,7 +76,7 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
     ng_function->validate_nodes_and_infer_types();
   }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
   if (!global_context.is_wholly_supported_graph) {
     std::map<std::string, std::string> result_to_output;
     for (auto& result : ng_function->get_results()) {
@@ -156,7 +157,7 @@ void SetIODefs(const Provider_ModelProto& model_proto,
   auto outputInfo = network->getOutputsInfo();
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter) {
     auto output_name = iter->first;
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
     auto it = const_outputs_map.find(output_name);
     //Output is constant and don't need to set precision
     if (it != const_outputs_map.end())
@@ -185,7 +186,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
     graph_output_dims.insert(graph_output_dims.begin(), batch_size);
   }
   size_t num_dims = graph_output_dims.size();
-  auto output_shape = new int64_t[num_dims];
+  std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
   for (size_t j = 0; j < num_dims; j++) {
     output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
   }
@@ -195,13 +196,12 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   }
   int index = it->second;
 
-  output_tensor = ort.KernelContext_GetOutput(context, index, output_shape, num_dims);
-  delete[] output_shape;
+  output_tensor = ort.KernelContext_GetOutput(context, index, output_shape.get(), num_dims);
 
   return output_tensor;
 }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
 OrtValue*
 GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
                 std::string output_name,
@@ -216,12 +216,11 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
   auto shape = node->get_shape();
 
   size_t num_dims = shape.size();
-  auto output_shape = new int64_t[num_dims];
+  std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
   for (size_t j = 0; j < num_dims; j++) {
     output_shape[j] = static_cast<int64_t>(shape[j]);
   }
-  output_tensor = ort.KernelContext_GetOutput(context, index, output_shape, num_dims);
-  delete[] output_shape;
+  output_tensor = ort.KernelContext_GetOutput(context, index, output_shape.get(), num_dims);
 
   return output_tensor;
 }
@@ -250,7 +249,7 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
   return i;
 }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
 void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor) {
   switch (node->get_element_type()) {
     case ngraph::element::Type_t::f32: {
@@ -275,7 +274,7 @@ void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::
 }
 #endif
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
 template <typename T>
 void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node) {
   auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(node);

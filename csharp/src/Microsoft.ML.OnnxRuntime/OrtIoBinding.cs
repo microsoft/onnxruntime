@@ -10,9 +10,20 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// This class enable to bind inputs and outputs to pre-allocated
     /// memory. This enables interesting scenarios. For example, if your input
-    /// already resides in some pre-allocated memory even if on a device you bind
+    /// already resides in some pre-allocated memory like GPU, you can bind
     /// that piece of memory to an input name and shape and onnxruntime will use that as input.
-    /// Other traditional inputs can also be bound that already exists as Tensors
+    /// Other traditional inputs can also be bound that already exists as Tensors.
+    ///
+    /// Note, that this arrangement is designed to minimize data copies and to that effect
+    /// your memory allocations must match what is expected by the model, whether you run on
+    /// CPU or GPU. Data copy will still be made, if your pre-allocated memory location does not
+    /// match the one expected by the model. However, copies with OrtIoBindings are only done once,
+    /// at the time of the binding, not at run time. This means, that if your input data required a copy,
+    /// your further input modifications would not be seen by onnxruntime unless you rebind it, even if it is
+    /// the same buffer. If you require the scenario where data is copied, OrtIOBinding may not be the best match
+    /// for your use case.
+    ///
+    /// The fact that data copy is not made during runtime also has performance implications.
     /// </summary>
     public class OrtIoBinding : SafeHandle
     {

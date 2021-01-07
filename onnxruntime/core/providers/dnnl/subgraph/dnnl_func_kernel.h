@@ -12,7 +12,7 @@ namespace ort_dnnl {
 
 namespace {
 struct SubgraphParams {
-  std::unique_ptr<Provider_NodeAttributes> attributes{Provider_NodeAttributes::Create()};
+  std::unique_ptr<NodeAttributes> attributes{NodeAttributes::Create()};
   DNNLExecutionProvider* provider;
   std::shared_ptr<Subgraph> subgraph;
   std::string subgraph_id;
@@ -26,7 +26,7 @@ template <typename T>
 class DnnlFuncKernel {
  public:
   explicit DnnlFuncKernel(const ComputeContext* context,
-                          const Provider_NodeAttributes& attributes,
+                          const NodeAttributes& attributes,
                           DNNLExecutionProvider* provider) {
     ORT_UNUSED_PARAMETER(context);
 
@@ -65,7 +65,7 @@ class DnnlFuncKernel {
     }
   }
 
-  std::string GetPoolAttributesKey(const Provider_NodeAttributes& attributes,
+  std::string GetPoolAttributesKey(const NodeAttributes& attributes,
                                    const std::string attributes_prefix = "") {
     std::string key;
 
@@ -127,7 +127,7 @@ class DnnlFuncKernel {
     return key;
   }
 
-  std::string GetConvAttributeKey(const Provider_NodeAttributes& attributes,
+  std::string GetConvAttributeKey(const NodeAttributes& attributes,
                                   const std::string attributes_prefix = "") {
     std::string key;
 
@@ -194,7 +194,7 @@ class DnnlFuncKernel {
     return key;
   }
 
-  std::string GetLrnAttributeKey(const Provider_NodeAttributes& attributes,
+  std::string GetLrnAttributeKey(const NodeAttributes& attributes,
                                  const std::string attributes_prefix = "") {
     std::string key;
 

@@ -455,7 +455,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Create OrtIoBinding instance to bind pre-allocated buffers
         /// to input/output
         /// </summary>
-        /// <returns></returns>
+        /// <returns>A new instance of OrtIoBinding</returns>
         public OrtIoBinding CreateIoBinding()
         {
             return new OrtIoBinding(this);
@@ -469,8 +469,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// the expense of fetching them and pairing with names.
         /// You can still fetch the outputs by calling OrtIOBinding.GetOutputValues()
         /// </summary>
-        /// <param name="runOptions"></param>
-        /// <param name="ioBinding"></param>
+        /// <param name="runOptions">runOptions</param>
+        /// <param name="ioBinding">ioBinding instance to use</param>
         public void RunWithBinding(RunOptions runOptions, OrtIoBinding ioBinding)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
@@ -1058,6 +1058,7 @@ namespace Microsoft.ML.OnnxRuntime
         private string _graphName;
         private string _domain;
         private string _description;
+        private string _graphDescription;
         private long _version;
         private Dictionary<string, string> _customMetadataMap = new Dictionary<string, string>();
 
@@ -1105,6 +1106,14 @@ namespace Microsoft.ML.OnnxRuntime
                 using (var ortAllocation = new OrtMemoryAllocation(allocator, descriptionHandle, 0))
                 {
                     _description = NativeOnnxValueHelper.StringFromNativeUtf8(descriptionHandle);
+                }
+
+                // Process graph description
+                IntPtr graphDescriptionHandle = IntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphDescription(modelMetadataHandle, allocator.Pointer, out graphDescriptionHandle));
+                using (var ortAllocation = new OrtMemoryAllocation(allocator, graphDescriptionHandle, 0))
+                {
+                    _graphDescription = NativeOnnxValueHelper.StringFromNativeUtf8(graphDescriptionHandle);
                 }
 
                 // Process version
@@ -1202,6 +1211,18 @@ namespace Microsoft.ML.OnnxRuntime
             get
             {
                 return _description;
+            }
+        }
+
+        /// <summary>
+        /// Unstructured graph description
+        /// </summary>
+        /// <value>description string</value>
+        public string GraphDescription
+        {
+            get
+            {
+                return _graphDescription;
             }
         }
 

@@ -26,7 +26,7 @@ int32_t ModelBuilder::GetAndroidSdkVer() const {
 // Scalar operand is copied into the model, no need to persist
 #define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                      \
   Status ModelBuilder::AddOperandFromScalar(scalar_type value, uint32_t& index) { \
-    OperandType operandType(Type::op_type);                                       \
+    OperandType operandType(Type::op_type, vector<uint32_t>{});                   \
     ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operandType, index));                  \
     RETURN_STATUS_ON_ERROR_WITH_NOTE(                                             \
         nnapi_->ANeuralNetworksModel_setOperandValue(                             \
@@ -181,10 +181,12 @@ Status ModelBuilder::RegisterInitializers() {
       shape.push_back(SafeInt<uint32_t>(dim));
     }
 
-    // If we have an empty shape, this is a scalar initializer, since NNAPI does not allow empty shape,
-    // we will make the scalar initializer a {1} tensor
-    if (shape.empty())
+    // If we have an empty shape, this is a scalar initializer,
+    // since NNAPI will treat empty shape input as dynamic ranking input, (onnx does not support dynamic ranking)
+    // we will make the scalar initializer as a {1} tensor
+    if (shape.empty()) {
       shape.push_back(1);
+    }
 
     Type type = Type::TENSOR_FLOAT32;
     switch (tensor.data_type()) {
@@ -263,12 +265,12 @@ Status ModelBuilder::RegisterModelInputs() {
       shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
     }
 
-    // NNAPI has strict input type requirements which separates tensor inputs and scalar inputs
-    // For ONNX the we do not have clear line between scalar inputs and tensor inputs
-    // Also NNAPI treats a tensor input with empty shape as dynamic shape input
-    // Disable support of the scalar input (tensor input with an empty shape) for now
-    // TODO, add support for ONNX scalar input (tensor input with an empty shape)
-    ORT_RETURN_IF_NOT(!shape.empty(), "0-rank input is not currently supported, input name, ", input_name);
+    // If we have an empty shape, this is a scalar input,
+    // since NNAPI will treat empty shape input as dynamic ranking input, (onnx does not support dynamic ranking)
+    // we will make the scalar input as a {1} tensor
+    if (shape.empty()) {
+      shape.push_back(1);
+    }
 
     Type type = Type::TENSOR_FLOAT32;
     float scale = 0.0f;
@@ -329,6 +331,22 @@ Status ModelBuilder::RegisterModelOutputs() {
                              "The output of graph is not registered [", output_name, "]");
     }
 
+    // Since for now all the shapes are deterministic for NNAPI, it's impossible we can have unknown output shape
+    const auto* shape_proto = node_arg->Shape();
+    ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for output: ", output_name);
+    if (shape_proto->dim_size() == 0) {
+      // In NNAPI scalar output must have {1} shape
+      const auto& output_shape = shaper_[output_name];
+      ORT_RETURN_IF_NOT(output_shape.size() == 1 && output_shape[0] == 1,
+                        "scalar output [", output_name, "] must have {1} shape, ",
+                        " actual shape, ", Shape2String(output_shape));
+
+      // Record the scalar output
+      // Since within NNAPI the scalar outputs will have {1} shapes, and for ORT scalar outputs will have {} shapes,
+      // we need to change the shapes of these scalar outputs back to {} when NNAPI EP returns these values to ORT
+      nnapi_model_->AddScalarOutput(output_name);
+    }
+
     std::string nnapi_output_name = output_name;
     if (IsOperandNHWC(output_name)) {
       // We need to transpose the output still in nhwc back to nchw
@@ -359,6 +377,18 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
   RETURN_STATUS_ON_ERROR(
       nnapi_->ANeuralNetworksModel_addOperand(nnapi_model_->model_, &operand_type.operandType));
   index = next_index_++;
+
+  if (operand_type.channelQuant) {
+    if (GetAndroidSdkVer() < 29) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Per-channel quantization is only supported on Android API level 29+,",
+                             " system API level: ", GetAndroidSdkVer());
+    }
+
+    RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
+        nnapi_model_->model_, index, &operand_type.channelQuant->params));
+  }
+
   return Status::OK();
 }
 

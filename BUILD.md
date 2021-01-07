@@ -11,6 +11,7 @@
   * [Reduced Operator Kernel Build](#Reduced-Operator-Kernel-Build)
   * [ONNX Runtime for Mobile Platforms](#ONNX-Runtime-for-Mobile-Platforms)
   * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
+  * [Execution Provider Shared Libraries](#Execution-Provider-Shared-Libraries)
   * Execution Providers
     * [NVIDIA CUDA](#CUDA)
     * [NVIDIA TensorRT](#TensorRT)
@@ -59,24 +60,23 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
 
 
-#### Linux/macOS
+#### Linux
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
+
+
 ##### macOS
 By default, ORT is configured to be built for a minimum target macOS version of 10.12.
 The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
 
-If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, use
-* With Xcode 11
+If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, please add the --user_xcode argument in the command line
    ```
    ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode
    ```
-* With Xcode 12
-   ```
-   ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode \
-              --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
-   ```
+While without this flag, the cmake build generator will be Unix makefile by default.
+Also, if you want to try cross compiling for Apple Silicon in an Intel-based MacOS machine, please add the argument --osx_arch arm64 with a cmake > 3.19, however the unit tests will be skipped due to the incompatible CPU instruction set.
+
 
 #### Notes
 
@@ -177,6 +177,24 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 
 ---
 
+## Execution Provider Shared Libraries
+The DNNL, TensorRT, and OpenVINO providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
+
+### Built files
+On Windows, shared provider libraries will be named 'onnxruntime_providers_\*.dll' (for example onnxruntime_providers_openvino.dll).
+On Unix, they will be named 'libonnxruntime_providers_\*.so'
+On Mac, they will be named 'libonnxruntime_providers_\*.dylib'.
+
+There is also a shared library that shared providers depend on called onnxruntime_providers_shared (with the same naming convension applied as above).
+
+Note: It is not recommended to put these libraries in a system location or added to a library search path (like LD_LIBRARY_PATH on Unix). If multiple versions of onnxruntime are installed on the system this can make them find the wrong libraries and lead to undefined behavior.
+
+### Loading the shared providers
+Shared provider libraries are loaded by the onnxruntime code (do not load or depend on them in your client code). The API for registering shared or non shared providers is identical, the difference is that shared ones will be loaded at runtime when the provider is added to the session options (through a call like OrtSessionOptionsAppendExecutionProvider_OpenVINO or SessionOptionsAppendExecutionProvider_OpenVINO in the C API).
+If a shared provider library cannot be loaded (if the file doesn't exist, or its dependencies don't exist or not in the path) then an error will be returned.
+
+The onnxruntime code will look for the provider shared libraries in the same location as the onnxruntime shared library is (or the executable statically linked to the static library version).
+
 ## Execution Providers
 
 ### CUDA
@@ -235,6 +253,8 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
 
 #### Build Instructions
+Note that TensorRT is built as a [shared provider library](#Execution-Provider-Shared-Libraries)
+
 ##### Windows
 ```
 .\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home>
@@ -309,6 +329,8 @@ See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-E
 #### Build Instructions
 The DNNL execution provider can be built for Intel CPU or GPU. To build for Intel GPU, install [Intel SDK for OpenCL Applications](https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html). Install the latest GPU driver - [Windows graphics driver](https://downloadcenter.intel.com/product/80939/Graphics), [Linux graphics compute runtime and OpenCL driver](https://github.com/intel/compute-runtime/releases).
 
+Note that DNNL is built as a [shared provider library](#Execution-Provider-Shared-Libraries)
+
 ##### Windows
 `.\build.bat --use_dnnl`
 
@@ -331,21 +353,21 @@ To build for Intel GPU, replace dnnl_opencl_root with the path of the Intel SDK 
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
 #### Prerequisites
-1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2021.1** for the appropriate OS and target hardware :
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2021.2** for the appropriate OS and target hardware :
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
-   Follow [documentation](https://docs.openvinotoolkit.org/2021.1/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvinotoolkit.org/2021.2/index.html) for detailed instructions.
 
-  *2021.1 is the recommended OpenVINO version. [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is minimal OpenVINO version requirement.*
-  *The minimum ubuntu version to support 2021.1 is 18.04.*
+  *2021.2 is the recommended OpenVINO version. [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is minimal OpenVINO version requirement.*
+  *The minimum ubuntu version to support 2021.2 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux_fpga.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_linux_fpga.html)
 
 3. Initialize the OpenVINO environment by running the setupvars script as shown below:
    * For Linux run:
@@ -365,6 +387,8 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
 
 #### Build Instructions
+Note that OpenVINO is built as a [shared provider library](#Execution-Provider-Shared-Libraries)
+
 ##### Windows
 ```
 .\build.bat --config RelWithDebInfo --use_openvino <hardware_option>
@@ -704,14 +728,17 @@ ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
 ---
 
 ## Architectures
-### x86
+### [64-bit x86](https://en.wikipedia.org/wiki/X86-64) (also known as x86_64 or AMD64)
+
+This is the default.
+
+### 32-bit x86
 #### Build Instructions
 ##### Windows
 * add `--x86` argument when launching `.\build.bat`
 
 ##### Linux
-* Must be built on a x86 OS
-* add --x86 argument to build.sh
+(Not officially supported)
 
 ---
 
@@ -1151,7 +1178,8 @@ Dockerfile instructions are available [here](./dockerfiles#migraphx)
 ***
 
 # Training
-## Prerequisites
+## CUDA
+### Prerequisites
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 
@@ -1163,7 +1191,7 @@ The default NVIDIA GPU build requires CUDA runtime libraries installed on the sy
 
 These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
 
-## Build instructions
+### Build instructions
 
 1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
 
@@ -1182,5 +1210,27 @@ These dependency versions should reflect what is in [Dockerfile.training](./dock
 
    * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
    * Run `./build.sh --enable_training --use_cuda --config=RelWithDebInfo --build_wheel`
+
+    This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
+
+## ROCM
+### Prerequisites
+
+The default AMD GPU build requires ROCM software toolkit installed on the system:
+
+* [ROCM](https://rocmdocs.amd.com/en/latest/)
+* [OpenMPI](https://www.open-mpi.org/) 4.0.4
+  * See [install_openmpi.sh](./tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
+
+These dependency versions should reflect what is in [Dockerfile.training](./dockerfiles/Dockerfile.training).
+
+### Build instructions
+
+1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
+
+2. Create the ONNX Runtime wheel
+
+   * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
+   * Run `./build.sh --config RelWithDebInfo --enable_training --build_wheel --use_rocm --rocm_home /opt/rocm --nccl_home /opt/rocm --mpi_home <location for openmpi>`
 
     This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.

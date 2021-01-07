@@ -336,6 +336,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
   char* GetGraphName(OrtAllocator* allocator) const;
   char* GetDomain(OrtAllocator* allocator) const;
   char* GetDescription(OrtAllocator* allocator) const;
+  char* GetGraphDescription(OrtAllocator* allocator) const;
   char** GetCustomMetadataMapKeys(OrtAllocator* allocator, _Out_ int64_t& num_keys) const;
   char* LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const;
   int64_t GetVersion() const;
@@ -349,7 +350,7 @@ struct Session : Base<OrtSession> {
   // Run that will allocate the output values
   std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                          const char* const* output_names, size_t output_count);
-  // Run for when there is a list of prealloated outputs
+  // Run for when there is a list of preallocated outputs
   void Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
            const char* const* output_names, Value* output_values, size_t output_count);
 

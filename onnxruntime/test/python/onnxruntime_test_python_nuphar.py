@@ -6,8 +6,10 @@ import numpy as np
 import onnx
 from onnx import helper, numpy_helper
 import onnxruntime as onnxrt
+from helper import get_name
 import os
 from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
+from onnxruntime.nuphar.model_tools import validate_with_ort
 import shutil
 import sys
 import subprocess
@@ -23,13 +25,13 @@ def reference_gemm(a, b, c, alpha, beta, transA, transB):
 
 def set_gemm_node_attrs(attrs, config):
     if config['alpha'] != 1.0:
-      attrs['alpha'] = config['alpha']
+        attrs['alpha'] = config['alpha']
     if config['beta'] != 1.0:
-      attrs['beta'] = config['beta']
+        attrs['beta'] = config['beta']
     if config['transA']:
-      attrs['transA'] = 1
+        attrs['transA'] = 1
     if config['transB']:
-      attrs['transB'] = 1
+        attrs['transB'] = 1
 
 def generate_gemm_inputs_initializers(graph, config, added_inputs_initializers={}, extend=False):
     M = config['M']
@@ -321,6 +323,16 @@ def set_gemm_model_inputs(config, test_inputs, a, b, c):
     if config['withC'] and not config['initC']:
         test_inputs[config['C']] = c
 
+
+def make_providers(nuphar_settings):
+    return [
+        ('NupharExecutionProvider', {
+            'nuphar_settings': nuphar_settings
+        }),
+        'CPUExecutionProvider',
+    ]
+
+
 class TestNuphar(unittest.TestCase):
 
     def test_bidaf(self):
@@ -383,8 +395,9 @@ class TestNuphar(unittest.TestCase):
         for model in [bidaf_opt_scan_model, bidaf_int8_scan_only_model]:
             nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir)
             for isa in ['avx', 'avx2', 'avx512']:
-                onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings + ', nuphar_codegen_target:' + isa)
-                sess = onnxrt.InferenceSession(model)  # JIT cache happens when initializing session
+                # JIT cache happens when initializing session
+                sess = onnxrt.InferenceSession(
+                    model, providers=make_providers(nuphar_settings + ', nuphar_codegen_target:' + isa))
 
             cache_dir_content = os.listdir(cache_dir)
             assert len(cache_dir_content) == 1
@@ -398,15 +411,13 @@ class TestNuphar(unittest.TestCase):
 
             nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_so_name:{}, nuphar_cache_force_no_jit:{}'.format(
                 cache_dir, so_name, 'on')
-            onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
-            sess = onnxrt.InferenceSession(model)
+            sess = onnxrt.InferenceSession(model, providers=make_providers(nuphar_settings))
             sess.run([], feed)
 
             # test avx
             nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_so_name:{}, nuphar_cache_force_no_jit:{}, nuphar_codegen_target:{}'.format(
                 cache_dir, so_name, 'on', 'avx')
-            onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
-            sess = onnxrt.InferenceSession(model)
+            sess = onnxrt.InferenceSession(model, providers=make_providers(nuphar_settings))
             sess.run([], feed)
 
     def test_bert_squad(self):
@@ -668,6 +679,48 @@ class TestNuphar(unittest.TestCase):
             assert np.allclose(expected_y, actual_y, atol=1e-7)
             print("finished " + matmul_model_name)
 
+    def test_loop_to_scan(self):
+        loop_model_filename = get_name("nuphar_tiny_model_with_loop_shape_infered.onnx")
+        scan_model_filename = "nuphar_tiny_model_with_loop_shape_infered_converted_to_scan.onnx"
+        subprocess.run([
+            sys.executable, '-m', 'onnxruntime.nuphar.model_editor',
+            '--input', loop_model_filename,
+            '--output', scan_model_filename, '--mode', 'loop_to_scan'
+        ], check=True)
 
+        validate_with_ort(loop_model_filename, scan_model_filename)
+
+    def test_loop_to_scan_with_inconvertible_loop(self):
+        # nuphar_onnx_test_loop11_inconvertible_loop.onnx contains a Loop op with dynamic loop count.
+        # This Loop op cannot be converted to a Scan op.
+        # Set --keep_unconvertible_loop_ops option so conversion will not fail due to unconvertible loop ops.
+        loop_model_filename = get_name("nuphar_onnx_test_loop11_inconvertible_loop.onnx")
+        scan_model_filename = "nuphar_onnx_test_loop11_inconvertible_loop_unchanged.onnx"
+        subprocess.run([
+            sys.executable, '-m', 'onnxruntime.nuphar.model_editor',
+            '--input', loop_model_filename,
+            '--output', scan_model_filename, '--mode', 'loop_to_scan',
+            '--keep_unconvertible_loop_ops'
+        ], check=True)
+
+        # onnxruntime is failing with:
+        # onnxruntime.capi.onnxruntime_pybind11_state.Fail: [ONNXRuntimeError] : 1 :
+        # FAIL : Non-zero status code returned while running Loop node. Name:''
+        # Status Message: Inconsistent shape in loop output for output.  Expected:{1} Got:{0}
+        # skip validate_with_ort for now
+        # validate_with_ort(loop_model_filename, scan_model_filename)
+
+    def test_loop_to_scan_tool(self):
+        loop_model_filename = get_name("nuphar_tiny_model_with_loop_shape_infered.onnx")
+        scan_model_filename = "nuphar_tiny_model_with_loop_shape_infered_converted_to_scan.onnx"
+        subprocess.run([
+            sys.executable, '-m', 'onnxruntime.nuphar.model_tools',
+            '--input', loop_model_filename,
+            '--output', scan_model_filename,
+            '--tool', 'convert_loop_to_scan_and_validate',
+            '--symbolic_dims', 'sequence=30'
+        ], check=True)
+
+        validate_with_ort(loop_model_filename, scan_model_filename)
 if __name__ == '__main__':
     unittest.main()

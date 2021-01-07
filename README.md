@@ -1,6 +1,3 @@
-
-Please help us improve ONNX Runtime by participating in our customer survey: http://aka.ms/ort-survey 
-
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
 
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20CPU%20CI%20Pipeline?label=Windows+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=9)
@@ -133,7 +130,7 @@ For production scenarios, it's strongly recommended to build only from an [offic
 
 |API|Supported Versions|Samples|
 |---|---|---|
-[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7, 3.8 (3.8 excludes Win GPU and Linux ARM)<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
+[Python](https://aka.ms/onnxruntime-python)| 3.6, 3.7, 3.8, 3.9 (3.8/3.9 excludes Win GPU and Linux ARM)<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
 |[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
 |[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
 |[C](docs/C_API.md)| | [Samples](./samples#CC)|
