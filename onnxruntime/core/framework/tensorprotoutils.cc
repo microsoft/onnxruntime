@@ -126,12 +126,18 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
               "UnpackTensorWithExternalData called for a tensor without any external data");
   std::unique_ptr<uint8_t[]> unpacked_tensor;
   size_t tensor_byte_size = 0;
-  onnxruntime::utils::ReadExternalDataForTensor(tensor, tensor_proto_dir, unpacked_tensor, tensor_byte_size);
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadExternalDataForTensor(
+      tensor,
+      tensor_proto_dir,
+      unpacked_tensor,
+      tensor_byte_size));
+
   size_t element_count = tensor_byte_size / sizeof(T);
   ORT_RETURN_IF_NOT(expected_size == element_count, "Expected data size does not match the actual external data size.");
   ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(
       gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.get()), tensor_byte_size),
       gsl::make_span(p_data, expected_size)));
+
   return Status::OK();
 }
 
@@ -177,7 +183,7 @@ DEFINE_UNPACK_TENSOR(uint32_t, ONNX_NAMESPACE::TensorProto_DataType_UINT32, uint
 
 // doesn't support raw data
 template <>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const ORTCHAR_T* , const void* /*raw_data*/, size_t /*raw_data_len*/,
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const ORTCHAR_T*, const void* /*raw_data*/, size_t /*raw_data_len*/,
                     /*out*/ std::string* p_data, size_t expected_size) {
   if (nullptr == p_data) {
     if (tensor.string_data_size() == 0) return Status::OK();

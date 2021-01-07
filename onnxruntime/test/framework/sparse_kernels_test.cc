@@ -14,6 +14,7 @@
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
 #include "test_utils.h"
+#include "file_util.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -518,6 +519,27 @@ std::vector<BFloat16> CreateValues<BFloat16>() {
 */
 
 template <typename T>
+static void CreateTensorWithExternalData(
+    TensorProto_DataType type,
+    const std::vector<T>& test_data,
+    std::basic_string<ORTCHAR_T>& filename,
+    TensorProto& tensor_proto) {
+  // Create external data
+  FILE* fp;
+  CreateTestFile(fp, filename);
+  size_t size_in_bytes = test_data.size() * sizeof(T);
+  ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
+  ASSERT_EQ(0, fclose(fp));
+
+  // set the tensor_proto to reference this external data
+  onnx::StringStringEntryProto* location = tensor_proto.mutable_external_data()->Add();
+  location->set_key("location");
+  location->set_value(ToMBString(filename));
+  tensor_proto.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
+  tensor_proto.set_data_type(type);
+}
+
+template <typename T>
 static NodeProto CreateConstantNode(bool indices_1D,
                                     std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
                                     std::vector<T>& expected_data) {
@@ -577,8 +599,8 @@ static void TestConversion(bool use_1D_indices,
   auto node = CreateConstantNode<T>(use_1D_indices, inserter, expected);
 
   TensorProto dense;
-  // Path is required for loading external data
-  // Using empty path here since the data is not external
+  // Path is required for loading external data (if any)
+  // When path is empty it will look for the data in current dir
   utils::ConstantNodeProtoToTensorProto(node, Path(), dense);
 
   gsl::span<const T> expected_span = gsl::make_span<const T>(expected.data(), expected.size());
@@ -648,6 +670,15 @@ TEST(SparseTensorConversionTests, TestConstantNodeConversion) {
         RawDataWriter(values, tp, TensorProto_DataType_UINT8);
       },
       RawDataChecker<uint8_t>);
+
+  // Test constant node conversion for SparseTensor with external data
+  PathString tensor_filename(ORT_TSTR("tensor_XXXXXX"));
+  TestConversion<float>(true,
+                        [&tensor_filename](const std::vector<float>& values, TensorProto& tp) {
+                          CreateTensorWithExternalData<float>(TensorProto_DataType_FLOAT, values, tensor_filename, tp);
+                        },
+                        RawDataChecker<float>);
+  DeleteFileFromDisk(tensor_filename.c_str());
 }
 
 /// Dense to Sparse conversion tests

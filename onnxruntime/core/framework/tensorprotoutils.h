@@ -76,6 +76,10 @@ template <typename T>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
                                     const ORTCHAR_T* tensor_proto_dir, size_t expected_size,
                                     /*out*/ T* p_data);
+
+// UnpackTensor from raw data, external data or the type specific data field.
+// Uses tensor_proto_dir to construct the full path for loading external data when this is nullptr it uses current dir.
+// If the tesnor does not contain raw data then raw_data should be nullptr and raw_data_len should be 0.
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const ORTCHAR_T* tensor_proto_dir, const void* raw_data, size_t raw_data_len,
                     /*out*/ T* p_data, size_t expected_size);
@@ -263,7 +267,7 @@ inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
 // it uses current directory.
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path, /*out*/ T* p_data, size_t expected_size) {
-  auto tensor_proto_path = model_path.ParentPath().ToPathString().c_str();
+  auto tensor_proto_path = model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str();
   return HasRawData(tensor)
              ? UnpackTensor(tensor, tensor_proto_path, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
              : UnpackTensor(tensor, tensor_proto_path, nullptr, 0, p_data, expected_size);

@@ -4,9 +4,14 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
+#include "file_util.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 
 using namespace ::onnxruntime::utils;
 using namespace ONNX_NAMESPACE;
@@ -79,6 +84,56 @@ static std::vector<T> CreateValues() {
 template <>
 std::vector<std::string> CreateValues<std::string>() {
   return {"one", "two", "three", "four"};
+}
+
+template <typename T>
+static void CreateTensorWithExternalData(
+    TensorProto_DataType type,
+    const std::vector<T>& test_data,
+    std::basic_string<ORTCHAR_T>& filename,
+    TensorProto& tensor_proto) {
+  // Create external data
+  FILE* fp;
+  CreateTestFile(fp, filename);
+  size_t size_in_bytes = test_data.size() * sizeof(T);
+  ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
+  ASSERT_EQ(0, fclose(fp));
+
+  // set the tensor_proto to reference this external data
+  onnx::StringStringEntryProto* location = tensor_proto.mutable_external_data()->Add();
+  location->set_key("location");
+  location->set_value(ToMBString(filename));
+  tensor_proto.mutable_dims()->Add(test_data.size());
+  tensor_proto.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
+  tensor_proto.set_data_type(type);
+}
+
+template <typename T>
+static void test_unpack_external_tensor(TensorProto_DataType type, const Path& model_path) {
+  // Create external data
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
+  TensorProto tensor_proto;
+  auto test_data = CreateValues<T>();
+  CreateTensorWithExternalData<T>(type, test_data, filename, tensor_proto);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
+                                                                         DeleteFileFromDisk);
+
+  // Unpack tensor with external data
+  std::vector<T> val(test_data.size());
+  auto st = utils::UnpackTensor(tensor_proto, model_path, val.data(), test_data.size());
+  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+
+  // Validate data
+  for (int i = 0; i < test_data.size(); i++) {
+    ASSERT_EQ(val[i], test_data[i]);
+  }
+}
+
+TEST(TensorProtoUtilsTest, UnpackTensorWithExternalData) {
+  Path model_path;
+  test_unpack_external_tensor<float>(TensorProto_DataType_FLOAT, model_path);
+  test_unpack_external_tensor<double>(TensorProto_DataType_DOUBLE, model_path);
+  test_unpack_external_tensor<int32_t>(TensorProto_DataType_INT32, model_path);
 }
 
 template <typename T>
@@ -178,6 +233,51 @@ TEST(TensorProtoUtilsTest, ConstantTensorProto) {
       -1);
 
   // sparse_tensor is covered by SparseTensorConversionTests.TestConstantNodeConversion
+}
+
+template <typename T>
+static NodeProto CreateConstantNodeWithExternalData(TensorProto_DataType type, PathString& tensor_filename,
+                                                    const std::vector<T>& test_data) {
+  NodeProto constant_node;
+  constant_node.set_op_type("Constant");
+  constant_node.add_output("Constant_output");
+
+  AttributeProto& attrib = *constant_node.mutable_attribute()->Add();
+  attrib.set_name("attrib");
+  attrib.set_type(AttributeProto_AttributeType_TENSOR);
+
+  TensorProto& tp = *attrib.mutable_t();
+  CreateTensorWithExternalData<T>(type, test_data, tensor_filename, tp);
+
+  return constant_node;
+}
+
+template <typename T>
+static void TestConstantNodeConversionWithExternalData(TensorProto_DataType type) {
+  // Create a constant node with external data
+  auto test_data = CreateValues<T>();
+  Path model_path;
+  PathString tensor_filename(ORT_TSTR("tensor_XXXXXX"));
+  auto c = CreateConstantNodeWithExternalData<T>(type, tensor_filename, test_data);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(tensor_filename.c_str()),
+                                                                         DeleteFileFromDisk);
+
+  // Convert NodeProto to tensorproto (with external data)
+  TensorProto tp;
+  EXPECT_STATUS_OK(utils::ConstantNodeProtoToTensorProto(c, model_path, tp));
+
+  // Unpack tensor and validate the data
+  std::vector<T> val(test_data.size());
+  auto st = utils::UnpackTensor(tp, model_path, val.data(), test_data.size());
+  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+  for (int i = 0; i < test_data.size(); i++) {
+    ASSERT_EQ(val[i], test_data[i]);
+  }
+}
+
+TEST(TensorProtoUtilsTest, ConstantTensorProtoWithExternalData) {
+  TestConstantNodeConversionWithExternalData<float>(TensorProto_DataType_FLOAT);
+  TestConstantNodeConversionWithExternalData<double>(TensorProto_DataType_DOUBLE);
 }
 }  // namespace test
 }  // namespace onnxruntime
