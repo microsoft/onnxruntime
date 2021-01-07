@@ -123,9 +123,3 @@ if __name__ == '__main__':
 
     # Compare each node's I/O value and sort based on average rtol
     post_processing(outputs_path_fp16_gpu, outputs_path_fp32_gpu)
-
-
-
-
-
-
