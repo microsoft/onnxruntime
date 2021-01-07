@@ -270,7 +270,7 @@ static void TestConstantNodeConversionWithExternalData(TensorProto_DataType type
   std::vector<T> val(test_data.size());
   auto st = utils::UnpackTensor(tp, model_path, val.data(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  for (int i = 0; i < test_data.size(); i++) {
+  for (size_t i = 0; i < test_data.size(); i++) {
     ASSERT_EQ(val[i], test_data[i]);
   }
 }
