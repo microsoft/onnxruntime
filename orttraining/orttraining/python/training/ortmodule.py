@@ -97,6 +97,7 @@ class ORTModule(torch.nn.Module):
         self._export_again = False
         # TODO: This is incorrect when different layers may be in different devices
         self._device = next(module.parameters()).device
+        self._require_export = False
 
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
