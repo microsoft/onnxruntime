@@ -17,7 +17,12 @@ typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
 // Create ML value.
 OrtValue CreateTensorValue(const std::vector<int64_t>& shape, const std::vector<float>& initializer, const bool allocate_on_gpu) {
+#ifdef USE_CUDA
   auto cpu_allocator = allocate_on_gpu ? TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault) : TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+#else
+  ORT_ENFORCE(allocate_on_gpu != true);
+  auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+#endif
   auto element_type = onnxruntime::DataTypeImpl::GetType<float>();
 
   std::unique_ptr<onnxruntime::Tensor> p_tensor = onnxruntime::make_unique<Tensor>(
@@ -28,7 +33,11 @@ OrtValue CreateTensorValue(const std::vector<int64_t>& shape, const std::vector<
   if (!allocate_on_gpu) {
     memcpy(p_tensor->MutableData<float>(), initializer.data(), initializer.size() * sizeof(float));
   } else {
+#ifdef USE_CUDA
     cudaMemcpy(p_tensor->MutableData<float>(), initializer.data(), initializer.size() * sizeof(float), cudaMemcpyHostToDevice);
+#else
+    ORT_THROW("Cannot use CUDA function when ORT is not built with CUDA.");
+#endif
   }
 
   OrtValue value;
@@ -68,9 +77,11 @@ void InitializeSession(onnxruntime::InferenceSession& session, onnxruntime::Mode
   // Load model.
   session.Load(buffer);
 
-  // Initialize the session.
+// Initialize the session.
+#if defined(USE_CUDA)
   onnxruntime::CUDAExecutionProviderInfo xp_info;
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(onnxruntime::make_unique<onnxruntime::CUDAExecutionProvider>(xp_info)));
+#endif
   ASSERT_STATUS_OK(session.Initialize());
 }
 
