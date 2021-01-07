@@ -283,29 +283,35 @@ class ORTTrainerOptions(object):
         device.mem_limit (int):
             maximum memory size (in bytes) used by device.id
         distributed (dict):
-            distributed training options
-        distributed.world_rank (int, default is 0):
+            distributed training options.
+        distributed.rank_config (dict):
+            DxHxP parallel configuration.
+        distributed.rank_config.world_rank (int, default is 0):
             rank ID used for data parallelism
-        distributed.world_size (int, default is 1):
+        distributed.rank_config.world_size (int, default is 1):
             number of ranks participating in parallelism
-        distributed.data_parallel_size (int, default is 1):
+        distributed.rank_config.data_parallel_size (int, default is 1):
             number of ranks participating in data parallelism
-        distributed.horizontal_parallel_size (int, default is 1):
+        distributed.rank_config.horizontal_parallel_size (int, default is 1):
             number of ranks participating in horizontal parallelism
-        distributed.pipeline_parallel_size (int, default is 1):
+        distributed.rank_config.pipeline_parallel_size (int, default is 1):
             number of ranks participating in pipeline parallelism
-        distributed.num_pipeline_micro_batches (int, default is 1):
+        distributed.pipeline_parallel_config (dict):
+            Options which are only useful to pipeline parallel.
+        distributed.pipeline_parallel_config.num_pipeline_micro_batches (int, default is 1):
             number of micro-batches. We divide input batch into micro-batches and run the graph.
-        distributed.pipeline_cut_info_string (string, default is ''):
+        distributed.pipeline_parallel_config.pipeline_cut_info_string (string, default is ''):
             string of cutting ids for pipeline partition.
-        distributed.allreduce_post_accumulation (bool, default is False):
+        distributed.optimizer_config (dict):
+            Options related to optimization algorithm including gradient accumulation.
+        distributed.optimizer_config.allreduce_post_accumulation (bool, default is False):
             True enables overlap of AllReduce with computation, while False,
             postpone AllReduce until all gradients are ready
-        distributed.deepspeed_zero_optimization:
+        distributed.optimizer_config.deepspeed_zero_optimization:
             DeepSpeed ZeRO options.
-        distributed.deepspeed_zero_optimization.stage (int, default is 0):
+        distributed.optimizer_config.deepspeed_zero_optimization.stage (int, default is 0):
             select which stage of DeepSpeed ZeRO to use. Stage 0 means disabled.
-        distributed.enable_adasum (bool, default is False):
+        distributed.optimizer_config.enable_adasum (bool, default is False):
             enable `Adasum <https://arxiv.org/abs/2006.02924>`_
             algorithm for AllReduce
         lr_scheduler (optim._LRScheduler, default is None):

@@ -67,7 +67,7 @@ Status GetDeviceAssignmentMap(const Graph& graph,
 //  X -> ReLU1 -> Y
 //  S -> ReLU2 -> T
 //
-// If we want to execute ReLU2 after ReLU2, we can do
+// If we want to execute ReLU2 after ReLU1, we can do
 //
 //  X -> ReLU1 -> Y ------.
 //                        |
