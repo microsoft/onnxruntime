@@ -69,6 +69,18 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
   }
 
+  ValidateCNNNetwork(global_context, subgraph_context, const_outputs_map, ng_function);
+
+  try {
+    return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
+  } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork: " + e.what());
+  } catch (...) {
+    ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork");
+  }
+}
+
+void ValidateCNNNetwork(const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map, std::shared_ptr<ngraph::Function> ng_function) {
   if (global_context.device_type.find("GPU") != std::string::npos &&
       subgraph_context.precision == InferenceEngine::Precision::FP16) {
     //FP16 transformations
@@ -95,14 +107,6 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
     }
   }
 #endif
-
-  try {
-    return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
-  } catch (const InferenceEngine::details::InferenceEngineException& e) {
-    ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork: " + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork");
-  }
 }
 
 InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const Provider_TypeProto& onnx_type, std::string device) {

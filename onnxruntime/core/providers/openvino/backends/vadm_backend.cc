@@ -10,8 +10,6 @@
 #include <inference_engine.hpp>
 
 #include "core/providers/shared_library/provider_api.h"
-#include <ngraph/pass/convert_fp32_to_fp16.hpp>
-#include <ngraph/pass/constant_folding.hpp>
 
 #include "../contexts.h"
 #include "../backend_utils.h"
@@ -58,6 +56,11 @@ VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
 #endif
 
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
+#ifndef NDEBUG
+  if (IsDebugEnabled()) {
+    DumpOnnxModelProto(model_proto, subgraph_context_.subgraph_name + "_static.onnx");
+  }
+#endif
   InferenceEngine::Core ie;
   const std::string model = model_proto.SerializeAsString();
   InferenceEngine::Blob::Ptr blob = {nullptr};
@@ -72,39 +75,7 @@ VADMBackend::VADMBackend(const Provider_ModelProto& model_proto,
   }
   std::shared_ptr<ngraph::Function> ng_function;
   ng_function = cnn_network_.getFunction();
-
-#ifndef NDEBUG
-  if (IsDebugEnabled()) {
-    std::fstream outfile(subgraph_context.subgraph_name + "_static.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto.SerializeToOstream(outfile);
-  }
-#endif
-
-  if (global_context.device_type.find("GPU") != std::string::npos &&
-      subgraph_context.precision == InferenceEngine::Precision::FP16) {
-    //FP16 transformations
-    ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
-    ng_function->validate_nodes_and_infer_types();
-  }
-
-  if (!global_context.is_wholly_supported_graph) {
-    std::map<std::string, std::string> result_to_output;
-    for (auto& result : ng_function->get_results()) {
-      result_to_output[result->get_friendly_name()] = result->input_value(0).get_node_shared_ptr()->get_friendly_name();
-    }
-
-    ngraph::pass::ConstantFolding().run_on_function(ng_function);
-    auto& results = const_cast<::ngraph::ResultVector&>(ng_function->get_results());
-    size_t index = results.size() - 1;
-    for (auto it = results.rbegin(); it != results.rend(); ++it) {
-      if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
-        const_outputs_map_[result_to_output.at((*it)->get_friendly_name())] = const_node;
-        results.erase(results.begin() + index);
-      }
-      --index;
-    }
-  }
-
+  ValidateCNNNetwork(global_context, subgraph_context, const_outputs_map_, ng_function);
   SetIODefs(model_proto, std::make_shared<InferenceEngine::CNNNetwork>(ng_function), subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
 
   if (const_outputs_map_.size() == subgraph_context_.output_names.size())
