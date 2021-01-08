@@ -743,14 +743,17 @@ static void TestSTFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, 
   // Check results
   auto y_tensor = result.Outputs().Lookup(L"Output.STFT").as<TensorFloat>();
   auto y_ivv = y_tensor.GetAsVectorView();
-  //auto size = y_ivv.Size();
-  for (int64_t dft_idx = 0; dft_idx < number_of_dfts; dft_idx ++) {
-    for (int64_t i = 0; i < onesided_dft_size; i++) {
-      auto real_idx = static_cast<uint32_t>((i*2) + dft_idx * onesided_dft_size);
-      printf("%d , %f , %f\n", static_cast<uint32_t>(i), y_ivv.GetAt(real_idx), y_ivv.GetAt(real_idx + 1));
+  auto size = y_ivv.Size();
+
+  if (size == number_of_dfts * onesided_dft_size * 2) {
+    for (int64_t dft_idx = 0; dft_idx < number_of_dfts; dft_idx++) {
+      for (int64_t i = 0; i < onesided_dft_size; i++) {
+        auto real_idx = static_cast<uint32_t>((i * 2) + (2 * dft_idx * onesided_dft_size));
+        printf("%d , %f , %f\n", static_cast<uint32_t>(i), y_ivv.GetAt(real_idx), y_ivv.GetAt(real_idx + 1));
+      }
     }
   }
-}
+ }
 
 static void TestMiddleCSpectrogram(
     int64_t batch_size, int64_t signal_size, int64_t dft_size, int64_t hop_size,
