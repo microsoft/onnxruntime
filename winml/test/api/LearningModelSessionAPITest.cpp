@@ -656,16 +656,50 @@ static void TestDFT() {
 }
 
 template <typename T>
-static auto make_middle_c(int64_t signal_size, int64_t sample_rate) {
-  float middle_c_in_hertz = 261.626f;
-  float angular_velocity = middle_c_in_hertz * 2 * 3.1415f;
+static auto make_pure_frequency(float frequency_in_hertz, int64_t signal_size, int64_t sample_rate) {
+  float amplitude = 4;
+  float angular_velocity = frequency_in_hertz * 2 * 3.1415f;
   std::vector<T> signal(signal_size);
   for (int64_t i = 0; i < signal_size; i++) {
-    T time = i / static_cast<T>(sample_rate); 
-    signal[i] = cos(angular_velocity * time);
+    T time = i / static_cast<T>(sample_rate);
+    signal[i] = amplitude * cos(angular_velocity * time);
   }
   return signal;
 }
+
+template <typename T>
+static auto make_middle_c(int64_t signal_size, int64_t sample_rate) {
+  float middle_c_in_hertz = 261.626f;
+  return make_pure_frequency<T>(middle_c_in_hertz, signal_size, sample_rate);
+}
+
+template <typename T>
+static auto make_c2(int64_t signal_size, int64_t sample_rate) {
+  float middle_c_in_hertz = 261.626f * 2;
+  return make_pure_frequency<T>(middle_c_in_hertz, signal_size, sample_rate);
+}
+
+template <typename T>
+static auto make_c4(int64_t signal_size, int64_t sample_rate) {
+  float middle_c_in_hertz = 261.626f * 4;
+  return make_pure_frequency<T>(middle_c_in_hertz, signal_size, sample_rate);
+}
+
+template <typename T>
+static auto make_3_tones(int64_t signal_size, int64_t sample_rate) {
+  auto middle_c = make_middle_c<T>(signal_size, sample_rate);
+  auto c2 = make_c2<T>(signal_size, sample_rate);
+  auto c4 = make_c4<T>(signal_size, sample_rate);
+  for (int64_t i = 0; i < signal_size; i++) {
+    middle_c[i] = (i < signal_size / 3) ?
+                    middle_c[i] :
+                    (i < 2*signal_size/3) ?
+                        (middle_c[i] + c2[i]) :
+                        (middle_c[i] + c2[i] + c4[i]);
+  }
+  return middle_c;
+}
+
 
 static void TestSTFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int64_t hop_size) {
   printf("\nSTFT\n");
@@ -764,11 +798,12 @@ static void TestMiddleCSpectrogram(
   using Operator = winml_experimental::LearningModelOperator;
 
   static const wchar_t MS_DOMAIN[] = L"com.microsoft";
-  
+
+  auto number_of_dfts = static_cast<int64_t>(ceil((signal_size - dft_size) / hop_size));
   // Input and output shapes
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> input_shape = {batch_size, signal_size};
-  std::vector<int64_t> mel_spectrogram_shape = {batch_size, n_mel_bins};
+  std::vector<int64_t> mel_spectrogram_shape = {batch_size, 1, number_of_dfts, n_mel_bins};
 
   // Constant initializers
   auto power_of_2_exponent = TensorFloat::CreateFromShapeArrayAndDataArray({}, {2});
@@ -785,9 +820,9 @@ static void TestMiddleCSpectrogram(
   auto complex_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {0, 0, 0, 1});
   auto complex_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {INT_MAX, INT_MAX, INT_MAX, 2});
 
-  auto number_of_dfts = static_cast<int64_t>(ceil((signal_size - dft_size) / hop_size));
   int64_t onesided_dft_size = static_cast<int64_t>(floor(dft_size / 2.f) + 1);
   auto mel_input_shape = TensorInt64Bit::CreateFromShapeArrayAndDataArray({2}, {batch_size * number_of_dfts, onesided_dft_size});
+  auto output_shape = TensorInt64Bit::CreateFromShapeArrayAndDataArray({4}, mel_spectrogram_shape);
 
   // Mel spectrogram
   auto num_mel_bins = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {n_mel_bins});
@@ -863,14 +898,19 @@ static void TestMiddleCSpectrogram(
           .Add(Operator(L"MatMul", L"matmul0")
                    .SetInput(L"A", L"reshaped_output")
                    .SetInput(L"B", L"mel_weight_matrix")
-                   .SetOutput(L"Y", L"Output.MelSpectrogram"))
+                   .SetOutput(L"Y", L"mel_spectrogram"))
+          .Operators()
+          .Add(Operator(L"Reshape", L"reshape1")
+                   .SetInput(L"data", L"mel_spectrogram")
+                   .SetConstant(L"shape", output_shape)
+                   .SetOutput(L"reshaped", L"Output.MelSpectrogram"))
           .CreateModel();
 
   LearningModelSession session(model);
   LearningModelBinding binding(session);
 
   // Populate binding
-  auto signal = make_middle_c<float>(signal_size, 8192);
+  auto signal = make_3_tones<float>(signal_size, 8192);
   binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromShapeArrayAndDataArray(input_shape, signal));
  
   // These are constant initializers. Constants should be automatically generated and set... but since that is not implemented... they need to be duplicated
@@ -890,18 +930,35 @@ static void TestMiddleCSpectrogram(
   binding.Bind(L"melweightmatrix0.upper_edge_hertz", upper_edge_hertz);
   binding.Bind(L"reshape0.shape", mel_input_shape);
   binding.Bind(L"power_of_2_exponent", power_of_2_exponent);
+  binding.Bind(L"reshape1.shape", output_shape);
+  
+  winrt::Windows::Media::VideoFrame output_image(
+      winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
+      static_cast<int32_t>(n_mel_bins),
+      static_cast<int32_t>(number_of_dfts));
+
+  binding.Bind(L"Output.MelSpectrogram", output_image);
 
   // Evaluate
   auto result = session.Evaluate(binding, L"");
 
-  // Check results
+  // check the output video frame object by saving output image to disk
+  std::wstring out_name = L"mel_spectrogram.jpg";
+  winrt::Windows::Storage::StorageFolder folder = winrt::Windows::Storage::StorageFolder::GetFolderFromPathAsync(L"e:\\").get();
+  winrt::Windows::Storage::StorageFile file = folder.CreateFileAsync(out_name, winrt::Windows::Storage::CreationCollisionOption::ReplaceExisting).get();
+  winrt::Windows::Storage::Streams::IRandomAccessStream write_stream = file.OpenAsync(winrt::Windows::Storage::FileAccessMode::ReadWrite).get();
+  winrt::Windows::Graphics::Imaging::BitmapEncoder encoder = winrt::Windows::Graphics::Imaging::BitmapEncoder::CreateAsync(winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(), write_stream).get();
+  // Set the software bitmap
+  encoder.SetSoftwareBitmap(output_image.SoftwareBitmap());
+  encoder.FlushAsync().get();
 
-  auto final_tensor = result.Outputs().Lookup(L"Output.MelSpectrogram").as<TensorFloat>();
+
+  /*auto final_tensor = result.Outputs().Lookup(L"Output.MelSpectrogram").as<TensorFloat>();
   auto final_ivv = final_tensor.GetAsVectorView();
   printf("Output.MelSpectrogram\n\n");
   for (uint32_t i = 0; i < final_ivv.Size(); i++) {
     printf("%f\n", final_ivv.GetAt(i));
-  }
+  }*/
 }
 
 static void TestGemm() {
@@ -968,18 +1025,17 @@ static void TestModelBuilding() {
   }
 
   {
+    int64_t batch_size = 1;
+
     int64_t sample_rate = 8192;
     float signal_duration_in_seconds = 5.f;
-
-    int64_t batch_size = 1;
     int64_t signal_size = static_cast<int64_t>(sample_rate * signal_duration_in_seconds);
-    int64_t window_size = 256;  //static_cast<int64_t>(sample_rate * frame_duration_in_seconds);
-    int64_t dft_size = 256;  //static_cast<int64_t>(sample_rate * frame_duration_in_seconds);
-    int64_t hop_size = 128;  //static_cast<int64_t>(sample_rate * frame_stride_in_seconds);
-    int64_t n_mel_bins = 10;
-    int64_t sampling_rate = 48000;
+    int64_t window_size = 512;
+    int64_t dft_size = 512;
+    int64_t hop_size = 128;
+    int64_t n_mel_bins = 1024;
 
-    TestMiddleCSpectrogram(batch_size, signal_size, dft_size, window_size, hop_size, n_mel_bins, sampling_rate);
+    TestMiddleCSpectrogram(batch_size, signal_size, dft_size, window_size, hop_size, n_mel_bins, sample_rate);
   }
 }
 
