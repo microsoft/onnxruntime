@@ -81,13 +81,13 @@ class TestInferenceSession(unittest.TestCase):
 
             def runBaseTest2():
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
-                self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+                self.assertIn('CUDAExecutionProvider', sess.get_providers())
 
                 # test get/set of "cuda_mem_limit" configuration.
                 options = sess.get_provider_options()
-                self.assertTrue('CUDAExecutionProvider' in options)
+                self.assertIn('CUDAExecutionProvider', options)
                 option = options['CUDAExecutionProvider']
-                self.assertTrue('cuda_mem_limit' in option)
+                self.assertIn('cuda_mem_limit', option)
                 ori_mem_limit = option['cuda_mem_limit']
                 new_mem_limit = int(ori_mem_limit) // 2
                 option['cuda_mem_limit'] = new_mem_limit
@@ -100,16 +100,27 @@ class TestInferenceSession(unittest.TestCase):
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], ori_mem_limit)
 
-                # test get/set of "arena_extend_strategy" configuration.
-                options = sess.get_provider_options()
-                self.assertTrue('CUDAExecutionProvider' in options)
-                option = options['CUDAExecutionProvider']
-                self.assertTrue('arena_extend_strategy' in option)
-                for strategy in ['kNextPowerOfTwo', 'kSameAsRequested']:
-                    option['arena_extend_strategy'] = strategy
-                    sess.set_providers(['CUDAExecutionProvider'], [option])
-                    options = sess.get_provider_options()
-                    self.assertEqual(options['CUDAExecutionProvider']['arena_extend_strategy'], strategy)
+                def test_get_and_set_option_with_values(option_name, option_values):
+                    provider_options = sess.get_provider_options()
+                    self.assertIn('CUDAExecutionProvider', provider_options)
+                    cuda_options = options['CUDAExecutionProvider']
+                    self.assertIn(option_name, cuda_options)
+                    for option_value in option_values:
+                        cuda_options[option_name] = option_value
+                        sess.set_providers(['CUDAExecutionProvider'], [cuda_options])
+                        new_provider_options = sess.get_provider_options()
+                        self.assertEqual(
+                            new_provider_options.get('CUDAExecutionProvider', {}).get(option_name),
+                            str(option_value))
+
+                test_get_and_set_option_with_values(
+                    'arena_extend_strategy', ['kNextPowerOfTwo', 'kSameAsRequested'])
+
+                test_get_and_set_option_with_values(
+                    'cudnn_conv_algo_search', ["DEFAULT", "EXHAUSTIVE", "HEURISTIC"])
+
+                test_get_and_set_option_with_values(
+                    'do_copy_in_default_stream', [0, 1])
 
                 #
                 # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
@@ -181,21 +192,17 @@ class TestInferenceSession(unittest.TestCase):
 
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
 
-                # configure session with not legit option values and that shloud fail
+                # configure session with invalid option values and that should fail
                 with self.assertRaises(RuntimeError):
                     option = {'device_id': num_device}
                     sess.set_providers(['CUDAExecutionProvider'], [option])
-                    option = {'device_id': 'non_legit_value'}
+                    option = {'device_id': 'invalid_value'}
                     sess.set_providers(['CUDAExecutionProvider'], [option])
 
-                # configure session with not legit option should cause no effect
-                option = {'device_id': 0}
-                sess.set_providers(['CUDAExecutionProvider'], [option])
-                option = {'non_legit_option': num_device}
-                sess.set_providers(['CUDAExecutionProvider'], [option])
-                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
-
-
+                # configure session with invalid option should fail
+                with self.assertRaises(RuntimeError):
+                    option = {'invalid_option': 123}
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
 
             libnames = ('libcuda.so', 'libcuda.dylib', 'cuda.dll')
             for libname in libnames:
@@ -218,8 +225,7 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
             sess.set_providers(['InvalidProvider'])
-        self.assertTrue(
-            '[\'InvalidProvider\'] does not contain a subset of available providers' in str(context.exception))
+        self.assertTrue('\'InvalidProvider\' is unavailable' in str(context.exception))
 
     def testSessionProviders(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
@@ -510,6 +516,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual('squeezenet_old', modelmeta.graph_name)
         self.assertEqual('', modelmeta.domain)
         self.assertEqual('', modelmeta.description)
+        self.assertEqual('', modelmeta.graph_description)
 
     def testProfilerWithSessionOptions(self):
         so = onnxrt.SessionOptions()
@@ -711,7 +718,7 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), so, ['CPUExecutionProvider'])
         res = sess.run(["Y"], {"X": np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)})
         self.assertTrue(np.array_equal(res[0], np.array([[2.0, 2.0], [12.0, 12.0], [30.0, 30.0]], dtype=np.float32)))
-        
+
     def testRegisterCustomOpsLibrary(self):
         if sys.platform.startswith("win"):
             shared_library = 'custom_op_library.dll'
@@ -808,17 +815,17 @@ class TestInferenceSession(unittest.TestCase):
             # 1. if there are intermittent failure in this test, something is wrong
             # 2. it's easier to repro on slower GPU (like M60, Geforce 1070)
 
-            # to repro #4829, uncomment the line below to run copy in a separate stream
-            #onnxrt.capi._pybind_state.set_do_copy_in_default_stream(False)
+            # to repro #4829, set the CUDA EP do_copy_in_default_stream option to False
+            providers = [("CUDAExecutionProvider", {"do_copy_in_default_stream": True}), "CPUExecutionProvider"]
 
-            session = onnxrt.InferenceSession(get_name("issue4829.onnx"))
+            session = onnxrt.InferenceSession(get_name("issue4829.onnx"), providers=providers)
             shape = np.array([2,2], dtype=np.int64)
             for iteration in range(100000):
                 result = session.run(output_names=['output'], input_feed={'shape': shape})
 
     def testSharedAllocatorUsingCreateAndRegisterAllocator(self):
         # Create and register an arena based allocator
-        
+
         # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) (create an OrtArenaCfg like this template if you want to use non-default parameters)
         ort_memory_info = onnxrt.OrtMemoryInfo("Cpu", onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR, 0, onnxrt.OrtMemType.DEFAULT)
         # Use this option if using non-default OrtArenaCfg : onnxrt.create_and_register_allocator(ort_memory_info, ort_arena_cfg)
@@ -834,6 +841,56 @@ class TestInferenceSession(unittest.TestCase):
         so2 = onnxrt.SessionOptions()
         so2.log_severity_level = 1
         onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so2)
+
+    def testCheckAndNormalizeProviderArgs(self):
+        from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args
+
+        valid_providers = ["a", "b", "c"]
+
+        def check_success(providers, provider_options, expected_providers, expected_provider_options):
+            actual_providers, actual_provider_options = check_and_normalize_provider_args(
+                providers, provider_options, valid_providers)
+            self.assertEqual(actual_providers, expected_providers)
+            self.assertEqual(actual_provider_options, expected_provider_options)
+
+        check_success(None, None, [], [])
+
+        check_success(["a"], None, ["a"], [{}])
+
+        check_success(["a", "b"], None, ["a", "b"], [{}, {}])
+
+        check_success([("a", {1: 2}), "b"], None, ["a", "b"], [{"1": "2"}, {}])
+
+        check_success(["a", "b"], [{1: 2}, {}], ["a", "b"], [{"1": "2"}, {}])
+
+        with self.assertWarns(UserWarning):
+            check_success(["a", "b", "a"], [{"x": 1}, {}, {"y": 2}], ["a", "b"], [{"x": "1"}, {}])
+
+        def check_failure(providers, provider_options):
+            with self.assertRaises(ValueError):
+                check_and_normalize_provider_args(providers, provider_options, valid_providers)
+
+        # provider not valid
+        check_failure(["d"], None)
+
+        # providers not sequence
+        check_failure(3, None)
+
+        # providers value invalid
+        check_failure([3], None)
+
+        # provider_options not sequence
+        check_failure(["a"], 3)
+
+        # provider_options value invalid
+        check_failure(["a"], ["not dict"])
+
+        # providers and provider_options length mismatch
+        check_failure(["a", "b"], [{1: 2}])
+
+        # provider options unsupported mixed specification
+        check_failure([("a", {1: 2})], [{3: 4}])
+
 
 if __name__ == '__main__':
     unittest.main()

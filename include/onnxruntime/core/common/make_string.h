@@ -19,7 +19,6 @@
 
 #include <locale>
 #include <sstream>
-#include <type_traits>
 
 namespace onnxruntime {
 
@@ -41,25 +40,23 @@ inline void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... ar
 
 /**
  * Makes a string by concatenating string representations of the arguments.
+ * This version uses the current locale.
  */
 template <typename... Args>
 std::string MakeString(const Args&... args) {
   std::ostringstream ss;
-  ss.imbue(std::locale::classic());
   detail::MakeStringImpl(ss, args...);
   return ss.str();
 }
 
 /**
  * Makes a string by concatenating string representations of the arguments.
- * This version uses the current locale.
+ * This version uses std::locale::classic().
  */
 template <typename... Args>
-std::string MakeStringLite(const Args&... args) {
+std::string MakeStringWithClassicLocale(const Args&... args) {
   std::ostringstream ss;
-  // the following line causes a binary size increase
-  //ss.imbue(std::locale::classic());
-  // just use the current locale for this lite version
+  ss.imbue(std::locale::classic());
   detail::MakeStringImpl(ss, args...);
   return ss.str();
 }
@@ -74,41 +71,12 @@ inline std::string MakeString(const char* cstr) {
   return cstr;
 }
 
-/**
- * Tries to parse a value from an entire string.
- */
-template <typename T>
-bool TryParse(const std::string& str, T& value) {
-  if (std::is_integral<T>::value && std::is_unsigned<T>::value) {
-    // if T is unsigned integral type, reject negative values which will wrap
-    if (!str.empty() && str[0] == '-') {
-      return false;
-    }
-  }
-
-  // don't allow leading whitespace
-  if (!str.empty() && std::isspace(str[0], std::locale::classic())) {
-    return false;
-  }
-
-  std::istringstream is{str};
-  is.imbue(std::locale::classic());
-  T parsed_value{};
-
-  const bool parse_successful =
-      is >> parsed_value &&
-      is.get() == std::istringstream::traits_type::eof();  // don't allow trailing characters
-  if (!parse_successful) {
-    return false;
-  }
-
-  value = std::move(parsed_value);
-  return true;
+inline std::string MakeStringWithClassicLocale(const std::string& str) {
+  return str;
 }
 
-inline bool TryParse(const std::string& str, std::string& value) {
-  value = str;
-  return true;
+inline std::string MakeStringWithClassicLocale(const char* cstr) {
+  return cstr;
 }
 
 }  // namespace onnxruntime
