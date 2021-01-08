@@ -41,13 +41,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    OrtCUDAProviderOptions cuda_options{
-        0,
-        static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
-        std::numeric_limits<size_t>::max(),
-        0,
-        !performance_test_config.run_config.do_cuda_copy_in_separate_stream};
-    session_options.AppendExecutionProvider_CUDA(cuda_options);
+    //OrtCUDAProviderOptions cuda_options{
+    //    0,
+    //    static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
+    //    std::numeric_limits<size_t>::max(),
+    //    0,
+    //    !performance_test_config.run_config.do_cuda_copy_in_separate_stream};
+    //session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif

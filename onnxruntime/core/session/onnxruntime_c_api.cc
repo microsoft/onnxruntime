@@ -36,6 +36,7 @@
 #include "core/platform/ort_mutex.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
 #endif
 
 using namespace onnxruntime::logging;
@@ -1850,6 +1851,56 @@ ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptions** out) {
+  API_IMPL_BEGIN
+#ifdef USE_CUDA
+  *out = new OrtCUDAProviderOptions();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
+                    _Inout_ OrtCUDAProviderOptions* options,
+                    _In_reads_(num_keys) const char* const* provider_keys,
+                    _In_reads_(num_keys) const char* const* provider_values,
+                    size_t num_keys) {
+  API_IMPL_BEGIN
+#ifdef USE_CUDA
+  std::unordered_map<std::string, std::string> provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_keys[i] == nullptr || provider_keys[i][0] == '\0' ||
+        provider_values == nullptr || provider_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+    provider_options_map[std::string(provider_keys[i])] = std::string(provider_values[i]);
+  }
+
+  auto internal_options = CUDAExecutionProviderInfo::FromProviderOptions(provider_options_map);
+
+  options->arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
+  options->cuda_mem_limit = internal_options.cuda_mem_limit;
+  options->cudnn_conv_algo_search = internal_options.cudnn_conv_algo;
+  options->device_id = internal_options.device_id;
+  options->do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_keys);
+  ORT_UNUSED_PARAMETER(provider_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptions* ptr) {
+  delete ptr;
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2084,6 +2135,9 @@ static constexpr OrtApi ort_api_1_to_7 = {
 
     // Version 7 - In development, feel free to add/remove/rearrange here
     &OrtApis::ModelMetadataGetGraphDescription,
+    &OrtApis::CreateCUDAProviderOptions,
+    &OrtApis::UpdateCUDAProviderOptions,
+    &OrtApis::ReleaseCUDAProviderOptions,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

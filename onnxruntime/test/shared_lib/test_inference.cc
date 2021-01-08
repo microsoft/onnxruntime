@@ -1306,7 +1306,6 @@ TEST(CApiTest, TestSharingOfInitializer) {
                     expected_values_y,
                     nullptr);
 }
-
 #ifndef ORT_NO_RTTI
 TEST(CApiTest, TestIncorrectInputTypeToModel_Tensors) {
   // simple inference test
@@ -1335,6 +1334,7 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_Tensors) {
 
   ASSERT_TRUE(exception_thrown);
 }
+
 TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
   // simple inference test
   // prepare inputs (incorrect type)
@@ -1366,5 +1366,23 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
   }
 
   ASSERT_TRUE(exception_thrown);
+}
+#endif
+
+#ifdef USE_CUDA
+
+// This test uses CreateCUDAProviderOptions/UpdateCUDAProviderOptions APIs to configure and create
+// a CUDA Execution Provider
+TEST(CApiTest, TestCreatingCUDAProviderOptions) {
+  const auto& api = Ort::GetApi();
+  OrtCUDAProviderOptions* options;
+  ASSERT_TRUE(api.CreateCUDAProviderOptions(&options) == nullptr);
+  std::unique_ptr<OrtCUDAProviderOptions, decltype(api.ReleaseCUDAProviderOptions)> rel_arena_cfg(options, api.ReleaseCUDAProviderOptions);
+
+  std::vector<const char*> keys{"device_id", "arena_extend_strategy", "cuda_mem_limit",
+                                "do_copy_in_default_stream"};
+  std::vector<const char*> values{"0", "kSameAsRequested", "200000",
+                                  "0"};
+  ASSERT_TRUE(api.UpdateCUDAProviderOptions(options, keys.data(), values.data(), 4) == nullptr);
 }
 #endif

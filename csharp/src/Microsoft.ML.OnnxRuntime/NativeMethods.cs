@@ -189,6 +189,9 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateArenaCfg;
         public IntPtr ReleaseArenaCfg;
         public IntPtr ModelMetadataGetGraphDescription;
+        public IntPtr CreateCUDAProviderOptions;
+        public IntPtr UpdateCUDAProviderOptions;
+        public IntPtr ReleaseCUDAProviderOptions;
     }
 
     internal static class NativeMethods
@@ -334,6 +337,10 @@ namespace Microsoft.ML.OnnxRuntime
 
             OrtGetAvailableProviders = (DOrtGetAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.GetAvailableProviders, typeof(DOrtGetAvailableProviders));
             OrtReleaseAvailableProviders = (DOrtReleaseAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAvailableProviders, typeof(DOrtReleaseAvailableProviders));
+
+            OrtCreateCUDAProviderOptions = (DOrtCreateCUDAProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateCUDAProviderOptions, typeof(DOrtCreateCUDAProviderOptions));
+            OrtReleaseCUDAProviderOptions = (DOrtReleaseCUDAProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseCUDAProviderOptions, typeof(DOrtReleaseCUDAProviderOptions));
+
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -356,6 +363,21 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion Runtime/Environment API
 
+        #region ExecutionProvider API
+        /// <summary>
+        /// Creates OrtCUDAProviderOptions instance
+        /// </summary>
+        /// <param name="cudaProviderOptionsInstance">(output) instance of OrtCUDAProviderOptions</param>
+        public delegate IntPtr /* OrtStatus* */DOrtCreateCUDAProviderOptions(out IntPtr /*(OrtCUDAProviderOptions**)*/ cudaProviderOptionsInstance);
+        public static DOrtCreateCUDAProviderOptions OrtCreateCUDAProviderOptions;
+
+        /// <summary>
+        /// Frees OrtCUDAProviderOptions instance
+        /// </summary>
+        /// <param name="cudaProviderOptionsInstance">instance of OrtCUDAProviderOptions</param>
+        public delegate void DOrtReleaseCUDAProviderOptions(IntPtr /*(OrtCUDAProviderOptions*)*/ cudaProviderOptionsInstance);
+        public static DOrtReleaseCUDAProviderOptions OrtReleaseCUDAProviderOptions;
+        #endregion
         #region Status API
         public delegate ErrorCode DOrtGetErrorCode(IntPtr /*(OrtStatus*)*/status);
         public static DOrtGetErrorCode OrtGetErrorCode;
