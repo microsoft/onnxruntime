@@ -2208,7 +2208,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void TestCUDAProviderOptions()
         {
-            //#if USE_CUDA
+            #if USE_CUDA
             using (var cudaProviderOptions = new OrtCUDAProviderOptions())
             {
                 string[] keys = { "device_id", "arena_extend_strategy", "cuda_mem_limit",
@@ -2224,7 +2224,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
 
-            //#endif
+            #endif
         }
 
         [DllImport("kernel32", SetLastError = true)]

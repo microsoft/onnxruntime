@@ -1380,7 +1380,7 @@ TEST(CApiTest, TestCreatingCUDAProviderOptions) {
   const auto& api = Ort::GetApi();
   OrtCUDAProviderOptions* cuda_options;
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
-  std::unique_ptr<OrtCUDAProviderOptions, decltype(api.ReleaseCUDAProviderOptions)> rel_arena_cfg(cuda_options, api.ReleaseCUDAProviderOptions);
+  std::unique_ptr<OrtCUDAProviderOptions, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
 
   std::vector<const char*> keys{"device_id", "arena_extend_strategy", "cuda_mem_limit",
                                 "cudnn_conv_algo_search", "do_copy_in_default_stream"};
