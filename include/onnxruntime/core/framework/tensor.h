@@ -56,7 +56,7 @@ using BufferNakedPtr = void*;
 // when Tensor instance holds data in its sparse format.
 /// When Tensor holds sparse data then:
 /// - it holds only non-zero values in its buffer
-/// - its shape is a shape of the original dense matrix
+/// - its shape is the shape or rather size of the data in the buffer.
 /// - SparseMetadata must return a non nullptr const pointer to an instance of SparseMetadata
 ///
 /// and SparseMetadata contains the enumeration member that indicates its format.
