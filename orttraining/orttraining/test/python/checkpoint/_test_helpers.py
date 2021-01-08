@@ -9,7 +9,7 @@ import torch.distributed as dist
 from onnx import numpy_helper
 
 from onnxruntime import set_seed
-from onnxruntime.training import amp, checkpoint, optim, orttrainer
+from onnxruntime.training import amp, checkpoint, _checkpoint_storage, optim, orttrainer
 from onnxruntime.capi._pybind_state import set_cuda_device_id, get_mpi_context_world_rank, get_mpi_context_world_size
 
 from _test_commons import generate_random_input_from_model_desc, generate_dummy_optim_state, \
@@ -43,6 +43,9 @@ def _save(trainer, checkpoint_dir, state_dict_key_name, world_rank=None):
     state_dict = trainer.state_dict()
     with open(os.path.join(checkpoint_dir, state_dict_key_name+'.pkl'), "wb") as f:
         pickle.dump({state_dict_key_name : state_dict}, f)
+
+def save_ort_ckpt(state_dict, filepath):
+    _checkpoint_storage.save(state_dict, filepath)
 
 def _chunkify(sequence, num_chunks):
     """Breaks down a given sequence into num_chunks chunks"""
@@ -145,8 +148,10 @@ def create_orttrainer_and_load_checkpoint_bart(device, trainer_opts, checkpoint_
     trainer.eval_step(src_tokens, prev_output_tokens, target)
 
     expected_state_dict = None
-    with open(os.path.join(checkpoint_dir, 'expected_state_dict.pkl'), "rb") as f:
-        expected_state_dict = pickle.load(f)
+    fname = os.path.join(checkpoint_dir, 'expected_state_dict.pkl')
+    if os.path.isfile(fname):
+        with open(fname, "rb") as f:
+            expected_state_dict = pickle.load(f)
 
     return trainer.state_dict(), expected_state_dict, model
 
