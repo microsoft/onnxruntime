@@ -17,6 +17,7 @@ class LambOptimizer final : public CudaKernel {
     beta_ = info.GetAttrsOrDefault("beta", std::vector<float>(1024, 0.999f));
     lambda_ = info.GetAttrsOrDefault("lambda", std::vector<float>(1024, 0.0f));
     epsilon_ = info.GetAttrsOrDefault("epsilon", std::vector<float>(1024, 1e-6f));
+    max_norm_clip_ = info.GetAttrsOrDefault("max_norm_clip", std::vector<float>(1024, 1.0f));
     ORT_ENFORCE(info.GetAttr<float>("ratio_min", &ratio_min_).IsOK(), "Missing/Invalid 'ratio_min' attribute value");
     ORT_ENFORCE(info.GetAttr<float>("ratio_max", &ratio_max_).IsOK(), "Missing/Invalid 'ratio_max' attribute value");
 
@@ -33,6 +34,7 @@ class LambOptimizer final : public CudaKernel {
   std::vector<float> beta_;
   std::vector<float> lambda_;
   std::vector<float> epsilon_;
+  std::vector<float> max_norm_clip_;
   float ratio_min_;
   float ratio_max_;
   bool do_bias_correction_;
@@ -54,6 +56,7 @@ void LambComputeDirection(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T3 max_norm,
     T3 alpha_correction,
     T3 beta_correction,
     T2* update_direction,
@@ -107,6 +110,7 @@ struct LambMultiTensorComputeDirectionFunctor {
       const T3 alpha,
       const T3 beta,
       const T3 epsilon,
+      const T3 max_norm,
       const T3 alpha_correction,
       const T3 beta_correction);
 };

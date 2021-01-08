@@ -173,6 +173,11 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           AttributeProto::FLOATS,
           std::vector<float>(1024, 1e-6f))
       .Attr(
+          "max_norm_clip",
+          "clip threshold of gradients.",
+          AttributeProto::FLOATS,
+          std::vector<float>(1024, 1.f))
+      .Attr(
           "do_bias_correction",
           "Compute unbiased 1st and 2nd momentums.",
           AttributeProto::INT,
@@ -664,6 +669,11 @@ void RegisterTrainingOpSchemas() {
           AttributeProto::FLOAT,
           1e-8f)
       .Attr(
+          "max_norm_clip",
+          "clip threshold of gradients.",
+          AttributeProto::FLOAT,
+          1.0f)
+      .Attr(
           "do_bias_correction",
           "Compute unbiased 1st and 2nd momentums.",
           AttributeProto::INT,
@@ -926,9 +936,10 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - global parallel group, 1 - data parallel group, "
-                          "2 - node local data parallel group, 3 - cross node data parallel group, "
-                          "4 - horozontal parallel, 5 - model parallel.",
+      .Attr("group_type",
+            "0 - global parallel group, 1 - data parallel group, "
+            "2 - node local data parallel group, 3 - cross node data parallel group, "
+            "4 - horozontal parallel, 5 - model parallel.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
@@ -945,9 +956,10 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllGather)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - global parallel group, 1 - data parallel group, "
-                          "2 - node local data parallel group, 3 - cross node data parallel group, "
-                          "4 - horozontal parallel, 5 - model parallel.",
+      .Attr("group_type",
+            "0 - global parallel group, 1 - data parallel group, "
+            "2 - node local data parallel group, 3 - cross node data parallel group, "
+            "4 - horozontal parallel, 5 - model parallel.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
@@ -964,9 +976,10 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclReduceScatter)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - global parallel group, 1 - data parallel group, "
-                          "2 - node local data parallel group, 3 - cross node data parallel group, "
-                          "4 - horozontal parallel, 5 - model parallel.",
+      .Attr("group_type",
+            "0 - global parallel group, 1 - data parallel group, "
+            "2 - node local data parallel group, 3 - cross node data parallel group, "
+            "4 - horozontal parallel, 5 - model parallel.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced and scattered", "T", OpSchema::Variadic)
@@ -980,7 +993,7 @@ Example 4:
         assert(getAttribute(ctx, "group_type", 0) < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
       })
 #endif
-;
+      ;
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdasumAllReduce)
       .SetDomain(kMSDomain)
@@ -1002,7 +1015,7 @@ Example 4:
           propagateElemTypeFromInputToOutput(ctx, i, i);
           auto typeProto = ctx.getInputType(i);
           if (!hasShape(*typeProto)) {
-              continue;
+            continue;
           }
           propagateShapeFromInputToOutput(ctx, i, i);
         }

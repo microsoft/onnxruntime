@@ -148,7 +148,7 @@ class AdamConfig(_OptimizerConfig):
         BEFORE_WEIGHT_UPDATE = 0,
         AFTER_WEIGHT_UPDATE = 1
 
-    def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0, epsilon=1e-8,
+    def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0, epsilon=1e-8, max_norm_clip=1.0,
                  do_bias_correction=True, weight_decay_mode=DecayMode.BEFORE_WEIGHT_UPDATE):
         assert lr >= 0, "'lr' must be a positive number"
         assert alpha >= 0, "'alpha' must be a positive number"
@@ -165,6 +165,7 @@ class AdamConfig(_OptimizerConfig):
                     'beta': beta,
                     'lambda': lambda_coef,
                     'epsilon': epsilon,
+                    'max_norm_clip': max_norm_clip,
                     'do_bias_correction': do_bias_correction,
                     'weight_decay_mode': weight_decay_mode}
         super().__init__(name='AdamOptimizer',
@@ -174,6 +175,7 @@ class AdamConfig(_OptimizerConfig):
         self.beta = beta
         self.lambda_coef = lambda_coef
         self.epsilon = epsilon
+        self.max_norm_clip = max_norm_clip
         self.do_bias_correction = do_bias_correction
         self.weight_decay_mode = weight_decay_mode
 
@@ -211,7 +213,7 @@ class LambConfig(_OptimizerConfig):
     """
 
     def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0,
-                 ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, do_bias_correction=False):
+                 ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, max_norm_clip=1.0, do_bias_correction=False):
         assert lr >= 0, "'lr' must be a positive number"
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
@@ -230,6 +232,7 @@ class LambConfig(_OptimizerConfig):
                     'ratio_min': ratio_min,
                     'ratio_max': ratio_max,
                     'epsilon': epsilon,
+                    'max_norm_clip': max_norm_clip,
                     'do_bias_correction': do_bias_correction}
         super().__init__(name='LambOptimizer',
                          params=params,
@@ -240,4 +243,5 @@ class LambConfig(_OptimizerConfig):
         self.ratio_min = ratio_min
         self.ratio_max = ratio_max
         self.epsilon = epsilon
+        self.max_norm_clip = max_norm_clip
         self.do_bias_correction = do_bias_correction
