@@ -23,7 +23,6 @@ struct ModuleGradientGraphBuilderConfiguration {
 
   // Gradient graph configuration.
   bool use_invertible_layernorm_grad = false;
-  bool set_gradients_as_graph_outputs = false;
 
   // TODO: add GraphTransformerConfiguration
 };
@@ -70,7 +69,7 @@ class ModuleGradientGraphBuilder {
    * @param input_shapes_ptr The pointer to vector of concrete shapes of the user inputs.
    * @return The status of the gradient graph building and forward/backward graphs splitting.
    */
-  Status BuildAndSplit(const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
+  Status Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
 
   /**
    * Get forward model.
@@ -91,12 +90,21 @@ class ModuleGradientGraphBuilder {
   SplitGraphsInfo GetSplitGraphsInfo() const { return split_graphs_info_; }
 
  private:
-  // Split a gradient graph to forward and backward graphs.
-  Status Split();
+  // Set concrete shapes for graph inputs.
+  void SetConcreteInputShapes(const std::vector<std::vector<int64_t>> input_shapes);
 
-  std::shared_ptr<onnxruntime::Model> model_;
-  std::shared_ptr<onnxruntime::Model> forward_model_;
-  std::shared_ptr<onnxruntime::Model> backward_model_;
+  // Build gradient graph as backward_model_.
+  Status BuildGradientGraph();
+
+  // Set the forward graph outputs and backward graph inputs.
+  void SetForwardOutputsAndBackwardInputs();
+
+  // Set the backward graph outputs.
+  void SetBackwardOutputs();
+
+  std::shared_ptr<Model> model_;
+  std::shared_ptr<Model> forward_model_;
+  std::shared_ptr<Model> backward_model_;
   SplitGraphsInfo split_graphs_info_;
 
   ModuleGradientGraphBuilderConfiguration config_;

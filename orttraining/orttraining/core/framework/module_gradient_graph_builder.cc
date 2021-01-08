@@ -13,35 +13,6 @@ namespace training {
 
 using namespace onnxruntime::common;
 
-void GetInputAndOutputNames(const Node& node, std::unordered_set<std::string>& input_names,
-                            std::unordered_set<std::string>& output_names) {
-  std::for_each(node.InputDefs().begin(), node.InputDefs().end(),
-                [&input_names](const NodeArg* node_arg) { input_names.insert(node_arg->Name()); });
-  std::for_each(node.OutputDefs().begin(), node.OutputDefs().end(),
-                [&output_names](const NodeArg* node_arg) { output_names.insert(node_arg->Name()); });
-}
-
-void RemoveNodes(Graph& graph, const std::vector<Node*>& nodes_to_remove) {
-  for (Node* node_to_remove : nodes_to_remove) {
-    graph_utils::RemoveNodeOutputEdges(graph, *node_to_remove);
-    graph.RemoveNode(node_to_remove->Index());
-  }
-}
-
-void FilterInitializers(Graph& graph, const std::unordered_set<std::string>& input_names) {
-  const auto& initializers = graph.GetAllInitializedTensors();
-  std::unordered_set<std::string> initializer_names_to_remove;
-  for (const auto& initializer : initializers) {
-    if (input_names.find(initializer.first) == input_names.end()) {
-      initializer_names_to_remove.insert(initializer.first);
-    }
-  }
-
-  for (const auto& initializer_name : initializer_names_to_remove) {
-    graph.RemoveInitializedTensor(initializer_name);
-  }
-}
-
 Status ModuleGradientGraphBuilder::Initialize(std::istream& model_istream,
                                               const ModuleGradientGraphBuilderConfiguration& config) {
   // Save the model and config.
@@ -87,47 +58,76 @@ Status ModuleGradientGraphBuilder::Initialize(std::istream& model_istream,
   return Status::OK();
 }
 
-// Build the gradient graph and split it to forward and backward graphs.
+// Build the gradient graphs from foward graph and save it to backward graph.
 // Since the input shapes may differ, and the graph optimizers (mainly constant folding) may fold this
 // shape info to constants, so the optimized graph (before gradient graph building) can not be shared.
 // So each time we need to start from the beginning, i.e., 1) replace input shapes, 2) apply graph optimizers,
-// 3) build gradient graph, and finally 4) split to forward and backward graphs.
-Status ModuleGradientGraphBuilder::BuildAndSplit(const std::vector<std::vector<int64_t>>* input_shapes_ptr) {
-  // Make a copy of the original model.
+// 3) build gradient graph to backward graph, and finally 4) adjust the graph inputs and outputs.
+Status ModuleGradientGraphBuilder::Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr) {
+  // Make a copy of the original model as forward graph.
   auto model_proto = model_->ToProto();
-  std::shared_ptr<onnxruntime::Model> model_copied;
-  ORT_RETURN_IF_ERROR(Model::Load(model_proto, model_copied, nullptr, *logger_));
-  Graph& graph = model_copied->MainGraph();
+  ORT_RETURN_IF_ERROR(Model::Load(model_proto, forward_model_, nullptr, *logger_));
 
-  // Replace the input shapes if input_shapes_ptr is not null_ptr.
+  // Replace the user input shapes if input_shapes_ptr is not null_ptr.
   if (input_shapes_ptr) {
-    ORT_ENFORCE(input_shapes_ptr->size() == split_graphs_info_.user_input_names.size(),
-                "The size of concrete input shapes and the size of user inputs does not match.");
-    std::vector<const NodeArg*> input_args;
-    size_t input_index = 0;
-    for (const auto& input_name : split_graphs_info_.user_input_names) {
-      NodeArg* input_node_arg = graph.GetNodeArg(input_name);
-      ONNX_NAMESPACE::TensorShapeProto new_shape;
-      for (size_t i = 0; i < (*input_shapes_ptr)[input_index].size(); i++) {
-        new_shape.add_dim()->set_dim_value((*input_shapes_ptr)[input_index][i]);
-      }
-
-      input_node_arg->SetShape(new_shape);
-      input_args.emplace_back(input_node_arg);
-      input_index++;
-    }
-
-    // Move over all training initializer inputs. They already have the concrete shapes.
-    const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
-    for (; input_index < graph_inputs.size(); input_index++) {
-      input_args.emplace_back(graph_inputs[input_index]);
-    }
-
-    graph.SetInputs(input_args);
+    SetConcreteInputShapes(*input_shapes_ptr);
   }
 
-  // Resolve graph, register and apply transformers for pre-training.
-  ORT_RETURN_IF_ERROR(graph.Resolve());
+  // Build the gradient graph to backward graph.
+  ORT_RETURN_IF_ERROR(BuildGradientGraph());
+
+  // Adjust the graph inputs and outputs.
+  SetForwardOutputsAndBackwardInputs();
+  SetBackwardOutputs();
+
+  return Status::OK();
+}
+
+std::string SerializeModel(const std::shared_ptr<onnxruntime::Model>& model, const std::string& tag) {
+  std::string model_str;
+  if (!model->ToProto().SerializeToString(&model_str)) {
+    ORT_THROW("Fail to serialize", tag, "model to string.");
+  }
+
+  return model_str;
+}
+
+std::string ModuleGradientGraphBuilder::GetForwardModel() const { return SerializeModel(forward_model_, "forward"); }
+
+std::string ModuleGradientGraphBuilder::GetBackwardModel() const { return SerializeModel(backward_model_, "backward"); }
+
+void ModuleGradientGraphBuilder::SetConcreteInputShapes(const std::vector<std::vector<int64_t>> input_shapes) {
+  ORT_ENFORCE(input_shapes.size() == split_graphs_info_.user_input_names.size(),
+              "The size of concrete input shapes and the size of user inputs does not match.");
+  Graph& forward_graph = forward_model_->MainGraph();
+  std::vector<const NodeArg*> input_args;
+  size_t input_index = 0;
+  for (const auto& input_name : split_graphs_info_.user_input_names) {
+    NodeArg* input_node_arg = forward_graph.GetNodeArg(input_name);
+    ONNX_NAMESPACE::TensorShapeProto new_shape;
+    for (size_t i = 0; i < input_shapes[input_index].size(); i++) {
+      new_shape.add_dim()->set_dim_value(input_shapes[input_index][i]);
+    }
+
+    input_node_arg->SetShape(new_shape);
+    input_args.emplace_back(input_node_arg);
+    input_index++;
+  }
+
+  // Move over all training initializer inputs. They already have the concrete shapes.
+  const std::vector<const NodeArg*>& graph_inputs = forward_graph.GetInputsIncludingInitializers();
+  for (; input_index < graph_inputs.size(); input_index++) {
+    input_args.emplace_back(graph_inputs[input_index]);
+  }
+
+  forward_graph.SetInputs(input_args);
+}
+
+Status ModuleGradientGraphBuilder::BuildGradientGraph() {
+  // Resolve forward graph, register and apply transformers for pre-training.
+  Graph& forward_graph = forward_model_->MainGraph();
+  ORT_RETURN_IF_ERROR(forward_graph.Resolve());
+
   const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration graph_transformer_config{};
   GraphTransformerManager graph_transformation_mgr{2};
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
@@ -156,237 +156,155 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(const std::vector<std::vector<i
   }
 
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *logger_));
+    ORT_RETURN_IF_ERROR(
+        graph_transformation_mgr.ApplyTransformers(forward_graph, static_cast<TransformerLevel>(i), *logger_));
   }
 
-  // Build gradient graph.
+  // Build gradient graph to backward graph.
   GradientGraphConfiguration gradient_graph_config{};
   gradient_graph_config.use_invertible_layernorm_grad = config_.use_invertible_layernorm_grad;
-  gradient_graph_config.set_gradients_as_graph_outputs = config_.set_gradients_as_graph_outputs;
+  gradient_graph_config.set_gradients_as_graph_outputs = true;
   std::unordered_set<std::string> y_node_arg_names(split_graphs_info_.user_output_names.begin(),
                                                    split_graphs_info_.user_output_names.end());
-  GradientGraphBuilder grad_graph_builder(&graph, y_node_arg_names, x_node_arg_names, "", gradient_graph_config,
+  GradientGraphBuilder grad_graph_builder(&forward_graph, y_node_arg_names, x_node_arg_names, "", gradient_graph_config,
                                           *logger_);
-  ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
 
-  // Fix inputs/outputs related to gradients.
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::unordered_set<std::string> input_names;
-  std::unordered_set<std::string> output_names;
-  for (auto node_index : node_topology_list) {
-    auto& node = *graph.GetNode(node_index);
-    GetInputAndOutputNames(node, input_names, output_names);
+  // Create backward model, start from an empty one.
+  backward_model_ = std::make_shared<Model>("backward_model", false, ModelMetaData(), PathString(),
+                                            IOnnxRuntimeOpSchemaRegistryList(), forward_graph.DomainToVersionMap(),
+                                            std::vector<ONNX_NAMESPACE::FunctionProto>(), *logger_);
+  Graph& backward_graph = backward_model_->MainGraph();
+  ORT_RETURN_IF_ERROR(grad_graph_builder.Build(nullptr, &backward_graph));
+
+  // Apply transformers to backward graph.
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    ORT_RETURN_IF_ERROR(
+        graph_transformation_mgr.ApplyTransformers(backward_graph, static_cast<TransformerLevel>(i), *logger_));
   }
 
-  std::vector<const NodeArg*> input_args;
-  for (const NodeArg* input_node_arg : graph.GetInputsIncludingInitializers()) {
-    input_args.emplace_back(input_node_arg);
-  }
+  return Status::OK();
+}
 
-  // Add the user output grads to the graph inputs. Using the order of user outputs.
+void ModuleGradientGraphBuilder::SetForwardOutputsAndBackwardInputs() {
+  Graph& forward_graph = forward_model_->MainGraph();
+  Graph& backward_graph = backward_model_->MainGraph();
+
   split_graphs_info_.user_output_grad_names.clear();
-  split_graphs_info_.backward_output_grad_names.clear();
   for (const auto& output_name : split_graphs_info_.user_output_names) {
-    std::string output_gradient_name = output_name + "_grad";
-    split_graphs_info_.user_output_grad_names.emplace_back(output_gradient_name);
+    split_graphs_info_.user_output_grad_names.emplace_back(output_name + "_grad");
+  }
 
-    // Only add to graph input when it's not an output of a node.
-    if (output_names.find(output_gradient_name) == output_names.end()) {
-      split_graphs_info_.backward_output_grad_names.emplace_back(output_gradient_name);
-      NodeArg* output_gradient_node_arg = graph.GetNodeArg(output_gradient_name);
-      output_gradient_node_arg->UpdateTypeAndShape(*graph.GetNodeArg(output_name), true, true, *logger_);
-      input_args.emplace_back(output_gradient_node_arg);
+  // Try to get all intermediate tensor names.
+  std::unordered_set<std::string> non_intermediate_input_candidiates(split_graphs_info_.user_input_names.begin(),
+                                                                     split_graphs_info_.user_input_names.end());
+  non_intermediate_input_candidiates.insert(split_graphs_info_.initializer_names_to_train.begin(),
+                                            split_graphs_info_.initializer_names_to_train.end());
+  non_intermediate_input_candidiates.insert(split_graphs_info_.user_output_grad_names.begin(),
+                                            split_graphs_info_.user_output_grad_names.end());
+
+  const auto& forward_initializers = forward_graph.GetAllInitializedTensors();
+
+  const std::vector<const NodeArg*>& backward_graph_inputs = backward_graph.GetInputsIncludingInitializers();
+  std::unordered_map<std::string, const NodeArg*> non_intermediate_tensor_arg_map;
+  split_graphs_info_.intermediate_tensor_names.clear();
+  for (auto& node_arg : backward_graph_inputs) {
+    const std::string& node_arg_name = node_arg->Name();
+    if (non_intermediate_input_candidiates.find(node_arg_name) != non_intermediate_input_candidiates.end()) {
+      non_intermediate_tensor_arg_map[node_arg_name] = node_arg;
+    } else if (forward_initializers.find(node_arg_name) != forward_initializers.end()) {
+      backward_graph.AddInitializedTensor(*forward_initializers.at(node_arg_name));
+    } else {
+      split_graphs_info_.intermediate_tensor_names.emplace_back(node_arg_name);
     }
   }
 
-  graph.SetInputs(input_args);
-
-  std::vector<const NodeArg*> output_args;
-  for (auto& output_name : split_graphs_info_.user_output_names) {
-    output_args.emplace_back(graph.GetNodeArg(output_name));
+  // Forward outputs contains user outputs only. Need to add all intermediate tensors to forward outputs.
+  const std::vector<const NodeArg*>& forward_graph_outputs = forward_graph.GetOutputs();
+  std::vector<const NodeArg*> new_forward_output_args;
+  for (auto& node_arg : forward_graph_outputs) {
+    new_forward_output_args.emplace_back(node_arg);
   }
 
-  // Add input gradients to graph outputs if it's required.
+  for (const auto& intermediate_tensor_name : split_graphs_info_.intermediate_tensor_names) {
+    new_forward_output_args.emplace_back(forward_graph.GetNodeArg(intermediate_tensor_name));
+  }
+
+  forward_graph.SetOutputs(new_forward_output_args);
+
+  // Adjust the backward graph inputs by following order:
+  // 1. user inputs if needed, with same order of user inputs,
+  // 2. trainable initializers if needed, with same order of trainable initializers,
+  // 3. intermediate tensors,
+  // 4. user output gradients if needed, with same order of user outputs.
+  std::vector<const NodeArg*> new_backward_input_args;
+  split_graphs_info_.backward_user_input_names.clear();
+  split_graphs_info_.backward_intializer_names_as_input.clear();
+  split_graphs_info_.backward_output_grad_names.clear();
+  for (const auto& user_input_name : split_graphs_info_.user_input_names) {
+    if (non_intermediate_tensor_arg_map.find(user_input_name) != non_intermediate_tensor_arg_map.end()) {
+      split_graphs_info_.backward_user_input_names.emplace_back(user_input_name);
+      new_backward_input_args.emplace_back(non_intermediate_tensor_arg_map[user_input_name]);
+    }
+  }
+
+  for (const auto& initializer_name_to_train : split_graphs_info_.initializer_names_to_train) {
+    if (non_intermediate_tensor_arg_map.find(initializer_name_to_train) != non_intermediate_tensor_arg_map.end()) {
+      split_graphs_info_.backward_intializer_names_as_input.emplace_back(initializer_name_to_train);
+      new_backward_input_args.emplace_back(non_intermediate_tensor_arg_map[initializer_name_to_train]);
+    }
+  }
+
+  for (const auto& intermediate_tensor_name : split_graphs_info_.intermediate_tensor_names) {
+    new_backward_input_args.emplace_back(backward_graph.GetNodeArg(intermediate_tensor_name));
+  }
+
+  for (const auto& user_output_grad_name : split_graphs_info_.user_output_grad_names) {
+    if (non_intermediate_tensor_arg_map.find(user_output_grad_name) != non_intermediate_tensor_arg_map.end()) {
+      split_graphs_info_.backward_output_grad_names.emplace_back(user_output_grad_name);
+      new_backward_input_args.emplace_back(non_intermediate_tensor_arg_map[user_output_grad_name]);
+    }
+  }
+
+  backward_graph.SetInputs(new_backward_input_args);
+}
+
+void ModuleGradientGraphBuilder::SetBackwardOutputs() {
+  // Adjust backward graph outputs by the following order:
+  // 1. user input grads if required, with same order of user inputs,
+  // 2. trainable initailizer grads, with same order of trainable initializers.
+  Graph& backward_graph = backward_model_->MainGraph();
+  const std::vector<const NodeArg*>& backward_graph_outputs = backward_graph.GetOutputs();
+  std::unordered_map<std::string, const NodeArg*> backward_output_arg_map;
+  for (auto& node_arg : backward_graph_outputs) {
+    backward_output_arg_map[node_arg->Name()] = node_arg;
+  }
+
+  std::unordered_set<std::string> user_input_require_grad_set(config_.input_names_require_grad.begin(),
+                                                              config_.input_names_require_grad.end());
+
+  std::vector<const NodeArg*> new_backward_output_args;
   split_graphs_info_.user_input_grad_names.clear();
-  for (const auto& input_name : config_.input_names_require_grad) {
-    std::string input_gradient_name = input_name + "_grad";
-    ORT_ENFORCE(output_names.find(input_gradient_name) != output_names.end(),
-                "Required user input grad is not found on gradient graph.");
-    split_graphs_info_.user_input_grad_names[input_name] = input_gradient_name;
-    output_args.emplace_back(graph.GetNodeArg(input_gradient_name));
+  for (const auto& input_name : split_graphs_info_.user_input_names) {
+    if (user_input_require_grad_set.find(input_name) != user_input_require_grad_set.end()) {
+      std::string input_gradient_name = input_name + "_grad";
+      ORT_ENFORCE(backward_output_arg_map.find(input_gradient_name) != backward_output_arg_map.end(),
+                  "Required user input grad is not found on gradient graph.");
+      split_graphs_info_.user_input_grad_names[input_name] = input_gradient_name;
+      new_backward_output_args.emplace_back(backward_output_arg_map[input_gradient_name]);
+    }
   }
 
   // Add initializer gradients to graph outputs.
   split_graphs_info_.initializer_grad_names_to_train.clear();
   for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
     std::string initializer_gradient_name = initializer_name + "_grad";
-    ORT_ENFORCE(output_names.find(initializer_gradient_name) != output_names.end(),
+    ORT_ENFORCE(backward_output_arg_map.find(initializer_gradient_name) != backward_output_arg_map.end(),
                 "Trainable initializer grad is not found on gradient graph.");
     split_graphs_info_.initializer_grad_names_to_train.emplace_back(initializer_gradient_name);
-    output_args.emplace_back(graph.GetNodeArg(initializer_gradient_name));
+    new_backward_output_args.emplace_back(backward_output_arg_map[initializer_gradient_name]);
   }
 
-  graph.SetOutputs(output_args);
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-
-  // Run the transformers again mainly for backward part, e.g., constant fold from those Shape nodes in backward graph.
-  // TODO: maybe we need another list of transformers here rather than the list for pre-training list.
-  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *logger_));
-  }
-
-  // Create two copies of gradient model for forward and backward models respectively.
-  auto gradient_model_proto = model_copied->ToProto();
-  ORT_RETURN_IF_ERROR(Model::Load(gradient_model_proto, forward_model_, nullptr, *logger_));
-  ORT_RETURN_IF_ERROR(Model::Load(gradient_model_proto, backward_model_, nullptr, *logger_));
-
-  // Split the graph in the copies of gradient model.
-  ORT_RETURN_IF_ERROR(Split());
-  return Status::OK();
-}
-
-std::string SerializeModel(const std::shared_ptr<onnxruntime::Model>& model, const std::string& tag) {
-  std::string model_str;
-  if (!model->ToProto().SerializeToString(&model_str)) {
-    ORT_THROW("Fail to serialize", tag, "model to string.");
-  }
-
-  return model_str;
-}
-
-std::string ModuleGradientGraphBuilder::GetForwardModel() const { return SerializeModel(forward_model_, "forward"); }
-
-std::string ModuleGradientGraphBuilder::GetBackwardModel() const { return SerializeModel(backward_model_, "backward"); }
-
-Status ModuleGradientGraphBuilder::Split() {
-  // Get forward model, also collect some information for backward model generation.
-  Graph& forward_graph = forward_model_->MainGraph();
-  GraphViewer forward_graph_viewer(forward_graph);
-  const auto& forward_node_topology_list = forward_graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<Node*> forward_nodes_to_remove;
-  std::unordered_set<std::string> forward_input_names;
-  std::unordered_set<std::string> forward_output_names;
-  std::unordered_set<std::string> backward_input_names;
-  std::unordered_set<std::string> backward_output_names;
-  for (auto node_index : forward_node_topology_list) {
-    auto& node = *forward_graph.GetNode(node_index);
-
-    // Currently we are using node description to distinguish the forward and backward nodes.
-    if (node.Description() == "Backward pass") {
-      forward_nodes_to_remove.emplace_back(&node);
-      GetInputAndOutputNames(node, backward_input_names, backward_output_names);
-    } else {
-      GetInputAndOutputNames(node, forward_input_names, forward_output_names);
-    }
-  }
-
-  std::unordered_set<std::string> intermediate_arg_names;
-  for (const auto& forward_output_name : forward_output_names) {
-    if (backward_input_names.find(forward_output_name) != backward_input_names.end()) {
-      intermediate_arg_names.insert(forward_output_name);
-    }
-  }
-
-  RemoveNodes(forward_graph, forward_nodes_to_remove);
-  FilterInitializers(forward_graph, forward_input_names);
-
-  // All user inputs should be also part of the forward graph inputs.
-  std::vector<const NodeArg*> forward_input_args;
-  for (const auto& input_name : split_graphs_info_.user_input_names) {
-    forward_input_args.emplace_back(forward_graph.GetNodeArg(input_name));
-  }
-
-  // Add initializers to forward graph inputs.
-  for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
-    forward_input_args.emplace_back(forward_graph.GetNodeArg(initializer_name));
-  }
-
-  forward_graph.SetInputs(forward_input_args);
-
-  // All user outputs should be also part of the forward graph outputs.
-  std::vector<const NodeArg*> forward_output_args;
-  for (const auto& output_name : split_graphs_info_.user_output_names) {
-    forward_output_args.emplace_back(forward_graph.GetNodeArg(output_name));
-  }
-
-  // Add intermediate args to forward graph outputs.
-  split_graphs_info_.intermediate_tensor_names.clear();
-  for (const auto& intermediate_arg_name : intermediate_arg_names) {
-    // Ignore the user outputs.
-    if (std::find(split_graphs_info_.user_output_names.begin(), split_graphs_info_.user_output_names.end(),
-                  intermediate_arg_name) == split_graphs_info_.user_output_names.end()) {
-      split_graphs_info_.intermediate_tensor_names.emplace_back(intermediate_arg_name);
-      forward_output_args.emplace_back(forward_graph.GetNodeArg(intermediate_arg_name));
-    }
-  }
-
-  forward_graph.SetOutputs(forward_output_args);
-  ORT_RETURN_IF_ERROR(forward_graph.Resolve());
-
-  // Get backward graph.
-  Graph& backward_graph = backward_model_->MainGraph();
-  GraphViewer backward_graph_viewer(backward_graph);
-  const auto& backward_node_topology_list = backward_graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<Node*> backward_nodes_to_remove;
-  for (auto node_index : backward_node_topology_list) {
-    auto& node = *backward_graph.GetNode(node_index);
-    if (node.Description() != "Backward pass") {
-      backward_nodes_to_remove.emplace_back(&node);
-    }
-  }
-
-  RemoveNodes(backward_graph, backward_nodes_to_remove);
-  FilterInitializers(backward_graph, backward_input_names);
-
-  // User inputs to backward graph inputs.
-  split_graphs_info_.backward_user_input_names.clear();
-  std::vector<const NodeArg*> backward_input_args;
-  for (const auto& input_name : split_graphs_info_.user_input_names) {
-    // Only takes those in the backward inputs.
-    if (backward_input_names.find(input_name) != backward_input_names.end()) {
-      split_graphs_info_.backward_user_input_names.emplace_back(input_name);
-      backward_input_args.emplace_back(backward_graph.GetNodeArg(input_name));
-    }
-  }
-
-  // Add initializer args to backward graph inputs if any node uses them.
-  split_graphs_info_.backward_intializer_names_as_input.clear();
-  for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
-    // Some initializers will be inputs for backward graph.
-    if (backward_input_names.find(initializer_name) != backward_input_names.end()) {
-      split_graphs_info_.backward_intializer_names_as_input.emplace_back(initializer_name);
-      backward_input_args.emplace_back(backward_graph.GetNodeArg(initializer_name));
-      backward_graph.RemoveInitializedTensor(initializer_name);
-    }
-  }
-
-  // Add intermediate args to backward graph inputs.
-  for (const auto& intermediate_arg_name : split_graphs_info_.intermediate_tensor_names) {
-    NodeArg* intermediate_node_arg = backward_graph.GetNodeArg(intermediate_arg_name);
-    intermediate_node_arg->UpdateTypeAndShape(*forward_graph.GetNodeArg(intermediate_arg_name), true, true, *logger_);
-    backward_input_args.emplace_back(intermediate_node_arg);
-  }
-
-  // Grad of user outputs to backward graph inputs.
-  for (const auto& output_grad_name : split_graphs_info_.backward_output_grad_names) {
-    backward_input_args.emplace_back(backward_graph.GetNodeArg(output_grad_name));
-  }
-
-  backward_graph.SetInputs(backward_input_args);
-
-  // Exclude user outputs from the backward graph.
-  const std::vector<const NodeArg*>& backward_graph_outputs = backward_graph.GetOutputs();
-  std::vector<const NodeArg*> backward_output_args;
-  for (auto& node_arg : backward_graph_outputs) {
-    if (backward_output_names.find(node_arg->Name()) != backward_output_names.end()) {
-      backward_output_args.emplace_back(node_arg);
-    }
-  }
-
-  backward_graph.SetOutputs(backward_output_args);
-  ORT_RETURN_IF_ERROR(backward_graph.Resolve());
-  return Status::OK();
+  backward_graph.SetOutputs(new_backward_output_args);
 }
 
 }  // namespace training

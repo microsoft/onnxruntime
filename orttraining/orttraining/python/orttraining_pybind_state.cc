@@ -397,9 +397,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("initializer_names_to_train", &ModuleGradientGraphBuilderConfiguration::initializer_names_to_train)
       .def_readwrite("input_names_require_grad", &ModuleGradientGraphBuilderConfiguration::input_names_require_grad)
       .def_readwrite("use_invertible_layernorm_grad",
-                     &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad)
-      .def_readwrite("set_gradients_as_graph_outputs",
-                     &ModuleGradientGraphBuilderConfiguration::set_gradients_as_graph_outputs);
+                     &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad);
 
   py::class_<SplitGraphsInfo> split_graphs_info(m, "SplitGraphsInfo",
                                                 R"pbdoc(The information of split graphs for frontend.)pbdoc");
@@ -425,12 +423,12 @@ void addObjectMethodsForTraining(py::module& m) {
            })
       .def("build_and_split",
            [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
-             ORT_THROW_IF_ERROR(module_gradient_graph_builder->BuildAndSplit());
+             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Build());
            })
       .def("build_and_split",
            [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
               const std::vector<std::vector<int64_t>>& input_shapes) {
-             ORT_THROW_IF_ERROR(module_gradient_graph_builder->BuildAndSplit(&input_shapes));
+             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Build(&input_shapes));
            })
       .def("get_forward_model",
            [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
