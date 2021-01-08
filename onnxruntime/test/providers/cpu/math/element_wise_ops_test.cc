@@ -1343,7 +1343,7 @@ TEST(MathOpTest, Max_12_MLFLoat16) {
                            MakeMLFloat16({-2.f, -1.f, -2.f}));
   test.AddInput<MLFloat16>("data_2", {1, 3},
                            MakeMLFloat16({-3.f, -2.f, -3.f}));
-  test.AddOutput<MLFloat16>("min", {1, 3},
+  test.AddOutput<MLFloat16>("max", {1, 3},
                             MakeMLFloat16({-1.f, -1.f, -1.f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
@@ -1356,7 +1356,7 @@ TEST(MathOpTest, Max_12_MLFLoat16_Scalar0) {
                            MakeMLFloat16({-11.f, -12.f, -22.f}));
   test.AddInput<MLFloat16>("data_2", {1, 3},
                            MakeMLFloat16({-10.f, -11.f, -13.f}));
-  test.AddOutput<MLFloat16>("min", {1, 3},
+  test.AddOutput<MLFloat16>("max", {1, 3},
                             MakeMLFloat16({-1.f, -1.f, -1.f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
@@ -1369,7 +1369,7 @@ TEST(MathOpTest, Max_12_MLFLoat16_Scalar1) {
                            MakeMLFloat16({2.f}));
   test.AddInput<MLFloat16>("data_2", {1, 3},
                            MakeMLFloat16({-2.f, -3.f, -4.f}));
-  test.AddOutput<MLFloat16>("min", {1, 3},
+  test.AddOutput<MLFloat16>("max", {1, 3},
                             MakeMLFloat16({2.f, 2.f, 2.f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
