@@ -54,8 +54,8 @@ static void RunNcclAllReduceTest(bool use_fp16, int local_size) {
   test.AddBufferedInputOutput();
 
   const std::vector<std::vector<int64_t>> tensors_dims = {{2, 3}, {128}, {512}, {7, 13}, {1024, 3}};
-  for (size_t i = 0; i < tensors_dims.size(); ++i) {
-    const std::vector<int64_t>& tensor_dims = tensors_dims[i];
+  for (size_t input_id = 0; input_id < tensors_dims.size(); ++input_id) {
+    const std::vector<int64_t>& tensor_dims = tensors_dims[input_id];
 
     std::vector<float> X_data = random.Uniform<float>(tensor_dims, -10.0f, 10.0f);
     std::vector<float> Y_data(X_data.size());
@@ -63,8 +63,8 @@ static void RunNcclAllReduceTest(bool use_fp16, int local_size) {
       Y_data[i] = local_size * X_data[i];
     }
 
-    const std::string input_string = "input" + std::to_string(i);
-    const std::string output_string = "output" + std::to_string(i);
+    const std::string input_string = "input" + std::to_string(input_id);
+    const std::string output_string = "output" + std::to_string(input_id);
 
     if (use_fp16) {
       test.AddInput<MLFloat16>(input_string.c_str(), tensor_dims, ToFloat16(X_data));
@@ -111,20 +111,20 @@ static void RunNcclReduceScatterTest(bool use_fp16, int local_size, int local_ra
   const size_t rank_address_end = rank_address_start + bytes_per_rank;
 
   size_t tensor_bytes_offset = 0;
-  for (size_t i = 0; i < tensors_dims.size(); ++i) {
-    const std::vector<int64_t>& tensor_dims = tensors_dims[i];
+  for (size_t input_id = 0; input_id < tensors_dims.size(); ++input_id) {
+    const std::vector<int64_t>& tensor_dims = tensors_dims[input_id];
 
     std::vector<float> X_data = random.Uniform<float>(tensor_dims, -10.0f, 10.0f);
     std::vector<float> Y_data(X_data);
-    for (size_t j = 0; j < X_data.size(); ++j) {
-      size_t offset = tensor_bytes_offset + j * elem_size;
+    for (size_t i = 0; i < X_data.size(); ++i) {
+      size_t offset = tensor_bytes_offset + i * elem_size;
       if (rank_address_start <= offset && offset < rank_address_end) {
-        Y_data[j] = local_size * X_data[j];
+        Y_data[i] = local_size * X_data[i];
       }
     }
 
-    const std::string input_string = "input" + std::to_string(i);
-    const std::string output_string = "output" + std::to_string(i);
+    const std::string input_string = "input" + std::to_string(input_id);
+    const std::string output_string = "output" + std::to_string(input_id);
 
     if (use_fp16) {
       test.AddInput<MLFloat16>(input_string.c_str(), tensor_dims, ToFloat16(X_data));
@@ -152,7 +152,7 @@ TEST_F(NcclKernelTest, NcclReduceScatter_FP16) {
 
 static void RunNcclAllGatherTest(bool use_fp16, int local_size, int local_rank) {
   if (local_size <= 1) return;
-  
+
   const size_t elem_size = use_fp16 ? sizeof(MLFloat16) : sizeof(float);
 
   RandomValueGenerator random{42};
@@ -175,20 +175,20 @@ static void RunNcclAllGatherTest(bool use_fp16, int local_size, int local_rank) 
   const size_t rank_address_end = rank_address_start + bytes_per_rank;
 
   size_t tensor_bytes_offset = 0;
-  for (size_t i = 0; i < tensors_dims.size(); ++i) {
-    const std::vector<int64_t>& tensor_dims = tensors_dims[i];
+  for (size_t input_id = 0; input_id < tensors_dims.size(); ++input_id) {
+    const std::vector<int64_t>& tensor_dims = tensors_dims[input_id];
 
     std::vector<float> Y_data = random.Uniform<float>(tensor_dims, -10.0f, 10.0f);
     std::vector<float> X_data(Y_data);
-    for (size_t j = 0; j < X_data.size(); ++j) {
-      size_t offset = tensor_bytes_offset + j * elem_size;
+    for (size_t i = 0; i < X_data.size(); ++i) {
+      size_t offset = tensor_bytes_offset + i * elem_size;
       if (rank_address_start <= offset && offset < rank_address_end) {
-        X_data[j] = Y_data[j];
+        X_data[i] = Y_data[i];
       }
     }
 
-    const std::string input_string = "input" + std::to_string(i);
-    const std::string output_string = "output" + std::to_string(i);
+    const std::string input_string = "input" + std::to_string(input_id);
+    const std::string output_string = "output" + std::to_string(input_id);
     if (use_fp16) {
       test.AddInput<MLFloat16>(input_string.c_str(), tensor_dims, ToFloat16(X_data));
       test.AddOutput<MLFloat16>(output_string.c_str(), tensor_dims, ToFloat16(Y_data));

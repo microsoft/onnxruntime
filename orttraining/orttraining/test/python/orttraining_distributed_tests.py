@@ -56,9 +56,11 @@ def main():
 
     log.info("Running distributed tests pipeline")
 
-    run_checkpoint_tests(cwd, log)
+    # run_checkpoint_tests(cwd, log)
 
     run_distributed_allreduce_tests(cwd, log)
+
+    run_distributed_nccl_tests(cwd, log)
 
     return 0
 

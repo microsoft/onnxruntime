@@ -15,11 +15,14 @@
 #include <exception>
 #include <memory>
 
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
+
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/session/training_session.h"
 #endif
 
 using namespace ::onnxruntime::logging;
+using onnxruntime::training::MPIContext;
 
 namespace onnxruntime {
 namespace test {
@@ -879,9 +882,10 @@ void OpTester::Run(
         std::unique_ptr<IExecutionProvider> execution_provider;
         if (provider_type == onnxruntime::kCpuExecutionProvider)
           execution_provider = DefaultCpuExecutionProvider();
-        else if (provider_type == onnxruntime::kCudaExecutionProvider)
-          execution_provider = DefaultCudaExecutionProvider();
-        else if (provider_type == onnxruntime::kDnnlExecutionProvider)
+        else if (provider_type == onnxruntime::kCudaExecutionProvider) {
+          int device_id = MPIContext::GetInstance().GetLocalRank();
+          execution_provider = CudaExecutionProviderWithId(device_id);
+        } else if (provider_type == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
           execution_provider = DefaultOpenVINOExecutionProvider();

@@ -70,6 +70,17 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithId(int device_id) {
+#ifdef USE_CUDA
+  CUDAExecutionProviderInfo info;
+  info.device_id = device_id;
+  return CreateExecutionProviderFactory_CUDA(info)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena) {
 #ifdef USE_DNNL
   if (auto factory = CreateExecutionProviderFactory_Dnnl(enable_arena ? 1 : 0))
