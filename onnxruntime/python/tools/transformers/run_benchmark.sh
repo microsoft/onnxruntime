@@ -89,6 +89,7 @@ if [ "$run_install" = true ] ; then
   else
     pip install onnxruntime-gpu
   fi
+  pip install --upgrade onnxconverter_common
   pip install --upgrade onnxruntime-tools
   pip install --upgrade transformers
 fi
