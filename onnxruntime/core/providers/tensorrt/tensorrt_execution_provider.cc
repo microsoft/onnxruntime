@@ -879,7 +879,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // Get ModelPath
   const auto& model_path = graph.ModelPath().ToPathString();///
-  std::cout << "TRT GetCap: model_path : " << model_path << std::endl;
+  ///std::cout << "TRT GetCap: model_path : " << model_path << std::endl;
 
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
