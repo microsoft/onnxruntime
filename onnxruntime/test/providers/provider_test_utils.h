@@ -489,6 +489,10 @@ class OpTester {
     use_determinism_ = use_determinism;
   }
 
+  void SetDeviceId(int device_id) {
+    device_id_ = device_id;
+  }
+
  protected:
   virtual void AddNodes(onnxruntime::Graph& graph, std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
@@ -649,6 +653,8 @@ class OpTester {
   bool verify_output_;
 
   bool use_determinism_ = false;
+
+  int device_id_ = -1;
 
   CustomOutputVerifierFn custom_output_verifier_;
 };

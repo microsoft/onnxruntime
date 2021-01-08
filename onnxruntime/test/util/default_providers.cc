@@ -70,12 +70,13 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithId(int device_id) {
+std::unique_ptr<IExecutionProvider> CreateCudaExecutionProvider(int device_id) {
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo info;
   info.device_id = device_id;
   return CreateExecutionProviderFactory_CUDA(info)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(device_id);
   return nullptr;
 #endif
 }

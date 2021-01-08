@@ -883,8 +883,11 @@ void OpTester::Run(
         if (provider_type == onnxruntime::kCpuExecutionProvider)
           execution_provider = DefaultCpuExecutionProvider();
         else if (provider_type == onnxruntime::kCudaExecutionProvider) {
-          int device_id = MPIContext::GetInstance().GetLocalRank();
-          execution_provider = CudaExecutionProviderWithId(device_id);
+          if (device_id_ != -1) {
+            execution_provider = CreateCudaExecutionProvider(device_id_);
+          } else {
+            execution_provider = DefaultCudaExecutionProvider();
+          }
         } else if (provider_type == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)

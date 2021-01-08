@@ -46,12 +46,13 @@ class NcclKernelTest : public testing::Test {
   int pipeline_parallel_size_;
 };
 
-static void RunNcclAllReduceTest(bool use_fp16, int local_size) {
+static void RunNcclAllReduceTest(bool use_fp16, int local_size, int local_rank) {
   if (local_size <= 1) return;
 
   RandomValueGenerator random{42};
   OpTester test("NcclAllReduce", 1, onnxruntime::kMSDomain);
   test.AddBufferedInputOutput();
+  test.SetDeviceId(local_rank);
 
   const std::vector<std::vector<int64_t>> tensors_dims = {{2, 3}, {128}, {512}, {7, 13}, {1024, 3}};
   for (size_t input_id = 0; input_id < tensors_dims.size(); ++input_id) {
@@ -79,11 +80,11 @@ static void RunNcclAllReduceTest(bool use_fp16, int local_size) {
 }
 
 TEST_F(NcclKernelTest, NcclAllReduce_FP32) {
-  RunNcclAllReduceTest(false /*use_fp16*/, local_size_);
+  RunNcclAllReduceTest(false /*use_fp16*/, local_size_, local_rank_);
 }
 
 TEST_F(NcclKernelTest, NcclAllReduce_FP16) {
-  RunNcclAllReduceTest(true /*use_fp16*/, local_size_);
+  RunNcclAllReduceTest(true /*use_fp16*/, local_size_, local_rank_);
 }
 
 static void RunNcclReduceScatterTest(bool use_fp16, int local_size, int local_rank) {
@@ -94,6 +95,7 @@ static void RunNcclReduceScatterTest(bool use_fp16, int local_size, int local_ra
   RandomValueGenerator random{42};
   OpTester test("NcclReduceScatter", 1, onnxruntime::kMSDomain);
   test.AddBufferedInputOutput();
+  test.SetDeviceId(local_rank);
 
   const std::vector<std::vector<int64_t>> tensors_dims = {{2, 3}, {5, 17}, {512}, {7, 13}, {256}};
 
@@ -158,6 +160,7 @@ static void RunNcclAllGatherTest(bool use_fp16, int local_size, int local_rank) 
   RandomValueGenerator random{42};
   OpTester test("NcclAllGather", 1, onnxruntime::kMSDomain);
   test.AddBufferedInputOutput();
+  test.SetDeviceId(local_rank);
 
   const std::vector<std::vector<int64_t>> tensors_dims = {{2, 3}, {5, 17}, {512}, {7, 13}, {256}};
 

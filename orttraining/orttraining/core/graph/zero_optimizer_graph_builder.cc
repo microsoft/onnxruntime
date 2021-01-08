@@ -387,38 +387,40 @@ static Status ModifyParametersForOptimizerPartitioning(
         new_opt_configs.push_back(opt_config);
         new_weight_argdefs.push_back(weight_argdef);
         new_gradient_argdefs.push_back(gradient_argdef);
-      } else if (tensor_start < rank_start && tensor_end <= rank_end) {
-        int64_t bytes_for_previous_rank = rank_start - tensor_start;
-        int64_t size_for_previous_rank = std::min<int64_t>(bytes_for_previous_rank / element_size, tensor_count);
-        int64_t size_for_current_rank = tensor_count - size_for_previous_rank;
+      } else {
+        weight_partition_info[weight_argdef.name].original_dim = tensor_shape.GetDims();
+        if (tensor_start < rank_start && tensor_end <= rank_end) {
+          int64_t bytes_for_previous_rank = rank_start - tensor_start;
+          int64_t size_for_previous_rank = std::min<int64_t>(bytes_for_previous_rank / element_size, tensor_count);
+          int64_t size_for_current_rank = tensor_count - size_for_previous_rank;
 
-        ORT_ENFORCE(size_for_current_rank > 0);
+          ORT_ENFORCE(size_for_current_rank > 0);
 
-        // !!!! todo: some optimization here, can skip View
-        std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
-        AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes,
-                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
-      } else if (tensor_start >= rank_start && tensor_end > rank_end) {
-        int64_t bytes_for_current_rank = rank_end - offset;
-        int64_t size_for_current_rank = std::min<int64_t>(bytes_for_current_rank / element_size, tensor_count);
-        int64_t size_for_next_rank = tensor_count - size_for_current_rank;
-        ORT_ENFORCE(size_for_current_rank > 0);
+          std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
+          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes,
+                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
+        } else if (tensor_start >= rank_start && tensor_end > rank_end) {
+          int64_t bytes_for_current_rank = rank_end - offset;
+          int64_t size_for_current_rank = std::min<int64_t>(bytes_for_current_rank / element_size, tensor_count);
+          int64_t size_for_next_rank = tensor_count - size_for_current_rank;
+          ORT_ENFORCE(size_for_current_rank > 0);
 
-        std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
-        AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes,
-                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
-      } else {  // tensor_start < rank_start && tensor_end > rank_end
-        int64_t bytes_for_previous_rank = rank_start - offset;
-        int64_t bytes_for_current_rank = rank_end - rank_start;
+          std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
+          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes,
+                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
+        } else {  // tensor_start < rank_start && tensor_end > rank_end
+          int64_t bytes_for_previous_rank = rank_start - offset;
+          int64_t bytes_for_current_rank = rank_end - rank_start;
 
-        int64_t size_for_previous_rank = std::min<int64_t>(bytes_for_previous_rank / element_size, tensor_count);
-        int64_t size_for_current_rank = std::min<int64_t>(bytes_for_current_rank / element_size, tensor_count - size_for_previous_rank);
-        int64_t size_for_next_rank = tensor_count - size_for_previous_rank - size_for_current_rank;
-        ORT_ENFORCE(size_for_current_rank > 0);
+          int64_t size_for_previous_rank = std::min<int64_t>(bytes_for_previous_rank / element_size, tensor_count);
+          int64_t size_for_current_rank = std::min<int64_t>(bytes_for_current_rank / element_size, tensor_count - size_for_previous_rank);
+          int64_t size_for_next_rank = tensor_count - size_for_previous_rank - size_for_current_rank;
+          ORT_ENFORCE(size_for_current_rank > 0);
 
-        std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
-        AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes,
-                              new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
+          std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
+          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes,
+                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
+        }
       }
     } else {
       // Parameter is handled by a different rank.
