@@ -51,16 +51,18 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'data_parallel_size': 1,
             'horizontal_parallel_size': 1,
             'pipeline_parallel_size': 1,
-            'num_pipeline_micro_batches':1,
-            'pipeline_cut_info_string': '',
+            'pipeline_parallel' : {
+                'num_pipeline_micro_batches':1,
+                'pipeline_cut_info_string': '',
+                'sliced_schema' : {},
+                'sliced_axes' : {},
+                'sliced_tensor_names': []
+            },
             'allreduce_post_accumulation': False,
             'deepspeed_zero_optimization': {
                 'stage' : 0,
             },
             'enable_adasum': False,
-            'sliced_schema' : {},
-            'sliced_axes' : {},
-            'sliced_tensor_names': []
         },
         'lr_scheduler': None,
         'mixed_precision': {
