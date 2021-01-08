@@ -18,8 +18,12 @@ The CUDA Execution Provider supports the following configuration options.
 ### device_id
 The device ID.
 
+Default value: 0
+
 ### cuda_mem_limit
 The size limit of the device memory arena in bytes. This size limit is only for the execution provider's arena. The total device memory usage may be higher.
+
+Default value: max value of C++ size_t type (effectively unlimited)
 
 ### arena_extend_strategy
 The strategy for extending the device memory arena.
@@ -28,6 +32,8 @@ Value                   | Description
 -|-
 kNextPowerOfTwo (0)     | subsequent extensions extend by larger amounts (multiplied by powers of two)
 kSameAsRequested (1)    | extend by the requested amount
+
+Default value: kNextPowerOfTwo
 
 ### cudnn_conv_algo_search
 The type of search done for cuDNN convolution algorithms.
@@ -38,8 +44,12 @@ EXHAUSTIVE (0)  | expensive exhaustive benchmarking using cudnnFindConvolutionFo
 HEURISTIC (1)   | lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
 DEFAULT (2)     | default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
 
+Default value: EXHAUSTIVE
+
 ### do_copy_in_default_stream
 Whether to do copies in the default stream or use separate streams. The recommended setting is true. If false, there are race conditions and possibly better performance.
+
+Default value: true
 
 ## Example Usage
 
