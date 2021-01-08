@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/common/optional.h"
+#include "core/common/parse_string.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {
@@ -20,7 +21,7 @@ optional<T> ParseEnvironmentVariable(const std::string& name) {
 
   T parsed_value;
   ORT_ENFORCE(
-      TryParse(value_str, parsed_value),
+      TryParseStringWithClassicLocale(value_str, parsed_value),
       "Failed to parse environment variable - name: \"", name, "\", value: \"", value_str, "\"");
 
   return parsed_value;
