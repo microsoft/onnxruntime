@@ -255,15 +255,15 @@ def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, 
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
 
     if 'distributed' in trainer_opts:
-        train_data = next(islice(_chunkify(train_data, trainer_opts['distributed']['rank_config']['world_size']), trainer_opts['distributed']['rank_config']['world_rank'], None))
+        train_data = next(islice(_chunkify(train_data, trainer_opts['distributed']['world_size']), trainer_opts['distributed']['world_rank'], None))
 
     # run train steps
     _train(trainer, train_data, batcher_fn)
 
     # save current model parameters as a checkpoint
     if checkpoint_dir:
-        if 'distributed' in trainer_opts and 'deepspeed_zero_optimization' in trainer_opts['distributed']['optimizer_config']:
-            _save(trainer, checkpoint_dir, state_dict_key_name, world_rank=trainer_opts['distributed']['rank_config']['world_rank'])
+        if 'distributed' in trainer_opts and 'deepspeed_zero_optimization' in trainer_opts['distributed']:
+            _save(trainer, checkpoint_dir, state_dict_key_name, world_rank=trainer_opts['distributed']['world_rank'])
         else:
             _save(trainer, checkpoint_dir, state_dict_key_name)
 

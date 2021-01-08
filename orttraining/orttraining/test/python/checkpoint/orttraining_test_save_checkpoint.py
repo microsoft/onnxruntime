@@ -35,13 +35,9 @@ def data_parallelism_full_precision(world_rank, world_size, device, checkpoint_d
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size,
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -57,13 +53,9 @@ def data_parallelism_mixed_precision(world_rank, world_size, device, checkpoint_
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size,
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -75,17 +67,13 @@ def distributed_zero_full_precision_adam(world_rank, world_size, device, checkpo
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size,
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
-                    } 
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
+                    }
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -101,16 +89,12 @@ def distributed_zero_mixed_precision_adam(world_rank, world_size, device, checkp
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size,
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -123,16 +107,12 @@ def distributed_zero_full_precision_lamb(world_rank, world_size, device, checkpo
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size,
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -149,16 +129,12 @@ def distributed_zero_mixed_precision_lamb(world_rank, world_size, device, checkp
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}

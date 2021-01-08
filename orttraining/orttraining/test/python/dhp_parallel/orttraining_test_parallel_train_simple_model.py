@@ -84,14 +84,12 @@ trainer_config = ORTTrainerOptions({
         'id': cuda_device
     },
     'distributed': {
-        'rank_config': {
-            'world_size': total_ranks,
-            'world_rank': rank,
-            'data_parallel_size': int(total_ranks / num_pipeline_stages),
-            'horizontal_parallel_size': 1,
-            'pipeline_parallel_size': int(num_pipeline_stages)
-        },
-        'pipeline_parallel_config': {
+        'world_size': total_ranks,
+        'world_rank': rank,
+        'data_parallel_size': int(total_ranks / num_pipeline_stages),
+        'horizontal_parallel_size': 1,
+        'pipeline_parallel_size': int(num_pipeline_stages),
+        'pipeline_parallel': {
             'num_pipeline_micro_batches': num_pipeline_steps,
             'sliced_schema': pipeline_schema,
             'sliced_axes': sliced_axes,
@@ -100,9 +98,7 @@ trainer_config = ORTTrainerOptions({
             # 2-stage cut. It's a cut on tensor "12".
             'pipeline_cut_info_string': '12'
         },
-        'optimizer_config': {
-            'allreduce_post_accumulation': True
-        }
+        'allreduce_post_accumulation': True
     }
 })
 

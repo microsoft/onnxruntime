@@ -216,13 +216,9 @@ def test_load_from_single_node_full_precision_into_data_parallelism_full_precisi
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -239,13 +235,9 @@ def test_load_from_single_node_mixed_precision_into_data_parallelism_full_precis
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size,
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -266,13 +258,9 @@ def test_load_from_single_node_mixed_precision_into_data_parallelism_mixed_preci
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size,
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -293,13 +281,9 @@ def test_load_from_single_node_full_precision_into_data_parallelism_mixed_precis
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size,
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -316,13 +300,9 @@ def test_load_from_data_parallelism_full_precision_into_data_parallelism_full_pr
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -339,13 +319,9 @@ def test_load_from_data_parallelism_mixed_precision_into_data_parallelism_full_p
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -366,13 +342,9 @@ def test_load_from_data_parallelism_mixed_precision_into_data_parallelism_mixed_
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -393,13 +365,9 @@ def test_load_from_data_parallelism_full_precision_into_data_parallelism_mixed_p
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -416,13 +384,9 @@ def test_load_from_distributed_zero_full_precision_into_data_parallelism_full_pr
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -447,13 +411,9 @@ def test_load_from_distributed_zero_mixed_precision_into_data_parallelism_full_p
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -482,13 +442,9 @@ def test_load_from_distributed_zero_mixed_precision_into_data_parallelism_mixed_
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -517,13 +473,9 @@ def test_load_from_distributed_zero_full_precision_into_data_parallelism_mixed_p
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size,
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True
-                    }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True
                 },
                 'debug' : {'deterministic_compute': True}
             }
@@ -548,16 +500,12 @@ def test_load_from_single_node_full_precision_into_distributed_zero_full_precisi
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -596,16 +544,12 @@ def test_load_from_single_node_mixed_precision_into_distributed_zero_full_precis
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -648,16 +592,12 @@ def test_load_from_single_node_mixed_precision_into_distributed_zero_mixed_preci
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size,
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -700,16 +640,12 @@ def test_load_from_single_node_full_precision_into_distributed_zero_mixed_precis
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -748,16 +684,12 @@ def test_load_from_data_parallelism_full_precision_into_distributed_zero_full_pr
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -796,16 +728,12 @@ def test_load_from_data_parallelism_mixed_precision_into_distributed_zero_full_p
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -848,16 +776,12 @@ def test_load_from_data_parallelism_mixed_precision_into_distributed_zero_mixed_
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -900,16 +824,12 @@ def test_load_from_data_parallelism_full_precision_into_distributed_zero_mixed_p
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -948,16 +868,12 @@ def test_load_from_distributed_zero_full_precision_into_distributed_zero_full_pr
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -980,16 +896,12 @@ def test_load_from_distributed_zero_mixed_precision_into_distributed_zero_full_p
                 'device' : {'id' : device},
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -1036,16 +948,12 @@ def test_load_from_distributed_zero_mixed_precision_into_distributed_zero_mixed_
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}
@@ -1072,16 +980,12 @@ def test_load_from_distributed_zero_full_precision_into_distributed_zero_mixed_p
                 },
                 'distributed' :
                 {
-                    'rank_config' : {
-                        'world_rank' : world_rank,
-                        'world_size' : world_size
-                    },
-                    'optimizer_config' : {
-                        'allreduce_post_accumulation' : True,
-                        'deepspeed_zero_optimization':
-                        {
-                            'stage': 1
-                        }
+                    'world_rank' : world_rank,
+                    'world_size' : world_size,
+                    'allreduce_post_accumulation' : True,
+                    'deepspeed_zero_optimization':
+                    {
+                        'stage': 1
                     }
                 },
                 'debug' : {'deterministic_compute': True}

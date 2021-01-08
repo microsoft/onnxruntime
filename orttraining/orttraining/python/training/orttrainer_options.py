@@ -57,44 +57,37 @@ class ORTTrainerOptions(object):
                     'default_setter': lambda _: {},
                     'required': False,
                     'schema': {
-                        'rank_config' : {
-                            'type': 'dict',
-                            'default_setter': lambda _: {},
-                            'required': False,
-                            'schema': {
-                                'world_rank': {
-                                    'type': 'integer',
-                                    'min': 0,
-                                    'default': 0
-                                },
-                                'world_size': {
-                                    'type': 'integer',
-                                    'min': 1,
-                                    'default': 1
-                                },
-                                'local_rank': {
-                                    'type': 'integer',
-                                    'min': 0,
-                                    'default': 0
-                                },
-                                'data_parallel_size': {
-                                    'type': 'integer',
-                                    'min': 1,
-                                    'default': 1
-                                },
-                                'horizontal_parallel_size': {
-                                    'type': 'integer',
-                                    'min': 1,
-                                    'default': 1
-                                },
-                                'pipeline_parallel_size': {
-                                    'type': 'integer',
-                                    'min': 1,
-                                    'default': 1
-                                }
-                            }
+                        'world_rank': {
+                            'type': 'integer',
+                            'min': 0,
+                            'default': 0
                         },
-                        'pipeline_parallel_config' : {
+                        'world_size': {
+                            'type': 'integer',
+                            'min': 1,
+                            'default': 1
+                        },
+                        'local_rank': {
+                            'type': 'integer',
+                            'min': 0,
+                            'default': 0
+                        },
+                        'data_parallel_size': {
+                            'type': 'integer',
+                            'min': 1,
+                            'default': 1
+                        },
+                        'horizontal_parallel_size': {
+                            'type': 'integer',
+                            'min': 1,
+                            'default': 1
+                        },
+                        'pipeline_parallel_size': {
+                            'type': 'integer',
+                            'min': 1,
+                            'default': 1
+                        },
+                        'pipeline_parallel' : {
                             'type': 'dict',
                             'default_setter': lambda _: {},
                             'required': False,
@@ -129,34 +122,27 @@ class ORTTrainerOptions(object):
                                     'default': []
                                 }
                             }
-                        }
-                        'optimizer_config' : {
+                        },
+                        'allreduce_post_accumulation': {
+                            'type': 'boolean',
+                            'default': False
+                        },
+                        'deepspeed_zero_optimization': {
                             'type': 'dict',
                             'default_setter': lambda _: {},
                             'required': False,
                             'schema': {
-                                'allreduce_post_accumulation': {
-                                    'type': 'boolean',
-                                    'default': False
+                                'stage': {
+                                    'type': 'integer',
+                                    'min': 0,
+                                    'max': 1,
+                                    'default': 0
                                 },
-                                'deepspeed_zero_optimization': {
-                                    'type': 'dict',
-                                    'default_setter': lambda _: {},
-                                    'required': False,
-                                    'schema': {
-                                        'stage': {
-                                            'type': 'integer',
-                                            'min': 0,
-                                            'max': 1,
-                                            'default': 0
-                                        },
-                                    }
-                                },
-                                'enable_adasum': {
-                                    'type': 'boolean',
-                                    'default': False
-                                }
                             }
+                        },
+                        'enable_adasum': {
+                            'type': 'boolean',
+                            'default': False
                         }
                     }
                 },
@@ -284,34 +270,30 @@ class ORTTrainerOptions(object):
             maximum memory size (in bytes) used by device.id
         distributed (dict):
             distributed training options.
-        distributed.rank_config (dict):
-            DxHxP parallel configuration.
-        distributed.rank_config.world_rank (int, default is 0):
+        distributed.world_rank (int, default is 0):
             rank ID used for data parallelism
-        distributed.rank_config.world_size (int, default is 1):
+        distributed.world_size (int, default is 1):
             number of ranks participating in parallelism
-        distributed.rank_config.data_parallel_size (int, default is 1):
+        distributed.data_parallel_size (int, default is 1):
             number of ranks participating in data parallelism
-        distributed.rank_config.horizontal_parallel_size (int, default is 1):
+        distributed.horizontal_parallel_size (int, default is 1):
             number of ranks participating in horizontal parallelism
-        distributed.rank_config.pipeline_parallel_size (int, default is 1):
+        distributed.pipeline_parallel_size (int, default is 1):
             number of ranks participating in pipeline parallelism
-        distributed.pipeline_parallel_config (dict):
+        distributed.pipeline_parallel (dict):
             Options which are only useful to pipeline parallel.
-        distributed.pipeline_parallel_config.num_pipeline_micro_batches (int, default is 1):
+        distributed.pipeline_parallel.num_pipeline_micro_batches (int, default is 1):
             number of micro-batches. We divide input batch into micro-batches and run the graph.
-        distributed.pipeline_parallel_config.pipeline_cut_info_string (string, default is ''):
+        distributed.pipeline_parallel.pipeline_cut_info_string (string, default is ''):
             string of cutting ids for pipeline partition.
-        distributed.optimizer_config (dict):
-            Options related to optimization algorithm including gradient accumulation.
-        distributed.optimizer_config.allreduce_post_accumulation (bool, default is False):
+        distributed.allreduce_post_accumulation (bool, default is False):
             True enables overlap of AllReduce with computation, while False,
             postpone AllReduce until all gradients are ready
-        distributed.optimizer_config.deepspeed_zero_optimization:
+        distributed.deepspeed_zero_optimization:
             DeepSpeed ZeRO options.
-        distributed.optimizer_config.deepspeed_zero_optimization.stage (int, default is 0):
+        distributed.deepspeed_zero_optimization.stage (int, default is 0):
             select which stage of DeepSpeed ZeRO to use. Stage 0 means disabled.
-        distributed.optimizer_config.enable_adasum (bool, default is False):
+        distributed.enable_adasum (bool, default is False):
             enable `Adasum <https://arxiv.org/abs/2006.02924>`_
             algorithm for AllReduce
         lr_scheduler (optim._LRScheduler, default is None):
@@ -494,44 +476,37 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'default_setter': lambda _: {},
         'required': False,
         'schema': {
-            'rank_config' : {
-                'type': 'dict',
-                'default_setter': lambda _: {},
-                'required': False,
-                'schema': {
-                    'world_rank': {
-                        'type': 'integer',
-                        'min': 0,
-                        'default': 0
-                    },
-                    'world_size': {
-                        'type': 'integer',
-                        'min': 1,
-                        'default': 1
-                    },
-                    'local_rank': {
-                        'type': 'integer',
-                        'min': 0,
-                        'default': 0
-                    },
-                    'data_parallel_size': {
-                        'type': 'integer',
-                        'min': 1,
-                        'default': 1
-                    },
-                    'horizontal_parallel_size': {
-                        'type': 'integer',
-                        'min': 1,
-                        'default': 1
-                    },
-                    'pipeline_parallel_size': {
-                        'type': 'integer',
-                        'min': 1,
-                        'default': 1
-                    }
-                }
+            'world_rank': {
+                'type': 'integer',
+                'min': 0,
+                'default': 0
             },
-            'pipeline_parallel_config' : {
+            'world_size': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
+            },
+            'local_rank': {
+                'type': 'integer',
+                'min': 0,
+                'default': 0
+            },
+            'data_parallel_size': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
+            },
+            'horizontal_parallel_size': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
+            },
+            'pipeline_parallel_size': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
+            },
+            'pipeline_parallel' : {
                 'type': 'dict',
                 'default_setter': lambda _: {},
                 'required': False,
@@ -567,33 +542,26 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     }
                 }
             },
-            'optimizer_config' : {
+            'allreduce_post_accumulation': {
+                'type': 'boolean',
+                'default': False
+            },
+            'deepspeed_zero_optimization': {
                 'type': 'dict',
                 'default_setter': lambda _: {},
                 'required': False,
                 'schema': {
-                    'allreduce_post_accumulation': {
-                        'type': 'boolean',
-                        'default': False
+                    'stage': {
+                        'type': 'integer',
+                        'min': 0,
+                        'max': 1,
+                        'default': 0
                     },
-                    'deepspeed_zero_optimization': {
-                        'type': 'dict',
-                        'default_setter': lambda _: {},
-                        'required': False,
-                        'schema': {
-                            'stage': {
-                                'type': 'integer',
-                                'min': 0,
-                                'max': 1,
-                                'default': 0
-                            },
-                        }
-                    },
-                    'enable_adasum': {
-                        'type': 'boolean',
-                        'default': False
-                    }
                 }
+            },
+            'enable_adasum': {
+                'type': 'boolean',
+                'default': False
             }
         }
     },

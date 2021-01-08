@@ -621,12 +621,12 @@ class ORTTrainer(object):
         ort_parameters = ort.TrainingParameters()
         ort_parameters.loss_output_name = loss_name
         ort_parameters.use_mixed_precision = self.options.mixed_precision.enabled
-        ort_parameters.world_rank = self.options.distributed.rank_config.world_rank
-        ort_parameters.world_size = self.options.distributed.rank_config.world_size
+        ort_parameters.world_rank = self.options.distributed.world_rank
+        ort_parameters.world_size = self.options.distributed.world_size
         ort_parameters.gradient_accumulation_steps = self.options.batch.gradient_accumulation_steps
-        ort_parameters.allreduce_post_accumulation = self.options.distributed.optimizer_config.allreduce_post_accumulation
-        ort_parameters.enable_adasum = self.options.distributed.optimizer_config.enable_adasum
-        ort_parameters.deepspeed_zero_stage = self.options.distributed.optimizer_config.deepspeed_zero_optimization.stage
+        ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
+        ort_parameters.enable_adasum = self.options.distributed.enable_adasum
+        ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_optimization.stage
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
         ort_parameters.set_gradients_as_graph_outputs = False
         ort_parameters.use_invertible_layernorm_grad = self.options.utils.invertible_layer_norm_gradient
@@ -643,18 +643,18 @@ class ORTTrainer(object):
         ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
         ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
 
-        ort_parameters.data_parallel_size = self.options.distributed.rank_config.data_parallel_size
-        ort_parameters.horizontal_parallel_size = self.options.distributed.rank_config.horizontal_parallel_size
-        ort_parameters.pipeline_parallel_size = self.options.distributed.rank_config.pipeline_parallel_size
-        ort_parameters.num_pipeline_micro_batches = self.options.distributed.pipeline_parallel_config.num_pipeline_micro_batches
-        ort_parameters.pipeline_cut_info_string = self.options.distributed.pipeline_parallel_config.pipeline_cut_info_string
+        ort_parameters.data_parallel_size = self.options.distributed.data_parallel_size
+        ort_parameters.horizontal_parallel_size = self.options.distributed.horizontal_parallel_size
+        ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel_size
+        ort_parameters.num_pipeline_micro_batches = self.options.distributed.pipeline_parallel.num_pipeline_micro_batches
+        ort_parameters.pipeline_cut_info_string = self.options.distributed.pipeline_parallel.pipeline_cut_info_string
         # We have special handling for dictionary-typed option.
         # sliced_schema._validated_opts is the original dictionary while sliced_schema is a _ORTTrainerOptionsInternal.
-        ort_parameters.sliced_schema = self.options.distributed.pipeline_parallel_config.sliced_schema._validated_opts
+        ort_parameters.sliced_schema = self.options.distributed.pipeline_parallel.sliced_schema._validated_opts
         # We have special handling for dictionary-typed option.
         # sliced_axes._validated_opts is the original dictionary while sliced_schema is a _ORTTrainerOptionsInternal.
-        ort_parameters.sliced_axes = self.options.distributed.pipeline_parallel_config.sliced_axes._validated_opts
-        ort_parameters.sliced_tensor_names = self.options.distributed.pipeline_parallel_config.sliced_tensor_names
+        ort_parameters.sliced_axes = self.options.distributed.pipeline_parallel.sliced_axes._validated_opts
+        ort_parameters.sliced_tensor_names = self.options.distributed.pipeline_parallel.sliced_tensor_names
 
         # SessionOptions
         session_options = ort.SessionOptions()
@@ -909,9 +909,9 @@ class ORTTrainer(object):
         state_dict[_utils.state_dict_trainer_options_key()] = {}
         state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = self.options.mixed_precision.enabled
         state_dict[_utils.state_dict_trainer_options_key()][zero_stage] = \
-            self.options.distributed.optimizer_config.deepspeed_zero_optimization.stage
-        state_dict[_utils.state_dict_trainer_options_key()][world_rank] = self.options.distributed.rank_config.world_rank
-        state_dict[_utils.state_dict_trainer_options_key()][world_size] = self.options.distributed.rank_config.world_size
+            self.options.distributed.deepspeed_zero_optimization.stage
+        state_dict[_utils.state_dict_trainer_options_key()][world_rank] = self.options.distributed.world_rank
+        state_dict[_utils.state_dict_trainer_options_key()][world_size] = self.options.distributed.world_size
         state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = self.optim_config.name
 
     def state_dict(self, pytorch_format=False):
@@ -1056,7 +1056,7 @@ class ORTTrainer(object):
         # load training session model states into the state_dict
         self._extract_model_states(state_dict, pytorch_format)
         if pytorch_format:
-            if self.options.distributed.optimizer_config.deepspeed_zero_optimization.stage > 0:
+            if self.options.distributed.deepspeed_zero_optimization.stage > 0:
                 warnings.warn("Incomplete state_dict: ZeRO enabled", UserWarning)
             # if pytorch_format is true, return a flat dictionary with only model states
             # which is compatible with a PyTorch model
@@ -1069,7 +1069,7 @@ class ORTTrainer(object):
         self._extract_trainer_options(state_dict)
 
         # add partition information in case of a distributed run
-        if self.options.distributed.optimizer_config.deepspeed_zero_optimization.stage > 0:
+        if self.options.distributed.deepspeed_zero_optimization.stage > 0:
             state_dict[_utils.state_dict_partition_info_key()] = self._training_session.get_partition_info_map()
 
         return state_dict
