@@ -756,7 +756,7 @@ static void TestSTFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, 
  }
 
 static void TestMiddleCSpectrogram(
-    int64_t batch_size, int64_t signal_size, int64_t dft_size, int64_t hop_size,
+     int64_t batch_size, int64_t signal_size, int64_t window_size, int64_t dft_size, int64_t hop_size,
     int64_t n_mel_bins, int64_t sampling_rate) {
   printf("\nTest MiddleC Spectrogram\n");
 
@@ -765,35 +765,29 @@ static void TestMiddleCSpectrogram(
 
   static const wchar_t MS_DOMAIN[] = L"com.microsoft";
   
-  int64_t onesided_dft_size = static_cast<int64_t>(floor(dft_size / 2.f) + 1);
-
+  // Input and output shapes
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> input_shape = {batch_size, signal_size};
-  std::vector<int64_t> dft_shape = {batch_size, onesided_dft_size, 2};
-  std::vector<int64_t> powerframe_shape = {batch_size, onesided_dft_size, 1};
-  std::vector<int64_t> mel_matrix_shape = {onesided_dft_size, n_mel_bins};
   std::vector<int64_t> mel_spectrogram_shape = {batch_size, n_mel_bins};
 
   // Constant initializers
-
+  auto power_of_2_exponent = TensorFloat::CreateFromShapeArrayAndDataArray({}, {2});
   auto frame_step = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {hop_size});
+  auto window_length = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {window_size});
   auto dft_length = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {dft_size});
+  auto dft_length_as_float = TensorFloat::CreateFromShapeArrayAndDataArray({}, {static_cast<float>(dft_size)});
 
   // real slice
-  auto real_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray({3}, {0, 0, 0});
-  auto real_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray({3}, {INT_MAX, INT_MAX, 1});
+  auto real_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {0, 0, 0, 0});
+  auto real_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {INT_MAX, INT_MAX, INT_MAX, 1});
 
   // complex slice
-  auto complex_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray({3}, {0, 0, 1});
-  auto complex_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray({3}, {INT_MAX, INT_MAX, 2});
-  auto power_of_2_exponent = TensorFloat::CreateFromShapeArrayAndDataArray({}, {2});
-  auto number_of_samples = TensorFloat::CreateFromShapeArrayAndDataArray({}, {static_cast<float>(signal_size)});
+  auto complex_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {0, 0, 0, 1});
+  auto complex_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {INT_MAX, INT_MAX, INT_MAX, 2});
 
-  // input slice
-  auto input_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray({1}, {1});
-  auto input_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray({1}, {2});
-
-  auto mel_input_shape = TensorInt64Bit::CreateFromShapeArrayAndDataArray({2}, {batch_size, onesided_dft_size});
+  auto number_of_dfts = static_cast<int64_t>(ceil((signal_size - dft_size) / hop_size));
+  int64_t onesided_dft_size = static_cast<int64_t>(floor(dft_size / 2.f) + 1);
+  auto mel_input_shape = TensorInt64Bit::CreateFromShapeArrayAndDataArray({2}, {batch_size * number_of_dfts, onesided_dft_size});
 
   // Mel spectrogram
   auto num_mel_bins = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {n_mel_bins});
@@ -804,73 +798,43 @@ static void TestMiddleCSpectrogram(
   auto model =
       LearningModelBuilder::Create()
           // Inputs
-          .Inputs()
-          .Add(TensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, input_shape))
+          .Inputs().Add(TensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, input_shape))
+          .Inputs().AddConstant(L"power_of_2_exponent", power_of_2_exponent)
           // Outputs
-          .Outputs()
-          .Add(TensorFeatureDescriptor(L"Output.OnesidedDFT", L"The onesided output of the frequency domain spectra", TensorKind::Float, dft_shape))
-          .Outputs()
-          .Add(TensorFeatureDescriptor(L"Output.PowerFrames", L"The real output of the frequency domain spectra", TensorKind::Float, powerframe_shape))
-          .Outputs()
-          .Add(TensorFeatureDescriptor(L"Output.MelWeightMatrix", L"The mel matrix", TensorKind::Float, mel_matrix_shape))
-          .Outputs()
-          .Add(TensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
-          // Constants
-          .Inputs()
-          .AddConstant(L"power_of_2_exponent", power_of_2_exponent)
+          .Outputs().Add(TensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
           // The graph
           .Operators()
-          .Add(Operator(L"Shape", L"shape0")
-                   .SetInput(L"data", L"Input.TimeSignal")
-                   .SetOutput(L"shape", L"input_shape"))
-          .Operators()
-          .Add(Operator(L"Slice", L"input_slice")
-                   .SetInput(L"data", L"input_shape")
-                   .SetConstant(L"starts", input_slice_start)  // make_tensor<int32_t>({1}, {2}))
-                   .SetConstant(L"ends", input_slice_ends)
-                   .SetOutput(L"output", L"num_samples"))
-          .Operators()
           .Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
-                   .SetInput(L"size", L"num_samples")
+                   .SetConstant(L"size", window_length)                 // SetConstant not implemented: bind hann0.size to window_length
                    .SetOutput(L"output", L"hann_window"))
           .Operators()
-          .Add(Operator(L"Mul", L"mul0")
-                   .SetInput(L"A", L"hann_window")
-                   .SetInput(L"B", L"Input.TimeSignal")
-                   .SetOutput(L"C", L"windowed_signal"))
-          .Operators()
-          .Add(Operator(L"DFT", L"dft0", MS_DOMAIN)
-                   .SetInput(L"input", L"windowed_signal")
-                   .SetOutput(L"output", L"Output.OnesidedDFT"))
-
-          //.Operators()
-          //.Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
-          //         .SetInput(L"signal", L"Input.TimeSignal")
-          //         .SetInput(L"window", L"hann_window")
-          //         .SetConstant(L"dft_length", dft_length)
-          //         .SetConstant(L"frame_step", frame_step)
-          //         .SetOutput(L"output", L"Output.STFT"))
+          .Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
+                   .SetInput(L"signal", L"Input.TimeSignal")
+                   .SetInput(L"window", L"hann_window")
+                   .SetConstant(L"dft_length", dft_length)              // SetConstant not implemented: bind stft0.dft_length to dft_length
+                   .SetConstant(L"frame_step", frame_step)              // SetConstant not implemented: bind stft0.frame_step to frame_step
+                   .SetOutput(L"output", L"stft_output"))
           .Operators()
           .Add(Operator(L"Slice", L"real_slice")
-                   .SetInput(L"data", L"Output.OnesidedDFT")
+                   .SetInput(L"data", L"stft_output")
                    .SetConstant(L"starts", real_slice_start)
                    .SetConstant(L"ends", real_slice_ends)
                    .SetOutput(L"output", L"reals"))
           .Operators()
           .Add(Operator(L"Slice", L"complex_slice")
-                   .SetInput(L"data", L"Output.OnesidedDFT")
+                   .SetInput(L"data", L"stft_output")
                    .SetConstant(L"starts", complex_slice_start)
                    .SetConstant(L"ends", complex_slice_ends)
                    .SetOutput(L"output", L"imaginaries"))
           .Operators()
           .Add(Operator(L"Pow", L"real_pow")
                    .SetInput(L"X", L"reals")
-                   .SetInput(L"Y", L"power_of_2_exponent")
+                   .SetInput(L"Y", L"power_of_2_exponent")               // SetConstant not implemented: bind real_pow.Y to power_of_2_exponent
                    .SetOutput(L"Z", L"reals_squared"))
           .Operators()
           .Add(Operator(L"Pow", L"complex_pow")
                    .SetInput(L"X", L"imaginaries")
-                   .SetInput(L"Y", L"power_of_2_exponent")
+                   .SetInput(L"Y", L"power_of_2_exponent")               // SetConstant not implemented: bind complex_pow.Y to power_of_2_exponent
                    .SetOutput(L"Z", L"imaginaries_squared"))
           .Operators()
           .Add(Operator(L"Add", L"add0")
@@ -880,25 +844,25 @@ static void TestMiddleCSpectrogram(
           .Operators()
           .Add(Operator(L"Div", L"div0")
                    .SetInput(L"A", L"magnitude_squared")
-                   .SetConstant(L"B", number_of_samples)
-                   .SetOutput(L"C", L"Output.PowerFrames"))
+                   .SetConstant(L"B", dft_length_as_float)  // SetConstant not implemented: bind div0.B to dft_length_as_float
+                   .SetOutput(L"C", L"power_frames"))
           .Operators()
           .Add(Operator(L"MelWeightMatrix", L"melweightmatrix0", MS_DOMAIN)
-                   .SetConstant(L"num_mel_bins", num_mel_bins)
-                   .SetInput(L"dft_length", L"num_samples")
+                   .SetConstant(L"num_mel_bins", num_mel_bins)            // SetConstant not implemented: bind melweightmatrix0.num_mel_bins to num_mel_bins
+                   .SetConstant(L"dft_length", dft_length)                // SetConstant not implemented: bind melweightmatrix0.dft_length to dft_length
                    .SetConstant(L"sample_rate", sample_rate)
-                   .SetConstant(L"lower_edge_hertz", lower_edge_hertz)
-                   .SetConstant(L"upper_edge_hertz", upper_edge_hertz)
-                   .SetOutput(L"output", L"Output.MelWeightMatrix"))
+                   .SetConstant(L"lower_edge_hertz", lower_edge_hertz)    // SetConstant not implemented: bind melweightmatrix0.lower_edge_hertz to lower_edge_hertz
+                   .SetConstant(L"upper_edge_hertz", upper_edge_hertz)    // SetConstant not implemented: bind melweightmatrix0.upper_edge_hertz to upper_edge_hertz
+                   .SetOutput(L"output", L"mel_weight_matrix"))
           .Operators()
           .Add(Operator(L"Reshape", L"reshape0")
-                   .SetInput(L"data", L"Output.PowerFrames")
+                   .SetInput(L"data", L"power_frames")
                    .SetConstant(L"shape", mel_input_shape)
-                   .SetOutput(L"reshaped", L"ReshapedOutput"))
+                   .SetOutput(L"reshaped", L"reshaped_output"))
           .Operators()
           .Add(Operator(L"MatMul", L"matmul0")
-                   .SetInput(L"A", L"ReshapedOutput")
-                   .SetInput(L"B", L"Output.MelWeightMatrix")
+                   .SetInput(L"A", L"reshaped_output")
+                   .SetInput(L"B", L"mel_weight_matrix")
                    .SetOutput(L"Y", L"Output.MelSpectrogram"))
           .CreateModel();
 
@@ -906,17 +870,20 @@ static void TestMiddleCSpectrogram(
   LearningModelBinding binding(session);
 
   // Populate binding
-  std::vector<float> input = {1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0, 1, 2, 3, 4, 1, 0, 0, 0};
-  binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromShapeArrayAndDataArray(input_shape, input));
-
+  auto signal = make_middle_c<float>(signal_size, 8192);
+  binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromShapeArrayAndDataArray(input_shape, signal));
+ 
   // These are constant initializers. Constants should be automatically generated and set... but since that is not implemented... they need to be duplicated
+  binding.Bind(L"hann0.size", window_length);
+  binding.Bind(L"stft0.dft_length", dft_length);
+  binding.Bind(L"stft0.frame_step", frame_step);
   binding.Bind(L"real_slice.starts", real_slice_start);
   binding.Bind(L"real_slice.ends", real_slice_ends);
   binding.Bind(L"complex_slice.starts", complex_slice_start);
   binding.Bind(L"complex_slice.ends", complex_slice_ends);
-  binding.Bind(L"input_slice.starts", input_slice_start);
-  binding.Bind(L"input_slice.ends", input_slice_ends);
-  binding.Bind(L"div0.B", number_of_samples);
+
+  binding.Bind(L"div0.B", dft_length_as_float);
+  binding.Bind(L"melweightmatrix0.dft_length", dft_length);
   binding.Bind(L"melweightmatrix0.num_mel_bins", num_mel_bins);
   binding.Bind(L"melweightmatrix0.sample_rate", sample_rate);
   binding.Bind(L"melweightmatrix0.lower_edge_hertz", lower_edge_hertz);
@@ -928,34 +895,11 @@ static void TestMiddleCSpectrogram(
   auto result = session.Evaluate(binding, L"");
 
   // Check results
-  printf("DFT\n");
-  auto dft_tensor = result.Outputs().Lookup(L"Output.OnesidedDFT").as<TensorFloat>();
-  auto dft_ivv = dft_tensor.GetAsVectorView();
-  for (int i = 0; i < dft_shape[0] * dft_shape[1] * 2; i += 2) {
-    printf("%f + %fi\n", dft_ivv.GetAt(i), dft_ivv.GetAt(i + 1));
-  }
-
-  printf("PowerFrames\n");
-  auto y_tensor = result.Outputs().Lookup(L"Output.PowerFrames").as<TensorFloat>();
-  auto y_ivv = y_tensor.GetAsVectorView();
-  for (int i = 0; i < powerframe_shape[0] * powerframe_shape[1]; i++) {
-    printf("%f\n", y_ivv.GetAt(i));
-  }
-
-  auto mel_tensor = result.Outputs().Lookup(L"Output.MelWeightMatrix").as<TensorFloat>();
-  auto mel_ivv = mel_tensor.GetAsVectorView();
-  printf("MelWeightMatrix\n");
-  for (int i = 0; i < mel_matrix_shape[0]; i++) {
-    for (int j = 0; j < mel_matrix_shape[1]; j++) {
-      printf("%.2f,", mel_ivv.GetAt((i * static_cast<int>(mel_matrix_shape[1])) + j));
-    }
-    printf("\n");
-  }
 
   auto final_tensor = result.Outputs().Lookup(L"Output.MelSpectrogram").as<TensorFloat>();
   auto final_ivv = final_tensor.GetAsVectorView();
-  printf("MelTransformedOutput\n");
-  for (int i = 0; i < mel_spectrogram_shape[0] * mel_spectrogram_shape[1]; i++) {
+  printf("Output.MelSpectrogram\n\n");
+  for (uint32_t i = 0; i < final_ivv.Size(); i++) {
     printf("%f\n", final_ivv.GetAt(i));
   }
 }
@@ -1021,6 +965,21 @@ static void TestModelBuilding() {
     int64_t dft_size = 256;  //static_cast<int64_t>(sample_rate * frame_duration_in_seconds);
     int64_t hop_size = 128;  //static_cast<int64_t>(sample_rate * frame_stride_in_seconds);
     TestSTFT(batch_size, signal_size, dft_size, hop_size);
+  }
+
+  {
+    int64_t sample_rate = 8192;
+    float signal_duration_in_seconds = 5.f;
+
+    int64_t batch_size = 1;
+    int64_t signal_size = static_cast<int64_t>(sample_rate * signal_duration_in_seconds);
+    int64_t window_size = 256;  //static_cast<int64_t>(sample_rate * frame_duration_in_seconds);
+    int64_t dft_size = 256;  //static_cast<int64_t>(sample_rate * frame_duration_in_seconds);
+    int64_t hop_size = 128;  //static_cast<int64_t>(sample_rate * frame_stride_in_seconds);
+    int64_t n_mel_bins = 10;
+    int64_t sampling_rate = 48000;
+
+    TestMiddleCSpectrogram(batch_size, signal_size, dft_size, window_size, hop_size, n_mel_bins, sampling_rate);
   }
 }
 
