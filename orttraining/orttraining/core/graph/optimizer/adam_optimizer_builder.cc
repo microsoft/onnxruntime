@@ -28,7 +28,6 @@ Status AdamOptimizerBuilder::Build(
     const std::string& gradient_name = gradient_argdefs[i].name;
     const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
     const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
-    weight_to_opt_mapping[weight_name] = {};
 
     // Return either the input gradient/weight/mixed-precision-weight or updated gradient/weight/mixed-precision-weight.
     ArgDef output_gradient_argdef = gradient_argdefs[i];
@@ -38,6 +37,7 @@ Status AdamOptimizerBuilder::Build(
 
     // In distributed training, some weights may not be updated by all ranks.
     if (opt_configs[i].enabled) {
+      weight_to_opt_mapping[weight_name] = {};
       // The type proto initializer for Update Count
       const std::string update_count_string = ADAM_UC_PREFIX + "_" + weight_name;  // per weight optimizer requires a per weight update count
       TensorProto uc_tensor_proto;
@@ -82,7 +82,7 @@ Status AdamOptimizerBuilder::Build(
       const auto element_type = opt_configs[i].use_mixed_precision_moments ? 
                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : 
                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
-
+      std::cout<<"Adding adam optim : "<< weight_name <<"\n";
       // Add first- and second-order momentums to input list.
       for (const auto& moments_prefix : MOMENTS_PREFIXES) {
         const std::string gradient_moment_name = moments_prefix + "_" + weight_name;
@@ -99,6 +99,7 @@ Status AdamOptimizerBuilder::Build(
           //TODO: need to support float -> float16 and float16-> float conversion
           ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims));
           moment_tensor_proto = utils::TensorToTensorProto(init_tensor, gradient_moment_name);
+          std::cout<<"Added moment: " << moments_prefix << "\n";
         } else if (opt_configs[i].use_mixed_precision_moments) {
           moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
         } else {

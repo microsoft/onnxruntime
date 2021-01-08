@@ -250,6 +250,7 @@ static Status AddParameterPartition(
     //Partition the FP32 weight
     weight_views = AddPartitionsForParameter(graph, graph_defs, weight_argdef.name, view_shapes, updated_weight_names_map);
     ORT_ENFORCE(weight_views.size() == enabled.size());
+    weight_partition_info[weight_argdef.name].weight_partitioned = true;
 
     // Add View for mixed precision weight.
     ArgDef mixed_precision_weight_argdef(opt_config.mixed_precision_weight_arg->Name(), opt_config.mixed_precision_weight_arg->TypeAsProto());
@@ -276,6 +277,7 @@ static Status AddParameterPartition(
     // Partition initial optimizer state
     if (enabled[i]) {
       weight_partition_info[weight_argdef.name].view_name = weight_views[i].name;
+      std::cout<< "ZERO: original:"<< weight_argdef.name << "adding view name: " << weight_views[i].name << "\n";
 
       if (!initial_states.empty()) {
         ORT_ENFORCE(view_shapes.size() == 3, "Invalid view_shapes vector passed for partitioning.");

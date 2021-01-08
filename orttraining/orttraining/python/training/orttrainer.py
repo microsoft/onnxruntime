@@ -613,6 +613,9 @@ class ORTTrainer(object):
                     else:
                         raise ValueError("Optimizer attributes must be either float or int.")
 
+        self.options.distributed.horizontal_parallel_size = max(self.options.distributed.horizontal_parallel_size, 1)
+        self.options.distributed.data_parallel_size = int(self.options.distributed.world_size/self.options.distributed.horizontal_parallel_size)
+        
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
         ort_parameters.loss_output_name = loss_name
@@ -1183,9 +1186,11 @@ class ORTTrainer(object):
             missing_keys = list(keys1 - keys2)
             unexpected_keys = list(keys2 - keys1)
             if len(missing_keys) > 0:
-                raise RuntimeError("Missing keys: {} in {}".format(missing_keys, in_error_str))
+                # raise RuntimeError("Missing keys: {} in {}".format(missing_keys, in_error_str))
+                print("Missing keys: {} in {}".format(missing_keys, in_error_str))
             if len(unexpected_keys) > 0:
-                raise RuntimeError("Unexpected keys: {} in {}".format(unexpected_keys, in_error_str))
+                # raise RuntimeError("Unexpected keys: {} in {}".format(unexpected_keys, in_error_str))
+                print("Unexpected keys: {} in {}".format(unexpected_keys, in_error_str))
 
         def _check_model_key_mismatch(current_state_dict, state_dict):
             """Check if there is any mismatch in the model sub state dictionary between the two state_dicts"""

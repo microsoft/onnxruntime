@@ -233,12 +233,19 @@ def setup_training(args):
     logger.info("setup_training: args.train_batch_size = %d", args.train_batch_size)
     return device, args
 
-
 def prepare_model(args, device):
     if args.force_num_layers is not None:
         logger.info("forcing num layers to %d", args.force_num_layers)
         args.encoder_layers = args.force_num_layers
         args.decoder_layers = args.force_num_layers
+        args.encoder_embed_dim = 128
+        args.encoder_ffn_embed_dim = 4*128
+        args.decoder_embed_dim = args.encoder_embed_dim
+        args.decoder_ffn_embed_dim = args.encoder_ffn_embed_dim
+        args.decoder_output_dim = args.decoder_embed_dim
+        args.decoder_input_dim = args.decoder_embed_dim
+        args.encoder_attention_heads = 8
+        args.decoder_attention_heads = 8
 
     task = tasks.setup_task(args)
 
@@ -382,7 +389,8 @@ def do_pretrain(args):
                         tb_writer.close()
 
                     final_loss = average_loss / (args.log_freq * args.gradient_accumulation_steps)
-                    fname = os.path.join(args.output_dir, "bart_ckpt_" + str(args.world_rank) + ".ortpt")
+                    model.save_as_onnx("testdata/bart_tiny.onnx")
+                    fname = os.path.join(args.output_dir, "bart_ckpt_DH_" + str(args.world_rank) + ".ortpt")
                     print(fname)
                     model.save_checkpoint(fname)
                     return final_loss
@@ -459,7 +467,7 @@ def do_eval(args):
             target = pad_to_len(batch[0]['target'], args).view(-1).to(device)
 
             loss = model.eval_step(src_tokens, prev_output_tokens, target)
-            checkpoint_file_name = 'bart_ckpt_*.ortpt'
+            checkpoint_file_name = 'bart_ckpt_DH_*.ortpt'
             checkpoint_files = glob.glob(os.path.join(args.output_dir, checkpoint_file_name))
             model.load_checkpoint(*checkpoint_files)
             return
@@ -476,14 +484,14 @@ def generate_tensorboard_logdir(root_dir):
 
 class ORTBertPretrainTest():
     def setUp(self):
-        self.output_dir = '/tmp/bert_pretrain_results'
+        self.output_dir = '/tmp/bert_pretrain_results_aibhanda'
         self.bert_model = 'bert-base-uncased'
         self.max_steps = 300000
         self.lr = 2e-5
         self.data = '/bert_data/megatron_bart/bin_small/'
         self.fp16 = True
         self.allreduce_post_accumulation = True
-        self.tensorboard_dir = '/tmp/bert_pretrain_results'
+        self.tensorboard_dir = '/tmp/bert_pretrain_results_aibhanda'
 
     def test_pretrain_throughput(self):
         self.train_batch_size = 8

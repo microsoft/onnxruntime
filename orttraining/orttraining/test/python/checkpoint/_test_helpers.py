@@ -2,15 +2,19 @@ import os
 import pickle
 from itertools import islice
 import glob
+import copy
 
 import torch
 import torch.distributed as dist
+from onnx import numpy_helper
 
 from onnxruntime import set_seed
 from onnxruntime.training import amp, checkpoint, optim, orttrainer
 from onnxruntime.capi._pybind_state import set_cuda_device_id, get_mpi_context_world_rank, get_mpi_context_world_size
 
-from _test_commons import generate_dummy_optim_state, _load_pytorch_transformer_model, assert_all_states_close_ort, assert_all_states_close_pytorch
+from _test_commons import generate_random_input_from_model_desc, generate_dummy_optim_state, \
+                          _load_pytorch_transformer_model, _load_bart_model, \
+                          assert_all_states_close_ort, assert_all_states_close_pytorch
 
 from numpy.testing import assert_allclose, assert_array_equal
 
@@ -55,6 +59,11 @@ def _setup_test_infra(world_rank, world_size):
     set_cuda_device_id(world_rank)
 
     dist.init_process_group(backend='nccl', world_size=world_size, rank=world_rank)
+
+def _is_model_parallel_run(trainer_options):
+    zero = ('distributed' in trainer_options) and ('deepspeed_zero_optimization' in trainer_options['distributed']) and (trainer_options['distributed']['deepspeed_zero_optimization']['stage'] > 0)
+    megatron = ('distributed' in trainer_options) and ('horizontal_parallel_size' in trainer_options['distributed']) and (trainer_options['distributed']['horizontal_parallel_size'] > 1)
+    return zero or megatron
 
 def distributed_setup(func):
     """Decorator function for distributed tests.
@@ -107,6 +116,39 @@ def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir, 
     trainer.eval_step(data, targets)
 
     return trainer.state_dict(), model
+
+def create_orttrainer_and_load_checkpoint_bart(device, trainer_opts, checkpoint_dir, use_lamb=True):
+    """Instantiate and load checkpoint into trainer
+
+    - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple transformer model
+    - Loads the checkpoint from directory checkpoint_dir into the trainer
+    - Runs eval_step on the trainer so the trainer onnx graph is initialized
+    - Returns the trainer state_dict and the pytorch model
+    """
+    seed = 1
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # PyTorch transformer model setup
+    learning_rate = 0.1
+    optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
+    model, model_desc = _load_bart_model()
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=orttrainer.ORTTrainerOptions(trainer_opts))
+
+    # load checkpoint into trainer
+    checkpoint_file_name = 'checkpoint*.ortcp'
+    checkpoint_files = glob.glob(os.path.join(checkpoint_dir, checkpoint_file_name))
+    trainer.load_checkpoint(*checkpoint_files)
+
+    # run an eval step to innitialize the graph
+    src_tokens, prev_output_tokens, target = generate_random_input_from_model_desc(model_desc, seed = seed)
+    trainer.eval_step(src_tokens, prev_output_tokens, target)
+
+    expected_state_dict = None
+    with open(os.path.join(checkpoint_dir, 'expected_state_dict.pkl'), "rb") as f:
+        expected_state_dict = pickle.load(f)
+
+    return trainer.state_dict(), expected_state_dict, model
 
 def create_initialized_orttrainer(device, trainer_opts, use_lamb=True):
     seed = 1
@@ -262,8 +304,42 @@ def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, 
 
     # save current model parameters as a checkpoint
     if checkpoint_dir:
-        if 'distributed' in trainer_opts and 'deepspeed_zero_optimization' in trainer_opts['distributed']:
+        if _is_model_parallel_run(trainer_opts):
             _save(trainer, checkpoint_dir, state_dict_key_name, world_rank=trainer_opts['distributed']['world_rank'])
+        else:
+            _save(trainer, checkpoint_dir, state_dict_key_name)
+
+def create_orttrainer_and_save_checkpoint_bart(device, trainer_opts, checkpoint_dir, state_dict_key_name='state_dict', use_lamb=True):
+    learning_rate = 0.1
+    seed = 1
+
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
+    model, model_desc = _load_bart_model()
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=orttrainer.ORTTrainerOptions(trainer_opts))
+
+    # load dummy optimizer state as we are not going to run real training
+    dummy_init_state = generate_dummy_optim_state(model, optim_config)
+    init_state = copy.deepcopy(dummy_init_state)
+    trainer.load_state_dict(dummy_init_state)
+
+    # run an eval step to innitialize the graph
+    src_tokens, prev_output_tokens, target = generate_random_input_from_model_desc(model_desc, seed = seed)
+    trainer.eval_step(src_tokens, prev_output_tokens, target)
+
+    # save current model parameters as a checkpoint
+    if checkpoint_dir:
+        if _is_model_parallel_run(trainer_opts):
+            _save(trainer, checkpoint_dir, state_dict_key_name, world_rank=trainer_opts['distributed']['world_rank'])
+            # save the initial complete model and optimizer states
+            if trainer_opts['distributed']['world_rank'] == 0:
+                init_state['model'] = {'full_precision': dict()}
+                for initializer in model.graph.initializer:
+                    init_state['model']['full_precision'][initializer.name] = numpy_helper.to_array(initializer)
+                with open(os.path.join(checkpoint_dir, 'expected_state_dict.pkl'), "wb") as f:
+                    pickle.dump(init_state, f)
         else:
             _save(trainer, checkpoint_dir, state_dict_key_name)
 

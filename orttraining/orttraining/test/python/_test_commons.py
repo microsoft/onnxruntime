@@ -8,6 +8,7 @@ from numpy.testing import assert_allclose
 import torch
 import onnx
 
+import onnxruntime
 from onnxruntime.training import optim, _utils
 
 def _single_run(execution_file, scenario, checkopint_dir = None):
@@ -20,7 +21,7 @@ def _single_run(execution_file, scenario, checkopint_dir = None):
 
 def _distributed_run(execution_file, scenario, checkopint_dir = None):
     ngpus = torch.cuda.device_count()
-    cmd = ['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', sys.executable, execution_file]
+    cmd = ['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', '--tag-output', sys.executable, execution_file]
     if scenario:
         cmd += ['--scenario', scenario]
     if checkopint_dir:
@@ -166,6 +167,39 @@ def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False
     # Preparing data
     train_data, val_data, test_data = utils.prepare_data(device, 20, 20)
     return model, model_desc, my_loss, utils.get_batch, train_data, val_data, test_data
+
+def generate_random_input_from_model_desc(desc, seed=1, device = "cuda:0"):
+    '''Generates a sample input for the BART model using the model desc'''
+
+    torch.manual_seed(seed)
+    onnxruntime.set_seed(seed)
+    dtype = torch.int64
+    vocab_size = 30528
+    sample_input = []
+    for index, input in enumerate(desc['inputs']):
+        size = []
+        for s in input[1]:
+            if isinstance(s, (int)):
+                size.append(s)
+            else:
+                size.append(1)
+        sample_input.append(torch.randint(0, vocab_size, tuple(size), dtype=dtype).to(device))
+    return sample_input
+
+def _load_bart_model():
+    bart_onnx_model_path = os.path.join('testdata', "bart_tiny.onnx")
+    model = onnx.load(bart_onnx_model_path)
+    batch = 2
+    seq_len = 1024
+    model_desc = {
+        'inputs': [
+            ('src_tokens', [batch, seq_len],),
+            ('prev_output_tokens', [batch, seq_len],),
+            ('target', [batch*seq_len],)],
+        'outputs': [
+            ('loss', [], True)]}
+
+    return model, model_desc
 
 def assert_all_states_close_ort(state_dict_pre_checkpoint, state_dict_post_checkpoint, reshape_states=False):
     """Assert that the two ORTTrainer (hierarchical) state dictionaries are very close for all states"""

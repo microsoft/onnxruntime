@@ -35,6 +35,7 @@ class TrainingSession : public InferenceSession {
     std::vector<int64_t> original_dim;
     int megatron_row_partition = -1;
     std::string view_name;
+    bool weight_partitioned = false;
   };
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
@@ -551,6 +552,7 @@ class TrainingSession : public InferenceSession {
   bool is_configured_{false};
 
   std::unordered_set<std::string> weights_to_train_;
+  OptimizerState init_optimizer_states_;
   // names of additional initializers to be included in checkpoints
   std::unordered_map<std::string, std::string> updated_weight_names_map_;
   std::unordered_set<std::string> opt_state_initializer_names_;
@@ -559,6 +561,7 @@ class TrainingSession : public InferenceSession {
   std::unordered_map<std::string, TrainingSession::PartitionInfo> weight_partition_info_;
 
   bool is_mixed_precision_enabled_;
+  bool is_megatron_enabled_;
   optional<std::string> external_loss_name_;
   std::unique_ptr<ILossFunction> loss_graph_builder_;
   optional<LossFunctionInfo> loss_function_info_;
