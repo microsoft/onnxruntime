@@ -1144,12 +1144,13 @@ struct OrtApi {
 
   /**
   * Use this API to set the appropriate configuration knobs of a CUDA Execution Provider
-  * 
+  * Please refer to the following on different key/value pairs to configure a CUDA EP and their meaning:
+  * https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/reference/execution-providers/CUDA-ExecutionProvider.md
   */
-  ORT_API2_STATUS(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptions* out,
-                  _In_reads_(num_keys) const char* const* provider_keys,
-                  _In_reads_(num_keys) const char* const* provider_values,
-                  size_t num_keys);
+  ORT_API2_STATUS(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptions* cuda_provider_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
 
   /**
   * Use this API to release the configuration of a CUDA Execution Provider

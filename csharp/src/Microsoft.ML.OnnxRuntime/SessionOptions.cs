@@ -119,6 +119,16 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Append a CUDA EP instance (based on specified configuration) to the SessionOptions instance
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="cudaProviderOptions">CUDA EP provider options to configure the CUDA EP instance</param>
+        public void AppendExecutionProvider_CUDA(OrtCUDAProviderOptions cudaProviderOptions)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA(handle, cudaProviderOptions.Handle));
+        }
+
+        /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="deviceId">device identification</param>
@@ -247,7 +257,7 @@ namespace Microsoft.ML.OnnxRuntime
             using (var pinnedConfigKeyName = new PinnedGCHandle(utf8NameConfigKeyPinned))
             using (var pinnedConfigValueName = new PinnedGCHandle(utf8NameConfigValuePinned))
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, 
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle,
                                               pinnedConfigKeyName.Pointer, pinnedConfigValueName.Pointer));
             }
         }

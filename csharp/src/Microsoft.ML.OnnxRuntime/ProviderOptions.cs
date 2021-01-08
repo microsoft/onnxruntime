@@ -8,14 +8,22 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// Holds the options for creating an InferenceSession
+    /// Holds the options for configuring a CUDA Execution Provider instance
     /// </summary>
     public class OrtCUDAProviderOptions : SafeHandle
     {
-        #region Constructor and Factory methods
+        internal IntPtr Handle
+        {
+            get
+            {
+                return handle;
+            }
+        }
+
+        #region Constructor
 
         /// <summary>
-        /// Constructs an empty OrtCUDAProviderOptions
+        /// Constructs an empty OrtCUDAProviderOptions instance
         /// </summary>
         public OrtCUDAProviderOptions() : base(IntPtr.Zero, true)
         {
@@ -27,14 +35,24 @@ namespace Microsoft.ML.OnnxRuntime
         #region Public Methods
 
         /// <summary>
-        /// Constructs an empty OrtCUDAProviderOptions
+        /// Updates  the configuration knobs of OrtCUDAProviderOptions that will eventually be used to configure a CUDA EP
+        /// Please refer to the following on different key/value pairs to configure a CUDA EP and their meaning:
+        /// https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/reference/execution-providers/CUDA-ExecutionProvider.md
         /// </summary>
-        /// <value>returns true if handle is equal to Zero</value>
+        /// <param name="keys">keys of all the configuration knobs of a CUDA Execution Provider</param>
+        /// <param name="values">values of all the configuration knobs of a CUDA Execution Provider (must match number of keys)</param>
 
-        public void UpdateOptions(string[] keys, string[] vals)
+        public void UpdateOptions(string[] keys, string[] values)
         {
-            Debug.Assert(keys.Length == vals.Length);
+            Debug.Assert(keys.Length == values.Length);
 
+            using (var cleanupList = new DisposableList<IDisposable>())
+            {
+                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(keys, n => n, cleanupList);
+                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(values, n => n, cleanupList);
+
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateCUDAProviderOptions(handle, keysArray, valuesArray, (UIntPtr)keys.Length));
+            }
         }
 
         #endregion
@@ -47,8 +65,13 @@ namespace Microsoft.ML.OnnxRuntime
         /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
+        #endregion
+
+        #region Private Methods
+
 
         #endregion
+
         #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of

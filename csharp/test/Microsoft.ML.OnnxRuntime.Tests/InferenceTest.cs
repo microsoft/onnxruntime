@@ -301,7 +301,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Run inference with outputs pinned from buffers
                 using (var pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
-                using(var pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
+                using (var pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
 
@@ -326,7 +326,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, d => d);
                     byteSize = longShape.Aggregate(1L, (a, b) => a * b) * sizeof(float);
                     float[] outputBuffer = new float[expectedOutput.Length];
-                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer, 
+                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer,
                         TensorElementType.Float, longShape, byteSize));
 
                     session.Run(inputNames, pinnedInputs, outputNames, pinnedOutputs);
@@ -1009,7 +1009,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    if(!FreeLibrary(libraryHandle))
+                    if (!FreeLibrary(libraryHandle))
                     {
                         throw new Exception("Could not unload the provided shared library using its handle");
                     }
@@ -2205,6 +2205,28 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
+        private void TestCUDAProviderOptions()
+        {
+            //#if USE_CUDA
+            using (var cudaProviderOptions = new OrtCUDAProviderOptions())
+            {
+                string[] keys = { "device_id", "arena_extend_strategy", "cuda_mem_limit",
+                                "cudnn_conv_algo_search", "do_copy_in_default_stream"};
+                string[] values = {"0", "kSameAsRequested", "200000",
+                                  "HEURISTIC", "1"};
+
+                cudaProviderOptions.UpdateOptions(keys, values);
+
+                using (var sessionOptions = new SessionOptions())
+                {
+                    sessionOptions.AppendExecutionProvider_CUDA(cudaProviderOptions);
+                }
+            }
+
+            //#endif
+        }
+
         [DllImport("kernel32", SetLastError = true)]
         static extern IntPtr LoadLibrary(string lpFileName);
 
@@ -2448,7 +2470,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             T[] typedArr = new T[rawData.Length / elemWidth];
             var typeOf = typeof(T);
-            if(typeOf == typeof(Float16) || typeOf == typeof(BFloat16))
+            if (typeOf == typeof(Float16) || typeOf == typeof(BFloat16))
             {
                 using (var memSrcHandle = new Memory<byte>(rawData).Pin())
                 using (var memDstHandle = new Memory<T>(typedArr).Pin())

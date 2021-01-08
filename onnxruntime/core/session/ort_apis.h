@@ -257,9 +257,9 @@ ORT_API_STATUS_IMPL(CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strate
 ORT_API(void, ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg*);
 
 ORT_API_STATUS_IMPL(CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptions** out);
-ORT_API_STATUS_IMPL(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptions* out,
-                    _In_reads_(num_keys) const char* const* provider_keys,
-                    _In_reads_(num_keys) const char* const* provider_values,
+ORT_API_STATUS_IMPL(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptions* cuda_provider_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
                     size_t num_keys);
 ORT_API(void, ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptions*);
 
