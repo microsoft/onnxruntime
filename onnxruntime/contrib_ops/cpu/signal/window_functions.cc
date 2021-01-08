@@ -169,18 +169,18 @@ static inline double mel_scale_to_hz(double mels) {
 }
 
 template <typename T>
-Status create_mel_weight_matrix(OpKernelContext* ctx, int64_t num_mel_bins, int64_t fft_size, int64_t sample_rate, float lower_edge_hertz, float upper_edge_hertz) {
+Status create_mel_weight_matrix(OpKernelContext* ctx, int64_t num_mel_bins, int64_t dft_length, int64_t sample_rate, float lower_edge_hertz, float upper_edge_hertz) {
   // Determine the width of the spectrogram.
   // This is determined as half the size of the fft size. The first element of the spectrum is always retained,
   // and the remaining are halved. The second half can be discarded due to the conjugate symmetry of the output with real valued ffts.
-  // Taken together the formula for the size of the output will be std::floor(fft_size / 2) + 1.
-  int64_t num_spectrogram_bins = static_cast<int64_t>(std::floor(fft_size / 2 + 1));
+  // Taken together the formula for the size of the output will be std::floor(dft_length / 2) + 1.
+  int64_t num_spectrogram_bins = static_cast<int64_t>(std::floor(dft_length / 2 + 1));
 
   // Checks
-  auto lowest_index = std::floor(((fft_size + 1) * lower_edge_hertz) / sample_rate);
-  auto highest_index = std::floor(((fft_size + 1) * upper_edge_hertz) / sample_rate);
-  ORT_ENFORCE(lowest_index >= 0 && lowest_index < num_spectrogram_bins, "lower_edge_hertz produces a mel triangle filter bank that is out of range given the fft_size and the sample_rate.");
-  ORT_ENFORCE(highest_index >= 0 && highest_index < num_spectrogram_bins, "upper_edge_hertz produces a mel triangle filter bank that is out of range given the fft_size and the sample_rate.");
+  auto lowest_index = std::floor(((dft_length + 1) * lower_edge_hertz) / sample_rate);
+  auto highest_index = std::floor(((dft_length + 1) * upper_edge_hertz) / sample_rate);
+  ORT_ENFORCE(lowest_index >= 0 && lowest_index < num_spectrogram_bins, "lower_edge_hertz produces a mel triangle filter bank that is out of range given the dft_length and the sample_rate.");
+  ORT_ENFORCE(highest_index >= 0 && highest_index < num_spectrogram_bins, "upper_edge_hertz produces a mel triangle filter bank that is out of range given the dft_length and the sample_rate.");
 
   // Create the output shape
   onnxruntime::TensorShape output_shape(
@@ -211,7 +211,7 @@ Status create_mel_weight_matrix(OpKernelContext* ctx, int64_t num_mel_bins, int6
   // Convert each point from mel scale back to hertz, and then compute the corresponding index in the fft
   for (size_t i = 0; i < frequency_bins.size(); i++) {
     auto hz = mel_scale_to_hz(low_frequency_mel + mel_step * i);
-    frequency_bins[i] = static_cast<size_t>(std::floor(((fft_size + 1) * hz) / sample_rate));
+    frequency_bins[i] = static_cast<size_t>(std::floor(((dft_length + 1) * hz) / sample_rate));
   }
 
   for (size_t i = 0; i < static_cast<size_t>(num_mel_bins); i++) {
@@ -243,26 +243,26 @@ Status create_mel_weight_matrix(OpKernelContext* ctx, int64_t num_mel_bins, int6
 }
 
 static Status create_mel_weight_matrix(OpKernelContext* ctx, onnx::TensorProto_DataType output_datatype,
-  int64_t num_mel_bins, int64_t fft_size, int64_t sample_rate, float lower_edge_hertz, float upper_edge_hertz) {
+  int64_t num_mel_bins, int64_t dft_length, int64_t sample_rate, float lower_edge_hertz, float upper_edge_hertz) {
   switch (output_datatype) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return create_mel_weight_matrix<float>(ctx, num_mel_bins, fft_size, sample_rate, lower_edge_hertz, upper_edge_hertz);
+      return create_mel_weight_matrix<float>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      return create_mel_weight_matrix<double>(ctx, num_mel_bins, fft_size, sample_rate, lower_edge_hertz, upper_edge_hertz);
+      return create_mel_weight_matrix<double>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
     case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      return create_mel_weight_matrix<int16_t>(ctx, num_mel_bins, fft_size, sample_rate, lower_edge_hertz, upper_edge_hertz);
+      return create_mel_weight_matrix<int16_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      return create_mel_weight_matrix<int32_t>(ctx, num_mel_bins, fft_size, sample_rate, lower_edge_hertz, upper_edge_hertz);
+      return create_mel_weight_matrix<int32_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return create_mel_weight_matrix<int64_t>(ctx, num_mel_bins, fft_size, sample_rate, lower_edge_hertz, upper_edge_hertz);
+      return create_mel_weight_matrix<int64_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      return create_mel_weight_matrix<uint8_t>(ctx, num_mel_bins, fft_size, sample_rate, lower_edge_hertz, upper_edge_hertz);
+      return create_mel_weight_matrix<uint8_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      return create_mel_weight_matrix<uint16_t>(ctx, num_mel_bins, fft_size, sample_rate, lower_edge_hertz, upper_edge_hertz);
+      return create_mel_weight_matrix<uint16_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      return create_mel_weight_matrix<uint32_t>(ctx, num_mel_bins, fft_size, sample_rate, lower_edge_hertz, upper_edge_hertz);
+      return create_mel_weight_matrix<uint32_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
     case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      return create_mel_weight_matrix<uint64_t>(ctx, num_mel_bins, fft_size, sample_rate, lower_edge_hertz, upper_edge_hertz);
+      return create_mel_weight_matrix<uint64_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
     default:
       ORT_THROW("Unsupported input data type of ", output_datatype);
   }
@@ -270,12 +270,12 @@ static Status create_mel_weight_matrix(OpKernelContext* ctx, onnx::TensorProto_D
 
 Status MelWeightMatrix::Compute(OpKernelContext* ctx) const {
   const auto num_mel_bins = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(0));
-  const auto fft_size = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(1));
+  const auto dft_length = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(1));
   const auto sample_rate = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(2));
   const auto lower_edge_hertz = get_scalar_value_from_tensor<float>(ctx->Input<Tensor>(3));
   const auto upper_edge_hertz = get_scalar_value_from_tensor<float>(ctx->Input<Tensor>(4));
 
-  return create_mel_weight_matrix(ctx, data_type_, num_mel_bins, fft_size, sample_rate, lower_edge_hertz, upper_edge_hertz);
+  return create_mel_weight_matrix(ctx, data_type_, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
 }
 
 }  // namespace contrib

@@ -128,6 +128,4 @@ STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
   } else {
     return WINRT_GetActivationFactory(classId, factory);
   }
-
-  return 0;
 }

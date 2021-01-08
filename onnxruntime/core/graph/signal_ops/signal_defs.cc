@@ -148,7 +148,7 @@ void RegisterSignalSchemas() {
             AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
             static_cast<int64_t>(1))
       .Input(0,
-             "input",
+             "signal",
              "A complex signal of dimension signal_ndim."
              "The last dimension of the tensor should be 2,"
              "representing the real and imaginary components of complex numbers,"
@@ -156,7 +156,7 @@ void RegisterSignalSchemas() {
              "The first dimension is the batch dimension.",
              "T1")
       .Input(1,
-             "fft_size",
+             "dft_length",
              "Size of the fft.",
              "T2")
       .Input(2,
@@ -165,7 +165,7 @@ void RegisterSignalSchemas() {
              "T1",
              OpSchema::FormalParameterOption::Optional)
       .Input(3,
-             "hop_length",
+             "frame_step",
              "The number of samples to step between successive DFTs.",
              "T2")
       .Output(0,
@@ -189,7 +189,7 @@ void RegisterSignalSchemas() {
              "The first dimension is the batch dimension.",
              "T1")
       .Input(1,
-             "fft_size",
+             "dft_length",
              "Size of the fft.",
              "T2")
       .Input(2,
@@ -198,7 +198,7 @@ void RegisterSignalSchemas() {
              "T1",
              OpSchema::FormalParameterOption::Optional)
       .Input(3,
-             "hop_length",
+             "frame_step",
              "The number of samples to step between successive DFTs.",
              "T2")
       .Output(0,
@@ -312,7 +312,7 @@ void RegisterSignalSchemas() {
              "The number of bands in the mel spectrum.",
              "T1")
       .Input(1,
-             "fft_size",
+             "dft_length",
              "The size of the FFT.",
              "T1")
       .Input(2,
@@ -336,11 +336,11 @@ void RegisterSignalSchemas() {
       .TypeConstraint("T3", {"tensor(float)", "tensor(float16)", "tensor(double)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)"}, "")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto num_mel_bins = get_scalar_value_from_tensor<int64_t>(ctx.getInputData(0));
-        auto fft_size = get_scalar_value_from_tensor<int64_t>(ctx.getInputData(1));
-        if (num_mel_bins > 0 && fft_size > 0) {
+        auto dft_length = get_scalar_value_from_tensor<int64_t>(ctx.getInputData(1));
+        if (num_mel_bins > 0 && dft_length > 0) {
           ONNX_NAMESPACE::TensorShapeProto result_shape;
           result_shape.add_dim()->set_dim_value(num_mel_bins);
-          result_shape.add_dim()->set_dim_value(static_cast<int64_t>(std::floor(fft_size/2.f + 1)));
+          result_shape.add_dim()->set_dim_value(static_cast<int64_t>(std::floor(dft_length/2.f + 1)));
           updateOutputShape(ctx, 0, result_shape);
         }
         propagateElemTypeFromAttributeToOutput(ctx, "output_datatype", 0);
