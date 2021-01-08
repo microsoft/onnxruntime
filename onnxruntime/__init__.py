@@ -26,11 +26,6 @@ from onnxruntime.capi._pybind_state import get_all_providers, get_available_prov
     NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, ExecutionOrder, OrtDevice, SessionIOBinding, \
     OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator
 
-try:
-    from onnxruntime.capi._pybind_state import set_cuda_mem_limit, set_cuda_device_id
-except ImportError:
-    pass
-
 from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession, IOBinding, OrtValue
 from onnxruntime.capi import onnxruntime_validation
 
