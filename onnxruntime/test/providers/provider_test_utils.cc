@@ -15,8 +15,6 @@
 #include <exception>
 #include <memory>
 
-#include "orttraining/core/framework/communication/mpi/mpi_context.h"
-
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/session/training_session.h"
 #endif
