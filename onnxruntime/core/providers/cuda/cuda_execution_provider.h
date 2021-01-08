@@ -71,7 +71,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
-  int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo; }
+  int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
