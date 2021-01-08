@@ -269,6 +269,17 @@ typedef struct OrtCUDAProviderOptions {
 } OrtCUDAProviderOptions;
 
 /// <summary>
+/// Options for the ROCM provider that are passed to SessionOptionsAppendExecutionProvider_ROCM
+/// </summary>
+typedef struct OrtROCMProviderOptions {
+  int device_id;                                    // hip device with id=0 as default device.
+  OrtMIOpenConvAlgoSearch miopen_conv_algo_search;  // miopen conv algo search option
+  size_t cuda_mem_limit;                            // default hip memory limitation to maximum finite value of size_t.
+  int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
+  int do_copy_in_default_stream;
+} OrtROCMProviderOptions;
+
+/// <summary>
 /// Options for the OpenVINO provider that are passed to SessionOptionsAppendExecutionProvider_OpenVINO
 /// </summary>
 typedef struct OrtOpenVINOProviderOptions {
@@ -1103,6 +1114,13 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CUDA,
                   _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
+
+  /**
+   * Append ROCM execution provider to the session options
+   * If ROCM is not available (due to a non rocm enabled build), this function will return failure.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_ROCM,
+                  _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* cuda_options);
 
   /**
    * Append OpenVINO execution provider to the session options

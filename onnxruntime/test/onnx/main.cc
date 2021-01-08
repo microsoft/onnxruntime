@@ -36,7 +36,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
-      "'openvino', 'nuphar', 'migraphx', 'acl' or 'armnn'. "
+      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl' or 'armnn'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -101,6 +101,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_dml = false;
   bool enable_acl = false;
   bool enable_armnn = false;
+  bool enable_rocm = false;
   bool enable_migraphx = false;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
@@ -171,6 +172,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_acl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
             enable_armnn = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("rocm"))) {
+            enable_rocm = true;
           } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
             enable_migraphx = true;
           } else {
@@ -385,6 +388,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "ArmNN is not supported in this build\n");
+      return -1;
+#endif
+    }
+    if (enable_rocm) {
+#ifdef USE_ROCM
+      OrtROCMProviderOptions rocm_options{
+          0,
+          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+          std::numeric_limits<size_t>::max(),
+          0,
+          true};
+      sf.AppendExecutionProvider_ROCM(rocm_options);
+#else
+      fprintf(stderr, "CUDA is not supported in this build");
       return -1;
 #endif
     }
