@@ -207,10 +207,10 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
 
         OrtValue partitioned;
         auto element_type = init_tensor->DataType();
-        TensorShape shape(new_shape);
+        TensorShape partition_shape(new_shape);
         const OrtMemoryInfo& info = init_tensor->Location();
         std::unique_ptr<Tensor> p_tensor;
-        std::cout << "Partitioning moment:" << moments_prefix << ":" << shape << "\n";
+        std::cout << "Partitioning moment:" << moments_prefix << ":" << partition_shape << "\n";
 
         if (utils::IsPrimitiveDataType<float>(element_type)) {
           float* data_buffer = init_tensor->MutableData<float>();
@@ -222,7 +222,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
 
           auto alloc = execution_provider_.GetAllocator(0, OrtMemTypeDefault);
           p_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                      shape,
+                                                      partition_shape,
                                                       alloc);
           float* out_buffer = p_tensor->MutableData<float>();
           memcpy(out_buffer, result.data(), sizeof(float) * element_count);
@@ -237,7 +237,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
           PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result);
 
           p_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                      shape,
+                                                      partition_shape,
                                                       result.data(),
                                                       info);
           partitioned.Init(p_tensor.release(),
@@ -331,23 +331,23 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
 
         OrtValue partitioned;
         auto element_type = init_tensor->DataType();
-        TensorShape shape(new_shape);
+        TensorShape partition_shape(new_shape);
         const OrtMemoryInfo& info = init_tensor->Location();
         std::unique_ptr<Tensor> p_tensor;
-        std::cout << "Partitioning moment:" << moments_prefix << ":" << shape << "\n";
+        std::cout << "Partitioning moment:" << moments_prefix << ":" << partition_shape << "\n";
 
         if (utils::IsPrimitiveDataType<float>(element_type)) {
           float* data_buffer = init_tensor->MutableData<float>();
 
           p_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                      shape,
+                                                      partition_shape,
                                                       data_buffer + row_index_offset * column_count,
                                                       info);
         } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
           MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
 
           p_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                      shape,
+                                                      partition_shape,
                                                       data_buffer + row_index_offset * column_count,
                                                       info);
 
