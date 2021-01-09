@@ -395,7 +395,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_ROCM
       OrtROCMProviderOptions rocm_options{
           0,
-          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+          OrtMIOpenConvAlgoSearch::EXHAUSTIVE,
           std::numeric_limits<size_t>::max(),
           0,
           true};

@@ -97,6 +97,18 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kRocmExecutionProvider) {
+#ifdef USE_ROCM
+    OrtROCMProviderOptions cuda_options{
+        0,
+        static_cast<OrtMIOpenConvAlgoSearch>(performance_test_config.run_config.miopen_conv_algo),
+        std::numeric_limits<size_t>::max(),
+        0,
+        !performance_test_config.run_config.do_miopen_copy_in_separate_stream};
+    session_options.AppendExecutionProvider_ROCM(rocm_options);
+#else
+    ORT_THROW("ROCM is not supported in this build\n");
+#endif
   } else if (provider_name == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));

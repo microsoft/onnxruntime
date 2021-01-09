@@ -467,6 +467,8 @@ TEST_P(ModelTest, Run) {
       InferenceSession session_object(so, (**ort_env).GetEnvironment());
       if (provider_name == "cuda") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+      } else if (provider_name == "rocm") {
+        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
       } else if (provider_name == "dnnl") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultDnnlExecutionProvider()));
       } else if (provider_name == "nuphar") {
@@ -584,6 +586,9 @@ TEST_P(ModelTest, Run) {
 #endif
 #ifdef USE_CUDA
   provider_names.push_back(ORT_TSTR("cuda"));
+#endif
+#ifdef USE_ROCM
+  provider_names.push_back(ORT_TSTR("rocm"));
 #endif
 #ifdef USE_DNNL
   provider_names.push_back(ORT_TSTR("dnnl"));
