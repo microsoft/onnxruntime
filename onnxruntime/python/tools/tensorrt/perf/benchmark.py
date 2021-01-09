@@ -17,26 +17,34 @@ from perf_utils import *
 import pprint
 import time
 from float16 import *
-# import torch
 
 debug = False
 sys.path.append('.')
 logger = logging.getLogger('')
 
-ep_to_provider_list = {
-    "CPUExecutionProvider": ["CPUExecutionProvider"],
-    "CUDAExecutionProvider": ["CUDAExecutionProvider"],
-    "CUDAExecutionProvider_fp16": ["CUDAExecutionProvider"],
-    "TensorrtExecutionProvider": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
-    "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
-}
+# global ep variables 
+cpu = "CPUExecutionProvider"
+acl = "ACLExecutionProvider"
+cuda = "CUDAExecutionProvider"
+cuda_fp16 = "CUDAExecutionProvider_fp16"
+trt = "TensorrtExecutionProvider"
+trt_fp16 = "TensorrtExecutionProvider_fp16"
+standalone_trt = "Standalone_TRT"
+standalone_trt_fp16 = "Standalone_TRT_fp16"
 
+ep_to_provider_list = {
+    cpu: [cpu],
+    acl: [acl], 
+    cuda: [cuda],
+    cuda_fp16: [cuda],
+    trt: [trt, cuda],
+    trt_fp16: [trt, cuda],
+}
 
 # metadata
 FAIL_MODEL_FILE = ".fail_model_map"
 LATENCY_FILE = ".latency_map"
 METRICS_FILE = ".metrics_map"
-
 
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     model_path = "--onnx=" + model_path
@@ -112,7 +120,7 @@ def get_latency_result(runtimes, batch_size):
     }
 
 
-def get_ort_session_inputs_and_outptus(name, session, ort_input):
+def get_ort_session_inputs_and_outputs(name, session, ort_input):
 
     sess_inputs = {}
     sess_outputs = None
@@ -161,7 +169,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
         repeat_times += 1 # add warn-up run
 
     for ort_input in ort_inputs:
-        sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
+        sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
             logger.info("ORT session inputs:")
             logger.info(sess_inputs)
@@ -190,7 +198,7 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
 
     ort_outputs = []
     for ort_input in ort_inputs:
-        sess_inputs, sess_outputs = get_ort_session_inputs_and_outptus(name, session, ort_input)
+        sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
             logger.info("ORT session inputs:")
             logger.info(sess_inputs)
@@ -212,6 +220,20 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
             ort_outputs.append(result)
 
     return ort_outputs
+
+def get_acl_version():
+    from pathlib import Path
+    home = str(Path.home())
+    p = subprocess.run(["find", home, "-name", "libarm_compute.so"], check=True, stdout=subprocess.PIPE)
+    libarm_compute_path = p.stdout.decode("ascii").strip()
+    if libarm_compute_path == '':
+        return "No Compute Library Found"
+    else:
+        p = subprocess.run(["strings", libarm_compute_path], check=True, stdout=subprocess.PIPE)  
+        libarm_so_strings = p.stdout.decode("ascii").strip()
+        version_match = re.search(r'arm_compute_version.*\n', libarm_so_strings)
+        version = version_match.group(0).split(' ')[0]
+        return version
 
 def get_cuda_version():
     from pathlib import Path
@@ -397,16 +419,14 @@ def generate_onnx_model_random_input(test_times, ref_input):
 
     return inputs
 
-def validate(all_ref_outputs, all_outputs, decimal):
+def validate(all_ref_outputs, all_outputs, rtol=0, atol=1.5):
     if len(all_ref_outputs) == 0:
         logger.info("No reference output provided.")
         return True, None
 
     logger.info('Reference {} results.'.format(len(all_ref_outputs)))
     logger.info('Predicted {} results.'.format(len(all_outputs)))
-    logger.info('decimal {}'.format(decimal))
-    # print(np.array(all_ref_outputs).shape)
-    # print(np.array(all_outputs).shape)
+    logger.info('rtol: {}, atol: {}'.format(rtol, atol))
 
     try:
         for i in range(len(all_outputs)):
@@ -416,13 +436,11 @@ def validate(all_ref_outputs, all_outputs, decimal):
             for j in range(len(outputs)):
                 ref_output = ref_outputs[j]
                 output = outputs[j]
-                # print(ref_output)
-                # print(output)
 
-                # Compare the results with reference outputs up to x decimal places
+                # Compare the results with reference outputs
                 for ref_o, o in zip(ref_output, output):
-                    # abs(desired-actual) < 1.5 * 10**(-decimal)
-                    np.testing.assert_almost_equal(ref_o, o, decimal)
+                    # abs(desired-actual) < rtol * abs(desired) + atol
+                    np.testing.assert_allclose(ref_o, o, rtol, atol)
     except Exception as e:
         logger.error(e)
         return False, e
@@ -488,7 +506,7 @@ def update_metrics_map(model_to_metrics, model_name, ep_to_operator):
         if ep not in model_to_metrics[model_name]:
             model_to_metrics[model_name][ep] = {}
 
-        if ep == "CUDAExecutionProvider" or ep == "CUDAExecutionProvider_fp16":
+        if ep == cuda or ep == cuda_fp16:
             model_to_metrics[model_name][ep]['ratio_of_ops_in_cuda_not_fallback_cpu'] = calculate_cuda_op_percentage(op_map) 
             model_to_metrics[model_name][ep]['total_ops'] = get_total_ops(op_map) 
         else:
@@ -509,13 +527,13 @@ def update_metrics_map_ori(model_to_metrics, name, ep_to_operator):
     cuda_fp16_op_map = None
 
     for ep, op_map in ep_to_operator.items():
-        if ep == "CUDAExecutionProvider":
+        if ep == cuda:
             cuda_op_map = op_map
-        elif ep == "CUDAExecutionProvider_fp16":
+        elif ep == cuda_fp16:
             cuda_fp16_op_map = op_map
-        elif ep == "TensorrtExecutionProvider":
+        elif ep == trt:
             trt_op_map = op_map
-        elif ep == "TensorrtExecutionProvider_fp16":
+        elif ep == trt_fp16:
             trt_fp16_op_map = op_map
 
 
@@ -580,8 +598,8 @@ def update_fail_model_map(model_to_fail_ep, model_name, ep, e_type, e):
     model_to_fail_ep[model_name][ep] = new_map
 
     # If TRT fails, TRT FP16 should fail as well
-    if ep == 'TensorrtExecutionProvider':
-        ep_ = "TensorrtExecutionProvider_fp16"
+    if ep == trt:
+        ep_ = trt_fp16
         e_ = "skip benchmarking since TRT failed already."
         new_map_1 = {}
         new_map_1["error_type"] = e_type
@@ -600,13 +618,11 @@ def update_fail_model_map_ori(model_to_fail_ep, fail_results, model_name, ep, e_
     update_fail_report(fail_results, model_name, ep, e_type, e)
 
     # If TRT fails, TRT FP16 should fail as well
-    if ep == 'TensorrtExecutionProvider':
-        ep_ = "TensorrtExecutionProvider_fp16"
+    if ep == trt:
+        ep_ = trt_fp16
         error_message_ = "skip benchmarking since TRT failed already."
         update_fail_report(fail_results, model_name, ep_, e_type, error_message_)
         model_to_fail_ep[model_name][ep_] = e_type
-
-
 
 def skip_ep(model_name, ep, model_to_fail_ep):
 
@@ -631,19 +647,19 @@ def read_map_from_file(map_file):
 
     return data
 
-def write_map_to_file(model_to_fail_ep, file_name):
-    existed_model_to_fail_ep = {}
+def write_map_to_file(result, file_name):
+    existed_result = {}
     if os.path.exists(file_name):
-        existed_model_to_fail_ep = read_map_from_file(file_name)
+        existed_result = read_map_from_file(file_name)
     
-    for model, ep_list in model_to_fail_ep.items():
-        if model in existed_model_to_fail_ep:
-            existed_model_to_fail_ep[model] = {** existed_model_to_fail_ep[model], ** model_to_fail_ep[model]} 
+    for model, ep_list in result.items():
+        if model in existed_result:
+            existed_result[model] = {** existed_result[model], ** result[model]} 
         else:
-            existed_model_to_fail_ep[model] = model_to_fail_ep[model]
+            existed_result[model] = result[model]
 
     with open(file_name, 'w') as file:
-        file.write(json.dumps(existed_model_to_fail_ep)) # use `json.loads` to do the reverse
+        file.write(json.dumps(existed_result)) # use `json.loads` to do the reverse
 
 
 def get_system_info():
@@ -778,10 +794,10 @@ def parse_models_info_from_directory(path, models):
             parse_models_info_from_directory(os.path.join(path, dir), models)
     
 
-def parse_models_info_from_file(path, models):
+def parse_models_info_from_file(root_dir, path, models):
 
     # default working directory
-    root_working_directory = "/home/hcsuser/perf/"
+    root_working_directory = root_dir
 
     with open(path) as f:
         data = json.load(f)
@@ -884,11 +900,11 @@ def run_onnxruntime(args, models):
         ep_list.append(args.ep)
     else:
         if args.fp16:
-            ep_list = ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider", "CUDAExecutionProvider_fp16", "TensorrtExecutionProvider_fp16"]
+            ep_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
         else:
-            ep_list = ["CPUExecutionProvider", "CUDAExecutionProvider", "TensorrtExecutionProvider"]
+            ep_list = [cpu, cuda, trt]
 
-    validation_exemption = ["TensorrtExecutionProvider_fp16"]
+    validation_exemption = [trt_fp16]
 
 
     if os.path.exists(FAIL_MODEL_FILE):
@@ -934,7 +950,7 @@ def run_onnxruntime(args, models):
             model_path = model_info["model_path"]
             test_data_dir = model_info["test_data_path"]
 
-            if ep == "CUDAExecutionProvider_fp16":
+            if ep == cuda_fp16:
                 logger.info("[Initialize]  model = {}, ep = {} ,FP16 = True ...".format(name, ep))
                 fp16 = True
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
@@ -959,7 +975,7 @@ def run_onnxruntime(args, models):
                 else:
                     inputs, ref_outputs = get_test_data(True, test_data_dir, all_inputs_shape)
             
-            elif ep == "TensorrtExecutionProvider_fp16":
+            elif ep == trt_fp16:
                 logger.info("[Initialize]  model = {}, ep = {} ,FP16 = True ...".format(name, ep))
                 fp16 = True
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
@@ -1021,20 +1037,19 @@ def run_onnxruntime(args, models):
                 result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
                 if result:
                     success_results.append(result)
-                    logger.info(result)
 
                     latency_result[ep] = {}
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
                     latency_result[ep]["latency_90_percentile"] = result["latency_90_percentile"]
 
                     # get standalone TensorRT perf
-                    if "TensorrtExecutionProvider" in ep and args.trtexec:
+                    if trt in ep and args.trtexec:
                         result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
                         if result and len(result) > 0:
                             if fp16:
-                                latency_result["Standalone_TRT_fp16"] = result
+                                latency_result[standalone_trt_fp16] = result
                             else:
-                                latency_result["Standalone_TRT"] = result
+                                latency_result[standalone_trt] = result
 
                     model_to_latency[name] = copy.deepcopy(latency_result)
 
@@ -1080,8 +1095,7 @@ def run_onnxruntime(args, models):
                     try:
                         ort_outputs = inference_ort_and_get_prediction(name, sess, inputs)
 
-                        decimal = 0
-                        status = validate(ref_outputs, ort_outputs, decimal)
+                        status = validate(ref_outputs, ort_outputs)
                         if not status[0]:
                             update_fail_model_map(model_to_fail_ep, name, ep, 'result accuracy issue', status[1])
                             continue
@@ -1125,17 +1139,17 @@ def run_onnxruntime(args, models):
 
 def add_improvement_information(model_to_latency):
     for key, value in model_to_latency.items():
-        if not ('TensorrtExecutionProvider' in value and 'CUDAExecutionProvider' in value):
+        if not (trt in value and cuda in value):
             continue
 
-        trt_latency = float(value['TensorrtExecutionProvider']['average_latency_ms'])
-        cuda_latency = float(value['CUDAExecutionProvider']['average_latency_ms'])
+        trt_latency = float(value[trt]['average_latency_ms'])
+        cuda_latency = float(value[cuda]['average_latency_ms'])
         gain = (cuda_latency - trt_latency)*100/cuda_latency
         value["Tensorrt_gain(%)"] = "{:.2f} %".format(gain)
 
-        if "TensorrtExecutionProvider_fp16" in value and "CUDAExecutionProvider_fp16" in value:
-            trt_fp16_latency = float(value['TensorrtExecutionProvider_fp16']['average_latency_ms'])
-            cuda_fp16_latency = float(value['CUDAExecutionProvider_fp16']['average_latency_ms'])
+        if trt_fp16 in value and cuda_fp16 in value:
+            trt_fp16_latency = float(value[trt_fp16]['average_latency_ms'])
+            cuda_fp16_latency = float(value[cuda_fp16]['average_latency_ms'])
             gain = (cuda_fp16_latency - trt_fp16_latency)*100/cuda_fp16_latency
             value["Tensorrt_fp16_gain(%)"] = "{:.2f} %".format(gain)
 
@@ -1178,6 +1192,98 @@ def output_fail(model_to_fail_ep, csv_filename):
 
     logger.info(f"Failing results are saved to csv file: {csv_filename}")
     
+def read_success_from_file(success_file):
+    success_results = []
+    with open(success_file) as success:
+       csv_reader = csv.DictReader(success)
+       for row in csv_reader: 
+           success_results.append(row)
+
+    success_json = json.loads(json.dumps(success_results, indent=4))
+    return success_json
+
+def add_status_dict(status_dict, model_name, ep, status): 
+    if model_name not in status_dict:
+        status_dict[model_name] = {}
+    status_dict[model_name][ep] = status
+
+def build_status(status_dict, results, is_fail):
+        
+        if is_fail:
+            for model, model_info in results.items():
+                for ep, ep_info in model_info.items(): 
+                    model_name = model
+                    ep = ep
+                    status = 'Fail'
+                    add_status_dict(status_dict, model_name, ep, status)
+        else: 
+            for result in results: 
+                model_name = result['model_name']
+                ep = result['device']
+                status = 'Pass'
+                add_status_dict(status_dict, model_name, ep, status)
+
+        return status_dict
+
+def output_status(results, csv_filename):
+    
+    need_write_header = True 
+    if os.path.exists(csv_filename):
+        need_write_header = False 
+
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        column_names = ["Model",
+                        cpu,
+                        cuda + " fp32",
+                        trt + " fp32",
+                        standalone_trt + " fp32",
+                        cuda + " fp16",
+                        trt + " fp16",
+                        standalone_trt + "fp16"
+                        ]
+
+        csv_writer = csv.writer(csv_file)
+
+        if need_write_header:
+            csv_writer.writerow(column_names)
+    
+        cpu_status = ""
+        cuda_fp32_status = ""
+        trt_fp32_status = ""
+        standalone_fp32_status = ""
+        cuda_fp16_status = ""
+        trt_fp16_status = ""
+        standalone_fp16_status = ""
+        
+        for model_name, ep_dict in results.items():
+            for ep, status in ep_dict.items():
+                if ep == cpu: 
+                    cpu_status = status 
+                elif ep == cuda: 
+                    cuda_fp32_status = status
+                elif ep == trt: 
+                    trt_fp32_status = status
+                elif ep == standalone_trt:
+                    standalone_fp32_status = status
+                elif ep == cuda_fp16: 
+                    cuda_fp16_status = status
+                elif ep == trt_fp16:
+                    trt_fp16_status = status
+                elif ep == standalone_trt_fp16: 
+                    standalone_fp16_status = status
+                else: 
+                    continue
+                    
+            row = [model_name,
+                   cpu, 
+                   cuda_fp32_status, 
+                   trt_fp32_status, 
+                   standalone_fp32_status, 
+                   cuda_fp16_status, 
+                   trt_fp16_status, 
+                   standalone_fp16_status]
+            csv_writer.writerow(row)
+
 def output_latency(results, csv_filename):
     need_write_header = True 
     if os.path.exists(csv_filename):
@@ -1208,61 +1314,61 @@ def output_latency(results, csv_filename):
 
         for key, value in results.items():
             cpu_average = "" 
-            if "CPUExecutionProvider" in value and "average_latency_ms" in value["CPUExecutionProvider"]:
-                cpu_average = value["CPUExecutionProvider"]["average_latency_ms"]
+            if cpu in value and "average_latency_ms" in value[cpu]:
+                cpu_average = value[cpu]["average_latency_ms"]
 
             cpu_90_percentile = ""
-            if "CPUExecutionProvider" in value and "latency_90_percentile" in value["CPUExecutionProvider"]:
-                cpu_90_percentile = value["CPUExecutionProvider"]["latency_90_percentile"]
+            if cpu in value and "latency_90_percentile" in value[cpu]:
+                cpu_90_percentile = value[cpu]["latency_90_percentile"]
 
             cuda_average = ""
-            if 'CUDAExecutionProvider' in value and 'average_latency_ms' in value['CUDAExecutionProvider']:
-                cuda_average = value['CUDAExecutionProvider']['average_latency_ms']
+            if cuda in value and 'average_latency_ms' in value[cuda]:
+                cuda_average = value[cuda]['average_latency_ms']
 
             cuda_90_percentile = ""
-            if 'CUDAExecutionProvider' in value and 'latency_90_percentile' in value['CUDAExecutionProvider']:
-                cuda_90_percentile = value['CUDAExecutionProvider']['latency_90_percentile']
+            if cuda in value and 'latency_90_percentile' in value[cuda]:
+                cuda_90_percentile = value[cuda]['latency_90_percentile']
 
             trt_average = ""
-            if 'TensorrtExecutionProvider' in value and 'average_latency_ms' in value['TensorrtExecutionProvider']:
-                trt_average = value['TensorrtExecutionProvider']['average_latency_ms']
+            if trt in value and 'average_latency_ms' in value[trt]:
+                trt_average = value[trt]['average_latency_ms']
 
             trt_90_percentile = ""
-            if 'TensorrtExecutionProvider' in value and 'latency_90_percentile' in value['TensorrtExecutionProvider']:
-                trt_90_percentile = value['TensorrtExecutionProvider']['latency_90_percentile']
+            if trt in value and 'latency_90_percentile' in value[trt]:
+                trt_90_percentile = value[trt]['latency_90_percentile']
 
             standalone_trt_average = ""
-            if 'Standalone_TRT' in value and 'average_latency_ms' in value['Standalone_TRT']:
-                standalone_trt_average = value['Standalone_TRT']['average_latency_ms']
+            if standalone_trt in value and 'average_latency_ms' in value[standalone_trt]:
+                standalone_trt_average = value[standalone_trt]['average_latency_ms']
 
             standalone_trt_90_percentile = ""
-            if 'Standalone_TRT' in value and 'latency_90_percentile' in value['Standalone_TRT']:
-                standalone_trt_90_percentile = value['Standalone_TRT']['latency_90_percentile']
+            if standalone_trt in value and 'latency_90_percentile' in value[standalone_trt]:
+                standalone_trt_90_percentile = value[standalone_trt]['latency_90_percentile']
 
 
             cuda_fp16_average = ""
-            if 'CUDAExecutionProvider_fp16' in value and 'average_latency_ms' in value['CUDAExecutionProvider_fp16']:
-                cuda_fp16_average = value['CUDAExecutionProvider_fp16']['average_latency_ms']
+            if cuda_fp16 in value and 'average_latency_ms' in value[cuda_fp16]:
+                cuda_fp16_average = value[cuda_fp16]['average_latency_ms']
 
             cuda_fp16_90_percentile = ""
-            if 'CUDAExecutionProvider_fp16' in value and 'latency_90_percentile' in value['CUDAExecutionProvider_fp16']:
-                cuda_fp16_90_percentile = value['CUDAExecutionProvider_fp16']['latency_90_percentile']
+            if cuda_fp16 in value and 'latency_90_percentile' in value[cuda_fp16]:
+                cuda_fp16_90_percentile = value[cuda_fp16]['latency_90_percentile']
 
             trt_fp16_average = ""
-            if 'TensorrtExecutionProvider_fp16' in value and 'average_latency_ms' in value['TensorrtExecutionProvider_fp16']:
-                trt_fp16_average = value['TensorrtExecutionProvider_fp16']['average_latency_ms']
+            if trt_fp16 in value and 'average_latency_ms' in value[trt_fp16]:
+                trt_fp16_average = value[trt_fp16]['average_latency_ms']
 
             trt_fp16_90_percentile = ""
-            if 'TensorrtExecutionProvider_fp16' in value and 'latency_90_percentile' in value['TensorrtExecutionProvider_fp16']:
-                trt_fp16_90_percentile = value['TensorrtExecutionProvider_fp16']['latency_90_percentile']
+            if trt_fp16 in value and 'latency_90_percentile' in value[trt_fp16]:
+                trt_fp16_90_percentile = value[trt_fp16]['latency_90_percentile']
 
             standalone_trt_fp16_average = ""
-            if 'Standalone_TRT_fp16' in value and 'average_latency_ms' in value['Standalone_TRT_fp16']:
-                standalone_trt_fp16_average = value['Standalone_TRT_fp16']['average_latency_ms']
+            if standalone_trt in value and 'average_latency_ms' in value[standalone_trt_fp16]:
+                standalone_trt_fp16_average = value[standalone_trt]['average_latency_ms']
 
             standalone_trt_fp16_90_percentile = ""
-            if 'Standalone_TRT_fp16' in value and 'latency_90_percentile' in value['Standalone_TRT_fp16']:
-                standalone_trt_fp16_90_percentile = value['Standalone_TRT_fp16']['latency_90_percentile']
+            if standalone_trt in value and 'latency_90_percentile' in value[standalone_trt_fp16]:
+                standalone_trt_fp16_90_percentile = value[standalone_trt]['latency_90_percentile']
 
 
             row = [key,
@@ -1306,41 +1412,41 @@ def output_metrics(model_to_metrics, csv_filename):
             result["model_name"] = model
             result_fp16["model_name"] = model + " (FP16)"
 
-            if "CUDAExecutionProvider" in ep_info:
-                result['ratio_of_ops_in_cuda_not_fallback_cpu'] = ep_info["CUDAExecutionProvider"]['ratio_of_ops_in_cuda_not_fallback_cpu']
+            if cuda in ep_info:
+                result['ratio_of_ops_in_cuda_not_fallback_cpu'] = ep_info[cuda]['ratio_of_ops_in_cuda_not_fallback_cpu']
 
-            if "TensorrtExecutionProvider" in ep_info:
-                result['total_trt_execution_time'] = ep_info["TensorrtExecutionProvider"]['total_trt_execution_time']
-                result['total_execution_time'] = ep_info["TensorrtExecutionProvider"]['total_execution_time']
-                result['ratio_of_execution_time_in_trt'] = ep_info["TensorrtExecutionProvider"]['ratio_of_execution_time_in_trt']
+            if trt in ep_info:
+                result['total_trt_execution_time'] = ep_info[trt]['total_trt_execution_time']
+                result['total_execution_time'] = ep_info[trt]['total_execution_time']
+                result['ratio_of_execution_time_in_trt'] = ep_info[trt]['ratio_of_execution_time_in_trt']
 
-            if "CUDAExecutionProvider" in ep_info and "TensorrtExecutionProvider" in ep_info: 
+            if cuda in ep_info and trt in ep_info: 
                 ########################################################################################
                 # equation of % TRT ops:
                 # (total ops in cuda json - cuda and cpu ops in trt json)/ total ops in cuda json
                 ########################################################################################
-                total_ops_in_cuda = ep_info["CUDAExecutionProvider"]["total_ops"] 
-                cuda_cpu_ops_in_trt = ep_info["TensorrtExecutionProvider"]["total_ops"]
+                total_ops_in_cuda = ep_info[cuda]["total_ops"] 
+                cuda_cpu_ops_in_trt = ep_info[trt]["total_ops"]
 
                 result['total_ops_in_trt'] = total_ops_in_cuda - cuda_cpu_ops_in_trt
                 result['total_ops'] = total_ops_in_cuda
                 result['ratio_of_ops_in_trt'] = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
 
-            if "CUDAExecutionProvider_fp16" in ep_info:
-                result_fp16['ratio_of_ops_in_cuda_not_fallback_cpu'] = ep_info["CUDAExecutionProvider_fp16"]['ratio_of_ops_in_cuda_not_fallback_cpu']
+            if cuda_fp16 in ep_info:
+                result_fp16['ratio_of_ops_in_cuda_not_fallback_cpu'] = ep_info[cuda_fp16]['ratio_of_ops_in_cuda_not_fallback_cpu']
 
-            if "TensorrtExecutionProvider_fp16" in ep_info:
-                result_fp16['total_trt_execution_time'] = ep_info["TensorrtExecutionProvider_fp16"]['total_trt_execution_time']
-                result_fp16['total_execution_time'] = ep_info["TensorrtExecutionProvider_fp16"]['total_execution_time']
-                result_fp16['ratio_of_execution_time_in_trt'] = ep_info["TensorrtExecutionProvider_fp16"]['ratio_of_execution_time_in_trt']
+            if trt_fp16 in ep_info:
+                result_fp16['total_trt_execution_time'] = ep_info[trt_fp16]['total_trt_execution_time']
+                result_fp16['total_execution_time'] = ep_info[trt_fp16]['total_execution_time']
+                result_fp16['ratio_of_execution_time_in_trt'] = ep_info[trt_fp16]['ratio_of_execution_time_in_trt']
 
-            if "CUDAExecutionProvider_fp16" in ep_info and "TensorrtExecutionProvider_fp16" in ep_info: 
+            if cuda_fp16 in ep_info and trt_fp16 in ep_info: 
                 ########################################################################################
                 # equation of % TRT ops:
                 # (total ops in cuda json - cuda and cpu ops in trt json)/ total ops in cuda json
                 ########################################################################################
-                total_ops_in_cuda = ep_info["CUDAExecutionProvider_fp16"]["total_ops"] 
-                cuda_cpu_ops_in_trt = ep_info["TensorrtExecutionProvider_fp16"]["total_ops"]
+                total_ops_in_cuda = ep_info[cuda_fp16]["total_ops"] 
+                cuda_cpu_ops_in_trt = ep_info[trt_fp16]["total_ops"]
 
                 result_fp16['total_ops_in_trt'] = total_ops_in_cuda - cuda_cpu_ops_in_trt
                 result_fp16['total_ops'] = total_ops_in_cuda
@@ -1390,7 +1496,11 @@ def str2bool(v):
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
+    
+    parser.add_argument("-c", "--comparison", required=False, default="cuda_trt", choices=["cuda_trt", "acl"], help="EPs to compare: CPU vs. CUDA vs. TRT or CPU vs. ACL")
 
+    parser.add_argument("-d", "--working_dir", required=False, default="./", help="Perf folder path")
+    
     parser.add_argument("-m", "--model_source", required=False, default="model_list.json", help="Model source: (1) model list file (2) model directory.")
 
     parser.add_argument("-r", "--running_mode", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
@@ -1429,6 +1539,14 @@ def setup_logger(verbose):
         coloredlogs.install(fmt='%(message)s')
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
+def parse_models_helper(args, models): 
+    if ".json" in args.model_source:
+        logger.info("Parsing model information from file ...")
+        parse_models_info_from_file(args.working_dir, args.model_source, models)
+    else:
+        logger.info("Parsing model information from directory ...")
+        parse_models_info_from_directory(args.model_source, models)
+
 def main():
     args = parse_arguments()
     setup_logger(False)
@@ -1437,13 +1555,7 @@ def main():
     logger.info("\n\nStart perf run ...\n")
 
     models = {}
-
-    if ".json" in args.model_source:
-        logger.info("Parsing model information from file ...")
-        parse_models_info_from_file(args.model_source, models)
-    else:
-        logger.info("Parsing model information from directory ...")
-        parse_models_info_from_directory(args.model_source, models)
+    parse_models_helper(args, models)
 
     if not os.path.exists("symbolic_shape_infer.py"):
         p1 = subprocess.Popen(["sudo", "wget", "https://raw.githubusercontent.com/microsoft/onnxruntime/master/onnxruntime/python/tools/symbolic_shape_infer.py"])
@@ -1473,7 +1585,7 @@ def main():
         Path(path).mkdir(parents=True, exist_ok=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-
+    
     if len(model_to_fail_ep) > 0:
         logger.info("\n============================================")
         logger.info("========== Failing Models/EPs ==============")
@@ -1493,12 +1605,11 @@ def main():
         # add_improvement_information(model_to_latency)
         pp.pprint(model_to_latency)
         write_map_to_file(model_to_latency, LATENCY_FILE)
-
         if args.write_test_result:
             csv_filename = args.benchmark_latency_csv if args.benchmark_latency_csv else f"benchmark_latency_{time_stamp}.csv"
             csv_filename = os.path.join(path, csv_filename)
             output_latency(model_to_latency, csv_filename)
-
+    
     if success_results:
         csv_filename = args.benchmark_success_csv if args.benchmark_success_csv else f"benchmark_success_{time_stamp}.csv"
         csv_filename = os.path.join(path, csv_filename)

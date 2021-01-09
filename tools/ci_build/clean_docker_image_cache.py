@@ -112,19 +112,23 @@ def parse_timestamp(timestamp_str):
 def parse_log_line(line, min_datetime):
     entry = json.loads(line)
 
-    for field_name, expected_value in [
+    def check_time(value):
+        timestamp = parse_timestamp(value)
+        return timestamp is not None and timestamp >= min_datetime
+
+    for field_name, expected_value_or_checker in [
             ("category", "ContainerRegistryRepositoryEvents"),
+            ("operationName", lambda value: value in ["Pull", "Push"]),
             ("resultType", "HttpStatusCode"),
-            ("resultDescription", "200")]:
-        if entry.get(field_name) != expected_value:
-            return None
-
-    timestamp = parse_timestamp(entry.get("time", ""))
-    if timestamp is None or timestamp < min_datetime:
-        return None
-
-    if entry.get("operationName") not in ["Pull", "Push"]:
-        return None
+            ("resultDescription", lambda value: value in ["200", "201"]),
+            ("time", check_time)]:
+        value = entry.get(field_name, "")
+        if callable(expected_value_or_checker):
+            if not expected_value_or_checker(value):
+                return None
+        else:
+            if value != expected_value_or_checker:
+                return None
 
     props = entry.get("properties", {})
     repo, digest = props.get("repository"), props.get("digest")
@@ -184,8 +188,8 @@ let cache_history = 7d;
 let cache_min_access_count = 1;
 ContainerRegistryRepositoryEvents
 | where TimeGenerated >= ago(cache_history)
-| where OperationName in ("Push", "Pull")
-| where ResultDescription == "200"
+| where OperationName in ("Pull", "Push")
+| where ResultDescription in ("200", "201")
 | summarize AccessCount = count() by Repository, Digest
 | where AccessCount >= cache_min_access_count
 | project Repository, Digest

@@ -22,6 +22,26 @@ struct KV {
   int64_t val;
 };
 
+template <typename T>
+struct NumericLimits {
+  static T Lowest() {
+    return std::numeric_limits<T>::lowest();
+  }
+  static T Max() {
+    return std::numeric_limits<T>::max();
+  }
+};
+
+template <>
+struct NumericLimits<MLFloat16> {
+   static half Lowest() {
+     return -65504.0;
+   }
+   static half Max() {
+     return 65504.0;
+   }
+};
+
 #define BT GridDim::maxThreadsPerBlock
 #define ALIGN(N) static_cast<int64_t>(pow(2, ceil(log2(static_cast<double>(N)))))
 #define FROM(idx) (left_dim + (idx)*mid_dim + right_dim)
@@ -147,6 +167,7 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> 
   }
 }
 
+
 template <typename T>
 __device__ __inline__ bool Equal(const T& t0, const T& t1) {
     return t0 == t1;
@@ -168,7 +189,7 @@ __device__ bool SamePrefix(const T* t0, const T* t1, int64_t skip) {
 }
 
 __device__ bool SamePrefix(const half* f0, const half* f1, int64_t skip) {
-  return SamePrefix((const uint16_t*)f0, (const uint16_t*)f1, skip);
+  return SamePrefix((const int16_t*)f0, (const int16_t*)f1, skip);
 }
 
 __device__ bool SamePrefix(const float* f0, const float* f1, int64_t skip) {
@@ -185,7 +206,7 @@ __device__ int32_t Radix(const T* t, int64_t skip) {
 }
 
 __device__ int32_t Radix(const half* f, int64_t skip) {
-  return Radix((const uint16_t*)f, skip);
+  return Radix((const int16_t*)f, skip);
 }
 
 __device__ int32_t Radix(const float* f, int64_t skip) {
@@ -193,7 +214,7 @@ __device__ int32_t Radix(const float* f, int64_t skip) {
 }
 
 __device__ int32_t Radix(const double* d, int64_t skip) {
-  return Radix((const double*)d, skip);
+  return Radix((const int64_t*)d, skip);
 }
 
 template<typename T>
@@ -202,7 +223,7 @@ __device__ void SetByte(T* t, int64_t byte) {
 }
 
 __device__ void SetByte(half* f, int64_t byte) {
-  SetByte((uint16_t*)f, byte);
+  SetByte((int16_t*)f, byte);
 }
 
 __device__ void SetByte(float* f, int64_t byte) {
@@ -401,17 +422,17 @@ Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t
   auto aligned_K = ALIGN(K);
   auto aligned_dimension = ALIGN(dimension);
   if (aligned_dimension <= GridDim::maxThreadsPerBlock) {
-    BitonicTopK<CudaT><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<CudaT>)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, std::numeric_limits<CudaT>::lowest(), std::numeric_limits<CudaT>::max());
+    BitonicTopK<CudaT><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<CudaT>)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
   } else if (K <= BT*16 || 0 == sorted) {
     auto XPT = static_cast<int64_t>(ceil(static_cast<double>(dimension) / GridDim::maxThreadsPerBlock));
     if (BT*2 >= K || 0 == sorted) {
-      RadixTopK<CudaT,BT,2><<<N,BT,256*sizeof(uint32_t)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, std::numeric_limits<CudaT>::lowest(), std::numeric_limits<CudaT>::max());
+      RadixTopK<CudaT, BT, 2><<<N, BT, 256 * sizeof(uint32_t)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
     } else if (BT*4>=K) {
-      RadixTopK<CudaT,BT,4><<<N,BT,256*sizeof(uint32_t)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, std::numeric_limits<CudaT>::lowest(), std::numeric_limits<CudaT>::max());
+      RadixTopK<CudaT, BT, 4><<<N, BT, 256 * sizeof(uint32_t)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
     } else if (BT*8>=K) {
-      RadixTopK<CudaT,BT,8><<<N,BT,256*sizeof(uint32_t)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, std::numeric_limits<CudaT>::lowest(), std::numeric_limits<CudaT>::max());
+      RadixTopK<CudaT, BT, 8><<<N, BT, 256 * sizeof(uint32_t)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
     } else {
-      RadixTopK<CudaT,BT,16><<<N,BT,256*sizeof(uint32_t)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, std::numeric_limits<CudaT>::lowest(), std::numeric_limits<CudaT>::max());
+      RadixTopK<CudaT, BT, 16><<<N, BT, 256 * sizeof(uint32_t)>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
     }
   } else {
     auto input_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension);

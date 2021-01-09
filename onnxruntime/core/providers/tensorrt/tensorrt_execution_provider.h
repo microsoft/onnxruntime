@@ -95,40 +95,42 @@ struct TensorrtFuncState {
 };
 
 // Logical device representation.
-class TensorrtExecutionProvider : public Provider_IExecutionProvider {
+class TensorrtExecutionProvider : public IExecutionProvider {
  public:
   explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
 
-  virtual std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const override;
-  std::unique_ptr<Provider_IDataTransfer> Provider_GetDataTransfer() const override;
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
-  std::vector<std::unique_ptr<Provider_ComputeCapability>>
-  Provider_GetCapability(const Provider_GraphViewer& graph,
-                         const std::vector<const Provider_KernelRegistry*>& /*kernel_registries*/) const override;
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const GraphViewer& graph,
+                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
   int GetDeviceId() const { return device_id_; }
 
-  common::Status Provider_Compile(const std::vector<Provider_Node*>& fused_nodes,
-                                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  common::Status Compile(const std::vector<Node*>& fused_nodes,
+                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  AllocatorPtr Provider_GetAllocator(int id, OrtMemType mem_type) const override;
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
  private:
   int max_partition_iterations_ = 1000;
-  int min_subgraph_size_ = 1;  
+  int min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 1 << 30;  // 1GB
-  bool fp16_enable_ = false;  
-  bool int8_enable_ = false;  
+  bool fp16_enable_ = false;
+  bool int8_enable_ = false;
   std::string int8_calibration_cache_name_ = "INT8_calibration_table";
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
   std::string cache_path_;
   nvinfer1::IRuntime* runtime_ = nullptr;
-
   OrtMutex tensorrt_mu_;
   int device_id_;
+  AllocatorPtr allocator_;
+  mutable int subgraph_id_ = 0;
+
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>> contexts_;
@@ -139,8 +141,8 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
-  std::unique_ptr<Provider_IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index,
-                                                        const onnxruntime::Provider_GraphViewer& graph) const;
+  std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
+                                               const GraphViewer& graph) const;
 
   /**
   Get TensorRT supported node lists by calling Onnx-TensorRT parser recursively. Since each time the parser
@@ -150,10 +152,8 @@ class TensorrtExecutionProvider : public Provider_IExecutionProvider {
   other execution provider.
   */
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
-                                        const onnxruntime::Provider_GraphViewer& graph, bool* early_termination) const;
+                                        const GraphViewer& graph, bool* early_termination) const;
 
-  void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::Provider_GraphViewer& graph) const;
-
-  AllocatorPtr allocator_;
+  void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const;
 };
 }  // namespace onnxruntime
