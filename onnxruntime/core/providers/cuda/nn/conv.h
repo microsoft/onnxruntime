@@ -31,6 +31,21 @@ class CudnnConvolutionDescriptor final {
   cudnnConvolutionDescriptor_t desc_;
 };
 
+class CudnnActivationDescriptor final {
+ public:
+  CudnnActivationDescriptor();
+  ~CudnnActivationDescriptor();
+
+  Status Set(const char* activaton_mode);
+
+  operator cudnnActivationDescriptor_t() const { return desc_; }
+  bool HasActivation() const { return nullptr != desc_; }
+
+ private:
+  void Reset();
+  cudnnActivationDescriptor_t desc_;
+};
+
 template <typename T>
 struct vector_hash {
   std::size_t operator()(const std::vector<T>& values) const {
@@ -119,12 +134,20 @@ struct CudnnConvState {
   std::vector<int64_t> y_dims;
   std::vector<int64_t> y_dims_with_adjusted_pads;
   size_t workspace_bytes;
+  size_t element_size;
   decltype(AlgoPerfType().algo) algo;
   CudnnTensor x_tensor;
+  const void* x_data = nullptr;
   CudnnFilterDescriptor filter_desc;
+  const void* w_data = nullptr;
   CudnnTensor b_tensor;
+  const void* b_data = nullptr;
   CudnnTensor y_tensor;
+  void* y_data = nullptr;
+  CudnnTensor z_tensor;
+  const void* z_data = nullptr;
   CudnnConvolutionDescriptor conv_desc;
+  CudnnActivationDescriptor activation_descriptor;
 
   struct PerfResultParams {
     decltype(AlgoPerfType().algo) algo;
@@ -151,6 +174,7 @@ enum : size_t {
 template <typename T>
 class Conv : public CudaKernel {
  public:
+  typedef typename ToCudaType<T>::MappedType CudaT;
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
@@ -158,7 +182,11 @@ class Conv : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
- private:
+ protected:
+  const CudaT alpha_ = Consts<CudaT>::One;
+  const CudaT beta_ = Consts<CudaT>::Zero;
+  mutable IAllocatorUniquePtr<void> memory_for_cudnn_conv_results_;
+  Status UpdateConvState(OpKernelContext* context) const;
   ConvAttributes conv_attrs_;
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;

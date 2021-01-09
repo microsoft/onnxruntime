@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include <iostream>
 
 namespace onnxruntime {
@@ -14,7 +15,8 @@ enum class ArenaExtendStrategy : int32_t {
 
 inline std::istream& operator>>(std::istream& is, ArenaExtendStrategy& value) {
   std::string value_str;
-  if (is >> value_str) {
+  std::getline(is, value_str);
+  if (value_str.size() > 0) {
     if (value_str == "kNextPowerOfTwo") {
       value = ArenaExtendStrategy::kNextPowerOfTwo;
     } else if (value_str == "kSameAsRequested") {

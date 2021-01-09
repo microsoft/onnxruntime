@@ -441,18 +441,29 @@ TEST_F(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
 
 #ifndef DISABLE_CONTRIB_OPS
 TEST_F(GraphTransformationTests, FuseConvActivation) {
+#ifdef USE_CUDA
+  std::unordered_map<std::basic_string<ORTCHAR_T>, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
+                                                                                 {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
+                                                                                 {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"}};
+#else
   std::unordered_map<std::basic_string<ORTCHAR_T>, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
                                                                                  {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
                                                                                  {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
                                                                                  {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},
                                                                                  {ORT_TSTR("fusion/conv_leakyrelu.onnx"), "LeakyRelu"}};
-
+#endif
   for (const auto& model : model_to_op_name) {
     auto model_uri = MODEL_FOLDER + model.first;
     std::shared_ptr<Model> p_model;
     ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-    Graph& graph = p_model->MainGraph();
 
+#ifdef USE_CUDA
+    for (auto& node : p_model->MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+    }
+#endif
+
+    Graph& graph = p_model->MainGraph();
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count[model.second] >= 1);
 
@@ -1886,7 +1897,6 @@ TEST_F(GraphTransformationTests, AttentionFusionWithPastAndUnidirMaskTest) {
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Softmax"], 0);
   EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
-
 
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
