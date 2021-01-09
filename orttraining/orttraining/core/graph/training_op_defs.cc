@@ -5,7 +5,6 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/providers/common.h"
 #include "orttraining/core/graph/training_op_defs.h"
-#include "orttraining/core/framework/distributed_run_context.h"
 #include "onnx/defs/function.h"
 #include <math.h>
 
@@ -447,7 +446,7 @@ void RegisterTrainingOpSchemas() {
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "Tind",
@@ -923,12 +922,44 @@ Example 4:
       })
       .SetDoc(R"DOC(SoftmaxCrossEntropyGrad)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(HorovodAllReduce)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .Attr("reduce_op", "Reduce operation supported by Horovod. Valid values are: AVERAGE(0), SUM(1) or ADASUM(2)", AttributeProto::INT, int64_t(1))
+      .Input(0, "input", "tensor to be reduced", "T")
+      .Output(0, "output", "reduced tensor", "T")
+      .Output(1, "ready", "true when reduced tensor is ready", "B")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeConstraint("B", {"tensor(bool)"}, "Constrain to bool tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+        updateOutputShape(ctx, 1, {});
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(HorovodBarrier)
+      .SetDomain(kOnnxDomain)
+      .SetDoc("Waits for one or more async Horovod operators to complete")
+      .SinceVersion(9)
+      .Input(0, "input", "input tensor", "T")
+      .Input(1, "input_ready", "one or more bool tensors to wait on", "B", OpSchema::Variadic)
+      .Output(0, "output", "output tensor", "T")
+      .Output(1, "output_ready", "output tensor is ready", "B")
+      .TypeConstraint("B", {"tensor(bool)"}, "Only bool")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "All Tensor types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+        updateOutputShape(ctx, 1, {});
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - global parallel group, 1 - data parallel group, "
-                          "2 - node local data parallel group, 3 - cross node data parallel group, "
-                          "4 - horozontal parallel, 5 - model parallel.",
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
@@ -938,16 +969,13 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        assert(getAttribute(ctx, "group_type", 0) < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllGather)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - global parallel group, 1 - data parallel group, "
-                          "2 - node local data parallel group, 3 - cross node data parallel group, "
-                          "4 - horozontal parallel, 5 - model parallel.",
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
@@ -957,16 +985,13 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        assert(getAttribute(ctx, "group_type", 0) < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclReduceScatter)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - global parallel group, 1 - data parallel group, "
-                          "2 - node local data parallel group, 3 - cross node data parallel group, "
-                          "4 - horozontal parallel, 5 - model parallel.",
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced and scattered", "T", OpSchema::Variadic)
@@ -974,39 +999,7 @@ Example 4:
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain to float, float16 and double tensors.")
-#ifdef _DEBUG
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        assert(getAttribute(ctx, "group_type", 0) < static_cast<int64_t>(WorkerGroupType::WorkerGroupTypeCount));
-      })
-#endif
-;
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(AdasumAllReduce)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: CpuReduction(1) or GpuHierarchicalReduction(2)",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
-      .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
-      .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain to float, float16 and double tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != ctx.getNumOutputs())
-          fail_shape_inference("AdasumAllReduce's input count must be equal to output count.");
-
-        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          propagateElemTypeFromInputToOutput(ctx, i, i);
-          auto typeProto = ctx.getInputType(i);
-          if (!hasShape(*typeProto)) {
-              continue;
-          }
-          propagateShapeFromInputToOutput(ctx, i, i);
-        }
-      });
+          "Constrain to float, float16 and double tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)
       .SetDomain(kOnnxDomain)

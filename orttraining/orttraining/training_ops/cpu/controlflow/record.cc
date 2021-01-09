@@ -3,6 +3,7 @@
 
 #include "orttraining/training_ops/cpu/controlflow/record.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,7 +25,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .VariadicAlias(1, 0),  // outputs and inputs are mapped one to one, with input offset by 1
+        .Alias(AliasRange<1, 0>(0, 1024)),
     RecordEvent);
 
 Status RecordEvent::Compute(OpKernelContext* ctx) const {

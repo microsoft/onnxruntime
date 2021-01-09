@@ -11,6 +11,9 @@
 namespace onnxruntime {
 namespace python {
 
+using namespace onnxruntime;
+using namespace onnxruntime::logging;
+
 #if !defined(ORT_MINIMAL_BUILD)
 struct CustomOpLibrary {
   CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so);

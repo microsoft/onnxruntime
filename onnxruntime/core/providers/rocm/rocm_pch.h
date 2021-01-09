@@ -15,7 +15,7 @@
 #include <miopen/miopen.h>
 #include <hipfft.h>
 
-#ifdef ORT_USE_NCCL
+#ifdef USE_NCCL
 #include <rccl.h>
 #endif
 

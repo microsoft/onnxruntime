@@ -2,12 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include <cfloat>
-
-#include "core/common/logging/logging.h"
+#include "cuda_common.h"
 #include "core/framework/tensor.h"
-#include "core/providers/cuda/cuda_common.h"
+#include <cfloat>
 
 namespace onnxruntime {
 namespace cuda {

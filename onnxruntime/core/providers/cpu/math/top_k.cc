@@ -371,58 +371,40 @@ static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input
 }
 
 // Opset ver - 1 to 9
-
-static void TopkOpset9ConstructorCommon(const OpKernelInfo& op_kernel_info, int& axis, unsigned int& k) {
+template <>
+TopK<9, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   int64_t k_temp;
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_temp).IsOK());
   ORT_ENFORCE(k_temp > 0);
-  k = gsl::narrow_cast<unsigned>(k_temp);
+  k_ = gsl::narrow_cast<unsigned>(k_temp);
 
   int64_t axis_temp;
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("axis", &axis_temp).IsOK());
-  axis = gsl::narrow_cast<int>(axis_temp);
+  axis_ = gsl::narrow_cast<int>(axis_temp);
 }
 
-template <typename T>
-static Status ComputeImplOpset9(OpKernelContext* p_op_kernel_context, int axis, int k) {
+// Opset ver - 1 to 9
+template <>
+Status TopK<9, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* X = p_op_kernel_context->Input<Tensor>(0);
   if (X == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "input count mismatch, expected 1 input - the tensor to be processed");
   }
 
-  return TopKImpl<T>(p_op_kernel_context, X, axis, k);
-}
-
-template <>
-TopK<9, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-  TopkOpset9ConstructorCommon(op_kernel_info, axis_, k_);
-}
-
-template <>
-TopK<9, double>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-  TopkOpset9ConstructorCommon(op_kernel_info, axis_, k_);
-}
-
-template <>
-Status TopK<9, float>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset9<float>(p_op_kernel_context, axis_, k_);
-}
-
-template <>
-Status TopK<9, double>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset9<double>(p_op_kernel_context, axis_, k_);
+  return TopKImpl<float>(p_op_kernel_context, X, axis_, k_);
 }
 
 // Opset ver - 10
-
-static void TopkOpset10ConstructorCommon(const OpKernelInfo& op_kernel_info, int& axis) {
+template <>
+TopK<10, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   int64_t axis_temp;
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("axis", &axis_temp).IsOK());
-  axis = gsl::narrow_cast<int>(axis_temp);
+  axis_ = gsl::narrow_cast<int>(axis_temp);
 }
 
-template <typename T>
-static Status ComputeImplOpset1011(OpKernelContext* p_op_kernel_context, int axis, bool is_largest, bool is_sorted) {
+// Opset ver - 10
+template <>
+Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* X = p_op_kernel_context->Input<Tensor>(0);
   const auto* Y = p_op_kernel_context->Input<Tensor>(1);
   if (X == nullptr || Y == nullptr) {
@@ -441,27 +423,7 @@ static Status ComputeImplOpset1011(OpKernelContext* p_op_kernel_context, int axi
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
   }
 
-  return TopKImpl<T>(p_op_kernel_context, X, axis, gsl::narrow_cast<unsigned>(parsed_input_k), is_largest, is_sorted);
-}
-
-template <>
-TopK<10, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-  TopkOpset10ConstructorCommon(op_kernel_info, axis_);
-}
-
-template <>
-TopK<10, double>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-  TopkOpset10ConstructorCommon(op_kernel_info, axis_);
-}
-
-template <>
-Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset1011<float>(p_op_kernel_context, axis_, true, true);
-}
-
-template <>
-Status TopK<10, double>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset1011<double>(p_op_kernel_context, axis_, true, true);
+  return TopKImpl<float>(p_op_kernel_context, X, axis_, gsl::narrow_cast<unsigned>(parsed_input_k));
 }
 
 // Opset ver - 11
@@ -487,40 +449,57 @@ TopK<11, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_i
 }
 
 template <>
-TopK<11, double>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
+TopK<11, int64_t>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   TopkOpset11ConstructorCommon(op_kernel_info, axis_, largest_, sorted_);
 }
 
-template <>
-TopK<11, int64_t>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-  TopkOpset11ConstructorCommon(op_kernel_info, axis_, largest_, sorted_);
+template <typename T>
+static Status ComputeImplOpset11(OpKernelContext* p_op_kernel_context, int axis, bool is_largest, bool is_sorted) {
+  const auto* X = p_op_kernel_context->Input<Tensor>(0);
+  const auto* Y = p_op_kernel_context->Input<Tensor>(1);
+  if (X == nullptr || Y == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "input count mismatch, expected 2 inputs - "
+                           "the tensor to be processed and a tensor containing k value");
+  }
+
+  const vector<int64_t>& y_shape = Y->Shape().GetDims();
+  if (y_shape.size() != 1 || y_shape[0] != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
+  }
+
+  auto parsed_input_k = Y->template Data<int64_t>()[0];
+  if (parsed_input_k < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
+  }
+
+  return TopKImpl<T>(p_op_kernel_context, X, axis, gsl::narrow_cast<unsigned>(parsed_input_k), is_largest, is_sorted);
 }
 
 // Opset ver - 11
 template <>
 Status TopK<11, float>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset1011<float>(p_op_kernel_context, axis_, largest_, sorted_);
-}
-
-template <>
-Status TopK<11, double>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset1011<double>(p_op_kernel_context, axis_, largest_, sorted_);
+  return ComputeImplOpset11<float>(p_op_kernel_context, axis_, largest_, sorted_);
 }
 
 template <>
 Status TopK<11, int64_t>::Compute(OpKernelContext* p_op_kernel_context) const {
-  return ComputeImplOpset1011<int64_t>(p_op_kernel_context, axis_, largest_, sorted_);
+  return ComputeImplOpset11<int64_t>(p_op_kernel_context, axis_, largest_, sorted_);
 }
 
 // Register necessary kernels
 // spec https://github.com/onnx/onnx/blob/master/docs/Operators.md#TopK
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(TopK, 1, 9,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+                                   TopK<9, float>);
 
-#define REGISTER_TOPK_VERSIONED_TYPED_KERNEL(OPSET1, OPSET2, TYPE)                                           \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(TopK, OPSET1, OPSET2, TYPE,                                       \
-                                           KernelDefBuilder()                                                \
-                                               .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())     \
-                                               .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
-                                           TopK<OPSET2, TYPE>);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(TopK, 10, 10,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+                                   TopK<10, float>);
 
 #define REGISTER_TOPK_TYPED_KERNEL(OPSET, TYPE)                                                    \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(TopK,                                                             \
@@ -531,13 +510,7 @@ Status TopK<11, int64_t>::Compute(OpKernelContext* p_op_kernel_context) const {
                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
                                  TopK<OPSET, TYPE>);
 
-REGISTER_TOPK_VERSIONED_TYPED_KERNEL(1, 9, float);
-REGISTER_TOPK_VERSIONED_TYPED_KERNEL(1, 9, double);
-REGISTER_TOPK_VERSIONED_TYPED_KERNEL(10, 10, float);
-REGISTER_TOPK_VERSIONED_TYPED_KERNEL(10, 10, double);
-
 REGISTER_TOPK_TYPED_KERNEL(11, float);
-REGISTER_TOPK_TYPED_KERNEL(11, double);
 REGISTER_TOPK_TYPED_KERNEL(11, int64_t);
 
 }  // namespace onnxruntime

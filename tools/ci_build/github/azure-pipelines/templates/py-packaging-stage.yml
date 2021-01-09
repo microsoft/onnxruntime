@@ -52,6 +52,8 @@ stages:
       pool: Linux-CPU
       strategy:
         matrix:
+          Python35:
+            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -125,6 +127,8 @@ stages:
       pool: Linux-CPU
       strategy:
         matrix:
+          Python35:
+            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -199,6 +203,8 @@ stages:
       pool: Linux-GPU-CUDA10
       strategy:
         matrix:
+          Python35:
+            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -346,6 +352,8 @@ stages:
       pool: 'Win-CPU-2019'
       strategy:
         matrix:
+          Python35:
+            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -474,6 +482,8 @@ stages:
       pool: 'Win-CPU-2019'
       strategy:
         matrix:
+          Python35:
+            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -609,6 +619,8 @@ stages:
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
       strategy:
         matrix:
+          Python35:
+            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -724,6 +736,8 @@ stages:
         vmImage: 'macOS-10.14'
       strategy:
         matrix:
+          Python35:
+            PythonVersion: '3.5'
           Python36:
             PythonVersion: '3.6'
           Python37:
@@ -755,6 +769,8 @@ stages:
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
           sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+          # The following line is a hack to prevent build pipeline from failing
+          brew uninstall openssl@1.0.2t
           brew install libomp
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
@@ -789,6 +805,8 @@ stages:
             PythonVersion: '3.7'
           Py36:
             PythonVersion: '3.6'
+          Py35:
+            PythonVersion: '3.5'
       steps:
       - checkout: self
         clean: true

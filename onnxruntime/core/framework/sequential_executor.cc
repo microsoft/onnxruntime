@@ -277,7 +277,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     const std::string node_name_for_profiling = [&]() -> std::string {
       if (!is_profiler_enabled) return {};
       // Derive something meaningful for profile traces and logs if node name field is blank in execution graph
-      return node.Name().empty() ? MakeStringLite(node.OpType(), "_", node_index) : node.Name();
+      return node.Name().empty() ? MakeString(node.OpType(), "_", node_index) : node.Name();
     }();
 
     if (is_profiler_enabled) {
@@ -303,14 +303,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 #ifdef ENABLE_NVTX_PROFILE
       profile::NvtxRangeCreator node_compute_range(
-          MakeStringLite(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Blue);
+          MakeString(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Blue);
       node_compute_range.Begin();
 #endif
       ORT_TRY {
 #ifdef ENABLE_TRAINING
-        if (p_op_kernel->KernelDef().AllocateInputsContiguously()) {
-          ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
-        }
+        if (p_op_kernel->KernelDef().AllocateInputsContiguously())
+          utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context);
 #endif
 
         compute_status = p_op_kernel->Compute(&op_kernel_context);

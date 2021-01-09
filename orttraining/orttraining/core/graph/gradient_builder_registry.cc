@@ -101,7 +101,6 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Flatten", GetFlattenGradient);
   REGISTER_GRADIENT_BUILDER("TopK", GetTopKGradient);
   REGISTER_GRADIENT_BUILDER("Clip", GetClipGradient);
-  REGISTER_GRADIENT_BUILDER("Abs", GetAbsGradient);
 };
 
 }  // namespace training

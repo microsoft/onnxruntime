@@ -15,10 +15,10 @@ namespace training {
 
 // This enum specifies different Adasum reduction algorithms.
 // More will be added in the future based on the device, topology and etc.
-enum class AdasumReductionType : int64_t {
-  None = 0,
-  CpuReduction = 1,
-  GpuHierarchicalReduction = 2,
+enum AdasumReductionType {
+  None,
+  CpuReduction,
+  GpuHierarchical,
 };
 
 // Data types to support for mixed precision training.
@@ -68,6 +68,7 @@ struct OptimizerGraphConfig {
   bool use_nccl{false};
   ZeROConfig deepspeed_zero{0};
   int gradient_accumulation_steps{1};
+  int64_t horovod_reduce_op{1};
   std::string loss_scale_input_name{};  // empty string means no loss scaling factor is applied
   AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
   bool enable_grad_norm_clip{true};

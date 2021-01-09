@@ -12,7 +12,6 @@
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
-#include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {
 namespace training {
@@ -46,27 +45,26 @@ class OptimizerGraphBuilder {
    *        configuration values.
    * @param updated_weight_names_map Mapping from original weight name to 
    *        updated weight name.
-   * @param weight_partition_info Mapping of (parititioned) weight name to partition info.
    */
   OptimizerGraphBuilder(
       const OptimizerBuilderRegistry& opt_builder_registry,
       const OptimizerGraphConfig& opt_graph_config,
       const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
-      std::unordered_map<std::string, std::string>& updated_weight_names_map,
-      std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info);
+      std::unordered_map<std::string, std::string>& updated_weight_names_map);
 
   virtual ~OptimizerGraphBuilder() {}
 
   /**
    * Builds the optimizer components on top of the graph.
    * @param graph The graph to build upon.
-   * @param[out] weight_to_opt_mapping weight -> optimizer state mapping.
+   * @param[out] optimizer_state_initializer_names The names of the
+   *             initializers representing the optimizer state.
    * @param[out] optimizer_graph_outputs The outputs introduced in optimizer graph
    * @return The status of the graph modification.
    */
   Status Build(
       Graph& graph,
-      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
+      std::unordered_set<std::string>& optimizer_state_initializer_names,
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs);
 
  protected:
@@ -77,7 +75,7 @@ class OptimizerGraphBuilder {
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& weight_argdefs,
       std::vector<ArgDef>& gradient_argdefs,
-      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
+      std::unordered_set<std::string>& optimizer_state_initializer_names,
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs);
 
   Status AddGradientPassThroughNode(
@@ -123,7 +121,7 @@ class OptimizerGraphBuilder {
       const ArgDef* global_gradient_norm_finite_argdef,
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
-      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping);
+      std::unordered_set<std::string>& optimizer_state_initializer_names);
 
   // This function can be overriden by child classes to have different logic
   // for building optimizers.
@@ -136,7 +134,6 @@ class OptimizerGraphBuilder {
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<TensorProto>& new_initializers,
-      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs);
 
@@ -148,7 +145,6 @@ class OptimizerGraphBuilder {
   std::vector<std::string> gradient_names_;
   std::vector<OptimizerNodeConfig> opt_configs_;
   std::unordered_map<std::string, std::string>& updated_weight_names_map_;
-  std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info_;
 };
 
 }  // namespace training

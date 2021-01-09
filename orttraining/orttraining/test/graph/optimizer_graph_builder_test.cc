@@ -17,15 +17,12 @@
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/core/graph/allreduce_optimizer_graph_builder.h"
-#if defined(USE_MPI)
 #include "orttraining/core/graph/adasum_optimizer_graph_builder.h"
-#endif
 #include "orttraining/core/graph/zero_optimizer_graph_builder.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/test_environment.h"
 #include "orttraining/test/session/training_session_test_utils.h"
-#include "orttraining/core/graph/optimizer_builder.h"
 
 using onnxruntime::test::CountOpsInGraph;
 using onnxruntime::test::CreateMLValue;
@@ -41,6 +38,7 @@ const std::vector<const char*> k_weight_names{"weight_1", "weight_2"};
 constexpr const char* const k_loss_scaling_factor_name = "loss_scaling_factor";
 constexpr const char* const k_adam_optimizer_op_name = "AdamOptimizer";
 constexpr const char* const k_lamb_optimizer_op_name = "LambOptimizer";
+constexpr const char* const k_horovod_all_reduce_op_name = "HorovodAllReduce";
 constexpr const char* const k_all_reduce_op_name = "NcclAllReduce";
 constexpr const char* const k_all_gather_op_name = "NcclAllGather";
 constexpr const char* const k_reduce_scatter_op_name = "NcclReduceScatter";
@@ -49,9 +47,7 @@ constexpr const char* const k_gradient_norm_op_name = "ReduceAllL2";
 constexpr const char* const k_unscale_op_name = "MixedPrecisionScale";
 constexpr const char* const k_inplace_accumulator_op_name = "InPlaceAccumulator";
 constexpr const char* const k_zero_gradient_op_name = "ZeroGradient";
-#if defined(USE_MPI)
-constexpr const char* const k_adasum_op_name = "AdasumAllReduce";
-#endif
+
 Status SetUpBaseGraph(Graph& graph);
 
 class OptimizerGraphBuilderTest : public testing::Test {
@@ -172,40 +168,37 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
     NameMLValMap per_weight_states;
     OrtValue ml_value;
 
-    for (const auto key : MOMENTS_PREFIXES) {
+    for (const auto key : MOMENT_PREFIX) {
       CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, values, &ml_value);
       per_weight_states.insert(std::make_pair(key, std::move(ml_value)));
     }
     if (optimizer_op_name == k_adam_optimizer_op_name) {
       CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
-      per_weight_states.insert(std::make_pair(ADAM_UC_PREFIX, std::move(ml_value)));
+      per_weight_states.insert(std::make_pair(UC_PREFIX, std::move(ml_value)));
     } else if (optimizer_op_name == k_lamb_optimizer_op_name) {
       // add "Step" for lamb
       CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
-      shared_states.insert(std::make_pair(LAMB_STEP_TENSOR_NAME, std::move(ml_value)));
+      shared_states.insert(std::make_pair(STEP_TENSOR_NAME, std::move(ml_value)));
       config.shared_optimizer_states = std::move(shared_states);
     }
     opt_config_it.second.initial_states = std::move(per_weight_states);
   }
 
   std::unordered_map<std::string, std::string> updated_weight_names_map;
-  std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
-  OptimizerGraphBuilder optimizer_graph_builder(GetOptimizerBuilderRegistry(), config, weight_names_to_opt_configs, updated_weight_names_map, weight_partition_info);
+  OptimizerGraphBuilder optimizer_graph_builder(GetOptimizerBuilderRegistry(), config, weight_names_to_opt_configs, updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> opt_initializer_names_map;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names_map, opt_graph_outputs));
+  std::unordered_set<std::string> opt_initializer_names;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
 
   const ONNX_NAMESPACE::TensorProto* tensor;
-  for (auto& weight_item : opt_initializer_names_map) {
-    for (auto& opt_item : weight_item.second) {
-      ASSERT_TRUE(graph.GetInitializedTensor(opt_item.second, tensor));
-      ASSERT_TRUE(tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT || tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64);
-      if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
-        VerifyTensorValue(tensor, values[0]);
-      } else if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
-        VerifyTensorValue(tensor, uc_value[0]);
-      }
+  for (auto& init_name : opt_initializer_names) {
+    ASSERT_TRUE(graph.GetInitializedTensor(init_name, tensor));
+    ASSERT_TRUE(tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT || tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64);
+    if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
+      VerifyTensorValue(tensor, values[0]);
+    } else if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
+      VerifyTensorValue(tensor, uc_value[0]);
     }
   }
 }
@@ -224,46 +217,14 @@ TEST_F(OptimizerGraphBuilderTest, LoadOptimState_FullPrecision_Lamb) {
   TestOptimizerGraphBuilderWithInitialStates(config, graph_, k_lamb_optimizer_op_name);
 }
 
-TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
-  NameMLValMap initial_states;
-  std::vector<int64_t> param_dims = {784, 128};
-  int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
-
-  MLValue mlValue;
-  std::vector<float> init_value(num_ele);
-  std::iota(init_value.begin(), init_value.end(), static_cast<float>(0));
-
-  for (const auto& param_prefix : MOMENTS_PREFIXES) {
-    TrainingUtil::CreateCpuMLValue<float>(param_dims, init_value, &mlValue);
-    initial_states.insert(std::make_pair(param_prefix, std::move(mlValue)));
-  }
-
-  int64_t partition_offset = 10;
-  int64_t partition_size = 500;
-  PartitionOptimizerState(partition_offset, partition_size, initial_states);
-
-  std::vector<float> expected_vec(init_value.begin() + partition_offset, init_value.begin() + partition_offset + partition_size);
-  std::vector<int64_t> expected_shape = {partition_size};
-
-  for (const auto& state : initial_states) {
-    const auto& init_tensor = state.second.Get<Tensor>();
-    const auto& shape = init_tensor.Shape().GetDims();
-    ASSERT_EQ(shape, expected_shape);
-    const std::vector<float> found(init_tensor.Data<float>(),
-                                   init_tensor.Data<float>() + partition_size);
-    ASSERT_EQ(expected_vec, found);
-  }
-}
-
 static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
-  std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   OptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map, weight_partition_info);
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, weight_to_opt_mapping, opt_graph_outputs));
+  std::unordered_set<std::string> opt_initializer_names;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
 
   auto op_counts = CountOpsInGraph(graph, false);
 
@@ -288,6 +249,7 @@ static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph&
   ASSERT_EQ(GetOpCount(op_counts, k_all_reduce_op_name), 0);
   ASSERT_EQ(GetOpCount(op_counts, k_reduce_scatter_op_name), 0);
   ASSERT_EQ(GetOpCount(op_counts, k_all_gather_op_name), 0);
+  ASSERT_EQ(GetOpCount(op_counts, k_horovod_all_reduce_op_name), 0);
 }
 
 TEST_F(OptimizerGraphBuilderTest, Default_NoGradientAccumulation_NoMixedPrecision) {
@@ -320,16 +282,15 @@ TEST_F(OptimizerGraphBuilderTest, Default_WithGradientAccumulation_WithMixedPrec
   TestDefaultOptimizerGraphBuilder(config, graph_);
 }
 
-#if defined(ORT_USE_NCCL)
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
 static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
-  std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   AllreduceOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map, weight_partition_info);
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, weight_to_opt_mapping, opt_graph_outputs));
+  std::unordered_set<std::string> opt_initializer_names;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
 
   auto op_counts = CountOpsInGraph(graph, false);
 
@@ -349,23 +310,27 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
 
   // verify allreduce operations exist
   ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
-  ASSERT_GT(GetOpCount(op_counts, k_all_reduce_op_name), 0);
+  if (config.use_nccl) {
+    ASSERT_GT(GetOpCount(op_counts, k_all_reduce_op_name), 0);
+  } else {
+    ASSERT_GT(GetOpCount(op_counts, k_horovod_all_reduce_op_name), 0);
+  }
 
   // verify optimizers exist
   ASSERT_EQ(GetOpCount(op_counts, k_adam_optimizer_op_name), k_weight_names.size());
 }
+
 #endif
 
-#if defined(ORT_USE_NCCL) && defined(USE_MPI)
+#ifdef USE_HOROVOD
 static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
-  std::unordered_map<std::string, TrainingSession::PartitionInfo> weight_partition_info;
   AdasumOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map, weight_partition_info);
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, weight_to_opt_mapping, opt_graph_outputs));
+  std::unordered_set<std::string> opt_initializer_names;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
 
   auto op_counts = CountOpsInGraph(graph, false);
 
@@ -384,7 +349,8 @@ static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& 
   }
 
   // verify allreduce operations exist
-  ASSERT_GT(GetOpCount(op_counts, k_adasum_op_name), 0);
+  ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
+  ASSERT_GT(GetOpCount(op_counts, k_horovod_all_reduce_op_name), 0);
 
   // verify in place adder operations exist
   ASSERT_GT(GetOpCount(op_counts, k_inplace_accumulator_op_name), 0);
@@ -392,53 +358,88 @@ static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& 
   // verify optimizers exist
   ASSERT_EQ(GetOpCount(op_counts, k_adam_optimizer_op_name), k_weight_names.size());
 }
-#endif
 
-#if defined(ORT_USE_NCCL) && defined(USE_MPI)
-
-TEST_F(OptimizerGraphBuilderTest, Adasum_NoGradientAccumulation_NoMixedPrecision) {
+TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchicalReduction;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = false;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
+
+TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.data_parallel_group_size = 4;
+  config.use_nccl = false;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = false;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
+
+TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.data_parallel_group_size = 4;
+  config.use_nccl = false;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
+
+TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.data_parallel_group_size = 4;
+  config.use_nccl = false;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
+TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.data_parallel_group_size = 4;
+  config.use_nccl = false;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = false;
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
-TEST_F(OptimizerGraphBuilderTest, Adasum_WithGradientAccumulation_NoMixedPrecision) {
+TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchicalReduction;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
   config.gradient_accumulation_steps = 10;
   config.use_mixed_precision = false;
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
 
-TEST_F(OptimizerGraphBuilderTest, Adasum_NoGradientAccumulation_WithMixedPrecision) {
+TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchicalReduction;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
   config.gradient_accumulation_steps = 1;
   config.use_mixed_precision = true;
   config.loss_scale_input_name = k_loss_scaling_factor_name;
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
 
-TEST_F(OptimizerGraphBuilderTest, Adasum_WithGradientAccumulation_WithMixedPrecision) {
+TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_WithMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
   config.use_nccl = false;
-  config.adasum_reduction_type = AdasumReductionType::GpuHierarchicalReduction;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
   config.gradient_accumulation_steps = 10;
   config.use_mixed_precision = true;
   config.loss_scale_input_name = k_loss_scaling_factor_name;
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
-#endif //ORT_USE_NCCL && USE_MPI
 
-#ifdef ORT_USE_NCCL
+#endif  // USE_HOROVOD
+
+#ifdef USE_NCCL
 TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_NoMixedPrecision) {
   OptimizerGraphConfig config;
   config.data_parallel_group_size = 4;
@@ -479,13 +480,12 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_WithGradientAccumulation_WithMixedPr
 
 static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
   std::unordered_map<std::string, std::string> updated_weight_names_map;
-  std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   ZeROOptimizerGraphBuilder optimizer_graph_builder(
-      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map, weight_partition_info);
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap(), updated_weight_names_map);
 
   OptimizerOutputKeyMap<std::string> opt_graph_outputs;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> weight_to_opt_mapping;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, weight_to_opt_mapping, opt_graph_outputs));
+  std::unordered_set<std::string> opt_initializer_names;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
 
   auto op_counts = CountOpsInGraph(graph, false);
 
@@ -554,7 +554,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_WithMixedPrecisi
   TestZeROOptimizerGraphBuilder(config, graph_);
 }
 
-#endif  // ORT_USE_NCCL
+#endif  // USE_NCCL
 
 }  // namespace test
 }  // namespace training

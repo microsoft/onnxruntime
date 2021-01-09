@@ -8,70 +8,57 @@ namespace onnxruntime {
 namespace test {
 
 TEST_F(ActivationOpTest, Sigmoid) {
-  TestActivationOp<float>("Sigmoid",
-                          input_values,
-                          [](float x) {
-                            auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
-                            y = x > 0 ? y : 1 - y;
-                            return y;
-                          });
-  TestActivationOp<double>("Sigmoid",
-                           input_values_double,
-                           [](double x) {
-                             auto y = 1. / (1. + std::exp(-std::abs(x)));  // safe sigmoid
-                             y = x > 0 ? y : 1 - y;
-                             return y;
-                           });
+  TestActivationOp("Sigmoid",
+                   input_values,
+                   [](float x) {
+                     auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
+                     y = x > 0 ? y : 1 - y;
+                     return y;
+                   });
 }
 
 TEST_F(ActivationOpTest, HardSigmoid) {
   float alpha = 0.2f;
   float beta = 0.5f;
-  TestActivationOp<float>("HardSigmoid",
-                          input_values,
-                          [alpha, beta](float x) {
-                            return std::max(std::min((alpha * x + beta), 1.0f), 0.0f);
-                          },
-                          {{"alpha", alpha}, {"beta", beta}});
+  TestActivationOp("HardSigmoid",
+                   input_values,
+                   [alpha, beta](float x) {
+                     return std::max(std::min((alpha * x + beta), 1.0f), 0.0f);
+                   },
+                   {{"alpha", alpha}, {"beta", beta}});
 }
 
 TEST_F(ActivationOpTest, Tanh) {
-  TestActivationOp<float>("Tanh",
-                          input_values,
-                          [](float x) { return std::tanh(x); });
-  TestActivationOp<double>("Tanh",
-                           input_values_double,
-                           [](double x) { return std::tanh(x); });
+  TestActivationOp("Tanh",
+                   input_values,
+                   [](float x) { return std::tanh(x); });
 }
 
 TEST_F(ActivationOpTest, Relu) {
-  TestActivationOp<float>("Relu",
-                          input_values,
-                          [](float x) { return std::max(x, 0.0f); });
-  TestActivationOp<double>("Relu",
-                           input_values_double,
-                           [](double x) { return std::max(x, 0.0); });
+  TestActivationOp("Relu",
+                   input_values,
+                   [](float x) { return std::max(x, 0.0f); });
 }
 
 TEST_F(ActivationOpTest, Elu) {
   float alpha = 0.1f;
-  TestActivationOp<float>("Elu",
-                          input_values,
-                          [alpha](float x) { return (x >= 0) ? x : alpha * (exp(x) - 1); },
-                          {{"alpha", alpha}});
+  TestActivationOp("Elu",
+                   input_values,
+                   [alpha](float x) { return (x >= 0) ? x : alpha * (exp(x) - 1); },
+                   {{"alpha", alpha}});
 }
 
 TEST_F(ActivationOpTest, LeakyRelu) {
   float alpha = 0.1f;
-  TestActivationOp<float>("LeakyRelu",
-                          input_values,
-                          [alpha](float x) { return (x >= 0) ? x : alpha * x; },
-                          {{"alpha", alpha}});
+  TestActivationOp("LeakyRelu",
+                   input_values,
+                   [alpha](float x) { return (x >= 0) ? x : alpha * x; },
+                   {{"alpha", alpha}});
 }
 
 TEST_F(ActivationOpTest, ThresholdedRelu) {
   float alpha = 0.1f;
-  TestActivationOp<float>(
+  TestActivationOp(
       "ThresholdedRelu",
       input_values,
       [alpha](float x) { return (x >= alpha) ? x : 0; },
@@ -82,20 +69,20 @@ TEST_F(ActivationOpTest, Selu) {
   static constexpr float alpha = 1.6732f;
   static constexpr float gamma = 1.0507f;
 
-  TestActivationOp<float>("Selu",
-                          input_values,
-                          [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-                          {{"alpha", alpha}, {"gamma", gamma}});
+  TestActivationOp("Selu",
+                   input_values,
+                   [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
+                   {{"alpha", alpha}, {"gamma", gamma}});
 }
 
 TEST_F(ActivationOpTest, Selu_Attributes) {
   static constexpr float alpha = 1.8f;
   static constexpr float gamma = 0.5f;
 
-  TestActivationOp<float>("Selu",
-                          input_values,
-                          [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-                          {{"alpha", alpha}, {"gamma", gamma}});
+  TestActivationOp("Selu",
+                   input_values,
+                   [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
+                   {{"alpha", alpha}, {"gamma", gamma}});
 }
 
 TEST_F(ActivationOpTest, PRelu) {
@@ -157,18 +144,18 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel) {
 }
 
 TEST_F(ActivationOpTest, Softplus) {
-  TestActivationOp<float>("Softplus",
-                          input_values,
-                          [](float x) {
-                            if (x > 0)
-                              return x + logf(expf(-x) + 1);
-                            else
-                              return logf(expf(x) + 1);
-                          });
+  TestActivationOp("Softplus",
+                   input_values,
+                   [](float x) {
+                     if (x > 0)
+                       return x + logf(expf(-x) + 1);
+                     else
+                       return logf(expf(x) + 1);
+                   });
 }
 
 TEST_F(ActivationOpNoInfTest, Softsign) {
-  TestActivationOp<float>(
+  TestActivationOp(
       "Softsign",
       input_values,
       [](float x) {

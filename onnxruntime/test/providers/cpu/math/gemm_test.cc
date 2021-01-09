@@ -8,7 +8,6 @@
 namespace onnxruntime {
 namespace test {
 
-template <typename T>
 void TestGemmNoTrans(bool b_is_initializer) {
   OpTester test("Gemm");
 
@@ -17,29 +16,24 @@ void TestGemmNoTrans(bool b_is_initializer) {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f), b_is_initializer);
-  test.AddInput<T>("C", {2, 3}, std::vector<T>(6, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f), b_is_initializer);
+  test.AddInput<float>("C", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 11.0f, 11.0f,
+                         -9.0f, -9.0f, -9.0f});
   test.Run();
 }
 
-TEST(GemmOpTest, GemmNoTrans_float) {
-  TestGemmNoTrans<float>(false);
-}
-
-TEST(GemmOpTest, GemmNoTrans_double) {
-  TestGemmNoTrans<double>(false);
+TEST(GemmOpTest, GemmNoTrans) {
+  TestGemmNoTrans(false);
 }
 
 // NNAPI EP requires weight to be an initializer
 TEST(GemmOpTest, GemmNoTransBIsInitializer) {
-  TestGemmNoTrans<float>(true);
-  TestGemmNoTrans<double>(true);
+  TestGemmNoTrans(true);
 }
 
 // Only CUDA kernel has float 16 support
@@ -81,8 +75,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
 }
 #endif
 
-template <typename T>
-void TestGemmBroadcast(bool b_is_initializer) {
+static void TestGemmBroadcast(bool b_is_initializer) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -90,14 +83,14 @@ void TestGemmBroadcast(bool b_is_initializer) {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f), b_is_initializer);
-  test.AddInput<T>("C", {3}, std::vector<T>{1.0f, 2.0f, 3.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 12.0f, 13.0f,
-                     -9.0f, -8.0f, -7.0f});
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f), b_is_initializer);
+  test.AddInput<float>("C", {3}, std::vector<float>{1.0f, 2.0f, 3.0f});
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 12.0f, 13.0f,
+                         -9.0f, -8.0f, -7.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO : Temporarily disabled due to accuracy issues
 #else
@@ -106,16 +99,13 @@ void TestGemmBroadcast(bool b_is_initializer) {
 }
 
 TEST(GemmOpTest, GemmBroadcast) {
-  TestGemmBroadcast<float>(false);
-  TestGemmBroadcast<double>(false);
+  TestGemmBroadcast(false);
 }
 
 TEST(GemmOpTest, GemmBroadcastBIsInitializer) {
-  TestGemmBroadcast<float>(true);
-  TestGemmBroadcast<double>(true);
+  TestGemmBroadcast(true);
 }
 
-template <typename T>
 static void TestGemmTrans(bool b_is_initializer) {
   OpTester test("Gemm");
 
@@ -124,17 +114,17 @@ static void TestGemmTrans(bool b_is_initializer) {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {4, 2},
-                   {1.0f, -1.0f,
-                    2.0f, -2.0f,
-                    3.0f, -3.0f,
-                    4.0f, -4.0f});
-  test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f), b_is_initializer);
-  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.AddInput<float>("A", {4, 2},
+                       {1.0f, -1.0f,
+                        2.0f, -2.0f,
+                        3.0f, -3.0f,
+                        4.0f, -4.0f});
+  test.AddInput<float>("B", {3, 4}, std::vector<float>(12, 1.0f), b_is_initializer);
+  test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 11.0f, 11.0f,
+                         -9.0f, -9.0f, -9.0f});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
   test.Run();
@@ -142,19 +132,16 @@ static void TestGemmTrans(bool b_is_initializer) {
 }
 
 TEST(GemmOpTest, GemmTrans) {
-  TestGemmTrans<float>(false);
-  TestGemmTrans<double>(false);
+  TestGemmTrans(false);
 }
 
 TEST(GemmOpTest, GemmTransBIsInitializer) {
-  TestGemmTrans<float>(true);
-  TestGemmTrans<double>(true);
+  TestGemmTrans(true);
 }
 
 // NNAPI EP's GEMM only works as A*B', add case only B is transposed
 // Also test NNAPI EP's handling of non-1D bias (C of Gemm)
-template <typename T>
-static void TestGemmTransB() {
+TEST(GemmOpTest, GemmTransB) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -162,30 +149,24 @@ static void TestGemmTransB() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {1, 3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {3, 4}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {1, 3}, std::vector<float>(3, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 11.0f, 11.0f,
+                         -9.0f, -9.0f, -9.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
   test.Run();
 #endif
-}
-
-TEST(GemmOpTest, GemmTransB) {
-  TestGemmTransB<float>();
-  TestGemmTransB<double>();
 }
 
 // NNAPI EP's GEMM only works as A*B', add case only B is transposed
 // Also test NNAPI EP's handling of non-1D bias (C of Gemm) which is broadcastable but not valid for NNAPI
-template <typename T>
-void TestGemmTransB_1() {
+TEST(GemmOpTest, GemmTransB_1) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -193,14 +174,14 @@ void TestGemmTransB_1() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {2, 1}, std::vector<T>(2, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {3, 4}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {2, 1}, std::vector<float>(2, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 11.0f, 11.0f,
+                         -9.0f, -9.0f, -9.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
@@ -208,13 +189,7 @@ void TestGemmTransB_1() {
 #endif
 }
 
-TEST(GemmOpTest, GemmTransB_1) {
-  TestGemmTransB_1<float>();
-  TestGemmTransB_1<double>();
-}
-
-template <typename T>
-void TestGemmAlphaBeta() {
+TEST(GemmOpTest, GemmAlphaBeta) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -222,14 +197,14 @@ void TestGemmAlphaBeta() {
   test.AddAttribute("alpha", 0.5f);
   test.AddAttribute("beta", 2.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {7.0f, 7.0f, 7.0f,
-                     -3.0f, -3.0f, -3.0f});
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {7.0f, 7.0f, 7.0f,
+                         -3.0f, -3.0f, -3.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
@@ -237,13 +212,7 @@ void TestGemmAlphaBeta() {
 #endif
 }
 
-TEST(GemmOpTest, GemmAlphaBeta) {
-  TestGemmAlphaBeta<float>();
-  TestGemmAlphaBeta<double>();
-}
-
-template <typename T>
-void TestGemmNaN() {
+TEST(GemmOpTest, GemmNaN) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -251,49 +220,18 @@ void TestGemmNaN() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 0.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {2, 3}, std::vector<T>(6, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {10.0f, 10.0f, 10.0f,
-                     -10.0f, -10.0f, -10.0f});
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {10.0f, 10.0f, 10.0f,
+                         -10.0f, -10.0f, -10.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Seg fault in parser
 }
 
-TEST(GemmOpTest, GemmNaN) {
-  TestGemmNaN<float>();
-  TestGemmNaN<double>();
-}
-
-template <typename T>
-void TestGemmScalarBroadcast() {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
-
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {1}, std::vector<T>{1.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
-  test.Run();
-}
-
 TEST(GemmOpTest, GemmScalarBroadcast) {
-  TestGemmScalarBroadcast<float>();
-  TestGemmScalarBroadcast<double>();
-}
-
-template <typename T>
-void TestGemm2DBroadcast_1() {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -301,24 +239,37 @@ void TestGemm2DBroadcast_1() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {2, 1}, std::vector<T>{1.0, 2.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -8.0f, -8.0f, -8.0f});
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {1}, std::vector<float>{1.0f});
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 11.0f, 11.0f,
+                         -9.0f, -9.0f, -9.0f});
   test.Run();
 }
 
 TEST(GemmOpTest, Gemm2DBroadcast_1) {
-  TestGemm2DBroadcast_1<float>();
-  TestGemm2DBroadcast_1<double>();
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {2, 1}, std::vector<float>{1.0f, 2.0f});
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 11.0f, 11.0f,
+                         -8.0f, -8.0f, -8.0f});
+  test.Run();
 }
 
-template <typename T>
-void TestGemm2DBroadcast_2() {
+TEST(GemmOpTest, Gemm2DBroadcast_2) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -327,24 +278,18 @@ void TestGemm2DBroadcast_2() {
   test.AddAttribute("beta", 1.0f);
 
   // Same as GemmBroadcast, but adding the unnecessary second dimension.
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {1, 3}, std::vector<T>{1.0f, 2.0f, 3.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 12.0f, 13.0f,
-                     -9.0f, -8.0f, -7.0f});
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {1, 3}, std::vector<float>{1.0f, 2.0f, 3.0f});
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 12.0f, 13.0f,
+                         -9.0f, -8.0f, -7.0f});
   test.Run();
 }
 
-TEST(GemmOpTest, Gemm2DBroadcast_2) {
-  TestGemm2DBroadcast_2<float>();
-  TestGemm2DBroadcast_2<double>();
-}
-
-template <typename T>
-void TestGemmFalseBroadcast() {
+TEST(GemmOpTest, GemmFalseBroadcast) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -352,24 +297,18 @@ void TestGemmFalseBroadcast() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {2, 3}, std::vector<T>{1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -8.0f, -8.0f, -8.0f});
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {2, 3}, std::vector<float>{1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f});
+  test.AddOutput<float>("Y", {2, 3},
+                        {11.0f, 11.0f, 11.0f,
+                         -8.0f, -8.0f, -8.0f});
   test.Run();
 }
 
-TEST(GemmOpTest, GemmFalseBroadcast) {
-  TestGemmFalseBroadcast<float>();
-  TestGemmFalseBroadcast<double>();
-}
-
-template <typename T>
-void TestGemmEmptyTensor() {
+TEST(GemmOpTest, GemmEmptyTensor) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", static_cast<int64_t>(0));
@@ -377,22 +316,16 @@ void TestGemmEmptyTensor() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {0, 4},
-                   {});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {0, 3},
-                    {});
+  test.AddInput<float>("A", {0, 4},
+                       {});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
+  test.AddOutput<float>("Y", {0, 3},
+                        {});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});  //TensorRT: doesn't support dynamic shape yet
 }
 
-TEST(GemmOpTest, GemmEmptyTensor) {
-  TestGemmEmptyTensor<float>();
-  TestGemmEmptyTensor<double>();
-}
-
-template <typename T>
-static void TestGemmNoBiasOpset11() {
+TEST(GemmOpTest, GemmNoBiasOpset11) {
   OpTester test("Gemm", 11);
 
   test.AddAttribute("transA", static_cast<int64_t>(0));
@@ -400,40 +333,29 @@ static void TestGemmNoBiasOpset11() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {10.0f, 10.0f, 10.0f,
-                     -10.0f, -10.0f, -10.0f});
-  // tensorRT don't seem to support missing bias
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
-
-TEST(GemmOpTest, GemmNoBiasOpset11) {
-  TestGemmNoBiasOpset11<float>();
-  TestGemmNoBiasOpset11<double>();
-}
-
-template <typename T>
-static void TestGemmWithAlphaOpset11() {
-  OpTester test("Gemm", 11);
-
-  test.AddAttribute("alpha", 2.0f);
-
-  test.AddInput<T>("A", {2, 2},
-                   {1.0f, 2.0f, 3.0f, 4.0f});
-  test.AddInput<T>("B", {2, 2}, std::vector<T>(4, 1.0f));
-  test.AddOutput<T>("Y", {2, 2},
-                    {6.0f, 6.0f, 14.0f, 14.0f});
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {10.0f, 10.0f, 10.0f,
+                         -10.0f, -10.0f, -10.0f});
   // tensorRT don't seem to support missing bias
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(GemmOpTest, GemmWithAlphaOpset11) {
-  TestGemmWithAlphaOpset11<float>();
-  TestGemmWithAlphaOpset11<double>();
+  OpTester test("Gemm", 11);
+
+  test.AddAttribute("alpha", 2.0f);
+
+  test.AddInput<float>("A", {2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<float>("B", {2, 2}, std::vector<float>(4, 1.0f));
+  test.AddOutput<float>("Y", {2, 2},
+                        {6.0f, 6.0f, 14.0f, 14.0f});
+  // tensorRT don't seem to support missing bias
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

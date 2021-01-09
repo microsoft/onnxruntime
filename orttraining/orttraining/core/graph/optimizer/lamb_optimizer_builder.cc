@@ -9,7 +9,6 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/util/math.h"
 #include "onnx/defs/attr_proto_util.h"
-#include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {
 namespace training {
@@ -17,7 +16,6 @@ Status LambOptimizerBuilder::Build(
     const OptimizerBuilderConfig& config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
   const auto& weight_argdefs = config.weight_argdefs;
@@ -65,24 +63,24 @@ Status LambOptimizerBuilder::Build(
 
   // Update count, which should be 1 at the first training iteration.
   // At the end of each Lamb call, the update count may be increased by one.
+  const std::string step_tensor_name = "Step";  // per weight optimizer requires a per weight update count
   // Add step as an initializer.
   TensorProto step_tensor_proto;
   const auto& shared_optim_state = config.shared_optimizer_states;
-  const auto step_state_it = shared_optim_state.find(LAMB_STEP_TENSOR_NAME);
+  const auto step_state_it = shared_optim_state.find(step_tensor_name);
   if (step_state_it != shared_optim_state.end()) {
     const auto& init_tensor = step_state_it->second.Get<Tensor>();
     ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
-    step_tensor_proto = utils::TensorToTensorProto(init_tensor, LAMB_STEP_TENSOR_NAME);
+    step_tensor_proto = utils::TensorToTensorProto(init_tensor, step_tensor_name);
   } else {
-    step_tensor_proto = CreateTensorProto<int64_t>(LAMB_STEP_TENSOR_NAME, 1);
+    step_tensor_proto = CreateTensorProto<int64_t>(step_tensor_name, 1);
   }
   new_external_initializers.emplace_back(step_tensor_proto);
-  weight_to_opt_mapping[onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY][LAMB_STEP_TENSOR_NAME] = LAMB_STEP_TENSOR_NAME;
-  input_argdefs.emplace_back(ArgDef(LAMB_STEP_TENSOR_NAME));
+  input_argdefs.emplace_back(ArgDef(step_tensor_name));
 
   // Add the first output, which is the updated step.
   TypeProto* step_type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  output_argdefs.emplace_back(ArgDef(LAMB_STEP_TENSOR_NAME + "_Out", step_type_proto));
+  output_argdefs.emplace_back(ArgDef(step_tensor_name + "_Out", step_type_proto));
 
   // Lamb optimizer's attributes.
   std::vector<float> alpha;
@@ -206,9 +204,9 @@ Status LambOptimizerBuilder::Build(
                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : 
                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
 
-      weight_to_opt_mapping[weight_name] = {};
       // m1 & m2 & m1_new & m2_new
-      for (const auto& moment_prefix : MOMENTS_PREFIXES) {
+      const std::vector<std::string> moments_prefixes({"Moment_1", "Moment_2"});
+      for (const auto& moment_prefix : moments_prefixes) {
         const std::string gradient_moment_name = moment_prefix + "_" + weight_name;
 
         // Construct type of momentum tensor.
@@ -235,7 +233,6 @@ Status LambOptimizerBuilder::Build(
 
         // Store momentum tensor to initializer list.
         new_external_initializers.emplace_back(std::move(moment_tensor_proto));
-        weight_to_opt_mapping[weight_name][moment_prefix] = gradient_moment_name;
 
         // Add momentums to the input and output list of the Lamb node.
         input_argdefs.emplace_back(ArgDef(gradient_moment_name, moment_type_proto));
