@@ -207,4 +207,10 @@ KernelDefBuilder& KernelDefBuilder::Alias(int input_index, int output_index) {
   return *this;
 }
 
+KernelDefBuilder& KernelDefBuilder::VariadicAlias(int input_offset, int output_offset) {
+  ORT_ENFORCE(input_offset >= 0 && output_offset >= 0);
+  kernel_def_->variadic_alias_offsets_ = std::make_pair(input_offset, output_offset);
+  return *this;
+}
+
 }  // namespace onnxruntime

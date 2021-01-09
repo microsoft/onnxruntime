@@ -41,13 +41,13 @@ struct MLAS_SGEMM_WORK_BLOCK {
     size_t K;
     const float* A;
     size_t lda;
-    const float* B;
+    const void* B;
     size_t ldb;
-    const void* PackedB;
     float* C;
     size_t ldc;
     float alpha;
     float beta;
+    bool BIsPacked;
 };
 
 void
@@ -85,7 +85,7 @@ Return Value:
 {
     MLAS_FLOAT32X4 BetaBroadcast = MlasBroadcastFloat32x4(beta);
 
-    do {
+    while (CountM-- > 0) {
 
         float* c = C;
         size_t n = CountN;
@@ -107,9 +107,7 @@ Return Value:
         }
 
         C += ldc;
-        CountM--;
-
-    } while (CountM > 0);
+    }
 }
 
 void
@@ -807,7 +805,7 @@ Return Value:
 
 --*/
 {
-    do {
+    while (CountM > 0) {
 
         size_t RowsHandled;
 
@@ -826,8 +824,7 @@ Return Value:
         C += ldc * RowsHandled;
         A += lda * RowsHandled;
         CountM -= RowsHandled;
-
-    } while (CountM > 0);
+    }
 
     return C;
 }
@@ -892,6 +889,16 @@ Return Value:
 {
     float PanelA[MLAS_SGEMM_TRANSA_ROWS * MLAS_SGEMM_STRIDEK];
     MLAS_DECLSPEC_ALIGN(float PanelB[MLAS_SGEMM_STRIDEN * MLAS_SGEMM_STRIDEK], 16 * sizeof(float));
+
+    //
+    // Handle the special case of K equals zero. Apply the beta multiplier to
+    // the output matrix and exit.
+    //
+
+    if (K == 0) {
+        MlasSgemmMultiplyBeta(C, M, N, ldc, beta);
+        return;
+    }
 
     //
     // Handle the special case of a small M. The data from matrix B is not
@@ -1035,7 +1042,7 @@ Return Value:
                 const float* a = A + k * lda;
                 size_t RowsRemaining = M;
 
-                do {
+                while (RowsRemaining > 0) {
 
                     //
                     // Transpose elements from matrix A into a local buffer.
@@ -1053,8 +1060,7 @@ Return Value:
                     //
 
                     c = MlasSgemmKernelLoop(PanelA, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
-
-                } while (RowsRemaining > 0);
+                }
             }
 
             ZeroMode = false;
@@ -1171,7 +1177,7 @@ Return Value:
                 const float* a = A + k * lda;
                 size_t RowsRemaining = M;
 
-                do {
+                while (RowsRemaining > 0) {
 
                     //
                     // Transpose elements from matrix A into a local buffer.
@@ -1189,8 +1195,7 @@ Return Value:
                     //
 
                     c = MlasSgemmKernelLoop(PanelA, pb, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
-
-                } while (RowsRemaining > 0);
+                }
             }
 
             ZeroMode = false;
@@ -1271,22 +1276,22 @@ Return Value:
     const float* A = WorkBlock->A + RangeStartM * ((TransA == CblasNoTrans) ? lda : 1);
     float* C = WorkBlock->C + RangeStartM * ldc + RangeStartN;
 
-    if (WorkBlock->B != nullptr) {
+    if (WorkBlock->BIsPacked) {
+
+        MlasSgemmPackedOperation(TransA, RangeCountM, RangeStartN, RangeCountN,
+            WorkBlock->K, WorkBlock->alpha, A, lda, WorkBlock->B,
+            BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, WorkBlock->beta, C, ldc);
+
+    } else {
 
         CBLAS_TRANSPOSE TransB = WorkBlock->TransB;
 
         const size_t ldb = WorkBlock->ldb;
 
-        const float* B = WorkBlock->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
+        const float* B = (const float*)WorkBlock->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
 
         MlasSgemmOperation(TransA, TransB, RangeCountM, RangeCountN, WorkBlock->K,
             WorkBlock->alpha, A, lda, B, ldb, WorkBlock->beta, C, ldc);
-
-    } else {
-
-        MlasSgemmPackedOperation(TransA, RangeCountM, RangeStartN, RangeCountN,
-            WorkBlock->K, WorkBlock->alpha, A, lda, WorkBlock->PackedB,
-            BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, WorkBlock->beta, C, ldc);
     }
 }
 
@@ -1535,11 +1540,12 @@ Return Value:
     WorkBlock.K = K;
     WorkBlock.A = A;
     WorkBlock.lda = lda;
-    WorkBlock.PackedB = PackedB;
+    WorkBlock.B = PackedB;
     WorkBlock.C = C;
     WorkBlock.ldc = ldc;
     WorkBlock.alpha = alpha;
     WorkBlock.beta = beta;
+    WorkBlock.BIsPacked = true;
 
     //
     // Schedule the operation across a set of worker threads.

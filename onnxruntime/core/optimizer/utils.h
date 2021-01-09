@@ -15,9 +15,6 @@ namespace optimizer_utils {
 // Check if TensorProto contains a floating point type.
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
-// Check if input is a scalar
-bool IsScalar(const NodeArg& input_arg);
-
 /** Check whether a input is initializer with specified float value.
 @param expected_value is the expected value of the initializer.
 @param is_constant means whether the initializer is required to be constant.
@@ -63,7 +60,7 @@ bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>
 */
 bool CompareShape(const ONNX_NAMESPACE::TensorShapeProto& node_arg_shape, const ONNX_NAMESPACE::TensorShapeProto& node_arg_other_shape);
 
-/** Check whether each dimension is known for shape of node_arg
+/** Check check whether each dimension is known for shape of node_arg
 @returns false when shape is nullptr, or total dimension is not same as expected_dim_size length,
          or any dim is unknown (without dim value).
 */

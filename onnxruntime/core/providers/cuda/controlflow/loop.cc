@@ -3,6 +3,7 @@
 
 #include "core/providers/cuda/controlflow/loop.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_fwd.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
