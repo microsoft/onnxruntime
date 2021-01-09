@@ -602,12 +602,6 @@ inline char* ModelMetadata::GetDescription(OrtAllocator* allocator) const {
   return out;
 }
 
-inline char* ModelMetadata::GetGraphDescription(OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().ModelMetadataGetGraphDescription(p_, allocator, &out));
-  return out;
-}
-
 inline char* ModelMetadata::LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataLookupCustomMetadataMap(p_, allocator, key, &out));

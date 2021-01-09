@@ -1815,8 +1815,7 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_DOMAIN = 12,
     VT_MODEL_VERSION = 14,
     VT_DOC_STRING = 16,
-    VT_GRAPH = 18,
-    VT_GRAPH_DOC_STRING = 20
+    VT_GRAPH = 18
   };
   int64_t ir_version() const {
     return GetField<int64_t>(VT_IR_VERSION, 0);
@@ -1842,9 +1841,6 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const onnxruntime::experimental::fbs::Graph *graph() const {
     return GetPointer<const onnxruntime::experimental::fbs::Graph *>(VT_GRAPH);
   }
-  const flatbuffers::String *graph_doc_string() const {
-    return GetPointer<const flatbuffers::String *>(VT_GRAPH_DOC_STRING);
-  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int64_t>(verifier, VT_IR_VERSION) &&
@@ -1862,8 +1858,6 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyString(doc_string()) &&
            VerifyOffset(verifier, VT_GRAPH) &&
            verifier.VerifyTable(graph()) &&
-           VerifyOffset(verifier, VT_GRAPH_DOC_STRING) &&
-           verifier.VerifyString(graph_doc_string()) &&
            verifier.EndTable();
   }
 };
@@ -1896,9 +1890,6 @@ struct ModelBuilder {
   void add_graph(flatbuffers::Offset<onnxruntime::experimental::fbs::Graph> graph) {
     fbb_.AddOffset(Model::VT_GRAPH, graph);
   }
-  void add_graph_doc_string(flatbuffers::Offset<flatbuffers::String> graph_doc_string) {
-    fbb_.AddOffset(Model::VT_GRAPH_DOC_STRING, graph_doc_string);
-  }
   explicit ModelBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1920,12 +1911,10 @@ inline flatbuffers::Offset<Model> CreateModel(
     flatbuffers::Offset<flatbuffers::String> domain = 0,
     int64_t model_version = 0,
     flatbuffers::Offset<flatbuffers::String> doc_string = 0,
-    flatbuffers::Offset<onnxruntime::experimental::fbs::Graph> graph = 0,
-    flatbuffers::Offset<flatbuffers::String> graph_doc_string = 0) {
+    flatbuffers::Offset<onnxruntime::experimental::fbs::Graph> graph = 0) {
   ModelBuilder builder_(_fbb);
   builder_.add_model_version(model_version);
   builder_.add_ir_version(ir_version);
-  builder_.add_graph_doc_string(graph_doc_string);
   builder_.add_graph(graph);
   builder_.add_doc_string(doc_string);
   builder_.add_domain(domain);
@@ -1944,14 +1933,12 @@ inline flatbuffers::Offset<Model> CreateModelDirect(
     const char *domain = nullptr,
     int64_t model_version = 0,
     const char *doc_string = nullptr,
-    flatbuffers::Offset<onnxruntime::experimental::fbs::Graph> graph = 0,
-    const char *graph_doc_string = nullptr) {
+    flatbuffers::Offset<onnxruntime::experimental::fbs::Graph> graph = 0) {
   auto opset_import__ = opset_import ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::OperatorSetId>>(*opset_import) : 0;
   auto producer_name__ = producer_name ? _fbb.CreateString(producer_name) : 0;
   auto producer_version__ = producer_version ? _fbb.CreateString(producer_version) : 0;
   auto domain__ = domain ? _fbb.CreateString(domain) : 0;
   auto doc_string__ = doc_string ? _fbb.CreateString(doc_string) : 0;
-  auto graph_doc_string__ = graph_doc_string ? _fbb.CreateString(graph_doc_string) : 0;
   return onnxruntime::experimental::fbs::CreateModel(
       _fbb,
       ir_version,
@@ -1961,8 +1948,7 @@ inline flatbuffers::Offset<Model> CreateModelDirect(
       domain__,
       model_version,
       doc_string__,
-      graph,
-      graph_doc_string__);
+      graph);
 }
 
 struct KernelCreateInfos FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {

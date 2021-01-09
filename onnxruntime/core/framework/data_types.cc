@@ -685,33 +685,33 @@ const char* DataTypeImpl::ToString(MLDataType type) {
   if (prim_type != nullptr) {
     switch (prim_type->GetDataType()) {
       case TensorProto_DataType_FLOAT:
-        return "float";
+        return "tensor(float)";
       case TensorProto_DataType_BOOL:
-        return "bool";
+        return "tensor(bool)";
       case TensorProto_DataType_DOUBLE:
-        return "double";
+        return "tensor(double)";
       case TensorProto_DataType_STRING:
-        return "string";
+        return "tensor(string)";
       case TensorProto_DataType_INT8:
-        return "int8";
+        return "tensor(int8)";
       case TensorProto_DataType_UINT8:
-        return "uint8";
+        return "tensor(uint8)";
       case TensorProto_DataType_INT16:
-        return "int16";
+        return "tensor(int16)";
       case TensorProto_DataType_UINT16:
-        return "uint16";
+        return "tensor(uint16)";
       case TensorProto_DataType_INT32:
-        return "int32";
+        return "tensor(int32)";
       case TensorProto_DataType_UINT32:
-        return "uint32";
+        return "tensor(uint32)";
       case TensorProto_DataType_INT64:
-        return "int64";
+        return "tensor(int64)";
       case TensorProto_DataType_UINT64:
-        return "uint64";
+        return "tensor(uint64)";
       case TensorProto_DataType_FLOAT16:
-        return "float16";
+        return "tensor(float16)";
       case TensorProto_DataType_BFLOAT16:
-        return "bfloat16";
+        return "tensor(bfloat16)";
       default:
         break;
     }
@@ -723,8 +723,6 @@ const char* DataTypeImpl::ToString(MLDataType type) {
 #ifdef ORT_NO_RTTI
   return "(unknown type)";
 #else
-  // TODO: name() method of `type_info` class is implementation dependent
-  // and may return a mangled non-human readable string which may have to be unmangled
   return typeid(*type).name();
 #endif
 }

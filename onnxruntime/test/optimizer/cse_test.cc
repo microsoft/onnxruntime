@@ -9,7 +9,6 @@
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
-#include "orttraining/core/session/training_session.h"
 #endif
 
 #include "gtest/gtest.h"
@@ -96,8 +95,12 @@ TEST(CseTests, SimpleTestTraining) {
                   .IsOK());
 
   GraphTransformerManager graph_transformation_mgr(1);
-  auto transformers_to_register = training::transformer_utils::GeneratePreTrainingTransformers(
-      TransformerLevel::Level1, {}, {}, CPUExecutionProvider(CPUExecutionProviderInfo()));
+  // need to declare variables to avoid build error after making
+  // weights_to_train and updated_weight_names as non-const
+  std::unordered_set<std::string> weights_to_train;
+  std::unordered_map<std::string, std::string> updated_weight_names;
+  auto transformers_to_register = onnxruntime::training::transformer_utils::GeneratePreTrainingTransformers(
+      TransformerLevel::Level1, weights_to_train, {}, CPUExecutionProvider(CPUExecutionProviderInfo()), updated_weight_names);
   for (auto& entry : transformers_to_register) {
     ASSERT_TRUE(
         graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1).IsOK());

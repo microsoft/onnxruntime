@@ -202,10 +202,10 @@ public:
 };
 
 template<typename T, bool Packed>
-class FgemmPackedContext;
+class MlasFgemmTestBase;
 
 template<typename T>
-class FgemmPackedContext<T, false>
+class MlasFgemmTestBase<T, false> : public MlasTestBase
 {
 public:
     void
@@ -230,7 +230,7 @@ public:
 };
 
 template<typename T>
-class FgemmPackedContext<T, true>
+class MlasFgemmTestBase<T, true> : public MlasTestBase
 {
 public:
     void
@@ -261,7 +261,7 @@ private:
 };
 
 template<typename T, bool Packed>
-class MlasFgemmTest : public MlasTestBase
+class MlasFgemmTest : public MlasFgemmTestBase<T, Packed>
 {
 private:
     void
@@ -273,14 +273,6 @@ private:
         float beta
         )
     {
-        //
-        // Skip the test if the B buffer cannot be packed.
-        //
-
-        if (Packed && (N == 0 || K == 0)) {
-            return;
-        }
-
         const T* A = BufferA.GetBuffer(K * M);
         const T* B = BufferB.GetBuffer(N * K);
         T* C = BufferC.GetBuffer(N * M);
@@ -313,7 +305,7 @@ private:
         std::fill_n(C, M * N, -0.5f);
         std::fill_n(CReference, M * N, -0.5f);
 
-        PackedContext.TestGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+        this->TestGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
         ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -438,7 +430,6 @@ private:
     MatrixGuardBuffer<T> BufferB;
     MatrixGuardBuffer<T> BufferC;
     MatrixGuardBuffer<T> BufferCReference;
-    FgemmPackedContext<T, Packed> PackedContext;
 
 public:
     void
@@ -446,7 +437,7 @@ public:
         void
         ) override
     {
-        for (size_t b = 0; b < 16; b++) {
+        for (size_t b = 1; b < 16; b++) {
             Test(b, b, b, 1.0f, 0.0f);
         }
         for (size_t b = 16; b <= 256; b <<= 1) {
@@ -513,9 +504,9 @@ public:
             }
         }
 
-        for (size_t M = 0; M < 160; M++) {
-            for (size_t N = 0; N < 160; N++) {
-                for (size_t K = 0; K < 160; K++) {
+        for (size_t M = 1; M < 160; M++) {
+            for (size_t N = 1; N < 160; N++) {
+                for (size_t K = 1; K < 160; K++) {
                     Test(M, N, K, 1.0f, 0.0f);
                 }
             }
@@ -524,7 +515,7 @@ public:
 
         for (size_t M = 160; M < 320; M += 24) {
             for (size_t N = 112; N < 320; N += 24) {
-                for (size_t K = 0; K < 16; K++) {
+                for (size_t K = 1; K < 16; K++) {
                     Test(M, N, K, 1.0f, 0.0f);
                 }
                 for (size_t K = 16; K < 160; K += 32) {

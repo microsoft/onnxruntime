@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/test/session/training_session_test_utils.h"
-#include "orttraining/core/graph/optimizer_builder.h"
 
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
@@ -39,21 +38,21 @@ void GenerateOptimizerInitialState(const std::string& optimizer_op_name, const T
     std::vector<int64_t> param_dims = WEIGHT_TO_SHAPE_MAP.at(weight_name);
     int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
 
-    for (auto& param_prefix : MOMENTS_PREFIXES) {
+    for (auto& param_prefix : MOMENT_PREFIX) {
       std::vector<T> param_value(num_ele, init_moment_value);
       TrainingUtil::CreateCpuMLValue<T>(param_dims, param_value, &mlValue);
       optim_state.insert(std::make_pair(param_prefix, std::move(mlValue)));
     }
     if (optimizer_op_name == k_adam_optimizer_op_name) {
       CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, uc_value, &mlValue);
-      optim_state.insert(std::make_pair(ADAM_UC_PREFIX, std::move(mlValue)));
+      optim_state.insert(std::make_pair(UC_PREFIX, std::move(mlValue)));
     }
     result.insert(std::make_pair(weight_name, std::move(optim_state)));
   }
   if (optimizer_op_name == k_lamb_optimizer_op_name) {
     // add "Step" for lamb
     CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, uc_value, &mlValue);
-    shared_states.insert(std::make_pair(LAMB_STEP_TENSOR_NAME, std::move(mlValue)));
+    shared_states.insert(std::make_pair(STEP_TENSOR_NAME, std::move(mlValue)));
     result.insert(std::make_pair(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY, std::move(shared_states)));
   }
   optimizer_state = std::move(result);
@@ -74,9 +73,7 @@ void SeparateStateTensors(const NameMLValMap& training_state, NameMLValMap& mode
   model_state = std::move(result);
   for (auto& weight_name : WEIGHT_NAMES) {
     NameMLValMap optim_state;
-    std::vector<std::string> per_weight_states_prefixes(MOMENTS_PREFIXES);
-    per_weight_states_prefixes.push_back(ADAM_UC_PREFIX);
-    for (auto& param_prefix : per_weight_states_prefixes) {
+    for (auto& param_prefix : MOMENT_UC_PREFIX) {
       std::string param_name = param_prefix + "_" + weight_name;
       const auto& param_state_it = training_state.find(param_name);
       if (param_state_it != training_state.end()) {
@@ -86,9 +83,9 @@ void SeparateStateTensors(const NameMLValMap& training_state, NameMLValMap& mode
     optimizer_state.insert(std::make_pair(weight_name, optim_state));
   }
   NameMLValMap shared_optim_state;
-  const auto& param_state_it = training_state.find(LAMB_STEP_TENSOR_NAME);
+  const auto& param_state_it = training_state.find(STEP_TENSOR_NAME);
   if (param_state_it != training_state.end()) {
-    shared_optim_state.insert(std::make_pair(LAMB_STEP_TENSOR_NAME, param_state_it->second));
+    shared_optim_state.insert(std::make_pair(STEP_TENSOR_NAME, param_state_it->second));
     optimizer_state.insert(std::make_pair(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY, shared_optim_state));
   }
 }

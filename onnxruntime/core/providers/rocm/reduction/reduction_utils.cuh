@@ -54,5 +54,15 @@ struct Identity {
   }
 };
 
+template <typename T>
+struct ToBuffer {
+  typedef T Type;
+};
+
+template <>
+struct ToBuffer<half> {
+  typedef float Type;
+};
+
 }  // namespace rocm
 }  // namespace onnxruntime

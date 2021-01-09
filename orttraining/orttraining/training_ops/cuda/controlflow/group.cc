@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/controlflow/group.h"
+#include "orttraining/training_ops/cpu/controlflow/common.h"
 #include "core/providers/cuda/cuda_fwd.h"
 
 namespace onnxruntime {
@@ -25,7 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .VariadicAlias(0, 0),  // outputs and inputs are mapped one to one
+        .Alias(onnxruntime::contrib::AliasRange<0, 0>(0, onnxruntime::contrib::passthrough_input_count_limit)),  // outputs and inputs are mapped one to one
     onnxruntime::contrib::PassThrough);
 
 }  // namespace cuda

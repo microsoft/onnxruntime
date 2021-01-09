@@ -4,7 +4,6 @@
 
 import h5py
 from collections.abc import Mapping
-import pickle
 
 def _dfs_save(group, save_obj):
     """Recursively go over each level in the save_obj dictionary and save values to a hdf5 group"""
@@ -80,20 +79,3 @@ def load(path, key=None):
         _dfs_load(f, load_obj)
 
     return load_obj
-
-def to_serialized_hex(user_dict):
-    """Serialize the user_dict and convert the serialized bytes to a hex string and return"""
-
-    return pickle.dumps(user_dict).hex()
-
-def from_serialized_hex(serialized_hex):
-    """Convert serialized_hex to bytes and deserialize it and return"""
-
-    # serialized_hex can be either a regular string or a byte string.
-    # if it is a byte string, convert to regular string using decode()
-    # if it is a regular string, do nothing to it
-    try:
-        serialized_hex = serialized_hex.decode()
-    except AttributeError:
-        pass
-    return pickle.loads(bytes.fromhex(serialized_hex))

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/controlflow/group.h"
+#include "orttraining/training_ops/cpu/controlflow/common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -25,6 +26,8 @@ ONNX_OPERATOR_KERNEL_EX(
     Group);
 
 Status PassThrough::Compute(OpKernelContext* context) const {
+  ORT_ENFORCE(context->InputCount() <= passthrough_input_count_limit, "Number of inputs for PassThrough node exceeds the limit.");
+
   for (int i = 0; i < context->InputCount(); ++i) {
     const auto* X = context->Input<Tensor>(i);
     ORT_ENFORCE(X != nullptr);
@@ -41,7 +44,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .VariadicAlias(0, 0),  // outputs and inputs are mapped one to one
+        .Alias(AliasRange<0, 0>(0, passthrough_input_count_limit)),  // outputs and inputs are mapped one to one
     PassThrough);
 
 }  // namespace contrib

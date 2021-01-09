@@ -21,9 +21,6 @@
 
 #include "NeuralNetworksTypes.h"
 
-// Move to std::optional when we switch to c++ 17
-#include "core/common/optional.h"
-
 template <typename T>
 T Product(const std::vector<T>& v) {
   return static_cast<T>(
@@ -102,40 +99,12 @@ inline std::string TypeToStr(const Type& type) {
   }
 }
 
-struct SymmPerChannelQuantParams {
-  ANeuralNetworksSymmPerChannelQuantParams params;
-  std::vector<float> scales;
-  SymmPerChannelQuantParams(std::vector<float> scalesVec, uint32_t channelDim)
-      : scales(std::move(scalesVec)) {
-    params = {
-        .channelDim = channelDim,
-        .scaleCount = static_cast<uint32_t>(scales.size()),
-        .scales = scales.size() > 0 ? scales.data() : nullptr,
-    };
-  }
-  SymmPerChannelQuantParams(const SymmPerChannelQuantParams& other)
-      : params(other.params), scales(other.scales) {
-    params.scales = scales.size() > 0 ? scales.data() : nullptr;
-  }
-  SymmPerChannelQuantParams& operator=(const SymmPerChannelQuantParams& other) {
-    if (this != &other) {
-      params = other.params;
-      scales = other.scales;
-      params.scales = scales.size() > 0 ? scales.data() : nullptr;
-    }
-    return *this;
-  }
-};
-
 struct OperandType {
   ANeuralNetworksOperandType operandType;
   Type type;
   std::vector<uint32_t> dimensions;
-  onnxruntime::optional<SymmPerChannelQuantParams> channelQuant;
 
-  explicit OperandType(Type type, const std::vector<uint32_t>& d, float scale = 0.0f, int32_t zeroPoint = 0);
-  explicit OperandType(Type type, const std::vector<uint32_t>& d, SymmPerChannelQuantParams&& channelQuant);
-
+  explicit OperandType(Type type, const std::vector<uint32_t>& d = {}, float scale = 0.0f, int32_t zeroPoint = 0);
   OperandType(const OperandType& other);
   OperandType& operator=(const OperandType& other);
 

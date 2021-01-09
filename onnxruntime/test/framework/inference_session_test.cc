@@ -56,7 +56,7 @@ using namespace onnxruntime::concurrency;
 namespace {
 struct KernelRegistryAndStatus {
   std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
-  onnxruntime::Status st;
+  Status st;
 };
 }  // namespace
 namespace onnxruntime {

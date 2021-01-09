@@ -32,11 +32,7 @@ class ScatterNDBase {
                 element_offsets(0) {}
   };  // struct Prepare
 
-  // Shared between the CPU and CUDA implementation
-  static Status ValidateShapes(const TensorShape& input_shape,
-                               const TensorShape& indice_shape,
-                               const TensorShape& update_shape);
-
+  template <typename Tind>
   Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
 };  // class ScatterNDBase
 

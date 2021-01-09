@@ -1,11 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/rocm_fence.h"
-
-#include "core/graph/constants.h"
-#include "core/providers/rocm/gpu_data_transfer.h"
-#include "core/providers/rocm/rocm_common.h"
+#include "rocm_common.h"
+#include "rocm_fence.h"
+#include "gpu_data_transfer.h"
 
 namespace onnxruntime {
 

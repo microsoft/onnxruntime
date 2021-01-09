@@ -8,10 +8,9 @@
 
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/arena_extend_strategy.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
-#include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
@@ -19,6 +18,15 @@
 namespace onnxruntime {
 
 const int CPU_ALLOCATOR_DEVICE_ID = 0;
+
+// Information needed to construct CUDA execution providers.
+struct CUDAExecutionProviderInfo {
+  OrtDevice::DeviceId device_id{0};
+  size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
+  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
+  OrtCudnnConvAlgoSearch cudnn_conv_algo{OrtCudnnConvAlgoSearch::EXHAUSTIVE};
+  bool do_copy_in_default_stream{true};
+};
 
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
@@ -59,7 +67,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
@@ -69,17 +77,19 @@ class CUDAExecutionProvider : public IExecutionProvider {
       const onnxruntime::GraphViewer& graph,
       const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
-  int GetDeviceId() const override { return info_.device_id; }
+  int GetDeviceId() const { return device_id_; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
-  int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }
+  int GetCudnnConvAlgo() const { return cudnn_conv_algo_; }
+  void UpdateProviderOptionsInfo();
 
-  ProviderOptions GetProviderOptions() const override {
-    return CUDAExecutionProviderInfo::ToProviderOptions(info_);
-  }
-
- private:
-  CUDAExecutionProviderInfo info_;
+private:
+  OrtDevice::DeviceId device_id_;
   cudaDeviceProp device_prop_;
+  size_t cuda_mem_limit_;
+  ArenaExtendStrategy arena_extend_strategy_;
+  int cudnn_conv_algo_;
+  bool do_copy_in_default_stream_;
+
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
     std::vector<void*> cpu_ptrs;
