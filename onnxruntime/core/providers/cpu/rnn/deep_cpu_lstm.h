@@ -18,9 +18,7 @@ class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
  public:
   DeepCpuLstmOp(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
 
-#if !defined(USE_MKLML_FOR_BLAS)
   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
-#endif
   Status Compute(OpKernelContext* context) const override;
 
   ~DeepCpuLstmOp() override = default;

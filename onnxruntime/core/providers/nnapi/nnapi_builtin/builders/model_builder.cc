@@ -26,7 +26,7 @@ int32_t ModelBuilder::GetAndroidSdkVer() const {
 // Scalar operand is copied into the model, no need to persist
 #define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                      \
   Status ModelBuilder::AddOperandFromScalar(scalar_type value, uint32_t& index) { \
-    OperandType operandType(Type::op_type);                                       \
+    OperandType operandType(Type::op_type, vector<uint32_t>{});                   \
     ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operandType, index));                  \
     RETURN_STATUS_ON_ERROR_WITH_NOTE(                                             \
         nnapi_->ANeuralNetworksModel_setOperandValue(                             \
@@ -377,6 +377,18 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
   RETURN_STATUS_ON_ERROR(
       nnapi_->ANeuralNetworksModel_addOperand(nnapi_model_->model_, &operand_type.operandType));
   index = next_index_++;
+
+  if (operand_type.channelQuant) {
+    if (GetAndroidSdkVer() < 29) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Per-channel quantization is only supported on Android API level 29+,",
+                             " system API level: ", GetAndroidSdkVer());
+    }
+
+    RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
+        nnapi_model_->model_, index, &operand_type.channelQuant->params));
+  }
+
   return Status::OK();
 }
 
