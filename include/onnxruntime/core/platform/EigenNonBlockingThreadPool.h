@@ -130,6 +130,15 @@
 namespace onnxruntime {
 namespace concurrency {
 
+// Align to avoid false sharing with prior fields.  TheIf required,
+// padding must be added subsequently to avoid false sharing with
+// later fields.
+#define ORT_ALIGN_TO_AVOID_FALSE_SHARING __attribute__((__aligned__(128)))
+
+struct PaddingToAvoidFalseSharing {
+  char padding[128];
+};
+
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;
 
@@ -200,7 +209,9 @@ class ThreadPoolParallelSection {
   // tasks may be running currently, or may be present in work queues,
   // or may have been removed from the queues by
   // RunQueue::RevokeWithTag.
+  PaddingToAvoidFalseSharing padding_1;
   std::atomic<unsigned> tasks_finished{0};
+  PaddingToAvoidFalseSharing padding_2;
 
   // If non-null, the current loop that tasks should be executing.  We
   // need to be careful on access to the contents of current_loop
@@ -459,6 +470,7 @@ class RunQueue {
   };
 
   OrtMutex mutex_;
+
   // Low log(kSize) + 1 bits in front_ and back_ contain rolling index of
   // front/back, respectively. The remaining bits contain modification counters
   // that are incremented on Push operations. This allows us to (1) distinguish
@@ -466,9 +478,9 @@ class RunQueue {
   // position, these conditions would be indistinguishable); (2) obtain
   // consistent snapshot of front_/back_ for Size operation using the
   // modification counters.
-  std::atomic<unsigned> front_;
-  std::atomic<unsigned> back_;
-  Elem array_[kSize];
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<unsigned> front_;
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<unsigned> back_;
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING Elem array_[kSize];
 
   // SizeOrNotEmpty returns current queue size; if NeedSizeEstimate is false,
   // only whether the size is 0 is guaranteed to be correct.

@@ -1,3 +1,4 @@
+#include <iostream>
 #include <benchmark/benchmark.h>
 #include <core/platform/threadpool.h>
 #include <core/util/thread_utils.h>
@@ -89,6 +90,52 @@ BENCHMARK(BM_ThreadPoolParallelFor)
     ->Args({40000, 200})
     ->Args({80000, 200})
     ->Args({160000, 200});
+
+static void BM_ThreadPoolSimpleParallelFor(benchmark::State& state) {
+  const int num_threads = static_cast<int>(state.range(0));
+  const size_t len = state.range(1);
+  const size_t body = state.range(2);
+  OrtThreadPoolParams tpo;
+  auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                                 onnxruntime::ThreadOptions(),
+                                                 nullptr,
+                                                 num_threads, ALLOW_SPINNING);
+  for (auto _ : state) {
+    for (int j = 0; j < 100; j++) {
+      ThreadPool::TrySimpleParallelFor(tp.get(), len, [&](size_t) {
+	  for (volatile size_t x = 0; x < body; x++) {
+	  }
+	});
+    }
+  }
+}
+
+BENCHMARK(BM_ThreadPoolSimpleParallelFor)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kMicrosecond)
+    ->Args({1, 1, 100000})
+    ->Args({2, 2, 100000})
+    ->Args({4, 4, 100000})
+    ->Args({8, 8, 100000})
+    ->Args({12, 12, 100000})
+    ->Args({13, 13, 100000})
+    ->Args({14, 14, 100000})
+    ->Args({15, 15, 100000})
+    ->Args({16, 16, 100000})
+    ->Args({17, 17, 100000})
+    ->Args({20, 20, 100000})
+    ->Args({24, 24, 100000})
+    ->Args({28, 28, 100000})
+    ->Args({1, 1, 10000})
+    ->Args({2, 2, 10000})
+    ->Args({4, 4, 10000})
+    ->Args({8, 8, 10000})
+    ->Args({14, 14, 10000})
+    ->Args({15, 15, 10000})
+    ->Args({17, 17, 10000})
+    ->Args({20, 20, 10000})
+    ->Args({24, 24, 10000})
+    ->Args({28, 28, 10000});
 
 static void BM_SimpleForLoop(benchmark::State& state) {
   const size_t len = state.range(0);
