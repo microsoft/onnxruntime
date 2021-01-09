@@ -3,8 +3,6 @@
 
 #include "orttraining/training_ops/cuda/controlflow/record.h"
 #include "core/providers/cpu/tensor/utils.h"
-// Include RecordEvent's utility functions shared by CPU and GPU implementations.
-#include "orttraining/training_ops/cpu/controlflow/common.h"
 // Include event mechanism shared by CPU and GPU implementations.
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/record.h"
@@ -23,7 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType<OrtMemTypeCPUInput>(0)   /* Keep EventIdentifier in CPU */
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .Alias(onnxruntime::contrib::AliasRange<1, 0>(0, 1024)),
+        .VariadicAlias(1, 0),  // outputs and inputs are mapped one to one, with input offset by 1
     RecordEvent);
 
 Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {

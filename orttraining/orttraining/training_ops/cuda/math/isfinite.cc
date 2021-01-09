@@ -75,7 +75,7 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
 
   // Check if all values are finite and write true to output.
   // Otherwise, false will be written.
-  launch_multi_tensor_functor<1, TFunctor, bool*>(
+  launch_multi_tensor_functor<1, TFunctor>(
       2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, output_data);
 
   return Status::OK();

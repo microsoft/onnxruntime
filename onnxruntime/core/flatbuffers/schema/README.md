@@ -25,3 +25,6 @@ Initial support for FlatBuffers that includes Model support. Graph support inclu
 
 ## Version 2. 
 Support for sparse initialiers. Sparse intializers are stored within ORT FlatBuffers format, which includes sparse initializers converted from Constant node attribute.
+
+## Version 3. 
+Support for storing `graph_doc_string` field in Model (ORT FlatBuffers format).

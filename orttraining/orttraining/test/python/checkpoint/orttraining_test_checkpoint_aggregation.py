@@ -21,73 +21,23 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import onnxruntime
 from onnxruntime.training import checkpoint
-from _test_helpers import distributed_setup, create_orttrainer_and_load_checkpoint, split_state_dict, aggregate_states, global_fp16_fp32_atol
+from _test_helpers import distributed_setup, create_orttrainer_and_load_checkpoint, aggregate_states
+from _test_commons import assert_all_states_close_ort
 
 
 def test_zero_aggregation(checkpoint_dir, loaded_state_dict, is_mixedprecision):
     # get aggregated state dict independently
-    checkpoint_files = checkpoint._list_checkpoint_files(checkpoint_dir, "ORT_checkpoint")
-    agg_checkpoint = checkpoint._CombineZeroCheckpoint(checkpoint_files)
-    aggregate_state_dict = agg_checkpoint.aggregate_checkpoints()
+    aggregate_state_dict_from_checkpoint = \
+        checkpoint.aggregate_checkpoints(glob.glob(os.path.join(checkpoint_dir, "checkpoint*.ortcp")), pytorch_format=False)
 
     # verify loaded state and aggregated states match:
-    assert aggregate_state_dict.keys() == loaded_state_dict.keys()
-    for k, v in loaded_state_dict.items():
-        assert_allclose(v, aggregate_state_dict[k])
+    assert_all_states_close_ort(loaded_state_dict, aggregate_state_dict_from_checkpoint)
 
-    # split state for next few checks
-    loaded_state_dict = split_state_dict(loaded_state_dict)
+    # manually aggregate the states from the previously saved pickle file
+    aggregate_state_dict_from_test = aggregate_states(checkpoint_dir)
 
-    # verify that aggregation is done correctly
-    num_states = len(glob.glob1(checkpoint_dir, "state_dict*"))
-
-    sharded_state_rank_offset = dict()
-    for rank in range(num_states):
-        state = None
-        with open(os.path.join(checkpoint_dir, 'state_dict_'+str(rank)+'.pkl'), 'rb') as f:
-            state = pickle.load(f)
-        rank_state_dict = split_state_dict(state['state_dict_'+str(rank)])
-
-        if is_mixedprecision:
-            for k, v in rank_state_dict['fp16_param'].items():
-                # verify fp16 weights match
-                assert_allclose(v, loaded_state_dict['fp16_param'][k])
-                # verify rank fp16 weights match loaded fp32 correctly
-                fp32_name = k.split('_fp16')[0]
-                assert_allclose(v, loaded_state_dict['fp32_param'][fp32_name], atol=global_fp16_fp32_atol)
-
-        for k, v in rank_state_dict['fp32_param'].items():
-            if k in loaded_state_dict['fp32_param']:
-                assert_allclose(v, loaded_state_dict['fp32_param'][k])
-            else:
-                assert '_view_' in k
-                weight_key = k.split('_view_')[0]
-                rank_offset = 0
-                if weight_key in sharded_state_rank_offset:
-                    rank_offset = sharded_state_rank_offset[weight_key]
-                rank_len = v.numel()
-                loaded_tensor = loaded_state_dict['fp32_param'][weight_key].view(-1)
-                assert rank_offset + rank_len <= loaded_tensor.numel()
-                assert_allclose(v, loaded_tensor[rank_offset: rank_offset + rank_len])
-                # update offset
-                sharded_state_rank_offset[weight_key] = rank_offset + rank_len
-
-        for k, v in rank_state_dict['optimizer'].items():
-            if k in loaded_state_dict['optimizer']:
-                assert_allclose(v, loaded_state_dict['optimizer'][k])
-            else:
-                assert '_view_' in k
-                if k.startswith('Moment_'):  # verify moment tensors
-                    optim_key = k.split('_view_')[0]
-                    rank_offset = 0
-                    if optim_key in sharded_state_rank_offset:
-                        rank_offset = sharded_state_rank_offset[optim_key]
-                    rank_len = v.numel()
-                    loaded_tensor = loaded_state_dict['optimizer'][optim_key].view(-1)
-                    assert rank_offset + rank_len <= loaded_tensor.numel()
-                    assert_allclose(v, loaded_tensor[rank_offset: rank_offset + rank_len])
-
-                    sharded_state_rank_offset[optim_key] = rank_offset + rank_len
+    # compare state dictionaries between the manually aggregated state dictionary with the aggregated state dictionary from the ORTTrainer
+    assert_all_states_close_ort(aggregate_state_dict_from_test, aggregate_state_dict_from_checkpoint, reshape_states=True)
 
 
 def test_aggregation_from_distributed_zero_full_precision_adam(device='cuda', checkpoint_dir='checkpoint_dir/distributed_zero/full_precision/adam/'):

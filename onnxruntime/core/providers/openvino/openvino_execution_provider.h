@@ -137,17 +137,17 @@ struct OpenVINOEPFunctionState {
 };
 
 // Logical device representation.
-class OpenVINOExecutionProvider : public Provider_IExecutionProvider {
+class OpenVINOExecutionProvider : public IExecutionProvider {
  public:
   explicit OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info);
   ~OpenVINOExecutionProvider() = default;
 
-  std::vector<std::unique_ptr<Provider_ComputeCapability>>
-  Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph_viewer,
-                         const std::vector<const Provider_KernelRegistry*>& kernel_registries) const override;
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const GraphViewer& graph_viewer,
+                const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
-  Status Provider_Compile(const std::vector<onnxruntime::Provider_Node*>& fused_nodes,
-                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;

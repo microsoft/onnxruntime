@@ -1506,5 +1506,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetClipGradient) {
   return output;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Sign", {I(0)}, {IA("Sign_Input")}),
+      NodeDef("Mul", {GO(0), IA("Sign_Input")}, {GI(0)})
+  };
+}
+
 }  // namespace training
 }  // namespace onnxruntime
