@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 import onnx
 import onnxruntime
-from onnxruntime.quantization import CalibrationDataReader, get_calibrator, generate_calibration_table, write_calibration_table
+from onnxruntime.quantization import CalibrationDataReader, tensorrt_calibrate, write_calibration_table
 
 class ImageNetDataReader(CalibrationDataReader):
     def __init__(self, image_folder,
@@ -71,7 +71,46 @@ class ImageNetDataReader(CalibrationDataReader):
         else:
             return None
 
-    def imagenet_preprocess_func(self, images_folder, height, width, start_index=0, size_limit=0):
+    def load_serial(self):
+        width = self.width 
+        height = self.width 
+        nchw_data_list, filename_list, image_size_list = self.preprocess_imagenet(self.image_folder, height, width, self.start_index, self.stride)
+        input_name = self.input_name
+
+        data = []
+        for i in range(len(nchw_data_list)):
+            nhwc_data = nchw_data_list[i]
+            file_name = filename_list[i]
+            data.append({input_name: nhwc_data})
+        return data
+
+    def load_batches(self):
+        width = self.width 
+        height = self.height 
+        batch_size = self.batch_size
+        stride = self.stride
+        input_name = self.input_name
+
+        batches = []
+        for index in range(0, stride, batch_size):
+            start_index = self.start_index + index 
+            nchw_data_list, filename_list, image_size_list = self.preprocess_imagenet(self.image_folder, height, width, start_index, batch_size)
+
+            if nchw_data_list.size == 0:
+                break
+
+            nchw_data_batch = []
+            for i in range(len(nchw_data_list)):
+                nhwc_data = np.squeeze(nchw_data_list[i], 0)
+                nchw_data_batch.append(nhwc_data)
+            batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
+            data = {input_name: batch_data}
+
+            batches.append(data)
+
+        return batches
+
+    def preprocess_imagenet(self, images_folder, height, width, start_index=0, size_limit=0):
         '''
         Loads a batch of images and preprocess them
         parameter images_folder: path to folder storing images
@@ -119,44 +158,41 @@ class ImageNetDataReader(CalibrationDataReader):
         batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
         return batch_data, batch_filenames, image_size_list
 
-    def load_serial(self):
-        width = self.width 
-        height = self.width 
-        nchw_data_list, filename_list, image_size_list = self.imagenet_preprocess_func(self.image_folder, height, width, self.start_index, self.stride)
-        input_name = self.input_name
-
-        data = []
-        for i in range(len(nchw_data_list)):
-            nhwc_data = nchw_data_list[i]
-            file_name = filename_list[i]
-            data.append({input_name: nhwc_data})
-        return data
-
-    def load_batches(self):
-        width = self.width 
-        height = self.height 
-        batch_size = self.batch_size
-        stride = self.stride
-        input_name = self.input_name
-
-        batches = []
-        for index in range(0, stride, batch_size):
-            start_index = self.start_index + index 
-            nchw_data_list, filename_list, image_size_list = self.imagenet_preprocess_func(self.image_folder, height, width, start_index, batch_size)
-
-            if nchw_data_list.size == 0:
-                break
-
-            nchw_data_batch = []
-            for i in range(len(nchw_data_list)):
-                nhwc_data = np.squeeze(nchw_data_list[i], 0)
-                nchw_data_batch.append(nhwc_data)
-            batch_data = np.concatenate(np.expand_dims(nchw_data_batch, axis=0), axis=0)
-            data = {input_name: batch_data}
-
-            batches.append(data)
-
-        return batches
+    def get_synset_id(self, image_folder, offset, dataset_size):
+        ilsvrc2012_meta = scipy.io.loadmat(image_folder + "/devkit/data/meta.mat")
+        id_to_synset = {}    
+        for i in range(1000):
+            id = int(ilsvrc2012_meta["synsets"][i,0][0][0][0])
+            id_to_synset[id] = ilsvrc2012_meta["synsets"][i,0][1][0]
+        
+        synset_to_id = {}
+        file = open(image_folder + "/synset_words.txt","r")
+        index = 0
+        for line in file:
+            parts = line.split(" ")
+            synset_to_id[parts[0]] = index
+            index = index + 1
+        file.close()
+      
+        file = open(image_folder + "/devkit/data/ILSVRC2012_validation_ground_truth.txt","r")
+        id = file.read().strip().split("\n")
+        id = list(map(int, id))
+        file.close()
+        
+        image_names = os.listdir(image_folder + "/val")
+        image_names.sort()
+        image_names = image_names[offset : offset + dataset_size]
+        seq_num = []
+        for file in image_names:
+            seq_num.append(int(file.split("_")[-1].split(".")[0]))
+        id = np.array([id[index - 1] for index in seq_num])       
+        synset_id = np.array([synset_to_id[id_to_synset[index]] for index in id])
+    
+        # one-hot encoding
+        synset_id_onehot = np.zeros((len(synset_id), 1000), dtype=np.float32)
+        for i, id in enumerate(synset_id):
+            synset_id_onehot[i, id] = 1.0
+        return synset_id_onehot
 
 class ImageClassificationEvaluator: 
     def __init__(self, model_path, synset_id, 
@@ -205,7 +241,6 @@ class ImageClassificationEvaluator:
     def evaluate(self, prediction_results):
         batch_size = len(prediction_results[0][0])
         total_val_images = len(prediction_results) * batch_size
-        ##y_truth = to_categorical(self.synset_id, 1000)
         y_prediction = np.empty((total_val_images, 1000), dtype=np.float32)
         i = 0
         for res in prediction_results:
@@ -214,67 +249,13 @@ class ImageClassificationEvaluator:
         print("top 1: ", self.top_k_accuracy(self.synset_id, y_prediction, k=1))   
         print("top 5: ", self.top_k_accuracy(self.synset_id, y_prediction, k=5))
 
-def get_prediction_evaluation(model_path, input_name, batch_size, dataset_path, dataset_offset, dataset_size, synset_id, providers=["TensorrtExecutionProvider"]):
-    data_reader = ImageNetDataReader(dataset_path, start_index=dataset_offset, end_index=dataset_offset + dataset_size, stride=dataset_size, batch_size=batch_size, model_path=model_path, input_name=input_name)
-    evaluator = ImageClassificationEvaluator(model_path, synset_id, data_reader, providers=providers)
-    evaluator.predict()
-    result = evaluator.get_result()
-    evaluator.evaluate(result)
-
-def get_calibration_table(model_path, input_name, batch_size, augmented_model_path, dataset_path, calibration_dataset_size, use_existing_augmented_model=False, use_existing_calibration_table=False):
-    calibrator = get_calibrator(model_path, None, augmented_model_path=augmented_model_path)    
-    start_index = 0
-    stride=calibration_dataset_size
-    for i in range(0, calibration_dataset_size, stride):
-        data_reader = ImageNetDataReader(dataset_path,start_index=start_index, end_index=start_index + stride, stride=stride, batch_size=batch_size, model_path=augmented_model_path, input_name=input_name)
-        calibrator.set_data_reader(data_reader)
-        generate_calibration_table(calibrator, model_path, augmented_model_path, False, data_reader)
-        start_index += stride
-    write_calibration_table(calibrator.get_calibration_cache())
-
-def get_synset_id(dataset_path, offset, dataset_size):
-    ilsvrc2012_meta = scipy.io.loadmat(dataset_path + "/devkit/data/meta.mat")
-    id_to_synset = {}    
-    for i in range(1000):
-        id = int(ilsvrc2012_meta["synsets"][i,0][0][0][0])
-        id_to_synset[id] = ilsvrc2012_meta["synsets"][i,0][1][0]
-    
-    synset_to_id = {}
-    file = open(dataset_path + "/synset_words.txt","r")
-    index = 0
-    for line in file:
-        parts = line.split(" ")
-        synset_to_id[parts[0]] = index
-        index = index + 1
-    file.close()
-  
-    file = open(dataset_path + "/devkit/data/ILSVRC2012_validation_ground_truth.txt","r")
-    id = file.read().strip().split("\n")
-    id = list(map(int, id))
-    file.close()
-    
-    image_names = os.listdir(dataset_path + "/val")
-    image_names.sort()
-    image_names = image_names[offset : offset + dataset_size]
-    seq_num = []
-    for file in image_names:
-        seq_num.append(int(file.split("_")[-1].split(".")[0]))
-    id = np.array([id[index - 1] for index in seq_num])       
-    synset_id = np.array([synset_to_id[id_to_synset[index]] for index in id])
-
-    # one-hot encoding
-    synset_id_onehot = np.zeros((len(synset_id), 1000), dtype=np.float32)
-    for i, id in enumerate(synset_id):
-        synset_id_onehot[i, id] = 1.0
-    return synset_id_onehot
-
 def convert_model_batch_to_dynamic(model_path):
     model = onnx.load(model_path)
     input = model.graph.input
     input_name = input[0].name
     shape = input[0].type.tensor_type.shape
     dim = shape.dim
-    if isinstance(dim[0].dim_value, int):
+    if not dim[0].dim_param:
         dim[0].dim_param = 'N'
         model = onnx.shape_inference.infer_shapes(model)        
         model_name = model_path.split(".")
@@ -305,7 +286,7 @@ if __name__ == '__main__':
     1. Create dataset folder 'ILSVRC2012' in workspace.
     2. Download ILSVRC2012 validation dataset and development kit from http://www.image-net.org/challenges/LSVRC/2012/downloads.
     3. Extract validation dataset JPEG files to 'ILSVRC2012/val'.
-    4. Extract development kit to 'ILSVRC2012/devkit'. Two files are used in the development kit, 'ILSVRC2012_validation_ground_truth.txt' and 'meta.mat'.
+    4. Extract development kit to 'ILSVRC2012/devkit'. Two files in the development kit are used, 'ILSVRC2012_validation_ground_truth.txt' and 'meta.mat'.
     5. Download 'synset_words.txt' from https://github.com/HoldenCaulfieldRye/caffe/blob/master/data/ilsvrc12/synset_words.txt into 'ILSVRC2012/'.
     
     Please download Resnet50 model from ONNX model zoo https://github.com/onnx/models/blob/master/vision/classification/resnet/model/resnet50-v2-7.tar.gz
@@ -317,7 +298,7 @@ if __name__ == '__main__':
     ilsvrc2012_dataset_path = "./ILSVRC2012"   
     augmented_model_path = "./augmented_model.onnx"
     batch_size = 20
-    calibration_dataset_size = 1000
+    calibration_dataset_size = 1000 # Size of dataset for calibration
 
     # INT8 calibration setting    
     calibration_table_generation_enable = True # Enable/Disable INT8 calibration
@@ -335,12 +316,16 @@ if __name__ == '__main__':
     # Get calibration and prediction dataset size
     [calibration_dataset_size, prediction_dataset_size] = get_dataset_size(ilsvrc2012_dataset_path, calibration_dataset_size)
 
-    # Generate calibration table for INT8 quantization
+    # Generate INT8 calibration table
     if calibration_table_generation_enable:
-        get_calibration_table(new_model_path, input_name, batch_size, augmented_model_path, ilsvrc2012_dataset_path, calibration_dataset_size)
+        data_reader = ImageNetDataReader(ilsvrc2012_dataset_path,start_index=0, end_index=calibration_dataset_size, stride=calibration_dataset_size, batch_size=batch_size, model_path=augmented_model_path, input_name=input_name)
+        calibration_cache = tensorrt_calibrate(new_model_path, data_reader, providers=["CUDAExecutionProvider"])
+        write_calibration_table(calibration_cache)
 
-    # Generate class id map from imagenet data set
-    synset_id = get_synset_id(ilsvrc2012_dataset_path, calibration_dataset_size, prediction_dataset_size)
-
-    # Run prediction on Tensorrt EP    
-    get_prediction_evaluation(new_model_path, input_name, batch_size, ilsvrc2012_dataset_path, calibration_dataset_size, prediction_dataset_size, synset_id, providers=execution_provider)
+    # Run prediction in Tensorrt EP    
+    data_reader = ImageNetDataReader(ilsvrc2012_dataset_path, start_index=calibration_dataset_size, end_index=calibration_dataset_size + prediction_dataset_size, stride=prediction_dataset_size, batch_size=batch_size, model_path=new_model_path, input_name=input_name)
+    synset_id = data_reader.get_synset_id(ilsvrc2012_dataset_path, calibration_dataset_size, prediction_dataset_size) # Generate synset id
+    evaluator = ImageClassificationEvaluator(new_model_path, synset_id, data_reader, providers=execution_provider)
+    evaluator.predict()
+    result = evaluator.get_result()
+    evaluator.evaluate(result)

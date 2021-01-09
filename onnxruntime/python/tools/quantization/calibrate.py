@@ -367,3 +367,27 @@ def calibrate(model_path,
 
     print("Calibrated,quantized parameters calculated and returned.")
     return quantization_params_dict
+
+def tensorrt_calibrate(model_path,
+              data_reader: CalibrationDataReader,
+              op_types=['Conv', 'MatMul'],
+              black_nodes=[],
+              white_nodes=[],
+              augmented_model_path='augmented_model.onnx',
+              providers=["CPUExecutionProvider"]):
+    '''
+    Given an onnx model, augment and run the augmented model on calibration data set, generate calibration cache for TensorRT use.
+    :param model_path: ONNX model to calibrate
+    :param data_reader: user implemented object to read in and preprocess calibration dataset based on CalibrationDataReader interface
+    :param op_types: operator types to be calibrated and quantized, default = 'Conv, MatMul'
+    :param black_nodes: operators that should not be quantized, default = ''
+    :param white_nodes: operators that must be quantized, default = ''
+    :param augmented_model_path: save augmented_model to this path
+    :param providers: execution providers to run calibration
+    '''
+    calibrator = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
+    if not os.path.exists(augmented_model_path):
+        augmented_model = calibrator.augment_graph(augment_all_ops=True)
+        onnx.save(augmented_model, augmented_model_path)
+    calibrator.get_intermediate_outputs(providers=providers)
+    return calibrator.get_calibration_cache()
