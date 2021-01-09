@@ -569,7 +569,8 @@ TEST_F(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] != 0);
 }
 
-static void TestFuseConvAddMul(logging::Logger& logger, const char* model_uri) {
+template <typename CharType>
+static void TestFuseConvAddMul(logging::Logger& logger, const CharType* model_uri) {
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logger));
   Graph& graph = p_model->MainGraph();
