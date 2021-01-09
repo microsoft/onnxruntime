@@ -20,7 +20,6 @@
 #endif
 
 using namespace ::onnxruntime::logging;
-using onnxruntime::training::MPIContext;
 
 namespace onnxruntime {
 namespace test {
