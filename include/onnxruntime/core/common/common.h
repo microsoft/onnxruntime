@@ -33,9 +33,9 @@
 
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
+#include "core/common/make_string.h"
 #include "core/common/make_unique.h"
 #include "core/common/status.h"
-#include "core/common/string_utils.h"
 
 #ifdef USE_MIMALLOC_ARENA_ALLOCATOR
 #include <mimalloc.h>
@@ -201,9 +201,9 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   }
 
 // Check condition. if not met, return status.
-#define ORT_RETURN_IF_NOT(condition, ...)                                                 \
-  if (!(condition)) {                                                                     \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not satisfied: " #condition "\n",          \
+#define ORT_RETURN_IF_NOT(condition, ...)                                                     \
+  if (!(condition)) {                                                                         \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not satisfied: " #condition "\n",              \
                            ORT_WHERE.ToString(), ::onnxruntime::MakeString(__VA_ARGS__)); \
   }
 

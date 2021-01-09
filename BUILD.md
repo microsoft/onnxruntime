@@ -728,14 +728,17 @@ ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
 ---
 
 ## Architectures
-### x86
+### [64-bit x86](https://en.wikipedia.org/wiki/X86-64) (also known as x86_64 or AMD64)
+
+This is the default.
+
+### 32-bit x86
 #### Build Instructions
 ##### Windows
 * add `--x86` argument when launching `.\build.bat`
 
 ##### Linux
-* Must be built on a x86 OS
-* add --x86 argument to build.sh
+(Not officially supported)
 
 ---
 
