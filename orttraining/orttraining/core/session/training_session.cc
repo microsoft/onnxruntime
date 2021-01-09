@@ -102,7 +102,6 @@ Status SetupOptimizerParams(
     // check if initial optimizer states have been provided for weight
     const auto optim_state_it = init_optimizer_states.find(original_weight_name);
     if (optim_state_it != init_optimizer_states.end()) {
-      std::cout<<"Added for weight" << original_weight_name << "\n";
       opt_node_config.initial_states = optim_state_it->second;
     }
 
@@ -447,14 +446,6 @@ Status TrainingSession::ConfigureForTraining(
       weight_names_to_train.erase(config_result.weight_name_map_after_graph_transform.at(weight_name_to_not_train));
     } else {
       weight_names_to_train.erase(weight_name_to_not_train);
-    }
-  }
-  for (auto x : config_result.weight_name_map_after_graph_transform) {
-    auto old_initializer_name = x.first;
-    auto new_initializer_name = x.second;
-    if (weight_names_to_train.find(old_initializer_name) != weight_names_to_train.end()) {
-      weight_names_to_train.erase(old_initializer_name);
-      weight_names_to_train.insert(new_initializer_name);
     }
   }
 
@@ -1102,7 +1093,6 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
   for (const auto& weight : weight_partition_info_) {
     const auto& it = opt_state_tensors.find(weight.second.view_name);
     if (it == opt_state_tensors.end()) {
-      std::cout<<"Not found: " << weight.second.view_name << "\n";
       ORT_RETURN_IF_NOT(allow_missing, "Failed to get optimizer params for partition: " + weight.second.view_name);
     } else {
       opt_state_tensors[weight.first] = it->second;
@@ -1132,7 +1122,6 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
     if (weight.second.weight_partitioned) {
       const auto& it = fp_weights.find(weight.second.view_name);
       if (it == fp_weights.end()) {
-        std::cout<<"Not found: " << weight.second.view_name << "\n";
         ORT_RETURN_IF_NOT(allow_missing, "Failed to get weight partition: " + weight.second.view_name);
       } else {
         fp_weights[weight.first] = it->second;

@@ -564,11 +564,8 @@ class ORTTrainer(object):
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
             if n not in [i.name for i in self._onnx_model.graph.initializer]]
         if unused_frozen_weights:
-            # raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(
-            #     unused_frozen_weights))
-            print("{} params from 'frozen_weights' not found in the ONNX model.".format(
+            raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(
                 unused_frozen_weights))
-
 
         # Get loss name from model description
         loss_name = [item.name for item in self.model_desc.outputs if item.is_loss]
@@ -1174,7 +1171,7 @@ class ORTTrainer(object):
         # clear the callable partial
         self._load_state_dict = None
 
-        def _mismatch_keys(keys1, keys2, in_error_str):
+        def _mismatch_keys(keys1, keys2, in_error_str, allow_unexpected=False):
             """Find out the missing and the unexpected keys in two dictionaries
 
             Throws a runtime error if missing or unexpected keys are found
@@ -1186,51 +1183,49 @@ class ORTTrainer(object):
             missing_keys = list(keys1 - keys2)
             unexpected_keys = list(keys2 - keys1)
             if len(missing_keys) > 0:
-                # raise RuntimeError("Missing keys: {} in {}".format(missing_keys, in_error_str))
-                print("Missing keys: {} in {}".format(missing_keys, in_error_str))
-            if len(unexpected_keys) > 0:
-                # raise RuntimeError("Unexpected keys: {} in {}".format(unexpected_keys, in_error_str))
-                print("Unexpected keys: {} in {}".format(unexpected_keys, in_error_str))
+                raise RuntimeError("Missing keys: {} in {}".format(missing_keys, in_error_str))
+            if len(unexpected_keys) > 0 and not allow_unexpected:
+                raise RuntimeError("Unexpected keys: {} in {}".format(unexpected_keys, in_error_str))
 
-        def _check_model_key_mismatch(current_state_dict, state_dict):
+        def _check_model_key_mismatch(current_state_dict, state_dict, allow_unexpected=False):
             """Check if there is any mismatch in the model sub state dictionary between the two state_dicts"""
 
             # check unxexpected and missing precision keys in the model state_dict compared to the training
             # session model state_dict
             _mismatch_keys(current_state_dict[_utils.state_dict_model_key()],
-                                   state_dict[_utils.state_dict_model_key()], 'state_dict[model]')
+                                   state_dict[_utils.state_dict_model_key()], 'state_dict[model]', allow_unexpected)
 
             # check for model state key mismatch
             for precision_key in current_state_dict[_utils.state_dict_model_key()]:
                 _mismatch_keys(current_state_dict[_utils.state_dict_model_key()][precision_key],
                                        state_dict[_utils.state_dict_model_key()][precision_key],
-                                       'state_dict[model][{}]'.format(precision_key))
+                                       'state_dict[model][{}]'.format(precision_key), allow_unexpected)
 
-        def _check_optimizer_key_mismatch(current_state_dict, state_dict):
+        def _check_optimizer_key_mismatch(current_state_dict, state_dict, allow_unexpected=False):
             """Check if there is any mismatch in the optimizer sub state dictionary between the two state_dicts"""
 
             # check for model state key mismatch for the optimizer state_dict
             _mismatch_keys(current_state_dict[_utils.state_dict_optimizer_key()],
                                    state_dict[_utils.state_dict_optimizer_key()],
-                                   'state_dict[optimizer]')
+                                   'state_dict[optimizer]', allow_unexpected)
 
             # check for optimizer state keys mismatch
             for model_state_key in current_state_dict[_utils.state_dict_optimizer_key()]:
                 _mismatch_keys(current_state_dict[_utils.state_dict_optimizer_key()][model_state_key],
                                        state_dict[_utils.state_dict_optimizer_key()][model_state_key],
-                                       'state_dict[optimizer][{}]'.format(model_state_key))
+                                       'state_dict[optimizer][{}]'.format(model_state_key), allow_unexpected)
 
-        def _check_key_mismatch(current_state_dict, state_dict):
+        def _check_key_mismatch(current_state_dict, state_dict, allow_unexpected=False):
             """Check if there is a mismatch in the keys (model and optimizer) in the two state_dicts"""
 
             # check presence of 'model' in the input state_dict
             if _utils.state_dict_model_key() in state_dict:
-                _check_model_key_mismatch(current_state_dict, state_dict)
+                _check_model_key_mismatch(current_state_dict, state_dict, allow_unexpected)
             else:
                 warnings.warn("Missing key: model in state_dict", UserWarning)
             # check presence of 'optimizer' in the input state_dict
             if _utils.state_dict_optimizer_key() in state_dict:
-                _check_optimizer_key_mismatch(current_state_dict, state_dict)
+                _check_optimizer_key_mismatch(current_state_dict, state_dict, allow_unexpected)
             else:
                 warnings.warn("Missing key: optimizer in state_dict", UserWarning)
 
@@ -1242,7 +1237,10 @@ class ORTTrainer(object):
         if self._training_session:
             current_state_dict = self.state_dict()
             if strict:
-                _check_key_mismatch(current_state_dict, state_dict)
+                # for Zero enabled, the current trainer might not have the complete state, and we must allow 
+                # extra keys to be present in the state dict
+                allow_unexpected = True if self.options.distributed.deepspeed_zero_optimization.stage > 0 else False
+                _check_key_mismatch(current_state_dict, state_dict, allow_unexpected)
 
         # load the model states from the input state dictionary into the onnx graph
         self._load_model_states(state_dict, strict)
@@ -1315,7 +1313,8 @@ class ORTTrainer(object):
     def _aggregation_required(self, loaded_trainer_options):
         """Checks if aggregation is required for the loading the state_dict into the ORTTrainer"""
 
-        # To load states in the backend, aggregation is required for every ZeRO checkpoint
+        # To load states in the backend, aggregation is required for every ZeRO 
+        # or Megatron checkpoint
         return loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0 or \
                 loaded_trainer_options[_utils.state_dict_trainer_options_horizontal_parallel_size_key()] > 1
 

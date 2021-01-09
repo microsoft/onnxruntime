@@ -195,11 +195,11 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   PartitionBufferByColumn(a_weight, row_count, column_count, column_stride, stride, result);
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
 
-  std::cout << "PartitionWeightByColumn: " << original_name << "\n";
+  // Partition initial optimizer state if available
   const auto optim_state_it = initial_optimizer_states_.find(original_name);
   if (optim_state_it != initial_optimizer_states_.end()) {
-    std::cout << "Partitioning col wise optim state \n";
     auto& initial_states = optim_state_it->second;
+    // partition moments same way as the weight
     for (const auto& moments_prefix : training::MOMENTS_PREFIXES) {
       const auto initial_state_it = initial_states.find(moments_prefix);
       if (initial_state_it != initial_states.end()) {
@@ -208,45 +208,47 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
         OrtValue partitioned;
         auto element_type = init_tensor->DataType();
         TensorShape partition_shape(new_shape);
-        const OrtMemoryInfo& info = init_tensor->Location();
         std::unique_ptr<Tensor> p_tensor;
-        std::cout << "Partitioning moment:" << moments_prefix << ":" << partition_shape << "\n";
 
         if (utils::IsPrimitiveDataType<float>(element_type)) {
           float* data_buffer = init_tensor->MutableData<float>();
 
+          // allocate temporary memory to get the column partitioned state
           std::vector<float> result;
           result.reserve(element_count);
           PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result);
-          // memcpy(data_buffer, result.data(), sizeof(float) * element_count);
 
+          // allocate a new buffer as column partitioning cannot re-use the original
+          // buffer as its non-contiguous read on original buffer
           auto alloc = execution_provider_.GetAllocator(0, OrtMemTypeDefault);
           p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                       partition_shape,
                                                       alloc);
           float* out_buffer = p_tensor->MutableData<float>();
           memcpy(out_buffer, result.data(), sizeof(float) * element_count);
-          partitioned.Init(p_tensor.release(),
-                           DataTypeImpl::GetType<Tensor>(),
-                           DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-          initial_states[moments_prefix] = std::move(partitioned);
         } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
           MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
+
+          // allocate temporary memory to get the column partitioned state
           std::vector<MLFloat16> result;
           result.reserve(element_count);
           PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result);
 
+          // allocate a new buffer as column partitioning cannot re-use the original
+          // buffer as it is a non-contiguous read on original buffer
+          auto alloc = execution_provider_.GetAllocator(0, OrtMemTypeDefault);
           p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                       partition_shape,
-                                                      result.data(),
-                                                      info);
-          partitioned.Init(p_tensor.release(),
-                           DataTypeImpl::GetType<Tensor>(),
-                           DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-          initial_states[moments_prefix] = std::move(partitioned);
+                                                      alloc);
+          MLFloat16* out_buffer = p_tensor->MutableData<MLFloat16>();
+          memcpy(out_buffer, result.data(), sizeof(MLFloat16) * element_count);
         } else {
           ORT_THROW("Unsupported type: ", element_type, "for initial optimizer moments.");
         }
+        partitioned.Init(p_tensor.release(),
+                         DataTypeImpl::GetType<Tensor>(),
+                         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        initial_states[moments_prefix] = std::move(partitioned);
       }
     }
   }
@@ -254,7 +256,6 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   weight_partition_info_[original_name].megatron_row_partition = 0;
   weight_partition_info_[original_name].view_name = new_initializer_name;
   weight_partition_info_[original_name].weight_partitioned = true;
-  std::cout << "M: original:" << original_name << "adding view name: " << new_initializer_name << "\n";
 
   return true;
 }
@@ -319,10 +320,9 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   memcpy(result.data(), a_weight + row_index_offset * column_count, sizeof(float) * element_count);
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
 
-  std::cout << "PartitionWeightByRow: " << original_name << "\n";
+  // Partition initial optimizer state if available
   const auto optim_state_it = initial_optimizer_states_.find(original_name);
   if (optim_state_it != initial_optimizer_states_.end()) {
-    std::cout << "Partitioning row wise optim state \n";
     auto& initial_states = optim_state_it->second;
     for (const auto& moments_prefix : training::MOMENTS_PREFIXES) {
       const auto initial_state_it = initial_states.find(moments_prefix);
@@ -334,7 +334,6 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
         TensorShape partition_shape(new_shape);
         const OrtMemoryInfo& info = init_tensor->Location();
         std::unique_ptr<Tensor> p_tensor;
-        std::cout << "Partitioning moment:" << moments_prefix << ":" << partition_shape << "\n";
 
         if (utils::IsPrimitiveDataType<float>(element_type)) {
           float* data_buffer = init_tensor->MutableData<float>();
@@ -552,12 +551,10 @@ Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified,
   if (!IsExpectedOpAndProvider(add_node, add_info, provider_type)) {
     return skip_status;
   }
-
   Node& dropout2_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
   if (!IsExpectedOpAndProvider(dropout2_node, dropout_info, provider_type)) {
     return skip_status;
   }
-
   Node* transpose_op_ptr = const_cast<Node*>(graph.GetProducerNode(matmul2_node.MutableInputDefs()[1]->Name()));
   if (transpose_op_ptr == nullptr || !IsExpectedOpAndProvider(*transpose_op_ptr, transpose_info, provider_type)) {
     return skip_status;

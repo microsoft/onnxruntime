@@ -79,7 +79,7 @@ def experimental_save_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
         checkpoint_state_dict = {'model': experimental_state_dict(ort_trainer, include_optimizer_state)}
     else:
         checkpoint_state_dict.update({'model': experimental_state_dict(ort_trainer, include_optimizer_state)})
-    
+
     assert os.path.exists(checkpoint_dir), f"checkpoint_dir ({checkpoint_dir}) directory doesn't exist"
 
     checkpoint_name = _get_checkpoint_name(checkpoint_prefix,
@@ -158,9 +158,7 @@ def _add_or_validate_unsharded_key(state_key, state_value, state_sub_dict, misma
     if state_key in state_sub_dict:
         # state_dict already contains a record for this unsharded state.
         # assert that all values are the same for this previously loaded state
-        # assert (state_sub_dict[state_key] == state_value).all(), mismatch_error_string
-        if not (state_sub_dict[state_key] == state_value).all(): 
-            print(mismatch_error_string + ":" + state_key)
+        assert (state_sub_dict[state_key] == state_value).all(), mismatch_error_string
     else:
         # create a new entry for this state in the state_sub_dict
         state_sub_dict[state_key] = state_value
@@ -181,7 +179,7 @@ def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state
 
     if full_precision not in state_dict[model]:
         state_dict[model][full_precision] = {}
-    
+
     # iterate over all model state keys
     for model_state_key, model_state_value in rank_state_dict[model][full_precision].items():
         # ZERO: full precision model states are sharded only when they exist in the partition_info subdict and mixed
@@ -267,11 +265,11 @@ def _aggregate_trainer_options(rank_state_dict, state_dict):
     state_dict[trainer_options][world_rank] = 0
     state_dict[trainer_options][world_size] = 1
     state_dict[trainer_options][optimizer_name] = rank_state_dict[trainer_options][optimizer_name]
-    state_dict[trainer_options][D_size] = rank_state_dict[trainer_options][D_size]
-    state_dict[trainer_options][H_size] = rank_state_dict[trainer_options][H_size]
+    state_dict[trainer_options][D_size] = 1
+    state_dict[trainer_options][H_size] = 1
 
 def _aggregate_megatron_partition_info(rank_state_dict, state_dict):
-    """Extracts partition_info from rank_state_dict and loads them accordingly on state_dict"""
+    """Extracts partition_info from rank_state_dict and loads on state_dict for megatron-partitioned weights"""
     partition_info = _utils.state_dict_partition_info_key()
     if partition_info not in state_dict:
         state_dict[partition_info] = {}
@@ -279,6 +277,7 @@ def _aggregate_megatron_partition_info(rank_state_dict, state_dict):
     rank_partition_info = rank_state_dict[partition_info]
     for k,v in rank_partition_info.items():
         if k not in state_dict[partition_info]:
+            # add partition info only if weight is megatron partitioned
             if (v["megatron_row_partition"] >= 0):
                 state_dict[partition_info][k] = v
 
@@ -293,13 +292,13 @@ def _to_pytorch_format(state_dict):
     return pytorch_state_dict
 
 def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world_size):
+    """Returns the D and H groups for the given sizes"""
     num_data_groups = int(world_size / data_parallel_size)
     data_groups = {}
     for data_group_id in range(num_data_groups):
         data_group_ranks=[]
         for r in range(data_parallel_size):
             data_group_ranks.append(data_group_id + horizontal_parallel_size * r)
-        print("Data Group: {} : {}".format(data_group_id, data_group_ranks))
         data_groups[data_group_id] = data_group_ranks
 
     num_horizontal_groups = int(world_size / horizontal_parallel_size)
@@ -308,7 +307,6 @@ def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world
         hori_group_ranks=[]
         for r in range(horizontal_parallel_size):
             hori_group_ranks.append(hori_group_id * horizontal_parallel_size + r)
-        print("Horizontal Group: {} : {}".format(hori_group_id, hori_group_ranks))
         horizontal_groups[hori_group_id] = hori_group_ranks
 
     return data_groups, horizontal_groups

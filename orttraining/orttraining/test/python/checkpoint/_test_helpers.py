@@ -123,16 +123,16 @@ def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir, 
 def create_orttrainer_and_load_checkpoint_bart(device, trainer_opts, checkpoint_dir, use_lamb=True):
     """Instantiate and load checkpoint into trainer
 
-    - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple transformer model
+    - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple BART model
     - Loads the checkpoint from directory checkpoint_dir into the trainer
     - Runs eval_step on the trainer so the trainer onnx graph is initialized
-    - Returns the trainer state_dict and the pytorch model
+    - Returns the trainer state_dict, the expected state dict if present, and the onnx model
     """
     seed = 1
     torch.manual_seed(seed)
     set_seed(seed)
 
-    # PyTorch transformer model setup
+    # model setup
     learning_rate = 0.1
     optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
     model, model_desc = _load_bart_model()
@@ -315,6 +315,13 @@ def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, 
             _save(trainer, checkpoint_dir, state_dict_key_name)
 
 def create_orttrainer_and_save_checkpoint_bart(device, trainer_opts, checkpoint_dir, state_dict_key_name='state_dict', use_lamb=True):
+    """Instantiate trainer and save checkpoint for BART. BART is used for Megatron checkpoint tests.
+
+    - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple BART model
+    - Loads a dummy optimizer state into the trainer
+    - Runs eval_step on the trainer so the trainer onnx graph is initialized
+    - Returns the trainer state_dict, the expected state dict if present, and the onnx model
+    """
     learning_rate = 0.1
     seed = 1
 
