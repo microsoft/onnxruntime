@@ -237,12 +237,14 @@ class PlannerImpl {
     symplan.reused_buffer = original;
   }
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
   void InplaceReuse(OrtValueIndex reused, OrtValueIndex reused_for) {
     ORT_ENFORCE(reused != reused_for);
     OrtValueIndex original = InplaceBuffer(reused);
     InplaceBuffer(reused_for) = original;
     AllocPlan(reused_for).inplace_reuse = original;
   }
+#endif
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
   bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
@@ -569,16 +571,18 @@ class PlannerImpl {
       ORT_RETURN_IF_ERROR(status);
     }
     for (size_t i = 0; i != locations.size(); ++i) {
-      size_t max_pc = plan_.execution_plan.size();
       const std::vector<OrtMemoryInfo>& loc = locations[i];
       if (loc.empty()) continue;
       plan_.allocation_plan[i].alloc_kind = AllocKind::kAllocateStatically;
+      plan_.allocation_plan[i].location = loc[0];
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+      size_t max_pc = plan_.execution_plan.size();
       std::string node_arg_name;
       ort_value_name_idx_map_.GetName(static_cast<int>(i), node_arg_name);
       auto node_arg = graph_viewer_.GetNodeArg(node_arg_name);
       plan_.allocation_plan[i].value_type = utils::GetMLDataType(*node_arg);
-      plan_.allocation_plan[i].location = loc[0];
       plan_.allocation_plan[i].life_interval = std::pair<size_t, size_t>(0, max_pc);
+#endif
       for (size_t j = 0; j != loc.size(); ++j) {
         if (loc[j] != loc[0]) {
           // set the location to CPU
@@ -602,12 +606,14 @@ class PlannerImpl {
     // Identify allocation/deallocation plan for every ml-value
 
     auto setup_preexisting = [this](const NodeArg* node_arg) {
-      size_t max_pc = plan_.execution_plan.size();
       auto input_index = Index(node_arg->Name());
       AllocPlanPerValue& thisplan = AllocPlan(input_index);
       thisplan.alloc_kind = AllocKind::kPreExisting;
       thisplan.value_type = utils::GetMLDataType(*node_arg);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+      size_t max_pc = plan_.execution_plan.size();
       thisplan.life_interval = std::pair<size_t, size_t>(0, max_pc);
+#endif
     };
 
     // inputs of the graph:
@@ -643,14 +649,18 @@ class PlannerImpl {
         // OrtValue index of the considered output NodeArg.
         const auto current = Index(node_output->Name());
         AllocPlan(current).value_type = utils::GetMLDataType(*node_output);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
         AllocPlan(current).life_interval.first = program_counter;
+#endif
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
         if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end()) {
           // node_output is graph's output, so we can't reuse intermediate buffer
           AllocPlan(current).alloc_kind = AllocKind::kAllocateOutput;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
           AllocPlan(current).life_interval.second = execution_plan.size();
+#endif
 
           // hacky perf optimization to not copy a pre-existing value to an output if this is a Loop subgraph and
           // the value is not being changed in the subgraph.
@@ -692,7 +702,9 @@ class PlannerImpl {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           //In this case, we dont kill the "reused" tensor
           Reuse(reused, current, AllocKind::kReuse);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
           InplaceReuse(reused, current);
+#endif
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
@@ -712,14 +724,16 @@ class PlannerImpl {
       for (auto node_input : pnode->InputDefs()) {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
-          auto current = Index(sym);
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
           // Compute lifetime
+          auto current = Index(sym);
           if ((current != -1) && (0 == --ort_value_usecount[current])) {
             AllocPlan(current).life_interval.second = program_counter;
           }
+#endif
           if ((original != -1) && (0 == DecrementUseCount(original))) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
@@ -732,14 +746,16 @@ class PlannerImpl {
       for (auto node_input : pnode->ImplicitInputDefs()) {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
-          auto current = Index(sym);
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
           // Compute lifetime
+          auto current = Index(sym);
           if ((current != -1) && (0 == --ort_value_usecount[current])) {
             AllocPlan(current).life_interval.second = program_counter;
           }
+#endif
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
@@ -755,13 +771,15 @@ class PlannerImpl {
       for (auto node_output : pnode->OutputDefs()) {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
-          auto current = Index(sym);
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+          auto current = Index(sym);
           if ((current != -1) && (0 == --ort_value_usecount[current])) {
             AllocPlan(current).life_interval.second = program_counter;
           }
+#endif
           if (0 == DecrementUseCount(original)) {
             freelist_.push_front(FreeBufferInfo(original, program_counter));
             if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {
@@ -928,6 +946,7 @@ class PlannerImpl {
   }
 
   //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
   void AdjustInplaceLifeIntervals() {
     std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
     for (size_t i = 0; i < ort_value_info_.size(); ++i) {
@@ -948,6 +967,7 @@ class PlannerImpl {
       }
     }
   }
+#endif
 };  // namespace onnxruntime
 
 Status PlannerImpl::CreatePlan() {
@@ -972,8 +992,11 @@ Status PlannerImpl::CreatePlan() {
   // Determine nodes that need fence check. This needs to be done after ComputeUseCounts and ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
   //Adjust the allocate and lifetime intervals for all ml-values, based on their allocation kind.
   AdjustInplaceLifeIntervals();
+#endif
+
 #ifdef ENABLE_TRAINING
   // Determine allocation order for weights and activations. This needs to be done after ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeAllocationOrder());

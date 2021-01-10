@@ -33,9 +33,11 @@ struct AllocPlanPerValue {
   // if the value is used in async kernel, a fence object would be created
   // note the fence object would be shared between MLValues reusing the same buffer
   bool create_fence_if_async{false};
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
   IntervalT life_interval{0, 0};
   IntervalT allocate_interval{0, 0};
   OrtValueIndex inplace_reuse{-1}; //No in-place reuse
+#endif
   std::vector<size_t> program_counter_start;
   std::vector<size_t> program_counter_end;
 

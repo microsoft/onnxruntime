@@ -377,9 +377,9 @@ InferenceSession::~InferenceSession() {
   if (session_activity_started_)
     TraceLoggingWriteStop(session_activity, "OrtInferenceSessionActivity");
 #endif
-  if (session_state_->IsEnableMemoryProfile()) {
-    MemoryInfo::GenerateMemoryProfile();
-  }
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::GenerateMemoryProfile();
+#endif
 }
 
 common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) {
@@ -1152,8 +1152,6 @@ common::Status InferenceSession::Initialize() {
         *session_logger_,
         session_profiler_,
         session_options_.use_deterministic_compute);
-
-    session_state_->SetEnableMemoryProfile(session_options_.enable_memory_profile);
 
     onnxruntime::Graph& graph = model_->MainGraph();
 

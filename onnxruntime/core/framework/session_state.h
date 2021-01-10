@@ -290,13 +290,6 @@ class SessionState {
     return parent_;
   }
 
-  inline void SetEnableMemoryProfile(bool enable_m_profile) {
-    enable_mem_profile_ = enable_m_profile;
-  }
-  bool IsEnableMemoryProfile() const {
-    return enable_mem_profile_;
-  }
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -450,7 +443,6 @@ class SessionState {
 #endif
 
   SessionState* parent_ = nullptr;
-  bool enable_mem_profile_ = false;
   //Assign each graph in each session an unique id.
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   int graph_id_ = 0;

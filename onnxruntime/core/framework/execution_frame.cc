@@ -211,7 +211,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       mem_patterns_(nullptr),
       planner_(nullptr) {
   Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::IncreaseIteration();
+#endif
 
   // map the custom allocators to ort_value_idx entries
   if (!fetch_allocators.empty()) {
@@ -292,15 +294,13 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             if (buffer != nullptr) {
               buffers_[location] = BufferUniquePtr(buffer, alloc);
             }
-#if !defined(ORT_MINIMAL_BUILD)
-            if (session_state_.IsEnableMemoryProfile()) {
-              //Record activation memory pattern
-              MemoryInfo::ClearMemoryInfoPerExecution();
-              if (mem_patterns_ && buffer != nullptr) {
-                MemoryInfo::RecordActivationPatternInfo(*mem_patterns_);
-                MemoryInfo::MemoryInfoProfile::CreateEvents("static activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                            MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 1);
-              }
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+            //Record activation memory pattern
+            MemoryInfo::ClearMemoryInfoPerExecution();
+            if (mem_patterns_ && buffer != nullptr) {
+              MemoryInfo::RecordActivationPatternInfo(*mem_patterns_);
+              MemoryInfo::MemoryInfoProfile::CreateEvents("static activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                                          MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 1);
             }
 #endif
             // log size of activation. Keep it commented out for now to avoid log flooding.
@@ -415,10 +415,8 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     // if parallel executor is used.
     std::unique_lock<std::mutex> lock(mtx_);
     dynamic_activation_memory_sizes_in_byte_[location.name] += size;
-#if !defined(ORT_MINIMAL_BUILD)
-    if (session_state_.IsEnableMemoryProfile()) {
-      MemoryInfo::SetDynamicAllocation(ort_value_index);
-    }
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    MemoryInfo::SetDynamicAllocation(ort_value_index);
 #endif
   }
 
@@ -583,8 +581,9 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       }
     }
 
-    if (session_state_.IsEnableMemoryProfile())
-      MemoryInfo::RecordActivationAllocInfo(ort_value_index, ort_value);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    MemoryInfo::RecordActivationAllocInfo(ort_value_index, ort_value);
+#endif
 
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {

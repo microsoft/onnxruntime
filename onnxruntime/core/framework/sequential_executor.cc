@@ -329,11 +329,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
          << "' Status Message: " << compute_status.ErrorMessage();
       //If the computation failed, we still can record the memory consumption
-#if !defined(ORT_MINIMAL_BUILD)
-      if (session_state.IsEnableMemoryProfile()) {
-        MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                    MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 1);
-      }
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+      MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                                  MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 1);
 #endif
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
@@ -448,12 +446,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
   VLOGS(logger, 1) << "Done with execution.";
 
-#if !defined(ORT_MINIMAL_BUILD)
-  if (session_state.IsEnableMemoryProfile()) {
-    MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 1);
-    MemoryInfo::MemoryInfoProfile::Clear();
-  }
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 1);
+  MemoryInfo::MemoryInfoProfile::Clear();
 #endif
 
   if (frame.HasMemoryPatternPlanner()) {
@@ -481,12 +477,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   for (auto i : frame.GetStaticMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
-              << i.second << " bytes for " << i.first << std::endl;
+                       << i.second << " bytes for " << i.first << std::endl;
   }
 
   for (auto i : frame.GetDynamicMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
-              << i.second << " bytes for " << i.first << std::endl;
+                       << i.second << " bytes for " << i.first << std::endl;
   }
 
   return Status::OK();

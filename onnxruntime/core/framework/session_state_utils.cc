@@ -165,12 +165,10 @@ common::Status SaveInitializedTensors(
   std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
-#if !defined(ORT_MINIMAL_BUILD)
-  if (session_options.enable_memory_profile) {
-    MemoryInfo::RecordInitializerPatternInfo(planner.GetMemPatterns());
-    MemoryInfo::MemoryInfoProfile::CreateEvents("initializer_" + std::to_string(MemoryInfo::GetIteration()),
-                                                MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 1);
-  }
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::RecordInitializerPatternInfo(planner.GetMemPatterns());
+  MemoryInfo::MemoryInfoProfile::CreateEvents("initializer_" + std::to_string(MemoryInfo::GetIteration()),
+                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 1);
 #endif
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
