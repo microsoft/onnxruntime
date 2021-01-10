@@ -133,10 +133,16 @@ namespace concurrency {
 // Align to avoid false sharing with prior fields.  TheIf required,
 // padding must be added subsequently to avoid false sharing with
 // later fields.
-#define ORT_ALIGN_TO_AVOID_FALSE_SHARING __attribute__((__aligned__(128)))
+#define ORT_FALSE_SHARING_BYTES 128
+
+#ifdef _MSC_VER
+#define ORT_ALIGN_TO_AVOID_FALSE_SHARING DECLSPEC_ALIGN(ORT_FALSE_SHARING_BYTES)
+#else
+#define ORT_ALIGN_TO_AVOID_FALSE_SHARING __attribute__ ((aligned(ORT_FALSE_SHARING_BYTES)))
+#endif
 
 struct PaddingToAvoidFalseSharing {
-  char padding[128];
+  char padding[ORT_FALSE_SHARING_BYTES];
 };
 
 class ThreadPoolParallelSection;
