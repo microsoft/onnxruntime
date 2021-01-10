@@ -110,32 +110,28 @@ static void BM_ThreadPoolSimpleParallelFor(benchmark::State& state) {
   }
 }
 
+// Select number of threads to use for simple loop microbenchmark.  We
+// always cover 1 thread and NUM_THREADS.  In addition, anticipating
+// NUMA effects on 2-socket machines, we look just below and just
+// above the point where the second socket must be used.
+static constexpr int HALF_THREADS = NUM_THREADS>=2 ? ((NUM_THREADS/2)) : 1;
+static constexpr int HALF_THREADS_PLUS_1 = NUM_THREADS>=2 ? ((NUM_THREADS/2)+1) : 1;
+
 BENCHMARK(BM_ThreadPoolSimpleParallelFor)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kMicrosecond)
     ->Args({1, 1, 100000})
-    ->Args({2, 2, 100000})
-    ->Args({4, 4, 100000})
-    ->Args({8, 8, 100000})
-    ->Args({12, 12, 100000})
-    ->Args({13, 13, 100000})
-    ->Args({14, 14, 100000})
-    ->Args({15, 15, 100000})
-    ->Args({16, 16, 100000})
-    ->Args({17, 17, 100000})
-    ->Args({20, 20, 100000})
-    ->Args({24, 24, 100000})
-    ->Args({28, 28, 100000})
+    ->Args({HALF_THREADS, HALF_THREADS, 100000})
+    ->Args({HALF_THREADS_PLUS_1, HALF_THREADS_PLUS_1, 100000})
+    ->Args({NUM_THREADS, NUM_THREADS, 100000})
     ->Args({1, 1, 10000})
-    ->Args({2, 2, 10000})
-    ->Args({4, 4, 10000})
-    ->Args({8, 8, 10000})
-    ->Args({14, 14, 10000})
-    ->Args({15, 15, 10000})
-    ->Args({17, 17, 10000})
-    ->Args({20, 20, 10000})
-    ->Args({24, 24, 10000})
-    ->Args({28, 28, 10000});
+    ->Args({HALF_THREADS, HALF_THREADS, 10000})
+    ->Args({HALF_THREADS_PLUS_1, HALF_THREADS_PLUS_1, 10000})
+    ->Args({NUM_THREADS, NUM_THREADS, 10000})
+    ->Args({1, 1, 1000})
+    ->Args({HALF_THREADS, HALF_THREADS, 1000})
+    ->Args({HALF_THREADS_PLUS_1, HALF_THREADS_PLUS_1, 1000})
+    ->Args({NUM_THREADS, NUM_THREADS, 1000});
 
 static void BM_SimpleForLoop(benchmark::State& state) {
   const size_t len = state.range(0);
