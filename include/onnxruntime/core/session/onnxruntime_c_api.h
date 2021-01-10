@@ -1122,7 +1122,7 @@ struct OrtApi {
    * If ROCM is not available (due to a non rocm enabled build), this function will return failure.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_ROCM,
-                  _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* cuda_options);
+                  _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options);
 
   /**
    * Append OpenVINO execution provider to the session options

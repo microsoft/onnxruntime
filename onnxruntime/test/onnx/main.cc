@@ -328,7 +328,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_CUDA
       OrtCUDAProviderOptions cuda_options{
           0,
-          OrtMIOpenConvAlgoSearch::EXHAUSTIVE,
+          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
           std::numeric_limits<size_t>::max(),
           0,
           true};
@@ -401,7 +401,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           true};
       sf.AppendExecutionProvider_ROCM(rocm_options);
 #else
-      fprintf(stderr, "CUDA is not supported in this build");
+      fprintf(stderr, "ROCM is not supported in this build");
       return -1;
 #endif
     }
