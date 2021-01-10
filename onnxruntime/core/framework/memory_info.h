@@ -1,3 +1,4 @@
+#if !defined(ORT_MINIMAL_BUILD)
 #pragma once
 #include "core/graph/basic_types.h"
 #include "core/framework/alloc_kind.h"
@@ -127,7 +128,8 @@ class MemoryInfo {
     //map_type: Initalizer, static_activation, dynamic_activation. We have this separtion because they are using different memory offsets.
     //group_name: The group_name that is recorded previously using function "AddRecordingTensorGroup". Used for generating customized sessions for a group of tensors
     //Top_k: The steps with the top-k highest memory consumptions are plot. When top_k == 0, we plot all the steps
-    static void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& name_pattern, const size_t top_k);
+    static void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& group_name,
+                             const size_t top_k, const OrtDevice::DeviceType device_t = OrtDevice::GPU);
 
     static const std::vector<std::string>& GetEvents() { return events; }
 
@@ -225,3 +227,4 @@ class MemoryInfo {
 };
 
 }  // namespace onnxruntime
+#endif

@@ -1,3 +1,4 @@
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/memory_info.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
@@ -280,16 +281,17 @@ std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSumm
 //map_type: Initalizer, static_activation, dynamic_activation. We have this separtion because they are using different memory offsets.
 //group_name: The group_name that is recorded previously using function "AddRecordingTensorGroup". Used for generating customized sessions for a group of tensors
 //Top_k: The steps with the top-k highest memory consumptions are plot. When top_k == 0, we plot all the steps
-void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& group_name, const size_t top_k) {
+void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& group_name,
+                                                 const size_t top_k, const OrtDevice::DeviceType device_t) {
   // Metadata.
-  std::string pid_name_internal = p_name + group_name;
+  std::string pid_name_internal = "device_" + std::to_string(device_t) + "_" + p_name + group_name;
   events.push_back(CreateMetadataEvent(pid_name_internal, pid));
   size_t summary_size = 10;
   std::hash<std::string> str_hash;
 
   //Create Event for each tensor
   for (const auto& location_map : tensors_memory_info_map_) {
-    if (location_map.first.device.Type() != OrtDevice::GPU) continue;
+    if (location_map.first.device.Type() != device_t) continue;
     //If there is no tensor of a map_type, we skip creating event for that map_type
     if (location_map.second.find(map_type) == location_map.second.end()) continue;
     auto summary_key = str_hash(location_map.first.ToString() + std::to_string(map_type));
@@ -379,3 +381,4 @@ void MemoryInfo::GenerateMemoryProfile() {
 }
 
 }  // namespace onnxruntime
+#endif

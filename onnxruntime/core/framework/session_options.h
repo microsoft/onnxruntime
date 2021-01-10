@@ -112,8 +112,10 @@ struct SessionOptions {
   std::unordered_map<std::string, std::string> session_configurations;
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Whether to enable memory profiling
   bool enable_memory_profile = false;
+#endif
 
   // See onnxruntime_c_api.h for detailed documentation.
   Status AddInitializer(const char* name, const OrtValue* val) noexcept;

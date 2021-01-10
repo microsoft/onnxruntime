@@ -53,7 +53,9 @@ static SessionOptions SESSION_OPTION = {
     false,                             //use_deterministic_compute
     {},                                //session_configurations
     {},                                // initializers_to_share_map
-    false,                             //enable memory_profiling
+#if !defined(ORT_MINIMAL_BUILD)
+    false,  //enable memory_profiling
+#endif
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -799,7 +801,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
+#if !defined(ORT_MINIMAL_BUILD)
         MemoryInfo::SetIteration(step_);
+#endif
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
 
         const bool stablized_perf_measurement_started = step_ >= stabilized_perf_start_step;

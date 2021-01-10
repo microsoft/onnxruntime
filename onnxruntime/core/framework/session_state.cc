@@ -994,9 +994,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   // Uncomment the below to dump the allocation plan to std::cout
   LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+#if !defined(ORT_MINIMAL_BUILD)
   if (IsEnableMemoryProfile()) {
     MemoryInfo::GenerateTensorMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
   }
+#endif
 
   std::unique_ptr<ITensorAllocator> tensor_allocator(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));

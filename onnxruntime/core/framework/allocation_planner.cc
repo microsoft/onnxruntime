@@ -595,8 +595,8 @@ class PlannerImpl {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
     //copy the usecounts to an vector, before computing reuse
     std::vector<int> ort_value_usecount;
-    for (size_t i = 0; i < ort_value_info_.size(); ++i) {
-      ort_value_usecount.push_back(ort_value_info_[i].usecount);
+    for (auto ort_value_info : ort_value_info_) {
+      ort_value_usecount.push_back(ort_value_info.usecount);
     }
 
     // Identify allocation/deallocation plan for every ml-value
@@ -773,9 +773,9 @@ class PlannerImpl {
     }
     return Status::OK();
   }
-
 #ifdef ENABLE_TRAINING
-  bool AllocateInputsContiguously(const Node& node) const {
+  bool
+  AllocateInputsContiguously(const Node& node) const {
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
     if (ci.kernel_def == nullptr) {
       return false;
@@ -837,8 +837,7 @@ class PlannerImpl {
 
   // Whether a given NodeArg has fence or not.
   // If the buffer is reused, need to check whether original OrtValue has fence or not.
-  bool
-  HasFence(const onnxruntime::NodeArg* arg) {
+  bool HasFence(const onnxruntime::NodeArg* arg) {
     bool has_fence = false;
     if (arg && arg->Exists()) {
       OrtValueIndex index = Index(arg->Name());
@@ -928,7 +927,7 @@ class PlannerImpl {
     return !utils::HasTensorType(type_proto);
   }
 
-  //For in-place reuse tensors, the lifetime is the union of all the tensor that tensors that use that buffer
+  //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
   void AdjustInplaceLifeIntervals() {
     std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
     for (size_t i = 0; i < ort_value_info_.size(); ++i) {
