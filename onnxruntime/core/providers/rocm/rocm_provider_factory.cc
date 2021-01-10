@@ -12,6 +12,7 @@
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ort_apis.h"
 
 using namespace onnxruntime;
 
@@ -46,3 +47,18 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessi
 
   return nullptr;
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
+                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
+  ROCMExecutionProviderInfo info{};
+  info.device_id = gsl::narrow<OrtDevice::DeviceId>(rocm_options->device_id);
+  info.hip_mem_limit = rocm_options->hip_mem_limit;
+  info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(rocm_options->arena_extend_strategy);
+  // info.miopen_conv_algo_search = rocm_options->miopen_conv_algo_search;
+  // info.do_copy_in_default_stream = rocm_options->do_copy_in_default_stream;
+
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_ROCM(info));
+
+  return nullptr;
+}
+

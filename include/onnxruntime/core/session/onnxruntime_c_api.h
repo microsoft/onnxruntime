@@ -257,7 +257,8 @@ typedef enum OrtCudnnConvAlgoSearch {
   DEFAULT,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
 } OrtCudnnConvAlgoSearch;
 
-using OrtMIOpenConvAlgoSearch = OrtCudnnConvAlgoSearch;
+typedef OrtCudnnConvAlgoSearch OrtMIOpenConvAlgoSearch;
+
 /// <summary>
 /// Options for the CUDA provider that are passed to SessionOptionsAppendExecutionProvider_CUDA
 /// </summary>
@@ -275,7 +276,7 @@ typedef struct OrtCUDAProviderOptions {
 typedef struct OrtROCMProviderOptions {
   int device_id;                                    // hip device with id=0 as default device.
   OrtMIOpenConvAlgoSearch miopen_conv_algo_search;  // miopen conv algo search option
-  size_t rocm_mem_limit;                            // default hip memory limitation to maximum finite value of size_t.
+  size_t hip_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
   int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
   int do_copy_in_default_stream;
 } OrtROCMProviderOptions;
