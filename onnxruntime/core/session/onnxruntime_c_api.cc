@@ -23,6 +23,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value.h"
+#include "core/providers/get_execution_providers.h"
 #include "core/session/environment.h"
 #include "core/framework/callback.h"
 #include "core/framework/tensorprotoutils.h"
@@ -1030,6 +1031,16 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetDescription,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetGraphDescription,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
+  API_IMPL_BEGIN
+  auto description = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->graph_description;
+  *value = StrDup(description, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::ModelMetadataLookupCustomMetadataMap, _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _In_ const char* key, _Outptr_result_maybenull_ char** value) {
   API_IMPL_BEGIN
@@ -1703,19 +1714,20 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
                     _In_ int* providers_length) {
   API_IMPL_BEGIN
   const size_t MAX_LEN = 30;
-  int available_count = (int)(sizeof(providers_available) / sizeof(char*));
-  char** out = (char**)malloc(available_count * sizeof(char*));
+  const auto& available_providers = GetAvailableExecutionProviderNames();
+  const int available_count = gsl::narrow<int>(available_providers.size());
+  char** const out = (char**)malloc(available_count * sizeof(char*));
   if (out) {
     for (int i = 0; i < available_count; i++) {
       out[i] = (char*)malloc((MAX_LEN + 1) * sizeof(char));
       if (out[i]) {
 #ifdef _MSC_VER
-        strncpy_s(out[i], MAX_LEN, providers_available[i], MAX_LEN);
+        strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
         out[i][MAX_LEN] = '\0';
 #elif defined(__APPLE__)
-        strlcpy(out[i], providers_available[i], MAX_LEN);
+        strlcpy(out[i], available_providers[i].c_str(), MAX_LEN);
 #else
-        strncpy(out[i], providers_available[i], MAX_LEN);
+        strncpy(out[i], available_providers[i].c_str(), MAX_LEN);
         out[i][MAX_LEN] = '\0';
 #endif
       }
@@ -1724,7 +1736,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   *providers_length = available_count;
   *out_ptr = out;
   API_IMPL_END
-  return NULL;
+  return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
@@ -1884,7 +1896,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_6 = {
+static constexpr OrtApi ort_api_1_to_7 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2073,6 +2085,7 @@ static constexpr OrtApi ort_api_1_to_6 = {
     // End of Version 6 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 7 - In development, feel free to add/remove/rearrange here
+    &OrtApis::ModelMetadataGetGraphDescription,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
@@ -2080,8 +2093,8 @@ static constexpr OrtApi ort_api_1_to_6 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 6)
-    return &ort_api_1_to_6;
+  if (version >= 1 && version <= 7)
+    return &ort_api_1_to_7;
 
   return nullptr;  // Unsupported version
 }

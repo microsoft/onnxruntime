@@ -231,7 +231,7 @@ class ORTTrainerOptions(object):
         distributed.deepspeed_zero_optimization.stage (int, default is 0):
             select which stage of DeepSpeed ZeRO to use. Stage 0 means disabled.
         distributed.enable_adasum (bool, default is False):
-            enable `Adasum <https://github.com/horovod/horovod/pull/1484>`_
+            enable `Adasum <https://arxiv.org/abs/2006.02924>`_
             algorithm for AllReduce
         lr_scheduler (optim._LRScheduler, default is None):
             specifies learning rate scheduler

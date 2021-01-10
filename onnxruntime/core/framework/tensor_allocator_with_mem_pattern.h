@@ -108,8 +108,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error.");
     }
     size_t len = 0;
-    static constexpr int alignment = 256;
-    ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<alignment>(*value, &len));
+    ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<kAllocAlignment>(*value, &len));
     ORT_RETURN_IF_ERROR(planner_.TraceAllocation(id, len));
     return Status::OK();
   }

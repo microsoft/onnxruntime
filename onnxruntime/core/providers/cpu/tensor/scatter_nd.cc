@@ -3,6 +3,7 @@
 
 #include "scatter_nd.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
 
@@ -11,72 +12,86 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     ScatterND);
 
 ONNX_CPU_OPERATOR_KERNEL(
     ScatterND,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     ScatterND);
 
-template <typename Tind>
-Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
-  const auto* input_tensor = context->Input<Tensor>(0);
-  const auto* indice_tensor = context->Input<Tensor>(1);
-  const auto* update_tensor = context->Input<Tensor>(2);
-  ORT_ENFORCE(input_tensor != nullptr);
-  ORT_ENFORCE(indice_tensor != nullptr);
-  ORT_ENFORCE(update_tensor != nullptr);
+Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
+                                     const TensorShape& indice_shape,
+                                     const TensorShape& update_shape) {
+  auto input_rank = input_shape.NumDimensions();
+  auto indice_rank = indice_shape.NumDimensions();
+  auto update_rank = update_shape.NumDimensions();
 
-  const auto& input_shape = input_tensor->Shape();
-  const auto& indice_shape = indice_tensor->Shape();
-  const auto& update_shape = update_tensor->Shape();
-  if (indice_shape.NumDimensions() == 0 || input_shape.NumDimensions() == 0) {
+  if (input_rank == 0 || indice_rank == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input tensor and indices tensor must has rank larger than 0. ",
                            "input shape: ", input_shape, ", indices shape: ", indice_shape);
   }
 
-  auto indice_rank = indice_shape.NumDimensions();
   auto last_indice_dimension = indice_shape[indice_rank - 1];
-  if (last_indice_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
+  if (last_indice_dimension > static_cast<int64_t>(input_rank)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "last dimension of indices must not be larger than rank of input tensor");
   }
 
   bool is_update_shape_invalid = [&]() {
-    auto update_rank = update_shape.NumDimensions();
-    auto input_rank = input_shape.NumDimensions();
-    if (update_rank < indice_rank - 1) {
+    // Validate rank of update tensor
+    // Per spec, the rank of the update tensor should be:
+    // (Rank of input tensor) + (Rank of indices tensor) -1 - last_indice_dimension
+    if (update_rank != (input_rank + indice_rank - 1 - static_cast<int64_t>(last_indice_dimension))) {
       return true;
     }
-    if (update_rank >= indice_rank - 1 &&
-        indice_rank >= 1 &&
-        (indice_shape.Slice(0, indice_rank - 1) != update_shape.Slice(0, indice_rank - 1))) {
+
+    // Validate shape of the update tensor
+    // Part 1: The shape of the update tensor upto the indices rank - 1 (exclusive)
+    // should match the shape of the indices tensor upto indices rank - 1 (exclusive)
+    if (indice_shape.Slice(0, indice_rank - 1) != update_shape.Slice(0, indice_rank - 1)) {
       return true;
     }
-    if ((static_cast<int64_t>(input_rank) > last_indice_dimension) &&
-        (update_rank >= indice_rank - 1) &&
-        (input_shape.Slice(last_indice_dimension) != update_shape.Slice(indice_rank - 1))) {
+
+    // Part 2: The shape of the update tensor after indices rank - 1 (inclusive)
+    // should match the shape of the input tensor after `last_indice_dimension`
+    if (input_shape.Slice(last_indice_dimension) != update_shape.Slice(indice_rank - 1)) {
       return true;
     }
+
     return false;
   }();
+
   if (is_update_shape_invalid) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "updates tensor should have shape equal to indices.shape[:-1] + data.shape[indices.shape[-1]:]. ",
                            "updates shape: ", update_shape, ", indices shape: ", indice_shape, ", data shape: ", input_shape);
   }
 
+  return Status::OK();
+}
+
+Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
+  const auto* input_tensor = context->Input<Tensor>(0);
+  const auto* indice_tensor = context->Input<Tensor>(1);
+  const auto* update_tensor = context->Input<Tensor>(2);
+
+  const auto& input_shape = input_tensor->Shape();
+  const auto& indice_shape = indice_tensor->Shape();
+  const auto& update_shape = update_tensor->Shape();
+
+  ORT_RETURN_IF_ERROR(ValidateShapes(input_shape, indice_shape, update_shape));
+
   auto output_tensor = context->Output(0, input_shape);
 
   const auto* src_base = input_tensor->DataRaw();
   auto* dst_base = output_tensor->MutableDataRaw();
   const bool is_string_type = input_tensor->IsDataTypeString();
+
+  auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1];
 
   // Re-use input for output. If input/output Tensor* are the same, do not copy.
   if (src_base != dst_base) {
@@ -92,15 +107,16 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
 
   std::vector<int64_t> element_counts(last_indice_dimension, 0LL);  // Number of elements for each input dimension
 
+  TensorPitches input_strides(input_shape);
   for (int64_t i = 0; i < last_indice_dimension; ++i) {
-    element_counts[i] = input_shape.SizeFromDimension(i + 1);
+    element_counts[i] = input_strides[i];
   }
 
   int64_t err_indice = 0;
   p.element_bytes = input_tensor->DataType()->Size();
   p.element_to_copy = input_shape.SizeFromDimension(last_indice_dimension);
   p.bytes_to_copy = p.element_bytes * p.element_to_copy;
-  auto indice_offset = static_cast<const Tind*>(indice_tensor->DataRaw());
+  const int64_t* indice_offset = indice_tensor->template Data<int64_t>();
   auto offset_count = indice_shape.Size() / last_indice_dimension;  // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
 
@@ -124,12 +140,10 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
   return err_indice == 0 ? Status::OK() : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
 }
 
-template Status ScatterNDBase::PrepareForCompute<int64_t>(OpKernelContext*, Prepare&) const;
-
 Status ScatterND::Compute(OpKernelContext* context) const {
   Prepare p;
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-  ORT_RETURN_IF_ERROR(PrepareForCompute<int64_t>(context, p));
+  ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
   return nullptr == p.input_str_base ? ScatterNumber(p, tp) : ScatterString(p, tp);
 }
 

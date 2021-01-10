@@ -14,7 +14,7 @@ class DnnlSum : public DnnlKernel {
  public:
   explicit DnnlSum(const DnnlNode& node,
                    DNNLExecutionProvider* provider,
-                   const Provider_NodeAttributes& attributes,
+                   const NodeAttributes& attributes,
                    const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
@@ -106,7 +106,7 @@ class DnnlSum : public DnnlKernel {
         if (!gpu_available_) {
           auto src_memory = *parents_[i].get()->primitive_dst_mem_;
           srcs_memory_.push_back(src_memory);
-        } else { // gpu_available_
+        } else {  // gpu_available_
           auto src_memory_gpu = *parents_[i].get()->primitive_dst_mem_;
           srcs_memory_gpu_.push_back(src_memory_gpu);
         }
@@ -120,7 +120,7 @@ class DnnlSum : public DnnlKernel {
     if (!gpu_available_) {
       sum_pd_ = onnxruntime::make_unique<dnnl::sum::primitive_desc>(
           dnnl::sum::primitive_desc(*primitive_dst_md_, coeff, srcs_pd_, cpu_engine));
-    } else { // gpu_available_
+    } else {  // gpu_available_
       sum_pd_ = onnxruntime::make_unique<dnnl::sum::primitive_desc>(
           dnnl::sum::primitive_desc(*primitive_dst_md_, coeff, srcs_pd_, gpu_engine));
     }
@@ -144,7 +144,7 @@ class DnnlSum : public DnnlKernel {
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(sum_pd_->dst_desc(), cpu_engine));
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(sum_pd_->dst_desc(), gpu_engine));
     }
@@ -158,7 +158,7 @@ class DnnlSum : public DnnlKernel {
       for (int i = 0; i < (int)num_inputs; i++) {
         args.insert({DNNL_ARG_MULTIPLE_SRC + i, srcs_memory_[i]});
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       args.insert({DNNL_ARG_DST, *primitive_dst_mem_});
       for (int i = 0; i < (int)num_inputs; i++) {
         args.insert({DNNL_ARG_MULTIPLE_SRC + i, srcs_memory_gpu_[i]});
@@ -201,7 +201,7 @@ class DnnlSum : public DnnlKernel {
         } else {
           primitive_dst_mem_->set_data_handle(dst_data);
         }
-      } else { // gpu_available_
+      } else {  // gpu_available_
         reorder_dst_mem_to_->set_data_handle(dst_data);
       }
     }

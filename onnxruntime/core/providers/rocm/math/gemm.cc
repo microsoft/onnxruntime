@@ -115,7 +115,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           out_data, N));
     } else {
       // B is (M, N), no broadcast needed.
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(out_data, b_data, M * N * sizeof(float), hipMemcpyDeviceToDevice));
+      HIP_RETURN_IF_ERROR(hipMemcpyAsync(out_data, b_data, M * N * sizeof(T), hipMemcpyDeviceToDevice));
     }
   }
 

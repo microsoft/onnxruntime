@@ -10,15 +10,24 @@
 namespace onnxruntime {
 namespace training {
 enum WorkerGroupType {
-  DataParallel = 0,
-  HorizontalParallel = 1,
-  ModelParallel = 2,
-  WorkerGroupTypeCount = 3,
+  // The global view of all parallel workers.
+  GlobalParallel = 0,
+  // The view of all data parallel workers.
+  DataParallel = 1,
+  // The view of data parallel worker groups within a node.
+  NodeLocalDataParallel = 2,
+  // The view of data parallel worker groups aross nodes.
+  CrossNodeDataParallel = 3,
+  // The view of Megatron-style model parallel workers.
+  HorizontalParallel = 4,
+  // The view of pipeline model parallel workers
+  ModelParallel = 5,
+  WorkerGroupTypeCount = 6,
 };
 
 struct WorkerGroup {
   std::vector<int32_t> ranks;  // array of global world rank
-  int32_t group_id;
+  int32_t group_id{-1};
   WorkerGroupType group_type;
   int32_t rank_in_group{-1};  // current worker' relative rank within this group, ranging from 0 to size-1
 
@@ -70,6 +79,26 @@ class DistributedRunContext {
 
   static DistributedRunConfig& RunConfig() {
     return DistributedRunContext::GetInstance().GetRunConfig();
+  }
+
+  // Utility function to return string representation of each WorkerGroupType
+  static std::string GetWorkerGroupName(WorkerGroupType group) {
+    switch (group) {
+      case WorkerGroupType::GlobalParallel:
+        return "GlobalParallel";
+      case WorkerGroupType::DataParallel:
+        return "DataParallel";
+      case WorkerGroupType::NodeLocalDataParallel:
+        return "NodeLocalDataParallel";
+      case WorkerGroupType::CrossNodeDataParallel:
+        return "CrossNodeDataParallel";
+      case WorkerGroupType::HorizontalParallel:
+        return "HorizontalParallel";
+      case WorkerGroupType::ModelParallel:
+        return "ModelParallel";
+      default:
+        ORT_THROW("Unsupported distributed worker group type.");
+    }
   }
 
   // Get current worker' rank within the specified group,
