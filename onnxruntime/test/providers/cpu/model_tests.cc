@@ -447,20 +447,26 @@ TEST_P(ModelTest, Run) {
   if (provider_name == "cpu" && !is_single_node)
     execution_modes.push_back(ExecutionMode::ORT_PARALLEL);
 
+#ifndef _OPENMP
   std::vector<bool> use_single_thread{false};
   // Test the model with intra op threadpool disabled
-  if (provider_name == "cpu" && !is_single_node)
+  if (provider_name == "cpu" && is_single_node)
     use_single_thread.push_back(true);
+#endif
 
   std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToMBString(test_case_name), std::move(model_info),
                                                     per_sample_tolerance, relative_per_sample_tolerance);
+#ifndef _OPENMP
   for (bool is_single_thread : use_single_thread) {
+#endif
     for (ExecutionMode execution_mode : execution_modes) {
       SessionOptions so;
+#ifndef _OPENMP
       if (!is_single_thread)
         so.use_per_session_threads = false;
       else
         so.intra_op_param.thread_pool_size = 1;  // Disable intra op thread pool
+#endif
       so.execution_mode = execution_mode;
       so.session_logid = ToMBString(test_case_name);
       so.session_log_severity_level = (int)logging::Severity::kERROR;
@@ -483,8 +489,7 @@ TEST_P(ModelTest, Run) {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRknpuExecutionProvider()));
       } else if (provider_name == "acl") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultAclExecutionProvider()));
-      }
-      if (provider_name == "armnn") {
+      } else if (provider_name == "armnn") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultArmNNExecutionProvider()));
       }
 
@@ -566,7 +571,9 @@ TEST_P(ModelTest, Run) {
         }
       }
     }
+#ifndef _OPENMP
   }
+#endif
 }
 
 // TODO: all providers
@@ -766,7 +773,7 @@ TEST_P(ModelTest, Run) {
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(openvino_disabled_tests), std::end(openvino_disabled_tests));
     }
- 
+
 #if !defined(__amd64__) && !defined(_M_AMD64)
     // out of memory
     static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("BERT_Squad"),
