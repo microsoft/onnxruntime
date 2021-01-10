@@ -157,8 +157,7 @@ class MemoryInfo {
   };
 
   static void GenerateTensorMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map);
-  static void RecordInitializerPatternInfo(const MemoryPatternGroup& mem_patterns);
-  static void RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns);
+  static void RecordPatternInfo(const MemoryPatternGroup& mem_patterns,  const MapType& type);
 
   static void RecordInitializerAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map);
   static void RecordActivationAllocInfo(const OrtValueIndex idx, const OrtValue& value);

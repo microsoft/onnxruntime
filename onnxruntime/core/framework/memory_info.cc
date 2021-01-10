@@ -55,29 +55,15 @@ void MemoryInfo::RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns,
   }
 }
 
-void MemoryInfo::RecordActivationPatternInfo(const MemoryPatternGroup& mem_patterns) {
-  RecordMemoryPatternInfo(mem_patterns, MapType::StaticActivation);
+void MemoryInfo::RecordPatternInfo(const MemoryPatternGroup& mem_patterns, const MapType& type) {
+  RecordMemoryPatternInfo(mem_patterns, type);
   for (auto& item : tensor_alloc_info_map_) {
     if (item.second.alloc_kind == AllocKind::kReuse) {
       auto reuse_buffer = AllocPlan(item.first)->reused_buffer;
       auto& map = tensors_memory_info_map_.at(AllocPlan(item.first)->location);
-      if (map[MapType::StaticActivation].Contain(reuse_buffer)) {
-        auto& reused_memory = map[MapType::StaticActivation].GetPlannedMemory(reuse_buffer);
-        map[MapType::StaticActivation].AddPlannedMemory(item.first, reused_memory);
-      }
-    }
-  }
-}
-
-void MemoryInfo::RecordInitializerPatternInfo(const MemoryPatternGroup& mem_patterns) {
-  RecordMemoryPatternInfo(mem_patterns, MapType::Initializer);
-  for (auto& item : tensor_alloc_info_map_) {
-    if (item.second.alloc_kind == AllocKind::kReuse) {
-      auto reuse_buffer = AllocPlan(item.first)->reused_buffer;
-      auto& map = tensors_memory_info_map_.at(AllocPlan(item.first)->location);
-      if (map[MapType::Initializer].Contain(reuse_buffer)) {
-        auto& reused_memory = map[MapType::Initializer].GetPlannedMemory(reuse_buffer);
-        map[MapType::Initializer].AddPlannedMemory(item.first, reused_memory);
+      if (map[type].Contain(reuse_buffer)) {
+        auto& reused_memory = map[type].GetPlannedMemory(reuse_buffer);
+        map[type].AddPlannedMemory(item.first, reused_memory);
       }
     }
   }
@@ -131,15 +117,15 @@ void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const
   std::cout << "Tensor name: " << alloc_info.mlvalue_name << ", ";
   std::cout << "Index: " << alloc_info.mlvalue_index << ", ";
   std::cout << "Reuse inplace: " << alloc_info.inplace_reuse << ", ";
-  std::cout << "Alloc type " << alloc_info.alloc_kind << ", ";
+  std::cout << "Alloc type: " << alloc_info.alloc_kind << ", ";
   std::cout << "Location: " << alloc_info.location.name << ", ";
   std::cout << "lifetime: (" << alloc_info.lifetime_interval.first << ", " << alloc_info.lifetime_interval.second << "), ";
   std::cout << "planned block: (" << mem_info.planned_block.offset_ << ", "
             << (mem_info.planned_block.offset_ + mem_info.planned_block.size_) << "), ";
-  std::cout << "planned Size: " << mem_info.planned_block.size_ << ", ";
+  std::cout << "planned size: " << mem_info.planned_block.size_ << ", ";
   std::cout << "allocated block: (" << rel_addr << ", "
             << (rel_addr + mem_info.allocated_block.size_) << "), ";
-  std::cout << "allocated Size: " << mem_info.allocated_block.size_ << "\n";
+  std::cout << "allocated size: " << mem_info.allocated_block.size_ << "\n";
 }
 
 void MemoryInfo::PrintMemoryInfoForLocation(const OrtDevice::DeviceType location) {
@@ -247,6 +233,7 @@ static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_o
   summary.live_tensors.push_back(idx);
 }
 
+//The following colors are defined and accepted by Chrome Tracing/Edge Tracing. 
 const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
     "good",
     "bad",
@@ -316,6 +303,7 @@ void MemoryInfo::MemoryInfoProfile::CreateEvents(const std::string& p_name, cons
         const auto& ts_map = time_step_trace_[map_type];
         const auto& start_itr = ts_map.find(alloc_step);
         const auto& end_itr = ts_map.find(dealloc_step);
+        ORT_ENFORCE(start_itr != ts_map.end() && end_itr != ts_map.end(), "The allocation step is not recorded");
         for (auto itr = start_itr; itr != end_itr; ++itr) {
           UpdateSummary(summary_[summary_key][*itr], offset, size, item.first, map_type);
         }

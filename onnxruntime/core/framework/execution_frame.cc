@@ -298,7 +298,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             //Record activation memory pattern
             MemoryInfo::ClearMemoryInfoPerExecution();
             if (mem_patterns_ && buffer != nullptr) {
-              MemoryInfo::RecordActivationPatternInfo(*mem_patterns_);
+              MemoryInfo::RecordPatternInfo(*mem_patterns_, MemoryInfo::MapType::StaticActivation);
               MemoryInfo::MemoryInfoProfile::CreateEvents("static activations_" + std::to_string(MemoryInfo::GetIteration()),
                                                           MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 1);
             }
@@ -444,8 +444,8 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
     // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
     if (buffer_num_elements >= required_num_elements) {
-// View Operator is reusing the buffer bigger than the required size.
-// Disabling warning message for now. The op is in the process of being deprecated.
+      // View Operator is reusing the buffer bigger than the required size.
+      // Disabling warning message for now. The op is in the process of being deprecated.
 #ifndef ENABLE_TRAINING
       LOGS(session_state_.Logger(), WARNING) << message;
 #endif

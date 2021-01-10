@@ -154,7 +154,9 @@ class PlannerImpl {
     // Removing initializers is a temporary measure needed to limit the number of copies of
     // tensors in GPU memory.
     OrtValueIndex reused_buffer_index = -1;          // index of original buffer to reuse
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
     OrtValueIndex inplace_reused_buffer_index = -1;  // index of original buffer to reuse inplace
+#endif
   };
 
   // ort_value_info_ is indexed by an OrtValueIndex
@@ -193,10 +195,12 @@ class PlannerImpl {
     return use_count;
   }
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
   OrtValueIndex& InplaceBuffer(OrtValueIndex n) {
     ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size());
     return ort_value_info_[n].inplace_reused_buffer_index;
   }
+#endif
 
   OrtValueIndex& Buffer(OrtValueIndex n) {
     ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size());
@@ -216,7 +220,9 @@ class PlannerImpl {
     OrtValueInfo& info = ort_value_info_[id];
     info.usecount = 0;
     info.reused_buffer_index = id;          // initially, no reuse; the ml-value uses its own buffer
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
     info.inplace_reused_buffer_index = id;  // initially, no reuse; the ml-value uses its own buffer
+#endif
 
     info.p_def_site = p_def_site;
   }
