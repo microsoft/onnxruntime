@@ -111,7 +111,7 @@ def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
         return _load_single_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix, is_partitioned, strict)
 
 
-class AGGREGATION_MODE:
+class _AGGREGATION_MODE:
     Zero = 0 
     Megatron = 1
 
@@ -139,7 +139,7 @@ def _add_or_update_sharded_key(state_key, state_value, state_sub_dict,
     sharded_states_original_dims[model_state_key] = state_partition_info[original_dim]
 
     axis = 0
-    if mode == AGGREGATION_MODE.Megatron and state_partition_info["megatron_row_partition"] == 0:
+    if mode == _AGGREGATION_MODE.Megatron and state_partition_info["megatron_row_partition"] == 0:
         axis = -1
 
     if state_key in state_sub_dict:
@@ -163,7 +163,7 @@ def _add_or_validate_unsharded_key(state_key, state_value, state_sub_dict, misma
         # create a new entry for this state in the state_sub_dict
         state_sub_dict[state_key] = state_value
 
-def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, mixed_precision_enabled, mode = AGGREGATION_MODE.Zero):
+def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, mixed_precision_enabled, mode = _AGGREGATION_MODE.Zero):
     """Aggregates all model states from the rank_state_dict into state_dict"""
 
     model = _utils.state_dict_model_key()
@@ -185,7 +185,7 @@ def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state
         # ZERO: full precision model states are sharded only when they exist in the partition_info subdict and mixed
         # precision training was enabled. for full precision training, full precision model states are not sharded
         # MEGATRON : full precision model states are sharded when they exist in the partition_info subdict
-        if (model_state_key in rank_state_dict[partition_info]) and (mode == AGGREGATION_MODE.Megatron or mixed_precision_enabled):
+        if (model_state_key in rank_state_dict[partition_info]) and (mode == _AGGREGATION_MODE.Megatron or mixed_precision_enabled):
             # this model state is sharded
             _add_or_update_sharded_key(model_state_key, model_state_value,
                 state_dict[model][full_precision], model_state_key,
@@ -195,7 +195,7 @@ def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state
             _add_or_validate_unsharded_key(model_state_key, model_state_value,
                 state_dict[model][full_precision], "Value mismatch for model state {}".format(model_state_key))
 
-def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict, mode = AGGREGATION_MODE.Zero):
+def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict, mode = _AGGREGATION_MODE.Zero):
     """Aggregates all optimizer states from the rank_state_dict into state_dict"""
 
     optimizer = _utils.state_dict_optimizer_key()
@@ -311,8 +311,10 @@ def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world
 
     return data_groups, horizontal_groups
 
-def _aggregate_checkpoints(ordered_paths, sharded_states_original_dims = dict(), mode = AGGREGATION_MODE.Zero, reshape_states = True, add_partition_info = False, pytorch_format=True):
+def _aggregate_checkpoints(ordered_paths, sharded_states_original_dims = None, mode = _AGGREGATION_MODE.Zero, reshape_states = True, add_partition_info = False, pytorch_format=True):
     state_dict = {}
+    if sharded_states_original_dims is None:
+        sharded_states_original_dims = dict()
     world_rank = _utils.state_dict_trainer_options_world_rank_key()
     mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
     zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
@@ -408,8 +410,8 @@ def aggregate_checkpoints(paths, pytorch_format=True):
     combine_megatron = len(H_groups[0]) > 1
 
     aggregate_state = None
-    sharded_states_original_dims = {}
     if combine_zero and combine_megatron:
+        sharded_states_original_dims = {}
         save_dir = tempfile.mkdtemp()
         os.makedirs(save_dir, exist_ok = True) 
 
@@ -426,16 +428,16 @@ def aggregate_checkpoints(paths, pytorch_format=True):
         assert len(aggregate_data_checkpoint_files) > 0
 
         # combine for megatron:            
-        aggregate_state = _aggregate_checkpoints(aggregate_data_checkpoint_files, sharded_states_original_dims, mode = AGGREGATION_MODE.Megatron, pytorch_format = pytorch_format)
+        aggregate_state = _aggregate_checkpoints(aggregate_data_checkpoint_files, sharded_states_original_dims, mode = _AGGREGATION_MODE.Megatron, pytorch_format = pytorch_format)
 
         # remove temp files created
         for f in aggregate_data_checkpoint_files:
             os.remove(f)
         os.rmdir(save_dir)
     elif combine_zero:
-        aggregate_state = _aggregate_checkpoints(ordered_paths, mode = AGGREGATION_MODE.Zero, pytorch_format = pytorch_format)
+        aggregate_state = _aggregate_checkpoints(ordered_paths, mode = _AGGREGATION_MODE.Zero, pytorch_format = pytorch_format)
     elif combine_megatron:
-        aggregate_state = _aggregate_checkpoints(ordered_paths, mode = AGGREGATION_MODE.Megatron, pytorch_format = pytorch_format)
+        aggregate_state = _aggregate_checkpoints(ordered_paths, mode = _AGGREGATION_MODE.Megatron, pytorch_format = pytorch_format)
 
     return aggregate_state
 

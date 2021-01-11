@@ -21,6 +21,8 @@ def _create_trainer(zero_enabled=False):
         opts['distributed'] = {
                 'world_rank' : 0,
                 'world_size' : 1,
+                'horizontal_parallel_size' : 1,
+                'data_parallel_size' : 1,
                 'allreduce_post_accumulation' : True,
                 'deepspeed_zero_optimization':
                 {
@@ -489,6 +491,8 @@ def test_load_checkpoint(aggregate_checkpoints_mock, load_mock):
         'mixed_precision': np.bool_(False),
         'world_rank': np.int64(0),
         'world_size': np.int64(1),
+        'horizontal_parallel_size' : np.int64(1),
+        'data_parallel_size' : np.int64(1),
         'zero_stage': np.int64(0)
     }
     state_dict = {
@@ -498,6 +502,8 @@ def test_load_checkpoint(aggregate_checkpoints_mock, load_mock):
             'mixed_precision': np.bool_(False),
             'world_rank': np.int64(0),
             'world_size': np.int64(1),
+            'horizontal_parallel_size' : np.int64(1),
+            'data_parallel_size' : np.int64(1),
             'zero_stage': np.int64(0)
         }
     }
@@ -522,18 +528,24 @@ def test_load_checkpoint(aggregate_checkpoints_mock, load_mock):
         'mixed_precision': np.bool_(False),
         'world_rank': np.int64(0),
         'world_size': np.int64(4),
+        'horizontal_parallel_size' : np.int64(1),
+        'data_parallel_size' : np.int64(4),
         'zero_stage': np.int64(1)
     },
     {
         'mixed_precision': np.bool_(True),
         'world_rank': np.int64(0),
         'world_size': np.int64(1),
+        'horizontal_parallel_size' : np.int64(1),
+        'data_parallel_size' : np.int64(1),
         'zero_stage': np.int64(1)
     },
     {
         'mixed_precision': np.bool_(True),
         'world_rank': np.int64(0),
         'world_size': np.int64(1),
+        'horizontal_parallel_size' : np.int64(1),
+        'data_parallel_size' : np.int64(1),
         'zero_stage': np.int64(1)
     }
 ])
@@ -560,6 +572,8 @@ def test_load_checkpoint_user_dict(aggregate_checkpoints_mock, load_mock):
         'mixed_precision': np.bool_(False),
         'world_rank': np.int64(0),
         'world_size': np.int64(1),
+        'horizontal_parallel_size': np.int64(1),
+        'data_parallel_size': np.int64(1),
         'zero_stage': np.int64(0)
     }
     state_dict = {
@@ -569,6 +583,8 @@ def test_load_checkpoint_user_dict(aggregate_checkpoints_mock, load_mock):
             'mixed_precision': np.bool_(False),
             'world_rank': np.int64(0),
             'world_size': np.int64(1),
+            'horizontal_parallel_size': np.int64(1),
+            'data_parallel_size': np.int64(1),
             'zero_stage': np.int64(0)
         },
         'user_dict': _checkpoint_storage.to_serialized_hex({'array': torch.tensor(np.arange(5))})
@@ -586,6 +602,8 @@ def test_checkpoint_aggregation(load_mock):
         'mixed_precision': np.bool_(False),
         'world_rank': np.int64(0),
         'world_size': np.int64(2),
+        'horizontal_parallel_size' : np.int64(1),
+        'data_parallel_size' : np.int64(2),
         'zero_stage': np.int64(1),
         'optimizer_name': b'Adam'
     }
@@ -593,6 +611,8 @@ def test_checkpoint_aggregation(load_mock):
         'mixed_precision': np.bool_(False),
         'world_rank': np.int64(1),
         'world_size': np.int64(2),
+        'horizontal_parallel_size' : np.int64(1),
+        'data_parallel_size' : np.int64(2),
         'zero_stage': np.int64(1),
         'optimizer_name': b'Adam'
     }
@@ -620,6 +640,8 @@ def test_checkpoint_aggregation(load_mock):
             'mixed_precision': np.bool_(False),
             'world_rank': np.int64(0),
             'world_size': np.int64(1),
+            'horizontal_parallel_size' : np.int64(1),
+            'data_parallel_size' : np.int64(1),
             'zero_stage': np.int64(0),
             'optimizer_name': b'Adam'
         },
@@ -651,6 +673,8 @@ def test_checkpoint_aggregation(load_mock):
             'mixed_precision': np.bool_(False),
             'world_rank': np.int64(1),
             'world_size': np.int64(1),
+            'horizontal_parallel_size' : np.int64(1),
+            'data_parallel_size' : np.int64(1),
             'zero_stage': np.int64(0),
             'optimizer_name': b'Adam'
         },
@@ -659,7 +683,7 @@ def test_checkpoint_aggregation(load_mock):
         }
     }
 
-    load_mock.side_effect = [trainer_options1, trainer_options2, state_dict1, state_dict2]
+    load_mock.side_effect = [trainer_options1, trainer_options2, trainer_options1, state_dict1, state_dict2]
     state_dict = checkpoint.aggregate_checkpoints(['abc', 'def'], pytorch_format=False)
 
     assert (state_dict['model']['full_precision']['optimizer_sharded'] == np.array([1, 2, 3])).all()
@@ -674,6 +698,8 @@ def test_checkpoint_aggregation(load_mock):
     assert state_dict['trainer_options']['mixed_precision'] == False
     assert state_dict['trainer_options']['world_rank'] == 0
     assert state_dict['trainer_options']['world_size'] == 1
+    assert state_dict['trainer_options']['horizontal_parallel_size'] == 1
+    assert state_dict['trainer_options']['data_parallel_size'] == 1
     assert state_dict['trainer_options']['zero_stage'] == 0
     assert state_dict['trainer_options']['optimizer_name'] == b'Adam'
 
@@ -683,6 +709,8 @@ def test_checkpoint_aggregation_mixed_precision(load_mock):
         'mixed_precision': np.bool_(True),
         'world_rank': np.int64(0),
         'world_size': np.int64(2),
+        'horizontal_parallel_size': np.int64(1),
+        'data_parallel_size': np.int64(2),
         'zero_stage': np.int64(1),
         'optimizer_name': b'Adam'
     }
@@ -690,6 +718,8 @@ def test_checkpoint_aggregation_mixed_precision(load_mock):
         'mixed_precision': np.bool_(True),
         'world_rank': np.int64(1),
         'world_size': np.int64(2),
+        'horizontal_parallel_size': np.int64(1),
+        'data_parallel_size': np.int64(2),
         'zero_stage': np.int64(1),
         'optimizer_name': b'Adam'
     }
@@ -717,6 +747,8 @@ def test_checkpoint_aggregation_mixed_precision(load_mock):
             'mixed_precision': np.bool_(True),
             'world_rank': np.int64(0),
             'world_size': np.int64(1),
+            'horizontal_parallel_size': np.int64(1),
+            'data_parallel_size': np.int64(1),
             'zero_stage': np.int64(0),
             'optimizer_name': b'Adam'
         },
@@ -748,6 +780,8 @@ def test_checkpoint_aggregation_mixed_precision(load_mock):
             'mixed_precision': np.bool_(True),
             'world_rank': np.int64(1),
             'world_size': np.int64(1),
+            'horizontal_parallel_size': np.int64(1),
+            'data_parallel_size': np.int64(1),
             'zero_stage': np.int64(0),
             'optimizer_name': b'Adam'
         },
@@ -756,7 +790,7 @@ def test_checkpoint_aggregation_mixed_precision(load_mock):
         }
     }
 
-    load_mock.side_effect = [trainer_options1, trainer_options2, state_dict1, state_dict2]
+    load_mock.side_effect = [trainer_options1, trainer_options2, trainer_options1, state_dict1, state_dict2]
     state_dict = checkpoint.aggregate_checkpoints(['abc', 'def'], pytorch_format=False)
 
     assert (state_dict['model']['full_precision']['sharded'] == np.array([[1, 2, 3], [4, 5, 6]])).all()
@@ -771,5 +805,7 @@ def test_checkpoint_aggregation_mixed_precision(load_mock):
     assert state_dict['trainer_options']['mixed_precision'] == True
     assert state_dict['trainer_options']['world_rank'] == 0
     assert state_dict['trainer_options']['world_size'] == 1
+    assert state_dict['trainer_options']['horizontal_parallel_size'] == 1
+    assert state_dict['trainer_options']['data_parallel_size'] == 1
     assert state_dict['trainer_options']['zero_stage'] == 0
     assert state_dict['trainer_options']['optimizer_name'] == b'Adam'

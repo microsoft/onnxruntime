@@ -214,9 +214,9 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
           float* data_buffer = init_tensor->MutableData<float>();
 
           // allocate temporary memory to get the column partitioned state
-          std::vector<float> result;
-          result.reserve(element_count);
-          PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result);
+          std::vector<float> result_buffer;
+          result_buffer.reserve(element_count);
+          PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result_buffer);
 
           // allocate a new buffer as column partitioning cannot re-use the original
           // buffer as its non-contiguous read on original buffer
@@ -225,14 +225,14 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
                                                       partition_shape,
                                                       alloc);
           float* out_buffer = p_tensor->MutableData<float>();
-          memcpy(out_buffer, result.data(), sizeof(float) * element_count);
+          memcpy(out_buffer, result_buffer.data(), sizeof(float) * element_count);
         } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
           MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
 
           // allocate temporary memory to get the column partitioned state
-          std::vector<MLFloat16> result;
-          result.reserve(element_count);
-          PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result);
+          std::vector<MLFloat16> result_buffer;
+          result_buffer.reserve(element_count);
+          PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result_buffer);
 
           // allocate a new buffer as column partitioning cannot re-use the original
           // buffer as it is a non-contiguous read on original buffer
@@ -241,7 +241,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
                                                       partition_shape,
                                                       alloc);
           MLFloat16* out_buffer = p_tensor->MutableData<MLFloat16>();
-          memcpy(out_buffer, result.data(), sizeof(MLFloat16) * element_count);
+          memcpy(out_buffer, result_buffer.data(), sizeof(MLFloat16) * element_count);
         } else {
           ORT_THROW("Unsupported type: ", element_type, "for initial optimizer moments.");
         }
