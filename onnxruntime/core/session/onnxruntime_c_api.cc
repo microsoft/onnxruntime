@@ -6,6 +6,7 @@
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
 #include "core/framework/allocator.h"
+#include "core/framework/cuda_provider_options.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/utils.h"
