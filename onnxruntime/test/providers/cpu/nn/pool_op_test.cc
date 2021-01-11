@@ -1270,7 +1270,7 @@ TEST(PoolTest, LpPoolWithNegativeNumbers) {
   test.AddAttribute("p", static_cast<int64_t>(1));
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{2});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0});
+  test.AddAttribute("pads", vector<int64_t>{0, 0});
   test.AddAttribute("kernel_shape", vector<int64_t>{2});
 
   std::vector<float> x_vals = {0.2, -0.6};
