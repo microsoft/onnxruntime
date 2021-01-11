@@ -13,3 +13,4 @@ scikit-learn
 scipy
 sympy
 wheel
+deepspeed
