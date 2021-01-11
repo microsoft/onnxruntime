@@ -67,7 +67,7 @@ using namespace ONNX_NAMESPACE;
 
 #if USE_ROCM
 constexpr const char* kGpuExecutionProvider = onnxruntime::kRocmExecutionProvider;
-#else
+#elif USE_CUDA
 constexpr const char* kGpuExecutionProvider = onnxruntime::kCudaExecutionProvider;
 #endif
 
