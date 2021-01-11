@@ -152,11 +152,7 @@ class ThreadPoolLoop;
 #define ORT_FALSE_SHARING_BYTES 64
 #endif
 
-#ifdef _MSC_VER
-#define ORT_ALIGN_TO_AVOID_FALSE_SHARING DECLSPEC_ALIGN(ORT_FALSE_SHARING_BYTES)
-#else
-#define ORT_ALIGN_TO_AVOID_FALSE_SHARING __attribute__ ((aligned(ORT_FALSE_SHARING_BYTES)))
-#endif
+#define ORT_ALIGN_TO_AVOID_FALSE_SHARING alignas(ORT_FALSE_SHARING_BYTES)
 
 struct PaddingToAvoidFalseSharing {
   char padding[ORT_FALSE_SHARING_BYTES];
