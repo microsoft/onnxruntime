@@ -2208,15 +2208,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void TestCUDAProviderOptions()
         {
-            #if USE_CUDA
+            //#if USE_CUDA
             using (var cudaProviderOptions = new OrtCUDAProviderOptions())
             {
-                string[] keys = { "device_id", "arena_extend_strategy", "cuda_mem_limit",
-                                "cudnn_conv_algo_search", "do_copy_in_default_stream"};
-                string[] values = {"0", "kSameAsRequested", "200000",
-                                  "HEURISTIC", "1"};
+                var providerOptionsDict = new Dictionary<string, string>();
+                providerOptionsDict["device_id"] = "0";
+                providerOptionsDict["arena_extend_strategy"] = "kSameAsRequested";
+                providerOptionsDict["cuda_mem_limit"] = "200000";
+                providerOptionsDict["cudnn_conv_algo_search"] = "HEURISTIC";
+                providerOptionsDict["do_copy_in_default_stream"] = "1";
 
-                cudaProviderOptions.UpdateOptions(keys, values);
+                cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
                 using (var sessionOptions = new SessionOptions())
                 {
@@ -2224,7 +2226,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
 
-            #endif
+            //s#endif
         }
 
         [DllImport("kernel32", SetLastError = true)]

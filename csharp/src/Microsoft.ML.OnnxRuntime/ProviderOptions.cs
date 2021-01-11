@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Diagnostics;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
@@ -37,21 +38,19 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Updates  the configuration knobs of OrtCUDAProviderOptions that will eventually be used to configure a CUDA EP
         /// Please refer to the following on different key/value pairs to configure a CUDA EP and their meaning:
-        /// https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/reference/execution-providers/CUDA-ExecutionProvider.md
+        /// https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html
         /// </summary>
-        /// <param name="keys">keys of all the configuration knobs of a CUDA Execution Provider</param>
-        /// <param name="values">values of all the configuration knobs of a CUDA Execution Provider (must match number of keys)</param>
+        /// <param name="providerOptions">key/value pairs used to configure a CUDA Execution Provider</param>
 
-        public void UpdateOptions(string[] keys, string[] values)
+        public void UpdateOptions(Dictionary<string, string> providerOptions)
         {
-            Debug.Assert(keys.Length == values.Length);
 
             using (var cleanupList = new DisposableList<IDisposable>())
             {
-                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(keys, n => n, cleanupList);
-                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(values, n => n, cleanupList);
+                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Keys.ToArray(), n => n, cleanupList);
+                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Values.ToArray(), n => n, cleanupList);
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateCUDAProviderOptions(handle, keysArray, valuesArray, (UIntPtr)keys.Length));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateCUDAProviderOptions(handle, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
             }
         }
 

@@ -1872,13 +1872,13 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
                     size_t num_keys) {
   API_IMPL_BEGIN
 #ifdef USE_CUDA
-  std::unordered_map<std::string, std::string> provider_options_map;
+  ProviderOptions provider_options_map;
   for (size_t i = 0; i != num_keys; ++i) {
     if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
         provider_options_values == nullptr || provider_options_values[i][0] == '\0') {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
     }
-    provider_options_map[std::string(provider_options_keys[i])] = std::string(provider_options_values[i]);
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
   }
 
   auto internal_options = CUDAExecutionProviderInfo::FromProviderOptions(provider_options_map);

@@ -59,7 +59,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     cuda_options_values.push_back("kNextPowerOfTwo");
 
     // cuda mem limit
-    cuda_options_values.push_back(std::to_string(std::numeric_limits<size_t>::max()).c_str());
+    auto size_t_numeric_limits_max_string = std::to_string(std::numeric_limits<size_t>::max());
+    cuda_options_values.push_back(size_t_numeric_limits_max_string.c_str());
 
     // cudnn conv algo search
     switch (performance_test_config.run_config.cudnn_conv_algo) {

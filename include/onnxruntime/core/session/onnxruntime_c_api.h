@@ -252,12 +252,6 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
 
-typedef enum OrtCudnnConvAlgoSearch {
-  EXHAUSTIVE,  // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
-  HEURISTIC,   // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
-  DEFAULT,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
-} OrtCudnnConvAlgoSearch;
-
 /// <summary>
 /// Options for the OpenVINO provider that are passed to SessionOptionsAppendExecutionProvider_OpenVINO
 /// </summary>
@@ -1145,7 +1139,7 @@ struct OrtApi {
   /**
   * Use this API to set the appropriate configuration knobs of a CUDA Execution Provider
   * Please refer to the following on different key/value pairs to configure a CUDA EP and their meaning:
-  * https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/reference/execution-providers/CUDA-ExecutionProvider.md
+  * https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html
   */
   ORT_API2_STATUS(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptions* cuda_provider_options,
                   _In_reads_(num_keys) const char* const* provider_options_keys,

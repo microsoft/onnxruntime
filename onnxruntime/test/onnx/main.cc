@@ -19,7 +19,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
-#include "core/framework/provider_options.h"
+#include "core/framework/cuda_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace onnxruntime;
@@ -286,7 +286,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                                 : 1e-3;
 
     Ort::SessionOptions sf;
 
