@@ -17,8 +17,10 @@ namespace onnxruntime {
 // the ExecutionFrame).
 using OrtValueIndex = int;
 using OrtValueName = std::string;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
 // pair of start and end program counters,according to the execution plan
 using IntervalT = std::pair<size_t, size_t>;
+#endif
 
 class SessionState;
 
