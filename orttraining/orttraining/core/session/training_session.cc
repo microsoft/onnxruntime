@@ -302,16 +302,24 @@ Status TrainingSession::ConfigureForTraining(
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
   std::string loss_name{};
-  // Enable loss scale if mixed precision is enabled AND at pipeline last stage if pipeline is used.
-  // We are currently making the assumption that no data parallelism is used together with model parallelism.
-  // So we can check the last stage by checking the world_rank and world_size. Once DP and MP combination is
-  // enabled, we need to devise another way to check MP stages.
-  bool enable_loss_scale = is_mixed_precision_enabled_ &&
-                           config.mixed_precision_config.value().mixed_precision_type == MixedPrecisionDataType::FP16 &&
-                           (!config.pipeline_config.has_value() ||
-                            (pipeline_stage_id + 1 == config.distributed_config.pipeline_parallel_size));
+#ifdef USE_MPI
+  const bool last_pipeline_stage = DistributedRunContext::RankInGroup(WorkerGroupType::PipelineParallel) ==
+                                   DistributedRunContext::GroupSize(WorkerGroupType::PipelineParallel) - 1;
+#else
+  // This flag being true means adding loss scaling.
+  // Without pipeline parallel, all processes should run the same training graph which includes optimizer and loss scaling.
+  const bool last_pipeline_stage = true;
+#endif
+  const bool enable_loss_scale = is_mixed_precision_enabled_ &&
+                                 config.mixed_precision_config.value().mixed_precision_type == MixedPrecisionDataType::FP16;
+  // Enable loss scale if mixed precision is enabled AND at pipeline's last stage if pipeline is used.
+  const bool enable_true_loss_scale = enable_loss_scale && last_pipeline_stage;
+  // Enable fake loss scale if mixed precision is enabled AND at pipeline's non-last stage if pipeline is used.
+  // The reason to have fake thing is to have the same input schema for non-last and last pipeline stages.
+  const bool enable_fake_loss_scale = enable_loss_scale && !last_pipeline_stage;
+
   optional<std::string> loss_scale_input_name =
-      enable_loss_scale ? optional<std::string>{""} : optional<std::string>{};
+      enable_true_loss_scale ? optional<std::string>{""} : optional<std::string>{};
   if (config.pipeline_config.has_value()) {
     // if use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
@@ -332,9 +340,29 @@ Status TrainingSession::ConfigureForTraining(
       !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
       "loss_scale_input_name should not be set to an empty string.");
 
-  if (enable_loss_scale) {
+  if (enable_true_loss_scale) {
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
     mp_result.loss_scale_input_name = loss_scale_input_name.value();
+    config_result.mixed_precision_config_result = mp_result;
+  } else if (enable_fake_loss_scale) {
+    auto& graph = model_->MainGraph();
+    GraphAugmenter::GraphDefs defs{};
+    const auto loss_scale_name = graph.GenerateNodeArgName("loss_scale");
+    const auto* loss_scale_type = defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    const auto unused_loss_scale_name = graph.GenerateNodeArgName("scaled_loss");
+    const auto fake_loss_scalar_name = graph.GenerateNodeName("fake_loss_scalar");
+    defs.AddNodeDef(NodeDef{
+        "Identity",
+        {ArgDef{loss_scale_name, loss_scale_type}},
+        {ArgDef{unused_loss_scale_name, loss_scale_type}},
+        NodeAttributes(),
+        fake_loss_scalar_name});
+    std::vector<std::string> input_names;
+    input_names.push_back(loss_scale_name);
+    defs.AddGraphInputs(input_names);
+    ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
+    TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
+    mp_result.loss_scale_input_name = loss_scale_name;
     config_result.mixed_precision_config_result = mp_result;
   }
 
@@ -1405,7 +1433,7 @@ Status PipelineTrainingSession::SetPipelineContext(const TrainingConfigurationRe
   return Status::OK();
 }
 
-// This function adds extra data dependency using PassThrough from event operators to optimizer nodes. 
+// This function adds extra data dependency using PassThrough from event operators to optimizer nodes.
 // The motivation is to avoid assignment semantic before executing normal operators.
 Status PipelineTrainingSession::SetExtraDataDependency() {
   // Training graph.
@@ -1431,8 +1459,8 @@ Status PipelineTrainingSession::SetExtraDataDependency() {
   // Nodes with assignment semantic should happen after all
   // event and communication operations.
   for (auto& node : model_->MainGraph().Nodes()) {
-    if (node.OpType().compare("AdamOptimizer") == 0||
-        node.OpType().compare("LambOptimizer") == 0||
+    if (node.OpType().compare("AdamOptimizer") == 0 ||
+        node.OpType().compare("LambOptimizer") == 0 ||
         node.OpType().compare("SGDOptimizer") == 0) {
       SetDataDependency(graph, node, dependent_node_args);
     }

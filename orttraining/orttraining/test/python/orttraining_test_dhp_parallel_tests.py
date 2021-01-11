@@ -20,9 +20,11 @@ def main():
     # Declare test scripts for parallel tests.
     # New test scripts should be added to "dhp_parallel" folder.
     distributed_test_files = [os.path.join('dhp_parallel',
-                                           'orttraining_test_parallel_train_simple_model.py')]
+                                           'orttraining_test_parallel_train_simple_model.py'),
+                              os.path.join('dhp_parallel',
+                                           'orttraining_test_parallel_train_simple_model_fp16.py')]
     # parallel_test_process_number[i] is the number of processes needed to run distributed_test_files[i].
-    distributed_test_process_counts = [4]
+    distributed_test_process_counts = [4, 4]
 
     log.info('Running parallel training tests.')
     for test_file, process_count in zip(distributed_test_files, distributed_test_process_counts):
