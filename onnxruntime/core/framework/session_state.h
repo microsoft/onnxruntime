@@ -54,10 +54,10 @@ class KernelDef;
 class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 struct MemoryPatternGroup;
-#endif
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 class MemoryInfo;
+#endif
 
 /**
  * SessionState should be modified by the inference session class only.

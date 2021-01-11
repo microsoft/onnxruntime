@@ -21,7 +21,9 @@ class GraphViewer;
 class OrtValueNameIdxMap;
 class DataTransferManager;
 class NodeArg;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 class MemoryInfo;
+#endif
 
 namespace logging {
 class Logger;

@@ -67,7 +67,7 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
       size_t tensor_size = tensor.SizeInBytes();
 #if defined(TRACE_EXECUTION)
       const TensorShape& tensor_shape = tensor.Shape();
-      LOGS(logger, INFO) << node_name << " output[" << i << "]"
+      std::cout << node_name << " output[" << i << "]"
                          << " size=" << tensor_size
                          << " shape=" << tensor_shape.ToString()
                          << " element_size=" << tensor.DataType()->Size()
