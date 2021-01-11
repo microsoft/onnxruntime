@@ -1519,58 +1519,42 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
     if (IsGradientRequiredForSrcNodeInput(0)) {
       return std::vector<NodeDef>{NodeDef("Identity", {GO(0)}, {GI(0)})};
     }
+
     return std::vector<NodeDef>{};
   }
+
   std::vector<NodeDef> result;
   std::vector<Dimension> y_shape;
   const ArgDef y = O(0);
-  bool get_shapes_ok = GetShape(y, y_shape).IsOK();
-  for (int i = 0; get_shapes_ok && i < num_src_node_inputs; i++) {
-    std::vector<Dimension> x_shape;
-    if (!GetShape(I(i), x_shape).IsOK()) {
-      get_shapes_ok = false;
-    }
-  }
-  if (get_shapes_ok) {
-    for (int i = 0; i < num_src_node_inputs; i++) {
-      if (IsGradientRequiredForSrcNodeInput(i)) {
-        const ArgDef x = I(i);
-        std::string cmp_i = "Cmp_" + std::to_string(i);
-        std::string cmp_cast_i = "Cmp_Cast_" + std::to_string(i);
-        std::string pre_reduce_grad_i = "PreReduceGrad_" + std::to_string(i);
-        result.push_back(NodeDef("Equal", {x, y}, {IA(cmp_i)}));
-        result.push_back(NodeDef("Cast", {IA(cmp_i)}, {IA(cmp_cast_i)}, {MakeAttribute("to", int64_t(IElemType(0)))}));
-        result.push_back(NodeDef("Mul", {IA(cmp_cast_i), GO(0)}, {IA(pre_reduce_grad_i, OType(0))}));
-        std::vector<Dimension> x_shape;
+  bool get_y_shape_ok = GetShape(y, y_shape).IsOK();
+  for (int i = 0; i < num_src_node_inputs; i++) {
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      const ArgDef x = I(i);
+      const ArgDef cmp_i_def = IA("Cmp_" + std::to_string(i));
+      const ArgDef cmp_cast_i_def = IA("Cmp_Cast_" + std::to_string(i));
+      const ArgDef pre_reduce_grad_i_def = IA("PreReduceGrad_" + std::to_string(i), OType(0));
+      result.push_back(NodeDef("Equal", {x, y}, {cmp_i_def}));
+      result.push_back(NodeDef("Cast", {cmp_i_def}, {cmp_cast_i_def}, {MakeAttribute("to", int64_t(IElemType(0)))}));
+      result.push_back(NodeDef("Mul", {cmp_cast_i_def, GO(0)}, {pre_reduce_grad_i_def}));
+      std::vector<Dimension> x_shape;
+      if (get_y_shape_ok && GetShape(x, x_shape).IsOK()) {
         std::vector<int64_t> x_axes;
-        GetShape(x, x_shape);
         ComputeBroadcastBackwardAxes(x_shape, y_shape, &x_axes, nullptr, NodeName());
         if (x_axes.size() > 0) {
-          HandleBroadcasting(IA(pre_reduce_grad_i, OType(0)), x, GI(i), x_axes, result);
+          HandleBroadcasting(pre_reduce_grad_i_def, x, GI(i), x_axes, result);
         } else {
-          result.push_back(NodeDef("Identity", {IA(pre_reduce_grad_i, OType(0))}, {GI(i)}));
+          result.push_back(NodeDef("Identity", {pre_reduce_grad_i_def}, {GI(i)}));
         }
-      }
-    }
-  } else {
-    // GetShape failed, build shape-independent gradient graph
-    for (int i = 0; i < num_src_node_inputs; i++) {
-      if (IsGradientRequiredForSrcNodeInput(i)) {
-        const ArgDef x = I(i);
-        std::string cmp_i = "Cmp_" + std::to_string(i);
-        std::string cmp_cast_i = "Cmp_Cast_" + std::to_string(i);
-        std::string pre_reduce_grad_i = "PreReduceGrad_" + std::to_string(i);
-        result.push_back(NodeDef("Equal", {x, y}, {IA(cmp_i)}));
-        result.push_back(NodeDef("Cast", {IA(cmp_i)}, {IA(cmp_cast_i)}, {MakeAttribute("to", int64_t(IElemType(0)))}));
-        result.push_back(NodeDef("Mul", {IA(cmp_cast_i), GO(0)}, {IA(pre_reduce_grad_i)}));
-        ArgDef x_axes = IA("ReduceAxes_" + x.name);
-        ArgDef X_shape = IA("Shape_" + x.name);
-        ArgDef Y_shape = IA("Shape_" + y.name + std::to_string(i));
-        ComputeBroadcastBackwardAxesDynamic(x, y, X_shape, Y_shape, &x_axes, nullptr, result);
-        HandleBroadcastingDynamic(IA(pre_reduce_grad_i), x, X_shape, GI(i), x_axes, result);
+      } else {
+        ArgDef x_axes_def = IA("ReduceAxes_" + x.name);
+        ArgDef x_shape_def = IA("Shape_" + x.name);
+        ArgDef y_shape_def = IA("Shape_" + y.name + std::to_string(i));
+        ComputeBroadcastBackwardAxesDynamic(x, y, x_shape_def, y_shape_def, &x_axes_def, nullptr, result);
+        HandleBroadcastingDynamic(pre_reduce_grad_i_def, x, x_shape_def, GI(i), x_axes_def, result);
       }
     }
   }
+
   return result;
 }
 
