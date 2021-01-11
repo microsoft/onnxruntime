@@ -1,4 +1,3 @@
-#include <iostream>
 #include <benchmark/benchmark.h>
 #include <core/platform/threadpool.h>
 #include <core/util/thread_utils.h>
