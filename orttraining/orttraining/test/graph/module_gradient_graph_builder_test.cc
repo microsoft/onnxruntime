@@ -137,6 +137,9 @@ TEST(ModuleGradientGraphBuilderTest, GraphSplit_Mnist) {
                                     expected_backward_output_grad_names);
 }
 
+#ifdef USE_CUDA
+// The transformers will generate different graph when USE_CUDA is defined or not for BertToy model,
+// so test it for CUDA enabled only.
 TEST(ModuleGradientGraphBuilderTest, GraphSplit_BertToy) {
   std::string file_path = "testdata/bert_toy_optimized.onnx";
   std::shared_ptr<Model> p_model;
@@ -149,6 +152,8 @@ TEST(ModuleGradientGraphBuilderTest, GraphSplit_BertToy) {
       initializer_names_to_train.emplace_back(initializer.first);
     }
   }
+
+  std::sort(initializer_names_to_train.begin(), initializer_names_to_train.end());
 
   std::map<std::string, int> expected_forward_ops_count = {{"Add", 43},
                                                            {"Cast", 3},
@@ -278,57 +283,57 @@ TEST(ModuleGradientGraphBuilderTest, GraphSplit_BertToy) {
   const std::vector<std::string>& expected_backward_user_input_names{"input_ids", "token_type_ids"};
 
   const std::vector<std::string>& expected_backward_trainable_initializer_names{
+      "bert.embeddings.LayerNorm.weight",
+      "bert.encoder.layer.0.attention.output.LayerNorm.weight",
+      "bert.encoder.layer.0.attention.output.dense.weight_transposed",
+      "bert.encoder.layer.0.attention.self.key.weight_transposed",
+      "bert.encoder.layer.0.attention.self.query.weight_transposed",
+      "bert.encoder.layer.0.attention.self.value.weight_transposed",
+      "bert.encoder.layer.0.intermediate.dense.bias",
+      "bert.encoder.layer.0.intermediate.dense.weight_transposed",
+      "bert.encoder.layer.0.output.LayerNorm.weight",
+      "bert.encoder.layer.0.output.dense.weight_transposed",
+      "bert.encoder.layer.1.attention.output.LayerNorm.weight",
+      "bert.encoder.layer.1.attention.output.dense.weight_transposed",
       "bert.encoder.layer.1.attention.self.key.weight_transposed",
       "bert.encoder.layer.1.attention.self.query.weight_transposed",
-      "bert.encoder.layer.2.intermediate.dense.bias",
-      "bert.encoder.layer.0.output.dense.weight_transposed",
-      "bert.encoder.layer.0.intermediate.dense.weight_transposed",
-      "bert.encoder.layer.0.attention.self.key.weight_transposed",
-      "bert.encoder.layer.3.attention.self.query.weight_transposed",
-      "cls.predictions.transform.dense.bias",
-      "cls.predictions.transform.LayerNorm.weight",
-      "bert.encoder.layer.0.attention.self.query.weight_transposed",
-      "bert.pooler.dense.weight",
-      "bert.encoder.layer.4.output.LayerNorm.weight",
-      "bert.encoder.layer.4.intermediate.dense.bias",
-      "bert.encoder.layer.2.attention.output.dense.weight_transposed",
-      "bert.encoder.layer.2.attention.self.value.weight_transposed",
-      "bert.encoder.layer.1.output.dense.weight_transposed",
-      "bert.encoder.layer.3.attention.output.LayerNorm.weight",
-      "bert.encoder.layer.0.intermediate.dense.bias",
-      "bert.encoder.layer.2.output.LayerNorm.weight",
-      "bert.encoder.layer.1.intermediate.dense.weight_transposed",
       "bert.encoder.layer.1.attention.self.value.weight_transposed",
-      "bert.encoder.layer.0.attention.output.dense.weight_transposed",
-      "bert.encoder.layer.1.attention.output.dense.weight_transposed",
-      "bert.encoder.layer.3.output.LayerNorm.weight",
-      "bert.encoder.layer.2.output.dense.weight_transposed",
-      "bert.encoder.layer.3.intermediate.dense.bias",
-      "bert.embeddings.LayerNorm.weight",
-      "bert.encoder.layer.4.attention.self.query.weight_transposed",
       "bert.encoder.layer.1.intermediate.dense.bias",
-      "bert.encoder.layer.0.attention.output.LayerNorm.weight",
-      "cls.seq_relationship.weight",
-      "bert.encoder.layer.1.attention.output.LayerNorm.weight",
+      "bert.encoder.layer.1.intermediate.dense.weight_transposed",
       "bert.encoder.layer.1.output.LayerNorm.weight",
-      "bert.encoder.layer.4.attention.output.LayerNorm.weight",
-      "bert.encoder.layer.0.output.LayerNorm.weight",
-      "bert.encoder.layer.3.attention.self.key.weight_transposed",
-      "bert.encoder.layer.2.intermediate.dense.weight_transposed",
-      "bert.encoder.layer.3.attention.self.value.weight_transposed",
-      "bert.encoder.layer.3.attention.output.dense.weight_transposed",
-      "bert.encoder.layer.3.intermediate.dense.weight_transposed",
-      "bert.encoder.layer.3.output.dense.weight_transposed",
-      "bert.encoder.layer.4.attention.self.key.weight_transposed",
-      "bert.encoder.layer.4.attention.self.value.weight_transposed",
-      "bert.encoder.layer.4.intermediate.dense.weight_transposed",
-      "bert.encoder.layer.4.output.dense.weight_transposed",
-      "cls.predictions.transform.dense.weight_transposed",
-      "bert.encoder.layer.2.attention.self.query.weight_transposed",
-      "bert.encoder.layer.0.attention.self.value.weight_transposed",
+      "bert.encoder.layer.1.output.dense.weight_transposed",
       "bert.encoder.layer.2.attention.output.LayerNorm.weight",
+      "bert.encoder.layer.2.attention.output.dense.weight_transposed",
+      "bert.encoder.layer.2.attention.self.key.weight_transposed",
+      "bert.encoder.layer.2.attention.self.query.weight_transposed",
+      "bert.encoder.layer.2.attention.self.value.weight_transposed",
+      "bert.encoder.layer.2.intermediate.dense.bias",
+      "bert.encoder.layer.2.intermediate.dense.weight_transposed",
+      "bert.encoder.layer.2.output.LayerNorm.weight",
+      "bert.encoder.layer.2.output.dense.weight_transposed",
+      "bert.encoder.layer.3.attention.output.LayerNorm.weight",
+      "bert.encoder.layer.3.attention.output.dense.weight_transposed",
+      "bert.encoder.layer.3.attention.self.key.weight_transposed",
+      "bert.encoder.layer.3.attention.self.query.weight_transposed",
+      "bert.encoder.layer.3.attention.self.value.weight_transposed",
+      "bert.encoder.layer.3.intermediate.dense.bias",
+      "bert.encoder.layer.3.intermediate.dense.weight_transposed",
+      "bert.encoder.layer.3.output.LayerNorm.weight",
+      "bert.encoder.layer.3.output.dense.weight_transposed",
+      "bert.encoder.layer.4.attention.output.LayerNorm.weight",
       "bert.encoder.layer.4.attention.output.dense.weight_transposed",
-      "bert.encoder.layer.2.attention.self.key.weight_transposed"};
+      "bert.encoder.layer.4.attention.self.key.weight_transposed",
+      "bert.encoder.layer.4.attention.self.query.weight_transposed",
+      "bert.encoder.layer.4.attention.self.value.weight_transposed",
+      "bert.encoder.layer.4.intermediate.dense.bias",
+      "bert.encoder.layer.4.intermediate.dense.weight_transposed",
+      "bert.encoder.layer.4.output.LayerNorm.weight",
+      "bert.encoder.layer.4.output.dense.weight_transposed",
+      "bert.pooler.dense.weight",
+      "cls.predictions.transform.LayerNorm.weight",
+      "cls.predictions.transform.dense.bias",
+      "cls.predictions.transform.dense.weight_transposed",
+      "cls.seq_relationship.weight"};
 
   const std::vector<std::string>& expected_backward_output_grad_names{"prediction_scores_grad",
                                                                       "seq_relationship_score_grad"};
@@ -338,6 +343,7 @@ TEST(ModuleGradientGraphBuilderTest, GraphSplit_BertToy) {
                                     expected_backward_user_input_names, expected_backward_trainable_initializer_names,
                                     expected_backward_output_grad_names);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
