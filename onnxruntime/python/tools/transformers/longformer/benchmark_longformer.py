@@ -197,9 +197,9 @@ def test_all(args):
 
             if "onnxruntime" in args.engines:
                 session = benchmark_helper.create_onnxruntime_session(onnx_model_path,
-                                                                    use_gpu=True,
-                                                                    enable_all_optimization=True,
-                                                                    num_threads=num_threads)
+                                                                      use_gpu=True,
+                                                                      enable_all_optimization=True,
+                                                                      num_threads=num_threads)
                 results += test_onnxruntime(device, model, model_name, session, args.batch_sizes, args.sequence_lengths, args.global_lengths,
                                             args.test_times, num_threads, optimized, precision)
     return results
