@@ -869,10 +869,8 @@ if (onnxruntime_USE_ROCM)
   list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME} ${onnxruntime_ROCM_HOME}/hip ${onnxruntime_ROCM_HOME}/hcc ${onnxruntime_ROCM_HOME}/miopen ${onnxruntime_ROCM_HOME}/hiprand ${onnxruntime_ROCM_HOME}/rocrand)
 
   set(CMAKE_MODULE_PATH "${onnxruntime_ROCM_HOME}/hip/cmake" ${CMAKE_MODULE_PATH})
-  set(CMAKE_VERBOSE_MAKEFILE ON)
   find_package(HIP)
   find_package(hiprand REQUIRED)
-
   find_library(HIP_LIB amdhip64 REQUIRED)
   find_library(ROC_BLAS rocblas REQUIRED)
   find_library(MIOPEN_LIB MIOpen REQUIRED)
