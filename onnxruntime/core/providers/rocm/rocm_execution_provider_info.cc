@@ -40,8 +40,8 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
 
 ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecutionProviderInfo& info) {
   const ProviderOptions options{
-      {rocm::provider_option_names::kDeviceId, MakeString(info.device_id)},
-      {rocm::provider_option_names::kMemLimit, MakeString(info.hip_mem_limit)},
+      {rocm::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
+      {rocm::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.hip_mem_limit)},
       {rocm::provider_option_names::kArenaExtendStrategy,
        EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
   };

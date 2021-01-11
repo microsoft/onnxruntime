@@ -40,25 +40,23 @@ inline void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... ar
 
 /**
  * Makes a string by concatenating string representations of the arguments.
+ * This version uses the current locale.
  */
 template <typename... Args>
 std::string MakeString(const Args&... args) {
   std::ostringstream ss;
-  ss.imbue(std::locale::classic());
   detail::MakeStringImpl(ss, args...);
   return ss.str();
 }
 
 /**
  * Makes a string by concatenating string representations of the arguments.
- * This version uses the current locale.
+ * This version uses std::locale::classic().
  */
 template <typename... Args>
-std::string MakeStringLite(const Args&... args) {
+std::string MakeStringWithClassicLocale(const Args&... args) {
   std::ostringstream ss;
-  // the following line causes a binary size increase
-  //ss.imbue(std::locale::classic());
-  // just use the current locale for this lite version
+  ss.imbue(std::locale::classic());
   detail::MakeStringImpl(ss, args...);
   return ss.str();
 }
@@ -70,6 +68,14 @@ inline std::string MakeString(const std::string& str) {
 }
 
 inline std::string MakeString(const char* cstr) {
+  return cstr;
+}
+
+inline std::string MakeStringWithClassicLocale(const std::string& str) {
+  return str;
+}
+
+inline std::string MakeStringWithClassicLocale(const char* cstr) {
   return cstr;
 }
 

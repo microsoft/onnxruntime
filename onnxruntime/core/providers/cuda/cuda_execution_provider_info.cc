@@ -40,7 +40,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddValueParser(
               cuda::provider_option_names::kDeviceId,
               [&info](const std::string& value_str) -> Status {
-                ORT_RETURN_IF_ERROR(ParseString(value_str, info.device_id));
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
                 int num_devices{};
                 ORT_RETURN_IF_NOT(
                     CUDA_CALL(cudaGetDeviceCount(&num_devices)),
@@ -66,13 +66,13 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
 
 ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecutionProviderInfo& info) {
   const ProviderOptions options{
-      {cuda::provider_option_names::kDeviceId, MakeString(info.device_id)},
-      {cuda::provider_option_names::kMemLimit, MakeString(info.cuda_mem_limit)},
+      {cuda::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
+      {cuda::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.cuda_mem_limit)},
       {cuda::provider_option_names::kArenaExtendStrategy,
        EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {cuda::provider_option_names::kCudnnConvAlgoSearch,
        EnumToName(ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
-      {cuda::provider_option_names::kDoCopyInDefaultStream, MakeString(info.do_copy_in_default_stream)},
+      {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
   };
 
   return options;
