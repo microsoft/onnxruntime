@@ -22,19 +22,13 @@ class OrtBackendTest(onnx.backend.test.BackendTest):
 
     @classmethod
     def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):
-        def assert_similar_array(ref_output, output):
-            np.testing.assert_equal(ref_output.dtype, output.dtype)
-            if ref_output.dtype == np.object:
-                np.testing.assert_array_equal(ref_output, output)
-            else:
-                np.testing.assert_allclose(ref_output, output, rtol=1e-3, atol=1e-5)            
         np.testing.assert_equal(len(ref_outputs), len(outputs))
         for i in range(len(outputs)):
-            if isinstance(outputs[i], list):
-                for j in range(len(outputs[i])):
-                    assert_similar_array(ref_outputs[i][j], outputs[i][j])
+            np.testing.assert_equal(ref_outputs[i].dtype, outputs[i].dtype)
+            if ref_outputs[i].dtype == np.object:
+                np.testing.assert_array_equal(ref_outputs[i], outputs[i])
             else:
-                assert_similar_array(ref_outputs[i], outputs[i])
+                np.testing.assert_allclose(ref_outputs[i], outputs[i], rtol=1e-3, atol=1e-5)
 
 
 def create_backend_test(testname=None):
