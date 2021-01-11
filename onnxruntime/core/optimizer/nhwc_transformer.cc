@@ -265,16 +265,20 @@ void NhwcTransformerImpl::TransformSplit(Node& node) {
       // direct return on invalid axis
       return;
     }
-    if (axis >= 1) {
-      axis = (axis == 1LL) ? (nhwc_input->rank_ - 1) : (axis - 1);
-    } else if (axis > - nhwc_input->rank_ && axis < 0) {
-      axis = (axis == -(nhwc_input->rank_ - 1)) ? (- 1) : (axis - 1);
+    if (axis < 0) {
+      axis = axis + nhwc_input->rank_;
+    }
+    if (axis == 1) {
+      axis = nhwc_input->rank_ - 1;
+    } else if (axis > 1) {
+      axis = axis - 1;
     }
     node.AddAttribute("axis", axis);
   }
 
   input_defs[0] = nhwc_input->nhwc_arg_;
   nhwc_input->remaining_original_uses_--;
+
   CreateNhwcArgument(node, node, nhwc_input->rank_);
 }
 

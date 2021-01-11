@@ -251,21 +251,8 @@ TEST(SplitOperatorTest, Axis1UnequalSplitString) {
   RunTest<std::string>(axis, splits, input, outputs, false);
 }
 
-ShapeAndFloatData CreateInput(std::vector<int64_t> shape) {
-  auto size = TensorShape(shape).Size();
-
-  float i = 0.f, increment = 1.f;
-  // generate the elements for the data starting at 1.f
-  std::vector<float> data;
-  std::generate_n(std::back_inserter(data), size, [&]() { return i += increment; });
-
-  ShapeAndFloatData input = {shape, data};
-
-  return input;
-}
-
 template <typename T>
-ShapeAndData<T> CreateTypedInput(std::vector<int64_t> shape) {
+ShapeAndData<T> CreateInput(std::vector<int64_t> shape) {
   auto size = TensorShape(shape).Size();
 
   T i = static_cast<T>(0), increment = static_cast<T>(1);
@@ -280,7 +267,7 @@ TEST(SplitOperatorTest, Axis2EqualSplit) {
   const int64_t axis = 2;
   std::vector<ShapeAndFloatData> outputs;
 
-  ShapeAndFloatData input = CreateInput({2, 2, 6});
+  ShapeAndFloatData input = CreateInput<float>({2, 2, 6});
 
   outputs.push_back({{2, 2, 2},
                      {1.f, 2.f,
@@ -310,7 +297,7 @@ TEST(SplitOperatorTest, Axis2UnequalSplit) {
   const int64_t axis = 2;
   std::vector<ShapeAndFloatData> outputs;
 
-  ShapeAndFloatData input = CreateInput({2, 2, 6});
+  ShapeAndFloatData input = CreateInput<float>({2, 2, 6});
 
   std::vector<int64_t> splits{1, 2, 3};
 
@@ -342,7 +329,7 @@ TEST(SplitOperatorTest, ZeroSizeInput) {
   const int64_t axis = -1;
   std::vector<ShapeAndFloatData> outputs{{{0, 1}, {}}, {{0, 1}, {}}};
 
-  ShapeAndFloatData input = CreateInput({0, 2});
+  ShapeAndFloatData input = CreateInput<float>({0, 2});
 
   RunTest<float>(axis, {}, input, outputs, false);
 }
@@ -352,7 +339,7 @@ TEST(SplitOperatorTest, Axis1SplitMiddleDimensionEqually) {
   const int64_t axis = 1;
   std::vector<ShapeAndFloatData> outputs;
 
-  ShapeAndFloatData input = CreateInput({2, 4, 4});
+  ShapeAndFloatData input = CreateInput<float>({2, 4, 4});
 
   outputs.push_back({{2, 2, 4},
                      {1.f, 2.f, 3.f, 4.f,
@@ -376,7 +363,7 @@ TEST(SplitOperatorTest, Axis1SplitMiddleDimensionUnequally) {
   const int64_t axis = 1;
   std::vector<ShapeAndFloatData> outputs;
 
-  ShapeAndFloatData input = CreateInput({2, 4, 4});
+  ShapeAndFloatData input = CreateInput<float>({2, 4, 4});
 
   std::vector<int64_t> splits{1, 3};
 
@@ -585,7 +572,7 @@ TEST(SplitOperatorTest, Uint8Axis1SplitMiddleDimensionUnequally) {
   const int64_t axis = 1;
   std::vector<ShapeAndData<uint8_t>> outputs;
 
-  ShapeAndData<uint8_t> input = CreateTypedInput<uint8_t>({2, 4, 4});
+  ShapeAndData<uint8_t> input = CreateInput<uint8_t>({2, 4, 4});
 
   std::vector<int64_t> splits{1, 3};
 

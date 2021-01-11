@@ -420,36 +420,41 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
 }
 
 TEST(NhwcTransformerTests, ConvSplit) {
-  auto build_test_case = [&](NhwcTestHelper& helper) {
-    auto* input_arg = helper.MakeInput<uint8_t>({1, 23, 13, 13});
-    auto* conv_output_arg = helper.MakeIntermediate();
-    auto* split_output1_arg = helper.MakeIntermediate();
-    auto* split_output2_arg = helper.MakeIntermediate();
-    auto* qladd_output_arg = helper.MakeIntermediate();
-    auto* output_arg = helper.MakeOutput();
+  for (int64_t axis = -4LL; axis < 4; axis++) {
+    auto build_test_case = [&, axis](NhwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<uint8_t>({2, 23, 16, 16});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* split_output1_arg = helper.MakeIntermediate();
+      auto* split_output2_arg = helper.MakeIntermediate();
+      auto* qladd_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
 
-    Node& conv_node = helper.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
-                                                         {64, 23, 3, 3}, .02f, 126,
-                                                         conv_output_arg, .37f, 131);
-    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
-    Node& split_node = helper.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
-    split_node.AddAttribute("axis", static_cast<int64_t>(1));
-    helper.AddQLinearBinaryNode("QLinearAdd",
-                                split_output1_arg, .37f, 131,
-                                split_output2_arg, .37f, 131,
-                                qladd_output_arg, .43f, 126);
-    helper.AddQLinearConvNode<uint8_t>(qladd_output_arg, .43f, 126,
-                                       {17, 32, 3, 3}, .02f, 126,
-                                       output_arg, .37f, 131);
-  };
+      const int64_t conv1_output_channels = 32;
+      Node& conv_node = helper.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                           {conv1_output_channels, 23, 3, 3}, .02f, 126,
+                                                           conv_output_arg, .37f, 131);
+      conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      Node& split_node = helper.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
+      split_node.AddAttribute("axis", static_cast<int64_t>(axis));
+      helper.AddQLinearBinaryNode("QLinearAdd",
+                                  split_output1_arg, .37f, 131,
+                                  split_output2_arg, .37f, 131,
+                                  qladd_output_arg, .43f, 126);
+      const int64_t channels_after_split =
+        (axis == 1 || axis == -3) ? conv1_output_channels / 2 : conv1_output_channels;
+      helper.AddQLinearConvNode<uint8_t>(qladd_output_arg, .43f, 126,
+                                         {17, channels_after_split, 3, 3}, .02f, 126,
+                                         output_arg, .37f, 131);
+    };
 
-  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
-    EXPECT_EQ(op_to_count["Transpose"], 2);
-  };
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
 
-  NhwcTransformerTester(build_test_case, check_nhwc_graph);
+    NhwcTransformerTester(build_test_case, check_nhwc_graph);
+  }
 }
 
 TEST(NhwcTransformerTests, ConvBlockActivation) {
