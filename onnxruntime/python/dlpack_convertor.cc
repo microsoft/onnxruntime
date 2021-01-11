@@ -76,7 +76,7 @@ DLDataType get_dlpack_data_type(const OrtValue& ort_value) {
 DLContext get_dlpack_context(const OrtValue& ort_value, const int64_t& device_id) {
   ORT_ENFORCE(ort_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
   DLContext ctx;
-  ctx.device_id = device_id;
+  ctx.device_id = static_cast<int>(device_id);
   const Tensor& tensor = ort_value.Get<Tensor>();
   const auto& location = tensor.Location();
   switch (location.device.Type()) {
@@ -111,7 +111,7 @@ DLManagedTensor* ort_value_to_dlpack(const OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.deleter = &deleter;
   ort_dlmanaged_tensor->tensor.dl_tensor.data = const_cast<void*>(tensor.DataRaw());
   ort_dlmanaged_tensor->tensor.dl_tensor.ctx = get_dlpack_context(ort_value, tensor.Location().device.Id());
-  ort_dlmanaged_tensor->tensor.dl_tensor.ndim = tensor.Shape().NumDimensions();
+  ort_dlmanaged_tensor->tensor.dl_tensor.ndim = static_cast<int>(tensor.Shape().NumDimensions());
   ort_dlmanaged_tensor->tensor.dl_tensor.dtype = get_dlpack_data_type(ort_value);
   ort_dlmanaged_tensor->tensor.dl_tensor.shape =
       tensor.Shape().NumDimensions() > 0 ? const_cast<int64_t*>(&tensor.Shape()[0]) : nullptr;
