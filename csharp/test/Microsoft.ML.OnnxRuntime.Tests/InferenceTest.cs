@@ -2208,7 +2208,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void TestCUDAProviderOptions()
         {
-            //#if USE_CUDA
+            #if USE_CUDA
             using (var cudaProviderOptions = new OrtCUDAProviderOptions())
             {
                 var providerOptionsDict = new Dictionary<string, string>();
@@ -2226,7 +2226,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
 
-            //s#endif
+            #endif
         }
 
         [DllImport("kernel32", SetLastError = true)]
