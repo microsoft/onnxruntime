@@ -168,7 +168,7 @@ common::Status SaveInitializedTensors(
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::RecordPatternInfo(planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
   MemoryInfo::MemoryInfoProfile::CreateEvents("initializer_" + std::to_string(MemoryInfo::GetIteration()),
-                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 1);
+                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
 #endif
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {

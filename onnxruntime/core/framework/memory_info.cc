@@ -108,9 +108,8 @@ void MemoryInfo::RecordActivationAllocInfo(const OrtValueIndex idx, const OrtVal
 
 void MemoryInfo::SetDynamicAllocation(const OrtValueIndex idx) {
   if (!AllocPlan(idx)) return;
-  if (!tensors_memory_info_map_.at(AllocPlan(idx)->location)[MapType::DynamicActivation].Contain(idx)) {
-    tensors_memory_info_map_.at(AllocPlan(idx)->location)[MapType::DynamicActivation][idx];
-  }
+  auto& da_map = tensors_memory_info_map_.at(AllocPlan(idx)->location)[MapType::DynamicActivation];
+  if (!da_map.Contain(idx)) da_map[idx];
 }
 
 void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const MemoryInfoPerTensor& mem_info, const size_t& rel_addr) {
@@ -233,7 +232,7 @@ static void UpdateSummary(MemoryInfo::AllocationSummary& summary, size_t alloc_o
   summary.live_tensors.push_back(idx);
 }
 
-//The following colors are defined and accepted by Chrome Tracing/Edge Tracing. 
+//The following colors are defined and accepted by Chrome Tracing/Edge Tracing.
 const std::vector<std::string> MemoryInfo::MemoryInfoProfile::color_names = {
     "good",
     "bad",

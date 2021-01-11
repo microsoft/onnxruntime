@@ -300,7 +300,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             if (mem_patterns_ && buffer != nullptr) {
               MemoryInfo::RecordPatternInfo(*mem_patterns_, MemoryInfo::MapType::StaticActivation);
               MemoryInfo::MemoryInfoProfile::CreateEvents("static activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                          MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 1);
+                                                          MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 0);
             }
 #endif
             // log size of activation. Keep it commented out for now to avoid log flooding.

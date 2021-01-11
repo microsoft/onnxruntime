@@ -331,7 +331,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       //If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                  MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 1);
+                                                  MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
 #endif
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
@@ -448,7 +448,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 1);
+                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
   MemoryInfo::MemoryInfoProfile::Clear();
 #endif
 
