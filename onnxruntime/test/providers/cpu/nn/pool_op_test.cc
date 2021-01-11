@@ -1276,7 +1276,7 @@ TEST(PoolTest, LpPoolWithNegativeNumbers) {
   std::vector<float> x_vals = {0.2f, -0.6f};
   std::vector<int64_t> x_dims = {1, 1, 2};
   std::vector<int64_t> expected_dims = {1, 1, 1};
-  std::vector<float> expected_vals = {0.4f};
+  std::vector<float> expected_vals = {-0.4f};
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
