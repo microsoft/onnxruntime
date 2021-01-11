@@ -255,6 +255,21 @@ Status TrainingSession::SetEventSynchronization(
   return Status::OK();
 }
 
+// This function only create a graph input to accept loss scale passed in.
+// Why do we need it? When pipeline parallel is enabled, only the last pipeline stage 
+// needs that scale. However, Python API still feed a scale to all pipeline stages, so
+// we create a "unused" input for that scale in each graph.
+static Status AddFakeLossScaling(
+    Graph& graph, std::string& loss_scale_name) {
+  GraphAugmenter::GraphDefs defs{};
+  loss_scale_name = graph.GenerateNodeArgName("loss_scale");
+  const auto* loss_scale_type = defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  graph.GetOrCreateNodeArg(loss_scale_name, loss_scale_type);
+  defs.AddGraphInputs({loss_scale_name});
+  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
+  return Status::OK();
+}
+
 Status TrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config, TrainingConfigurationResult& config_result_out) {
   ORT_RETURN_IF(
@@ -345,24 +360,8 @@ Status TrainingSession::ConfigureForTraining(
     mp_result.loss_scale_input_name = loss_scale_input_name.value();
     config_result.mixed_precision_config_result = mp_result;
   } else if (enable_fake_loss_scale) {
-    auto& graph = model_->MainGraph();
-    GraphAugmenter::GraphDefs defs{};
-    const auto loss_scale_name = graph.GenerateNodeArgName("loss_scale");
-    const auto* loss_scale_type = defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    const auto unused_loss_scale_name = graph.GenerateNodeArgName("scaled_loss");
-    const auto fake_loss_scalar_name = graph.GenerateNodeName("fake_loss_scalar");
-    defs.AddNodeDef(NodeDef{
-        "Identity",
-        {ArgDef{loss_scale_name, loss_scale_type}},
-        {ArgDef{unused_loss_scale_name, loss_scale_type}},
-        NodeAttributes(),
-        fake_loss_scalar_name});
-    std::vector<std::string> input_names;
-    input_names.push_back(loss_scale_name);
-    defs.AddGraphInputs(input_names);
-    ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
-    mp_result.loss_scale_input_name = loss_scale_name;
+    ORT_RETURN_IF_ERROR(AddFakeLossScaling(model_->MainGraph(), mp_result.loss_scale_input_name));
     config_result.mixed_precision_config_result = mp_result;
   }
 
