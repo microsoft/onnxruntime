@@ -139,9 +139,8 @@ TEST(ModuleGradientGraphBuilderTest, GraphSplit_Mnist) {
 
 TEST(ModuleGradientGraphBuilderTest, GraphSplit_BertToy) {
   std::string file_path = "testdata/bert_toy_optimized.onnx";
-  const auto model_path = ORT_TSTR(file_path);
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_path, p_model, nullptr, logging::LoggingManager::DefaultLogger()).IsOK());
+  ASSERT_TRUE(Model::Load(ToPathString(file_path), p_model, nullptr, logging::LoggingManager::DefaultLogger()).IsOK());
   std::vector<std::string> initializer_names_to_train;
   const Graph& graph = p_model->MainGraph();
   const auto& initializers = graph.GetAllInitializedTensors();
