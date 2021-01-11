@@ -194,8 +194,6 @@ class TrainingRunner {
     int number_recompute_layers = 0;
     // Use invertible layernorm grad
     bool use_invertible_layernorm_grad = false;
-    // Enable memory profling
-    bool enable_memory_profile = false;
   };
 
   TrainingRunner(Parameters params, const Environment& env);

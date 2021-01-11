@@ -38,8 +38,6 @@ struct AllocPlanPerValue {
   IntervalT allocate_interval{0, 0};
   OrtValueIndex inplace_reuse{-1}; //No in-place reuse
 #endif
-  std::vector<size_t> program_counter_start;
-  std::vector<size_t> program_counter_end;
 
   class ProgramCounter {
    public:

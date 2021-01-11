@@ -15,7 +15,9 @@
 #include "core/framework/session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/utils.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
+#endif
 
 using namespace onnxruntime::common;
 
@@ -382,10 +384,10 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
             // fed in, so use VERBOSE as the log level as it's expected.
             // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
             // to be freed if the size difference was too large so our memory usage doesn't stick at a high water mark
-            std::cout << "For ort_value with index: " << ort_value_index
-                      << ", block in memory pattern size is: " << block->size_
-                      << " but the actually size is: " << size
-                      << ", fall back to default allocation behavior";
+            LOGS(session_state_.Logger(), VERBOSE) << "For ort_value with index: " << ort_value_index
+                                                   << ", block in memory pattern size is: " << block->size_
+                                                   << " but the actually size is: " << size
+                                                   << ", fall back to default allocation behavior";
           }
         }
         // else { we couldn't allocate the large block for the buffer so we didn't insert an entry }

@@ -159,8 +159,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
-  // Enable TRACE_EXECUTION compile flag to dump execution plan
-  //  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+// Enable TRACE_EXECUTION compile flag to dump execution plan
+#if defined(TRACE_EXECUTION)
+  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+#endif
 
   const auto& graph_viewer = session_state.GetGraphViewer();
 

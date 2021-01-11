@@ -23,7 +23,9 @@
 #include "core/framework/utils.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_allocator.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
+#endif
 
 namespace onnxruntime {
 namespace session_state_utils {

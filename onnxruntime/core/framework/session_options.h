@@ -104,7 +104,6 @@ struct SessionOptions {
   // Deterministic compute is likely not as performant. This option is default to false.
   bool use_deterministic_compute = false;
 
-
   // Stores the configurations for this session
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
   // The configuration keys and value formats are defined in
@@ -126,7 +125,6 @@ struct SessionOptions {
 
   // Add a config pair (config_key, config_value) to the given SessionOptions
   Status AddConfigEntry(_In_z_ const char* config_key, _In_z_ const char* config_value) noexcept;
-
 };
 
 }  // namespace onnxruntime

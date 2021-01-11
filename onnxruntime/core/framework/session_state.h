@@ -31,7 +31,9 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
+#endif
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -52,7 +54,9 @@ class KernelDef;
 class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 struct MemoryPatternGroup;
+#endif
 class MemoryInfo;
 
 /**
