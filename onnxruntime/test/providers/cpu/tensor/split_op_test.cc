@@ -24,7 +24,7 @@ void RunTest(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAn
 
   test.AddAttribute("axis", axis);
   test.AddInput<T>("input", input.first, input.second);
-  if (!split_sizes.empty()){
+  if (!split_sizes.empty()) {
     if (split_as_input)
       test.AddInput<int64_t>("split", {static_cast<int64_t>(split_sizes.size())}, split_sizes, is_initializer);
     else
@@ -438,7 +438,9 @@ TEST(SplitOperatorTest, SplitAttributeSumTooSmall) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{2, 2}, {3.f, 4.f, 5.f, 6.f}});
 
-  RunTest<float>(axis, splits, input, outputs, false, true, false,true, "Cannot split using values in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  RunTest<float>(axis, splits, input, outputs, false, true, false, true,
+                 "[ShapeInferenceError] Mismatch between the sum of 'split' (3) and the split dimension of the input (4)");
+  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
 TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
@@ -456,7 +458,8 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
-  RunTest<float>(axis, splits, input, outputs, false, true, false,true, "in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  RunTest<float>(axis, splits, input, outputs, false, true, false, true,
+                 "[ShapeInferenceError] Mismatch between number of splits (3) and outputs (2)");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
 // split as input
