@@ -100,9 +100,21 @@ static bool RegisterCustomSchemas() {
         fail_shape_inference("try harder");
       });
 
-  // Fake Op where the domain for the Op itself and the Ops in the function body is not same.
-  OPERATOR_SCHEMA(DynamicQuantizeLinear_test)
-      .SetName("DynamicQuantizeLinear_test")
+  OPERATOR_SCHEMA(Fake_Sub)
+      .SinceVersion(1)
+      .SetDomain(kMSNchwcDomain)
+      .Input(0, "A", "First operand.", "T")
+      .Input(1, "B", "Second operand.", "T")
+      .Output(0, "C", "Result, has same element type as two inputs", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
+  // Fake Function Op where the domain for the Op itself and the Ops in the function body is not same.
+  // Function Op belongs to com.microsoft domain where as function body ops belong to onnx domain and nchwdomain.
+  OPERATOR_SCHEMA(Fake_FunctionOp)
+      .SetName("Fake_FunctionOp")
       .SetDomain("com.microsoft")
       .SinceVersion(1)
       .SetDoc("Fake function operator")
@@ -112,27 +124,32 @@ static bool RegisterCustomSchemas() {
       .Output(2, "y_zero_point", "Output zero point. It's a scalar, which means a per-tensor/layer quantization.", "T2")
       .TypeConstraint("T1", {"tensor(float)"}, "Constrain 'x' to float tensor.")
       .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain 'y_zero_point' and 'y' to 8-bit unsigned integer tensor.")
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes({// nodes: {outputs, op, inputs, attributes}
-                                                                    ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Min", 0.f),
-                                                                    ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Max", 255.f),
-                                                                    {{"X_Min"}, "ReduceMin", {"x"}, {ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))}},
-                                                                    {{"X_Min_Adjusted"}, "Min", {"X_Min", "Q_Min"}},
-                                                                    {{"X_Max"}, "ReduceMax", {"x"}, {ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))}},
-                                                                    {{"X_Max_Adjusted"}, "Max", {"X_Max", "Q_Min"}},
-                                                                    {{"X_Range"}, "Sub", {"X_Max_Adjusted", "X_Min_Adjusted"}},
-                                                                    {{"Scale"}, "Div", {"X_Range", "Q_Max"}},
-                                                                    {{"Min_Scaled"}, "Div", {"X_Min_Adjusted", "Scale"}},
-                                                                    {{"Initial_ZeroPoint_FP"}, "Sub", {"Q_Min", "Min_Scaled"}},
-                                                                    {{"Clipped_ZeroPoint_FP"}, "Clip", {"Initial_ZeroPoint_FP", "Q_Min", "Q_Max"}},
-                                                                    {{"Rounded_ZeroPoint_FP"}, "Round", {"Clipped_ZeroPoint_FP"}},
-                                                                    {{"Zeropoint"}, "Cast", {"Rounded_ZeroPoint_FP"}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t(2))}},
-                                                                    {{"y_scale"}, "Identity", {"Scale"}},
-                                                                    {{"y_zero_point"}, "Identity", {"Zeropoint"}},
-                                                                    {{"y"}, "QuantizeLinear", {"x", "Scale", "Zeropoint"}}}));
+      .FunctionBody([]() {
+        auto nodes = ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes({// nodes: {outputs, op, inputs, attributes}
+                                                                     ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Min", 0.f),
+                                                                     ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Max", 255.f),
+                                                                     {{"X_Min"}, "ReduceMin", {"x"}, {ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))}},
+                                                                     {{"X_Max"}, "ReduceMax", {"x"}, {ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))}},
+                                                                     {{"X_Range"}, "Fake_Sub", {"X_Max", "X_Min"}},
+                                                                     {{"Scale"}, "Div", {"X_Range", "Q_Max"}},
+                                                                     {{"Initial_ZeroPoint_FP"}, "Sub", {"Q_Min", "X_Min"}},
+                                                                     {{"Clipped_ZeroPoint_FP"}, "Clip", {"Initial_ZeroPoint_FP", "Q_Min", "Q_Max"}},
+                                                                     {{"Rounded_ZeroPoint_FP"}, "Round", {"Clipped_ZeroPoint_FP"}},
+                                                                     {{"Zeropoint"}, "Cast", {"Initial_ZeroPoint_FP"}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t(2))}},
+                                                                     {{"y_scale"}, "Identity", {"Scale"}},
+                                                                     {{"y_zero_point"}, "Identity", {"Zeropoint"}},
+                                                                     {{"y"}, "QuantizeLinear", {"x", "Scale", "Zeropoint"}}});
+        for (auto& node : nodes) {
+          if (node.op_type() == "Fake_Sub") {
+            node.set_domain(kMSNchwcDomain);
+          }
+        }
+        return nodes;
+      }());
 
   return true;
 }
-// namespace test
+
 static std::once_flag once;
 
 class GraphTest : public ::testing::Test {
@@ -428,9 +445,13 @@ TEST_F(GraphTest, LocalCustomRegistry) {
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, &regs, *logger_));
 }
 
-TEST_F(GraphTest, LocalCustomRegistryTest) {
+// Tests the case where function op and function body ops belong to different domains.
+// Tests that such a model can be loaded successfully, function body initialization is 
+// successful and domain and verison mapping for each node is successful (by verifying 
+// op schema for each of the function body nodes can be found).
+TEST_F(GraphTest, FunctionOpsetImportTest) {
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/function_test_model.onnx"), model, {},
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/function_opset_test.onnx"), model, {},
                                *logger_));
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   const auto& graph = model->MainGraph();
@@ -441,7 +462,7 @@ TEST_F(GraphTest, LocalCustomRegistryTest) {
       // If Op Schema has function body then func_ptr cannot be nullptr
       // This is because we construct function body during graph resolve.
       // However in future if we move the function initialization in the graph partitioning
-      // phase .i.e. Init function body only if none of EPs have a kernel maching the op
+      // phase .i.e. Init function body only if none of EPs have a kernel matching the function op
       // then this check will not hold true and should be removed.
       ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());
       continue;
@@ -456,7 +477,7 @@ TEST_F(GraphTest, LocalCustomRegistryTest) {
       ASSERT_TRUE(it != domain_version_map.end());
       auto domain_version = it->second;
       const auto op_schema = schema_registry->GetSchema(n.OpType(), domain_version, n.Domain());
-      ASSERT_TRUE(op_schema);
+      ASSERT_TRUE(op_schema != nullptr);
     }
   }
 }

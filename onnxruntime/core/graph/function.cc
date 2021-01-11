@@ -175,12 +175,11 @@ static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const IndexedSubGraph& nodes_to_fuse,
                            const logging::Logger& logger)
-    : parent_graph_(&graph) {
-  body_ = onnxruntime::make_unique<onnxruntime::Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
-                                                       graph.ModelPath().ToPathString(), IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
-                                                       graph.DomainToVersionMap(),
-                                                       std::vector<ONNX_NAMESPACE::FunctionProto>{}, logger);
-
+    : parent_graph_(&graph),
+      body_(onnxruntime::make_unique<Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
+                                            graph.ModelPath().ToPathString(),
+                                            IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
+                                            graph.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>{}, logger)) {
   auto& function_body_graph = body_->MainGraph();
 
   auto* meta_def = nodes_to_fuse.GetMetaDef();
@@ -251,13 +250,11 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       onnx_func_proto_(onnx_func_proto) {
   std::unordered_map<std::string, int> function_opset_imports{graph.DomainToVersionMap()};
   for (const auto& opset_import : onnx_func_proto_.opset_import()) {
-    auto it = function_opset_imports.find(opset_import.domain());
-    if (it != function_opset_imports.end()) {
-      ORT_ENFORCE(it->second == opset_import.version(),
-                  "ONNX model does not support multiple opsets for a domain.");
-    } else {
-      function_opset_imports[opset_import.domain()] = static_cast<int>(opset_import.version());
-    }
+    auto result = function_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
+    ORT_ENFORCE(result.second,
+                "ONNX model does not support multiple opset versions for a domain. Model imports opset version ",
+                result.first->second, " for domain ", result.first->first, " and function is trying to import opset version ",
+                opset_import.version(), " for the same domain");
   }
 
   body_ = onnxruntime::make_unique<onnxruntime::Model>(onnx_func_proto_.name(), false, onnxruntime::ModelMetaData(),
