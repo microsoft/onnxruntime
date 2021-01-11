@@ -17,8 +17,7 @@ bool HasUnknownShapeOnAxis(const ConstPointerContainer<std::vector<NodeArg*>>& d
 bool HasUnknownShapeOnAxes(const NodeArg* def, std::vector<int64_t>& axes);
 
 Status GetVectorInt64FromTensorProto(std::vector<int64_t>& v,
-                                     const ONNX_NAMESPACE::TensorProto& tp,
-                                     const Path& model_path);
+                                     const ONNX_NAMESPACE::TensorProto& tp);
 
 }  // namespace nuphar
 }  // namespace onnxruntime

@@ -40,7 +40,7 @@ void test_unpack_float_tensor(TensorProto_DataType type, const Path& model_path)
   EXPECT_EQ(4.4f, float_data2[3]);
 }
 
-TEST(TensorParseTest, TensorUtilsTest) {
+TEST(TensorProtoUtilsTest, UnpackTensor) {
   TensorProto bool_tensor_proto;
   // Path is required for loading external data.
   // Using empty path here since this test does not test

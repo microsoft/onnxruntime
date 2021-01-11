@@ -1888,9 +1888,6 @@ bool ContainsEmptyDimensions(const EdgeShapes& shapes) {
   return false;
 }
 
-// TODO: Determine whether UnpackTensor needs to handle the case for unpacking tensor
-// with external data. If this support is required then we need to pass the
-// path to external data dir to onnxruntime::utils::UnpackTensor instead of nullptr
 std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer) {
   std::unique_ptr<std::byte[]> unpackedTensor;
   size_t tensorByteSize = 0;
@@ -1902,7 +1899,6 @@ std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::Tensor
     unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
     THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                         \
                              initializer,                                                          \
-                             nullptr,                                                              \
                              initializer.has_raw_data() ? initializer.raw_data().data() : nullptr, \
                              initializer.has_raw_data() ? initializer.raw_data().size() : 0,       \
                              reinterpret_cast<Y*>(unpackedTensor.get()), elementCount)             \

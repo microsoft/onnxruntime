@@ -69,21 +69,6 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
                                  std::unique_ptr<uint8_t[]>& unpacked_tensor,
                                  size_t& tensor_data_length);
 
-// Unpack tensor which contains external data. Uses the tensor_proto_dir to construct the full path for external data.
-// If tensor_proto_dir == nullptr then uses the current directory instead.
-// This function does not unpack string_data of a tensor
-template <typename T>
-Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
-                                    const ORTCHAR_T* tensor_proto_dir, size_t expected_size,
-                                    /*out*/ T* p_data);
-
-// UnpackTensor from raw data, external data or the type specific data field.
-// Uses tensor_proto_dir to construct the full path for loading external data when this is nullptr it uses current dir.
-// If the tesnor does not contain raw data then raw_data should be nullptr and raw_data_len should be 0.
-template <typename T>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const ORTCHAR_T* tensor_proto_dir, const void* raw_data, size_t raw_data_len,
-                    /*out*/ T* p_data, size_t expected_size);
-
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
 // the data location is external. i.e. it does not load the external data.
@@ -262,15 +247,39 @@ inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
   return node_proto.has_name();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+// Unpack tensor which contains external data. Uses the tensor_proto_dir to construct the full path for external data.
+// If tensor_proto_dir == nullptr then uses the current directory instead.
+// This function does not unpack string_data of a tensor
+template <typename T>
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const ORTCHAR_T* tensor_proto_dir, size_t expected_size,
+                                    /*out*/ T* p_data);
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+// UnpackTensor from raw data or the type specific data field. Does not handle external data.
+// If the tesnor does not contain raw data then raw_data should be nullptr and raw_data_len should be 0.
+template <typename T>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ T* p_data, size_t expected_size);
+
 // UnpackTensor from raw data, external data or the type specific data field.
 // Uses the model path to construct the full path for loading external data. In case when model_path is empty
 // it uses current directory.
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path, /*out*/ T* p_data, size_t expected_size) {
-  auto tensor_proto_path = model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str();
+#if !defined(ORT_MINIMAL_BUILD)
+  if (HasExternalData(tensor)) {
+    auto tensor_proto_path = model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str();
+    return UnpackTensorWithExternalData(tensor, tensor_proto_path, expected_size, p_data);
+  }
+#elif
+  ORT_UNUSED_PARAMETER(model_path);
+#endif
+
   return HasRawData(tensor)
-             ? UnpackTensor(tensor, tensor_proto_path, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
-             : UnpackTensor(tensor, tensor_proto_path, nullptr, 0, p_data, expected_size);
+             ? UnpackTensor(tensor, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
+             : UnpackTensor(tensor, nullptr, 0, p_data, expected_size);
 }
 
 /**

@@ -259,13 +259,13 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         const ONNX_NAMESPACE::TensorProto* steps_tp = nullptr;
         bool found_steps = inputs.size() > 4 && graph_viewer.GetInitializedTensor(inputs[4]->Name(), steps_tp);
         if (found_steps) {
-          GetVectorInt64FromTensorProto(steps, *steps_tp, graph_viewer.ModelPath());
+          GetVectorInt64FromTensorProto(steps, *steps_tp);
         }
 
         const ONNX_NAMESPACE::TensorProto* axes_tp = nullptr;
         bool found_axes = inputs.size() > 3 && graph_viewer.GetInitializedTensor(inputs[3]->Name(), axes_tp);
         if (found_axes) {
-          GetVectorInt64FromTensorProto(axes, *axes_tp, graph_viewer.ModelPath());
+          GetVectorInt64FromTensorProto(axes, *axes_tp);
         }
       } else {
         const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
@@ -337,7 +337,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
             auto iter = all_initialized_tensors.find(def.Name());
             if (iter != all_initialized_tensors.end()) {
               if (graph_viewer.IsConstantInitializer(def.Name(), true)) {
-                ORT_ENFORCE(SaveInitializer(def.Name(), iter->second, graph_viewer.ModelPath()).IsOK());
+                ORT_ENFORCE(SaveInitializer(def.Name(), iter->second).IsOK());
               }
             }
           });
@@ -353,8 +353,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
 Status NupharExecutionProvider::SaveInitializer(
     const std::string& name,
-    const ONNX_NAMESPACE::TensorProto* proto,
-    const Path& model_path) const {
+    const ONNX_NAMESPACE::TensorProto* proto) const {
   auto iter = constant_initializers_used_in_compiled_nodes_.find(name);
   if (iter == constant_initializers_used_in_compiled_nodes_.end()) {
     // create tensor from TensorProto
@@ -377,7 +376,8 @@ Status NupharExecutionProvider::SaveInitializer(
   case V:                                                              \
     ORT_RETURN_IF_ERROR(utils::UnpackTensor<T>(                        \
         *proto,                                                        \
-        model_path,                                                    \
+        proto->raw_data().size() ? proto->raw_data().data() : nullptr, \
+        proto->raw_data().size(),                                      \
         t->MutableData<T>(),                                           \
         shape.Size()));                                                \
     break;

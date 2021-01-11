@@ -36,8 +36,7 @@ bool HasUnknownShapeOnAxes(const NodeArg* def, std::vector<int64_t>& axes) {
 }
 
 Status GetVectorInt64FromTensorProto(std::vector<int64_t>& v,
-                                     const ONNX_NAMESPACE::TensorProto& tp,
-                                     const Path& model_path) {
+                                     const ONNX_NAMESPACE::TensorProto& tp) {
   size_t tp_sz_in_bytes;
   ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tp, &tp_sz_in_bytes));
   OrtValue ort_value;
@@ -47,7 +46,8 @@ Status GetVectorInt64FromTensorProto(std::vector<int64_t>& v,
   T* p = reinterpret_cast<T*>(data.get());                   \
   ORT_RETURN_IF_ERROR(utils::UnpackTensor<T>(                \
       tp,                                                    \
-      model_path,                                            \
+      tp.raw_data().size() ? tp.raw_data().data() : nullptr, \
+      tp.raw_data().size(),                                  \
       p,                                                     \
       tp_sz_in_bytes / sizeof(T)));                          \
   std::vector<T> tmp_v(p, p + tp_sz_in_bytes / sizeof(T));
