@@ -99,9 +99,10 @@ def test(args, model, device, loss_fn, test_loader):
 
     # Report the final accuracy for this validation run.
     epoch_time = time.time() - t0
-    print("  Accuracy: {0:.2f}".format(float(correct)/len(test_loader.dataset)))
+    accuracy = float(correct)/len(test_loader.dataset)
+    print("  Accuracy: {0:.2f}".format(accuracy))
     print("  Validation took: {:.4f}s".format(epoch_time))
-    return epoch_time
+    return epoch_time, accuracy
 
 def my_loss(x, target, is_train=True):
     if is_train:
@@ -130,7 +131,7 @@ def main():
                         help='how many batches to wait before logging training status (default: 300)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
                         help='views forward and backward graphs')
-    parser.add_argument('--epochs', type=int, default=10, metavar='N',
+    parser.add_argument('--epochs', type=int, default=5, metavar='N',
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
                         help='Log level (default: WARNING)')
@@ -142,7 +143,6 @@ def main():
     torch.manual_seed(args.seed)
     onnxruntime.set_seed(args.seed)
 
-    # TODO: CUDA support is broken due to copying from PyTorch into ORT
     if not args.no_cuda and torch.cuda.is_available():
         device = "cuda"
     else:
@@ -181,13 +181,16 @@ def main():
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
 
     # Train loop
-    total_training_time, total_test_time, epoch_0_training = 0, 0, 0
+    total_training_time, total_test_time, epoch_0_training, validation_accuracy = 0, 0, 0, 0
     for epoch in range(0, args.epochs):
         total_training_time += train(args, model, device, optimizer, my_loss, train_loader, epoch)
         if not args.pytorch_only and epoch == 0:
             epoch_0_training = total_training_time
         if args.test_batch_size > 0:
-            total_test_time += test(args, model, device, my_loss, test_loader)
+            test_time, validation_accuracy = test(args, model, device, my_loss, test_loader)
+            total_test_time += test_time
+
+    assert validation_accuracy > 0.92
 
     print('\n======== Global stats ========')
     if not args.pytorch_only:
