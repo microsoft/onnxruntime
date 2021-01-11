@@ -128,6 +128,7 @@ class MemoryInfo {
     //map_type: Initalizer, static_activation, dynamic_activation. We have this separtion because they are using different memory offsets.
     //group_name: The group_name that is recorded previously using function "AddRecordingTensorGroup". Used for generating customized sessions for a group of tensors
     //Top_k: The steps with the top-k highest memory consumptions are plot. When top_k == 0, we plot all the steps
+    //device_t: The type of the device where the tensors are.
     static void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& group_name,
                              const size_t top_k, const OrtDevice::DeviceType device_t = OrtDevice::GPU);
 
