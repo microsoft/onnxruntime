@@ -130,10 +130,27 @@
 namespace onnxruntime {
 namespace concurrency {
 
-// Align to avoid false sharing with prior fields.  TheIf required,
-// padding must be added subsequently to avoid false sharing with
-// later fields.
+class ThreadPoolParallelSection;
+class ThreadPoolLoop;
+
+// Align to avoid false sharing with prior fields.  If required,
+// alignment or padding must be added subsequently to avoid false
+// sharing with later fields.  Note that:
+//
+// - The __x86_64__ value is twice the line size (64 bytes).  This
+//   accounts for 2-line prefetch behavior on some cores.
+//
+// - Ideally, ORT_ALIGN_TO_AVOID_FALSE_SHARING is used.  However, the
+//   definition of ThreadPoolParallelSection uses naive padding
+//   because C++11 does not support alignment constraints on
+//   allocation or expose stdlib.h aligned_alloc.  C++17 introduces
+//   support for aligned allocation which we could use here.
+
+#if defined(__x86_64__)
 #define ORT_FALSE_SHARING_BYTES 128
+#else
+#define ORT_FALSE_SHARING_BYTES 64
+#endif
 
 #ifdef _MSC_VER
 #define ORT_ALIGN_TO_AVOID_FALSE_SHARING DECLSPEC_ALIGN(ORT_FALSE_SHARING_BYTES)
@@ -144,9 +161,6 @@ namespace concurrency {
 struct PaddingToAvoidFalseSharing {
   char padding[ORT_FALSE_SHARING_BYTES];
 };
-
-class ThreadPoolParallelSection;
-class ThreadPoolLoop;
 
 // Extended Eigen thread pool interface, avoiding the need to modify
 // the ThreadPoolInterface.h header from the external Eigen
