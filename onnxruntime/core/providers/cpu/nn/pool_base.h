@@ -88,7 +88,7 @@ class LpPool {
 
   template <typename T>
   static void Process(const T& x_data, T& y_data, const PoolProcessContext& cxt) {
-    y_data += static_cast<T>(std::pow(std::abs(x_data), cxt.p_));
+    y_data += static_cast<T>(std::pow(x_data, cxt.p_));
   }
 
   template <typename T>
