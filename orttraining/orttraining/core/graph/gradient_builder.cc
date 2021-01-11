@@ -1564,10 +1564,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
         result.push_back(NodeDef("Cast", {IA(cmp_i)}, {IA(cmp_cast_i)}, {MakeAttribute("to", int64_t(IElemType(0)))}));
         result.push_back(NodeDef("Mul", {IA(cmp_cast_i), GO(0)}, {IA(pre_reduce_grad_i)}));
         ArgDef x_axes = IA("ReduceAxes_" + x.name);
-        ArgDef x_shape = IA("Shape_" + x.name);
-        ArgDef y_shape = IA("Shape_" + y.name + std::to_string(i));
-        ComputeBroadcastBackwardAxesDynamic(x, y, x_shape, y_shape, &x_axes, nullptr, result);
-        HandleBroadcastingDynamic(IA(pre_reduce_grad_i), x, x_shape, GI(i), x_axes, result);
+        ArgDef X_shape = IA("Shape_" + x.name);
+        ArgDef Y_shape = IA("Shape_" + y.name + std::to_string(i));
+        ComputeBroadcastBackwardAxesDynamic(x, y, X_shape, Y_shape, &x_axes, nullptr, result);
+        HandleBroadcastingDynamic(IA(pre_reduce_grad_i), x, X_shape, GI(i), x_axes, result);
       }
     }
   }
