@@ -168,6 +168,17 @@ jobs:
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
+        
+    - task: Semmle@0
+      inputs:
+        sourceCodeDirectory: '$(Build.SourcesDirectory)\java'
+        language: 'java'
+        cleanupBuildCommands: 'C:\ProgramData\chocolatey\bin\gradle.exe -Dorg.gradle.daemon=false clean'
+        buildCommands: 'C:\ProgramData\chocolatey\bin\gradle.exe -Dorg.gradle.daemon=false jar'
+        querySuite: 'Recommended'
+        timeout: '7200'
+        ram: '16384'
+        addProjectDirToScanningExclusionList: true
 
     - template: templates/clean-agent-build-directory-step.yml
 
