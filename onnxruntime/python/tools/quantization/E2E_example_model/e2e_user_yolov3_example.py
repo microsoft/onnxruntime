@@ -40,7 +40,7 @@ def get_calibration_table(model_path, augmented_model_path, calibration_dataset)
     for i in range(0, total_data_size, stride):
         data_reader = YoloV3DataReader(calibration_dataset,start_index=start_index, end_index=start_index+stride, stride=stride, batch_size=1, model_path=augmented_model_path)
         calibrator.set_data_reader(data_reader)
-        generate_calibration_table(calibrator, model_path, augmented_model_path, False, data_reader)
+        generate_calibration_table(calibrator, model_path, augmented_model_path, False, data_reader, True)
         start_index += stride
 
 
@@ -56,7 +56,7 @@ def get_calibration_table(model_path, augmented_model_path, calibration_dataset)
     # data_reader = YoloV3VisionDataReader(calibration_dataset, width=512, height=288, stride=1000, batch_size=20, model_path=augmented_model_path)
     # data_reader = YoloV3VisionDataReader(calibration_dataset, width=608, height=384, stride=1000, batch_size=20, model_path=augmented_model_path)
     # calibrator.set_data_reader(data_reader)
-    # generate_calibration_table(calibrator, model_path, augmented_model_path, True, data_reader)
+    # generate_calibration_table(calibrator, model_path, augmented_model_path, True, data_reader, True)
 
     write_calibration_table(calibrator.get_calibration_cache())
     print('calibration table generated and saved.')
