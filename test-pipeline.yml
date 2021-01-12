@@ -7,11 +7,9 @@ jobs:
 - job: Job
 
   steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.6'
-      addToPath: true
-      architecture: 'x64'
+  - script: |
+      sleep 300 &
+      echo $! >> pid.txt
 
   - script: |
-      python -m pip install mysql-connector-python
+      kill $( cat pid.txt )
