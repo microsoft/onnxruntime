@@ -362,7 +362,7 @@ def calibrate(model_path,
     #1. initialize a calibrater
     calibrater = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
     #2. augment
-    augmented_model = calibrater.augment_graph()
+    augmented_model = calibrater.augment_graph(augment_all_ops=True if tensorrt_calibration else False)
     onnx.save(augmented_model, augmented_model_path)
     #3. generate quantization thresholds
     dict_for_quantization = calibrater.get_intermediate_outputs(providers=providers, tensorrt_calibration=tensorrt_calibration)
