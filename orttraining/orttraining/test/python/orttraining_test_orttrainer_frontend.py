@@ -5,6 +5,7 @@ from numpy.testing import assert_allclose
 import onnx
 import os
 import pytest
+import tempfile
 import torch
 import torch.nn.functional as F
 
@@ -1409,3 +1410,46 @@ def testORTTrainerUnusedInput():
         trainer.train_step(torch.FloatTensor([1.0]), torch.FloatTensor([1.0]))
     except RuntimeError:
         pytest.fail("RuntimeError doing train_step with an unused input.")
+
+@pytest.mark.parametrize("debug_files", [
+    ({'model_after_graph_transforms_path': 'transformed.onnx',
+      'model_with_gradient_graph_path': 'transformed_grad.onnx',
+      'model_with_training_graph_path': 'training.onnx'
+    }),
+    ({'model_after_graph_transforms_path': 'transformed.onnx',
+      'model_with_training_graph_path': ''
+    }),
+    ])
+def testTrainingGraphExport(debug_files):
+    device = 'cuda'
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        debug_paths = {}
+        for k,v in debug_files.items():
+            debug_paths[k] = os.path.join(tempdir, v)
+        opts =  orttrainer.ORTTrainerOptions(
+            {
+                "device": {"id": device},
+                "debug": {"graph_save_paths": debug_paths}
+            }
+        )
+        optim_config = optim.AdamConfig()
+        trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+        data, targets = batcher_fn(train_data, 0)
+        trainer.train_step(data, targets)
+        for k,v in debug_files.items():
+            path = debug_paths[k]
+            if len(v) > 0:
+                assert os.path.isfile(path)
+                saved_graph = onnx.load(path).graph
+                if k == 'model_with_training_graph_path':
+                    assert any("AdamOptimizer" in n.op_type for n in saved_graph.node)
+                elif k == 'model_with_gradient_graph_path':
+                    assert any("Grad" in n.name for n in saved_graph.node)
+                elif k == 'model_after_graph_transforms_path':
+                    assert any("LayerNormalization" in n.op_type for n in saved_graph.node)
+                # remove saved file
+                os.remove(path)
+            else:
+                assert not os.path.isfile(path)

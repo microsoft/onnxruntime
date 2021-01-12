@@ -46,6 +46,10 @@ class TrainingSession : public InferenceSession {
   struct TrainingConfiguration {
     // The path at which to save the intermediate model with the added loss function.
     optional<PathString> model_with_loss_function_path{};
+    // The path at which to save the model after applying the graph transformations.
+    optional<PathString> model_after_graph_transforms_path{};
+    // The path at which to save the model with gradient graph added.
+    optional<PathString> model_with_gradient_graph_path{};
     // The path at which to save the intermediate model with the whole training graph.
     optional<PathString> model_with_training_graph_path{};
 
