@@ -60,15 +60,6 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
-// Read external data for tensor in unint8_t* form and return Status::OK() if the data is read successfully.
-// Uses the tensor_proto_dir to construct the full path for external data. If tensor_proto_dir == nullptr
-// then uses the current directory instead.
-// This function does not unpack string_data of an initializer tensor
-Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                 const ORTCHAR_T* tensor_proto_dir,
-                                 std::unique_ptr<uint8_t[]>& unpacked_tensor,
-                                 size_t& tensor_data_length);
-
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
 // the data location is external. i.e. it does not load the external data.
