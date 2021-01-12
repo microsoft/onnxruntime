@@ -55,7 +55,8 @@ public:
                                         _num_shards(GetNumShards(num_iterations, block_size)) {
    // Divide the iteration space between the shards.  If the iteration
    // space does not divide evenly into shards of multiples of
-   // block_size then the final shard is left uneven.
+   // block_size then the final shard is left uneven, and we force it
+   // to end at num_iterations.
 
    auto num_blocks = num_iterations / block_size;
    auto blocks_per_shard = num_blocks / _num_shards;
@@ -63,10 +64,9 @@ public:
 
    for (uint64_t shard = 0; shard < _num_shards; shard++) {
      _shards[shard]._next = shard * iterations_per_shard;
-     _shards[shard]._end = (shard+1) * iterations_per_shard;
+     bool is_last_shard = (shard == _num_shards-1);
+     _shards[shard]._end = is_last_shard ? num_iterations : ((shard+1) * iterations_per_shard);
    }
-
-   _shards[_num_shards - 1]._end = num_iterations;
  }
 
  // Allocate each thread to a home shard, from which it starts
