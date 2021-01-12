@@ -114,6 +114,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
+  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+
  private:
   int max_partition_iterations_ = 1000;
   int min_subgraph_size_ = 1;

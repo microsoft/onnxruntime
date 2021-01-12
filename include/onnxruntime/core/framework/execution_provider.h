@@ -25,6 +25,7 @@ class KernelRegistryManager;
 
 #include "core/framework/provider_options.h"
 #include "core/framework/func_api.h"
+#include "core/framework/allocatormgr.h"
 
 namespace onnxruntime {
 
@@ -251,6 +252,8 @@ class IExecutionProvider {
 			      virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
+
+  virtual void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager);
 
  private:
   const std::string type_;

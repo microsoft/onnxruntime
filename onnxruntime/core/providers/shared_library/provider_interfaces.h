@@ -168,6 +168,7 @@ struct ProviderHost {
 
   virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) = 0;
 
+  virtual void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) = 0;
   // Status
   virtual std::string Status__ToString(const Status* p) = 0;
 
@@ -480,6 +481,10 @@ struct ProviderHost {
   virtual const TensorShape& Tensor__Shape(const Tensor* p) = 0;
   virtual size_t Tensor__SizeInBytes(const Tensor* p) = 0;
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
+
+  // AllocatorManager
+  virtual void AllocatorManager__InertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
+  virtual AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type) = 0;
 };
 
 extern ProviderHost* g_host;

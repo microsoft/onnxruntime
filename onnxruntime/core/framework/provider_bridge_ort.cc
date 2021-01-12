@@ -221,6 +221,10 @@ struct ProviderHostImpl : ProviderHost {
     return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash);
   }
 
+  void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) {
+    return p->IExecutionProvider::RegisterAllocator(allocator_manager);
+  }
+
   // Status
   std::string Status__ToString(const Status* p) override { return p->ToString(); }
 
@@ -558,7 +562,11 @@ struct ProviderHostImpl : ProviderHost {
 
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
   size_t Tensor__SizeInBytes(const Tensor* p) override { return p->SizeInBytes(); }
-  const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
+  const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }  
+
+  // AllocatorManager
+  void AllocatorManager__InertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->InsertAllocator(allocator); }
+  AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type) override { return p->GetAllocator(id, mem_type); };
 
 } provider_host_;
 

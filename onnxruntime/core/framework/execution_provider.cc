@@ -74,6 +74,10 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   allocator_list_.push_back(allocator);
 }
 
+void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+  return;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
