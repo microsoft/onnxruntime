@@ -3,20 +3,9 @@
 # Licensed under the MIT License.
 
 import argparse
-import os
 import sys
 
-import logger
-
-SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
-
-sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
-
-from util import get_android_sdk_tool_paths, running_android_emulator  # noqa: E402
-
-
-log = logger.get_logger("run_android_emulator")
+from util import get_android_sdk_tool_paths, running_android_emulator
 
 
 if __name__ == "__main__":
@@ -35,7 +24,7 @@ if __name__ == "__main__":
             sdk_tool_paths=sdk_paths,
             system_image_package_name=args.system_image):
         try:
-            log.info("Press Enter or CTRL+C to close.")
+            print("** Press Enter or CTRL+C to close. **")
             sys.stdin.readline()
         except KeyboardInterrupt:
             pass
