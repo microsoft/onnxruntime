@@ -39,7 +39,7 @@ jobs:
     displayName: 'Map test data'
     condition: succeededOrFailed() # ensure all tests are run
 
- - script: |
+  - script: |
       docker run \
         --gpus all \
         --shm-size=1024m \
