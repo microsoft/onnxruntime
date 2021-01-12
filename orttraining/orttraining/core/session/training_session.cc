@@ -162,46 +162,57 @@ void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>&
 
 const std::string TrainingSession::training_mode_string_ = "training_mode";
 
+Status TrainingSession::BuildLoss(
+    const optional<std::string>& external_loss_name,
+    std::string& loss_name,
+    const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
+    optional<std::string>& loss_scale_input_name) {
+  // If loss_name has been found in the graph
+  // (e.g., one output of forward Send in pipeline parallel's partitioned graph),
+  // there is no need to build loss. Only the last pipeline stage
+  // can built actual loss such as RMSE and CrossEntropy after this if-block.
+  if (!loss_name.empty()) {
+    return Status::OK();
+  }
+
+  const optional<LossFunctionInfo> loss_function_info =
+      loss_function_config.has_value()
+          ? loss_function_config.value().loss_function_info
+          : optional<LossFunctionInfo>{};
+  ORT_RETURN_IF_ERROR(ConfigureLossFunction(
+      external_loss_name, loss_function_info,
+      loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
+
+  ORT_ENFORCE(
+      !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
+      "loss_scale_input_name should not be set to an empty string.");
+
+  return Status::OK();
+}
+
 Status TrainingSession::BuildLossAndLossScaling(
     const int32_t pipeline_stage_id,
     const optional<std::string>& external_loss_name,
     const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
-    const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
     const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
     const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
     std::string& loss_name,
     optional<std::string>& loss_scale_input_name,
     optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) {
-  is_mixed_precision_enabled_ = mixed_precision_config.has_value();
-
   // Enable loss scale if mixed precision is enabled AND at pipeline last stage if pipeline is used.
   // We are currently making the assumption that no data parallelism is used together with model parallelism.
   // So we can check the last stage by checking the world_rank and world_size. Once DP and MP combination is
   // enabled, we need to devise another way to check MP stages.
   bool enable_loss_scale = is_mixed_precision_enabled_ &&
                            mixed_precision_config.value().mixed_precision_type == MixedPrecisionDataType::FP16 &&
-                           (!pipeline_config.has_value() ||
+                           (pipeline_stage_id < 0 ||
                             (pipeline_stage_id + 1 == distributed_config.value().pipeline_parallel_size));
   loss_scale_input_name = enable_loss_scale ? optional<std::string>{""} : optional<std::string>{};
-  if (pipeline_config.has_value()) {
-    // if use pipeline, first check if model contains send op. If it does, set the
-    // send node's output as the start tensor to build gradient graph
-    GetPipelineSendOutput(model_->MainGraph(), loss_name);
-  }
 
-  if (loss_name.empty()) {
-    const optional<LossFunctionInfo> loss_function_info =
-        loss_function_config.has_value()
-            ? loss_function_config.value().loss_function_info
-            : optional<LossFunctionInfo>{};
-    ORT_RETURN_IF_ERROR(ConfigureLossFunction(
-        external_loss_name, loss_function_info,
-        loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
-  }
-
-  ORT_ENFORCE(
-      !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
-      "loss_scale_input_name should not be set to an empty string.");
+  ORT_RETURN_IF_ERROR(BuildLoss(external_loss_name,
+                                loss_name,
+                                loss_function_config,
+                                loss_scale_input_name));
 
   if (enable_loss_scale) {
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
@@ -306,7 +317,7 @@ Status TrainingSession::SetEventSynchronization(
 }
 
 // This function only create a graph input to accept loss scale passed in.
-// Why do we need it? When pipeline parallel is enabled, only the last pipeline stage 
+// Why do we need it? When pipeline parallel is enabled, only the last pipeline stage
 // needs that scale. However, Python API still feed a scale to all pipeline stages, so
 // we create a "unused" input for that scale in each graph.
 static Status AddFakeLossScaling(
@@ -365,18 +376,26 @@ Status TrainingSession::ConfigureForTraining(
       filtered_config_weight_names_to_train));
 
   std::string loss_name{};
+
+  if (config.pipeline_config.has_value()) {
+    // if use pipeline, first check if model contains send op. If it does, set the
+    // send node's output as the start tensor to build gradient graph
+    GetPipelineSendOutput(model_->MainGraph(), loss_name);
+  }
+
   optional<std::string> loss_scale_input_name;
 
+  is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
+
   ORT_RETURN_IF_ERROR(BuildLossAndLossScaling(
-    pipeline_stage_id,
-    config.loss_name,
-    config.mixed_precision_config,
-    config.pipeline_config,
-    config.distributed_config,
-    config.loss_function_config,
-    loss_name,
-    loss_scale_input_name,
-    config_result.mixed_precision_config_result));
+      pipeline_stage_id,
+      config.loss_name,
+      config.mixed_precision_config,
+      config.distributed_config,
+      config.loss_function_config,
+      loss_name,
+      loss_scale_input_name,
+      config_result.mixed_precision_config_result));
 
   // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
@@ -1638,13 +1657,11 @@ Status PipelineTrainingSession::BuildLossAndLossScaling(
     const int32_t pipeline_stage_id,
     const optional<std::string>& external_loss_name,
     const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
-    const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
     const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
     const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
     std::string& loss_name,
     optional<std::string>& loss_scale_input_name,
     optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) {
-   is_mixed_precision_enabled_ = mixed_precision_config.has_value();
   const bool last_pipeline_stage = pipeline_stage_id + 1 == distributed_config.value().pipeline_parallel_size;
   const bool enable_loss_scale = is_mixed_precision_enabled_ &&
                                  mixed_precision_config.value().mixed_precision_type == MixedPrecisionDataType::FP16;
@@ -1655,25 +1672,12 @@ Status PipelineTrainingSession::BuildLossAndLossScaling(
   const bool enable_fake_loss_scale = enable_loss_scale && !last_pipeline_stage;
 
   loss_scale_input_name = enable_true_loss_scale ? optional<std::string>{""} : optional<std::string>{};
-  if (pipeline_config.has_value()) {
-    // if use pipeline, first check if model contains send op. If it does, set the
-    // send node's output as the start tensor to build gradient graph
-    GetPipelineSendOutput(model_->MainGraph(), loss_name);
-  }
 
-  if (loss_name.empty()) {
-    const optional<LossFunctionInfo> loss_function_info =
-        loss_function_config.has_value()
-            ? loss_function_config.value().loss_function_info
-            : optional<LossFunctionInfo>{};
-    ORT_RETURN_IF_ERROR(ConfigureLossFunction(
-        external_loss_name, loss_function_info,
-        loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
-  }
-
-  ORT_ENFORCE(
-      !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
-      "loss_scale_input_name should not be set to an empty string.");
+  ORT_RETURN_IF_ERROR(BuildLoss(
+    external_loss_name,
+    loss_name,
+    loss_function_config,
+    loss_scale_input_name));
 
   if (enable_true_loss_scale) {
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};

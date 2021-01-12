@@ -493,12 +493,17 @@ class TrainingSession : public InferenceSession {
       const OptimizerGraphConfig& opt_graph_config,
       const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs,
       OptimizerOutputKeyMap<std::string>& opt_graph_outputs);
+
+  common::Status BuildLoss(
+      const optional<std::string>& external_loss_name,
+      std::string& loss_name,
+      const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
+      optional<std::string>& loss_scale_input_name);
   
   virtual common::Status BuildLossAndLossScaling(
     const int32_t pipeline_stage_id,
     const optional<std::string>& external_loss_name,
     const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
-    const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
     const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
     const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
     std::string& loss_name,
@@ -589,7 +594,6 @@ class PipelineTrainingSession final : public TrainingSession {
     const int32_t pipeline_stage_id,
     const optional<std::string>& external_loss_name,
     const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
-    const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
     const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
     const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
     std::string& loss_name,
