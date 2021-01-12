@@ -16,7 +16,7 @@ import pytest
 
 class TestGpt2(unittest.TestCase):
     def run_benchmark_gpt2(self, arguments: str):
-        from onnxruntime.transformers.benchmark_gpt2 import parse_arguments, main
+        from benchmark_gpt2 import parse_arguments, main
         args = parse_arguments(arguments.split())
         csv_filename = main(args)
         self.assertTrue(os.path.exists(csv_filename))
@@ -33,6 +33,9 @@ class TestGpt2(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
     coloredlogs.install(fmt='%(message)s')
     logging.getLogger("transformers").setLevel(logging.ERROR)
     unittest.main()

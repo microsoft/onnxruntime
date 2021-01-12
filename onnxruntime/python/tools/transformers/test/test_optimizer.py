@@ -17,8 +17,13 @@ from onnx import helper, TensorProto, ModelProto, load_model
 from onnx.helper import make_node, make_tensor_value_info
 import numpy as np
 from onnx import numpy_helper
-from onnxruntime.transformers.optimizer import optimize_model, optimize_by_onnxruntime
-from onnxruntime.transformers.onnx_model import OnnxModel
+import sys
+
+# set path so that we could import from parent directory
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from optimizer import optimize_model, optimize_by_onnxruntime
+from onnx_model import OnnxModel
 
 BERT_TEST_MODELS = {
     "bert_pytorch_1": ('bert_squad_pytorch1.4_opset11', 'BertForQuestionAnswering_1.onnx'),
@@ -52,16 +57,16 @@ class TestBertOptimization(unittest.TestCase):
 
     # add test function for huggingface pytorch model
     def _test_optimizer_on_huggingface_model(self,
-                                            model_name,
-                                            expected_fusion_result_list,
-                                            inputs_count=1,
-                                            validate_model=True):
+                                             model_name,
+                                             expected_fusion_result_list,
+                                             inputs_count=1,
+                                             validate_model=True):
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
-        from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt
-        from onnxruntime.transformers.huggingface_models import MODELS
-        from onnxruntime.transformers.benchmark_helper import Precision
+        from onnx_exporter import export_onnx_model_from_pt
+        from huggingface_models import MODELS
+        from benchmark_helper import Precision
 
         input_names = MODELS[model_name][0]
 
@@ -80,14 +85,14 @@ class TestBertOptimization(unittest.TestCase):
         if validate_model:
             self.assertEqual(is_valid_onnx_model, True)
         self.assertEqual(fusion_result_list, expected_fusion_result_list)
-    
+
     def _test_optimizer_on_tf_model(self, model_name, expected_fusion_result_list, inputs_count, validate_model=True):
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
-        from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_tf
-        from onnxruntime.transformers.huggingface_models import MODELS
-        from onnxruntime.transformers.benchmark_helper import Precision
+        from onnx_exporter import export_onnx_model_from_tf
+        from huggingface_models import MODELS
+        from benchmark_helper import Precision
         print("testing mode ", model_name)
         print("testing input number = ", inputs_count)
         input_names = MODELS[model_name][0]
@@ -311,20 +316,21 @@ class TestBertOptimization(unittest.TestCase):
     def test_huggingface_flaubert_fusion(self):
         # output not close issue
         self._test_optimizer_on_huggingface_model("flaubert/flaubert_base_cased", [0, 12, 0, 0, 12, 0, 25],
-                                                 validate_model=False)
+                                                  validate_model=False)
         self._test_optimizer_on_huggingface_model("flaubert/flaubert_small_cased", [0, 6, 0, 0, 6, 12, 1],
-                                                 validate_model=False)
+                                                  validate_model=False)
 
     def test_huggingface_dialogpt_fusion(self):
         self._test_optimizer_on_huggingface_model("microsoft/DialoGPT-small", [0, 12, 0, 12, 0, 25, 0])
 
     def test_huggingface_bart_fusion(self):
         self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
-    
+
     def test_bert_base_cased_from_tf(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 1)
         self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 2)
         self._test_optimizer_on_tf_model("bert-base-cased", [1, 12, 0, 0, 12, 0, 24], 3)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -19,7 +19,7 @@ from test_optimizer import _get_test_model_path
 
 class TestBertProfiler(unittest.TestCase):
     def run_profile(self, arguments: str):
-        from onnxruntime.transformers.profiler import parse_arguments, run
+        from profiler import parse_arguments, run
         args = parse_arguments(arguments.split())
         results = run(args)
         self.assertTrue(len(results) > 1)
@@ -35,4 +35,7 @@ class TestBertProfiler(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
     unittest.main()
