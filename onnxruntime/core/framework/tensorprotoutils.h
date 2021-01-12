@@ -273,8 +273,9 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model
     auto tensor_proto_path = model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str();
     return UnpackTensorWithExternalData(tensor, tensor_proto_path, expected_size, p_data);
   }
-#elif
+#else
   ORT_UNUSED_PARAMETER(model_path);
+  ORT_RETURN_IF(HasExternalData(tensor), "TensorProto with external data is not supported in ORT minimal build.");
 #endif
 
   return HasRawData(tensor)

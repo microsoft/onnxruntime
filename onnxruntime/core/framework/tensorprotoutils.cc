@@ -167,8 +167,8 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*
 // This macro doesn't work for Float16/bool/string tensors
 #define DEFINE_UNPACK_TENSOR(T, Type, field_name, field_size)                                                      \
   template <>                                                                                                      \
-  Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data,                             \
-                      size_t raw_data_len, /*out*/ T* p_data, size_t expected_size) {                              \
+  Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,        \
+                      /*out*/ T* p_data, size_t expected_size) {                                                   \
     if (nullptr == p_data) {                                                                                       \
       const size_t size = raw_data != nullptr ? raw_data_len : tensor.field_size();                                \
       if (size == 0) return Status::OK();                                                                          \
@@ -452,10 +452,10 @@ static void UnInitTensor(void* param) noexcept {
   delete p;
 }
 
-#define CASE_PROTO(X, Y)                                                                                                     \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                                       \
-    ORT_RETURN_IF_ERROR(                                                                                                     \
-        UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, static_cast<size_t>(tensor_size)));          \
+#define CASE_PROTO(X, Y)                                                                                            \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                              \
+    ORT_RETURN_IF_ERROR(                                                                                            \
+        UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, static_cast<size_t>(tensor_size))); \
     break;
 
 class AutoDelete {
