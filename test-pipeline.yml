@@ -7,6 +7,8 @@ jobs:
 - job: Job
 
   steps:
+  - checkout: none
+
   - script: |
       sleep 300 &
       echo $! >> pid.txt
