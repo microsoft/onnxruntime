@@ -3413,11 +3413,21 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
       auto dst_idx = input_edge.GetDstArgIndex();
 
       // if this input is an input of the fused node add an edge for that
-      auto it = input_indexes.find(node->InputDefs()[dst_idx]->Name());
-      if (it != input_indexes.cend()) {
-        AddEdge(producer_idx, new_node_idx, src_idx, it->second);
+      if (dst_idx < (int)node->InputDefs().size()) {
+        auto it = input_indexes.find(node->InputDefs()[dst_idx]->Name());
+        if (it != input_indexes.cend()) {
+          AddEdge(producer_idx, new_node_idx, src_idx, it->second);
+        }
+      } 
+      else
+      {
+        int dst_implicit_input_idx = dst_idx - (int)node->InputDefs().size();
+        ORT_ENFORCE(dst_implicit_input_idx < (int)node->ImplicitInputDefs().size());
+        auto it = input_indexes.find(node->ImplicitInputDefs()[dst_implicit_input_idx]->Name());
+        if (it != input_indexes.cend()) {
+          AddEdge(producer_idx, new_node_idx, src_idx, it->second);
+        }
       }
-
       RemoveEdge(producer_idx, node_index, src_idx, dst_idx);
     }
 

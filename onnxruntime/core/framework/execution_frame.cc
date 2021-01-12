@@ -421,7 +421,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
   if (buffer_num_elements != required_num_elements) {
     // could be an allocation planner bug (less likely) or the model incorrectly uses something like 'None'
     // as a dim_param, or -1 in dim_value in multiple places making the planner think those shapes are equal.
-    auto message = onnxruntime::MakeStringLite(
+    auto message = onnxruntime::MakeString(
         "Shape mismatch attempting to re-use buffer. ",
         reuse_tensor->Shape(), " != ", shape,
         ". Validate usage of dim_value (values should be > 0) and "

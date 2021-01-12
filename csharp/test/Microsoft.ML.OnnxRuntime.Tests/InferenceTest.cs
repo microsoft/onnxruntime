@@ -180,7 +180,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string[] providers = ortEnvInstance.GetAvailableProviders();
 
             Assert.True(providers.Length > 0);
-            Assert.Equal("CPUExecutionProvider", providers[0]);
+            Assert.Equal("CPUExecutionProvider", providers[providers.Length - 1]);
 
 # if USE_CUDA
             Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"););
@@ -1822,6 +1822,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal("", modelMetadata.Domain);
 
                 Assert.Equal("This is a test model with a valid ORT config Json", modelMetadata.Description);
+
+                Assert.Equal("graph description", modelMetadata.GraphDescription);
 
                 Assert.Equal(2, modelMetadata.CustomMetadataMap.Keys.Count);
                 Assert.Equal("dummy_value", modelMetadata.CustomMetadataMap["dummy_key"]);

@@ -23,11 +23,11 @@ class TrainingSession : public InferenceSession {
   typedef std::unordered_map<std::string /*OpType*/,
                              std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
       ImmutableWeights;
-    
+
   typedef std::unordered_map<std::string /* Model weight name*/,
                              NameMLValMap /* 'Moment_1': OrtValue, 'Moment_2': OrtValue etc...*/>
-                            OptimizerState;
-  
+      OptimizerState;
+
   /**
    * Partition information of each paritioned weight
    */
@@ -92,13 +92,16 @@ class TrainingSession : public InferenceSession {
       MixedPrecisionDataType mixed_precision_type{MixedPrecisionDataType::FP16};
 
       bool layernorm_stash_as_fp32{true};
-      
+
       ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType() const {
         switch (mixed_precision_type) {
-          case MixedPrecisionDataType::FP16: return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-          case MixedPrecisionDataType::BF16: return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-          default: return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-        }  
+          case MixedPrecisionDataType::FP16:
+            return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+          case MixedPrecisionDataType::BF16:
+            return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+          default:
+            return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+        }
       }
     };
     // The mixed precision configuration.
@@ -428,16 +431,17 @@ class TrainingSession : public InferenceSession {
   common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
                                    pipeline::PipelineTensorNames& pipeline_tensor_names);
 
-  common::Status ApplyTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                                 TrainingConfigurationResult& config_result_out);
+  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
+
+  common::Status ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
+                                                              TrainingConfigurationResult& config_result_out);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
                                   GraphTransformerManager& transformer_manager,
-                                  std::unordered_set<std::string>& weights_to_train,
+                                  const std::unordered_set<std::string>& weights_to_train,
                                   const TrainingConfiguration::GraphTransformerConfiguration& config,
-                                  TrainingConfigurationResult& config_result_out,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 

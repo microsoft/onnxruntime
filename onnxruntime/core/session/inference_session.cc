@@ -105,8 +105,9 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 // below will also need to be updated.
 // See onnxruntime/core/session/flatbuffers/schema/README.md for more details on versioning.
 // Version 1 - history begins
-// Version 2 - add serailization/deserialization of sparse_initializer
-static constexpr const char* kOrtModelVersion = "2";
+// Version 2 - add serialization/deserialization of sparse_initializer
+// Version 3 - add `graph_doc_string` to Model
+static constexpr const char* kOrtModelVersion = "3";
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 // Check if the given ort model version is supported in this build
@@ -116,6 +117,7 @@ static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
   static const std::unordered_set<std::string> kSupportedOrtModelVersions{
       std::string("1.4.0"),  // This is a special model version for existing converted model
       std::string("1"),
+      std::string("2"),
       std::string(kOrtModelVersion),
   };
 
@@ -1355,18 +1357,22 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name, cons
   return Status::OK();
 }
 
-static common::Status CheckTypes(MLDataType actual, MLDataType expected) {
+static common::Status CheckTypes(MLDataType actual, MLDataType expected, const std::string& base_type) {
   if (actual == expected) {
     return Status::OK();
   }
-#ifdef ORT_NO_RTTI
-  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unexpected input data type");
-#else
-  auto actual_name = std::string(typeid(*actual).name());
-  auto expected_name = std::string(typeid(*expected).name());
-  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                "Unexpected input data type. Actual: (" + actual_name + ") , expected: (" + expected_name + ")");
-#endif
+  std::ostringstream ostr;
+  ostr << "Unexpected input data type. Actual: (";
+  ostr << base_type;
+  ostr << "(";
+  ostr << DataTypeImpl::ToString(actual);
+  ostr << ")) , expected: (";
+  ostr << base_type;
+  ostr << "(";
+  ostr << DataTypeImpl::ToString(expected);
+  ostr << "))";
+
+  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
 }
 
 common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
@@ -1394,7 +1400,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
       auto expected_element_type = expected_type->AsTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "tensor"));
 
       // check for shape
       const auto& expected_shape = iter->second.tensor_shape;
@@ -1410,7 +1416,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
       const SparseTensor& sparse_tensor = input_ml_value.Get<SparseTensor>();
       auto input_element_type = sparse_tensor.Values().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "sparse_tensor"));
       // Check shape
       const auto& expected_shape = iter->second.tensor_shape;
       if (expected_shape.NumDimensions() > 0) {
@@ -1424,10 +1430,10 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
       auto expected_element_type = expected_type->AsSequenceTensorBase()->GetElementType();
       auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "seq"));
     } else {
       auto input_type = input_ml_value.Type();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_type, expected_type));
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_type, expected_type, ""));
     }
   }
 
@@ -1745,6 +1751,7 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   // save model metadata
   model_metadata_.producer_name = model.ProducerName();
   model_metadata_.description = model.DocString();
+  model_metadata_.graph_description = model.GraphDocString();
   model_metadata_.domain = model.Domain();
   model_metadata_.version = model.ModelVersion();
   model_metadata_.custom_metadata_map = model.MetaData();
