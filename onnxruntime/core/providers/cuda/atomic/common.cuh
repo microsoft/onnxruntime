@@ -74,16 +74,16 @@ __device__ __forceinline__ void atomic_add(half *address, half value) {
 
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 __device__ __forceinline__ void atomic_add(nv_bfloat16 *address, nv_bfloat16 value) {
-  unsigned int * base_address = (unsigned int *)((char *)address - ((size_t)address & 2));
+  unsigned int * base_address = reinterpret_cast<unsigned int*>(reinterpret_cast<char*>(address) - (reinterpret_cast<size_t>(address) & 2));
   unsigned int old = *base_address;
   unsigned int assumed;
   unsigned short x;
 
   do {
     assumed = old;
-    x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
+    x = reinterpret_cast<size_t>(address) & 2 ? (old >> 16) : (old & 0xffff);
     x = __bfloat16_as_short(__float2bfloat16(__bfloat162float(*reinterpret_cast<const __nv_bfloat16*>(&x)) + __bfloat162float(value)));
-    old = (size_t)address & 2 ? (old & 0xffff) | (x << 16) : (old & 0xffff0000) | x;
+    old = reinterpret_cast<size_t>(address) & 2 ? (old & 0xffff) | (x << 16) : (old & 0xffff0000) | x;
     old = atomicCAS(base_address, assumed, old);
   } while (assumed != old);
 }

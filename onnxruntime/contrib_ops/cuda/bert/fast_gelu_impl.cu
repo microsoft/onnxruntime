@@ -102,7 +102,6 @@ template <unsigned TPB>
 __global__ void FastGeluKernel2(const nv_bfloat162 a, const nv_bfloat162 b, const nv_bfloat162 c,
                                 int input_length, int bias_length,
                                 const nv_bfloat162* input, const nv_bfloat162* bias, nv_bfloat162* output) {
-#if __CUDA_ARCH__ >= 530
   const int idx = blockIdx.x * TPB + threadIdx.x;
 
   if (idx < input_length) {
@@ -111,7 +110,6 @@ __global__ void FastGeluKernel2(const nv_bfloat162 a, const nv_bfloat162 b, cons
     const nv_bfloat162 cdf = a + a * _Tanh(in * (c * in * in + b));
     output[idx] = in * cdf;
   }
-#endif
 }
 
 template <>
