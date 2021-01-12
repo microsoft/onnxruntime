@@ -366,7 +366,8 @@ def calibrate(model_path,
     onnx.save(augmented_model, augmented_model_path)
     #3. generate quantization thresholds
     dict_for_quantization = calibrater.get_intermediate_outputs(providers=providers, tensorrt_calibration=tensorrt_calibration)
-    #4. generate quantization parameters dict    
+    #4. generate quantization parameters dict
+    quantization_params_dict = {}
     if not tensorrt_calibration:
         quantization_params_dict = calibrater.calculate_quantization_params(dict_for_quantization)
     print("Calibrated,quantized parameters calculated and returned.")
