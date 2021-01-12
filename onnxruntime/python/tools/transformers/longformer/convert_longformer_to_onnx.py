@@ -1,4 +1,4 @@
-# Before running this script, please run "python setup.py install" to build the longformer_attention.cpp
+# Before running this script, please run "python setup.py install" to build the longformer_attention.cpp in ../torch_extensions directory.
 # under a python environment with PyTorch installed. Then you can update the path of longformer_attention.cpython-*.so 
 # and run this script in same environment.
 # Conversion tested in Ubuntu 18.04 in WSL (Windows Subsystem for Linux), python 3.6, onnxruntime 1.5.2, PyTorch 1.6.0+cpu, transformers 3.0.2
@@ -21,7 +21,7 @@ def my_longformer_attention(g, input, weight, bias, mask, global_weight, global_
 register_custom_op_symbolic('onnxruntime::LongformerAttention', my_longformer_attention, 9)
 
 # TODO: update the path according to output of "python setup.py install" when your python version is not 3.6
-torch.ops.load_library(r'build/lib.linux-x86_64-3.6/longformer_attention.cpython-36m-x86_64-linux-gnu.so')
+torch.ops.load_library(r'../torch_extensions/build/lib.linux-x86_64-3.6/longformer_attention.cpython-36m-x86_64-linux-gnu.so')
 
 # mapping from model name to pretrained model name
 MODELS = {
