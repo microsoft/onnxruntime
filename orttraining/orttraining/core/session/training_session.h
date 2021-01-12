@@ -493,6 +493,17 @@ class TrainingSession : public InferenceSession {
       const OptimizerGraphConfig& opt_graph_config,
       const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs,
       OptimizerOutputKeyMap<std::string>& opt_graph_outputs);
+  
+  virtual common::Status BuildLossAndLossScaling(
+    const int32_t pipeline_stage_id,
+    const optional<std::string>& external_loss_name,
+    const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
+    const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
+    const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+    const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
+    std::string& loss_name,
+    optional<std::string>& loss_scale_input_name,
+    optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result);
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
@@ -573,6 +584,17 @@ class PipelineTrainingSession final : public TrainingSession {
       const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
       const std::unordered_set<std::string>& weight_names_to_train,
       optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result) override;
+
+  common::Status BuildLossAndLossScaling(
+    const int32_t pipeline_stage_id,
+    const optional<std::string>& external_loss_name,
+    const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
+    const optional<TrainingConfiguration::PipelineConfiguration>& pipeline_config,
+    const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+    const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
+    std::string& loss_name,
+    optional<std::string>& loss_scale_input_name,
+    optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) override;
 
   // Set some PipelineContext fields based on configuration result
   // returned by TrainingSession::ConfigureForTraining.
