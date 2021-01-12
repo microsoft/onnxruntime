@@ -6,7 +6,6 @@ import os
 import pandas as pd
 import zipfile
 from transformers import BertTokenizer, AutoConfig
-from keras.preprocessing.sequence import pad_sequences
 from sklearn.model_selection import train_test_split
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 from transformers import BertForSequenceClassification, AdamW, BertConfig
@@ -202,9 +201,10 @@ def test(model, validation_dataloader, device, args):
 
     # Report the final accuracy for this validation run.
     epoch_time = time.time() - t0
-    print("  Accuracy: {0:.2f}".format(eval_accuracy/nb_eval_steps))
+    accuracy = eval_accuracy/nb_eval_steps
+    print("  Accuracy: {0:.2f}".format(accuracy))
     print("  Validation took: {:.4f}s".format(epoch_time))
-    return epoch_time
+    return epoch_time, accuracy
 
 def load_dataset(args):
     # 2. Loading CoLA Dataset
@@ -237,6 +237,10 @@ def load_dataset(args):
     # Load the BERT tokenizer.
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
 
+    # Set the max length of encoded sentence.
+    # 64 is slightly larger than the maximum training sentence length of 47...
+    MAX_LEN = 64
+
     # Tokenize all of the sentences and map the tokens to their word IDs.
     input_ids = []
     for sent in sentences:
@@ -250,16 +254,18 @@ def load_dataset(args):
                             add_special_tokens = True, # Add '[CLS]' and '[SEP]'
                     )
 
+        # Pad our input tokens with value 0.
+        if len(encoded_sent) < MAX_LEN:
+            encoded_sent.extend([0]*(MAX_LEN-len(encoded_sent)))
+
+        # Truncate to MAX_LEN
+        if len(encoded_sent) > MAX_LEN:
+            encoded_sent = encoded_sent[:MAX_LEN]
+
         # Add the encoded sentence to the list.
         input_ids.append(encoded_sent)
 
-    # We'll borrow the `pad_sequences` utility function to do this.
-    # 64 is slightly larger than the maximum training sentence length of 47...
-    MAX_LEN = 64
-
-    # Pad our input tokens with value 0.
-    input_ids = pad_sequences(input_ids, maxlen=MAX_LEN, dtype="long",
-                            value=0, truncating="post", padding="post")
+    input_ids = np.array(input_ids, dtype=np.longlong)
 
     # Create attention masks
     attention_masks = []
@@ -413,12 +419,15 @@ def main():
         torch.cuda.manual_seed_all(args.seed)
 
     # 4. Train loop (fine-tune)
-    total_training_time, total_test_time, epoch_0_training = 0, 0, 0
+    total_training_time, total_test_time, epoch_0_training, validation_accuracy = 0, 0, 0, 0
     for epoch_i in range(0, args.epochs):
         total_training_time += train(model, optimizer, scheduler, train_dataloader, epoch_i, device, args)
         if not args.pytorch_only and epoch_i == 0:
             epoch_0_training = total_training_time
-        total_test_time += test(model, validation_dataloader, device, args)
+        test_time, validation_accuracy = test(model, validation_dataloader, device, args)
+        total_test_time += test_time
+
+    assert validation_accuracy > 0.5
 
     print('\n======== Global stats ========')
     if not args.pytorch_only:
