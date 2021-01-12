@@ -236,12 +236,14 @@ class ONNXCalibrater:
         # reduce the output range which in turn helps to improve accuracy
         if next_node:
             if next_node.op_type == 'Clip':
-                clip_min = next_node.attribute[0].f
-                clip_max = next_node.attribute[1].f
-                if rmin < clip_min:
-                    rmin = clip_min
-                if rmax > clip_max:
-                    rmax = clip_max
+                # attribute min and max:
+                if(2 == len(next_node.attribute)):
+                    for att_idx in [0, 1]:
+                        if next_node.attribute[att_idx].name == 'min':
+                            rmin = max(rmin, next_node.attribute[att_idx].f)
+                        elif next_node.attribute[att_idx].name == 'max':
+                            rmax = min(rmax, next_node.attribute[att_idx].f)
+
             elif next_node.op_type == 'Relu':
                 if rmin < 0:
                     rmin = 0
