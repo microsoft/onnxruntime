@@ -17,11 +17,10 @@ from onnx import helper, TensorProto, ModelProto, load_model
 from onnx.helper import make_node, make_tensor_value_info
 import numpy as np
 from onnx import numpy_helper
-from optimizer import optimize_model, optimize_by_onnxruntime
-from onnx_model import OnnxModel
+from onnxruntime.transformers.optimizer import optimize_model, optimize_by_onnxruntime
+from onnxruntime.transformers.onnx_model import OnnxModel
 
 BERT_TEST_MODELS = {
-    "bert_pytorch_0": ('bert_squad_pytorch1.4_opset11', 'BertForQuestionAnswering_0.onnx'),
     "bert_pytorch_1": ('bert_squad_pytorch1.4_opset11', 'BertForQuestionAnswering_1.onnx'),
     "bert_squad_pytorch1.4_opset10_fp32": ('bert_squad_pytorch1.4_opset10_fp32', 'BertForQuestionAnswering.onnx'),
     "bert_keras_0": ('bert_mrpc_tensorflow2.1_opset10', 'TFBertForSequenceClassification_1.onnx'),
@@ -33,14 +32,11 @@ BERT_TEST_MODELS = {
     "bert_tf2onnx_0": ('other_models', 'bert_tf2onnx_0.onnx')
 }
 
-skip_on_ort_version = pytest.mark.skipif(onnxruntime.__version__ == ('1.3.0'),
-                                         reason="skip failed tests. TODO: fix them in 1.4.0.")
-
 
 def _get_test_model_path(name):
     sub_dir, file = BERT_TEST_MODELS[name]
     if sub_dir == "FUSION":
-        return os.path.join('..', '..', '..', 'test', 'testdata', 'transform', 'fusion', file)
+        return os.path.join('..', '..', '..', '..', 'test', 'testdata', 'transform', 'fusion', file)
     else:
         return os.path.join('test_data', sub_dir, file)
 
@@ -63,9 +59,9 @@ class TestBertOptimization(unittest.TestCase):
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
-        from onnx_exporter import export_onnx_model_from_pt
-        from huggingface_models import MODELS
-        from benchmark_helper import Precision
+        from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt
+        from onnxruntime.transformers.huggingface_models import MODELS
+        from onnxruntime.transformers.benchmark_helper import Precision
 
         input_names = MODELS[model_name][0]
 
@@ -89,9 +85,9 @@ class TestBertOptimization(unittest.TestCase):
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
-        from onnx_exporter import export_onnx_model_from_tf
-        from huggingface_models import MODELS
-        from benchmark_helper import Precision
+        from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_tf
+        from onnxruntime.transformers.huggingface_models import MODELS
+        from onnxruntime.transformers.benchmark_helper import Precision
         print("testing mode ", model_name)
         print("testing input number = ", inputs_count)
         input_names = MODELS[model_name][0]
@@ -112,51 +108,6 @@ class TestBertOptimization(unittest.TestCase):
             self.assertEqual(is_valid_onnx_model, True)
         self.assertEqual(fusion_result_list, expected_fusion_result_list)
 
-    @skip_on_ort_version
-    def test_pytorch_model_0_cpu_onnxruntime(self):
-        input = _get_test_model_path('bert_pytorch_0')
-        output = 'temp.onnx'
-        optimize_by_onnxruntime(input, use_gpu=False, optimized_model_path=output)
-        model = ModelProto()
-        with open(output, "rb") as f:
-            model.ParseFromString(f.read())
-        os.remove(output)
-        bert_model = OnnxModel(model)
-        expected_node_count = {
-            'EmbedLayerNormalization': 1,
-            'Attention': 12,
-            'SkipLayerNormalization': 24,
-            'Gelu': 0,
-            'FastGelu': 0,
-            'BiasGelu': 12
-        }
-        self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_0_cpu_onnxruntime')
-
-    @skip_on_ort_version
-    def test_pytorch_model_0_gpu_onnxruntime(self):
-        if 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
-            print("skip test_pytorch_model_0_gpu_onnxruntime since no gpu found")
-            return
-
-        input = _get_test_model_path('bert_pytorch_0')
-        output = 'temp.onnx'
-        optimize_by_onnxruntime(input, use_gpu=True, optimized_model_path=output)
-        model = ModelProto()
-        with open(output, "rb") as f:
-            model.ParseFromString(f.read())
-        os.remove(output)
-        bert_model = OnnxModel(model)
-        expected_node_count = {
-            'EmbedLayerNormalization': 1,
-            'Attention': 12,
-            'SkipLayerNormalization': 24,
-            'Gelu': 0,
-            'FastGelu': 12,
-            'BiasGelu': 0
-        }
-        self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_0_gpu_onnxruntime')
-
-    @skip_on_ort_version
     def test_pytorch_model_1_cpu_onnxruntime(self):
         input = _get_test_model_path('bert_pytorch_1')
         output = 'temp.onnx'
@@ -177,7 +128,6 @@ class TestBertOptimization(unittest.TestCase):
         }
         self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_1_cpu_onnxruntime')
 
-    @skip_on_ort_version
     def test_pytorch_model_1_gpu_onnxruntime(self):
         if 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
             print("skip test_pytorch_model_1_gpu_onnxruntime since no gpu found")
@@ -201,21 +151,6 @@ class TestBertOptimization(unittest.TestCase):
             'BiasGelu': 0
         }
         self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_1_gpu_onnxruntime')
-
-    @skip_on_ort_version
-    def test_pytorch_model_0(self):
-        input = _get_test_model_path('bert_pytorch_0')
-        bert_model = optimize_model(input, 'bert', num_heads=2, hidden_size=8)
-
-        expected_node_count = {
-            'EmbedLayerNormalization': 1,
-            'Attention': 12,
-            'SkipLayerNormalization': 24,
-            'Gelu': 0,
-            'FastGelu': 0,
-            'BiasGelu': 12
-        }
-        self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_0')
 
     def test_pytorch_model_2(self):
         input = _get_test_model_path('bert_squad_pytorch1.4_opset10_fp32')
