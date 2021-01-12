@@ -41,7 +41,7 @@ class FunctionImpl final : public Function {
  private:
   const onnxruntime::Graph* const parent_graph_;
   std::unique_ptr<ONNX_NAMESPACE::OpSchema> op_schema_;
-  std::unique_ptr<onnxruntime::Model> body_;
+  onnxruntime::Model body_;
   ONNX_NAMESPACE::FunctionProto onnx_func_proto_;
 };
 

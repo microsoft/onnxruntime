@@ -172,15 +172,33 @@ static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph
   return op_schema;
 }
 
+// Creates domain to version map for onnx function by merging graph level opset imports with opset imports from 
+// funtion proto
+static std::unordered_map<std::string, int> CreateOpsetImportsForFunction(const ONNX_NAMESPACE::FunctionProto& func_proto,
+                                                                          const std::unordered_map<std::string, int>& graph_opset_imports) {
+  // function inherits all graph level opset imports
+  std::unordered_map<std::string, int> function_opset_imports{graph_opset_imports};
+  // merge with opset imports in function proto
+  for (const auto& opset_import : func_proto.opset_import()) {
+    auto result = function_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
+    ORT_ENFORCE(result.second,
+                "ONNX model does not support multiple opset versions for a domain. Model imports opset version ",
+                result.first->second, " for domain ", result.first->first, " and function is trying to import opset version ",
+                opset_import.version(), " for the same domain");
+  }
+
+  return function_opset_imports;
+}
+
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const IndexedSubGraph& nodes_to_fuse,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
-      body_(onnxruntime::make_unique<Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
-                                            graph.ModelPath().ToPathString(),
-                                            IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
-                                            graph.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>{}, logger)) {
-  auto& function_body_graph = body_->MainGraph();
+      body_("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
+            graph.ModelPath().ToPathString(),
+            IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
+            graph.DomainToVersionMap(), {}, logger) {
+  auto& function_body_graph = body_.MainGraph();
 
   auto* meta_def = nodes_to_fuse.GetMetaDef();
   op_schema_ = CreateSchema(graph, nodes_to_fuse);
@@ -247,21 +265,11 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
-      onnx_func_proto_(onnx_func_proto) {
-  std::unordered_map<std::string, int> function_opset_imports{graph.DomainToVersionMap()};
-  for (const auto& opset_import : onnx_func_proto_.opset_import()) {
-    auto result = function_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
-    ORT_ENFORCE(result.second,
-                "ONNX model does not support multiple opset versions for a domain. Model imports opset version ",
-                result.first->second, " for domain ", result.first->first, " and function is trying to import opset version ",
-                opset_import.version(), " for the same domain");
-  }
-
-  body_ = onnxruntime::make_unique<onnxruntime::Model>(onnx_func_proto_.name(), false, onnxruntime::ModelMetaData(),
-                                                       graph.ModelPath().ToPathString(),
-                                                       IOnnxRuntimeOpSchemaRegistryList(), function_opset_imports,
-                                                       std::vector<ONNX_NAMESPACE::FunctionProto>{}, logger);
-
+      onnx_func_proto_(onnx_func_proto),
+      body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
+            graph.ModelPath().ToPathString(), IOnnxRuntimeOpSchemaRegistryList(),
+            CreateOpsetImportsForFunction(onnx_func_proto, graph.DomainToVersionMap()),
+            {}, logger) {
   // Make a copy of the FunctionProto.
   // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model.
   // Hence, we make a copy prior to generating the graph representation of the function,
@@ -314,7 +322,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     op_schema_->TypeAndShapeInferenceFunction(
         [this](ONNX_NAMESPACE::InferenceContext& ctx) {
           auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-          ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(&onnx_func_proto_, body_->MainGraph().DomainToVersionMap(), schema_registry, ctx);
+          ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(&onnx_func_proto_, body_.MainGraph().DomainToVersionMap(), schema_registry, ctx);
         });
   } else {
     op_schema_->TypeAndShapeInferenceFunction(cached_op_schema->GetTypeAndShapeInferenceFunction());
@@ -322,7 +330,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
 
   op_schema_->Finalize();
   //construct body
-  auto& function_body_graph = body_->MainGraph();
+  auto& function_body_graph = body_.MainGraph();
   std::vector<const NodeArg*> graph_inputs(node_in_parent_graph->InputDefs().size(), nullptr),
       graph_outputs(node_in_parent_graph->OutputDefs().size(), nullptr);
 
@@ -419,7 +427,7 @@ const ONNX_NAMESPACE::OpSchema& FunctionImpl::OpSchema() const {
 }
 
 const onnxruntime::Graph& FunctionImpl::Body() const {
-  return body_->MainGraph();
+  return body_.MainGraph();
 }
 
 ViewerFunctionImpl::ViewerFunctionImpl(const onnxruntime::Graph& graph,
