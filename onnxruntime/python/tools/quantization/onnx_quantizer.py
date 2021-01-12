@@ -134,67 +134,6 @@ class ONNXQuantizer:
         self.fuse_dynamic_quant = True
         return opset_version
 
-    def replace_gemm_with_matmul(self):
-        new_nodes = []
-
-        for node in self.model.nodes():
-            if node.op_type == 'Gemm':
-                alpha = 1.0
-                beta = 1.0
-                transA = 0
-                transB = 0
-                for attr in node.attribute:
-                    if attr.name == 'alpha':
-                        alpha = onnx.helper.get_attribute_value(attr)
-                    elif attr.name == 'beta':
-                        beta = onnx.helper.get_attribute_value(attr)
-                    elif attr.name == 'transA':
-                        transA = onnx.helper.get_attribute_value(attr)
-                    elif attr.name == 'transB':
-                        transB = onnx.helper.get_attribute_value(attr)
-                if alpha == 1.0 and beta == 1.0 and transA == 0:
-                    inputB = node.input[1]
-                    if transB == 1:
-                        B = self.model.get_initializer(node.input[1])
-                        if B:
-                            # assume B is not used by any other node
-                            B_array = onnx.numpy_helper.to_array(B)
-                            B_trans = onnx.numpy_helper.from_array(B_array.T)
-                            B_trans.name = B.name
-                            self.model.remove_initializer(B)
-                            self.model.add_initializer(B_trans)
-                        else:
-                            inputB += '_Transposed'
-                            transpose_node = onnx.helper.make_node('Transpose',
-                                                                inputs=[node.input[1]],
-                                                                outputs=[inputB],
-                                                                name=node.name+'_Transpose')
-                            new_nodes.append(transpose_node)
-
-                    matmul_node = onnx.helper.make_node('MatMul',
-                                                        inputs=[node.input[0], inputB],
-                                                        outputs=[node.output[0] + ('_MatMul' if len(node.input)>2 else '')],
-                                                        name=node.name + '_MatMul')
-                    new_nodes.append(matmul_node)
-
-                    if len(node.input) > 2:
-                        add_node = onnx.helper.make_node('Add',
-                                                         inputs=[node.output[0] + '_MatMul', node.input[2]],
-                                                         outputs=node.output,
-                                                         name=node.name + '_Add')
-                        new_nodes.append(add_node)  
-                
-                # unsupported
-                else:
-                    new_nodes.append(node)
-            
-            # not GEMM
-            else:
-                new_nodes.append(node)
-
-        self.model.graph().ClearField('node')
-        self.model.graph().node.extend(new_nodes)
-
     def remove_fake_quantized_nodes(self):
         '''
             Detect and remove the quantize/dequantizelinear node pairs(fake quantized nodes in Quantization-Aware training) 
@@ -276,9 +215,6 @@ class ONNXQuantizer:
         return True
 
     def quantize_model(self):
-
-        self.replace_gemm_with_matmul()
-
         self.remove_fake_quantized_nodes()
 
         for node in self.model.nodes():

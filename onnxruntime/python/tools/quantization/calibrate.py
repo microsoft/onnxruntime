@@ -10,8 +10,9 @@ import os
 import numpy as np
 import onnx
 import onnxruntime
-from onnx import helper, TensorProto
+from onnx import helper, TensorProto, ModelProto
 from onnx import onnx_pb as onnx_proto
+from six import string_types
 
 from .quant_utils import QuantType
 from .registry import QLinearOpsRegistry
@@ -31,10 +32,10 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 class ONNXCalibrater:
-    def __init__(self, model_path, data_reader: CalibrationDataReader, calibrate_op_types, black_nodes, white_nodes,
+    def __init__(self, model, data_reader: CalibrationDataReader, calibrate_op_types, black_nodes, white_nodes,
                  augmented_model_path):
         '''
-        :param model_path: ONNX model to calibrate
+        :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param data_reader: user implemented object to read in and preprocess calibration dataset
                             based on CalibrationDataReader Interface
         :param op_types: operator types to be calibrated and quantized, default = 'Conv,MatMul'
@@ -43,7 +44,13 @@ class ONNXCalibrater:
         :param augmented_model_path: save augmented_model to this path
 
         '''
-        self.model_path = model_path
+        if isinstance(model, string_types):
+            self.model = onnx.load(model)
+        elif isinstance(model, ModelProto):
+            self.model = model
+        else:
+            raise ValueError('model should be either model path or onnx.ModelProto.')
+
         self.data_reader = data_reader
         self.calibrate_op_types = calibrate_op_types
         self.black_nodes = black_nodes
@@ -65,8 +72,8 @@ class ONNXCalibrater:
         model and ensures their outputs are stored as part of the graph output
         :return: augmented ONNX model
         '''
-
-        model = onnx.load(self.model_path)
+        model = onnx_proto.ModelProto()
+        model.CopyFrom(self.model)
         model = onnx.shape_inference.infer_shapes(model)
         value_infos = {vi.name: vi for vi in model.graph.value_info}
         value_infos.update({ot.name: ot for ot in model.graph.output})
@@ -142,9 +149,8 @@ class ONNXCalibrater:
             session = onnxruntime.InferenceSession(self.augmented_model_path, None)
 
         #number of outputs in original model
-        model = onnx.load(self.model_path)
-        num_model_outputs = len(model.graph.output)
-        model_original_outputs = set(output.name for output in model.graph.output)
+        num_model_outputs = len(self.model.graph.output)
+        model_original_outputs = set(output.name for output in self.model.graph.output)
 
         intermediate_outputs = []
 
@@ -274,9 +280,8 @@ class ONNXCalibrater:
                 'quantization thresholds is required to calculate quantization params (zero point and scale)')
 
         quantization_params = {}
-        model = onnx.load(self.model_path)
 
-        self._get_input_name_to_nodes(model)
+        self._get_input_name_to_nodes(self.model)
 
         for tensor_name in quantization_thresholds.keys():
             child = None
@@ -290,18 +295,18 @@ class ONNXCalibrater:
 
         return quantization_params
 
-def get_calibrator(model_path,
+def get_calibrator(model,
                    data_reader: CalibrationDataReader,
                    op_types=['Conv', 'MatMul'],
                    black_nodes=[],
                    white_nodes=[],
                    augmented_model_path='augmented_model.onnx'):
 
-    calibrator = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
+    calibrator = ONNXCalibrater(model, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
 
     return calibrator
 
-def calculate_calibration_data(model_path,
+def calculate_calibration_data(model,
                                calibrator=None,
                                calibration_data_reader: CalibrationDataReader=None,
                                op_types_to_quantize=[],
@@ -316,11 +321,10 @@ def calculate_calibration_data(model_path,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    print("model path: %s" % model_path)
     print("augmented model path: %s" % augmented_model_path)
 
     if not calibrator:
-        calibrator = get_calibrator(model_path, calibration_data_reader, op_types_to_quantize, nodes_to_quantize, nodes_to_exclude, augmented_model_path=augmented_model_path)
+        calibrator = get_calibrator(model, calibration_data_reader, op_types_to_quantize, nodes_to_quantize, nodes_to_exclude, augmented_model_path=augmented_model_path)
 
     if not os.path.exists(augmented_model_path):
         augmented_model = calibrator.augment_graph(augment_all_ops=True)
@@ -328,19 +332,19 @@ def calculate_calibration_data(model_path,
 
     calibrator.get_intermediate_outputs(providers=["CUDAExecutionProvider"])
 
-def generate_calibration_table(calibrator, model_path, augmented_model_path, remove_previous_flag, data_reader, calibration_dataset=None, stride=5000, batch_size=20):
+def generate_calibration_table(calibrator, model, augmented_model_path, remove_previous_flag, data_reader, calibration_dataset=None, stride=5000, batch_size=20):
 
     if remove_previous_flag and os.path.exists(augmented_model_path):
         os.remove(augmented_model_path)
         print("remove previously generated %s and start to generate a new one." % (augmented_model_path))
 
     if not calibrator:
-        calibrator = get_calibrator(model_path, data_reader, augmented_model_path=augmented_model_path)
-    calculate_calibration_data(model_path, calibrator, augmented_model_path=augmented_model_path)
+        calibrator = get_calibrator(model, data_reader, augmented_model_path=augmented_model_path)
+    calculate_calibration_data(model, calibrator, augmented_model_path=augmented_model_path)
 
     return calibrator.get_calibration_cache()
 
-def calibrate(model_path,
+def calibrate(model,
               data_reader: CalibrationDataReader,
               op_types=['Conv', 'MatMul'],
               black_nodes=[],
@@ -348,7 +352,7 @@ def calibrate(model_path,
               augmented_model_path='augmented_model.onnx'):
     '''
         Given an onnx model, augment and run the augmented model on calibration data set, aggregate and calculate the quantization parameters.
-    :param model_path: ONNX model to calibrate
+    :param model: ONNX model to calibrate. It can be a ModelProto or a model path
     :param data_reader: user implemented object to read in and preprocess calibration dataset based on CalibrationDataReader interface
     :param op_types: operator types to be calibrated and quantized, default = 'Conv,MatMul'
     :param black_nodes: operator names that should not be quantized, default = ''
@@ -356,7 +360,7 @@ def calibrate(model_path,
     :param augmented_model_path: save augmented_model to this path
     '''
     #1. initialize a calibrater
-    calibrater = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
+    calibrater = ONNXCalibrater(model, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
     #2. augment
     augmented_model = calibrater.augment_graph()
     onnx.save(augmented_model, augmented_model_path)

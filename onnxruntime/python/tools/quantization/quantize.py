@@ -39,6 +39,15 @@ def optimize_model(model_path: Path):
     optimized_model = onnx.load(opt_model_path.as_posix())
     return optimized_model
 
+def load_model(model_path: Path, optimize=True):
+    if optimize:
+        #optimize the original model
+        onnx_model = ONNXModel(optimize_model(Path(model_path)))
+        # to support GEMM
+        onnx_model.replace_gemm_with_matmul()
+        return onnx_model.model
+    
+    return onnx.load(Path)
 
 def quantize(model,
              per_channel=False,
@@ -131,6 +140,7 @@ def quantize_static(model_input,
                     weight_type=QuantType.QUInt8,
                     nodes_to_quantize=[],
                     nodes_to_exclude=[],
+                    optimize_model = True,
                     use_external_data_format=False):
     '''
         Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
@@ -154,6 +164,7 @@ def quantize_static(model_input,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :param optimize_model: optimize model before quantization.
     :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     '''
 
@@ -167,11 +178,13 @@ def quantize_static(model_input,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    quantization_params_dict = calibrate(model_input, calibration_data_reader, op_types_to_quantize, nodes_to_quantize,
+    model = load_model(Path(model_input), optimize_model)
+
+    quantization_params_dict = calibrate(model, calibration_data_reader, op_types_to_quantize, nodes_to_quantize,
                                          nodes_to_exclude)
 
     quantizer = ONNXQuantizer(
-        onnx.load(model_input),
+        model,
         per_channel,
         reduce_range,
         mode,
@@ -196,6 +209,7 @@ def quantize_dynamic(model_input: Path,
                      weight_type=QuantType.QUInt8,
                      nodes_to_quantize=[],
                      nodes_to_exclude=[],
+                     optimize_model = True,
                      use_external_data_format=False):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
@@ -228,8 +242,9 @@ def quantize_dynamic(model_input: Path,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
+    model = load_model(Path(model_input), optimize_model)
     quantizer = ONNXQuantizer(
-        onnx.load(model_input),
+        model,
         per_channel,
         reduce_range,
         mode,
