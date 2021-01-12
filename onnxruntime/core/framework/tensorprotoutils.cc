@@ -810,8 +810,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   return status;
 }
 
-
-#if !defined (ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD)
 // Determines if this is a type specific zero
 using IsZeroFunc = bool (*)(const void*);
 // Copy element
@@ -820,7 +819,6 @@ using CopyElementFunc = void (*)(void* dest, const void* src, int64_t dest_index
 static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements, size_t element_size,
                             IsZeroFunc is_zero, CopyElementFunc copy,
                             TensorProto& values, TensorProto& indices) {
-
   auto advance = [element_size](const void* start, size_t elements) -> const void* {
     return (reinterpret_cast<const uint8_t*>(start) + elements * element_size);
   };
@@ -834,7 +832,7 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
       indices_data.Add(index);
     }
     ++index;
-    cbegin = advance(cbegin, 1U); 
+    cbegin = advance(cbegin, 1U);
   }
 
   auto& raw_data = *values.mutable_raw_data();
@@ -859,7 +857,7 @@ void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_inde
 }
 
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense_proto,
-                                                  ONNX_NAMESPACE::SparseTensorProto& result) {
+                                              ONNX_NAMESPACE::SparseTensorProto& result) {
   ORT_ENFORCE(HasDataType(dense_proto), "Must have a valid data type");
 
   const bool is_string_data = dense_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
@@ -890,13 +888,13 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
 
   switch (element_size) {
     case 1: {
-    // bytes
+      // bytes
       SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
                       IsZero<uint8_t>, CopyElement<uint8_t>, values, indices);
       break;
     }
     case 4: {
-    // float
+      // float
       SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
                       IsZero<uint32_t>, CopyElement<uint32_t>, values, indices);
       break;
@@ -916,10 +914,10 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   return Status::OK();
 }
 
-#endif // !ORT_MINIMAL_BUILD
+#endif  // !ORT_MINIMAL_BUILD
 
-template common::Status GetSizeInBytesFromTensorProto<256>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                           size_t* out);
+template common::Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                                       size_t* out);
 template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
 #define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                              \

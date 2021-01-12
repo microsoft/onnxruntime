@@ -29,7 +29,6 @@ def GenerateModel(model_name):
     nodes.extend(MakeSubGraph("_1", True))
     nodes.extend(MakeSubGraph("_2", True))
     nodes.extend(MakeSubGraph("_3", False))
-    nodes.extend(MakeSubGraph("_4", False))
 
     initializers = []
     initializers.extend(MakeInitializer("_1"))
@@ -49,15 +48,11 @@ def GenerateModel(model_name):
             helper.make_tensor_value_info('b_quantized_2', TensorProto.UINT8, [2, 3]),
             helper.make_tensor_value_info('b_zp_2', TensorProto.UINT8, [1]),
             helper.make_tensor_value_info('b_scale_2', TensorProto.FLOAT, [1]),
-            helper.make_tensor_value_info('b_quantized_4', TensorProto.UINT8, [2, 3]),
-            helper.make_tensor_value_info('b_zp_4', TensorProto.UINT8, [3]),
-            helper.make_tensor_value_info('b_scale_4', TensorProto.FLOAT, [3]),
         ],
         [  # outputs
             helper.make_tensor_value_info('output_1', TensorProto.FLOAT, [3, 3]),
             helper.make_tensor_value_info('output_2', TensorProto.FLOAT, [3, 3]),
             helper.make_tensor_value_info('output_3', TensorProto.FLOAT, [3, 3]),
-            helper.make_tensor_value_info('output_4', TensorProto.FLOAT, [3, 3]),
         ],
         initializers)
 

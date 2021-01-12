@@ -184,3 +184,70 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     Helper function to generate a identifiable filepath by concatenating the given identifier as a suffix.   
     '''
     return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
+
+def write_calibration_table(calibration_cache):
+    '''
+    Helper function to write calibration table to files.   
+    '''
+    import json
+    import flatbuffers
+    import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
+    import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
+
+    print(calibration_cache)
+
+    with open("calibration.json", 'w') as file:
+        file.write(json.dumps(calibration_cache)) # use `json.loads` to do the reverse
+
+
+    # Serialize data using FlatBuffers
+    builder = flatbuffers.Builder(1024)
+    key_value_list = []
+    for key in sorted(calibration_cache.keys()):
+        values = calibration_cache[key]
+        value = str(max(abs(values[0]), abs(values[1]))) 
+
+        flat_key = builder.CreateString(key)
+        flat_value = builder.CreateString(value)
+
+        KeyValue.KeyValueStart(builder)
+        KeyValue.KeyValueAddKey(builder, flat_key)
+        KeyValue.KeyValueAddValue(builder, flat_value)
+        key_value = KeyValue.KeyValueEnd(builder)
+
+        key_value_list.append(key_value)
+
+    
+    TrtTable.TrtTableStartDictVector(builder, len(key_value_list))
+    for key_value in key_value_list:
+        builder.PrependUOffsetTRelative(key_value)
+    main_dict = builder.EndVector(len(key_value_list))
+
+    TrtTable.TrtTableStart(builder)
+    TrtTable.TrtTableAddDict(builder, main_dict)
+    cal_table = TrtTable.TrtTableEnd(builder)
+
+    builder.Finish(cal_table)
+    buf = builder.Output()
+
+    with open("calibration.flatbuffers", 'wb') as file:
+        file.write(buf)
+
+    # Deserialize data (for validation)
+    if False:
+        cal_table = TrtTable.TrtTable.GetRootAsTrtTable(buf, 0)
+        dict_len = cal_table.DictLength()
+        for i in range(dict_len):
+            key_value = cal_table.Dict(i)
+            print(key_value.Key())
+            print(key_value.Value())
+
+
+
+    # write plain text 
+    with open("calibration.cache", 'w') as file:
+        for key in sorted(calibration_cache.keys()):
+            value = calibration_cache[key]
+            s = key + ' ' + str(max(abs(value[0]), abs(value[1]))) 
+            file.write(s)
+            file.write('\n')

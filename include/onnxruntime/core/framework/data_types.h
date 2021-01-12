@@ -277,6 +277,7 @@ class DataTypeImpl {
   static const NonTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
 
   static const char* ToString(MLDataType type);
+  static std::vector<std::string> ToString(const std::vector<MLDataType>& types);
   // Registers ONNX_NAMESPACE::DataType (internalized string) with
   // MLDataType. DataType is produced by internalizing an instance of
   // TypeProto contained within MLDataType

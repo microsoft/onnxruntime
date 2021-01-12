@@ -64,12 +64,6 @@ if (onnxruntime_ENABLE_TRAINING)
       "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
       "${ORTTRAINING_SOURCE_DIR}/core/graph/*.cc"
       )
-  if (NOT onnxruntime_USE_HOROVOD)
-    list(REMOVE_ITEM orttraining_graph_src
-        "${ORTTRAINING_SOURCE_DIR}/core/graph/horovod_adapters.h"
-        "${ORTTRAINING_SOURCE_DIR}/core/graph/horovod_adapters.cc"
-        )
-  endif()
 endif()
 
 set(onnxruntime_graph_lib_src ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
@@ -90,10 +84,6 @@ target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
 
 if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_graph PRIVATE ${ORTTRAINING_ROOT})
-
-    if (onnxruntime_USE_HOROVOD)
-        target_include_directories(onnxruntime_graph PRIVATE ${HOROVOD_INCLUDE_DIRS})
-    endif()
 
     if (onnxruntime_USE_NCCL)
         target_include_directories(onnxruntime_graph PRIVATE ${NCCL_INCLUDE_DIRS})

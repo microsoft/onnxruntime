@@ -28,6 +28,13 @@ def run_checkpoint_tests(cwd, log):
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
+def run_distributed_allreduce_tests(cwd, log):
+    log.debug('Running: distributed allreduce tests')
+
+    command = [sys.executable, 'orttraining_test_allreduce.py']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def main():
     import torch
@@ -42,6 +49,8 @@ def main():
     log.info("Running distributed tests pipeline")
 
     run_checkpoint_tests(cwd, log)
+
+    run_distributed_allreduce_tests(cwd, log)
 
     return 0
 

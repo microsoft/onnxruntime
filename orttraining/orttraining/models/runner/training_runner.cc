@@ -20,7 +20,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
-#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
 #include "single_include/nlohmann/json.hpp"
@@ -175,6 +175,7 @@ Status TrainingRunner::Initialize() {
     pipe.do_partition = params_.pipeline_stage_paths.empty() ? true : false;
     pipe.fetch_names = params_.fetch_names;
     pipe.cut_list = params_.pipeline_partition_cut_list;
+    pipe.op_id_to_stage = params_.op_id_to_stage;
     pipe.partitioned_model_path = params_.pipeline_partitioned_model_path;
     // Do not assign value to config.pipeline_config if pipeline is not used.
     config.pipeline_config = pipe;
@@ -450,7 +451,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
           ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
           fetch_names.push_back(it->second);
         }
-        if (params_.use_adasum) {
+        if (params_.enable_adasum) {
           auto it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
           ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
           fetch_names.push_back(it->second);
@@ -751,7 +752,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
-#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   // Create communication plan.
   auto& nccl_service = cuda::NcclService::GetInstance();
 
@@ -825,7 +826,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                           fetch_names,
                                           fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
-#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
           nccl_service.Reset();
 #endif
         } else {
@@ -952,7 +953,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
-#if defined(USE_CUDA) && defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   nccl_service.Terminate();
 #endif
   return Status::OK();

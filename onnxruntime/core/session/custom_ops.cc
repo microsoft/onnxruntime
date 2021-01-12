@@ -96,7 +96,6 @@ struct CustomOpKernel : OpKernel {
 
 common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_domains, std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
-
   for (auto& domain : op_domains) {
     // Domain is not empty - add it to the DomainToVersion ONNX map
     // If domain is empty, it is assumed to be part of the ONNX domain
@@ -119,19 +118,20 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       auto input_count = op->GetInputTypeCount(op);
       for (size_t i = 0; i < input_count; i++) {
         auto type = op->GetInputType(op, i);
-
         schema.Input(i, "A", "Description",
+                     ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type ? "T" :
                      DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
       }
 
       auto output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
         auto type = op->GetOutputType(op, i);
-
         schema.Output(i, "A", "Description",
+                      ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type ? "T":
                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
       }
 
+      schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
       schema.SetDomain(domain->domain_);
       schema.SinceVersion(1);
       schema.AllowUncheckedAttributes();
@@ -140,15 +140,15 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
-          .SinceVersion(1);
+          .SinceVersion(1)
+          .TypeConstraint("T", DataTypeImpl::AllTensorTypes());
+
       if (const char* provider_type = op->GetExecutionProviderType(op))
         def_builder.Provider(provider_type);
       else
         def_builder.Provider(onnxruntime::kCpuExecutionProvider);
-
       KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
       KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
-
       output->RegisterCustomKernel(create_info);
     }
 

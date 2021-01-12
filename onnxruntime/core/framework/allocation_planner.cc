@@ -253,6 +253,21 @@ class PlannerImpl {
       }
     }
 
+    const optional<std::pair<int, int>>& variadic_alias_offsets = ci.kernel_def->VariadicAlias();
+    if (variadic_alias_offsets.has_value()) {
+      int input_offset = variadic_alias_offsets.value().first;
+      int output_offset = variadic_alias_offsets.value().second;
+      // we _must_ reuse this input to satisfy aliasing requirement: (e.g., for AllReduce)
+      int alias_input_index = output_arg_num - output_offset + input_offset;
+      if (alias_input_index >= 0 && static_cast<size_t>(alias_input_index) < input_args.size()) {
+        auto p_input_arg = input_args[alias_input_index];
+        if (p_input_arg->Exists()) {
+          *reusable_input = Index(p_input_arg->Name());
+          return true;
+        }
+      }
+    }
+
     const std::vector<std::pair<int, int>>& inplace_map = ci.kernel_def->MayInplace();
     for (auto pair : inplace_map) {
       if (pair.second == output_arg_num) {
@@ -769,7 +784,6 @@ class PlannerImpl {
       ++idx;
     }
   }
-
 
   // Whether a given NodeArg has fence or not.
   // If the buffer is reused, need to check whether original OrtValue has fence or not.

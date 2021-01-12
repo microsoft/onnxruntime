@@ -20,16 +20,11 @@
 // still keep it simple, so all platforms would be able to support it fairly
 // easily.
 
-#ifdef USE_MKLML_FOR_BLAS
-// when USE_MKLML is defined, use MKLML cblas for GEMM
-#include "mkl_cblas.h"
-#define CBLAS_ENUM_DEFINED_H
-#else
+
 // We include the cblas header here so that we can obtain the macros from cblas.
 extern "C" {
 #include "core/framework/cblas.h"
 }
-#endif
 
 #include "core/common/common.h"
 #include "core/framework/tensor.h"

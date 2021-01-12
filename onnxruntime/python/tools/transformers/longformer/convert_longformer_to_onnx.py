@@ -1,5 +1,5 @@
 # Before running this script, please run "python setup.py install" to build the longformer_attention.cpp
-# under a python environment with PyTorch installed. Then you can update the path of longformer_attention.cpython-*.so 
+# under a python environment with PyTorch installed. Then you can update the path of longformer_attention.cpython-*.so
 # and run this script in same environment.
 # Conversion tested in Ubuntu 18.04 in WSL (Windows Subsystem for Linux), python 3.6, onnxruntime 1.5.2, PyTorch 1.6.0+cpu, transformers 3.0.2
 # GPU is not needed for this script. You can run it in CPU.
@@ -25,7 +25,7 @@ torch.ops.load_library(r'build/lib.linux-x86_64-3.6/longformer_attention.cpython
 
 # mapping from model name to pretrained model name
 MODELS = {
-    "longformer-base-4096": "allenai/longformer-base-4096", 
+    "longformer-base-4096": "allenai/longformer-base-4096",
     "longformer-random-tiny": "patrickvonplaten/longformer-random-tiny"  # A tiny model for debugging
 }
 
@@ -42,7 +42,7 @@ def parse_arguments():
                         choices=list(MODELS.keys()),
                         help="Pre-trained models in the list: " + ", ".join(MODELS.keys()))
 
-    # Sequence length shall choose properly. 
+    # Sequence length shall choose properly.
     # If multiple of windows size is used, there is no padding in ONNX model so you will need padding by yourself before running onnx model.
     parser.add_argument("-s",
                         "--sequence_length",
@@ -199,7 +199,7 @@ if args.precision != 'fp32' or args.optimize_onnx:
     print(f"optimized fp32 model saved to {optimized_model_path}")
 
     if args.precision == 'fp16':
-        optimizer.convert_model_float32_to_float16(cast_input_output=False)
+        optimizer.convert_model_float32_to_float16(cast_input_output=True)
         optimized_model_path = model_name + "_fp16.onnx"
         optimizer.save_model_to_file(optimized_model_path)
         print(f"optimized fp16 model saved to {optimized_model_path}")

@@ -227,11 +227,6 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_OP_TYPED(name, ver, int64_t)  \
   BINARY_OP_HFD(name, ver)
 
-#define BINARY_OP_REGISTER_OIL(name, ver)                      \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, bool)    \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int32_t) \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int64_t)
-
 #define BINARY_OP_REGISTER_VERSIONED_OIL(name, startver, endver)                      \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, bool)    \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, int32_t) \
@@ -307,7 +302,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     12, 12,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
     Pow);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -475,8 +470,10 @@ Status Less<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-BINARY_OP_REGISTER_OIL(Equal, 13)
-BINARY_OP_REGISTER_VERSIONED_OIL(Equal, 11, 12)
+BINARY_LOGICALOP_REGISTER_UZILHFD(Equal, 13)
+BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(Equal, 13, bool)
+BINARY_OP_REGISTER_VERSIONED_UZILHFD(Equal, 11, 12)
+BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(Equal, 11, 12, bool)
 BINARY_OP_REGISTER_VERSIONED_OIL(Equal, 7, 10)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Greater, 13)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Greater, 9, 12)

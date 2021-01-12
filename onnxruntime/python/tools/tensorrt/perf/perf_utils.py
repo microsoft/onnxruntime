@@ -8,6 +8,12 @@ import re
 debug = False
 debug_verbose = False 
 
+def find(regex_string): 
+    import glob
+    results = glob.glob(regex_string)
+    results.sort()
+    return results
+
 def get_latest_commit_hash():
     p1 = subprocess.Popen(["git", "rev-parse", "--short", "HEAD"], stdout = subprocess.PIPE)
     stdout, sterr = p1.communicate()

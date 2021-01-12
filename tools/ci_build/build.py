@@ -18,7 +18,7 @@ from distutils.version import LooseVersion
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
-sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
+sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
 
 from util import run  # noqa: E402
@@ -54,10 +54,17 @@ def _check_python_version():
         raise BuildError(
             "Bad python major version: expecting python 3, found version "
             "'{}'".format(sys.version))
-    if sys.version_info[1] < 5:
+    if sys.version_info[1] < 6:
         raise BuildError(
-            "Bad python minor version: expecting python 3.5+, found version "
+            "Bad python minor version: expecting python 3.6+, found version "
             "'{}'".format(sys.version))
+
+
+def _str_to_bool(s):
+    """Convert string to bool (in argparse context)."""
+    if s.lower() not in ['true', 'false']:
+        raise ValueError('Need bool; got %r' % s)
+    return {'true': True, 'false': False}[s.lower()]
 
 
 _check_python_version()
@@ -152,13 +159,13 @@ def parse_arguments():
         "--enable_training_pipeline_e2e_tests", action="store_true",
         help="Enable the pipeline c++ e2e tests.")
     parser.add_argument(
-        "--use_horovod", action='store_true', help="Enable Horovod.")
-    parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
     parser.add_argument(
         "--nccl_home", help="Path to NCCL installation dir")
+    parser.add_argument(
+        "--use_mpi", nargs='?', default=True, const=True, type=_str_to_bool)
 
     # enable ONNX tests
     parser.add_argument(
@@ -308,12 +315,8 @@ def parse_arguments():
         "--use_vstest", action='store_true',
         help="Use use_vstest for running unitests.")
     parser.add_argument(
-        "--use_jemalloc", action='store_true', help="Use jemalloc.")
-    parser.add_argument(
         "--use_mimalloc", default=['none'],
         choices=['none', 'stl', 'arena', 'all'], help="Use mimalloc.")
-    parser.add_argument(
-        "--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument(
         "--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument(
@@ -323,8 +326,6 @@ def parse_arguments():
         "--dnnl_opencl_root", action='store', default='',
         help="Path to OpenCL SDK. "
         "e.g. --dnnl_opencl_root \"C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk\"")
-    parser.add_argument(
-        "--use_mklml", action='store_true', help="Build with MKLML.")
     parser.add_argument(
         "--use_featurizers", action='store_true',
         help="Build with ML Featurizer support.")
@@ -542,43 +543,6 @@ def is_docker():
     )
 
 
-def is_sudo():
-    return 'SUDO_UID' in os.environ.keys()
-
-
-def install_apt_package(package):
-    have = package in str(run_subprocess(
-        ["apt", "list", "--installed", package], capture_stdout=True).stdout)
-    if not have:
-        if is_sudo():
-            run_subprocess(['apt-get', 'install', '-y', package])
-        else:
-            raise BuildError(package + " APT package missing. Please re-run "
-                             "this script using sudo to install.")
-
-
-def install_ubuntu_deps(args):
-    """Check if the necessary Ubuntu dependencies are installed.
-    Not required on docker. Provide help output if missing."""
-
-    # check we need the packages first
-    if not (args.enable_pybind or args.use_openblas):
-        return
-
-    # not needed on docker as packages are pre-installed
-    if not is_docker():
-        try:
-            if args.enable_pybind:
-                install_apt_package("python3")
-
-            if args.use_openblas:
-                install_apt_package("libopenblas-dev")
-
-        except Exception as e:
-            raise BuildError("Error setting up required APT packages. "
-                             "{}".format(str(e)))
-
-
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel', 'pytest']
     dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version
@@ -660,9 +624,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
-    # TODO: fix jemalloc build so it does not conflict with onnxruntime
-    # shared lib builds. (e.g. onnxuntime_pybind)
-    # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [
         cmake_path, cmake_dir,
         "-Donnxruntime_RUN_ONNX_TESTS=" + (
@@ -677,7 +638,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_FEATURIZERS=" + (
             "ON" if args.use_featurizers else "OFF"),
         "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
-        "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
             "ON" if args.use_mimalloc == "stl" or
             args.use_mimalloc == "all" else "OFF"),
@@ -691,18 +651,14 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + (
             "ON" if args.build_shared_lib else "OFF"),
-        "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + (
-            "OFF" if args.use_openblas else "ON"),
-        "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
         "-Donnxruntime_DNNL_GPU_RUNTIME=" + (args.dnnl_gpu_runtime if args.use_dnnl else ""),
         "-Donnxruntime_DNNL_OPENCL_ROOT=" + (args.dnnl_opencl_root if args.use_dnnl else ""),
-        "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
-                args.use_nnapi or (args.use_mklml and (is_macOS() or is_windows())) or
+                args.use_nnapi or
                 args.android or (args.ios and is_macOS())
                 or args.use_rknpu)
             else "OFF"),
@@ -762,8 +718,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_USE_HOROVOD=" + (
-            "ON" if args.use_horovod else "OFF"),
+        # Enable advanced computations such as AVX for some traininig related ops.
+        "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + (
+            "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_NCCL=" + (
             "OFF" if args.disable_nccl else "ON"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
@@ -771,6 +728,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-Donnxruntime_ROCM_HOME=" + (rocm_home if args.use_rocm else ""),
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
+        "-Donnxruntime_USE_MPI=" + (
+            "ON" if args.use_mpi else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -786,7 +745,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_ARMNN_LIBS=" + armnn_libs]
 
     if mpi_home and os.path.exists(mpi_home):
-        cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
+        if args.use_mpi:
+            cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
+        else:
+            log.warning("mpi_home is supplied but use_mpi is set to false."
+                        " Build will continue without linking MPI libraries.")
 
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
@@ -1299,6 +1262,9 @@ def run_training_python_frontend_tests(cwd):
 
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_checkpoint_storage.py'], cwd=cwd)
 
+    run_subprocess([
+        sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_checkpoint_functions.py'], cwd=cwd)
+
 
 def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
@@ -1438,8 +1404,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 build_dir, config, "external", "tvm", config))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
-        if args.use_mklml:
-            dll_path_list.append(os.path.join(build_dir, config, "mklml", "src", "project_mklml", "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:
@@ -1634,7 +1598,7 @@ def derive_linux_build_property():
         return "/p:IsLinuxBuild=\"true\""
 
 
-def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_mklml):
+def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1657,8 +1621,6 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.DNNL\""
     elif use_cuda:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
-    elif use_mklml:
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.MKLML\""
     else:
         pass
 
@@ -2022,7 +1984,6 @@ def main():
                 raise BuildError(
                     "Only Windows ARM(64) cross-compiled builds supported "
                     "currently through this script")
-            install_ubuntu_deps(args)
             if not is_docker() and not args.use_acl and not args.use_armnn:
                 install_python_deps()
         if args.enable_pybind and is_windows():
@@ -2088,8 +2049,7 @@ def main():
                 args.use_cuda,
                 args.use_openvino,
                 args.use_tensorrt,
-                args.use_dnnl,
-                args.use_mklml
+                args.use_dnnl
             )
 
     if args.test and args.build_nuget:

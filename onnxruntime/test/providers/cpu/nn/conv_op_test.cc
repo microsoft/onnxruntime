@@ -29,7 +29,6 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const std::string& err_str = "",
                 int opset = 7) {
   OpTester test("Conv", opset);
-  test.AddAttribute("auto_pad", attributes.auto_pad);
   test.AddAttribute("group", attributes.group);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
 
@@ -37,8 +36,11 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
     test.AddAttribute("dilations", attributes.dilations);
   }
 
+  // Only one of pads / auto_pad can be present
   if (!attributes.pads.empty()) {
     test.AddAttribute("pads", attributes.pads);
+  } else {
+    test.AddAttribute("auto_pad", attributes.auto_pad);
   }
 
   if (!attributes.strides.empty()) {

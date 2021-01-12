@@ -162,6 +162,8 @@ TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
   test.AddOutput<float>("Moment_1_Out", {3}, {0.0417f, 0.0949f, 0.1229f});
   test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
   test.AddOutput<float>("W_Out", {3}, {-3.6210f, -2.8075f, -3.3723f});
+  test.AddOutput<float>("G_Out", {3}, {-3.1576f, -3.1658f, -3.1601f});
+
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("lambda", 0.01f);
@@ -185,6 +187,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0WithBiasCorrection) {
   test.AddOutput<float>("Moment_1_Out", {3}, {0.0417f, 0.0949f, 0.1229f});
   test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
   test.AddOutput<float>("W_Out", {3}, {-1.4587f, -0.6452f, -1.2099f});
+  test.AddOutput<float>("G_Out", {3}, {-0.9954f, -1.0036f, -0.9979f});
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(1));
   test.AddAttribute("lambda", 0.01f);

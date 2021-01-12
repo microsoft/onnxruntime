@@ -10,6 +10,7 @@ Example of profiling of longformer model:
     python profiler.py --model longformer-base-4096_fp32.onnx --batch_size 1 --sequence_length 4096 --global_length 8 --samples 1000 --thread_num 8 --dummy_inputs longformer --use_gpu
 """
 
+NODES_TYPE_CONTAINING_SUBGRAPH = ['Scan', 'Loop', 'If']
 
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
@@ -156,6 +157,10 @@ def parse_profile_results(sess_time, kernel_time_only=False, threshold=0):
             elif kernel_time_only:
                 continue
 
+            op_name = item["args"]["op_name"]
+            if op_name in NODES_TYPE_CONTAINING_SUBGRAPH:
+                continue
+
             if item["name"] in node_time:
                 node_time[item["name"]] += item["dur"]
             else:
@@ -188,6 +193,10 @@ def group_profile_results(sess_time, kernel_time_only=False, threshold=0):
                 continue
 
             op_name = item["args"]["op_name"]
+
+            if op_name in NODES_TYPE_CONTAINING_SUBGRAPH:
+                continue
+
             if op_name in op_time:
                 op_time[op_name] += item["dur"]
                 op_records[op_name] += 1

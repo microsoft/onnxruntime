@@ -5,8 +5,8 @@
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
-#include "orttraining/core/framework/distributed_run_context.h"
 #include "test/util/include/asserts.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 
 namespace onnxruntime {
 namespace training {
@@ -68,6 +68,20 @@ TEST(DistributedRunContextTest, SingleGPUTest) {
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 0);
+
+  auto node_local_data_group = ctx.GetWorkerGroup(WorkerGroupType::NodeLocalDataParallel);
+  ASSERT_EQ(node_local_data_group.group_id, 0);
+  ASSERT_EQ(node_local_data_group.group_type, WorkerGroupType::NodeLocalDataParallel);
+  ASSERT_EQ(node_local_data_group.rank_in_group, 0);
+  ASSERT_EQ(node_local_data_group.ranks.size(), 1);
+  
+  auto cross_node_data_group = ctx.GetWorkerGroup(WorkerGroupType::CrossNodeDataParallel);
+  ASSERT_EQ(cross_node_data_group.group_id, 0);
+  ASSERT_EQ(cross_node_data_group.group_type, WorkerGroupType::CrossNodeDataParallel);
+  ASSERT_EQ(cross_node_data_group.rank_in_group, 0);
+  ASSERT_EQ(cross_node_data_group.ranks.size(), 1);
+  ASSERT_EQ(cross_node_data_group.ranks[0], 0);
+
 }
 
 TEST(DistributedRunContextTest, SingleNodeTest) {
@@ -97,6 +111,22 @@ TEST(DistributedRunContextTest, SingleNodeTest) {
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 1);
+
+  auto node_local_data_group = ctx.GetWorkerGroup(WorkerGroupType::NodeLocalDataParallel);
+  ASSERT_EQ(node_local_data_group.group_id, 0);
+  ASSERT_EQ(node_local_data_group.group_type, WorkerGroupType::NodeLocalDataParallel);
+  ASSERT_EQ(node_local_data_group.rank_in_group, 1);
+  ASSERT_EQ(node_local_data_group.ranks.size(), 4);
+  for (auto i = 0; i < 4; i++) {
+    ASSERT_EQ(node_local_data_group.ranks[i], i);
+  }
+  
+  auto cross_node_data_group = ctx.GetWorkerGroup(WorkerGroupType::CrossNodeDataParallel);
+  ASSERT_EQ(cross_node_data_group.group_id, 1);
+  ASSERT_EQ(cross_node_data_group.group_type, WorkerGroupType::CrossNodeDataParallel);
+  ASSERT_EQ(cross_node_data_group.rank_in_group, 0);
+  ASSERT_EQ(cross_node_data_group.ranks.size(), 1);
+  ASSERT_EQ(cross_node_data_group.ranks[0], 1);
 }
 
 TEST(DistributedRunContextTest, SingleNodeTest2) {
@@ -118,9 +148,8 @@ TEST(DistributedRunContextTest, SingleNodeTest2) {
   ASSERT_EQ(hori_group.group_type, WorkerGroupType::HorizontalParallel);
   ASSERT_EQ(hori_group.rank_in_group, 1);
   ASSERT_EQ(hori_group.ranks.size(), 2);
-  for (auto i = 0; i < 1; i++) {
-    ASSERT_EQ(hori_group.ranks[i], i);
-  }
+  ASSERT_EQ(hori_group.ranks[0], 0);
+  ASSERT_EQ(hori_group.ranks[1], 1);
 
   auto pipeline_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
   ASSERT_EQ(pipeline_group.group_id, 1);
@@ -128,6 +157,21 @@ TEST(DistributedRunContextTest, SingleNodeTest2) {
   ASSERT_EQ(pipeline_group.rank_in_group, 0);
   ASSERT_EQ(pipeline_group.ranks.size(), 1);
   ASSERT_EQ(pipeline_group.ranks[0], 1);
+
+  auto node_local_data_group = ctx.GetWorkerGroup(WorkerGroupType::NodeLocalDataParallel);
+  ASSERT_EQ(node_local_data_group.group_id, 0);
+  ASSERT_EQ(node_local_data_group.group_type, WorkerGroupType::NodeLocalDataParallel);
+  ASSERT_EQ(node_local_data_group.rank_in_group, 0);
+  ASSERT_EQ(node_local_data_group.ranks.size(), 2);
+  ASSERT_EQ(node_local_data_group.ranks[0], 1);
+  ASSERT_EQ(node_local_data_group.ranks[1], 3);
+  
+  auto cross_node_data_group = ctx.GetWorkerGroup(WorkerGroupType::CrossNodeDataParallel);
+  ASSERT_EQ(cross_node_data_group.group_id, 1);
+  ASSERT_EQ(cross_node_data_group.group_type, WorkerGroupType::CrossNodeDataParallel);
+  ASSERT_EQ(cross_node_data_group.rank_in_group, 0);
+  ASSERT_EQ(cross_node_data_group.ranks.size(), 1);
+  ASSERT_EQ(cross_node_data_group.ranks[0], 1);
 }
 
 TEST(DistributedRunContextTest, SingleNodeTest3) {

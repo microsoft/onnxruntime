@@ -249,9 +249,9 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
   ASSERT_EQ(pattern.patterns.size(), 1u);
   auto p = pattern.GetPatterns(cpu_allocator->Info());
-  ASSERT_EQ(p->PeakSize(), 2u * 64u);  // each allocation is 64-byte aligned
+  ASSERT_EQ(p->PeakSize(), 2u * kAllocAlignment);  // each allocation is kAllocAlignment-byte aligned
   ASSERT_EQ(p->GetBlock(3)->offset_, 0u);
-  ASSERT_EQ(p->GetBlock(4)->offset_, 64u);
+  ASSERT_EQ(p->GetBlock(4)->offset_, kAllocAlignment);
 }
 
 TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {

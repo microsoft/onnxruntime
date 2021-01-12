@@ -394,20 +394,20 @@ def testToyBertCheckpointBasic():
     model = load_bert_onnx_model()
     model_desc = bert_model_description()
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-    sd = checkpoint.experimental_state_dict(trainer)
+    sd = trainer.state_dict()
 
     ## All initializers must be present in the state_dict
     ##  when the specified model for ORTTRainer is an ONNX model
     for param in trainer._onnx_model.graph.initializer:
-        assert param.name in sd
+        assert param.name in sd['model']['full_precision']
 
     ## Modify one of the state values and load into ORTTrainer
-    sd['bert.encoder.layer.0.attention.output.LayerNorm.weight'] += 10
-    checkpoint.experimental_load_state_dict(trainer, sd)
+    sd['model']['full_precision']['bert.encoder.layer.0.attention.output.LayerNorm.weight'] += 10
+    trainer.load_state_dict(sd)
 
     ## Save a checkpoint
     ckpt_dir = 'testdata'
-    checkpoint.experimental_save_checkpoint(trainer, ckpt_dir, 'bert_toy_save_test')
+    trainer.save_checkpoint(os.path.join(ckpt_dir, 'bert_toy_save_test.ortcp'))
     del trainer
     del model
 
@@ -415,12 +415,11 @@ def testToyBertCheckpointBasic():
     model2 = load_bert_onnx_model()
     model_desc2 = bert_model_description()
     trainer2 = orttrainer.ORTTrainer(model2, model_desc2, optim_config, options=opts)
-    checkpoint.experimental_load_checkpoint(trainer2, ckpt_dir, 'bert_toy_save_test')
-    loaded_sd = checkpoint.experimental_state_dict(trainer2)
+    trainer2.load_checkpoint(os.path.join(ckpt_dir, 'bert_toy_save_test.ortcp'))
+    loaded_sd = trainer2.state_dict()
 
     # Assert whether original state and the one loaded from checkpoint matches
-    for k,v in loaded_sd.items():
-        assert torch.all(torch.eq(v, sd[k]))
+    _test_commons.assert_all_states_close_ort(sd, loaded_sd)
 
 
 def testToyBertCheckpointFrozenWeights():
@@ -446,21 +445,21 @@ def testToyBertCheckpointFrozenWeights():
     # Evaluate once to get a base loss
     loss = trainer.eval_step(*sample_input)
     # Save checkpoint
-    state_dict = checkpoint.experimental_state_dict(trainer)
+    state_dict = trainer.state_dict()
 
     # Load previous state into another instance of ORTTrainer
     model2 = load_bert_onnx_model()
     model_desc2 = bert_model_description()
     optim_config2 = optim.LambConfig()
     trainer2 = orttrainer.ORTTrainer(model2, model_desc2, optim_config2, options=opts)
-    checkpoint.experimental_load_state_dict(trainer2, state_dict)
+    trainer2.load_state_dict(state_dict)
     # Evaluate once to get a base loss
     ckpt_loss = trainer2.eval_step(*sample_input)
 
     # Must match as both trainers have the same dict state
     assert_allclose(loss.cpu(), ckpt_loss.cpu())
-    loaded_state_dict = checkpoint.experimental_state_dict(trainer2)
-    assert state_dict.keys() == loaded_state_dict.keys()
+    loaded_state_dict = trainer2.state_dict()
+    _test_commons.assert_all_states_close_ort(state_dict, loaded_state_dict)
 
 @pytest.mark.parametrize("optimizer, mixedprecision_enabled", [
     (optim.LambConfig(), False),
@@ -488,10 +487,9 @@ def testToyBertLoadOptimState(optimizer, mixedprecision_enabled):
     model_desc = bert_model_description()
     dummy_init_state = _test_commons.generate_dummy_optim_state(model, optimizer)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
-    checkpoint._experimental_load_optimizer_state(trainer, dummy_init_state)
+    trainer.load_state_dict(dummy_init_state)
     
     # Expected values
-    expected_eval_loss = [10.997552871]
     input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[635],[27399],[20647],[18519],[15546]], device=device)
     segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
     input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
@@ -501,9 +499,9 @@ def testToyBertLoadOptimState(optimizer, mixedprecision_enabled):
     # Actual values
     _ = trainer.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels)
     
-    actual_state = checkpoint.experimental_state_dict(trainer)
-    actual_optim_state = _test_commons.get_optim_state_from_state_dict(actual_state, optimizer)
-    _test_helpers.assert_optim_state(dummy_init_state, actual_optim_state)
+    actual_state_dict = trainer.state_dict()
+    del actual_state_dict['model']
+    _test_commons.assert_all_states_close_ort(actual_state_dict, dummy_init_state)
 
 @pytest.mark.parametrize("model_params", [
     (['bert.embeddings.LayerNorm.bias']),

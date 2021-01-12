@@ -17,6 +17,44 @@ jobs:
       displayName: CPU EP, Build and Test on Android Emulator
     - script: /bin/bash tools/ci_build/github/android/run_nnapi_code_coverage.sh $(pwd)
       displayName: NNAPI EP, Build, Test and Get Code Coverage on Android Emulator
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish code coverage report'
+      inputs:
+        artifactName: "coverage_rpt.txt"
+        targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
+        publishLocation: 'pipeline'
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
       # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
       displayName: Build Minimal ORT with NNAPI and run tests
+
+- job: Update_Dashboard
+  workspace:
+    clean: all
+  pool:
+    vmImage: 'ubuntu-latest'
+  dependsOn: Android_CI
+  condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+  steps:
+    - task: DownloadPipelineArtifact@0
+      displayName: 'Download code coverage report'
+      inputs:
+        artifactName: 'coverage_rpt.txt'
+        targetPath: '$(Build.BinariesDirectory)'
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.x'
+    - task: CmdLine@2
+      inputs:
+        script: |
+          python3 -m pip install mysql-connector-python
+    - task: PythonScript@0
+      displayName: Post Android Code Coverage To DashBoard
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py'
+        arguments: >
+          --commit_hash=$(Build.SourceVersion)
+          --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
+          --report_file="$(Build.BinariesDirectory)/coverage_rpt.txt"
+          --build_config="{\"os\":\"android\", \"arch\":\"x86_64\", \"config\":\"nnapi\"}"
+      env:
+        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)

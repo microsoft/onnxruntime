@@ -9,21 +9,23 @@
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Transpose,
-                        kOnnxDomain,
-                        1, 12,
-                        kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                        Transpose);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Transpose,
+    kOnnxDomain,
+    1, 12,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Transpose);
 
-ONNX_OPERATOR_KERNEL_EX(Transpose,
-                        kOnnxDomain,
-                        13,
-                        kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                        Transpose);
+ONNX_OPERATOR_KERNEL_EX(
+    Transpose,
+    kOnnxDomain,
+    13,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Transpose);
 
 // special case acceleration using cublas matrix transpose
 static std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
@@ -162,7 +164,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
     return Transpose3DImpl(element_size, input_shape, tmp_input_strides,
                            input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
-  }  else if (CanDoTranspose4D(prop, element_size, new_rank, new_input_dims, new_permutations)) {
+  } else if (CanDoTranspose4D(prop, element_size, new_rank, new_input_dims, new_permutations)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];

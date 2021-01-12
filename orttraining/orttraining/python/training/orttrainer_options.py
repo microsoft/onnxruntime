@@ -194,7 +194,7 @@ class ORTTrainerOptions(object):
                         },
                         'onnx_opset_version': {
                             'type': 'integer',
-                            'min' : 10,
+                            'min' : 12,
                             'max' : 12,
                             'default': 12
                         },
@@ -231,7 +231,7 @@ class ORTTrainerOptions(object):
         distributed.deepspeed_zero_optimization.stage (int, default is 0):
             select which stage of DeepSpeed ZeRO to use. Stage 0 means disabled.
         distributed.enable_adasum (bool, default is False):
-            enable `Adasum <https://github.com/horovod/horovod/pull/1484>`_
+            enable `Adasum <https://arxiv.org/abs/2006.02924>`_
             algorithm for AllReduce
         lr_scheduler (optim._LRScheduler, default is None):
             specifies learning rate scheduler
@@ -486,7 +486,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'transformer_layer_recompute': {
                 'type': 'boolean',
                 'default': False
-            }, 
+            },
             'number_recompute_layers': {
                 'type': 'integer',
                 'min': 0,
@@ -548,7 +548,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'onnx_opset_version': {
                 'type': 'integer',
-                'min' : 10,
+                'min' : 12,
                 'max' : 12,
                 'default': 12
             },

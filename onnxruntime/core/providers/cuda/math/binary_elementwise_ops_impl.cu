@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cuda_runtime.h>
-#include "binary_elementwise_ops_impl.h"
+#include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"
@@ -171,11 +171,8 @@ BINARY_OPS2()
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(name, bool, double, double)
 
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD2(Greater)
-
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD2(Equal)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(Equal, bool, bool, bool)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(Equal, bool, int32_t, int32_t)
-SPECIALIZED_BINARY_ELEMENTWISE_IMPL_T2(Equal, bool, int64_t, int64_t)
-
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD2(Less)
 
 }  // namespace cuda

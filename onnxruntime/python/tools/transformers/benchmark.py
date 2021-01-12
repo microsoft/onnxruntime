@@ -115,7 +115,7 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
                 continue
 
             ort_output_names = [node_arg.name for node_arg in ort_session.get_outputs()]
-            output_buffers = {"last_state": None, "pooler": None}
+            output_buffers = []
             device = "cuda" if use_gpu else "cpu"
             config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
             max_last_state_size = numpy.prod(
@@ -150,16 +150,24 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
 
                     logger.info("Run onnxruntime on {} with input shape {}".format(model_name,
                                                                                    [batch_size, sequence_length]))
+
                     if disable_ort_io_binding:
                         result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size)
                     else:
                         # Get output sizes from a dummy ort run
                         ort_outputs = ort_session.run(ort_output_names, ort_inputs)
+                        output_buffer_max_sizes = [max_last_state_size]
+                        for i in range(len(ort_outputs)):
+                            if i == 2 and MODELS[model_name][3] == "gpt":
+                                # past state output max size
+                                output_buffer_max_sizes.append(max_pooler_size)
+                            else:
+                                output_buffer_max_sizes.append(max_last_state_size)
 
                         data_type = numpy.longlong if 'pt' in model_source else numpy.intc
                         result = inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times,
                                                                ort_output_names, ort_outputs, output_buffers,
-                                                               max_last_state_size, max_pooler_size, batch_size, device,
+                                                               output_buffer_max_sizes, batch_size, device,
                                                                data_type)
                     logger.info(result)
                     results.append(result)

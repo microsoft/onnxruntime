@@ -206,8 +206,7 @@ def inference_ort_with_io_binding(ort_session,
                                   ort_output_names,
                                   ort_outputs,
                                   output_buffers,
-                                  max_last_state_size,
-                                  max_pooler_size,
+                                  output_buffer_max_sizes,
                                   batch_size,
                                   device,
                                   data_type=numpy.longlong):
@@ -219,18 +218,13 @@ def inference_ort_with_io_binding(ort_session,
     for name in ort_inputs.keys():
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
         io_binding.bind_input(name, np_input.device.type, 0, data_type, np_input.shape, np_input.data_ptr())
-    has_pooler = True if len(ort_output_names) == 2 else False
     # Bind outputs buffers with the sizes needed if not allocated already
-    if output_buffers["last_state"] is None:
-        allocateOutputBuffers(output_buffers, max_last_state_size, max_pooler_size, device, has_pooler)
-    last_state_buffer = output_buffers["last_state"]
-    pooler_buffer = output_buffers["pooler"]
-    io_binding.bind_output(ort_output_names[0], last_state_buffer.device.type, 0, numpy.float32, ort_outputs[0].shape,
-                           last_state_buffer.data_ptr())
-    if has_pooler:
-        io_binding.bind_output(ort_output_names[1], pooler_buffer.device.type, 0, numpy.float32, ort_outputs[1].shape,
-                               pooler_buffer.data_ptr())
+    if len(output_buffers) == 0:
+        allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device)
 
+    for i in range(len(ort_output_names)):
+        io_binding.bind_output(ort_output_names[i], output_buffers[i].device.type, 0, numpy.float32, ort_outputs[i].shape,
+                           output_buffers[i].data_ptr())
     runtimes = timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
     result.update(result_template)
     result.update({"io_binding": True})
@@ -238,12 +232,9 @@ def inference_ort_with_io_binding(ort_session,
     return result
 
 
-def allocateOutputBuffers(output_buffers, max_last_state_size, max_pooler_size, device, has_pooler=False):
+def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):
     # Allocate output tensors with the largest test size needed. So the allocated memory can be reused
     # for each test run.
-    # dummy last state
-    if output_buffers["last_state"] is None:
-        output_buffers["last_state"] = torch.empty(max_last_state_size, dtype=torch.float32, device=device)
-    # create dummy pooler
-    if output_buffers["pooler"] is None and has_pooler:
-        output_buffers["pooler"] = torch.empty(max_pooler_size, dtype=torch.float32, device=device)
+
+    for i in output_buffer_max_sizes:
+        output_buffers.append(torch.empty(i, dtype=torch.float32, device=device))

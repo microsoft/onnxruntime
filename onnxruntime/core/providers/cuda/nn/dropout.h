@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/nn/dropout_impl.h"
 #include "core/providers/cuda/nn/dropout.h"
 #include "core/providers/common.h"

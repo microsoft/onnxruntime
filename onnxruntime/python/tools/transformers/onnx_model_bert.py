@@ -176,7 +176,38 @@ class BertOnnxModel(OnnxModel):
             dim_proto.dim_param = dynamic_batch_dim
 
     def preprocess(self):
+        self.adjust_reshape_and_expand()
         return
+    
+    def adjust_reshape_and_expand(self):
+        nodes_to_remove = []
+        for node in self.nodes():
+            if node.op_type == 'Reshape':        
+                # Clean up unneccessary reshape nodes.
+                # Find reshape nodes with no actually data in "shape" attribute and remove. 
+                reshape_shape = self.get_constant_value(node.input[1])
+                if reshape_shape is not None and reshape_shape.size == 0:
+                    nodes_to_remove.extend([node])
+                    self.replace_input_of_all_nodes(node.output[0], node.input[0])
+                    continue
+
+                # Find path "Slice" -> "Reshape" -> "Expand" -> "Expand" -> current "Reshape", simplify the graph by
+                # changing current reshape's input to output of slice. 
+                reshape_path = self.match_parent_path(node, ['Expand', 'Expand', 'Reshape', 'Slice'], [0, 0, 0, 0],
+                                                            self.output_name_to_node())
+                if reshape_path is not None:
+                    expand_node = reshape_path[-3]
+                    expand_shape_value = self.get_constant_value(expand_node.input[1])
+
+                    reshape_before_expand = reshape_path[-2]
+                    shape_value = self.get_constant_value(reshape_before_expand.input[1])
+
+                    slice_node = reshape_path[-1]
+                    if expand_shape_value is not None and shape_value is not None and len(expand_shape_value) is 2 and len(
+                            shape_value) is 1 and expand_shape_value[1] == shape_value[0]:
+                        node.input[0] = slice_node.output[0]
+        self.remove_nodes(nodes_to_remove)
+        logger.info(f"Removed Reshape and Expand count: {len(nodes_to_remove)}")
 
     def clean_graph(self):
         output_name_to_node = self.output_name_to_node()
