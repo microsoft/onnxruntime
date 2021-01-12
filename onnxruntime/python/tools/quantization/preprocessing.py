@@ -2,6 +2,7 @@ import os
 import sys
 import numpy as np
 import re
+from PIL import Image
 import cv2
 import pdb
 
