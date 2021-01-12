@@ -82,9 +82,19 @@ def optimizer_parameters(model):
     return params
 
 
-def load_bert_onnx_model():
+def load_bert_onnx_model(training_mode=True):
     bert_onnx_model_path = os.path.join('testdata', "bert_toy_postprocessed.onnx")
     model = onnx.load(bert_onnx_model_path)
+    if training_mode == False:
+        # The ONNX file was saved in training mode.
+        # To switch into eval mode, change every
+        # dropout_training_mode_node_* constant to false.
+        false_raw_data = b'\x00'
+        for node in model.graph.node:
+            if node.name.startswith("dropout_training_mode_node_"):
+                for a in node.attribute:
+                    if a.name == "value":
+                        a.t.raw_data = false_raw_data
     return model
 
 
@@ -424,8 +434,11 @@ def testToyBertCheckpointFrozenWeights():
     opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
                                          'utils' : {'frozen_weights' : ['bert.encoder.layer.0.attention.self.value.weight']}})
 
-    # Create ORTTrainer and save initial state in a dict
-    model = load_bert_onnx_model()
+    # Create ORTTrainer and save initial state in a dict.
+    # Because the eval_step will be performed on the same graph as train_step,
+    # load the ONNX model in non-training mode to
+    # disable dropouts and avoid random discrepancies during eval_step.
+    model = load_bert_onnx_model(training_mode=False)
     model_desc = bert_model_description()
     optim_config = optim.LambConfig()
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
@@ -440,8 +453,10 @@ def testToyBertCheckpointFrozenWeights():
     # Evaluate once to get a base loss
     loss = trainer.eval_step(*sample_input)
 
-    # Load previous state into another instance of ORTTrainer
-    model2 = load_bert_onnx_model()
+    # Load previous state into another instance of ORTTrainer.
+    # Again, use non-training mode to disable dropouts
+    # and match the previous result.
+    model2 = load_bert_onnx_model(training_mode=False)
     model_desc2 = bert_model_description()
     optim_config2 = optim.LambConfig()
     trainer2 = orttrainer.ORTTrainer(model2, model_desc2, optim_config2, options=opts)
