@@ -214,7 +214,10 @@ def _parse_arguments():
                         default=0,
                         help="onnxruntime optimization level. 0 will disable onnxruntime.")
 
-    parser.add_argument('--use_external_data_format', required=False, action='store_true', help="use external data format")
+    parser.add_argument('--use_external_data_format',
+                        required=False,
+                        action='store_true',
+                        help="use external data format")
     parser.set_defaults(use_external_data_format=False)
 
     args = parser.parse_args()
@@ -306,8 +309,9 @@ def optimize_model(input,
         os.remove(temp_model_path)
         logger.debug("Remove tempoary model: {}".format(temp_model_path))
 
-    optimizer.model.producer_name = "onnxruntime_tools"
-    optimizer.model.producer_version = "1.5.2"
+    optimizer.model.producer_name = "onnxruntime.transformers"
+    from onnxruntime import __version__ as onnxruntime_version
+    optimizer.model.producer_version = onnxruntime_version
 
     return optimizer
 
@@ -325,9 +329,7 @@ def main():
     _setup_logger(args.verbose)
 
     if os.path.realpath(args.input) == os.path.realpath(args.output):
-        logger.warning(
-            f"Specified the same input and output path. Note that this may overwrite the original model"
-        )
+        logger.warning(f"Specified the same input and output path. Note that this may overwrite the original model")
 
     optimization_options = _get_optimization_options(args)
 
