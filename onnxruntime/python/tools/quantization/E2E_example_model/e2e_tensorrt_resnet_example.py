@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 import onnx
 import onnxruntime
-from onnxruntime.quantization import CalibrationDataReader, tensorrt_calibrate, write_calibration_table
+from onnxruntime.quantization import CalibrationDataReader, calibrate, write_calibration_table
 
 class ImageNetDataReader(CalibrationDataReader):
     def __init__(self, image_folder,
@@ -292,7 +292,7 @@ if __name__ == '__main__':
     Please download Resnet50 model from ONNX model zoo https://github.com/onnx/models/blob/master/vision/classification/resnet/model/resnet50-v2-7.tar.gz
     Untar the model into the workspace
     '''
-
+    
     # Dataset settings
     model_path = "./resnet50-v2-7.onnx"
     ilsvrc2012_dataset_path = "./ILSVRC2012"   
@@ -319,7 +319,7 @@ if __name__ == '__main__':
     # Generate INT8 calibration table
     if calibration_table_generation_enable:
         data_reader = ImageNetDataReader(ilsvrc2012_dataset_path,start_index=0, end_index=calibration_dataset_size, stride=calibration_dataset_size, batch_size=batch_size, model_path=augmented_model_path, input_name=input_name)
-        calibration_cache = tensorrt_calibrate(new_model_path, data_reader, providers=["CUDAExecutionProvider"])
+        calibration_cache = calibrate(new_model_path, data_reader, providers=["CUDAExecutionProvider"], tensorrt_calibration=True)
         write_calibration_table(calibration_cache)
 
     # Run prediction in Tensorrt EP    
