@@ -33,6 +33,9 @@ class TestGpt2(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
     coloredlogs.install(fmt='%(message)s')
     logging.getLogger("transformers").setLevel(logging.ERROR)
     unittest.main()

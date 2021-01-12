@@ -12,6 +12,7 @@ Example of profiling of longformer model:
 
 NODES_TYPE_CONTAINING_SUBGRAPH = ['Scan', 'Loop', 'If']
 
+
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--model', required=True, type=str, help="onnx model path")
