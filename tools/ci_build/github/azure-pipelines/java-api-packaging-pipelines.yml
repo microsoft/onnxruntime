@@ -179,6 +179,10 @@ jobs:
         timeout: '7200'
         ram: '16384'
         addProjectDirToScanningExclusionList: true
+        
+    - task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@2
+      displayName: 'Publish Security Analysis Logs'
+      continueOnError: true        
 
     - template: templates/clean-agent-build-directory-step.yml
 
