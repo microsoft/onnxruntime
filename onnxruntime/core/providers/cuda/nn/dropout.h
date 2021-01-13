@@ -77,7 +77,11 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
 
   const Tensor* training_mode = context->Input<Tensor>(2);
   //Check for inference mode.
-  std::cout << "++++++++++++++++++++++++++++++++++++++++++ training_mode" << *(training_mode->Data<bool>()) << std::endl;
+  if (training_mode == nullptr) {
+    std::cout << "++++++++++++++++++++++++++++++++++++++++++ training_mode null" << std::endl;
+  } else {
+    std::cout << "++++++++++++++++++++++++++++++++++++++++++ training_mode " << *(training_mode->Data<bool>()) << std::endl;
+  }
   if ((0 == ratio_data) ||(training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
     const void* X_data = X->DataRaw();
     void* Y_data = Y->MutableDataRaw();
