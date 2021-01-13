@@ -482,7 +482,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   ORT_ENFORCE(beta_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(lambda_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(epsilon_.size() >= static_cast<size_t>(group_count));
-  ORT_ENFORCE(max_norm_.size() >= static_cast<size_t>(group_count));
+  ORT_ENFORCE(max_norm_clip_.size() >= static_cast<size_t>(group_count));
 
   // If gradient norm is not finite, we copy inputs to outputs directly.
   if (ctx->Input<Tensor>(0)) {
@@ -650,7 +650,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       p_ws, p_gs, p_m1s, p_m2s,
       p_ds,
       p_m1_news, p_m2_news,
-      alpha_, beta_, lambda_, epsilon_, max_norm_,
+      alpha_, beta_, lambda_, epsilon_, max_norm_clip_,
       do_bias_correction_);
 
   launch_lamb_reduction(
