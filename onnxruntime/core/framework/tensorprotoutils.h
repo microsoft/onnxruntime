@@ -249,7 +249,7 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 // UnpackTensor from raw data or the type specific data field. Does not handle external data.
-// If the tesnor does not contain raw data then raw_data should be nullptr and raw_data_len should be 0.
+// If the tensor does not contain raw data then raw_data should be nullptr and raw_data_len should be 0.
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                     /*out*/ T* p_data, size_t expected_size);

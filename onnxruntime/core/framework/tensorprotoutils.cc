@@ -119,14 +119,12 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
                                   const ORTCHAR_T* tensor_proto_dir,
                                   std::basic_string<ORTCHAR_T>& external_file_path,
                                   onnxruntime::FileOffsetType& file_offset,
-                                  size_t& tensor_data_length) {
-  ORT_RETURN_IF(tensor_proto.data_location() != TensorProto_DataLocation_EXTERNAL,
-                "Tensor does not have external data to read from.");
+                                  size_t* tensor_data_length) {
+  ORT_RETURN_IF_NOT(onnxruntime::utils::HasExternalData(tensor_proto),
+                    "Tensor does not have external data to read from.");
 
-  ORT_RETURN_IF_NOT(
-      tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED &&
-          tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING,
-      "External data type cannot be UNDEFINED or STRING.");
+  ORT_RETURN_IF_NOT(tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING,
+                    "External data type cannot be UNDEFINED or STRING.");
 
   std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
   ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
@@ -140,14 +138,14 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
   file_offset = external_data_info->GetOffset();
 
   ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(
-      tensor_proto, &tensor_data_length));
+      tensor_proto, tensor_data_length));
   const size_t external_data_length = external_data_info->GetLength();
 
   ORT_RETURN_IF_NOT(
       external_data_length == 0 ||
-          external_data_length == tensor_data_length,
+          external_data_length == *tensor_data_length,
       "TensorProto external data size mismatch. ",
-      "Computed size: ", tensor_data_length,
+      "Computed size: ", *tensor_data_length,
       ", external_data.length: ", external_data_length);
 
   return Status::OK();
@@ -160,16 +158,16 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
 static Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                         const ORTCHAR_T* tensor_proto_dir,
                                         std::unique_ptr<uint8_t[]>& unpacked_tensor,
-                                        size_t& tensor_data_length) {
+                                        size_t* tensor_data_length) {
   std::basic_string<ORTCHAR_T> external_file_path;
   onnxruntime::FileOffsetType file_offset;
   GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_file_path, file_offset, tensor_data_length);
-  unpacked_tensor.reset(new uint8_t[tensor_data_length]);
+  unpacked_tensor.reset(new uint8_t[*tensor_data_length]);
   ORT_RETURN_IF_ERROR(onnxruntime::Env::Default().ReadFileIntoBuffer(
       external_file_path.c_str(),
       file_offset,
-      tensor_data_length,
-      gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.get()), tensor_data_length)));
+      *tensor_data_length,
+      gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.get()), *tensor_data_length)));
 
   return Status::OK();
 }
@@ -183,13 +181,16 @@ namespace utils {
   Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,                                           \
                                       const ORTCHAR_T* tensor_proto_dir, size_t expected_size,                             \
                                       /*out*/ T* p_data) {                                                                 \
+    if (nullptr == p_data) {                                                                                               \
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                                        \
+    }                                                                                                                      \
     std::unique_ptr<uint8_t[]> unpacked_tensor;                                                                            \
-    size_t tensor_byte_size = 0;                                                                                           \
+    SafeInt<size_t> tensor_byte_size = 0;                                                                                  \
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(                                                                         \
         tensor,                                                                                                            \
         tensor_proto_dir,                                                                                                  \
         unpacked_tensor,                                                                                                   \
-        tensor_byte_size));                                                                                                \
+        &tensor_byte_size));                                                                                               \
                                                                                                                            \
     size_t element_count = tensor_byte_size / sizeof(T);                                                                   \
     ORT_RETURN_IF_NOT(expected_size == element_count, "Expected data size does not match the actual external data size."); \
@@ -554,7 +555,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
       ORT_RETURN_IF_ERROR(GetExternalDataInfo(
           tensor_proto,
           tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str(),
-          external_data_file_path, file_offset, raw_data_len));
+          external_data_file_path, file_offset, &raw_data_len));
 
       // load the file
       ORT_RETURN_IF_ERROR(GetFileContent(
@@ -1035,7 +1036,7 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
           initializer,                                                                     \
           model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(), \
           unpacked_tensor,                                                                 \
-          tensor_byte_size);                                                               \
+          &tensor_byte_size);                                                              \
     } else {                                                                               \
       size_t element_count = 0;                                                            \
       if (initializer.has_raw_data()) {                                                    \

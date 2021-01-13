@@ -21,7 +21,7 @@ namespace test {
 
 //T must be float for double, and it must match with the 'type' argument
 template <typename T>
-void test_unpack_float_tensor(TensorProto_DataType type, const Path& model_path) {
+void TestUnpackFloatTensor(TensorProto_DataType type, const Path& model_path) {
   TensorProto float_tensor_proto;
   float_tensor_proto.set_data_type(type);
   T f[4] = {1.1f, 2.2f, 3.3f, 4.4f};
@@ -58,8 +58,8 @@ TEST(TensorProtoUtilsTest, UnpackTensor) {
   status = UnpackTensor(bool_tensor_proto, model_path, float_data, 1);
   EXPECT_FALSE(status.IsOK());
 
-  test_unpack_float_tensor<float>(TensorProto_DataType_FLOAT, model_path);
-  test_unpack_float_tensor<double>(TensorProto_DataType_DOUBLE, model_path);
+  TestUnpackFloatTensor<float>(TensorProto_DataType_FLOAT, model_path);
+  TestUnpackFloatTensor<double>(TensorProto_DataType_DOUBLE, model_path);
 
   TensorProto string_tensor_proto;
   string_tensor_proto.set_data_type(TensorProto_DataType_STRING);
@@ -109,7 +109,7 @@ static void CreateTensorWithExternalData(
 }
 
 template <typename T>
-static void test_unpack_external_tensor(TensorProto_DataType type, const Path& model_path) {
+static void TestUnpackExternalTensor(TensorProto_DataType type, const Path& model_path) {
   // Create external data
   std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
   TensorProto tensor_proto;
@@ -131,9 +131,9 @@ static void test_unpack_external_tensor(TensorProto_DataType type, const Path& m
 
 TEST(TensorProtoUtilsTest, UnpackTensorWithExternalData) {
   Path model_path;
-  test_unpack_external_tensor<float>(TensorProto_DataType_FLOAT, model_path);
-  test_unpack_external_tensor<double>(TensorProto_DataType_DOUBLE, model_path);
-  test_unpack_external_tensor<int32_t>(TensorProto_DataType_INT32, model_path);
+  TestUnpackExternalTensor<float>(TensorProto_DataType_FLOAT, model_path);
+  TestUnpackExternalTensor<double>(TensorProto_DataType_DOUBLE, model_path);
+  TestUnpackExternalTensor<int32_t>(TensorProto_DataType_INT32, model_path);
 }
 
 template <typename T>
