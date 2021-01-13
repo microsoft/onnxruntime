@@ -778,11 +778,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                            "ON" if args.use_openvino.startswith("MULTI") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_BINARY=" + (
                            "ON" if args.use_openvino else "OFF")]
-    # temp turn on only for linux gpu build
-    if not is_windows():
-        if args.use_cuda:
-            cmake_args += [
-                "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
     # TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
