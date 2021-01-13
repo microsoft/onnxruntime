@@ -11,6 +11,30 @@
 extern "C" {
 #endif
 
+inline jsize safecast_size_t_to_jsize(size_t v) {
+#ifdef _DEBUG
+  jsize result = (jsize)v;
+  if(v != (size_t)result){
+      abort();
+  }
+  return result;
+#else
+  return (jsize)v;
+#endif    
+}
+
+inline jsize safecast_int64_to_jsize(int64_t v) {
+#ifdef _DEBUG
+  jsize result = (jsize)v;
+  if (v != (int64_t)result) {
+    abort();
+  }
+  return result;
+#else
+  return (jsize)v;
+#endif
+}
+
 jint JNI_OnLoad(JavaVM *vm, void *reserved);
 
 OrtLoggingLevel convertLoggingLevel(jint level);
@@ -39,11 +63,11 @@ jobject createEmptySequenceInfo(JNIEnv *jniEnv);
 
 size_t copyJavaToPrimitiveArray(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, jarray input);
 
-size_t copyJavaToTensor(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, size_t tensorSize, uint32_t dimensionsRemaining, jarray input);
+size_t copyJavaToTensor(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, size_t tensorSize, size_t dimensionsRemaining, jarray input);
 
 size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, jarray output);
 
-size_t copyTensorToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, size_t tensorSize, uint32_t dimensionsRemaining, jarray output);
+size_t copyTensorToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, size_t tensorSize, size_t dimensionsRemaining, jarray output);
 
 jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor);
 
