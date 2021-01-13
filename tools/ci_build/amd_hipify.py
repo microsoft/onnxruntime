@@ -84,8 +84,6 @@ provider_excluded_files = [
                 'math/einsum_utils/einsum_auxiliary_ops.h',
                 'math/einsum_utils/einsum_auxiliary_ops_diagonal.cu',
                 'math/einsum_utils/einsum_auxiliary_ops_diagonal.h',
-                'math/binary_elementwise_ops.cc',
-                'math/binary_elementwise_ops_impl.cu',
                 'math/cumsum.cc',
                 'math/cumsum.h',
                 'math/cumsum_impl.cu',
