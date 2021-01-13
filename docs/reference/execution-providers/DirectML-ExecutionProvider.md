@@ -2,7 +2,7 @@
 title: Direct ML
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 3
+nav_order: 4
 ---
 
 # DirectML Execution Provider

@@ -2,7 +2,7 @@
 title: Intel DNNL
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 4
+nav_order: 5
 ---
 
 # DNNL Execution Provider

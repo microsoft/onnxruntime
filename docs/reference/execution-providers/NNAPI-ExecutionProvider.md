@@ -2,7 +2,7 @@
 title: NNAPI
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 5
+nav_order: 6
 ---
 
 

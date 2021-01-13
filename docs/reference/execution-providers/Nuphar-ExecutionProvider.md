@@ -2,7 +2,7 @@
 title: Nuphar
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 9
+nav_order: 10
 ---
 
 # Nuphar Execution Provider (preview)
@@ -33,7 +33,13 @@ Ort::Session session(env, model_path, sf);
 
 ### Python
 
-You can use the Nuphar execution provider via the python wheel from the ONNX Runtime build. The Nuphar execution provider will be automatically prioritized over the default CPU execution providers, thus no need to separately register the execution provider. Python APIs details are [here](/python/api_summary).
+```python
+import onnxruntime as ort
+
+model_path = '<path to model>'
+providers = ['NupharExecutionProvider', 'CPUExecutionProvider']
+session = ort.InferenceSession(model_path, providers=providers)
+```
 
 ## Performance and Accuracy Testing
 
@@ -161,12 +167,12 @@ SessionOptions.MakeSessionOptionWithNupharProvider("nuphar_cache_path:/path/to/c
 
 * Using in Python
 
-Settings string should be passed in before InferenceSession is created, as providers are not currently exposed yet. Here's an example in Python to set cache path and model checksum:
+Settings string can be set as an execution provider-specific option. Here's an example in Python to set cache path and model checksum:
 
 ```python
 nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_model_checksum:{}'.format(cache_dir, model_checksum)
-onnxruntime.capi._pybind_state.set_nuphar_settings(nuphar_settings)
-sess = onnxruntime.InferenceSession(model_path)
+providers = [('NupharExecutionProvider', {'nuphar_settings': nuphar_settings}), 'CPUExecutionProvider']
+sess = onnxruntime.InferenceSession(model_path, providers=providers)
 ```
 
 ## Known issues
