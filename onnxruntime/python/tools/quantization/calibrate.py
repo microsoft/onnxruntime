@@ -78,11 +78,8 @@ class ONNXCalibrater:
         tensors_to_calibrate = set()
 
         for node in model.graph.node:
-            if self.augment_all:
-                should_be_calibrate = True
-            else:
-                should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
-                                       (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
+            should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
+                                       (node.name not in self.black_nodes)) or (node.name in self.white_nodes) or self.augment_all
             if should_be_calibrate:
                 for tensor_name in itertools.chain(node.input, node.output):
                     if tensor_name in value_infos.keys():
@@ -381,4 +378,4 @@ def calibrate(model_path,
         quantization_params_dict = calibrater.calculate_quantization_params(dict_for_quantization)
     print("Calibrated,quantized parameters calculated and returned.")
 
-    return dict_for_quantization if quantization_params_calculation_enable else quantization_params_dict
+    return quantization_params_dict if quantization_params_calculation_enable else dict_for_quantization

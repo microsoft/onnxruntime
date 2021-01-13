@@ -292,7 +292,7 @@ if __name__ == '__main__':
     Please download Resnet50 model from ONNX model zoo https://github.com/onnx/models/blob/master/vision/classification/resnet/model/resnet50-v2-7.tar.gz
     Untar the model into the workspace
     '''
- 
+
     # Dataset settings
     model_path = "./resnet50-v2-7.onnx"
     ilsvrc2012_dataset_path = "./ILSVRC2012"   
