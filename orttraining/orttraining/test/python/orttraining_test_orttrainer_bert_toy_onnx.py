@@ -471,6 +471,15 @@ def testToyBertCheckpointFrozenWeights():
     trainer2.load_state_dict(state_dict)
     # Evaluate once to get a base loss
     ckpt_loss = trainer2.eval_step(*sample_input)
+    print("loss6", ckpt_loss.item())
+    ckpt_loss = trainer2.eval_step(*sample_input)
+    print("loss7", ckpt_loss.item())
+    ckpt_loss = trainer2.eval_step(*sample_input)
+    print("loss8", ckpt_loss.item())
+    ckpt_loss = trainer2.eval_step(*sample_input)
+    print("loss9", ckpt_loss.item())
+    ckpt_loss = trainer2.eval_step(*sample_input)
+    print("loss10", ckpt_loss.item())
 
     # Must match as both trainers have the same dict state
     assert_allclose(loss.cpu(), ckpt_loss.cpu())
