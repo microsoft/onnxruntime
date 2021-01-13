@@ -293,7 +293,7 @@ class ORTTrainerOptions(object):
             compares PyTorch model outputs with ONNX model outputs in inference before the first
             train step to ensure successful model export
         debug.graph_save_paths (dict):
-            paths to use for dumping intermediate graphs for debug
+            paths used for dumping ONNX graphs for debugging purposes
         debug.graph_save_paths.model_after_graph_transforms_path (str, default is "")
             path to export the ONNX graph after training-related graph transforms have been applied.
             No output when it is empty.
