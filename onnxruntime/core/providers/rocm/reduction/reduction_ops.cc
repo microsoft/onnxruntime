@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "reduction_ops.h"
+#include "core/providers/rocm/reduction/reduction_ops.h"
+
+#include "core/framework/data_types_internal.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/rocm/miopen_common.h"
-#include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
 #include "core/providers/rocm/math/binary_elementwise_ops_impl.h"
 #include "core/providers/rocm/math/binary_elementwise_ops.h"
-#include "core/providers/cpu/tensor/utils.h"
-#include "core/framework/op_kernel_context_internal.h"
+#include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
@@ -76,7 +78,7 @@ namespace rocm {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-// CUDA ArgMax/ArgMin doesn't have OpSet12 implementation (with select_last_index attr), keep it in OpSet11 for now.
+// ROCM ArgMax/ArgMin doesn't have OpSet12 implementation (with select_last_index attr), keep it in OpSet11 for now.
 #define REGISTER_KERNEL_TYPED_11(name, T)                                       \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
       name,                                                                     \
@@ -93,6 +95,35 @@ namespace rocm {
       T,                                                                        \
       kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+// Register with the latest version 13
+#define REGISTER_KERNEL_TYPED_13(name, T)                                       \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      name,                                                                     \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kRocmExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      name,                                                                     \
+      kOnnxDomain,                                                              \
+      11, 12,                                                                   \
+      T,                                                                        \
+      kRocmExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      name,                                                                     \
+      kOnnxDomain,                                                              \
+      13,                                                                       \
+      T,                                                                        \
+      kRocmExecutionProvider,                                                   \
+      KernelDefBuilder()                                                        \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),               \
       name<T>);
 
 static bool is_matrix_row_reduction(
