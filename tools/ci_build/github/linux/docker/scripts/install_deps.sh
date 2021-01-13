@@ -117,6 +117,8 @@ ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
 if [ $DEVICE_TYPE = "gpu" ]; then
   if [[ $INSTALL_DEPS_TRAINING = true ]]; then
     ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/requirements.txt}
+    # Due to a [bug on DeepSpeed](https://github.com/microsoft/DeepSpeed/issues/663), we install it separately through secondary/requirements.txt
+    ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/secondary\/requirements.txt}
   fi
   if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
     source ${0/%install_deps.sh/install_openmpi.sh}
