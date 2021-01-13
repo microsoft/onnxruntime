@@ -74,7 +74,7 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   allocator_list_.push_back(allocator);
 }
 
-void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> ) {
   return;
 }
 
