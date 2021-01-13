@@ -44,17 +44,6 @@ def get_section_sizes(binary_path, readelf_path, dump_to_file=None):
     return section_sizes
 
 
-def get_sections_total_size(binary_path, readelf_path='readelf'):
-    '''
-    Get the sum of the sizes for all sections. This may differ from the on-disk size due to packing and alignment.
-    :param binary_path: Path to binary to analyze.
-    :param readelf_path: Path to readelf binary. Default is 'readelf'.
-    :return: Sum of section sizes.
-    '''
-    section_sizes = get_section_sizes(binary_path, readelf_path)
-    return sum(section_sizes.values())
-
-
 def diff_sections_total_size(base_binary_path, binary_path, readelf_path='readelf'):
     '''
     Diff the sections entries for two binaries.
