@@ -124,9 +124,9 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
 //   RunDropoutTest(true, {1000}, 0.25f);
 // }
 
-// TEST(DropoutTest, RatioLimit) {
-//   RunDropoutTest(true, {1000}, 0.0f, false);
-// }
+TEST(DropoutTest, RatioLimit) {
+  RunDropoutTest(true, {1000}, 0.0f, false);
+}
 
 // TEST(DropoutTest, EmptyRatio) {
 //   RunDropoutTest(true, {1000});
