@@ -1740,8 +1740,7 @@ Return Value:
 {
     const uint8x8_t BitFlipVector = vdup_n_u8(BIsSigned ? 0x80 : 0);
     const uint8x8_t ZeroVector = vmov_n_u8(0);
-    const size_t AlignedCountK =
-        (CountK + MLAS_GEMM_U8X8_KERNEL_NEON::PackedK - 1) & ~(MLAS_GEMM_U8X8_KERNEL_NEON::PackedK - 1);
+    const size_t AlignedCountK = (CountK + 3) & ~3;
 
     //
     // Process 8 columns of matrix B in a loop.
