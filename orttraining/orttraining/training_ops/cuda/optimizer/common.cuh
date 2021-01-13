@@ -19,11 +19,11 @@ const TGradNorm* scaled_g_norm,
 const TFinalScale max_norm) {
 TFinalScale scale = loss_scale != nullptr ? TFinalScale(*loss_scale) : TFinalScale(1.f);
 TFinalScale scaled_max_norm = TFinalScale(scale * max_norm);
-TFinalScale scaled_reciprocal_of_clipping_factor = scale;
+TFinalScale scaled_clipping_factor = scale;
 if (scaled_g_norm != nullptr && TFinalScale(*scaled_g_norm) > scaled_max_norm) {
-    scaled_reciprocal_of_clipping_factor = TFinalScale(*scaled_g_norm) / max_norm;
+    scaled_clipping_factor = TFinalScale(*scaled_g_norm) / (max_norm + 1e-6f);
 }
-return scaled_reciprocal_of_clipping_factor;
+return scaled_clipping_factor;
 }
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -131,7 +131,7 @@ TEST(OptimizerTest, AdamBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -153,7 +153,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -163,7 +163,6 @@ TEST(OptimizerTest, AdamWeightDecayMode0NoBiasCorrection) {
   test.AddOutput<float>("Moment_2_Out", {3}, {1.7400e-04f, 8.9966e-04f, 1.5102e-03f});
   test.AddOutput<float>("W_Out", {3}, {-3.6210f, -2.8075f, -3.3723f});
   test.AddOutput<float>("G_Out", {3}, {-3.1576f, -3.1658f, -3.1601f});
-
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
   test.AddAttribute("lambda", 0.01f);
@@ -178,7 +177,7 @@ TEST(OptimizerTest, AdamWeightDecayMode0WithBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -202,7 +201,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1NoBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -225,7 +224,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
 
   test.AddInput<float>("ETA", {}, {1.f});
   test.AddInput<int64_t>("Update_Count", {}, {1});
-  test.AddInput<float>("W", {3}, {-0.4634f,  0.3584f, -0.2121f});
+  test.AddInput<float>("W", {3}, {-0.4634f, 0.3584f, -0.2121f});
   test.AddInput<float>("G", {3}, {0.4171f, 0.9485f, 1.2289f});
   test.AddInput<float>("Moment_1", {3}, {0.f, 0.f, 0.f});
   test.AddInput<float>("Moment_2", {3}, {0.f, 0.f, 0.f});
@@ -378,11 +377,12 @@ void compute_lamb(
     /* 2nd-order momentum */ const std::vector<float>& v,
     const float eta,
     const float loss_scale,
-    const float g_norm,
+    const float scaled_g_norm,
     const float lambda,
     const float alpha,
     const float beta,
     const float epsilon,
+    const float max_norm_clip,
     /* updated weights */ std::vector<float>& w_new,
     /* updated gradients */ std::vector<float>& g_new,
     /* updated momentum */ std::vector<float>& m_new,
@@ -400,9 +400,10 @@ void compute_lamb(
   // Buffer to store update direction.
   std::vector<float> r(size, 0.0f);
 
-  float g_scale = loss_scale;
-  if (g_norm > loss_scale) {
-    g_scale *= g_norm / loss_scale;
+  float scaled_clipping_factor = loss_scale;
+  float scaled_max_norm = loss_scale * max_norm_clip;
+  if (scaled_g_norm > scaled_max_norm) {
+    scaled_clipping_factor = scaled_g_norm / (max_norm_clip + 1e-6f);
   }
 
   const float alpha_correction = step > 0 ? 1.f - std::pow(alpha, static_cast<float>(step)) : 1.f;
@@ -410,7 +411,7 @@ void compute_lamb(
 
   // Compute new 1st-, 2nd-order momentums, and the update direction.
   for (int i = 0; i < size; ++i) {
-    const float g_scaled = g[i] / g_scale;
+    const float g_scaled = g[i] / scaled_clipping_factor;
     m_new[i] = alpha * m[i] + (1.0f - alpha) * g_scaled;
     v_new[i] = beta * v[i] + (1.0f - beta) * g_scaled * g_scaled;
     const float m_new_tmp = m_new[i] / alpha_correction;
