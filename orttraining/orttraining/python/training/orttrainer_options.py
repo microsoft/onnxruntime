@@ -561,7 +561,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'graph_save_paths' : {
                 'type' : 'dict',
-                'default': {},
+               'default_setter': lambda _: {},
                 'required': False,
                 'schema': {
                     'model_after_graph_transforms_path': {
