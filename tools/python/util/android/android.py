@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import time
+import typing
 
 from ..run import run
 from ..platform import is_windows
@@ -100,19 +101,23 @@ def _stop_process_with_pid(pid: int):
 
 def start_emulator(
         sdk_tool_paths: SdkToolPaths,
-        avd_name: str) -> subprocess.Popen:
+        avd_name: str,
+        extra_args: typing.Optional[typing.Sequence[str]] = None) -> subprocess.Popen:
     with contextlib.ExitStack() as emulator_stack, \
          contextlib.ExitStack() as waiter_stack:
+        emulator_args = [
+            sdk_tool_paths.emulator, "-avd", avd_name,
+            "-memory", "4096",
+            "-timezone", "America/Los_Angeles",
+            "-no-snapshot",
+            "-no-audio",
+            "-no-boot-anim",
+            "-no-window"]
+        if extra_args is not None:
+            emulator_args += extra_args
+
         emulator_process = emulator_stack.enter_context(
-            _start_process(
-                sdk_tool_paths.emulator, "-avd", avd_name,
-                "-partition-size", "2047",
-                "-memory", "4096",
-                "-timezone", "America/Los_Angeles",
-                "-no-snapshot",
-                "-no-audio",
-                "-no-boot-anim",
-                "-no-window"))
+            _start_process(*emulator_args))
         emulator_stack.callback(_stop_process, emulator_process)
 
         waiter_process = waiter_stack.enter_context(
@@ -142,7 +147,7 @@ def start_emulator(
         return emulator_process
 
 
-def stop_emulator(emulator_proc_or_pid):
+def stop_emulator(emulator_proc_or_pid: typing.Union[subprocess.Popen, int]):
     if isinstance(emulator_proc_or_pid, subprocess.Popen):
         _stop_process(emulator_proc_or_pid)
     elif isinstance(emulator_proc_or_pid, int):

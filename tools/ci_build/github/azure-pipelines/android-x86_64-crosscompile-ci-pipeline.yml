@@ -18,10 +18,9 @@ jobs:
   - script: |
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --system-image "system-images;android-29;google_apis;x86_64" \
-        --create-avd \
-        --start \
-        --pid-file $(Build.BinariesDirectory)/emulator.pid
+        --create-avd --system-image "system-images;android-29;google_apis;x86_64" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
     displayName: Start Android emulator
 
   - script: python3 tools/ci_build/build.py --android --build_dir build --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --android_api=29 --skip_submodule_sync --parallel --cmake_generator=Ninja --build_java
@@ -45,7 +44,7 @@ jobs:
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
         --stop \
-        --pid-file $(Build.BinariesDirectory)/emulator.pid
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
     displayName: Stop Android emulator
     condition: always()
 

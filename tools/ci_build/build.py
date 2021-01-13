@@ -1211,7 +1211,12 @@ def run_android_tests(args, source_dir, config, cwd):
 
                 android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
                 emulator_proc = context_stack.enter_context(
-                    android.start_emulator(sdk_tool_paths, avd_name))
+                    android.start_emulator(
+                        sdk_tool_paths=sdk_tool_paths,
+                        avd_name=avd_name,
+                        extra_args=[
+                            "-partition-size", "2047",
+                            "-wipe-data"]))
                 context_stack.callback(android.stop_emulator, emulator_proc)
 
             adb_push('testdata', device_dir, cwd=cwd)
