@@ -780,7 +780,7 @@ void run_lamb_mix_precision_test(
 
   // Half momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w, {}, m_half, v_half, w_half, w_half, false, step);
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, max_norm, w, {}, m_half, v_half, w_half, w_half, false, step);
 
   // Float momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
@@ -1154,6 +1154,7 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
   const float alpha = 0.1f;
   const float beta = 0.01f;
   const float epsilon = 0.1f;
+  const float max_norm = 1.0f;
 
   std::vector<float> w_new = {
       0.02979828f, 0.13677707f, -0.22708717f, -0.20361158f, -0.15338624f, 0.1081504f,
@@ -1170,11 +1171,11 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
 
   // Output new weights
   run_lamb_test_with_baseline(
-      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new);
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, max_norm, w_new, {}, m_new, v_new);
 
   // Output new gradients
   run_lamb_test_with_baseline(
-      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, {}, g_new, m_new, v_new);
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, max_norm, {}, g_new, m_new, v_new);
 }
 
 TEST(OptimizerTest, LambOptimizerTestExternalBaselineDouble) {
