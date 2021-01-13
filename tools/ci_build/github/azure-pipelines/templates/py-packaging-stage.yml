@@ -652,7 +652,7 @@ stages:
       workspace:
         clean: all
       pool: 'Win-GPU-2019'
-      timeoutInMinutes:  120
+      timeoutInMinutes:  240
       variables:
         CUDA_VERSION: '10.2'
         buildArch: x64
