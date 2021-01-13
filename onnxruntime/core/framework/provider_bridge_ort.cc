@@ -221,7 +221,7 @@ struct ProviderHostImpl : ProviderHost {
     return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash);
   }
 
-  void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) {
+  void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) override {
     return p->IExecutionProvider::RegisterAllocator(allocator_manager);
   }
 
