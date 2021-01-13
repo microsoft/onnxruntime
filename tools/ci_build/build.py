@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 
 import argparse
+import contextlib
 import glob
 import os
 import re
@@ -11,7 +12,6 @@ import subprocess
 import sys
 import hashlib
 import platform
-from logger import get_logger
 from amd_hipify import amd_hipify
 from distutils.version import LooseVersion
 
@@ -24,7 +24,9 @@ sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 from util import (  # noqa: E402
     run,
     is_windows, is_macOS, is_linux,
-    get_android_sdk_tool_paths, running_android_emulator)
+    get_logger)
+
+import util.android as android  # noqa: E402
 
 
 log = get_logger("build")
@@ -274,6 +276,8 @@ def parse_arguments():
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
     parser.add_argument("--android_cpp_shared", action="store_true",
                         help="Build with shared libc++ instead of the default static libc++.")
+    parser.add_argument("--android_run_emulator", action="store_true",
+                        help="Start up an Android emulator if needed.")
     parser.add_argument("--test_binary_size", action="store_true",
                         help="If enabled, build will fail when the built binary size is larger than the threshold. "
                         "This only applies to Android Minimal build for now.")
@@ -1178,7 +1182,7 @@ def setup_rocm_build(args, configs):
 
 
 def run_android_tests(args, source_dir, config, cwd):
-    sdk_tool_paths = get_android_sdk_tool_paths(args.android_sdk_path)
+    sdk_tool_paths = android.get_sdk_tool_paths(args.android_sdk_path)
     device_dir = '/data/local/tmp'
 
     def adb_push(src, dest, **kwargs):
@@ -1199,10 +1203,17 @@ def run_android_tests(args, source_dir, config, cwd):
             adb_shell('cd {} && {}'.format(device_dir, cmd))
 
     if args.android_abi == 'x86_64':
-        with running_android_emulator(
-                sdk_tool_paths=sdk_tool_paths,
-                system_image_package_name="system-images;android-{};google_apis;{}".format(
-                    args.android_api, args.android_abi)):
+        with contextlib.ExitStack() as context_stack:
+            if args.android_run_emulator:
+                avd_name = "ort_android"
+                system_image = "system-images;android-{};google_apis;{}".format(
+                    args.android_api, args.android_abi)
+
+                android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
+                emulator_proc = context_stack.enter_context(
+                    android.start_emulator(sdk_tool_paths, avd_name))
+                context_stack.callback(android.stop_emulator, emulator_proc)
+
             adb_push('testdata', device_dir, cwd=cwd)
             adb_push(
                 os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
