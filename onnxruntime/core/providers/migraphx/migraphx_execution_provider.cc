@@ -872,12 +872,12 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   } else {  // unsupported_nodes_idx.empty()
     // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
     // so if a model contain any of these operators, fall back to CPU
-    std::unordered_set<std::string> vec_ops = {"If", "Loop", "SoftmaxCrossEntropyLoss"};
-    if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
-      return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
-    })) {
-      return result;
-    }
+    // std::unordered_set<std::string> vec_ops = {"If", "Loop", "SoftmaxCrossEntropyLoss"};
+    // if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
+    //   return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
+    // })) {
+    //   return result;
+    // }
 
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
     // check whether a subgrap should fallback to CPU
