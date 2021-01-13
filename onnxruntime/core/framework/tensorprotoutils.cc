@@ -181,9 +181,8 @@ namespace utils {
   Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,                                           \
                                       const ORTCHAR_T* tensor_proto_dir, size_t expected_size,                             \
                                       /*out*/ T* p_data) {                                                                 \
-    if (nullptr == p_data) {                                                                                               \
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                                        \
-    }                                                                                                                      \
+    ORT_RETURN_IF(nullptr == p_data);                                                                                      \
+                                                                                                                           \
     std::unique_ptr<uint8_t[]> unpacked_tensor;                                                                            \
     SafeInt<size_t> tensor_byte_size = 0;                                                                                  \
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(                                                                         \
