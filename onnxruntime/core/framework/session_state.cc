@@ -304,7 +304,7 @@ static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapp
       hash_int64(dim);
     }
   }
-  
+
   uint64_t key = hash[0] & 0xfffffff8;
   key |= uint64_t(hash[1]) << 32;
   return (int64_t)key;
@@ -341,23 +341,25 @@ Status ResolveDimParams(const GraphViewer& graph,
   return Status::OK();
 }
 
-bool is_integer(const std::string& s) {
-  bool has_only_digits = true;
+bool is_integer(const std::string& s, int64_t& factor) {
+  int64_t factor_local = 0;
   for (size_t n = 0; n < s.length(); n++) {
     if (!isdigit(s[n])) {
-      has_only_digits = false;
-      break;
+      return false;
     }
+    factor_local = factor_local * 10 + (s[n] - '0');
   }
 
-  return has_only_digits;
+  factor = factor_local;
+  return true;
 }
 
 Status TryResolveShape(
     const NodeArg* arg,
     const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
     size_t& is_resolved,  // indicate whether resolve successfully or not.
-    std::vector<int64_t>& resolved_shape) {
+    std::vector<int64_t>& resolved_shape,
+    std::map<std::string, std::vector<std::string>> composed_args_cache) {
   if (!arg->Shape()) {
     is_resolved = 0;
     return Status::OK();
@@ -368,22 +370,39 @@ Status TryResolveShape(
   SafeInt<size_t> safe_size = 1;
   for (auto& dim : arg->Shape()->dim()) {
     if (dim.has_dim_param()) {
-      std::vector<std::string> fields;
-      boost::split(fields, dim.dim_param(), boost::is_any_of("*"));
-      for (auto field : fields) {
-        auto it = symbolic_dimensions.find(field);
-        if (it == symbolic_dimensions.end()) {
-          if (is_integer(field)) {
-            int64_t factor = std::strtoll(field.c_str(), NULL, 10);
-            safe_size *= factor;
-            shape.push_back(factor);
-          } else {
-            return Status(ONNXRUNTIME, FAIL, "Unknown symbolic dimension, " + field + ", found in memory pattern compute.");
-          }
-        } else {
-          safe_size *= it->second;
-          shape.push_back(it->second);
+      auto it = symbolic_dimensions.find(dim.dim_param());
+      if (it != symbolic_dimensions.end()) {
+        safe_size *= it->second;
+        shape.push_back(it->second);
+      } else if (dim.dim_param().find("*") < dim.dim_param().length()) {
+        // Check the composed args cache.
+        auto it_local = composed_args_cache.find(dim.dim_param());
+        if (it_local == composed_args_cache.end()) {
+          std::vector<std::string> fields_local;
+          boost::split(fields_local, dim.dim_param(), boost::is_any_of("*"));
+          composed_args_cache[dim.dim_param()] = fields_local;
         }
+
+        std::vector<std::string>& fields = composed_args_cache.find(dim.dim_param())->second;
+        for (auto field : fields) {
+          auto it = symbolic_dimensions.find(field);
+          if (it == symbolic_dimensions.end()) {
+            int64_t factor;
+            if (is_integer(field, factor)) {
+              //int64_t factor = std::strtoll(field.c_str(), NULL, 10);
+              safe_size *= factor;
+              shape.push_back(factor);
+            } else {
+              return Status(ONNXRUNTIME, FAIL, "Unknown symbolic dimension, " + field + ", found in memory pattern compute.");
+            }
+          } else {
+            safe_size *= it->second;
+            shape.push_back(it->second);
+          }
+        }
+
+      } else {
+        return Status(ONNXRUNTIME, FAIL, "Unknown symbolic dimension, found in memory pattern compute.");
       }
     } else if (dim.has_dim_value() && dim.dim_value() > 0) {
       safe_size *= dim.dim_value();
@@ -455,7 +474,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
 
       // Tensors whose shape cannot be resolved statically will be allocated at runtime by
       // first finding a slot in the static buffer and then falling back to BFCArena.
-      if (!TryResolveShape(arg, map, is_resolved, resolved_shape).IsOK()) {
+      if (!TryResolveShape(arg, map, is_resolved, resolved_shape, composed_args_cache_).IsOK()) {
         continue;
       }
 
@@ -546,8 +565,8 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
 #endif
 
 optional<std::pair<OrtValuePatternPlanner*, const MemoryPatternGroup*>> SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
-                                                                                                                  const std::vector<int>& feed_mlvalue_idxs,
-                                                                                                                  std::unordered_map<int, TensorShape>& inferred_shapes) const {
+                                                                                                            const std::vector<int>& feed_mlvalue_idxs,
+                                                                                                            std::unordered_map<int, TensorShape>& inferred_shapes) const {
   optional<std::pair<OrtValuePatternPlanner*, const MemoryPatternGroup*>> ret_val;
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
@@ -577,7 +596,7 @@ optional<std::pair<OrtValuePatternPlanner*, const MemoryPatternGroup*>> SessionS
     auto mem_planner = mem_planners_.find(key);
 
     ORT_ENFORCE(mem_planner != mem_planners_.end());
-    
+
     ret_val = std::make_pair(mem_planner->second.get(), it->second.get());
 #else
     ret_val = std::make_pair(nullptr, it->second.get());
@@ -1025,7 +1044,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
-  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order);
+  SequentialPlannerContext context(session_options.execution_mode, ExecutionOrder::PRIORITY_BASED);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));

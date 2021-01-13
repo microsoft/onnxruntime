@@ -44,6 +44,10 @@ class MemPatternPlanner {
     const auto& ends_1 = counter1.Ends();
     const auto& starts_2 = counter2.Starts();
     const auto& ends_2 = counter2.Ends();
+    
+    if((ends_1.back() < starts_2[0]) || (ends_2.back() < starts_1[0])) {
+      return false;
+    }
 
     size_t index_1 = 0;
     size_t index_2 = 0;
@@ -82,22 +86,30 @@ class MemPatternPlanner {
     size_t waste_bytes = std::numeric_limits<size_t>::max();
     size_t best_offset = 0;
     bool best_offset_found = false;
+    auto current_bf_it = blocks_.begin();
+    auto best_fit_it = blocks_.end();
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       // Memory block can be re-used as long as there is no overlap between their time schedules.
       if (allocs_[*it].reuse_ && !OverlappingTimeSchedules(counter, *allocs_[*it].counter_)) {
+        if(allocs_[*it].block_.offset_ < current) {
+          current_bf_it = it;
+        }
+
         continue;
       }
 
       if (allocs_[*it].block_.offset_ >= current) {
         auto gap = allocs_[*it].block_.offset_ - current;
-        if (gap >= size && (gap - size) < waste_bytes) {
+        if ((gap >= size) && ((gap - size) < waste_bytes)) {
           waste_bytes = gap - size;
           best_offset = current;
+          best_fit_it = current_bf_it;
           best_offset_found = true;
         }
       }
 
       current = std::max(current, allocs_[*it].block_.offset_ + allocs_[*it].block_.size_);
+      current_bf_it = it;
     }
 
     ORT_ENFORCE(current <= buffer_size_);
@@ -106,8 +118,14 @@ class MemPatternPlanner {
       auto gap = buffer_size_ - current;
       if ((gap >= size) && ((gap - size) < waste_bytes)) {
         best_offset = current;
+        best_fit_it = current_bf_it;
         best_offset_found = true;
       }
+    }
+
+    // Since insertion happens before the iterator position.
+    if(best_fit_it != blocks_.end()) {
+      best_fit_it++;
     }
 
     if (!best_offset_found) {
@@ -124,7 +142,7 @@ class MemPatternPlanner {
     // the maximum size of the buffer.
     buffer_size_ = std::max(buffer_size_, SafeInt<size_t>(best_offset) + size);
     allocs_.emplace_back(ml_value_idx, counter, MemoryBlock(best_offset, size));
-    std::list<int>::iterator best_fit_it = blocks_.end();
+    /*std::list<int>::iterator best_fit_it = blocks_.end();
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       if (allocs_[*it].block_.offset_ < best_offset)
         continue;
@@ -133,9 +151,36 @@ class MemPatternPlanner {
         best_fit_it = it;
         break;
       }
+    }*/
+
+    best_fit_it = blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
+
+    if(best_fit_it != blocks_.begin()){
+      std::list<int>::iterator it_local = best_fit_it;
+      if(allocs_[*(--it_local)].block_.offset_ > allocs_[*best_fit_it].block_.offset_) {
+        auto t = std::prev(best_fit_it);
+        std::cout<<"....\n";
+        bool c = true;
+        while(c){}
+        t = t;
+      }
     }
 
-    blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
+    std::list<int>::iterator tt = std::prev(blocks_.end());
+    auto end = --blocks_.end();
+    if(best_fit_it != end){
+      auto t = std::prev(blocks_.end());
+      auto t1 = std::next(best_fit_it);
+      std::list<int>::iterator it_local = best_fit_it;
+      if(allocs_[*(++it_local)].block_.offset_ < allocs_[*best_fit_it].block_.offset_) {
+        std::cout<<"....\n";
+        bool c = true;
+        while(c){}
+        t = t;
+        t1 = t1;
+        tt = tt;
+      }
+    }
 
     if (offset_out) {
       *offset_out = best_offset;

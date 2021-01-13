@@ -415,14 +415,15 @@ class SessionState {
   mutable OrtMutex mem_patterns_lock_;
 
   // Cache for the generated memory planner. Key is calculated based on input shapes.
-  // REVIEW(codemzs): Reconcile OrtValuePatternPlanner and MemoryPatternGroup and for 
-  // both these maps lets use ageing because they will get really big when used with models 
+  // REVIEW(codemzs): Reconcile OrtValuePatternPlanner and MemoryPatternGroup and for
+  // both these maps lets use ageing because they will get really big when used with models
   // where almost every execution frame has a different shaped input.
   mutable std::map<int64_t, std::unique_ptr<OrtValuePatternPlanner>> mem_planners_;
 
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;
   mutable std::map<int64_t, std::unordered_map<int, TensorShape>> shape_patterns_;
+  mutable std::map<std::string, std::vector<std::string>> composed_args_cache_;
 
   NameNodeInfoMapType input_names_to_nodeinfo_mapping_;
   NameNodeInfoMapType output_names_to_nodeinfo_mapping_;
