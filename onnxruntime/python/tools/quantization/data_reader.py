@@ -228,3 +228,4 @@ class YoloV3VisionDataReader(YoloV3DataReader):
             batches.append(data)
 
         return batches
+

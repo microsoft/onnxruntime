@@ -266,3 +266,4 @@ class YoloV3VisionEvaluator(YoloV3Evaluator):
                 image_width= image_size_batch[i][batch_i][1]
                 image_id = image_id_batch[i][batch_i]
                 self.set_bbox_prediction(bboxes, scores, image_height, image_width, image_id)
+
