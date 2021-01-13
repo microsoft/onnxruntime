@@ -298,7 +298,7 @@ class ORTTrainerOptions(object):
             path to export the onnx graph after training-related graph transforms have been applied.
             No output when it is empty.
         debug.graph_save_paths.model_with_gradient_graph_path (str, default is "")
-            path to export the onnx graph with the gradient graph added. No output when it is empty.
+            path to export the ONNX graph with the gradient graph added. No output when it is empty.
         debug.graph_save_paths.model_with_training_graph_path (str, default is "")
             path to export the training onnx graph having the forward, gradient and optimizer nodes.
             No output when it is empty.
