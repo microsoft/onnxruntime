@@ -230,20 +230,21 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
           continue;
         }
 #endif
-        QGemm(sequence_length,                                    // M      = S
-              head_size,                                          // N      = H
-              hidden_size,                                        // K      = NH
-              input_data + input_offset,                          // A
-              hidden_size,                                        // lda    = NH
-              input_zero_point,                                   // input zero point
-              weights_data + weights_offset,                      // B
-              3 * hidden_size,                                    // ldb    = 3NH
-              weight_zero_point,                                  // weight zero point
-              weights_is_signed,                                  // weight data type
-              reinterpret_cast<int32_t*>(qkv_dest + qkv_offset),  // C
-              head_size,                                          // ldc
-              nullptr,                                            // use single-thread
-              &scale_bias_processor);                             // post processor
+        MlasGemm(
+            sequence_length,                                      // M      = S
+            head_size,                                            // N      = H
+            hidden_size,                                          // K      = NH
+            input_data + input_offset,                            // A
+            hidden_size,                                          // lda    = NH
+            input_zero_point,                                     // input zero point
+            weights_data + weights_offset,                        // B
+            3 * hidden_size,                                      // ldb    = 3NH
+            weight_zero_point,                                    // weight zero point
+            weights_is_signed,                                    // weight data type
+            reinterpret_cast<int32_t*>(qkv_dest + qkv_offset),    // C
+            head_size,                                            // ldc
+            nullptr,                                              // use single-thread
+            &scale_bias_processor);                               // post processor
       }
     });
   }
