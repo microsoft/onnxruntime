@@ -230,6 +230,7 @@ packages = [
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
     'onnxruntime.transformers',
+    'onnxruntime.transformers.longformer',
 ]
 
 if '--enable_training' in sys.argv:
