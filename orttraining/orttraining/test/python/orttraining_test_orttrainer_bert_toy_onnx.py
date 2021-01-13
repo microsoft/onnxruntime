@@ -431,8 +431,7 @@ def testToyBertCheckpointFrozenWeights():
     total_steps = 10
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
-    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
-                                         'utils' : {'frozen_weights' : ['bert.encoder.layer.0.attention.self.value.weight']}})
+    opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True}})
 
     # Create ORTTrainer and save initial state in a dict.
     # Because the eval_step will be performed on the same graph as train_step,
