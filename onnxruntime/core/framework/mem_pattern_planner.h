@@ -123,13 +123,14 @@ class MemPatternPlanner {
       }
     }
 
+    if (!best_offset_found) {
+      best_offset = current;
+      best_fit_it = current_bf_it;
+    }
+
     // Since insertion happens before the iterator position.
     if(best_fit_it != blocks_.end()) {
       best_fit_it++;
-    }
-
-    if (!best_offset_found) {
-      best_offset = current;
     }
 
     // Try to statically allocate tensors whose shape was inferred at runtime only if
