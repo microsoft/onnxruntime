@@ -297,8 +297,6 @@ void NhwcTransformerTester(const std::function<void(NhwcTestHelper& helper)>& bu
 
 #ifndef DISABLE_CONTRIB_OPS
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-
 TEST(NhwcTransformerTests, Conv) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](NhwcTestHelper& helper) {
@@ -555,8 +553,6 @@ TEST(NhwcTransformerTests, ConvMixTensorRanks) {
   // 2D tensor and verify that the transformer handles the mixed tensor ranks.
   NhwcTransformerTester(build_test_case, check_nhwc_graph);
 }
-
-#endif
 
 #endif // DISABLE_CONTRIB_OPS
 
