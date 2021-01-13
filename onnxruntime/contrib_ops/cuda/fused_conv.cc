@@ -34,7 +34,6 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    //std::cout << "calling fusedconv" << std::endl;
     CUDNN_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(s_.mutex);
     ORT_RETURN_IF_ERROR(UpdateState(context, true));
