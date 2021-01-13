@@ -38,11 +38,6 @@
 #include "onnx/defs/schema.h"
 #else
 #include "onnx/defs/data_type_utils.h"
-
-// stub definition of OpSchema to minimize other code changes
-namespace ONNX_NAMESPACE {
-class OpSchema {};
-}  // namespace ONNX_NAMESPACE
 #endif
 
 #include "onnx/onnx_pb.h"
