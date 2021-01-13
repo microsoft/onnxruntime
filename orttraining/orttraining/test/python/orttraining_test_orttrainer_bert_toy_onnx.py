@@ -428,7 +428,7 @@ def testToyBertCheckpointBasic():
 def testToyBertCheckpointFrozenWeights():
     # Common setup
     seed = 1
-    total_steps = 10
+    total_steps = 0
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
     opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True}})
