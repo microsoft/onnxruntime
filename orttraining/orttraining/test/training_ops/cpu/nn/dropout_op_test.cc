@@ -116,21 +116,21 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
 
 // Dropout
 
-TEST(DropoutTest, Basic) {
-  RunDropoutTest(false, {10, 10, 10}, 0.75f);
-}
+// TEST(DropoutTest, Basic) {
+//   RunDropoutTest(false, {10, 10, 10}, 0.75f);
+// }
 
-TEST(DropoutTest, Mask) {
-  RunDropoutTest(true, {1000}, 0.25f);
-}
+// TEST(DropoutTest, Mask) {
+//   RunDropoutTest(true, {1000}, 0.25f);
+// }
 
-TEST(DropoutTest, RatioLimit) {
-  RunDropoutTest(true, {1000}, 0.0f, false);
-}
+// TEST(DropoutTest, RatioLimit) {
+//   RunDropoutTest(true, {1000}, 0.0f, false);
+// }
 
-TEST(DropoutTest, EmptyRatio) {
-  RunDropoutTest(true, {1000});
-}
+// TEST(DropoutTest, EmptyRatio) {
+//   RunDropoutTest(true, {1000});
+// }
 
 // BiasDropout kernel is only implemented for CUDA
 #ifdef USE_CUDA
