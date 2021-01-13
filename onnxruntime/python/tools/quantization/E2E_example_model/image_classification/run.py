@@ -58,10 +58,11 @@ def preprocess_func(images_folder, height, width, size_limit=0):
         input_data = np.float32(pillow_img) - \
         np.array([123.68, 116.78, 103.94], dtype=np.float32)
         nhwc_data = np.expand_dims(input_data, axis=0)
-        nchw_data = nhwc_data.transpose(0, 3, 1, 2) # ONNX Runtime standard
+        nchw_data = nhwc_data.transpose(0, 3, 1, 2)  # ONNX Runtime standard
         unconcatenated_batch_data.append(nchw_data)
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data
+
 
 def benchmark(model_path):
     session = onnxruntime.InferenceSession(model_path)
@@ -69,7 +70,7 @@ def benchmark(model_path):
 
     total = 0.0
     runs = 10
-    input_data = np.zeros((1,3,224,224), np.float32)
+    input_data = np.zeros((1, 3, 224, 224), np.float32)
     # Warming up
     _ = session.run([], {input_name: input_data})
     for i in range(runs):
@@ -81,6 +82,7 @@ def benchmark(model_path):
     total /= runs
     print(f"Avg: {total:.2f}ms")
 
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_model", required=True, help="input model")
@@ -88,6 +90,7 @@ def get_args():
     parser.add_argument("--calibrate_dataset", default="./test_images", help="calibration data set")
     args = parser.parse_args()
     return args
+
 
 def main():
     args = get_args()
@@ -103,6 +106,7 @@ def main():
 
     print('benchmarking int8 model...')
     benchmark(output_model_path)
+
 
 if __name__ == '__main__':
     main()

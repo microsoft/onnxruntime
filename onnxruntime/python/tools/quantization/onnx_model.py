@@ -130,7 +130,7 @@ class ONNXModel:
                 if node_input == initializer.name:
                     nodes.append(node)
         return nodes
-       
+
     def replace_gemm_with_matmul(self):
         new_nodes = []
 
@@ -163,15 +163,16 @@ class ONNXModel:
                         else:
                             inputB += '_Transposed'
                             transpose_node = onnx.helper.make_node('Transpose',
-                                                                inputs=[node.input[1]],
-                                                                outputs=[inputB],
-                                                                name=node.name+'_Transpose')
+                                                                   inputs=[node.input[1]],
+                                                                   outputs=[inputB],
+                                                                   name=node.name + '_Transpose')
                             new_nodes.append(transpose_node)
 
-                    matmul_node = onnx.helper.make_node('MatMul',
-                                                        inputs=[node.input[0], inputB],
-                                                        outputs=[node.output[0] + ('_MatMul' if len(node.input)>2 else '')],
-                                                        name=node.name + '_MatMul')
+                    matmul_node = onnx.helper.make_node(
+                        'MatMul',
+                        inputs=[node.input[0], inputB],
+                        outputs=[node.output[0] + ('_MatMul' if len(node.input) > 2 else '')],
+                        name=node.name + '_MatMul')
                     new_nodes.append(matmul_node)
 
                     if len(node.input) > 2:
@@ -179,12 +180,12 @@ class ONNXModel:
                                                          inputs=[node.output[0] + '_MatMul', node.input[2]],
                                                          outputs=node.output,
                                                          name=node.name + '_Add')
-                        new_nodes.append(add_node)  
-                
+                        new_nodes.append(add_node)
+
                 # unsupported
                 else:
                     new_nodes.append(node)
-            
+
             # not GEMM
             else:
                 new_nodes.append(node)

@@ -39,6 +39,7 @@ def optimize_model(model_path: Path):
     optimized_model = onnx.load(opt_model_path.as_posix())
     return optimized_model
 
+
 def load_model(model_path: Path, optimize=True):
     if optimize:
         #optimize the original model
@@ -46,8 +47,9 @@ def load_model(model_path: Path, optimize=True):
         # to support GEMM
         onnx_model.replace_gemm_with_matmul()
         return onnx_model.model
-    
+
     return onnx.load(Path)
+
 
 def quantize(model,
              per_channel=False,
@@ -121,8 +123,8 @@ def quantize(model,
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QLinearOpsRegistry.keys()) if static else list(IntegerOpsRegistry.keys())
 
-        quantizer = ONNXQuantizer(copy_model, per_channel, nbits == 7, mode, static, weight_qType, input_qType, quantization_params,
-                                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
+        quantizer = ONNXQuantizer(copy_model, per_channel, nbits == 7, mode, static, weight_qType, input_qType,
+                                  quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
 
         quantizer.quantize_model()
         return quantizer.model.model
@@ -140,7 +142,7 @@ def quantize_static(model_input,
                     weight_type=QuantType.QUInt8,
                     nodes_to_quantize=[],
                     nodes_to_exclude=[],
-                    optimize_model = True,
+                    optimize_model=True,
                     use_external_data_format=False):
     '''
         Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
@@ -209,7 +211,7 @@ def quantize_dynamic(model_input: Path,
                      weight_type=QuantType.QUInt8,
                      nodes_to_quantize=[],
                      nodes_to_exclude=[],
-                     optimize_model = True,
+                     optimize_model=True,
                      use_external_data_format=False):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file

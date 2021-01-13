@@ -254,7 +254,7 @@ class ONNXQuantizer:
         return initializer is not None
 
     def is_per_channel(self):
-            return self.per_channel
+        return self.per_channel
 
     def is_valid_quantize_weight(self, weight_name):
         weight = find_by_name(weight_name, self.model.initializer())
@@ -572,7 +572,8 @@ class ONNXQuantizer:
 
         reshape_shape = np.ones((len(weight.dims)), dtype=np.int64)
         reshape_shape[1] = -1
-        init_shape = onnx.helper.make_tensor(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)], reshape_shape)
+        init_shape = onnx.helper.make_tensor(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)],
+                                             reshape_shape)
         self.model.add_initializer(init_shape)
 
         reshape_op_output = node.output[0] + "_reshape"
@@ -742,7 +743,8 @@ class ONNXQuantizer:
             # Quantize the input
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:
-                weight = self._get_quantized_weight(initializer, self.weight_qType if initializer_use_weight_qType else self.input_qType)
+                weight = self._get_quantized_weight(
+                    initializer, self.weight_qType if initializer_use_weight_qType else self.input_qType)
 
                 # Update graph
                 self._update_weight(weight)
@@ -775,7 +777,7 @@ class ONNXQuantizer:
         if weight_name in self.quantized_value_map:
             quantized_value = self.quantized_value_map[weight_name]
             return (quantized_value.q_name, quantized_value.zp_name, quantized_value.scale_name)
-        
+
         initializer = find_by_name(weight_name, self.model.initializer())
         if initializer is None:
             raise ValueError("{} is not an initializer", weight_name)
@@ -790,7 +792,8 @@ class ONNXQuantizer:
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
-                per_channel_data.flatten().tolist(), _get_qrange_for_qType(weight_qType, self.reduce_range), weight_qType)
+                per_channel_data.flatten().tolist(), _get_qrange_for_qType(weight_qType, self.reduce_range),
+                weight_qType)
             rmin_list.append(rmin)
             rmax_list.append(rmax)
             zero_point_list.append(zero_point)
@@ -812,7 +815,8 @@ class ONNXQuantizer:
         # Make entry for this quantized weight
         assert (weight.name not in self.quantized_value_map)
         quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale",
-                                         weight.name + "_zero_point", QuantizedValueType.Initializer, None, weight_qType)
+                                         weight.name + "_zero_point", QuantizedValueType.Initializer, None,
+                                         weight_qType)
         self.quantized_value_map[weight.name] = quantized_value
 
         self._update_weight(weight)

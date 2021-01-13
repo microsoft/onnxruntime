@@ -31,6 +31,7 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
         """generate the input data dict for ONNXinferenceSession run"""
         raise NotImplementedError
 
+
 class ONNXCalibrater:
     def __init__(self, model, data_reader: CalibrationDataReader, calibrate_op_types, black_nodes, white_nodes,
                  augmented_model_path):
@@ -57,8 +58,7 @@ class ONNXCalibrater:
         self.white_nodes = white_nodes
         self.augmented_model_path = augmented_model_path
         self.input_name_to_nodes = {}
-        self.calibration_cache = {} # save temporary calibration table
-
+        self.calibration_cache = {}  # save temporary calibration table
 
     def set_data_reader(self, data_reader):
         self.data_reader = data_reader
@@ -96,7 +96,7 @@ class ONNXCalibrater:
                         if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT and (
                                 tensor_name not in model.graph.initializer):
                             tensors_to_calibrate.add(tensor_name)
-        
+
         # If augmenting all ops, it's possible that some nodes' input value are 0.
         # Can't reduce on dim with value of 0 if 'keepdims' is false, therefore set keepdims to 1.
         if augment_all_ops:
@@ -143,8 +143,10 @@ class ONNXCalibrater:
         #conduct inference session and get intermediate outputs
         if providers:
             sess_options = onnxruntime.SessionOptions()
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL #ORT_ENABLE_BASIC
-            session = onnxruntime.InferenceSession(self.augmented_model_path, sess_options=sess_options, providers=providers)
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL  #ORT_ENABLE_BASIC
+            session = onnxruntime.InferenceSession(self.augmented_model_path,
+                                                   sess_options=sess_options,
+                                                   providers=providers)
         else:
             session = onnxruntime.InferenceSession(self.augmented_model_path, None)
 
@@ -160,12 +162,10 @@ class ONNXCalibrater:
                 break
             intermediate_outputs.append(session.run(None, inputs))
 
-
         node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
         output_dicts_list = [
             dict(zip(node_output_names, intermediate_output)) for intermediate_output in intermediate_outputs
         ]
-
 
         merged_dict = {}
         for d in output_dicts_list:
@@ -178,14 +178,13 @@ class ONNXCalibrater:
         # Characterizing distribution of a node's values across test data sets
         clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i not in model_original_outputs)
 
-
         if calib_mode == 'naive':
 
             pairs = []
             for i in range(0, len(added_node_output_names), 2):
                 min_value = 0
                 max_value = 0
-                min_value_array = min(clean_merged_dict[added_node_output_names[i]]) 
+                min_value_array = min(clean_merged_dict[added_node_output_names[i]])
                 max_value_array = max(clean_merged_dict[added_node_output_names[i + 1]])
                 if type(min_value_array) == int or min_value_array.size > 0:
                     min_value = float(min_value_array)
@@ -198,7 +197,6 @@ class ONNXCalibrater:
             raise ValueError('Unknown value for calib_mode. Currently only naive mode is supported.')
 
         final_dict = dict(zip(node_names, pairs))
-
 
         # merge new calibration data with previous calibration data
         if len(self.calibration_cache) > 0:
@@ -237,7 +235,7 @@ class ONNXCalibrater:
         if next_node:
             if next_node.op_type == 'Clip':
                 # attribute min and max:
-                if(2 == len(next_node.attribute)):
+                if (2 == len(next_node.attribute)):
                     for att_idx in [0, 1]:
                         if next_node.attribute[att_idx].name == 'min':
                             rmin = max(rmin, next_node.attribute[att_idx].f)
@@ -297,6 +295,7 @@ class ONNXCalibrater:
 
         return quantization_params
 
+
 def get_calibrator(model,
                    data_reader: CalibrationDataReader,
                    op_types=['Conv', 'MatMul'],
@@ -308,9 +307,10 @@ def get_calibrator(model,
 
     return calibrator
 
+
 def calculate_calibration_data(model,
                                calibrator=None,
-                               calibration_data_reader: CalibrationDataReader=None,
+                               calibration_data_reader: CalibrationDataReader = None,
                                op_types_to_quantize=[],
                                activation_type=QuantType.QUInt8,
                                nodes_to_quantize=[],
@@ -326,7 +326,12 @@ def calculate_calibration_data(model,
     print("augmented model path: %s" % augmented_model_path)
 
     if not calibrator:
-        calibrator = get_calibrator(model, calibration_data_reader, op_types_to_quantize, nodes_to_quantize, nodes_to_exclude, augmented_model_path=augmented_model_path)
+        calibrator = get_calibrator(model,
+                                    calibration_data_reader,
+                                    op_types_to_quantize,
+                                    nodes_to_quantize,
+                                    nodes_to_exclude,
+                                    augmented_model_path=augmented_model_path)
 
     if not os.path.exists(augmented_model_path):
         augmented_model = calibrator.augment_graph(augment_all_ops=True)
@@ -334,7 +339,15 @@ def calculate_calibration_data(model,
 
     calibrator.get_intermediate_outputs(providers=["CUDAExecutionProvider"])
 
-def generate_calibration_table(calibrator, model, augmented_model_path, remove_previous_flag, data_reader, calibration_dataset=None, stride=5000, batch_size=20):
+
+def generate_calibration_table(calibrator,
+                               model,
+                               augmented_model_path,
+                               remove_previous_flag,
+                               data_reader,
+                               calibration_dataset=None,
+                               stride=5000,
+                               batch_size=20):
 
     if remove_previous_flag and os.path.exists(augmented_model_path):
         os.remove(augmented_model_path)
@@ -345,6 +358,7 @@ def generate_calibration_table(calibrator, model, augmented_model_path, remove_p
     calculate_calibration_data(model, calibrator, augmented_model_path=augmented_model_path)
 
     return calibrator.get_calibration_cache()
+
 
 def calibrate(model,
               data_reader: CalibrationDataReader,
