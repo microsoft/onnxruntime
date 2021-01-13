@@ -107,7 +107,7 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
   utils::MLTypeCallDispatcher<DropoutComputeImpl, float, MLFloat16, double> t_disp(X->GetElementType());
-  t_disp.Invoke(GetDeviceProp(), N, ratio_data, generator, *X, *Y, mask_data);
+  t_disp.Invoke(GetDeviceProp(), N, 0, generator, *X, *Y, mask_data);
 
   return Status::OK();
 }
