@@ -451,6 +451,15 @@ def testToyBertCheckpointFrozenWeights():
     state_dict = trainer.state_dict()
     # Evaluate once to get a base loss
     loss = trainer.eval_step(*sample_input)
+    print("loss1", loss.item())
+    loss = trainer.eval_step(*sample_input)
+    print("loss2", loss.item())
+    loss = trainer.eval_step(*sample_input)
+    print("loss3", loss.item())
+    loss = trainer.eval_step(*sample_input)
+    print("loss4", loss.item())
+    loss = trainer.eval_step(*sample_input)
+    print("loss5", loss.item())
 
     # Load previous state into another instance of ORTTrainer.
     # Again, use non-training mode to disable dropouts
