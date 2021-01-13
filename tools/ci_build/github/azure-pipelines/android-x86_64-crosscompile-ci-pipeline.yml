@@ -18,7 +18,7 @@ jobs:
   - script: |
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --system-image system-images;android-29;google_apis;x86_64 \
+        --system-image "system-images;android-29;google_apis;x86_64" \
         --create-avd \
         --start \
         --pid-file $(Build.BinariesDirectory)/emulator.pid
