@@ -514,7 +514,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   const std::string& GraphViewer__Name(const GraphViewer* p) noexcept override { return p->Name(); }
-  const Path& GraphViewer__ModelPath(const GraphViewer* p) noexcept override { return p->ModelPath(); } ///
+  const Path& GraphViewer__ModelPath(const GraphViewer* p) noexcept override { return p->ModelPath(); }
 
   const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) override { return p->GetNode(node_index); }
   const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) override { return p->GetNodeArg(name); }
@@ -538,7 +538,7 @@ struct ProviderHostImpl : ProviderHost {
 
   //Path
   //Gets a string representation of the path.
-  PathString Path__ToPathString(const Path* p) noexcept override { return p->ToPathString(); } ///
+  PathString Path__ToPathString(const Path* p) noexcept override { return p->ToPathString(); }
 
   // Provider_OpKernel_Base
   const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) override { return reinterpret_cast<const OpKernel*>(p)->Info(); }

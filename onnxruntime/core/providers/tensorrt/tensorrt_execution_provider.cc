@@ -21,7 +21,6 @@
 #include <memory>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
-#include <iostream> ///
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
@@ -743,8 +742,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
 
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-        //std::cout << "model_path : " << model_path << std::endl;///
-        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list);
+        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path.c_str());
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
@@ -878,8 +876,7 @@ std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // Get ModelPath
-  const auto& model_path = graph.ModelPath().ToPathString();///
-  ///std::cout << "TRT GetCap: model_path : " << model_path << std::endl;
+  const auto& model_path = graph.ModelPath().ToPathString();
 
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
@@ -887,7 +884,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
   SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
   bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, model_path, &early_termination);///
+  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, model_path, &early_termination);
   if (early_termination) {
     supported_nodes_vector.clear();
   }
@@ -952,8 +949,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     }
     const Graph& graph_body = func_body->Body();
     auto graph_body_viewer = graph_body.CreateGraphViewer();
-    const auto& model_path = graph_body_viewer->ModelPath().ToPathString();///
-    std::cout << "TRT Compile: model_path: " << model_path << std::endl;///
+    const auto& model_path = graph_body_viewer->ModelPath().ToPathString();
     auto model = graph_body_viewer->CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
 
@@ -974,7 +970,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
     auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
     auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-    trt_parser->parse(string_buf.data(), string_buf.size());
+    trt_parser->parse(string_buf.data(), string_buf.size(), model_path.c_str());
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
     int num_inputs = trt_network->getNbInputs();
