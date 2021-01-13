@@ -26,5 +26,5 @@ sudo echo "password=$1" >> /etc/smbcredentials/orttrainingtestdata.cred
 
 sudo chmod 600 /etc/smbcredentials/orttrainingtestdata.cred
 
-sudo bash -c 'echo "//orttrainingtestdata.file.core.windows.net/bert-data /bert_data cifs nofail,vers=3.0,credentials=/etc/smbcredentials/orttrainingtestdata.cred,dir_mode=0555,file_mode=0555,serverino" >> /etc/fstab'
-sudo mount -t cifs //orttrainingtestdata.file.core.windows.net/bert-data /bert_data -o vers=3.0,credentials=/etc/smbcredentials/orttrainingtestdata.cred,dir_mode=0555,file_mode=0555,serverino
+sudo bash -c 'echo "//orttrainingtestdata.file.core.windows.net/bert-data /bert_data cifs nofail,vers=3.0,credentials=/etc/smbcredentials/orttrainingtestdata.cred,dir_mode=0777,file_mode=0777,serverino" >> /etc/fstab'
+sudo mount -t cifs //orttrainingtestdata.file.core.windows.net/bert-data /bert_data -o vers=3.0,credentials=/etc/smbcredentials/orttrainingtestdata.cred,dir_mode=0777,file_mode=0777,serverino
