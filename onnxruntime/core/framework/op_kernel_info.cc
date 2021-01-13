@@ -82,8 +82,4 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_
 common::Status OpKernelInfo::GetFusedFuncs(NodeComputeInfo*& compute_info) const {
   return funcs_mgr_.GetFuncs(node_.Name(), compute_info);
 }
-
-const Path& OpKernelInfo::GetModelPath() const noexcept {
-  return node_.ModelPath();
-}
 }  // namespace onnxruntime
