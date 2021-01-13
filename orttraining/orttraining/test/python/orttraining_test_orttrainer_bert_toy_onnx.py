@@ -444,6 +444,15 @@ def testToyBertCheckpointFrozenWeights():
     sample_input = generate_random_input_from_model_desc(model_desc, seed + total_steps + 1)
     # Evaluate once to get a base loss
     loss = trainer.eval_step(*sample_input)
+    print("loss1", loss.item())
+    loss = trainer.eval_step(*sample_input)
+    print("loss2", loss.item())
+    loss = trainer.eval_step(*sample_input)
+    print("loss3", loss.item())
+    loss = trainer.eval_step(*sample_input)
+    print("loss4", loss.item())
+    loss = trainer.eval_step(*sample_input)
+    print("loss5", loss.item())
     # Save checkpoint
     state_dict = trainer.state_dict()
 
@@ -455,6 +464,15 @@ def testToyBertCheckpointFrozenWeights():
     trainer2.load_state_dict(state_dict)
     # Evaluate once to get a base loss
     ckpt_loss = trainer2.eval_step(*sample_input)
+    print("loss6", ckpt_loss.item())
+    ckpt_loss = trainer2.eval_step(*sample_input)
+    print("loss7", ckpt_loss.item())
+    ckpt_loss = trainer2.eval_step(*sample_input)
+    print("loss8", ckpt_loss.item())
+    ckpt_loss = trainer2.eval_step(*sample_input)
+    print("loss9", ckpt_loss.item())
+    ckpt_loss = trainer2.eval_step(*sample_input)
+    print("loss10", ckpt_loss.item())
 
     # Must match as both trainers have the same dict state
     assert_allclose(loss.cpu(), ckpt_loss.cpu())
