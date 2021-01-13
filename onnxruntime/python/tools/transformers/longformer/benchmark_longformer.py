@@ -152,6 +152,9 @@ def test_onnxruntime(device,
                     "datetime": str(datetime.now()),
                 }
 
+                max_last_state_size=max(batch_sizes) * max(sequence_lengths) * model.config.hidden_size
+                max_pooler_size=max(batch_sizes) * max(sequence_lengths)
+
                 result = benchmark_helper.inference_ort_with_io_binding(
                     ort_session,
                     ort_inputs,
@@ -159,12 +162,8 @@ def test_onnxruntime(device,
                     repeat_times=test_times,
                     ort_output_names=["last_state", "pooler"],
                     ort_outputs=ort_outputs,
-                    output_buffers={
-                        "last_state": None,
-                        "pooler": None
-                    },
-                    max_last_state_size=max(batch_sizes) * max(sequence_lengths) * model.config.hidden_size,
-                    max_pooler_size=max(batch_sizes) * max(sequence_lengths),
+                    output_buffers=[],
+                    output_buffer_max_sizes=[max_last_state_size, max_pooler_size],
                     batch_size=batch_size,
                     device=device)
                 print(result)
