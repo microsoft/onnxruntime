@@ -15,6 +15,8 @@ Currently, the only supported Execution Providers (EPs) for custom ops registere
 
 Note that when a model being inferred on gpu, onnxruntime will insert MemcpyToHost op before a cpu custom op and append MemcpyFromHost after to make sure tensor(s) are accessible throughout calling, meaning there are no extra efforts required from custom op developer for the case.
 
+To facilitate the custom operator development, sharing and release, please check the [onnxruntime custom operator library](https://github.com/microsoft/ort-customops) project for the more information.
+
 ### 2. Using RegisterCustomRegistry API
 * Implement your kernel and schema (if required) using the OpKernel and OpSchema APIs (headers are in the include folder).
 * Create a CustomRegistry object and register your kernel and schema with this registry.
