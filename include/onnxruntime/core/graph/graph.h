@@ -1355,7 +1355,7 @@ class Graph {
 #if !defined(ORT_MINIMAL_BUILD)
   int name_generator_ = 0;
 
-  int priority_generator_ = 100;
+  int priority_generator_ = 500;
   
   // Strings which have been used as node names.
   // New node name should not conflict with this set.
