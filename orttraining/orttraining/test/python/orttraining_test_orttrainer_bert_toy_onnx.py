@@ -461,6 +461,10 @@ def testToyBertCheckpointFrozenWeights():
     loss = trainer.eval_step(*sample_input)
     print("loss5", loss.item())
 
+
+    torch.manual_seed(seed+1)
+    onnxruntime.set_seed(seed+1)
+
     # Load previous state into another instance of ORTTrainer.
     # Again, use non-training mode to disable dropouts
     # and match the previous result.
