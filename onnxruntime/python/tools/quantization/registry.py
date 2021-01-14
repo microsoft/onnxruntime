@@ -29,11 +29,11 @@ QLinearOpsRegistry = {
     "Mul": QLinearBinaryOp,
     "Relu": QLinearActivation,
     "Clip": QLinearActivation,
-    "LeakyRelu" : QLinearActivation,
-    "Sigmoid" : QLinearActivation,
+    "LeakyRelu": QLinearActivation,
+    "Sigmoid": QLinearActivation,
     "MaxPool": QMaxPool,
     "GlobalAveragePool": QGlobalAveragePool,
-    "Split" : QSplit,
+    "Split": QSplit,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 
