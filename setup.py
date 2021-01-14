@@ -334,7 +334,7 @@ setup(
     ext_modules=ext_modules,
     package_data=package_data,
     url="https://onnxruntime.ai",
-    download_url='https://github.com/microsoft/onnxruntime/tags'
+    download_url='https://github.com/microsoft/onnxruntime/tags',
     data_files=data_files,
     install_requires=install_requires,
     keywords='onnx machine learning',
