@@ -291,6 +291,76 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_Test) {
   test.Run();
 }
 
+TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_NoClipNorm_Test) {
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
+  AdamOptimizerInputOutput data;
+
+  test.AddInput<MLFloat16>("ETA", {}, data.eta_half);
+  test.AddInput<int64_t>("Update_Count", {}, {3});
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<MLFloat16>("G", {3}, data.g_half);
+  test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
+  test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
+  test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
+  test.AddInput<float>("loss_scale", {1}, {1.0f});
+  // grad clipping should not take effect because default max_norm is 1.0f
+  test.AddInput<float>("grad_norm", {1}, {0.01f});
+  // Verify AdamOptimizer outputs
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
+  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
+  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddMissingOptionalOutput<MLFloat16>();
+  test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_new_half);
+
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
+  test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
+  test.Run();
+}
+
+TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_ClipNorm_Test) {
+  OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
+  AdamOptimizerInputOutput data;
+
+  // Expected FP32 Outputs
+  std::vector<float> m1_new = {0.13f, 0.23f, 0.33f};
+  std::vector<float> m2_new = {0.3997f, 0.4998f, 0.6001};
+  std::vector<float> w_new = {0.8972168f, 1.8369141f, 2.7871094f};
+  // FP16 Outputs
+  std::vector<MLFloat16> m1_new_half;
+  std::vector<MLFloat16> m2_new_half;
+  std::vector<MLFloat16> w_new_half;
+
+  m1_new_half.resize(m1_new.size());
+  m2_new_half.resize(m2_new.size());
+  w_new_half.resize(w_new.size());
+  ConvertFloatToMLFloat16(m1_new.data(), m1_new_half.data(), int(m1_new.size()));
+  ConvertFloatToMLFloat16(m2_new.data(), m2_new_half.data(), int(m2_new.size()));
+  ConvertFloatToMLFloat16(w_new.data(), w_new_half.data(), int(w_new.size()));
+
+  test.AddInput<MLFloat16>("ETA", {}, data.eta_half);
+  test.AddInput<int64_t>("Update_Count", {}, {3});
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<MLFloat16>("G", {3}, data.g_half);
+  test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
+  test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
+  test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
+  test.AddInput<float>("loss_scale", {1}, {1.0f});
+  test.AddInput<float>("grad_norm", {1}, {0.01f});
+  // Verify AdamOptimizer outputs
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, m1_new_half);
+  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, m2_new_half);
+  test.AddOutput<float>("W_Out", {3}, w_new);
+  test.AddMissingOptionalOutput<MLFloat16>();
+  test.AddOutput<MLFloat16>("FP16_W_Out", {3}, w_new_half);
+
+  test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
+  test.AddAttribute("weight_decay_mode", static_cast<int64_t>(0));
+  test.AddAttribute("max_norm_clip", 0.001f);
+  test.Run();
+}
+
 TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
   OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
