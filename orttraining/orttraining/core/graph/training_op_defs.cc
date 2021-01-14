@@ -747,7 +747,7 @@ void RegisterTrainingOpSchemas() {
           "Constrain input and output gradient types to float tensors.")
       .TypeConstraint(
           "T2",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_with_bfloat(),
           "reset_signal can be of any tensor type.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
@@ -1135,11 +1135,11 @@ Example 4:
       .Output(1, "mask", "The output mask of dropout.", "T2", OpSchema::Optional)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input 'ratio' types to float tensors.")
       .TypeConstraint(
           "T2",
@@ -1563,24 +1563,6 @@ Example 4:
            {{"X_1"}, "Cos", {"X"}},
            {{"dX"}, "Mul", {"X_1", "dY"}}}));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ReshapeGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gradient function for Reshape")
-      .AllowUncheckedAttributes()
-      .Input(0, "X", "Input tensor", "T")
-      .Input(1, "dY", "Reshape output's grad", "T")
-      .Output(0, "dX", "REshape input's grad", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to all numeric tensors.")
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
-           {{"x_shape"}, "Shape", {"X"}},
-           {{"dX"}, "Reshape", {"dY", "x_shape"}}}));
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1893,7 +1875,7 @@ Return true if all elements are true and false otherwise.
             static_cast<int64_t>(0))
       .TypeConstraint(
           "SrcT",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "ScaleT",
@@ -1901,7 +1883,7 @@ Return true if all elements are true and false otherwise.
           "Constrain scale types to float tensors.")
       .TypeConstraint(
           "DstT",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         bool fuse_outputs = static_cast<bool>(getAttribute(ctx, "fuse_outputs", int64_t(0)));
@@ -1978,11 +1960,11 @@ Return true if all elements are true and false otherwise.
       .Output(0, "Y", "output", "TOut")
       .TypeConstraint(
           "TIn",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input types to float tensors.")
       .TypeConstraint(
           "TOut",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain scale types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         updateOutputShape(ctx, 0, {});
@@ -2177,7 +2159,7 @@ Return true if all elements are true and false otherwise.
       .Output(0, "dX", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 

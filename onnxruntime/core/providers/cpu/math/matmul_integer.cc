@@ -81,19 +81,19 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
 #endif
     const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
     const bool b_is_signed = b->IsDataType<int8_t>();
-    QGemm(static_cast<int>(helper.M()),
-          static_cast<int>(helper.N()),
-          static_cast<int>(helper.K()),
-          a_data + helper.LeftOffsets()[i],
-          static_cast<int>(helper.K()),
-          a_offset,
-          b_data + helper.RightOffsets()[i],
-          static_cast<int>(helper.N()),
-          b_offset,
-          b_is_signed,
-          y_data + helper.OutputOffsets()[i],
-          static_cast<int>(helper.N()),
-          thread_pool);
+    MlasGemm(static_cast<size_t>(helper.M()),
+             static_cast<size_t>(helper.N()),
+             static_cast<size_t>(helper.K()),
+             a_data + helper.LeftOffsets()[i],
+             static_cast<size_t>(helper.K()),
+             a_offset,
+             b_data + helper.RightOffsets()[i],
+             static_cast<size_t>(helper.N()),
+             b_offset,
+             b_is_signed,
+             y_data + helper.OutputOffsets()[i],
+             static_cast<size_t>(helper.N()),
+             thread_pool);
   }
   return Status::OK();
 }

@@ -176,6 +176,25 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : False
                         },
+                        'graph_save_paths' : {
+                            'type' : 'dict',
+                            'default': {},
+                            'required': False,
+                            'schema': {
+                                'model_after_graph_transforms_path': {
+                                    'type': 'string',
+                                    'default': ''
+                                },
+                                'model_with_gradient_graph_path':{
+                                    'type': 'string',
+                                    'default': ''
+                                },
+                                'model_with_training_graph_path': {
+                                    'type': 'string',
+                                    'default': ''
+                                }
+                            }
+                        }                        
                     }
                 },
                 '_internal_use' : {
@@ -273,6 +292,16 @@ class ORTTrainerOptions(object):
         debug.check_model_export (bool, default is False)
             compares PyTorch model outputs with ONNX model outputs in inference before the first
             train step to ensure successful model export
+        debug.graph_save_paths (dict):
+            paths used for dumping ONNX graphs for debugging purposes
+        debug.graph_save_paths.model_after_graph_transforms_path (str, default is "")
+            path to export the ONNX graph after training-related graph transforms have been applied.
+            No output when it is empty.
+        debug.graph_save_paths.model_with_gradient_graph_path (str, default is "")
+            path to export the ONNX graph with the gradient graph added. No output when it is empty.
+        debug.graph_save_paths.model_with_training_graph_path (str, default is "")
+            path to export the training ONNX graph with forward, gradient and optimizer nodes.
+            No output when it is empty.
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
@@ -529,6 +558,25 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'check_model_export': {
                 'type': 'boolean',
                 'default': False
+            },
+            'graph_save_paths' : {
+                'type' : 'dict',
+               'default_setter': lambda _: {},
+                'required': False,
+                'schema': {
+                    'model_after_graph_transforms_path': {
+                        'type': 'string',
+                        'default': ''
+                    },
+                    'model_with_gradient_graph_path':{
+                        'type': 'string',
+                        'default': ''
+                    },
+                    'model_with_training_graph_path': {
+                        'type': 'string',
+                        'default': ''
+                    }
+                }
             },
         }
     },
