@@ -112,7 +112,7 @@ class ORTTrainerOptions(object):
                                 },
                                 'sliced_axes': {
                                     'type': 'dict',
-                                    'default': {},
+                                    'default_setter': lambda _: {},
                                     'keysrules': {'type': 'string'},
                                     'valuesrules': {'type': 'integer'}
                                 },
