@@ -637,6 +637,10 @@ class ORTTrainer(object):
         ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
         ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
 
+        ort_parameters.model_after_graph_transforms_path = self.options.debug.graph_save_paths.model_after_graph_transforms_path
+        ort_parameters.model_with_gradient_graph_path = self.options.debug.graph_save_paths.model_with_gradient_graph_path
+        ort_parameters.model_with_training_graph_path = self.options.debug.graph_save_paths.model_with_training_graph_path
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute

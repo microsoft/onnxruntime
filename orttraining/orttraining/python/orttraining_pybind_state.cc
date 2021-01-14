@@ -56,6 +56,11 @@ struct TrainingParameters {
   bool transformer_layer_recompute = false;
   int number_recompute_layers = 0;
   bool enable_adasum = false;
+
+  // graph dumping
+  std::string model_after_graph_transforms_path;
+  std::string model_with_gradient_graph_path;
+  std::string model_with_training_graph_path;
 };
 
 struct TrainingConfigurationResult {
@@ -162,6 +167,16 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.transformer_layer_recompute = parameters.transformer_layer_recompute;
   config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
 
+  if (!parameters.model_after_graph_transforms_path.empty()) {
+    config.model_after_graph_transforms_path = parameters.model_after_graph_transforms_path;
+  }
+  if (!parameters.model_with_gradient_graph_path.empty()) {
+    config.model_with_gradient_graph_path = parameters.model_with_gradient_graph_path;
+  }
+  if (!parameters.model_with_training_graph_path.empty()) {
+    config.model_with_training_graph_path = parameters.model_with_training_graph_path;
+  }
+
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
@@ -260,6 +275,9 @@ void addObjectMethodsForTraining(py::module& m) {
              }
              parameters.optimizer_initial_state = optim_state;
            })
+      .def_readwrite("model_after_graph_transforms_path", &TrainingParameters::model_after_graph_transforms_path)
+      .def_readwrite("model_with_gradient_graph_path", &TrainingParameters::model_with_gradient_graph_path)
+      .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
       .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum);
 
 #if defined(USE_MPI)
