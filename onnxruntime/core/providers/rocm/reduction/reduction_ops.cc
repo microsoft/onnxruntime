@@ -162,6 +162,8 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     miopenReduceTensorOp_t miopen_reduce_op,
     std::vector<int64_t>& /*output_dims*/) const {
   typedef typename ToHipType<T>::MappedType HipT;
+  //typedef typename ToHipType<OutT>::MappedType HipOutT;
+  //miopenDataType_t miopen_type_X = MiopenTensor::GetDataType<HipT>();
   const auto rank = input_shape.NumDimensions();
 
   // Block of fast matrix row reduction.
