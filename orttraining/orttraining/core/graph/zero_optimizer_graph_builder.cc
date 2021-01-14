@@ -276,7 +276,7 @@ static Status AddParameterPartition(
 
     // Partition initial optimizer state
     if (enabled[i]) {
-      weight_partition_info[weight_argdef.name].view_name = weight_views[i].name;
+      weight_partition_info[weight_argdef.name].partition_name = weight_views[i].name;
 
       if (!initial_states.empty()) {
         ORT_ENFORCE(view_shapes.size() == 3, "Invalid view_shapes vector passed for partitioning.");

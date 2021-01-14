@@ -136,7 +136,7 @@ void MegatronTransformer::PartitionBufferByColumn(const T* input,
 bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const NodeArg& input_arg,
                                                   ONNX_NAMESPACE::TensorProto& initializer_partition,
                                                   int stride) const {
-  std::string original_name = input_arg.Name();
+  const std::string original_name = input_arg.Name();
   const ONNX_NAMESPACE::TensorProto* tensor_proto;
   if (!graph.GetInitializedTensor(original_name, tensor_proto)) {
     LOGS_DEFAULT(WARNING) << "PartitionWeightByColumn: " << original_name << " is not an initializer";
@@ -218,9 +218,10 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
           result_buffer.reserve(element_count);
           PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result_buffer);
 
-          // allocate a new buffer as column partitioning cannot re-use the original
-          // buffer as its non-contiguous read on original buffer
-          auto alloc = execution_provider_.GetAllocator(0, OrtMemTypeDefault);
+          // allocate a new buffer to hold the partitioned optimizer state 
+          // as column partitioning cannot re-use the original
+          // buffer as its non-contiguous read
+          auto alloc = cpu_execution_provider_ .GetAllocator(0, OrtMemTypeDefault);
           p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                       partition_shape,
                                                       alloc);
@@ -236,7 +237,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
 
           // allocate a new buffer as column partitioning cannot re-use the original
           // buffer as it is a non-contiguous read on original buffer
-          auto alloc = execution_provider_.GetAllocator(0, OrtMemTypeDefault);
+          auto alloc = cpu_execution_provider_ .GetAllocator(0, OrtMemTypeDefault);
           p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                       partition_shape,
                                                       alloc);
@@ -249,12 +250,15 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
                          DataTypeImpl::GetType<Tensor>(),
                          DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
         initial_states[moments_prefix] = std::move(partitioned);
+      } else {
+        LOGS_DEFAULT(WARNING) << "Initial value for optimizer state: " << moments_prefix 
+                              << " not found for weight: " << original_name;
       }
     }
   }
 
   weight_partition_info_[original_name].megatron_row_partition = 0;
-  weight_partition_info_[original_name].view_name = new_initializer_name;
+  weight_partition_info_[original_name].partition_name = new_initializer_name;
   weight_partition_info_[original_name].weight_partitioned = true;
 
   return true;
@@ -262,7 +266,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
 
 bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg& input_arg,
                                                ONNX_NAMESPACE::TensorProto& initializer_partition) const {
-  std::string original_name = input_arg.Name();
+  const std::string original_name = input_arg.Name();
   const ONNX_NAMESPACE::TensorProto* tensor_proto;
   if (!graph.GetInitializedTensor(original_name, tensor_proto)) {
     LOGS_DEFAULT(WARNING) << "PartitionWeightByRow: " << original_name << " is not an initializer";
@@ -357,12 +361,15 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
                          DataTypeImpl::GetType<Tensor>(),
                          DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
         initial_states[moments_prefix] = std::move(partitioned);
+      } else {
+        LOGS_DEFAULT(WARNING) << "Initial value for optimizer state: " << moments_prefix 
+                              << " not found for weight: " << original_name;
       }
     }
   }
 
   weight_partition_info_[original_name].megatron_row_partition = 1;
-  weight_partition_info_[original_name].view_name = new_initializer_name;
+  weight_partition_info_[original_name].partition_name = new_initializer_name;
   weight_partition_info_[original_name].weight_partitioned = true;
   return true;
 }
@@ -560,8 +567,11 @@ Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified,
     return skip_status;
   }
 
-  nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, second_op, &biasgelu_node, dropout_node,
+  nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, second_op, &biasgelu_node,
                                                            &matmul2_node, transpose_op_ptr});
+  if (dropout_node != nullptr) {
+    nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {dropout_node});
+  }                                                         
 
   auto dense_wi_weight_arg = second_op->MutableInputDefs()[0];
   ONNX_NAMESPACE::TensorProto dense_wi_weight_initializer_partition;

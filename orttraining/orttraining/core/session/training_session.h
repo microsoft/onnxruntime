@@ -32,9 +32,14 @@ class TrainingSession : public InferenceSession {
    * Partition information of each paritioned weight
    */
   struct PartitionInfo {
+    // value of the original shape of the weight
     std::vector<int64_t> original_dim;
+    // indicates whether weight was megatron partitioned or not.
+    // -1: not partitioned; 0: column partitioned; 1: row partitioned
     int megatron_row_partition = -1;
-    std::string view_name;
+    // name of the partition used to look up partitioned weight and optimizer state values
+    std::string partition_name;
+    // whether the weight itself was paritioned or not(eg:just the optimizer state for fp32 Zero-1)
     bool weight_partitioned = false;
   };
 
@@ -561,7 +566,6 @@ class TrainingSession : public InferenceSession {
   std::unordered_map<std::string, TrainingSession::PartitionInfo> weight_partition_info_;
 
   bool is_mixed_precision_enabled_;
-  bool is_megatron_enabled_;
   optional<std::string> external_loss_name_;
   std::unique_ptr<ILossFunction> loss_graph_builder_;
   optional<LossFunctionInfo> loss_function_info_;
