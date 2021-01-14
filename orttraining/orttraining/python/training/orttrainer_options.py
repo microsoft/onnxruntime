@@ -522,7 +522,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     },
                     'sliced_schema': {
                         'type': 'dict',
-                        'default': {},
+                        'default_setter': lambda _: {},
                         'keysrules': {'type': 'string'},
                         'valuesrules': {
                             'type': 'list',
