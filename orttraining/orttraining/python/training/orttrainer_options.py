@@ -54,7 +54,7 @@ class ORTTrainerOptions(object):
                 },
                 'distributed': {
                     'type': 'dict',
-                    'default_setter': lambda _: {},
+                    'default': {},
                     'required': False,
                     'schema': {
                         'world_rank': {
