@@ -68,23 +68,29 @@ class ReduceKernel : public RocmKernel, public ReduceKernelBase<allow_multi_axes
         calculate_log_(false),
         calculate_sqt_(false),
         log_sum_exp_(false),
-        fast_reduction_(false) {}
+        fast_reduction_(false) {
+    // We need to cast away the const as PerThreadMiopenHandle() is currently a non-const method
+    // TODO: Clean up the ROCMExecutionProvider interface to avoid this
+    rocm_ep_ = const_cast<ROCMExecutionProvider*>(static_cast<const ROCMExecutionProvider*>(info.GetExecutionProvider()));
+  }
 
-  template <typename T>
+  // Only Max Min need to set ReduceTensorIndices MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES as per miopen library manual
+  // Only Max Min will have indices output, need to set the indices to nullptr for other ops
+  template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
   Status ComputeImpl(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const;
 
   // Used by ReduceSumTraining which will have axes as input
-  template <typename T>
+  template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
   Status ComputeImplEx(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const;
 
-  template <typename T, typename OutT>
+  template <typename T, typename OutT, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
   Status ReduceKernelShared(
       const T* X,
       const TensorShape& input_shape,
       OutT* Y,
       const TensorShape& output_shape,
       miopenReduceTensorOp_t miopen_reduce_op,
-      std::vector<int64_t> output_dims) const;
+      std::vector<int64_t>& output_dims) const;
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
@@ -94,8 +100,11 @@ class ReduceKernel : public RocmKernel, public ReduceKernelBase<allow_multi_axes
   bool calculate_sqt_;
   bool log_sum_exp_;
   // Indicates if this reduction can be delegated to our highly-optimized reduction kernels.
-  // Those effecient kernels are defined/implemented in reduction_functions.h/.cu.
+  // Those efficient kernels are defined/implemented in reduction_functions.h/.cu.
   bool fast_reduction_;
+
+  // We need to access to the ROCM EP instance to get the miopen handle
+  ROCMExecutionProvider* rocm_ep_;
 };
 
 template <typename T>
@@ -104,7 +113,7 @@ class ArgMax final : public ReduceKernel<false> {
   ArgMax(const OpKernelInfo& info) : ReduceKernel<false>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_MAX);
+    return ComputeImpl<T, MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES>(ctx, MIOPEN_REDUCE_TENSOR_MAX);
   }
 };
 
@@ -114,7 +123,7 @@ class ArgMin final : public ReduceKernel<false> {
   ArgMin(const OpKernelInfo& info) : ReduceKernel<false>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_MIN);
+    return ComputeImpl<T, MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES>(ctx, MIOPEN_REDUCE_TENSOR_MIN);
   }
 };
 
@@ -226,7 +235,6 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
   }
 };
 
-
 Status PrepareForReduce(const Tensor* X,
                         bool keepdims,
                         const std::vector<int64_t>& axes,
@@ -235,13 +243,6 @@ Status PrepareForReduce(const Tensor* X,
 
 template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
-                         /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
-                         const std::vector<int64_t>& axes,
-                         bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
-                         const TensorShape* input_shape_override = nullptr);
-
-template <typename T>
-Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
                          const std::vector<int64_t>& axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
