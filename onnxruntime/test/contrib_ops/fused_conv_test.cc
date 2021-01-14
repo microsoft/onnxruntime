@@ -7,6 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
+#if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
 using namespace std;
 
 struct ConvOpAndTestAttributes {
@@ -133,6 +134,7 @@ TEST(FusedConvTest, Conv2D_Bias_Z_Relu) {
   auto expected_vals = {12.0f, 17.0f, 25.0f, 29.0f, 11.0f, 15.0f, 23.0f, 28.0f};
   TestConvOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
