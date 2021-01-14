@@ -73,8 +73,8 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
   try {
     cnn_network = global_context.ie_core.ReadNetwork(model, blob);
     LOGS_DEFAULT(INFO) << "Read network Done";
-  } catch (const std::exception& exp) {
-    ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(exp.what()));
+  } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
   } catch (...) {
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
   }
