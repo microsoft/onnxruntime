@@ -11,6 +11,8 @@ import timeit
 from datetime import datetime
 import csv
 import argparse
+import os
+import sys
 import torch
 import onnxruntime
 
@@ -22,9 +24,10 @@ MODELS = {
 
 is_debug = False
 
-# Run onnx model with ORT
-from onnxruntime.transformers import benchmark_helper
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
+# Run onnx model with ORT
+import benchmark_helper
 
 def get_dummy_inputs(sequence_length, num_global_tokens, device):
     # Create dummy inputs
