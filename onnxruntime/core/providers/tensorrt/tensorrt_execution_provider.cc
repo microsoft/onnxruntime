@@ -600,12 +600,15 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
 
-  // Assign inputs and outputs to subgraph's meta_def
+  // Generate unique kernel name for TRT subgraph
+  uint64_t model_hash = 0;
+  int id = GenerateMetaDefId(graph, model_hash);
+  std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
-  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(subgraph_id_++);
-  meta_def->domain() = kMSDomain;
+  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
 
+  // Assign inputs and outputs to subgraph's meta_def
   for (const auto& input : inputs) {
     if (input.second->Exists()) {
       meta_def->inputs().push_back(input.second->Name());
@@ -618,6 +621,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     }
   }
 
+  meta_def->domain() = kMSDomain;
   meta_def->since_version() = 1;
   sub_graph->SetMetaDef(std::move(meta_def));
 
