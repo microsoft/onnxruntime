@@ -13,10 +13,10 @@
 
 namespace onnxruntime {
 namespace signal {
+
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
-
 
 template <typename T>
 static T get_scalar_value_from_tensor(const ONNX_NAMESPACE::TensorProto* t) {
