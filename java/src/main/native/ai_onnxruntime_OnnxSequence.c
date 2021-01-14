@@ -179,11 +179,11 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getStrings
     checkOrtStatus(jniEnv,api,api->GetValueCount(sequence,&count));
 
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv,"java/lang/String");
-    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv,count,stringClazz,NULL);
+    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(count),stringClazz, NULL);
     for (size_t i = 0; i < count; i++) {
         // Extract element
         OrtValue* element;
-        checkOrtStatus(jniEnv,api,api->GetValue(sequence,i,allocator,&element));
+        checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
 
         createStringFromStringTensor(jniEnv,api,allocator,element);
 
@@ -215,7 +215,7 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OnnxSequence_getLongs
     for (size_t i = 0; i < count; i++) {
         // Extract element
         OrtValue* element;
-        checkOrtStatus(jniEnv,api,api->GetValue(sequence,i,allocator,&element));
+        checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
 
         // Extract the values
         int64_t* arr;
@@ -225,8 +225,8 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OnnxSequence_getLongs
         api->ReleaseValue(element);
     }
 
-    jlongArray outputArray = (*jniEnv)->NewLongArray(jniEnv,count);
-    (*jniEnv)->SetLongArrayRegion(jniEnv,outputArray,0,count,(jlong*)values);
+    jlongArray outputArray = (*jniEnv)->NewLongArray(jniEnv,safecast_size_t_to_jsize(count));
+    (*jniEnv)->SetLongArrayRegion(jniEnv, outputArray,0,safecast_size_t_to_jsize(count),(jlong*)values);
 
     checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
 
@@ -255,7 +255,7 @@ JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_OnnxSequence_getFloats
     for (size_t i = 0; i < count; i++) {
         // Extract element
         OrtValue* element;
-        checkOrtStatus(jniEnv,api,api->GetValue(sequence,i,allocator,&element));
+        checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
 
         // Extract the values
         float* arr;
@@ -265,8 +265,8 @@ JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_OnnxSequence_getFloats
         api->ReleaseValue(element);
     }
 
-    jfloatArray outputArray = (*jniEnv)->NewFloatArray(jniEnv,count);
-    (*jniEnv)->SetFloatArrayRegion(jniEnv,outputArray,0,count,values);
+    jfloatArray outputArray = (*jniEnv)->NewFloatArray(jniEnv,safecast_size_t_to_jsize(count));
+    (*jniEnv)->SetFloatArrayRegion(jniEnv,outputArray,0,safecast_size_t_to_jsize(count),values);
 
     checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
 
@@ -295,7 +295,7 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_OnnxSequence_getDoubles
     for (size_t i = 0; i < count; i++) {
         // Extract element
         OrtValue* element;
-        checkOrtStatus(jniEnv,api,api->GetValue(sequence,i,allocator,&element));
+        checkOrtStatus(jniEnv,api,api->GetValue(sequence,(int)i,allocator,&element));
 
         // Extract the values
         double* arr;
@@ -305,8 +305,8 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_OnnxSequence_getDoubles
         api->ReleaseValue(element);
     }
 
-    jdoubleArray outputArray = (*jniEnv)->NewDoubleArray(jniEnv,count);
-    (*jniEnv)->SetDoubleArrayRegion(jniEnv,outputArray,0,count,values);
+    jdoubleArray outputArray = (*jniEnv)->NewDoubleArray(jniEnv,safecast_size_t_to_jsize(count));
+    (*jniEnv)->SetDoubleArrayRegion(jniEnv,outputArray,0,safecast_size_t_to_jsize(count),values);
 
     checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
 
