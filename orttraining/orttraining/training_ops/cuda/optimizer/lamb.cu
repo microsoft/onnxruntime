@@ -305,9 +305,9 @@ __global__ void LambMultiTensorComputeDirectionImpl(
     const T3 alpha,
     const T3 beta,
     const T3 epsilon,
+    const T3 max_norm,
     const T3 alpha_correction,
-    const T3 beta_correction,
-    const T3 max_norm) {
+    const T3 beta_correction) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;
