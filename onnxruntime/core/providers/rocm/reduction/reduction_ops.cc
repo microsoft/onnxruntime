@@ -153,14 +153,14 @@ static bool is_matrix_row_reduction(
 
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
 template <bool allow_multi_axes>
-template <typename T, typename OutT>
+template <typename T, typename OutT, miopenReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     const T* X,
     const TensorShape& input_shape,
     OutT* Y,
     const TensorShape& /*output_shape*/,
     miopenReduceTensorOp_t miopen_reduce_op,
-    std::vector<int64_t> /*output_dims*/) const {
+    std::vector<int64_t>& /*output_dims*/) const {
   typedef typename ToHipType<T>::MappedType HipT;
   const auto rank = input_shape.NumDimensions();
 
@@ -191,7 +191,7 @@ template Status ReduceKernel<true>::ReduceKernelShared<double, double>(
     double* Y,
     const TensorShape& output_shape,
     miopenReduceTensorOp_t miopen_reduce_op,
-    std::vector<int64_t> output_dims) const;
+    std::vector<int64_t>& output_dims) const;
 
 template Status ReduceKernel<true>::ReduceKernelShared<float, float>(
     const float* X,
@@ -199,7 +199,7 @@ template Status ReduceKernel<true>::ReduceKernelShared<float, float>(
     float* Y,
     const TensorShape& output_shape,
     miopenReduceTensorOp_t miopen_reduce_op,
-    std::vector<int64_t> output_dims) const;
+    std::vector<int64_t>& output_dims) const;
 
 template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16>(
     const MLFloat16* X,
@@ -207,7 +207,7 @@ template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16>(
     MLFloat16* Y,
     const TensorShape& output_shape,
     miopenReduceTensorOp_t miopen_reduce_op,
-    std::vector<int64_t> output_dims) const;
+    std::vector<int64_t>& output_dims) const;
 
 // `input_shape_override` (if provided) is the input shape for compute purposes
 Status PrepareForReduce(const Tensor* X,
@@ -307,8 +307,8 @@ Status PrepareForReduce(const Tensor* X,
 }
 
 // `input_shape_override` is the input shape for compute purposes (if provided)
-template <typename T>
-Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
+Status ReduceComputeCore(ROCMExecutionProvider& /*rocm_ep*/, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
                          const std::vector<int64_t>& axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
@@ -361,7 +361,7 @@ Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_red
 }
 
 template <bool allow_multi_axes>
-template <typename T>
+template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const {
   const Tensor* X = ctx->Input<Tensor>(0);
 
@@ -373,13 +373,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, miopenR
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
 
-  return ReduceComputeCore<T>(*X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes_,
-                              calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
+  return ReduceComputeCore<T, ReduceTensorIndices>(*rocm_ep_, *X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes_,
+                                                   calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
 }
 
 template <>
 template <>
-Status ReduceKernel<true>::ComputeImpl<int32_t>(OpKernelContext* /*ctx*/, miopenReduceTensorOp_t /*miopen_reduce_op*/) const {
+Status ReduceKernel<true>::ComputeImpl<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICES>(OpKernelContext* /*ctx*/, miopenReduceTensorOp_t /*miopen_reduce_op*/) const {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().OpType(), " is not supported");
 }
 
