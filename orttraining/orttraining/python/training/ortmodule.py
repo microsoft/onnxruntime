@@ -280,6 +280,7 @@ class ORTModule(torch.nn.Module):
                 '''
 
                 # Use IO binding
+                # TODO: !!!!  Update the IO bindding here, only the grad_output is needed
                 grad_output_dict = dict(zip(self._onnx_graphs_info.user_output_grad_names, grad_output))
                 backward_grad_output = tuple(grad_output_dict[name] for name in self._onnx_graphs_info.backward_output_grad_names)
                 _create_iobinding(self._backward_io_binding, [*ctx.saved_tensors, *backward_grad_output],
@@ -287,7 +288,7 @@ class ORTModule(torch.nn.Module):
                                    self._device)
 
                 # Run
-                self._backward_session.run_with_iobinding(self._backward_io_binding)
+                self._backward_session.run_backward(self._backward_io_binding)
                 backward_outputs = self._backward_io_binding.get_outputs()
 
                 # Return input and initializer gradients

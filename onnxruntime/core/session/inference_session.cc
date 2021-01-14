@@ -50,6 +50,8 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
+#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/customregistry.h"
 #include "core/session/custom_ops.h"
@@ -1687,6 +1689,49 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
 common::Status InferenceSession::Run(IOBinding& io_binding) {
   RunOptions run_options;
   return Run(run_options, io_binding);
+}
+
+common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding) {
+  // TODO: !!!!! run following block in a background thread
+
+  bg_thread_ = std::thread([&]() {
+    common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
+                           &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
+
+    // Do I need to signal main thread for the completion???
+    const int64_t main_thread_event_id = 0;
+    onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
+  });
+
+  // wait for event from yeild op
+  const int64_t main_thread_event_id = 0;
+  onnxruntime::contrib::OrtEventPool::GetInstance().ResetAndWaitEvent(main_thread_event_id);
+
+  return Status::OK();
+}
+
+common::Status InferenceSession::RunInBackgroundAndWaitForYield(IOBinding& io_binding) {
+  RunOptions run_options;
+  return RunInBackgroundAndWaitForYield(run_options, io_binding);
+}
+
+common::Status InferenceSession::ContinueRunInBackground(IOBinding& /*io_binding*/) {
+  // TODO: Place data in message passing structure
+
+  // resume background thread
+  const int64_t background_thread_event_id = 1;
+  onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(background_thread_event_id);
+
+  // Do I need to wait for event from end of background thread??
+  const int64_t main_thread_event_id = 0;
+  onnxruntime::contrib::OrtEventPool::GetInstance().ResetAndWaitEvent(main_thread_event_id);
+
+  // wait still bg_thread is completed
+  if (bg_thread_.joinable()) {
+    bg_thread_.join();
+  }
+
+  return Status::OK();
 }
 
 template <typename T>

@@ -3,6 +3,7 @@
 
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -11,10 +12,16 @@ ONNX_OPERATOR_KERNEL_EX(Yield, kMSDomain, 1, kCpuExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()), Yield);
 
 Status Yield::Compute(OpKernelContext* ctx) const {
-  int64_t event_id = std::chrono::system_clock::now().time_since_epoch().count();
-  OrtEventPool::GetInstance().WaitEvent(event_id);
+  // FW output should be ready by this point, they are currently exposed as graph output
+  // !!! Potential TODO here: If graph output approach doesn't work, need to place the Yield Input tensors into some shared location
 
-  // Do we need to return the event_id so main thread can use it to call SignalEvent()?
+  // single event for InferenceSession::RunInBackgroundAndWaitForYield() that FW graph is done
+  const int64_t main_thread_event_id = 0;
+  OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
+
+  // wait for event from InferenceSession::ContinueRunInBackground() to continue the BW graph
+  const int64_t background_thread_event_id = 1;
+  OrtEventPool::GetInstance().ResetAndWaitEvent(background_thread_event_id);
 
   // Get output grad from somewhere and prepare Op outputs.
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {

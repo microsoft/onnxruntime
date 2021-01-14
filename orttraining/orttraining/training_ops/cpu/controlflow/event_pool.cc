@@ -8,10 +8,10 @@ namespace contrib {
 
 void OrtEventPool::CheckRange(const int64_t id) const {
   ORT_ENFORCE(
-    id >= 0 && id < MaxNumItems,
-    "Got id ", id,
-    ". It should be in a range from 0 to ",
-    MaxNumItems, ".");
+      id >= 0 && id < MaxNumItems,
+      "Got id ", id,
+      ". It should be in a range from 0 to ",
+      MaxNumItems, ".");
 }
 
 void OrtEventPool::SignalEvent(int64_t id) {
@@ -26,6 +26,13 @@ bool OrtEventPool::QueryEvent(int64_t id) const {
   CheckRange(id);
   return pool_[id].signaled.load();
 }
+
+void OrtEventPool::ResetAndWaitEvent(int64_t id) {
+  CheckRange(id);
+  std::unique_lock<std::mutex> lock(pool_[id].mutex);
+  pool_[id].signaled.store(false);
+  pool_[id].cv.wait(lock, [this, id] { return pool_[id].signaled.load(); });
+};
 
 void OrtEventPool::WaitEvent(int64_t id) const {
   CheckRange(id);

@@ -667,8 +667,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           if (option.first == "device_type") {
             openvino_device_type = option.second;
             params.device_type = openvino_device_type.c_str();
-          }  
-          else if (option.first == "enable_vpu_fast_compile") {
+          } else if (option.first == "enable_vpu_fast_compile") {
             if (option.second == "True") {
               params.enable_vpu_fast_compile = true;
             } else if (option.second == "False") {
@@ -1825,9 +1824,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
         Status status;
         if (!run_options)
-          status = sess->GetSessionHandle()->Run(*io_binding.Get());
+          status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(*io_binding.Get());
         else
-          status = sess->GetSessionHandle()->Run(*run_options, *io_binding.Get());
+          status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(*run_options, *io_binding.Get());
+        if (!status.IsOK())
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+      })
+      .def("run_backward", [](PyInferenceSession* sess, SessionIOBinding& io_binding /*, RunOptions* run_options = nullptr*/) -> void {
+        Status status = sess->GetSessionHandle()->ContinueRunInBackground(io_binding.Get());
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });
