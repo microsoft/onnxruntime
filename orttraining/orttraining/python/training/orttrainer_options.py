@@ -103,7 +103,7 @@ class ORTTrainerOptions(object):
                                 },
                                 'sliced_schema': {
                                     'type': 'dict',
-                                    'default': {},
+                                    'default_setter': lambda _: {},
                                     'keysrules': {'type': 'string'},
                                     'valuesrules': {
                                         'type': 'list',
