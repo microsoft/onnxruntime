@@ -20,11 +20,8 @@ struct ModuleGradientGraphBuilderConfiguration {
 
   // Gradient graph configuration.
   bool use_invertible_layernorm_grad = false;
-  bool set_gradients_as_graph_outputs = false;
 
   // TODO: add GraphTransformerConfiguration
-  // TODO: add mixed precision config
-  // TODO: do we need to support graph with loss?
 };
 
 /**
@@ -32,6 +29,7 @@ struct ModuleGradientGraphBuilderConfiguration {
  */
 struct SplitGraphsInfo {
   std::vector<std::string> user_input_names{};
+  std::unordered_map<std::string, std::string> user_input_grad_names{};
   std::vector<std::string> initializer_names_to_train{};
   std::vector<std::string> initializer_grad_names_to_train{};
   std::vector<std::string> user_output_names{};
@@ -46,6 +44,7 @@ class ModuleGradientGraphBuilder {
  public:
   Status Initialize(std::istream& model_istream, const ModuleGradientGraphBuilderConfiguration& config);
   Status BuildAndSplit(const std::vector<std::vector<int64_t>>& input_shapes);
+  Status Build();
 
   std::string GetForwardModel() const;
   std::string GetBackwardModel() const;
@@ -54,9 +53,19 @@ class ModuleGradientGraphBuilder {
  private:
   Status Split();
 
-  std::shared_ptr<onnxruntime::Model> model_;
-  std::shared_ptr<onnxruntime::Model> forward_model_;
-  std::shared_ptr<onnxruntime::Model> backward_model_;
+  // Build gradient graph.
+  Status BuildGradientGraph();
+
+  // Add Yield Op.
+  void AddYieldOp();
+
+  // Reorder gradient graph inputs/outputs.
+  void ReorderOutputs();
+
+  std::shared_ptr<Model> model_;
+  std::shared_ptr<Model> gradient_model_;
+  std::shared_ptr<Model> forward_model_;
+  std::shared_ptr<Model> backward_model_;
   SplitGraphsInfo split_graphs_info_;
 
   ModuleGradientGraphBuilderConfiguration config_;

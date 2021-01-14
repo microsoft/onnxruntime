@@ -150,7 +150,7 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(const std::vector<std::vector<i
   // Build gradient graph.
   GradientGraphConfiguration gradient_graph_config{};
   gradient_graph_config.use_invertible_layernorm_grad = config_.use_invertible_layernorm_grad;
-  gradient_graph_config.set_gradients_as_graph_outputs = config_.set_gradients_as_graph_outputs;
+  gradient_graph_config.set_gradients_as_graph_outputs = true;
   std::unordered_set<std::string> y_node_arg_names(split_graphs_info_.user_output_names.begin(),
                                                    split_graphs_info_.user_output_names.end());
   GradientGraphBuilder grad_graph_builder(&graph, y_node_arg_names, x_node_arg_names, "",
@@ -240,6 +240,175 @@ std::string SerializeModel(const std::shared_ptr<onnxruntime::Model>& model, con
   }
 
   return model_str;
+}
+
+Status ModuleGradientGraphBuilder::Build() {
+  // Make a copy of the original model.
+  auto model_proto = model_->ToProto();
+  ORT_RETURN_IF_ERROR(Model::Load(model_proto, gradient_model_, nullptr, *logger_));
+
+  // Build the gradient graph.
+  ORT_RETURN_IF_ERROR(BuildGradientGraph());
+
+  // Add Yield Op.
+  AddYieldOp();
+
+  // Reorder outputs.
+  ReorderOutputs();
+
+  PathString path_str("bert_gradient.onnx");
+  std::remove(ToMBString(path_str).c_str());
+  Model::Save(*gradient_model_, path_str);
+
+  return Status::OK();
+}
+
+Status ModuleGradientGraphBuilder::BuildGradientGraph() {
+  // Resolve forward graph, register and apply transformers for pre-training.
+  Graph& gradient_graph = gradient_model_->MainGraph();
+  ORT_RETURN_IF_ERROR(gradient_graph.Resolve());
+
+  const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration graph_transformer_config{};
+  GraphTransformerManager graph_transformation_mgr{2};
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+  std::unordered_set<std::string> x_node_arg_names;
+  std::set_union(config_.initializer_names_to_train.begin(), config_.initializer_names_to_train.end(),
+                 config_.input_names_require_grad.begin(), config_.input_names_require_grad.end(),
+                 std::inserter(x_node_arg_names, x_node_arg_names.begin()));
+  auto add_transformers = [&](TransformerLevel level) {
+    std::unordered_map<std::string, std::string> updated_weight_names{};
+    auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
+        level, x_node_arg_names, graph_transformer_config, *cpu_execution_provider, updated_weight_names, {});
+    for (auto& entry : transformers_to_register) {
+      graph_transformation_mgr.Register(std::move(entry), level);
+    }
+  };
+
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    TransformerLevel level = static_cast<TransformerLevel>(i);
+    if (TransformerLevel::MaxLevel >= level) {
+      add_transformers(level);
+    }
+  }
+
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    ORT_RETURN_IF_ERROR(
+        graph_transformation_mgr.ApplyTransformers(gradient_graph, static_cast<TransformerLevel>(i), *logger_));
+  }
+
+  // Build gradient graph to backward graph.
+  GradientGraphConfiguration gradient_graph_config{};
+  gradient_graph_config.use_invertible_layernorm_grad = config_.use_invertible_layernorm_grad;
+  gradient_graph_config.set_gradients_as_graph_outputs = true;
+  std::unordered_set<std::string> y_node_arg_names(split_graphs_info_.user_output_names.begin(),
+                                                   split_graphs_info_.user_output_names.end());
+  GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "", gradient_graph_config,
+                                          *logger_);
+
+  ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
+
+  // Apply transformers to backward graph.
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    ORT_RETURN_IF_ERROR(
+        graph_transformation_mgr.ApplyTransformers(gradient_graph, static_cast<TransformerLevel>(i), *logger_));
+  }
+
+  return Status::OK();
+}
+
+void ModuleGradientGraphBuilder::AddYieldOp() {
+  Graph& gradient_graph = gradient_model_->MainGraph();
+  GraphViewer gradient_graph_viewer(gradient_graph);
+  const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
+  std::vector<Node*> forward_nodes_to_remove;
+  std::unordered_set<std::string> user_output_grad_names;
+  for (const auto& name : split_graphs_info_.user_output_names) {
+    user_output_grad_names.insert(name + "_grad");
+  }
+
+  std::unordered_set<std::string> non_backward_user_output_grad_names;
+  for (auto node_index : gradient_node_topology_list) {
+    auto& node = *gradient_graph.GetNode(node_index);
+    for (const auto& node_arg : node.OutputDefs()) {
+      if (user_output_grad_names.find(node_arg->Name()) != user_output_grad_names.end()) {
+        non_backward_user_output_grad_names.insert(node_arg->Name());
+      }
+    }
+  }
+
+  std::vector<std::string> yield_input_names;
+  std::vector<std::string> yield_output_names;
+  for (const auto& name : split_graphs_info_.user_output_names) {
+    std::string grad_name = name + "_grad";
+    if (non_backward_user_output_grad_names.find(grad_name) == non_backward_user_output_grad_names.end()) {
+      yield_input_names.emplace_back(name);
+      yield_output_names.emplace_back(grad_name);
+    }
+  }
+
+  for (const auto& name : split_graphs_info_.user_output_names) {
+    if (non_backward_user_output_grad_names.find(name + "_grad") != non_backward_user_output_grad_names.end()) {
+      yield_input_names.emplace_back(name);
+    }
+  }
+
+  std::vector<NodeArg*> yield_input_node_args;
+  std::vector<NodeArg*> yield_output_node_args;
+  for (const auto& name : yield_input_names) {
+    yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
+  }
+
+  for (const auto& name : yield_output_names) {
+    yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(name));
+  }
+
+  gradient_graph.AddNode("YieldOp", "Yield", "Yield Op", yield_input_node_args, yield_output_node_args, {}, kMSDomain);
+}
+
+void ModuleGradientGraphBuilder::ReorderOutputs() {
+  // Adjust gradient graph outputs by the following order:
+  // 1. user outputs,
+  // 2. user input grads if required, with same order of user inputs,
+  // 3. trainable initailizer grads, with same order of trainable initializers.
+  Graph& gradient_graph = gradient_model_->MainGraph();
+  const std::vector<const NodeArg*>& gradient_graph_outputs = gradient_graph.GetOutputs();
+  std::unordered_map<std::string, const NodeArg*> gradient_output_arg_map;
+  for (auto& node_arg : gradient_graph_outputs) {
+    gradient_output_arg_map[node_arg->Name()] = node_arg;
+  }
+
+  std::vector<const NodeArg*> new_output_args;
+  for (const auto& user_output_name : split_graphs_info_.user_output_names) {
+    new_output_args.emplace_back(gradient_graph.GetNodeArg(user_output_name));
+  }
+
+  std::unordered_set<std::string> user_input_require_grad_set(config_.input_names_require_grad.begin(),
+                                                              config_.input_names_require_grad.end());
+
+  split_graphs_info_.user_input_grad_names.clear();
+  for (const auto& input_name : split_graphs_info_.user_input_names) {
+    if (user_input_require_grad_set.find(input_name) != user_input_require_grad_set.end()) {
+      std::string input_gradient_name = input_name + "_grad";
+      ORT_ENFORCE(gradient_output_arg_map.find(input_gradient_name) != gradient_output_arg_map.end(),
+                  "Required user input grad is not found on gradient graph.");
+      split_graphs_info_.user_input_grad_names[input_name] = input_gradient_name;
+      new_output_args.emplace_back(gradient_output_arg_map[input_gradient_name]);
+    }
+  }
+
+  // Add initializer gradients to graph outputs.
+  split_graphs_info_.initializer_grad_names_to_train.clear();
+  for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
+    std::string initializer_gradient_name = initializer_name + "_grad";
+    ORT_ENFORCE(gradient_output_arg_map.find(initializer_gradient_name) != gradient_output_arg_map.end(),
+                "Trainable initializer grad is not found on gradient graph.");
+    split_graphs_info_.initializer_grad_names_to_train.emplace_back(initializer_gradient_name);
+    new_output_args.emplace_back(gradient_output_arg_map[initializer_gradient_name]);
+  }
+
+  gradient_graph.SetOutputs(new_output_args);
 }
 
 std::string ModuleGradientGraphBuilder::GetForwardModel() const { return SerializeModel(forward_model_, "forward"); }

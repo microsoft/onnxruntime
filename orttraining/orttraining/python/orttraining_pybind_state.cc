@@ -359,13 +359,13 @@ void addObjectMethodsForTraining(py::module& m) {
   module_gradient_graph_builder_config.def(py::init())
       .def_readwrite("initializer_names_to_train", &ModuleGradientGraphBuilderConfiguration::initializer_names_to_train)
       .def_readwrite("input_names_require_grad", &ModuleGradientGraphBuilderConfiguration::input_names_require_grad)
-      .def_readwrite("use_invertible_layernorm_grad", &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad)
-      .def_readwrite("set_gradients_as_graph_outputs", &ModuleGradientGraphBuilderConfiguration::set_gradients_as_graph_outputs);
+      .def_readwrite("use_invertible_layernorm_grad", &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad);
 
   py::class_<SplitGraphsInfo> split_graphs_info(
       m, "SplitGraphsInfo", R"pbdoc(The information of split graphs for frontend.)pbdoc");
   split_graphs_info.def(py::init())
       .def_readwrite("user_input_names", &SplitGraphsInfo::user_input_names)
+      .def_readwrite("user_input_grad_names", &SplitGraphsInfo::user_input_grad_names)
       .def_readwrite("initializer_names_to_train", &SplitGraphsInfo::initializer_names_to_train)
       .def_readwrite("initializer_grad_names_to_train", &SplitGraphsInfo::initializer_grad_names_to_train)
       .def_readwrite("user_output_names", &SplitGraphsInfo::user_output_names)
@@ -389,6 +389,9 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("build_and_split", [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
                                  const std::vector<std::vector<int64_t>>& input_shapes) {
         ORT_THROW_IF_ERROR(module_gradient_graph_builder->BuildAndSplit(input_shapes));
+      })
+      .def("build", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
+        ORT_THROW_IF_ERROR(module_gradient_graph_builder->Build());
       })
       .def("get_forward_model", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
         return py::bytes(module_gradient_graph_builder->GetForwardModel());
