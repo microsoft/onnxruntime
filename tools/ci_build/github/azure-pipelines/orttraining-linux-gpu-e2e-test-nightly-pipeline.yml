@@ -39,6 +39,26 @@ jobs:
     displayName: 'Map test data'
     condition: succeededOrFailed() # ensure all tests are run
 
+  - script: |
+      docker run \
+        --gpus all \
+        --shm-size=1024m \
+        --rm \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume /bert_data:/bert_data \
+        onnxruntime_e2e_test_image \
+          mpirun -n 4 -x NCCL_DEBUG=INFO /build/RelWithDebInfo/onnxruntime_training_bert --ort_log_severity 1 --optimizer=Lamb --learning_rate=3e-3 \
+          --max_seq_length=128 --max_predictions_per_seq=20 --warmup_ratio=0.2843 --warmup_mode=Poly \
+          --model_name /bert_data/bert_models/nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12 \
+          --train_data_dir /bert_data/128/books_wiki_en_corpus/train \
+          --test_data_dir /bert_data/128/books_wiki_en_corpus/test \
+          --display_loss_steps 1 --use_nccl --use_mixed_precision --allreduce_in_fp16 --gradient_accumulation_steps 48 --num_train_steps 96 \
+          --train_batch_size 40 --pipeline_parallel_size 4 \
+          --cut_group_info 1149:407-1219/1341/1463/1585/1707/1829,1881:407-1951/2073/2195/2317/2439/2561,2613:407-2683/2805/2927/3049/3171/3293
+    displayName: 'mpirun onnxruntime_training_bert --pipeline_parallel_size 4'
+    condition: succeededOrFailed() # ensure all tests are run
+    timeoutInMinutes: 10
+        
   # Hit OOM with run_training_pipeline_e2e_tests.py - slightly above 16GB limit.
   # leave this code here for further investigation.
   # https://msdata.visualstudio.com/Vienna/_workitems/edit/956642
@@ -250,6 +270,10 @@ jobs:
             --cwd /build/RelWithDebInfo
     displayName: 'Run orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'
     condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 20
+    timeoutInMinutes: 30
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
 
   - template: templates/clean-agent-build-directory-step.yml
