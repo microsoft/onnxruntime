@@ -32,7 +32,7 @@ REGISTER_MS_KERNEL_TYPED(ReduceSumTraining, double)
 // REGISTER_MS_KERNEL_TYPED(ReduceSumTraining, int32_t)
 
 template <bool allow_multi_axes>
-template <typename T>
+template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImplEx(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const {
   const Tensor* X = ctx->Input<Tensor>(0);
 
@@ -59,8 +59,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImplEx(OpKernelContext* ctx, miope
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
 
-  return ReduceComputeCore<T>(*X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes,
-                              calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
+  return ReduceComputeCore<T, ReduceTensorIndices>(*rocm_ep_, *X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes,
+                                                   calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
 }
 
 }  // namespace rocm
