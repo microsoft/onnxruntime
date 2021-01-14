@@ -760,6 +760,16 @@ stages:
         inputs:
           ArtifactName: onnxruntime_gpu
       
+      - task: DeleteFiles@1
+        displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          Contents: |
+            **/*.obj
+            **/*.pdb
+            **/*.dll
+
       - task: PythonScript@0
         displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON'
         condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
@@ -782,16 +792,6 @@ stages:
             --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON
           workingDirectory: '$(Build.BinariesDirectory)'
 
-      - task: DeleteFiles@1
-        displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          Contents: |
-            **/*.obj
-            **/*.pdb
-            **/*.dll
-      
       #Manually set msBuildCommandline so that we can also set CAExcludePath
       - task: SDLNativeRules@2
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
