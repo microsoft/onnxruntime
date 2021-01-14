@@ -11,29 +11,9 @@
 extern "C" {
 #endif
 
-inline jsize safecast_size_t_to_jsize(size_t v) {
-#ifdef _DEBUG
-  jsize result = (jsize)v;
-  if(v != (size_t)result){
-      abort();
-  }
-  return result;
-#else
-  return (jsize)v;
-#endif    
-}
+jsize safecast_size_t_to_jsize(size_t v);
 
-inline jsize safecast_int64_to_jsize(int64_t v) {
-#ifdef _DEBUG
-  jsize result = (jsize)v;
-  if (v != (int64_t)result) {
-    abort();
-  }
-  return result;
-#else
-  return (jsize)v;
-#endif
-}
+jsize safecast_int64_to_jsize(int64_t v);
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved);
 

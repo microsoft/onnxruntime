@@ -1030,3 +1030,27 @@ void checkOrtStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * status) {
         throwOrtException(jniEnv,messageId,copy);
     }
 }
+
+jsize safecast_size_t_to_jsize(size_t v) {
+#ifndef NDEBUG
+  jsize result = (jsize)v;
+  if (v != (size_t)result) {
+    abort();
+  }
+  return result;
+#else
+  return (jsize)v;
+#endif
+}
+
+jsize safecast_int64_to_jsize(int64_t v) {
+#ifndef NDEBUG
+  jsize result = (jsize)v;
+  if (v != (int64_t)result) {
+    abort();
+  }
+  return result;
+#else
+  return (jsize)v;
+#endif
+}
