@@ -427,7 +427,7 @@ def testToyBertCheckpointBasic():
 
 def testToyBertCheckpointFrozenWeights():
     # Common setup
-    seed = 1
+    seed = 5
     total_steps = 0
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
