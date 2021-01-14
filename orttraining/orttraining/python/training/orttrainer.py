@@ -638,7 +638,7 @@ class ORTTrainer(object):
 
         ort_parameters.data_parallel_size = self.options.distributed.data_parallel_size
         ort_parameters.horizontal_parallel_size = self.options.distributed.horizontal_parallel_size
-        ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel_size
+        ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel.pipeline_parallel_size
         ort_parameters.num_pipeline_micro_batches = self.options.distributed.pipeline_parallel.num_pipeline_micro_batches
         ort_parameters.pipeline_cut_info_string = self.options.distributed.pipeline_parallel.pipeline_cut_info_string
         # We have special handling for dictionary-typed option.

@@ -88,8 +88,8 @@ trainer_config = ORTTrainerOptions({
         'world_rank': rank,
         'data_parallel_size': int(total_ranks / num_pipeline_stages),
         'horizontal_parallel_size': 1,
-        'pipeline_parallel_size': int(num_pipeline_stages),
         'pipeline_parallel': {
+            'pipeline_parallel_size': int(num_pipeline_stages),
             'num_pipeline_micro_batches': num_pipeline_steps,
             'sliced_schema': pipeline_schema,
             'sliced_axes': sliced_axes,
@@ -113,6 +113,7 @@ for i in range(5):
 # [0, 2] forms the 2-stage pipeline in the 1st data parallel group.
 # [1, 3] forms the 2-stage pipeline in the 2nd data parallel group.
 last_pipeline_stage_ranks = [2, 3]
+
 # The loss values computed at the last pipeline stages. Note that intermediate
 # stages may not have valid loss values, so we don't check them.
 expected_loss_history = [0.8660, 1.1219, 1.6610, 1.2641, 1.0162]

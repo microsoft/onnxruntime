@@ -92,8 +92,8 @@ trainer_config = ORTTrainerOptions({
         'world_rank': rank,
         'data_parallel_size': int(total_ranks / num_pipeline_stages),
         'horizontal_parallel_size': 1,
-        'pipeline_parallel_size': int(num_pipeline_stages),
         'pipeline_parallel': {
+            'pipeline_parallel_size': int(num_pipeline_stages),
             'num_pipeline_micro_batches': num_pipeline_steps,
             'sliced_schema': pipeline_schema,
             'sliced_axes': sliced_axes,
@@ -113,14 +113,16 @@ for i in range(5):
     l, p = trainer.train_step(x.to(cuda_device), y.to(cuda_device))
     loss_history.append(l)
 
+print('loss history: ', loss_history)
+
 # Valid ranks are [0, 1, 2, 3].
 # [0, 2] forms the 2-stage pipeline in the 1st data parallel group.
 # [1, 3] forms the 2-stage pipeline in the 2nd data parallel group.
 last_pipeline_stage_ranks = [2, 3]
+
 # The loss values computed at the last pipeline stages. Note that intermediate
 # stages may not have valid loss values, so we don't check them.
-
 expected_loss_history = [0.9420, 0.6608, 0.8944, 1.2279, 1.1173]
 if rank in last_pipeline_stage_ranks:
     for result, expected in zip(loss_history, expected_loss_history):
-        assert torch.allclose(result.cpu(), torch.Tensor([expected], device='cpu'), 1e-03)
+        assert torch.allclose(result.cpu(), torch.Tensor([expected], device='cpu'), 1e-03):
