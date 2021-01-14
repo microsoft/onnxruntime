@@ -3,32 +3,47 @@
 
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 
-#include "core/common/string_utils.h"
+#include "core/common/make_string.h"
 #include "core/framework/provider_options_utils.h"
 
 namespace onnxruntime {
+namespace rocm {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kMemLimit = "hip_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 }  // namespace provider_option_names
+}  // namespace rocm
+
+namespace {
+const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
+    {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
+    {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
+};
+}  // namespace
 
 ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   ROCMExecutionProviderInfo info{};
 
-  // TODO validate info.device_id
-  ReadProviderOption(options, provider_option_names::kDeviceId, info.device_id);
-  ReadProviderOption(options, provider_option_names::kMemLimit, info.hip_mem_limit);
-  ReadProviderOption(options, provider_option_names::kArenaExtendStrategy, info.arena_extend_strategy);
+  ORT_THROW_IF_ERROR(
+      ProviderOptionsParser{}
+          // TODO validate info.device_id
+          .AddAssignmentToReference(rocm::provider_option_names::kDeviceId, info.device_id)
+          .AddAssignmentToReference(rocm::provider_option_names::kMemLimit, info.hip_mem_limit)
+          .AddAssignmentToEnumReference(
+              rocm::provider_option_names::kArenaExtendStrategy,
+              arena_extend_strategy_mapping, info.arena_extend_strategy)
+          .Parse(options));
 
   return info;
 }
 
 ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecutionProviderInfo& info) {
   const ProviderOptions options{
-      {provider_option_names::kDeviceId, MakeString(info.device_id)},
-      {provider_option_names::kMemLimit, MakeString(info.hip_mem_limit)},
-      {provider_option_names::kArenaExtendStrategy, MakeString(info.arena_extend_strategy)},
+      {rocm::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
+      {rocm::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.hip_mem_limit)},
+      {rocm::provider_option_names::kArenaExtendStrategy,
+       EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
   };
 
   return options;

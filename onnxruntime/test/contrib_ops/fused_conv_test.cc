@@ -19,27 +19,22 @@ struct ConvOpAndTestAttributes {
   string activation;
 };
 
-std::unordered_set<std::string> GetExcludedProviders() {
-  std::unordered_set<std::string> excluded_providers;
-  int count = (int)(sizeof(providers_available) / sizeof(char*));
-  for (int i = 0; i < count; i++) {
-    if (strcmp(providers_available[i], kCudaExecutionProvider) != 0) {
-      excluded_providers.insert(providers_available[i]);
-    }
-  }
-  return excluded_providers;
-}
+static std::unordered_set<std::string> excluded_providers = {
+  kCpuExecutionProvider,
+  kDnnlExecutionProvider,
+  kOpenVINOExecutionProvider,
+  kNupharExecutionProvider,
+  kVitisAIExecutionProvider,
+  kTensorrtExecutionProvider,
+  kNnapiExecutionProvider,
+  kRknpuExecutionProvider,
+  kDmlExecutionProvider,
+  kMIGraphXExecutionProvider,
+  kAclExecutionProvider,
+  kArmNNExecutionProvider,
+  kRocmExecutionProvider};
 
-std::unordered_set<std::string> excluded_providers = GetExcludedProviders();
-
-void TestConvOp(const ConvOpAndTestAttributes& attributes,
-                const vector<vector<float>>& inputs,
-                const vector<vector<int64_t>>& input_shapes,
-                const std::initializer_list<float>& expected_output,
-                const vector<int64_t>& expected_output_shape,
-                bool weight_is_initializer = false,
-                OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                const std::string& err_str = "") {
+void TestConvOp(const ConvOpAndTestAttributes& attributes, const vector<vector<float>>& inputs, const vector<vector<int64_t>>& input_shapes, const std::initializer_list<float>& expected_output, const vector<int64_t>& expected_output_shape, bool weight_is_initializer = false, OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess, const std::string& err_str = "") {
   OpTester test("FusedConv", 1, onnxruntime::kMSDomain);
   test.AddAttribute("group", attributes.group);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
@@ -81,7 +76,7 @@ TEST(FusedConvTest, Conv2D_Relu) {
       vector<int64_t>{2, 2},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      "Relu"                        // excluded EPs
+      "Relu"                        // activation
   };
 
   vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
@@ -101,7 +96,7 @@ TEST(FusedConvTest, Conv2D_Bias_Relu) {
       vector<int64_t>{2, 2},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      "Relu"                        // excluded EPs
+      "Relu"                        // activation
   };
 
   vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
@@ -123,7 +118,7 @@ TEST(FusedConvTest, Conv2D_Bias_Z_Relu) {
       vector<int64_t>{2, 2},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      "Relu"                        // excluded EPs
+      "Relu"                        // activation
   };
 
   vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};

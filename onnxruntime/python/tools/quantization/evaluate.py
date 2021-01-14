@@ -10,14 +10,16 @@ from .calibrate import CalibrationDataReader, calibrate
 import onnxruntime
 import numpy as np
 
-class YoloV3Evaluator: 
-    def __init__(self, model_path,
-                       data_reader: CalibrationDataReader,
-                       width=416,
-                       height=416,
-                       providers=["CUDAExecutionProvider"],
-                       ground_truth_object_class_file="./coco-object-categories-2017.json",
-                       onnx_object_class_file="./onnx_coco_classes.txt"):
+
+class YoloV3Evaluator:
+    def __init__(self,
+                 model_path,
+                 data_reader: CalibrationDataReader,
+                 width=416,
+                 height=416,
+                 providers=["CUDAExecutionProvider"],
+                 ground_truth_object_class_file="./coco-object-categories-2017.json",
+                 onnx_object_class_file="./onnx_coco_classes.txt"):
         '''
         :param model_path: ONNX model to validate 
         :param data_reader: user implemented object to read in and preprocess calibration dataset
@@ -28,11 +30,18 @@ class YoloV3Evaluator:
         self.data_reader = data_reader
         self.width = width
         self.height = height
-        self.providers = providers 
-        self.class_to_id = {} # object class -> id
+        self.providers = providers
+        self.class_to_id = {}  # object class -> id
         self.onnx_class_list = []
         self.prediction_result_list = []
-        self.identical_class_map = {"motorbike": "motorcycle", "aeroplane": "airplane", "sofa": "couch", "pottedplant": "potted plant", "diningtable": "dining table", "tvmonitor": "tv"}
+        self.identical_class_map = {
+            "motorbike": "motorcycle",
+            "aeroplane": "airplane",
+            "sofa": "couch",
+            "pottedplant": "potted plant",
+            "diningtable": "dining table",
+            "tvmonitor": "tv"
+        }
 
         f = open(onnx_object_class_file, 'r')
         lines = f.readlines()
@@ -41,7 +50,6 @@ class YoloV3Evaluator:
 
         self.generate_class_to_id(ground_truth_object_class_file)
         print(self.class_to_id)
-
 
     def generate_class_to_id(self, ground_truth_object_class_file):
         with open(ground_truth_object_class_file) as f:
@@ -75,15 +83,27 @@ class YoloV3Evaluator:
             id = self.class_to_id[class_name]
 
             bbox = [out_boxes[i][1], out_boxes[i][0], out_boxes[i][3], out_boxes[i][2]]
-            bbox_yxhw = [out_boxes[i][1], out_boxes[i][0], out_boxes[i][3]-out_boxes[i][1], out_boxes[i][2]-out_boxes[i][0]]
-            bbox_yxhw_str = [str(out_boxes[i][1]), str(out_boxes[i][0]), str(out_boxes[i][3]-out_boxes[i][1]), str(out_boxes[i][2]-out_boxes[i][0])]
+            bbox_yxhw = [
+                out_boxes[i][1], out_boxes[i][0], out_boxes[i][3] - out_boxes[i][1], out_boxes[i][2] - out_boxes[i][0]
+            ]
+            bbox_yxhw_str = [
+                str(out_boxes[i][1]),
+                str(out_boxes[i][0]),
+                str(out_boxes[i][3] - out_boxes[i][1]),
+                str(out_boxes[i][2] - out_boxes[i][0])
+            ]
             score = str(out_scores[i])
             coor = np.array(bbox[:4], dtype=np.int32)
             c1, c2 = (coor[0], coor[1]), (coor[2], coor[3])
-           
+
             if is_batch:
-                image_id = image_id_batch[out_batch_index[i]] 
-            self.prediction_result_list.append({"image_id":int(image_id), "category_id":int(id), "bbox":bbox_yxhw, "score":out_scores[i]})
+                image_id = image_id_batch[out_batch_index[i]]
+            self.prediction_result_list.append({
+                "image_id": int(image_id),
+                "category_id": int(id),
+                "bbox": bbox_yxhw,
+                "score": out_scores[i]
+            })
 
     def predict(self):
         session = onnxruntime.InferenceSession(self.model_path, providers=self.providers)
@@ -91,7 +111,7 @@ class YoloV3Evaluator:
         outputs = []
 
         # If you decide to run batch inference, please make sure all input images must be re-sized to the same shape.
-        # Which means the bounding boxes from groun truth annotation must to be adjusted accordingly, otherwise you will get very low mAP results. 
+        # Which means the bounding boxes from groun truth annotation must to be adjusted accordingly, otherwise you will get very low mAP results.
         # Here we simply choose to run serial inference.
         if self.data_reader.get_batch_size() > 1:
             # batch inference
@@ -142,46 +162,47 @@ class YoloV3Evaluator:
         import pylab
         pylab.rcParams['figure.figsize'] = (10.0, 8.0)
 
-
-        annType = ['segm','bbox','keypoints']
-        annType = annType[1]      #specify type here
-        prefix = 'person_keypoints' if annType=='keypoints' else 'instances'
-        print('Running evaluation for *%s* results.'%(annType))
+        annType = ['segm', 'bbox', 'keypoints']
+        annType = annType[1]  #specify type here
+        prefix = 'person_keypoints' if annType == 'keypoints' else 'instances'
+        print('Running evaluation for *%s* results.' % (annType))
 
         annFile = annotations
-        cocoGt=COCO(annFile)
+        cocoGt = COCO(annFile)
 
-        resFile = prediction_result 
-        cocoDt=cocoGt.loadRes(resFile)
+        resFile = prediction_result
+        cocoDt = cocoGt.loadRes(resFile)
 
-        imgIds=sorted(cocoGt.getImgIds())
-        imgIds=imgIds[0:100]
+        imgIds = sorted(cocoGt.getImgIds())
+        imgIds = imgIds[0:100]
         imgId = imgIds[np.random.randint(100)]
 
-
         # running evaluation
-        cocoEval = COCOeval(cocoGt,cocoDt,annType)
-        cocoEval.params.imgIds  = imgIds
+        cocoEval = COCOeval(cocoGt, cocoDt, annType)
+        cocoEval.params.imgIds = imgIds
         cocoEval.evaluate()
         cocoEval.accumulate()
         cocoEval.summarize()
 
-class YoloV3VisionEvaluator(YoloV3Evaluator): 
-    def __init__(self, model_path,
-                       data_reader: CalibrationDataReader,
-                       width=608,
-                       height=384,
-                       providers=["CUDAExecutionProvider"],
-                       ground_truth_object_class_file="./coco-object-categories-2017.json",
-                       onnx_object_class_file="./onnx_coco_classes.txt"):
 
-        YoloV3Evaluator.__init__(self, model_path, data_reader,width, height, providers, ground_truth_object_class_file, onnx_object_class_file)
+class YoloV3VisionEvaluator(YoloV3Evaluator):
+    def __init__(self,
+                 model_path,
+                 data_reader: CalibrationDataReader,
+                 width=608,
+                 height=384,
+                 providers=["CUDAExecutionProvider"],
+                 ground_truth_object_class_file="./coco-object-categories-2017.json",
+                 onnx_object_class_file="./onnx_coco_classes.txt"):
+
+        YoloV3Evaluator.__init__(self, model_path, data_reader, width, height, providers,
+                                 ground_truth_object_class_file, onnx_object_class_file)
 
     def scale_coords(self, img1_shape, coords, img0_shape, ratio_pad=None):
         # Rescale coords (xyxy) from img1_shape to img0_shape
         if ratio_pad is None:  # calculate from img0_shape
             # gain = max(img1_shape) / max(img0_shape)  # gain  = old / new
-            gain = min(img1_shape[0] / img0_shape[0], img1_shape[1]/img0_shape[1])
+            gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])
             pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
         else:
             gain = ratio_pad[0][0]
@@ -203,19 +224,19 @@ class YoloV3VisionEvaluator(YoloV3Evaluator):
 
     def set_bbox_prediction(self, bboxes, scores, image_height, image_width, image_id):
 
-        for i in range(bboxes.shape[0]): 
+        for i in range(bboxes.shape[0]):
             bbox = bboxes[i]
-            bbox[0] *= self.width #x
-            bbox[1] *= self.height #y
-            bbox[2] *= self.width #w
-            bbox[3] *= self.height #h
-            
+            bbox[0] *= self.width  #x
+            bbox[1] *= self.height  #y
+            bbox[2] *= self.width  #w
+            bbox[3] *= self.height  #h
+
             img0_shape = (image_height, image_width)
             img1_shape = (self.height, self.width)
             bbox = self.xywh2xyxy(bbox)
             bbox = self.scale_coords(img1_shape, bbox, img0_shape)
 
-            class_name = 'person' 
+            class_name = 'person'
             if class_name in self.identical_class_map:
                 class_name = self.identical_class_map[class_name]
             id = self.class_to_id[class_name]
@@ -223,7 +244,12 @@ class YoloV3VisionEvaluator(YoloV3Evaluator):
             bbox[2] = bbox[2] - bbox[0]
             bbox[3] = bbox[3] - bbox[1]
 
-            self.prediction_result_list.append({"image_id":int(image_id), "category_id":int(id), "bbox":list(bbox), "score":scores[i][0]})
+            self.prediction_result_list.append({
+                "image_id": int(image_id),
+                "category_id": int(id),
+                "bbox": list(bbox),
+                "score": scores[i][0]
+            })
 
     def predict(self):
         session = onnxruntime.InferenceSession(self.model_path, providers=self.providers)
@@ -247,7 +273,6 @@ class YoloV3VisionEvaluator(YoloV3Evaluator):
                 image_size_list = [image_size_list]
                 image_id_list = [image_id_list]
 
-
             image_size_batch.append(image_size_list)
             image_id_batch.append(image_id_list)
             outputs.append(session.run(None, inputs))
@@ -255,15 +280,14 @@ class YoloV3VisionEvaluator(YoloV3Evaluator):
         for i in range(len(outputs)):
             output = outputs[i]
             for batch_i in range(self.data_reader.get_batch_size()):
-                batch_idx = output[0][:,0] == batch_i
-                bboxes = output[1][batch_idx,:]
-                scores = output[2][batch_idx,:]
+                batch_idx = output[0][:, 0] == batch_i
+                bboxes = output[1][batch_idx, :]
+                scores = output[2][batch_idx, :]
 
-                if batch_i > len(image_size_batch[i])-1 or batch_i > len(image_id_batch[i])-1:
+                if batch_i > len(image_size_batch[i]) - 1 or batch_i > len(image_id_batch[i]) - 1:
                     continue
 
                 image_height = image_size_batch[i][batch_i][0]
-                image_width= image_size_batch[i][batch_i][1]
+                image_width = image_size_batch[i][batch_i][1]
                 image_id = image_id_batch[i][batch_i]
                 self.set_bbox_prediction(bboxes, scores, image_height, image_width, image_id)
-

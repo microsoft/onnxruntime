@@ -201,5 +201,9 @@ SPECIALIZED_SOFTMAX_GRAD_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_GRAD_IMPL(half, half, float)
 SPECIALIZED_SOFTMAX_GRAD_IMPL(double, double, double)
 
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_SOFTMAX_GRAD_IMPL(nv_bfloat16, nv_bfloat16, float)
+#endif
+
 }
 }
