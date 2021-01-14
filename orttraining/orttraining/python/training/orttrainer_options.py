@@ -84,7 +84,7 @@ class ORTTrainerOptions(object):
                         },
                         'pipeline_parallel' : {
                             'type': 'dict',
-                            'default_setter': lambda _: {},
+                            'default': {},
                             'required': False,
                             'schema': {
                                 'pipeline_parallel_size': {
