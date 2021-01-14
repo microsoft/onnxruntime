@@ -129,7 +129,7 @@ class ORTTrainerOptions(object):
                         },
                         'deepspeed_zero_optimization': {
                             'type': 'dict',
-                            'default_setter': lambda _: {},
+                            'default': {},
                             'required': False,
                             'schema': {
                                 'stage': {
