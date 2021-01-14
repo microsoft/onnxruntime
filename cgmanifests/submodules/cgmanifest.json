@@ -172,16 +172,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "42c53187a56c12dc5518cc25e778e5e3e7dbaf72",
-          "repositoryUrl": "https://github.com/google/gemmlowp.git"
-        },
-        "comments": "git submodule at cmake/external/gemmlowp"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
@@ -232,7 +222,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "994c6181247d7b419b28889fc57d5817e2089419",
+          "commitHash": "bc7a70b46f4ae88383a4ca49c477fd859715620c",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"

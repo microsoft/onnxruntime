@@ -305,7 +305,7 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
 #endif
       })
-      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
+      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
 
 #if defined(USE_MPI)
@@ -315,12 +315,11 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        std::vector<std::string> provider_types = {};
-        InitializeSession(sess->GetSessionHandle(), provider_types);
+        InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
 
         return config_result;
       })
-      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
+      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
 
@@ -331,8 +330,7 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        std::vector<std::string> provider_types = {};
-        InitializeSession(sess->GetSessionHandle(), provider_types);
+        InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
 
         return config_result;
       })

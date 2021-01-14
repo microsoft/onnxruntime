@@ -576,7 +576,7 @@ void setup_training_params(BertParameters& params) {
     if (params.cuda_mem_limit_in_gb > 0) {
       info.cuda_mem_limit = gsl::narrow<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
     }
-    info.cudnn_conv_algo = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+    info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 
     params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(info));
     params.input_allocator = std::make_shared<CUDAPinnedAllocator>(info.device_id, CUDA_PINNED);

@@ -277,7 +277,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     const std::string node_name_for_profiling = [&]() -> std::string {
       if (!is_profiler_enabled) return {};
       // Derive something meaningful for profile traces and logs if node name field is blank in execution graph
-      return node.Name().empty() ? MakeStringLite(node.OpType(), "_", node_index) : node.Name();
+      return node.Name().empty() ? MakeString(node.OpType(), "_", node_index) : node.Name();
     }();
 
     if (is_profiler_enabled) {
@@ -303,7 +303,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 #ifdef ENABLE_NVTX_PROFILE
       profile::NvtxRangeCreator node_compute_range(
-          MakeStringLite(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Blue);
+          MakeString(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Blue);
       node_compute_range.Begin();
 #endif
       ORT_TRY {
