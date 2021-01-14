@@ -14,6 +14,20 @@ TEST(CumSumTest, _1DTest) {
   test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+TEST(CumSumTest, _1DTestOpset14) {
+  OpTester test("CumSum", 14, onnxruntime::kOnnxDomain);
+  test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});
+  test.AddInput<int32_t>("axis", {1}, {0});
+  test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+TEST(CumSumTest, _1DTestFloat16) {
+  OpTester test("CumSum", 14, onnxruntime::kOnnxDomain);
+  test.AddInput<MLFloat16>("x", {5}, {1., 2., 3., 4., 5.});
+  test.AddInput<int32_t>("axis", {1}, {0});
+  test.AddOutput<MLFloat16>("y", {5}, {1., 3., 6., 10., 15.});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCPUExecutionProvider});
+}
 TEST(CumSumTest, _1DTestInvalidAxis) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});
