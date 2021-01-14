@@ -62,47 +62,37 @@ template <typename T>
 static Status cosine_sum_window(Tensor* Y, size_t size, float a0, float a1, float a2) {
   auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
 
-  static const double pi = 3.14159265;
-  static const double tau = 2 * pi;
+  // Calculate the radians to increment per sample
+  constexpr double pi = 3.14159265;
+  constexpr double tau = 2 * pi;
   const double angular_increment = tau / size;
 
   for (size_t i = 0; i < size; i++) {
+    auto a2_component = a2 == 0 ? 0 : (a2 * cos(2 * angular_increment * i));
+
     T& value = *(Y_data + i);
-    if (a2 == 0) {
-      value = static_cast<T>(a0 - (a1 * cos(angular_increment * i)));
-    } else {
-      value = static_cast<T>(a0 - (a1 * cos(angular_increment * i)) + (a2 * cos(2 * angular_increment * i)));
-    }
+    value = static_cast<T>(a0 - (a1 * cos(angular_increment * i)) + a2_component);
   }
 
   return Status::OK();
 }
 
 template <typename T>
-static T get_scalar_value_from_tensor(const Tensor* t) {
-  ORT_ENFORCE(t->Shape().Size() == 1, "ratio input should have a single value.");
-
-  T value;
-
-  auto data_type = t->DataType()->AsPrimitiveDataType()->GetDataType();
+static T get_scalar_value_from_tensor(const Tensor* tensor) {
+  ORT_ENFORCE(tensor->Shape().Size() == 1, "ratio input should have a single value.");
+  auto data_type = tensor->DataType()->AsPrimitiveDataType()->GetDataType();
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      value = static_cast<T>(*reinterpret_cast<const float*>(t->DataRaw()));
-      break;
+      return static_cast<T>(*reinterpret_cast<const float*>(tensor->DataRaw()));
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      value = static_cast<T>(*reinterpret_cast<const double*>(t->DataRaw()));
-      break;
+      return static_cast<T>(*reinterpret_cast<const double*>(tensor->DataRaw()));
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      value = static_cast<T>(*reinterpret_cast<const int32_t*>(t->DataRaw()));
-      break;
+      return static_cast<T>(*reinterpret_cast<const int32_t*>(tensor->DataRaw()));
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      value = static_cast<T>(*reinterpret_cast<const int64_t*>(t->DataRaw()));
-      break;
+      return static_cast<T>(*reinterpret_cast<const int64_t*>(tensor->DataRaw()));
     default:
       ORT_THROW("Unsupported input data type of ", data_type);
   }
-
-  return value;
 }
 
 static Status create_cosine_sum_window(
@@ -110,35 +100,60 @@ static Status create_cosine_sum_window(
     onnx::TensorProto_DataType output_datatype,
     float a0, float a1, float a2) {
   
+  // Get the size of the window
   auto size = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(0));
-  onnxruntime::TensorShape Y_shape({size});
-  auto* Y = ctx->Output(0, Y_shape);
+
+  // Get the output tensor
+  auto Y_shape = onnxruntime::TensorShape({size});
+  auto Y = ctx->Output(0, Y_shape);
 
   switch (output_datatype) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return cosine_sum_window<float>(Y, size, a0, a1, a2);
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      return cosine_sum_window<double>(Y, size, a0, a1, a2);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      return cosine_sum_window<int16_t>(Y, size, a0, a1, a2);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      return cosine_sum_window<int32_t>(Y, size, a0, a1, a2);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return cosine_sum_window<int64_t>(Y, size, a0, a1, a2);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      return cosine_sum_window<uint8_t>(Y, size, a0, a1, a2);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      return cosine_sum_window<uint16_t>(Y, size, a0, a1, a2);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      return cosine_sum_window<uint32_t>(Y, size, a0, a1, a2);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      return cosine_sum_window<uint64_t>(Y, size, a0, a1, a2);
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+      ORT_RETURN_IF_ERROR((cosine_sum_window<float>(Y, size, a0, a1, a2)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
+      ORT_RETURN_IF_ERROR((cosine_sum_window<double>(Y, size, a0, a1, a2)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
+      ORT_RETURN_IF_ERROR((cosine_sum_window<int16_t>(Y, size, a0, a1, a2)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+      ORT_RETURN_IF_ERROR((cosine_sum_window<int32_t>(Y, size, a0, a1, a2)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+      ORT_RETURN_IF_ERROR((cosine_sum_window<int64_t>(Y, size, a0, a1, a2)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
+      ORT_RETURN_IF_ERROR((cosine_sum_window<uint8_t>(Y, size, a0, a1, a2)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
+      ORT_RETURN_IF_ERROR((cosine_sum_window<uint16_t>(Y, size, a0, a1, a2)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32: {
+      ORT_RETURN_IF_ERROR((cosine_sum_window<uint32_t>(Y, size, a0, a1, a2)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64: {
+      ORT_RETURN_IF_ERROR((cosine_sum_window<uint64_t>(Y, size, a0, a1, a2)));
+      break;
+    }
     default:
       ORT_THROW("Unsupported input data type of ", output_datatype);
   }
+
+  return Status::OK();
 }
 
 Status HannWindow::Compute(OpKernelContext* ctx) const {
+  // HannWindows are a special case of Cosine-Sum Windows which take the following form:
+  // w[n] = SUM_k=0_K( (-1)^k * a_k * cos(2*pi*k*n/N) ) with values the following values for a_k:
   float a0 = .5f;
   float a1 = a0;
   float a2 = 0;
@@ -146,6 +161,8 @@ Status HannWindow::Compute(OpKernelContext* ctx) const {
 }
 
 Status HammingWindow::Compute(OpKernelContext* ctx) const {
+  // HammingWindows are a special case of Cosine-Sum Windows which take the following form:
+  // w[n] = SUM_k=0_K( (-1)^k * a_k * cos(2*pi*k*n/N) ) with values the following values for a_k:
   float a0 = 25.f / 46.f;
   float a1 = 1 - a0;
   float a2 = 0;
@@ -153,6 +170,8 @@ Status HammingWindow::Compute(OpKernelContext* ctx) const {
 }
 
 Status BlackmanWindow::Compute(OpKernelContext* ctx) const {
+  // BlackmanWindows are a special case of Cosine-Sum Windows which take the following form:
+  // w[n] = SUM_k=0_K( (-1)^k * a_k * cos(2*pi*k*n/N) ) with values the following values for a_k:
   float alpha = .16f;
   float a2 = alpha / 2.f;
   float a0 = .5f - a2;
@@ -245,27 +264,46 @@ Status create_mel_weight_matrix(OpKernelContext* ctx, int64_t num_mel_bins, int6
 static Status create_mel_weight_matrix(OpKernelContext* ctx, onnx::TensorProto_DataType output_datatype,
   int64_t num_mel_bins, int64_t dft_length, int64_t sample_rate, float lower_edge_hertz, float upper_edge_hertz) {
   switch (output_datatype) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return create_mel_weight_matrix<float>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      return create_mel_weight_matrix<double>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      return create_mel_weight_matrix<int16_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      return create_mel_weight_matrix<int32_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return create_mel_weight_matrix<int64_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      return create_mel_weight_matrix<uint8_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      return create_mel_weight_matrix<uint16_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      return create_mel_weight_matrix<uint32_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      return create_mel_weight_matrix<uint64_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+      ORT_RETURN_IF_ERROR((create_mel_weight_matrix<float>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
+      ORT_RETURN_IF_ERROR((create_mel_weight_matrix<double>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
+      ORT_RETURN_IF_ERROR((create_mel_weight_matrix<int16_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+      ORT_RETURN_IF_ERROR((create_mel_weight_matrix<int32_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+      ORT_RETURN_IF_ERROR((create_mel_weight_matrix<int64_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
+      ORT_RETURN_IF_ERROR((create_mel_weight_matrix<uint8_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
+      ORT_RETURN_IF_ERROR((create_mel_weight_matrix<uint16_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32: {
+      ORT_RETURN_IF_ERROR((create_mel_weight_matrix<uint32_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64: {
+      ORT_RETURN_IF_ERROR((create_mel_weight_matrix<uint64_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
+      break;
+    }
     default:
       ORT_THROW("Unsupported input data type of ", output_datatype);
   }
+  return Status::OK();
 }
 
 Status MelWeightMatrix::Compute(OpKernelContext* ctx) const {
@@ -275,7 +313,8 @@ Status MelWeightMatrix::Compute(OpKernelContext* ctx) const {
   const auto lower_edge_hertz = get_scalar_value_from_tensor<float>(ctx->Input<Tensor>(3));
   const auto upper_edge_hertz = get_scalar_value_from_tensor<float>(ctx->Input<Tensor>(4));
 
-  return create_mel_weight_matrix(ctx, data_type_, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz);
+  ORT_RETURN_IF_ERROR(create_mel_weight_matrix(ctx, data_type_, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz));
+  return Status::OK();
 }
 
 }  // namespace contrib

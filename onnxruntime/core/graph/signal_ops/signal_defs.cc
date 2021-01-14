@@ -156,46 +156,14 @@ void RegisterSignalSchemas() {
              "The first dimension is the batch dimension.",
              "T1")
       .Input(1,
-             "dft_length",
-             "Size of the fft.",
-             "T2")
-      .Input(2,
              "window",
              "A tensor representing the window that will be slid over the input signal.",
              "T1",
              OpSchema::FormalParameterOption::Optional)
-      .Input(3,
-             "frame_step",
-             "The number of samples to step between successive DFTs.",
-             "T2")
-      .Output(0,
-              "output",
-              "The inverse fourier transform of the input vector,"
-              "using the same format as the input.",
-              "T1")
-      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
-      .TypeConstraint("T2", {"tensor(int64)"}, "");
-
-  MS_SIGNAL_OPERATOR_SCHEMA(ISTFT)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(R"DOC(ISTFT)DOC")
-      .Input(0,
-             "input",
-             "A complex signal of dimension signal_ndim."
-             "The last dimension of the tensor should be 2,"
-             "representing the real and imaginary components of complex numbers,"
-             "and should have at least signal_ndim + 2 dimensions."
-             "The first dimension is the batch dimension.",
-             "T1")
-      .Input(1,
-             "dft_length",
-             "Size of the fft.",
-             "T2")
       .Input(2,
-             "window",
-             "A tensor representing the window that will be slid over the input signal.",
-             "T1",
+             "frame_length",  // frame_length, fft_length, pad_mode
+             "Size of the fft.",
+             "T2",
              OpSchema::FormalParameterOption::Optional)
       .Input(3,
              "frame_step",

@@ -739,7 +739,7 @@ static void TestSTFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, 
           .Operators().Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
               .SetInput(L"signal", L"Input.TimeSignal")
               .SetInput(L"window", L"Output.HannWindow")
-              .SetConstant(L"dft_length", dft_length)
+              .SetConstant(L"frame_length", dft_length)
               .SetConstant(L"frame_step", frame_step)
               .SetOutput(L"output", L"Output.STFT"))
           .CreateModel();
@@ -759,7 +759,7 @@ static void TestSTFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, 
 
   binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromShapeArrayAndDataArray(input_shape, signal));
   binding.Bind(L"hann0.size", dft_length);
-  binding.Bind(L"stft0.dft_length", dft_length);
+  binding.Bind(L"stft0.frame_length", dft_length);
   binding.Bind(L"stft0.frame_step", frame_step);
 
   // Evaluate
@@ -846,7 +846,7 @@ static void TestMiddleCSpectrogram(
           .Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
                    .SetInput(L"signal", L"Input.TimeSignal")
                    .SetInput(L"window", L"hann_window")
-                   .SetConstant(L"dft_length", dft_length)              // SetConstant not implemented: bind stft0.dft_length to dft_length
+                   .SetConstant(L"frame_length", dft_length)              // SetConstant not implemented: bind stft0.dft_length to dft_length
                    .SetConstant(L"frame_step", frame_step)              // SetConstant not implemented: bind stft0.frame_step to frame_step
                    .SetOutput(L"output", L"stft_output"))
           .Operators()
@@ -915,7 +915,7 @@ static void TestMiddleCSpectrogram(
  
   // These are constant initializers. Constants should be automatically generated and set... but since that is not implemented... they need to be duplicated
   binding.Bind(L"hann0.size", window_length);
-  binding.Bind(L"stft0.dft_length", dft_length);
+  binding.Bind(L"stft0.frame_length", dft_length);
   binding.Bind(L"stft0.frame_step", frame_step);
   binding.Bind(L"real_slice.starts", real_slice_start);
   binding.Bind(L"real_slice.ends", real_slice_ends);

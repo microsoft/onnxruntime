@@ -39,15 +39,20 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     STFT);
 
-ONNX_OPERATOR_KERNEL_EX(
-    ISTFT,
-    kMSDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
-    ISTFT);
+static bool is_real_valued_signal(const onnxruntime::TensorShape & shape) {
+  // The first dimention is the batch size
+  // The second dimention is the signal value
+  return shape.NumDimensions() == 2;
+}
 
-bool is_power_of_2(size_t size) {
+static bool is_complex_valued_signal(const onnxruntime::TensorShape& shape) {
+  // The first dimention is the batch size
+  // The second dimention is the signal length
+  // The third dimention is set to 2 and represents the real and imaginary parts of the complex sample
+  return shape.NumDimensions() == 3 && shape[2] == 2;
+}
+
+static bool is_power_of_2(size_t size) {
   unsigned n_bits = 0;
   while (size != 0) {
     n_bits += size & 1;
@@ -155,9 +160,9 @@ static Status fft_radix2(OpKernelContext* ctx, size_t batch_idx, const Tensor* X
 
   if (is_onesided) {
     const auto& Y_shape = Y->Shape();
-    size_t n_fft = static_cast<size_t>(Y_shape[1]);
-    auto destination = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * n_fft);
-    memcpy(destination, Y_data, sizeof(std::complex<T>) * n_fft);
+    size_t fft_output_size = static_cast<size_t>(Y_shape[1]);
+    auto destination = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * fft_output_size);
+    memcpy(destination, Y_data, sizeof(std::complex<T>) * fft_output_size);
   }
 
   return Status::OK();
@@ -169,11 +174,11 @@ static Status dft_naive(size_t batch_idx, const Tensor* X, Tensor* Y, const Tens
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[1]);
   const auto& Y_shape = Y->Shape();
-  size_t n_fft = static_cast<size_t>(Y_shape[1]);
+  size_t dft_output_size = static_cast<size_t>(Y_shape[1]);
 
   // Get data
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + (batch_idx * number_of_samples);
-  auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * n_fft);
+  auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * dft_output_size);
   
   U* window_data = nullptr;
   if (window) {
@@ -182,7 +187,7 @@ static Status dft_naive(size_t batch_idx, const Tensor* X, Tensor* Y, const Tens
 
   auto angular_velocity = compute_angular_velocity<T>(number_of_samples, inverse);
 
-  for (int i = 0; i < n_fft; i++) {
+  for (int i = 0; i < dft_output_size; i++) {
     std::complex<T>& out = *(Y_data + i);
     out.real(0);
     out.imag(0);
@@ -203,180 +208,243 @@ static Status dft_naive(size_t batch_idx, const Tensor* X, Tensor* Y, const Tens
 }
 
 template <typename T, typename U>
-static Status dft(OpKernelContext* ctx, const Tensor* X, Tensor* Y, const Tensor* window, bool is_onesided, bool inverse) {
-  // Get shape and significant bits
+static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, Tensor* Y, const Tensor* window, bool is_onesided, bool inverse) {
+  // Get shape
   const auto& X_shape = X->Shape();
   size_t number_of_batches = static_cast<size_t>(X_shape[0]);
   size_t number_of_samples = static_cast<size_t>(X_shape[1]);
    
-  Status status = Status::OK();
-
   // radix 2 fft
   for (size_t i = 0; i < number_of_batches; i++) {
     if (is_power_of_2(number_of_samples)) {
-      status = fft_radix2<T, U>(ctx, i, X, Y, window, is_onesided, inverse);
+      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, i, X, Y, window, is_onesided, inverse)));
     } else {
-      status = dft_naive<T, U>(i, X, Y, window, inverse);
-    }
-      
-    if (!status.IsOK()) {
-      return status;
+      ORT_RETURN_IF_ERROR((dft_naive<T, U>(i, X, Y, window, inverse)));
     }
   }
-  return status;
+
+  return Status::OK();
 }
 
-static Status dft(OpKernelContext* ctx, bool is_onesided, bool inverse) {
-  Status status;
+static Status discrete_fourier_transform(OpKernelContext* ctx, bool is_onesided, bool inverse) {
+  // Get input shape
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
+  const auto is_real_valued = is_real_valued_signal(X_shape);
+  const auto is_complex_valued = is_complex_valued_signal(X_shape);
 
-  onnxruntime::TensorShape Y_shape;
-  int64_t n_fft = is_onesided ? static_cast<int64_t>(std::floor(X_shape[1]/2.f) + 1) : X_shape[1];
-  Y_shape = onnxruntime::TensorShape({X_shape[0], n_fft, 2});
-  auto* Y = ctx->Output(0, Y_shape);
-  
-  MLDataType data_type = X->DataType();
-  const auto element_size = data_type->Size();
-  switch (element_size) {
-    case sizeof(float):
-      if (X_shape.NumDimensions() == 2) {
-        status = dft<float, float>(ctx, X, Y, nullptr, is_onesided, inverse);
-      } else if (X_shape.NumDimensions() == 3 && X_shape[2] == 2) {
-        status = dft<float, std::complex<float>>(ctx, X, Y, nullptr, is_onesided, inverse);
-      }
-      break;
-    case sizeof(double):
-      if (X_shape.NumDimensions() == 2) {
-        status = dft<double, double>(ctx, X, Y, nullptr, is_onesided, inverse);
-      } else if (X_shape.NumDimensions() == 3 && X_shape[2] == 2) {
-        status = dft<double, std::complex<double>>(ctx, X, Y, nullptr, is_onesided, inverse);
-      }
-      break;
-    default:
-      ORT_THROW("Unsupported input data type of ", data_type);
+  // Get the DFT output size. Onesided will return only the unique values!
+  // note: x >> 1 === std::floor(x / 2.f)
+  auto dft_output_size = is_onesided ?
+      ((X_shape[1] >> 1) + 1) :
+      X_shape[1];
+
+  // Get output shape
+  auto Y_shape = onnxruntime::TensorShape({X_shape[0], dft_output_size, 2});
+  auto Y = ctx->Output(0, Y_shape);
+
+  // Get data type
+  auto data_type = X->DataType();
+
+  auto element_size = data_type->Size();
+  if (element_size == sizeof(float)) {
+    if (is_real_valued) {
+        ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, float>(ctx, X, Y, nullptr, is_onesided, inverse)));
+    } else if (is_complex_valued) {
+        ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, std::complex<float>>(ctx, X, Y, nullptr, is_onesided, inverse)));
+    } else {
+        ORT_THROW("Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for complex inputs.", data_type);
+    }
+  } else if (element_size == sizeof(double)) {
+    if (is_real_valued) {
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, double>(ctx, X, Y, nullptr, is_onesided, inverse)));
+    } else if (is_complex_valued) {
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, std::complex<double>>(ctx, X, Y, nullptr, is_onesided, inverse)));
+    } else {
+      ORT_THROW("Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for complex inputs.", data_type);
+    }
+  } else {
+    ORT_THROW("Unsupported input data type of ", data_type);
   }
-  return status;
+
+  return Status::OK();
 }
 
 Status DFT::Compute(OpKernelContext* ctx) const {
-  return dft(ctx, is_onesided_, false);
+  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, is_onesided_, false));
+  return Status::OK();
 }
 
 Status IDFT::Compute(OpKernelContext* ctx) const {
-  return dft(ctx, false, true);
+  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, false, true));
+  return Status::OK();
 }
 
 // dedupe with the other one in window_functions.cc
 template <typename T>
-static T get_scalar_value_from_tensor(const Tensor* t) {
-  ORT_ENFORCE(t->Shape().Size() == 1, "ratio input should have a single value.");
+static T get_scalar_value_from_tensor(const Tensor* tensor) {
+  ORT_ENFORCE(tensor->Shape().Size() == 1, "ratio input should have a single value.");
 
-  T value;
-
-  auto data_type = t->DataType()->AsPrimitiveDataType()->GetDataType();
+  auto data_type = tensor->DataType()->AsPrimitiveDataType()->GetDataType();
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      value = static_cast<T>(*reinterpret_cast<const float*>(t->DataRaw()));
-      break;
+      return static_cast<T>(*reinterpret_cast<const float*>(tensor->DataRaw()));
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      value = static_cast<T>(*reinterpret_cast<const double*>(t->DataRaw()));
-      break;
+      return static_cast<T>(*reinterpret_cast<const double*>(tensor->DataRaw()));
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      value = static_cast<T>(*reinterpret_cast<const int32_t*>(t->DataRaw()));
-      break;
+      return static_cast<T>(*reinterpret_cast<const int32_t*>(tensor->DataRaw()));
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      value = static_cast<T>(*reinterpret_cast<const int64_t*>(t->DataRaw()));
-      break;
+      return static_cast<T>(*reinterpret_cast<const int64_t*>(tensor->DataRaw()));
     default:
       ORT_THROW("Unsupported input data type of ", data_type);
   }
-
-  return value;
 }
 
-
 template <typename T, typename U>
-static Status stft(OpKernelContext* ctx, bool is_onesided, bool /*inverse*/) {
-  Status status = Status::OK();
-
+static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_onesided, bool /*inverse*/) {
+  // Attr("onesided"): default = 1
+  // Input(0, "signal") type = T1
+  // Input(1, "frame_length") type = T2
+  // Input(2, "window") type = T1, optional
+  // Input(3, "frame_step") type = T2
+  // Output(0, "output") type = T1
   
   // Get signal
   const auto* signal = ctx->Input<Tensor>(0);
+  const auto* window = ctx->Input<Tensor>(1);
+  const auto* frame_length_tensor = ctx->Input<Tensor>(2);
+  const auto frame_step = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(3));
+
+  // Get input signal shape
   const auto& signal_shape = signal->Shape();
-
-  const Tensor* window = ctx->Input<Tensor>(2);
-  TensorShape window_shape;
-
   const auto batch_size = signal_shape[0];
   const auto signal_size = signal_shape[1];
-  const auto dft_size = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(1));
-  int64_t window_size = dft_size;
-  if (window) {
-    window_shape = window->Shape();
-    window_size = window_shape[0];
+  const auto signal_components =
+      signal_shape.NumDimensions() == 2 ? 1 : signal_shape.NumDimensions() == 3 ? signal_shape[2] : 0;  // error
+  ORT_ENFORCE(signal_components == 1 || signal_components == 2, "Ensure that the signal has either 1 or 2 components.");
+
+  // Get the frame length
+  int64_t frame_length = std::numeric_limits<int64_t>::min();  
+  if (frame_length_tensor) 
+  {
+    frame_length = get_scalar_value_from_tensor<int64_t>(frame_length_tensor);
   }
 
-  const auto frame_step = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(3));
-  const auto dft_output_size = is_onesided ? static_cast<int64_t>(std::floor(window_size / 2.f) + 1) : window_size;
+  // Get window length
+  int64_t window_length = std::numeric_limits<int64_t>::min();
+   if (window) {
+    window_length = window->Shape()[0];
+  }
+
+  // The frame_length and window inputs are generally used interchangably, and should match!
+  if (frame_length != std::numeric_limits<int64_t>::min() &&
+      window_length != std::numeric_limits<int64_t>::min()) {
+    ORT_ENFORCE(frame_length == window_length, "If both frame_length and window are set, then the size of the window must be equal to the frame_length.");
+  }
+
+  // Calculate the window size with preference to the window input.
+  const auto window_size = window ? window->Shape()[0] : frame_length;
   ORT_ENFORCE(window_size < signal_size, "Ensure that the dft size is smaller than the signal.");
 
-  const auto number_of_dfts = static_cast<int64_t>(std::ceil((signal_size - window_size) / static_cast<float>(frame_step)));
-  onnxruntime::TensorShape spectra_shape({batch_size, number_of_dfts, dft_output_size, 2});
-  auto* Y = ctx->Output(0, spectra_shape);
-  auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
+  // Calculate the number of dfts to run
+  const auto n_dfts = static_cast<int64_t>(std::ceil((signal_size - window_size) / static_cast<float>(frame_step)));
 
-  auto dft_input = onnxruntime::TensorShape({1, window_size, 1});
-  auto dft_output = onnxruntime::TensorShape({1, dft_output_size, 2});
+  // Calculate the output spectra length (onesided will return only the unique values)
+  // note: x >> 1 === std::floor(x / 2.f)
+  const auto dft_output_size =
+      is_onesided ?
+        (window_size >> 1) + 1 :
+        window_size;
 
+  // Get/create the output mutable data
+  auto output_spectra_shape = onnxruntime::TensorShape({batch_size, n_dfts, dft_output_size, 2});
+  auto Y = ctx->Output(0, output_spectra_shape);
+  auto Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
+
+  // Get/create the signal mutable data
   auto* signal_data = const_cast<U*>(reinterpret_cast<const U*>(signal->DataRaw()));
 
-  for (int64_t batch_idx = 0; batch_idx < batch_size; batch_idx++) {
-    for (int64_t i = 0; i < number_of_dfts; i++) {
-      onnxruntime::Tensor input(signal->DataType(), dft_input, signal_data + (batch_idx * signal_size) + (i * frame_step), signal->Location(), 0);
-      onnxruntime::Tensor output(Y->DataType(), dft_output, Y_data + (batch_idx * number_of_dfts * dft_output_size * 2) + i * (dft_output_size * 2), Y->Location(), 0);
+  // Define tensor shapes for each dft run
+  const int64_t output_components = 2;
+  auto dft_input_shape = onnxruntime::TensorShape({1, window_size, signal_components});
+  auto dft_output_shape = onnxruntime::TensorShape({1, dft_output_size, output_components});
 
-      dft<T, U>(ctx, &input, &output, window, is_onesided, false);
+  // Run each dft of each batch as if it was a real-valued batch size 1 dft operation
+  for (int64_t batch_idx = 0; batch_idx < batch_size; batch_idx++) {
+    for (int64_t i = 0; i < n_dfts; i++) {
+      auto input_frame_begin =
+        signal_data +
+        (batch_idx * signal_size * signal_components) +
+        (i * frame_step * signal_components);
+
+      auto output_frame_begin =
+        Y_data +
+        (batch_idx * n_dfts * dft_output_size * output_components) +
+        (i * dft_output_size * output_components);
+
+      // Tensors do not own the backing memory, so no worries on destruction
+      auto input =
+          onnxruntime::Tensor(
+              signal->DataType(),
+              dft_input_shape,
+              input_frame_begin,
+              signal->Location(),
+              0);
+
+      auto output =
+          onnxruntime::Tensor(
+              Y->DataType(),
+              dft_output_shape,
+              output_frame_begin,
+              Y->Location(),
+              0);
+
+      // Run individual dft
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, window, is_onesided, false)));
     }
   }
 
-  return status;
-
+  return Status::OK();
 }
-
-
 
 Status STFT::Compute(OpKernelContext* ctx) const {
-  Status status;
+  // Attr("onesided"): default = 1
+  // Input(0, "signal") type = T1
+  // Input(1, "frame_length") type = T2
+  // Input(2, "window") type = T1, optional
+  // Input(3, "frame_step") type = T2
+  // Output(0, "output") type = T1
+
+  // Get signal shape
   const auto* signal = ctx->Input<Tensor>(0);
   const auto& signal_shape = signal->Shape();
-  MLDataType data_type = signal->DataType();
+  const auto is_real_valued = is_real_valued_signal(signal_shape);
+  const auto is_complex_valued = is_complex_valued_signal(signal_shape);
+
+  // Get data type
+  auto data_type = signal->DataType();
+
   const auto element_size = data_type->Size();
-  switch (element_size) {
-    case sizeof(float):
-      if (signal_shape.NumDimensions() == 2) {
-        // real
-        status = stft<float, float>(ctx, is_onesided_, false);
-      } else if (signal_shape.NumDimensions() == 3 && signal_shape[2] == 2) {
-        // complex
-        status = stft<float, std::complex<float>>(ctx, is_onesided_, false);
-      }
-      break;
-    case sizeof(double):
-      if (signal_shape.NumDimensions() == 2) {
-        status = stft<double, double>(ctx, is_onesided_, false);
-      } else if (signal_shape.NumDimensions() == 3 && signal_shape[2] == 2) {
-        status = stft<double, std::complex<double>>(ctx, is_onesided_, false);
-      }
-      break;
-    default:
-      ORT_THROW("Unsupported input data type of ", data_type);
+  if (element_size == sizeof(float)) {
+    if (is_real_valued) {
+      ORT_RETURN_IF_ERROR((short_time_fourier_transform<float, float>(ctx, is_onesided_, false)));
+    } else if (is_complex_valued) {
+      ORT_RETURN_IF_ERROR((short_time_fourier_transform<float, std::complex<float>>(ctx, is_onesided_, false)));
+    } else {
+      ORT_THROW("Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for complex inputs.", data_type);
+    }
+  } else if (element_size == sizeof(double)) {
+    if (is_real_valued) {
+      ORT_RETURN_IF_ERROR((short_time_fourier_transform<double, double>(ctx, is_onesided_, false)));
+    } else if (is_complex_valued) {
+      ORT_RETURN_IF_ERROR((short_time_fourier_transform<double, std::complex<double>>(ctx, is_onesided_, false)));
+    } else {
+      ORT_THROW("Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for complex inputs.", data_type);
+    }
+  } else {
+    ORT_THROW("Unsupported input data type of ", data_type);
   }
 
-  return status;
-}
-
-Status ISTFT::Compute(OpKernelContext* /*ctx*/) const {
   return Status::OK();
 }
 
