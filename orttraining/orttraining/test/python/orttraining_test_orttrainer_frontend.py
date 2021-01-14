@@ -50,8 +50,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'local_rank': 0,
             'data_parallel_size': 1,
             'horizontal_parallel_size': 1,
-            'pipeline_parallel_size': 1,
             'pipeline_parallel' : {
+                'pipeline_parallel_size': 1,
                 'num_pipeline_micro_batches':1,
                 'pipeline_cut_info_string': '',
                 'sliced_schema' : {},

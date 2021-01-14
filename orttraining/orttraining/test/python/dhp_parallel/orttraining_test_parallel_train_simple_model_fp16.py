@@ -125,4 +125,4 @@ last_pipeline_stage_ranks = [2, 3]
 expected_loss_history = [0.9420, 0.6608, 0.8944, 1.2279, 1.1173]
 if rank in last_pipeline_stage_ranks:
     for result, expected in zip(loss_history, expected_loss_history):
-        assert torch.allclose(result.cpu(), torch.Tensor([expected], device='cpu'), 1e-03):
+        assert torch.allclose(result.cpu(), torch.Tensor([expected], device='cpu'), 1e-03)
