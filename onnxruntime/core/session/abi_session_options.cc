@@ -161,6 +161,10 @@ ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _Inout_ OrtSessionOptions* op
   return nullptr;
 }
 
+ORT_API(void, OrtApis::SetConstantInitializerTo2x4SparseFormat, _Inout_ OrtSessionOptions* options, int treat_as_2x4) {
+  options->value.treat_constant_initializers_as_2x4 = treat_as_2x4 != 0;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
                     _In_ const char* dim_denotation, _In_ int64_t dim_value) {
   options->value.free_dimension_overrides.push_back(

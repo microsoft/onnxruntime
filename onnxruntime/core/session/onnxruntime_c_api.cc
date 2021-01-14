@@ -2086,6 +2086,7 @@ static constexpr OrtApi ort_api_1_to_7 = {
 
     // Version 7 - In development, feel free to add/remove/rearrange here
     &OrtApis::ModelMetadataGetGraphDescription,
+    &OrtApis::SetConstantInitializerTo2x4SparseFormat
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

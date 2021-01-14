@@ -470,6 +470,11 @@ inline SessionOptions& SessionOptions::SetLogSeverityLevel(int level) {
   return *this;
 }
 
+inline SessionOptions& SessionOptions::SetConstantInitializerTo2x4SparseFormat(bool treat_as_2x4) noexcept {
+  GetApi().SetConstantInitializerTo2x4SparseFormat(p_, static_cast<int>(treat_as_2x4));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::Add(OrtCustomOpDomain* custom_op_domain) {
   ThrowOnError(GetApi().AddCustomOpDomain(p_, custom_op_domain));
   return *this;

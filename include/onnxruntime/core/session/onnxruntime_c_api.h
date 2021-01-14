@@ -1146,6 +1146,18 @@ struct OrtApi {
   */
   ORT_API2_STATUS(ModelMetadataGetGraphDescription, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+
+  /**
+  * Use this API to advise Onnxruntime that the model sparse constant initializers are in 2:4 NVIDIA format.
+  * Onnxruntime will detect a presence of A100 architecture and will attempt to use it to
+  * sparsify/compress the initializer values and to speed up certain computations.
+  * Sparse Constant initializers are those that do not share any of the model input names and,
+  * therefore, can not be overridden.
+  * 
+  * \param options - an instance of OrtSessionOptions
+  * \param treat_as_2x4 - a boolean integer true if not 0 if constant initializers are in 2:4 NVIDIA format.
+  */
+  void(ORT_API_CALL* SetConstantInitializerTo2x4SparseFormat)(_Inout_ OrtSessionOptions* options, int treat_as_2x4) NO_EXCEPTION;
 };
 
 /*

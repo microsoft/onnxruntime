@@ -317,6 +317,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& SetLogId(const char* logid);
   SessionOptions& SetLogSeverityLevel(int level);
 
+  SessionOptions& SetConstantInitializerTo2x4SparseFormat(bool treat_as_2x4) noexcept;
+
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
 
   SessionOptions& DisablePerSessionThreads();

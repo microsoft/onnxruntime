@@ -104,6 +104,11 @@ struct SessionOptions {
   // Deterministic compute is likely not as performant. This option is default to false.
   bool use_deterministic_compute = false;
 
+  // Treat constant initializers as NVIDIA 2:4 dense format.
+  // This is not a sparse format, rather a pruned matrix with at least
+  // 2 zeros per 4 cells.
+  bool treat_constant_initializers_as_2x4 = false;
+
   // Stores the configurations for this session
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
   // The configuration keys and value formats are defined in
