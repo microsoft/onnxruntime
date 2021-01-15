@@ -324,7 +324,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_ClipNorm_Test) {
 
   // Expected FP32 Outputs
   std::vector<float> m1_new = {0.13f, 0.23f, 0.33f};
-  std::vector<float> m2_new = {0.3997f, 0.4998f, 0.6001};
+  std::vector<float> m2_new = {0.3997f, 0.4998f, 0.6001f};
   std::vector<float> w_new = {0.8972168f, 1.8369141f, 2.7871094f};
   // FP16 Outputs
   std::vector<MLFloat16> m1_new_half;
