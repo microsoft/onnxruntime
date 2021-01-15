@@ -635,7 +635,6 @@ static void TestThreeToneSpectrogram(
   std::vector<int64_t> mel_spectrogram_shape = {batch_size, 1, number_of_dfts, n_mel_bins};
 
   // Constant initializers
-  auto power_of_2_exponent = TensorFloat::CreateFromShapeArrayAndDataArray({}, {2});
   auto frame_step = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {hop_size});
   auto window_length = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {window_size});
   auto dft_length = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {dft_size});
@@ -663,7 +662,6 @@ static void TestThreeToneSpectrogram(
       LearningModelBuilder::Create()
           // Inputs
           .Inputs().Add(TensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, input_shape))
-          .Inputs().AddConstant(L"power_of_2_exponent", power_of_2_exponent)
           // Outputs
           .Outputs().Add(TensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
           // The graph
@@ -690,15 +688,15 @@ static void TestThreeToneSpectrogram(
                    .SetConstant(L"ends", complex_slice_ends)
                    .SetOutput(L"output", L"imaginaries"))
           .Operators()
-          .Add(Operator(L"Pow", L"real_pow")
-                   .SetInput(L"X", L"reals")
-                   .SetInput(L"Y", L"power_of_2_exponent")  // SetConstant not implemented: bind real_pow.Y to power_of_2_exponent
-                   .SetOutput(L"Z", L"reals_squared"))
+          .Add(Operator(L"Mul", L"real_squared")
+                   .SetInput(L"A", L"reals")
+                   .SetInput(L"B", L"reals")
+                   .SetOutput(L"C", L"reals_squared"))
           .Operators()
-          .Add(Operator(L"Pow", L"complex_pow")
-                   .SetInput(L"X", L"imaginaries")
-                   .SetInput(L"Y", L"power_of_2_exponent")  // SetConstant not implemented: bind complex_pow.Y to power_of_2_exponent
-                   .SetOutput(L"Z", L"imaginaries_squared"))
+          .Add(Operator(L"Mul", L"complex_squared")
+                   .SetInput(L"A", L"imaginaries")
+                   .SetInput(L"B", L"imaginaries")  // SetConstant not implemented: bind complex_pow.Y to power_of_2_exponent
+                   .SetOutput(L"C", L"imaginaries_squared"))
           .Operators()
           .Add(Operator(L"Add", L"add0")
                    .SetInput(L"A", L"reals_squared")
@@ -759,7 +757,6 @@ static void TestThreeToneSpectrogram(
   binding.Bind(L"melweightmatrix0.lower_edge_hertz", lower_edge_hertz);
   binding.Bind(L"melweightmatrix0.upper_edge_hertz", upper_edge_hertz);
   binding.Bind(L"reshape0.shape", mel_input_shape);
-  binding.Bind(L"power_of_2_exponent", power_of_2_exponent);
   binding.Bind(L"reshape1.shape", output_shape);
   
   winrt::Windows::Media::VideoFrame output_image(
@@ -770,7 +767,11 @@ static void TestThreeToneSpectrogram(
   binding.Bind(L"Output.MelSpectrogram", output_image);
 
   // Evaluate
+  auto start = std::chrono::high_resolution_clock::now();
   auto result = session.Evaluate(binding, L"");
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
+  printf("\nSpectrogram evaluate took: %f\n", evaluate_duration_in_microseconds.count());
 
   // check the output video frame object by saving output image to disk
   std::wstring out_name = L"mel_spectrogram.jpg";

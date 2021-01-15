@@ -61,58 +61,72 @@ static bool is_power_of_2(size_t size) {
   return n_bits == 1;
 }
 
+static const unsigned char BitReverseTable256[] =
+{
+    0x00, 0x80, 0x40, 0xC0, 0x20, 0xA0, 0x60, 0xE0, 0x10, 0x90, 0x50, 0xD0, 0x30, 0xB0, 0x70, 0xF0,
+    0x08, 0x88, 0x48, 0xC8, 0x28, 0xA8, 0x68, 0xE8, 0x18, 0x98, 0x58, 0xD8, 0x38, 0xB8, 0x78, 0xF8,
+    0x04, 0x84, 0x44, 0xC4, 0x24, 0xA4, 0x64, 0xE4, 0x14, 0x94, 0x54, 0xD4, 0x34, 0xB4, 0x74, 0xF4,
+    0x0C, 0x8C, 0x4C, 0xCC, 0x2C, 0xAC, 0x6C, 0xEC, 0x1C, 0x9C, 0x5C, 0xDC, 0x3C, 0xBC, 0x7C, 0xFC,
+    0x02, 0x82, 0x42, 0xC2, 0x22, 0xA2, 0x62, 0xE2, 0x12, 0x92, 0x52, 0xD2, 0x32, 0xB2, 0x72, 0xF2,
+    0x0A, 0x8A, 0x4A, 0xCA, 0x2A, 0xAA, 0x6A, 0xEA, 0x1A, 0x9A, 0x5A, 0xDA, 0x3A, 0xBA, 0x7A, 0xFA,
+    0x06, 0x86, 0x46, 0xC6, 0x26, 0xA6, 0x66, 0xE6, 0x16, 0x96, 0x56, 0xD6, 0x36, 0xB6, 0x76, 0xF6,
+    0x0E, 0x8E, 0x4E, 0xCE, 0x2E, 0xAE, 0x6E, 0xEE, 0x1E, 0x9E, 0x5E, 0xDE, 0x3E, 0xBE, 0x7E, 0xFE,
+    0x01, 0x81, 0x41, 0xC1, 0x21, 0xA1, 0x61, 0xE1, 0x11, 0x91, 0x51, 0xD1, 0x31, 0xB1, 0x71, 0xF1,
+    0x09, 0x89, 0x49, 0xC9, 0x29, 0xA9, 0x69, 0xE9, 0x19, 0x99, 0x59, 0xD9, 0x39, 0xB9, 0x79, 0xF9,
+    0x05, 0x85, 0x45, 0xC5, 0x25, 0xA5, 0x65, 0xE5, 0x15, 0x95, 0x55, 0xD5, 0x35, 0xB5, 0x75, 0xF5,
+    0x0D, 0x8D, 0x4D, 0xCD, 0x2D, 0xAD, 0x6D, 0xED, 0x1D, 0x9D, 0x5D, 0xDD, 0x3D, 0xBD, 0x7D, 0xFD,
+    0x03, 0x83, 0x43, 0xC3, 0x23, 0xA3, 0x63, 0xE3, 0x13, 0x93, 0x53, 0xD3, 0x33, 0xB3, 0x73, 0xF3,
+    0x0B, 0x8B, 0x4B, 0xCB, 0x2B, 0xAB, 0x6B, 0xEB, 0x1B, 0x9B, 0x5B, 0xDB, 0x3B, 0xBB, 0x7B, 0xFB,
+    0x07, 0x87, 0x47, 0xC7, 0x27, 0xA7, 0x67, 0xE7, 0x17, 0x97, 0x57, 0xD7, 0x37, 0xB7, 0x77, 0xF7,
+    0x0F, 0x8F, 0x4F, 0xCF, 0x2F, 0xAF, 0x6F, 0xEF, 0x1F, 0x9F, 0x5F, 0xDF, 0x3F, 0xBF, 0x7F, 0xFF};
+
 template <unsigned TSignificantBits>
-static inline size_t bit_reverse(size_t num) {
-  size_t output = 0;
-  size_t i = 0;
-  do {
-    output <<= 1;
-    output |= (num & 1);
-    num >>= 1;
-    i++;
-  } while (i < TSignificantBits);
-  return output;
+uint32_t bit_reverse(uint32_t num) {
+  uint32_t rev = (BitReverseTable256[num & 0xff] << 24) |
+         (BitReverseTable256[(num >> 8) & 0xff] << 16) |
+         (BitReverseTable256[(num >> 16) & 0xff] << 8) |
+         (BitReverseTable256[(num >> 24) & 0xff]);
+  return static_cast<uint32_t>(((uint64_t)rev) >> (32 - TSignificantBits));
 }
 
-static inline size_t bit_reverse(size_t num, unsigned significant_bits) {
-  size_t output = 0;
+template <typename T>
+static inline T bit_reverse(T num, unsigned significant_bits) {
   switch (significant_bits) {
-    case 0: return bit_reverse<0>(num);
-    case 1: return bit_reverse<1>(num);
-    case 2: return bit_reverse<2>(num);
-    case 3: return bit_reverse<3>(num);
-    case 4: return bit_reverse<4>(num);
-    case 5: return bit_reverse<5>(num);
-    case 6: return bit_reverse<6>(num);
-    case 7: return bit_reverse<7>(num);
-    case 8: return bit_reverse<8>(num);
-    case 9: return bit_reverse<9>(num);
-    case 10: return bit_reverse<10>(num);
-    case 11: return bit_reverse<11>(num);
-    case 12: return bit_reverse<12>(num);
-    case 13: return bit_reverse<13>(num);
-    case 14: return bit_reverse<14>(num);
-    case 15: return bit_reverse<15>(num);
-    case 16: return bit_reverse<16>(num);
-    case 17: return bit_reverse<17>(num);
-    case 18: return bit_reverse<18>(num);
-    case 19: return bit_reverse<19>(num);
-    case 20: return bit_reverse<20>(num);
-    case 21: return bit_reverse<21>(num);
-    case 22: return bit_reverse<22>(num);
-    case 23: return bit_reverse<23>(num);
-    case 24: return bit_reverse<24>(num);
-    case 25: return bit_reverse<25>(num);
-    case 26: return bit_reverse<26>(num);
-    case 27: return bit_reverse<27>(num);
-    case 28: return bit_reverse<28>(num);
-    case 29: return bit_reverse<29>(num);
-    case 30: return bit_reverse<30>(num);
-    case 31: return bit_reverse<31>(num);
-    case 32: return bit_reverse<32>(num);
+    case 0: return static_cast<T>(bit_reverse<0>(static_cast<uint32_t>(num)));
+    case 1: return static_cast<T>(bit_reverse<1>(static_cast<uint32_t>(num)));
+    case 2: return static_cast<T>(bit_reverse<2>(static_cast<uint32_t>(num)));
+    case 3: return static_cast<T>(bit_reverse<3>(static_cast<uint32_t>(num)));
+    case 4: return static_cast<T>(bit_reverse<4>(static_cast<uint32_t>(num)));
+    case 5: return static_cast<T>(bit_reverse<5>(static_cast<uint32_t>(num)));
+    case 6: return static_cast<T>(bit_reverse<6>(static_cast<uint32_t>(num)));
+    case 7: return static_cast<T>(bit_reverse<7>(static_cast<uint32_t>(num)));
+    case 8: return static_cast<T>(bit_reverse<8>(static_cast<uint32_t>(num)));
+    case 9: return static_cast<T>(bit_reverse<9>(static_cast<uint32_t>(num)));
+    case 10: return static_cast<T>(bit_reverse<10>(static_cast<uint32_t>(num)));
+    case 11: return static_cast<T>(bit_reverse<11>(static_cast<uint32_t>(num)));
+    case 12: return static_cast<T>(bit_reverse<12>(static_cast<uint32_t>(num)));
+    case 13: return static_cast<T>(bit_reverse<13>(static_cast<uint32_t>(num)));
+    case 14: return static_cast<T>(bit_reverse<14>(static_cast<uint32_t>(num)));
+    case 15: return static_cast<T>(bit_reverse<15>(static_cast<uint32_t>(num)));
+    case 16: return static_cast<T>(bit_reverse<16>(static_cast<uint32_t>(num)));
+    case 17: return static_cast<T>(bit_reverse<17>(static_cast<uint32_t>(num)));
+    case 18: return static_cast<T>(bit_reverse<18>(static_cast<uint32_t>(num)));
+    case 19: return static_cast<T>(bit_reverse<19>(static_cast<uint32_t>(num)));
+    case 20: return static_cast<T>(bit_reverse<20>(static_cast<uint32_t>(num)));
+    case 21: return static_cast<T>(bit_reverse<21>(static_cast<uint32_t>(num)));
+    case 22: return static_cast<T>(bit_reverse<22>(static_cast<uint32_t>(num)));
+    case 23: return static_cast<T>(bit_reverse<23>(static_cast<uint32_t>(num)));
+    case 24: return static_cast<T>(bit_reverse<24>(static_cast<uint32_t>(num)));
+    case 25: return static_cast<T>(bit_reverse<25>(static_cast<uint32_t>(num)));
+    case 26: return static_cast<T>(bit_reverse<26>(static_cast<uint32_t>(num)));
+    case 27: return static_cast<T>(bit_reverse<27>(static_cast<uint32_t>(num)));
+    case 28: return static_cast<T>(bit_reverse<28>(static_cast<uint32_t>(num)));
+    case 29: return static_cast<T>(bit_reverse<29>(static_cast<uint32_t>(num)));
+    case 30: return static_cast<T>(bit_reverse<30>(static_cast<uint32_t>(num)));
+    case 31: return static_cast<T>(bit_reverse<31>(static_cast<uint32_t>(num)));
+    case 32: return static_cast<T>(bit_reverse<32>(static_cast<uint32_t>(num)));
     default: ORT_THROW("Unsupported bit size.");
   }
-  return output;
 }
 
 template <typename T>
@@ -350,7 +364,6 @@ static T get_scalar_value_from_tensor(const Tensor* tensor) {
 
 template <typename T, typename U>
 static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_onesided, bool /*inverse*/) {
-  auto start = std::chrono::high_resolution_clock::now();
   // Attr("onesided"): default = 1
   // Input(0, "signal") type = T1
   // Input(1, "frame_length") type = T2
@@ -420,6 +433,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
 
   std::vector<std::complex<T>> V;
   std::vector<std::complex<T>> temp_output;
+
   // Run each dft of each batch as if it was a real-valued batch size 1 dft operation
   for (int64_t batch_idx = 0; batch_idx < batch_size; batch_idx++) {
     for (int64_t i = 0; i < n_dfts; i++) {
@@ -455,9 +469,6 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
     }
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
-  printf("\nSpectrogram evaluate took: %f\n", evaluate_duration_in_microseconds.count());
   return Status::OK();
 }
 
