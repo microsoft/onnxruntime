@@ -187,7 +187,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "reduction1 is not supported");
 }
 
-template Status ReduceKernel<true>::ReduceKernelShared<double, double>(
+template Status ReduceKernel<true>::ReduceKernelShared<double, double, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
     const double* X,
     const TensorShape& input_shape,
     double* Y,
@@ -195,7 +195,7 @@ template Status ReduceKernel<true>::ReduceKernelShared<double, double>(
     miopenReduceTensorOp_t miopen_reduce_op,
     std::vector<int64_t>& output_dims) const;
 
-template Status ReduceKernel<true>::ReduceKernelShared<float, float>(
+template Status ReduceKernel<true>::ReduceKernelShared<float, float, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
     const float* X,
     const TensorShape& input_shape,
     float* Y,
@@ -203,7 +203,7 @@ template Status ReduceKernel<true>::ReduceKernelShared<float, float>(
     miopenReduceTensorOp_t miopen_reduce_op,
     std::vector<int64_t>& output_dims) const;
 
-template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16>(
+template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
     const MLFloat16* X,
     const TensorShape& input_shape,
     MLFloat16* Y,
@@ -384,6 +384,54 @@ template <>
 Status ReduceKernel<true>::ComputeImpl<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICES>(OpKernelContext* /*ctx*/, miopenReduceTensorOp_t /*miopen_reduce_op*/) const {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().OpType(), " is not supported");
 }
+
+namespace ReductionOps {
+
+template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
+Tensor ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
+                     const Tensor& input, const std::vector<int64_t>& axes,
+                     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+                     bool fast_reduction, const TensorShape* input_shape_override) {
+  PrepareReduceMetadata prepare_reduce_metadata;
+  auto status = PrepareForReduce(&input,
+                                 keep_dims,
+                                 axes,
+                                 prepare_reduce_metadata,
+                                 input_shape_override);
+
+  if (!status.IsOK()) {
+    ORT_THROW(ONNXRUNTIME, FAIL, "Failed to perform reduce op: ", status.ErrorMessage());
+  }
+
+  Tensor output(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, allocator);
+
+  status = ReduceComputeCore<T, ReduceTensorIndices>(rocm_ep, input, prepare_reduce_metadata, output, miopen_reduce_op, axes,
+                                                     calculate_log, calculate_sqt, log_sum_exp, fast_reduction, input_shape_override);
+
+  if (!status.IsOK()) {
+    ORT_THROW(ONNXRUNTIME, FAIL, "Failed to perform reduce op: ", status.ErrorMessage());
+  }
+
+  return output;
+}
+
+// Explicit template instantiation (needed to be used in einsum_auxiliary_ops.cc)
+
+template Tensor ReduceCompute<float, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
+    ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op,
+    AllocatorPtr allocator,
+    const Tensor& input, const std::vector<int64_t>& axes,
+    bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+    bool fast_reduction, const TensorShape* input_shape_override);
+
+template Tensor ReduceCompute<double, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
+    ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op,
+    AllocatorPtr allocator,
+    const Tensor& input, const std::vector<int64_t>& axes,
+    bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+    bool fast_reduction, const TensorShape* input_shape_override);
+
+}  // namespace ReductionOps
 
 #define REGISTER_KERNEL_HFD(name)        \
   REGISTER_KERNEL_TYPED(name, MLFloat16) \
