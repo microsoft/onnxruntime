@@ -31,16 +31,16 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
     T3& m2_new) {
   // Actual gradient. The scale is a product of loss' scale and
   // global gradient norm (if the norm > 1).
-  const T3 g_scaled = T3(T1(g) / g_scale);
+  const T3 g_unscaled = T3(T1(g) / g_scale);
 
   // A constant in Lamb's equation.
   const T3 one = T3(1.0f);
 
   // Update exponentially-averaged historical gradient
-  const T3 m1_new_tmp = alpha * m1 + (one - alpha) * g_scaled;
+  const T3 m1_new_tmp = alpha * m1 + (one - alpha) * g_unscaled;
 
   // Update exponentially-averaged historical squared gradient
-  const T3 m2_new_tmp = beta * m2 + (one - beta) * g_scaled * g_scaled;
+  const T3 m2_new_tmp = beta * m2 + (one - beta) * g_unscaled * g_unscaled;
 
   // Compute unbiased 1st-order momentom.
   // The value alpha_correction is usually (1-alpha^t),
@@ -80,7 +80,7 @@ __global__ void _LambComputeDirectionImpl(
     T3 beta,
     T1 lambda,
     T3 epsilon,
-    T3 max_norm,
+    T1 max_norm,
     T3 alpha_correction,
     T3 beta_correction,
     T2* update_direction,
@@ -120,7 +120,7 @@ void LambComputeDirection(
     T3 beta,
     T1 lambda,
     T3 epsilon,
-    T3 max_norm,
+    T1 max_norm,
     T3 alpha_correction,
     T3 beta_correction,
     T2* update_direction,
@@ -162,7 +162,7 @@ void LambComputeDirection(
       T3 beta,                                                      \
       T1 lambda,                                                    \
       T3 epsilon,                                                   \
-      T3 max_norm,                                                   \
+      T1 max_norm,                                                   \
       T3 alpha_correction,                                          \
       T3 beta_correction,                                           \
       T2* weights_out,                                              \
@@ -305,7 +305,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
     const T3 alpha,
     const T3 beta,
     const T3 epsilon,
-    const T3 max_norm,
+    const T1 max_norm,
     const T3 alpha_correction,
     const T3 beta_correction) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
@@ -349,7 +349,7 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
     const T3 alpha,
     const T3 beta,
     const T3 epsilon,
-    const T3 max_norm,
+    const T1 max_norm,
     const T3 alpha_correction,
     const T3 beta_correction) {
   const int thread_count = ChunkGroup<6>::thread_count_per_block;
@@ -377,7 +377,7 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
       const T3 alpha,                                                                        \
       const T3 beta,                                                                         \
       const T3 epsilon,                                                                      \
-      const T3 max_norm,                                                                     \
+      const T1 max_norm,                                                                     \
       const T3 alpha_correction,                                                             \
       const T3 beta_correction);
 

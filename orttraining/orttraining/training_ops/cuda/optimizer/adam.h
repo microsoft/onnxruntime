@@ -45,6 +45,7 @@ class AdamOptimizer final : public CudaKernel {
     int64_t tmp_flag = static_cast<int64_t>(0);
     ORT_ENFORCE(info.GetAttr<int64_t>("do_bias_correction", &tmp_flag).IsOK(), "Missing/Invalid do_bias_correction");
     ORT_ENFORCE(tmp_flag == 0 || tmp_flag == 1, "do_bias_correction must be either 0 or 1.");
+    ORT_ENFORCE(max_norm_clip_ != 0, "max_norm_clip must NOT be 0.");
     do_bias_correction_ = tmp_flag != 0 ? true : false;
     info.GetAttrOrDefault("weight_decay_mode", &weight_decay_mode_, static_cast<int64_t>(0));
   }

@@ -218,7 +218,7 @@ Status launch_lamb_compute_direction(
           HipT4(betas[i]),
           HipT2(lambdas[i]),
           HipT4(epsilons[i]),
-          HipT4(max_norms[i]),
+          HipT2(max_norms[i]),
           HipT4(alpha_correction),
           HipT4(beta_correction),
           p_ds[i],
@@ -259,7 +259,7 @@ Status launch_lamb_compute_direction(
         tensor_sizes_in_buckets[key],
         buckets[key],
         lamb_stage1,
-        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, max_norm, alpha_correction, beta_correction);
+        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, HipT2(max_norm), alpha_correction, beta_correction);
   }
 
   return Status::OK();
