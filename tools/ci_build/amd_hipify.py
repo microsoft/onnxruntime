@@ -130,7 +130,6 @@ provider_excluded_files = [
                 'object_detection/roialign.h',
                 'object_detection/roialign_impl.cu',
                 'object_detection/roialign_impl.h',
-                'reduction/reduction_functions.cc',
                 'reduction/reduction_functions.cu',
                 'reduction/reduction_functions.h',
                 'reduction/reduction_ops.cc',
