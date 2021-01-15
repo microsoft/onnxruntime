@@ -536,8 +536,6 @@ public:
     }
 };
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-
 template<bool Packed>
 class MlasQgemmU8X8U8X8TestBase;
 
@@ -975,8 +973,6 @@ public:
         Test(1024, 1024, 256, 13, 15);
     }
 };
-
-#endif
 
 class MlasConv2DTest : public MlasTestBase
 {
@@ -3051,7 +3047,6 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasFgemmTest<double, false>>()->ExecuteShort();
 #endif
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
     printf("QGEMM U8S8=int32_t tests.\n");
     onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8S8=float tests.\n");
@@ -3060,7 +3055,6 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8U8=float tests.\n");
     onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float, false>>()->ExecuteShort();
-#endif
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
     if (MlasGemmPackBSize(128, 128, true) > 0) {

@@ -47,9 +47,6 @@ python3 $ORT_ROOT/tools/ci_build/build.py \
     --include_ops_by_config $ORT_ROOT/onnxruntime/test/testdata/reduced_ops_via_config.config \
     --skip_tests
 
-# Start the Android Emulator
-/bin/bash $ORT_ROOT/tools/ci_build/github/android/start_android_emulator.sh
-
 # Push onnxruntime_test_all and testdata to emulator
 adb push $MIN_BUILD_DIR/Debug/onnxruntime_test_all /data/local/tmp/
 adb push $MIN_BUILD_DIR/Debug/testdata /data/local/tmp/
