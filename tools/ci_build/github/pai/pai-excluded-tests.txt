@@ -32,6 +32,7 @@ ReductionOpTest.ReduceL1_do_not_keep_dims_2
 ReductionOpTest.ReduceL1_keepdims 
 ReductionOpTest.ReduceL1 
 ReductionOpTest.ReduceL1_int32 
+ReductionOpTest.ReduceL10DTensor 
 ReductionOpTest.ReduceL2_default_axes_keepdims 
 ReductionOpTest.ReduceL2_default_axes_do_not_keep_dims 
 ReductionOpTest.ReduceL2_do_not_keepdims 
@@ -39,6 +40,7 @@ ReductionOpTest.ReduceL2_do_not_keepdims_2
 ReductionOpTest.ReduceL2_keepdims 
 ReductionOpTest.ReduceL2 
 ReductionOpTest.ReduceL2_int32 
+ReductionOpTest.ReduceL20DTensor 
 ReductionOpTest.ReduceLogSum 
 ReductionOpTest.ReduceLogSum_samesize 
 ReductionOpTest.ReduceLogSum_do_not_keepdims_2 
@@ -76,6 +78,8 @@ ReductionOpTest.ReduceMean_keepdims_double
 ReductionOpTest.ReduceMean 
 ReductionOpTest.ReduceMean_double
 ReductionOpTest.ReduceMean_int32 
+ReductionOpTest.ReduceMean0DTensor 
+ReductionOpTest.ReduceMean0DTensor_double 
 ReductionOpTest.ReduceMin_default_axes_keepdims 
 ReductionOpTest.ReduceMin_default_axes_do_not_keep_dims 
 ReductionOpTest.ReduceMin_default_axes_do_not_keep_dims_2D 
