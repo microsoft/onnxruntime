@@ -207,10 +207,10 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
       input_data = reinterpret_cast<HipT*>(GetScratchBuffer<T>(input_count).get());
       fast_divmod tmp_div;
       Impl_Mul<HipT>(static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
-                      reinterpret_cast<const HipT*>(X), nullptr,
-                      reinterpret_cast<const HipT*>(X), nullptr,
-                      tmp_div, tmp_div,
-                      input_data, input_count);
+                     reinterpret_cast<const HipT*>(X), nullptr,
+                     reinterpret_cast<const HipT*>(X), nullptr,
+                     tmp_div, tmp_div,
+                     input_data, input_count);
     } else if (log_sum_exp_) {
       // Reduce max -- Max/Min will output indices data
       MiopenReduceDescriptor reduce_max_desc;
@@ -230,17 +230,17 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
       BinaryElementwisePreparation prepare;
       ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, rhs_shape, input_shape));
       Impl_Sub<HipT>(prepare.output_rank_or_simple_broadcast,
-                      &prepare.lhs_padded_strides,
-                      reinterpret_cast<const HipT*>(X),
-                      &prepare.rhs_padded_strides,
-                      reinterpret_cast<HipT*>(Y),
-                      &prepare.fdm_output_strides,
-                      prepare.fdm_H, prepare.fdm_C,
-                      reinterpret_cast<HipT*>(exp_result), input_count);
+                     &prepare.lhs_padded_strides,
+                     reinterpret_cast<const HipT*>(X),
+                     &prepare.rhs_padded_strides,
+                     reinterpret_cast<HipT*>(Y),
+                     &prepare.fdm_output_strides,
+                     prepare.fdm_H, prepare.fdm_C,
+                     reinterpret_cast<HipT*>(exp_result), input_count);
 
       Impl_Exp<HipT>(reinterpret_cast<HipT*>(exp_result),
-                      reinterpret_cast<HipT*>(exp_result),
-                      input_count);
+                     reinterpret_cast<HipT*>(exp_result),
+                     input_count);
 
       // ReduceSum
       MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
@@ -250,16 +250,16 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 
       // Log(Sum)
       Impl_Log<HipT>(reinterpret_cast<HipT*>(log_sum_result),
-                      reinterpret_cast<HipT*>(log_sum_result),
-                      output_count);
+                     reinterpret_cast<HipT*>(log_sum_result),
+                     output_count);
 
       // Log + ReduceMax
       fast_divmod tmp_div;
       Impl_Add<HipT>(static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
-                      reinterpret_cast<HipT*>(log_sum_result), nullptr,
-                      reinterpret_cast<HipT*>(Y), nullptr,
-                      tmp_div, tmp_div,
-                      reinterpret_cast<HipT*>(Y), output_count);
+                     reinterpret_cast<HipT*>(log_sum_result), nullptr,
+                     reinterpret_cast<HipT*>(Y), nullptr,
+                     tmp_div, tmp_div,
+                     reinterpret_cast<HipT*>(Y), output_count);
 
       return Status::OK();
     }
@@ -302,8 +302,8 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 
   if (calculate_log_) {
     Impl_Log<HipT>(reinterpret_cast<HipT*>(Y),
-                    reinterpret_cast<HipT*>(Y),
-                    output_count);
+                   reinterpret_cast<HipT*>(Y),
+                   output_count);
   }
 
   return Status::OK();
@@ -478,12 +478,12 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
   ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_miopen, miopen_type_X));
   size_t workspace_bytes = 0;
   MIOPEN_RETURN_IF_ERROR(miopenGetReductionWorkspaceSize(rocm_ep.PerThreadMiopenHandle(), reduce_desc,
-                                                       input_tensor, output_tensor, &workspace_bytes));
+                                                         input_tensor, output_tensor, &workspace_bytes));
   auto workspace_rocm = rocm_ep.GetScratchBuffer<HipT>(workspace_bytes);
 
   size_t indices_bytes = 0;
   MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(rocm_ep.PerThreadMiopenHandle(), reduce_desc,
-                                                     input_tensor, output_tensor, &indices_bytes));
+                                                       input_tensor, output_tensor, &indices_bytes));
   auto indices_rocm = rocm_ep.GetScratchBuffer<uint32_t>(indices_bytes);
 
   if (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_NO_INDICES) {
@@ -494,10 +494,10 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
       input_data = reinterpret_cast<HipT*>(input_data_buffer.get());
       fast_divmod tmp_div;
       Impl_Mul<HipT>(static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
-                      reinterpret_cast<const HipT*>(input.template Data<T>()), nullptr,
-                      reinterpret_cast<const HipT*>(input.template Data<T>()), nullptr,
-                      tmp_div, tmp_div,
-                      input_data, input_count);
+                     reinterpret_cast<const HipT*>(input.template Data<T>()), nullptr,
+                     reinterpret_cast<const HipT*>(input.template Data<T>()), nullptr,
+                     tmp_div, tmp_div,
+                     input_data, input_count);
     } else if (log_sum_exp) {
       // miopenReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
       // This happens when the input is Scalar
@@ -515,7 +515,7 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
         ORT_RETURN_IF_ERROR(reduce_max_desc.Set(MIOPEN_REDUCE_TENSOR_MAX, miopen_reduce_max_type, MIOPEN_REDUCE_TENSOR_NO_INDICES));
         size_t indices_bytes_max = 0;
         MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(rocm_ep.PerThreadMiopenHandle(), reduce_max_desc,
-                                                           input_tensor, output_tensor, &indices_bytes_max));
+                                                             input_tensor, output_tensor, &indices_bytes_max));
         auto indices_rocm_max = rocm_ep.GetScratchBuffer<uint32_t>(indices_bytes);
         MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
             rocm_ep.PerThreadMiopenHandle(), reduce_max_desc, indices_rocm_max.get(), indices_bytes_max,
@@ -533,17 +533,17 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
       BinaryElementwisePreparation prepare;
       ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape));
       Impl_Sub<HipT>(prepare.output_rank_or_simple_broadcast,
-                      &prepare.lhs_padded_strides,
-                      reinterpret_cast<const HipT*>(input.template Data<T>()),
-                      &prepare.rhs_padded_strides,
-                      reinterpret_cast<HipT*>(output.template MutableData<T>()),
-                      &prepare.fdm_output_strides,
-                      prepare.fdm_H, prepare.fdm_C,
-                      reinterpret_cast<HipT*>(exp_result), input_count);
+                     &prepare.lhs_padded_strides,
+                     reinterpret_cast<const HipT*>(input.template Data<T>()),
+                     &prepare.rhs_padded_strides,
+                     reinterpret_cast<HipT*>(output.template MutableData<T>()),
+                     &prepare.fdm_output_strides,
+                     prepare.fdm_H, prepare.fdm_C,
+                     reinterpret_cast<HipT*>(exp_result), input_count);
 
       Impl_Exp<HipT>(reinterpret_cast<HipT*>(exp_result),
-                      reinterpret_cast<HipT*>(exp_result),
-                      input_count);
+                     reinterpret_cast<HipT*>(exp_result),
+                     input_count);
 
       // miopenReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
       // This happens when the input is Scalar. We do not need to add anything in this case.
@@ -560,16 +560,16 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
 
       // Log(Sum)
       Impl_Log<HipT>(reinterpret_cast<HipT*>(log_sum_result),
-                      reinterpret_cast<HipT*>(log_sum_result),
-                      output_count);
+                     reinterpret_cast<HipT*>(log_sum_result),
+                     output_count);
 
       // Log + ReduceMax
       fast_divmod tmp_div;
       Impl_Add<HipT>(static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
-                      reinterpret_cast<HipT*>(log_sum_result), nullptr,
-                      reinterpret_cast<HipT*>(output.template MutableData<T>()), nullptr,
-                      tmp_div, tmp_div,
-                      reinterpret_cast<HipT*>(output.template MutableData<T>()), output_count);
+                     reinterpret_cast<HipT*>(log_sum_result), nullptr,
+                     reinterpret_cast<HipT*>(output.template MutableData<T>()), nullptr,
+                     tmp_div, tmp_div,
+                     reinterpret_cast<HipT*>(output.template MutableData<T>()), output_count);
 
       return Status::OK();
     }
@@ -622,13 +622,12 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
 
   if (calculate_log) {
     Impl_Log<HipT>(reinterpret_cast<HipT*>(output.template MutableData<T>()),
-                    reinterpret_cast<HipT*>(output.template MutableData<T>()),
-                    output_count);
+                   reinterpret_cast<HipT*>(output.template MutableData<T>()),
+                   output_count);
   }
 
   return Status::OK();
 }
-
 
 template <bool allow_multi_axes>
 template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
@@ -750,17 +749,17 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICES>
   const auto zero = Consts<float>::Zero;
   auto temp_Y = GetScratchBuffer<float>(output_count);
   MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(MiopenHandle(),
-                                          reduce_desc,
-                                          indices_rocm.get(),
-                                          indices_bytes,
-                                          workspace_rocm.get(),
-                                          workspace_bytes,
-                                          &one,
-                                          input_tensor,
-                                          temp_X.get(),
-                                          &zero,
-                                          output_tensor,
-                                          temp_Y.get()));
+                                            reduce_desc,
+                                            indices_rocm.get(),
+                                            indices_bytes,
+                                            workspace_rocm.get(),
+                                            workspace_bytes,
+                                            &one,
+                                            input_tensor,
+                                            temp_X.get(),
+                                            &zero,
+                                            output_tensor,
+                                            temp_Y.get()));
 
   Impl_Cast<float, int32_t>(temp_Y.get(), Y->template MutableData<int32_t>(), output_count);
 
@@ -829,17 +828,17 @@ Status ReduceKernel<true>::ComputeImpl<int8_t, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
   const auto zero = Consts<float>::Zero;
   auto temp_Y = GetScratchBuffer<float>(output_count);
   MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(MiopenHandle(),
-                                          reduce_desc,
-                                          indices_rocm.get(),
-                                          indices_bytes,
-                                          workspace_rocm.get(),
-                                          workspace_bytes,
-                                          &one,
-                                          input_tensor,
-                                          temp_X.get(),
-                                          &zero,
-                                          output_tensor,
-                                          temp_Y.get()));
+                                            reduce_desc,
+                                            indices_rocm.get(),
+                                            indices_bytes,
+                                            workspace_rocm.get(),
+                                            workspace_bytes,
+                                            &one,
+                                            input_tensor,
+                                            temp_X.get(),
+                                            &zero,
+                                            output_tensor,
+                                            temp_Y.get()));
 
   Impl_Cast<float, int8_t>(temp_Y.get(), dst, output_count);
 
@@ -897,12 +896,12 @@ template Tensor ReduceCompute<float, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
 #define REGISTER_KERNEL_HFD(name)        \
   REGISTER_KERNEL_TYPED(name, MLFloat16) \
   REGISTER_KERNEL_TYPED(name, float)
-  // REGISTER_KERNEL_TYPED(name, double)
+// REGISTER_KERNEL_TYPED(name, double)
 
 #define REGISTER_KERNEL_HFD_11(name)        \
   REGISTER_KERNEL_TYPED_11(name, MLFloat16) \
   REGISTER_KERNEL_TYPED_11(name, float)
-  // REGISTER_KERNEL_TYPED_11(name, double)
+// REGISTER_KERNEL_TYPED_11(name, double)
 
 REGISTER_KERNEL_HFD_11(ArgMax)
 REGISTER_KERNEL_HFD_11(ArgMin)

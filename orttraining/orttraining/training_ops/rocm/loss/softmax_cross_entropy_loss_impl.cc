@@ -11,16 +11,16 @@
 namespace onnxruntime {
 namespace rocm {
 
-#define REGISTER_KERNEL_VERSIONED_TYPED_TWO_TYPES(Class, T, Tin, domain, startver, endver)  \
-  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                                              \
-      Class,                                                                                \
-      domain,                                                                               \
-      startver, endver,                                                                     \
-      T, Tin,                                                                               \
-      kRocmExecutionProvider,                                                               \
-      KernelDefBuilder()                                                                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                            \
-          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),                       \
+#define REGISTER_KERNEL_VERSIONED_TYPED_TWO_TYPES(Class, T, Tin, domain, startver, endver) \
+  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                                             \
+      Class,                                                                               \
+      domain,                                                                              \
+      startver, endver,                                                                    \
+      T, Tin,                                                                              \
+      kRocmExecutionProvider,                                                              \
+      KernelDefBuilder()                                                                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
+          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),                      \
       Class<T, Tin>);
 
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
