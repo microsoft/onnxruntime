@@ -21,6 +21,8 @@
 #include <memory>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+#include <comdef.h>///slx
+#include <iostream>///slx
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
@@ -629,7 +631,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 }
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
-                                                                 const GraphViewer& graph, const PathString model_path, bool* early_termination) const {
+                                                                 const GraphViewer& graph, const char* model_path, bool* early_termination) const {///slx const PathString model_path
   // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
   if (iterations > max_iterations) {
@@ -746,7 +748,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
 
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path.data());
+        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path);//slx static_cast<char *>(model_path.data())
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
@@ -880,7 +882,21 @@ std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // Get ModelPath
-  const auto& model_path = graph.ModelPath().ToPathString();
+  const auto& model_path_w = graph.ModelPath().ToPathString();
+  /*  
+  char *str = new char[12 + 1];
+  memset( str, 0, 12 + 1);
+  wchar_t array[] = L"Hello World";
+  wcstombs(str, array, 12);
+  std::cout << str;
+  delete str;
+  */
+  ///#include <comdef.h>  // you will need this
+  //const WCHAR* wc = L"Hello World" ;
+  _bstr_t b(model_path_w.c_str());
+  const char* model_path = b;
+  std::cout << "model_path:" << model_path << std::endl;
+  ///printf("Output: %s\n", c);
 
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
@@ -953,7 +969,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     }
     const Graph& graph_body = func_body->Body();
     auto graph_body_viewer = graph_body.CreateGraphViewer();
-    const auto& model_path = graph_body_viewer->ModelPath().ToPathString();
+    const auto& model_path_w = graph_body_viewer->ModelPath().ToPathString();
+    _bstr_t b(model_path_w.c_str());///slx
+    const char* model_path = b;
+    std::cout << "model_path:" << model_path << std::endl;
+
     auto model = graph_body_viewer->CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
 
@@ -974,7 +994,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
     auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
     auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-    trt_parser->parse(string_buf.data(), string_buf.size(), model_path.data());
+    trt_parser->parse(string_buf.data(), string_buf.size(), model_path);///slx  model_path.data() static_cast<char *>(model_path.data())
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
     int num_inputs = trt_network->getNbInputs();
