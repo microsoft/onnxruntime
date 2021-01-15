@@ -113,16 +113,17 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::MEAN) {
     // Compute buffer size in byte for reduction APIs.
-    const auto buffer_size = static_cast<size_t>(
-        compute_reduction_buffer_size(
-            static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
+    const auto buffer_size =
+        compute_reduction_buffer_size<T>(static_cast<int>(N_D));
     // Allocate reduction buffer whose size is buffer_size bytes.
     IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
         buffer_size);
-    reduce_sum(weight_data_nd_data,
-               normalize_factor_data.get(),
-               static_cast<int>(N_D),
-               reinterpret_cast<T*>(reduction_buffer.get()));
+    ORT_RETURN_IF_ERROR(reduce_sum(
+        weight_data_nd_data,
+        normalize_factor_data.get(),
+        static_cast<int>(N_D),
+        reduction_buffer.get(),
+        buffer_size));
   } else {
     const T normalize_factor = static_cast<T>(1);
     HIP_RETURN_IF_ERROR(hipMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), hipMemcpyHostToDevice));
@@ -153,26 +154,14 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
 
   if (reduction_ != ReductionType::NONE) {
     // ReduceSum on loss_per_sample
-    // std::vector<int64_t> output_dims(1, 1);
-    // ReduceKernelShared<T, T>(
-    //     tmp_loss_sample_buffer,
-    //     label_reshape,
-    //     total_loss_data,
-    //     TensorShape({}),
-    //     MIOPEN_REDUCE_TENSOR_ADD,
-    //     output_dims);
-    // Compute buffer size in byte for reduction APIs.
-    const auto tmp_buffer_size = static_cast<size_t>(
-        compute_reduction_buffer_size(
-            static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
-    // Allocate reduction buffer whose size is buffer_size bytes.
-    IAllocatorUniquePtr<void> tmp_reduction_buffer = GetScratchBuffer<void>(
-        tmp_buffer_size);
-    reduce_sum(tmp_loss_sample_buffer,
-               total_loss_data,
-               static_cast<int>(N_D),
-               reinterpret_cast<T*>(tmp_reduction_buffer.get()));
-    return Status::OK();
+    std::vector<int64_t> output_dims(1, 1);
+    ReduceKernelShared<T, T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
+        tmp_loss_sample_buffer,
+        label_reshape,
+        total_loss_data,
+        TensorShape({}),
+        MIOPEN_REDUCE_TENSOR_ADD,
+        output_dims);
   }
 
   return Status::OK();
@@ -225,16 +214,17 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::MEAN) {
     // Compute buffer size in byte for reduction APIs.
-    const auto buffer_size = static_cast<size_t>(
-        compute_reduction_buffer_size(
-            static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
+    const auto buffer_size =
+        compute_reduction_buffer_size<T>(static_cast<int>(N_D));
     // Allocate reduction buffer whose size is buffer_size bytes.
     IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
         buffer_size);
-    reduce_sum(weight_data_nd_data,
-               normalize_factor_data.get(),
-               static_cast<int>(N_D),
-               reinterpret_cast<T*>(reduction_buffer.get()));
+    ORT_RETURN_IF_ERROR(reduce_sum(
+        weight_data_nd_data,
+        normalize_factor_data.get(),
+        static_cast<int>(N_D),
+        reduction_buffer.get(),
+        buffer_size));
   } else {
     const T normalize_factor = static_cast<T>(1);
     HIP_RETURN_IF_ERROR(hipMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), hipMemcpyHostToDevice));
