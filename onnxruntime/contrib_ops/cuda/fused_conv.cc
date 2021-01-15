@@ -43,24 +43,35 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     bool has_z = nullptr != s_.z_data;
     bool has_b = nullptr != s_.b_data;
     IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
-    CUDNN_RETURN_IF_ERROR(cudnnConvolutionBiasActivationForward(CudnnHandle(),
-                                                                &alpha_,
-                                                                s_.x_tensor,
-                                                                s_.x_data,
-                                                                s_.w_desc,
-                                                                s_.w_data,
-                                                                s_.conv_desc,
-                                                                s_.algo,
-                                                                workspace.get(),
-                                                                s_.workspace_bytes,
-                                                                has_z ? &alpha_ : &beta_,
-                                                                has_z ? s_.z_tensor : s_.y_tensor,
-                                                                has_z ? s_.z_data : s_.y_data,
-                                                                s_.b_tensor,
-                                                                has_b ? s_.b_data : s_.b_zero,
-                                                                activation_desc_,
-                                                                s_.y_tensor,
-                                                                s_.y_data));
+    auto cudnn_status = cudnnConvolutionBiasActivationForward(CudnnHandle(),
+                                                              &alpha_,
+                                                              s_.x_tensor,
+                                                              s_.x_data,
+                                                              s_.w_desc,
+                                                              s_.w_data,
+                                                              s_.conv_desc,
+                                                              s_.algo,
+                                                              workspace.get(),
+                                                              s_.workspace_bytes,
+                                                              has_z ? &alpha_ : &beta_,
+                                                              has_z ? s_.z_tensor : s_.y_tensor,
+                                                              has_z ? s_.z_data : s_.y_data,
+                                                              s_.b_tensor,
+                                                              has_b ? s_.b_data : s_.b_zero,
+                                                              activation_desc_,
+                                                              s_.y_tensor,
+                                                              s_.y_data);
+    if (CUDNN_STATUS_BAD_PARAM == cudnn_status) {
+      std::cout << "x: ";
+      s_.x_tensor.print();
+      std::cout << "b: ";
+      s_.b_tensor.print();
+      std::cout << "z: ";
+      s_.z_tensor.print();
+      std::cout << "y: ";
+      s_.y_tensor.print();
+    }
+    CUDNN_RETURN_IF_ERROR(cudnn_status);
     if (s_.post_slicing_required) {
       onnxruntime::cuda::SliceOutUnwantedOutputSection(s_.y_data, s_.y_dims_with_adjusted_pads, s_.Y->MutableDataRaw(),
                                                        s_.y_dims, s_.slice_starts, s_.slice_ends, s_.slice_axes, s_.element_size);

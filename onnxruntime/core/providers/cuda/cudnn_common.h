@@ -26,7 +26,17 @@ class CudnnTensor final {
   template <typename T>
   static cudnnDataType_t GetDataType();
 
+  void print() const {
+    for (auto dim : dims_) {
+      std::cout << dim << " ";
+    }
+    std::cout << std::endl;
+  }
+
  private:
+
+  mutable std::vector<int> dims_;
+
   Status CreateTensorIfNeeded();
 
   cudnnTensorDescriptor_t tensor_;
@@ -127,7 +137,7 @@ struct Consts<half> {
 };
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-template<>
+template <>
 struct Consts<nv_bfloat16> {
   static const float Zero;
   static const float One;
