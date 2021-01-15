@@ -10,9 +10,10 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <thread>
+#include <unordered_map>
 
 #include "gsl/gsl"
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "core/framework/ml_value.h"
 
 namespace onnxruntime {
@@ -131,6 +132,8 @@ class PipelineSlot {
 
   std::vector<PipelineTask> GetTasks() { return tasks_; }
 
+  int Size() const { return static_cast<int>(tasks_.size()); }
+
  private:
   // Actions which can be executed in parallel in this time slot.
   std::vector<PipelineTask> tasks_;
@@ -142,7 +145,9 @@ class PipelineSlot {
 
 class PipelineScheduler {
  public:
-  PipelineScheduler(const int num_batches, const int num_stages);
+  PipelineScheduler();
+  PipelineScheduler(const int num_batches, const int num_stages, const std::vector<int>& stage_id_to_rank_id_map);
+
   // Number of time steps.
   size_t GetScheduleSize() const { return compute_commute_table_.size(); }
   // Number of stages.
@@ -150,7 +155,7 @@ class PipelineScheduler {
   std::vector<PipelineSlot> GetSchedule(const int stage_id) const {
     std::vector<PipelineSlot> commute_slots;
     for (int t = 0; static_cast<size_t>(t) < GetScheduleSize(); ++t) {
-      auto& slot = compute_commute_table_[t][stage_id];
+      auto& slot = compute_commute_table_.at(t).at(stage_id);
       if (!slot.HasCommute()) {
         continue;
       }
@@ -196,6 +201,7 @@ class PipelineScheduler {
   void CreateComputeSchedule();
   void InsertEvents(std::vector<std::vector<PipelineSlot>>& schedule, const size_t num_events_per_slot, const std::vector<int> initial_events);
   void CreateFullSchedule();
+  void MapStageIdToMpiRank();
   int FindSendRecvTime(const int upstream_compute_time, const int upstream_stage, const int stage) const;
   void InsertForwardCompute(const int batch_id, const std::vector<int> forward_time);
   void InsertBackwardCompute(const int batch_id, const std::vector<int> forward_time, const std::vector<int> backward_time);
@@ -205,6 +211,10 @@ class PipelineScheduler {
   // Wrapper over TryGetEvent. It returns -1 when the specified action is not found.
   int GetEventOrDefault(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type) const;
 
+  // Number of pipeline stages.
+  int num_stages_;
+  // Number of micro-batches.
+  int num_batches_;
   // Compute-only pipeline schedule as a 2-D table. table_[i][j] is the computation happening in
   // the i-th time slot at the j-th stage. For example, PipeDream schedule may have
   //   1. table_[0][0].batch_id is 0 and table_[0][0].type is Forward.
@@ -217,8 +227,15 @@ class PipelineScheduler {
   // compute batches at the i-th time slot.
   std::vector<int> compute_batch_count_;
   std::vector<int> commute_batch_count_;
-  int num_stages_;
-  int num_batches_;
+  // stage_id_to_rank_map[i] is the process' MPI rank to execute stage i inside
+  // the current process' pipeline parallel group.
+  //
+  // Different pipeline parallel groups may have different mapping. For example,
+  // if we have 2-stage pipeline parallel with 2-fold data parallel, the 1st pipeline parallel
+  // group contains MPI ranks [0, 1] and the 2nd one contains ranks [2, 3].
+  // In the 1st pipeline parallel group, stage 0/1 runs on rank 0/1 so stage_id_to_rank_map=[0, 1].
+  // For the 2nd group, stage 0/1 runs on rank 2/3 so stage_id_to_rank_map=[2, 3].
+  std::vector<int> stage_id_to_rank_id_map_;
 };
 
 struct PipelineWorkerState {
@@ -304,13 +321,14 @@ struct PipelineTensorNames {
 };
 
 struct PipelineContext {
+  // Number of pipeline stages.
+  int num_pipeline_stages;
   // Id of stage handled by this process. Currently, it matches the MPI's rank.
   int pipeline_stage_id;
-  // The number of batches per pipeline run. Its value is
-  // num_gradient_accumulation_steps.
+  // The number of micro-batches per pipeline round.
   // Only the last step among num_gradient_accumulation_steps steps may call
   // optimizer to update the model.
-  int num_pipeline_batches;
+  int num_pipeline_micro_batches;
   // Names of scheduling event in graph's input list and
   // names of event ops' outputs. If an event name is an
   // empty string, it means no event should be waited or recorded.
@@ -321,6 +339,24 @@ struct PipelineContext {
   // Allowed fetch names.
   // Values can be fetched at this pipeline stage.
   std::vector<std::string> fetch_names;
+
+  // When running training session with multiple micro-batches, only the last micro-batch run
+  // should execute the optimizer nodes and update the model. All non-last micro-batches should
+  // only execute until gradient accumulation step.
+  std::vector<std::string> accumulation_step_fetches;
+
+  // Outputs of the graph before graph partition.
+  std::vector<std::string> expected_output_names;
+
+  // Input and output names of sliced tensors in the original graph.
+  std::vector<std::string> sliced_tensor_names;
+
+  // sliced_axes["name"] is the axis to slice along for the tensor called "name".
+  std::unordered_map<std::string, int> sliced_axes;
+
+  // sliced_schema["name"] is the shape of sliced version of tensor "name".
+  // It's the shape when running micro-batches with pipeline parallel.
+  std::unordered_map<std::string, std::vector<int>> sliced_schema;
 };
 
 }  // namespace pipeline
