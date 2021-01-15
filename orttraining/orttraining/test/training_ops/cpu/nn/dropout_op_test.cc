@@ -86,17 +86,12 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
     if (ratio == 1.0f) {
       ASSERT_EQ(num_dropped_values, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
-      if (training_mode == 1) {
-        ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), ratio, 0.1f)
-            << "provider: " << provider_type;
-      } else {
-        ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), 0.0f, 0.1f)
-            << "provider: " << provider_type;
-      }
+      ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), training_mode == 1 ? ratio : 0.0f, 0.1f)
+          << "provider: " << provider_type;
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {
         if (output_span[i] == 0.0f) continue;
-        const auto expected_value = (i + 1.0f) / (1 - ratio);
+        const auto expected_value = (i + 1.0f) / (1 - training_mode == 1 ? ratio : 0.0f);
         ASSERT_NEAR(output_span[i], expected_value, 0.01f)
             << "unexpected output value at index " << i << ", provider: " << provider_type;
       }
