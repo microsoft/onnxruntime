@@ -12,6 +12,7 @@ Example of profiling of longformer model:
 
 NODES_TYPE_CONTAINING_SUBGRAPH = ['Scan', 'Loop', 'If']
 
+
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--model', required=True, type=str, help="onnx model path")
@@ -75,7 +76,7 @@ def parse_arguments(argv=None):
                         required=False,
                         default='default',
                         choices=['bert', 'gpt2', 'longformer', 'default'],
-                        help="Way to create dummy inputs. If your model is not aa")
+                        help="Type of dummy inputs. The default will create inputs with ones.")
 
     parser.add_argument('-g', '--use_gpu', required=False, action='store_true', help="use GPU")
     parser.set_defaults(use_gpu=False)
@@ -96,8 +97,7 @@ def parse_arguments(argv=None):
     parser.add_argument('-v', '--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
-    args = parser.parse_args(argv)
-    return args
+    return parser.parse_args(argv)
 
 
 def create_bert_inputs(model, batch_size, sequence_length, samples, input_ids_name, segment_ids_name, input_mask_name):
@@ -116,7 +116,7 @@ def create_bert_inputs(model, batch_size, sequence_length, samples, input_ids_na
     return all_inputs
 
 
-def run_profile(onnx_model_path, use_gpu, basic_optimization, thread_num, batch_size, sequence_length, all_inputs):
+def run_profile(onnx_model_path, use_gpu, basic_optimization, thread_num, all_inputs):
     from benchmark_helper import create_onnxruntime_session
 
     session = create_onnxruntime_session(onnx_model_path,
@@ -135,8 +135,8 @@ def run_profile(onnx_model_path, use_gpu, basic_optimization, thread_num, batch_
 def load_profile_json(profile_file):
     print(f"loading profile output {profile_file} ...")
 
-    with open(profile_file, "r") as f:
-        sess_time = json.load(f)
+    with open(profile_file, "r") as opened_file:
+        sess_time = json.load(opened_file)
 
     assert isinstance(sess_time, list)
     return sess_time
@@ -167,18 +167,18 @@ def parse_profile_results(sess_time, kernel_time_only=False, threshold=0):
                 node_time[item["name"]] = item["dur"]
             total += item["dur"]
 
-    results = []
+    lines = []
     if (threshold > 0):
-        results.append(f"Threshold of Percentage > {threshold:.2f}%")
+        lines.append(f"Threshold of Percentage > {threshold:.2f}%")
 
-    results.append(f"Duration\tPercentage\tProvider\tName")
+    lines.append("Duration\tPercentage\tProvider\tName")
     for k, v in sorted(node_time.items(), key=lambda x: x[1], reverse=True):
         provider = node_provider[k] if k in node_provider else ""
         ratio = v / total
         if ratio > threshold:
-            results.append(f"{v}\t{ratio * 100.0:5.2f}\t{provider}\t{k}")
+            lines.append(f"{v}\t{ratio * 100.0:5.2f}\t{provider}\t{k}")
 
-    return results
+    return lines
 
 
 def group_profile_results(sess_time, kernel_time_only=False, threshold=0):
@@ -215,15 +215,15 @@ def group_profile_results(sess_time, kernel_time_only=False, threshold=0):
                     op_cpu_time[op_name] = item["dur"]
                     op_cpu_records[op_name] = 1
 
-    results = [f"Duration\tPercentage\tCalls\tCpu_Duration\tCpu_Calls\tName"]
+    lines = ["Duration\tPercentage\tCalls\tCpu_Duration\tCpu_Calls\tName"]
     for k, v in sorted(op_time.items(), key=lambda x: x[1], reverse=True):
         calls = op_records[k]
         cpu_time = op_cpu_time[k] if k in op_cpu_time else 0
         cpu_calls = op_cpu_records[k] if k in op_cpu_records else 0
         ratio = v / total
         if ratio > threshold:
-            results.append(f"{v}\t{ratio * 100.0:5.2f}\t{calls}\t{cpu_time}\t{cpu_calls}\t{k}")
-    return results
+            lines.append(f"{v}\t{ratio * 100.0:5.2f}\t{calls}\t{cpu_time}\t{cpu_calls}\t{k}")
+    return lines
 
 
 def get_dim_from_type_proto(dim):
@@ -240,11 +240,11 @@ def create_dummy_inputs(onnx_model_path, batch_size, sequence_length, samples):
 
     onnx_model = OnnxModel(onnx.load(onnx_model_path))
     dummy_inputs = {}
-    for input in onnx_model.get_graph_inputs_excluding_initializers():
-        shape = get_shape_from_type_proto(input.type)
+    for graph_input in onnx_model.get_graph_inputs_excluding_initializers():
+        shape = get_shape_from_type_proto(graph_input.type)
         symbol_dims = []
         for i, dim in enumerate(shape):
-            if type(dim) == str:
+            if isinstance(dim, str):
                 symbol_dims.append(i)
 
         # allowed symbolic dimensions: batch_size and sequence_length
@@ -255,12 +255,12 @@ def create_dummy_inputs(onnx_model_path, batch_size, sequence_length, samples):
         if len(symbol_dims) > 1:
             shape[symbol_dims[1]] = sequence_length
 
-        elem_type = input.type.tensor_type.elem_type
+        elem_type = graph_input.type.tensor_type.elem_type
         assert elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
         data_type = numpy.float32 if elem_type == TensorProto.FLOAT else (
             numpy.int64 if elem_type == TensorProto.INT64 else numpy.int32)
         data = numpy.ones(shape, dtype=data_type)
-        dummy_inputs[input.name] = data
+        dummy_inputs[graph_input.name] = data
 
     all_inputs = [dummy_inputs for _ in range(samples)]
     return all_inputs
@@ -280,20 +280,20 @@ def create_gpt2_inputs(onnx_model_path, batch_size, sequence_length, past_sequen
     }
 
     dummy_inputs = {}
-    for input in onnx_model.get_graph_inputs_excluding_initializers():
-        shape = get_shape_from_type_proto(input.type)
+    for graph_input in onnx_model.get_graph_inputs_excluding_initializers():
+        shape = get_shape_from_type_proto(graph_input.type)
         for i, dim in enumerate(shape):
-            if type(dim) == str and dim not in symbols.keys():
+            if isinstance(dim, str) and dim not in symbols.keys():
                 raise RuntimeError(f"symbol is not supported: {dim}")
             else:
                 shape[i] = symbols[dim]
 
-        elem_type = input.type.tensor_type.elem_type
+        elem_type = graph_input.type.tensor_type.elem_type
         assert elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
         data_type = numpy.float32 if elem_type == TensorProto.FLOAT else (
             numpy.int64 if elem_type == TensorProto.INT64 else numpy.int32)
         data = numpy.ones(shape, dtype=data_type)
-        dummy_inputs[input.name] = data
+        dummy_inputs[graph_input.name] = data
 
     all_inputs = [dummy_inputs for _ in range(samples)]
     return all_inputs
@@ -307,25 +307,25 @@ def create_longformer_inputs(onnx_model_path, batch_size, sequence_length, globa
     symbols = {'batch_size': batch_size, 'sequence_length': sequence_length}
 
     dummy_inputs = {}
-    for input in onnx_model.get_graph_inputs_excluding_initializers():
-        shape = get_shape_from_type_proto(input.type)
+    for graph_input in onnx_model.get_graph_inputs_excluding_initializers():
+        shape = get_shape_from_type_proto(graph_input.type)
         for i, dim in enumerate(shape):
-            if type(dim) == str and dim not in symbols.keys():
+            if isinstance(dim, str) and dim not in symbols.keys():
                 raise RuntimeError(f"symbol is not supported: {dim}")
             else:
                 shape[i] = symbols[dim]
 
-        elem_type = input.type.tensor_type.elem_type
+        elem_type = graph_input.type.tensor_type.elem_type
         assert elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
         data_type = numpy.float32 if elem_type == TensorProto.FLOAT else (
             numpy.int64 if elem_type == TensorProto.INT64 else numpy.int32)
 
-        if "global" in input.name:
+        if "global" in graph_input.name:
             data = numpy.zeros(shape, dtype=data_type)
             data[:, :global_length] = 1
         else:
             data = numpy.ones(shape, dtype=data_type)
-        dummy_inputs[input.name] = data
+        dummy_inputs[graph_input.name] = data
 
     all_inputs = [dummy_inputs for _ in range(samples)]
     return all_inputs
@@ -351,8 +351,7 @@ def run(args):
     else:  # default
         all_inputs = create_dummy_inputs(args.model, args.batch_size, args.sequence_length, args.samples)
 
-    profile_file = run_profile(args.model, args.use_gpu, args.basic_optimization, args.thread_num, args.batch_size,
-                               args.sequence_length, all_inputs)
+    profile_file = run_profile(args.model, args.use_gpu, args.basic_optimization, args.thread_num, all_inputs)
 
     profile_records = load_profile_json(profile_file)
 
@@ -365,13 +364,13 @@ def run(args):
 
 
 if __name__ == '__main__':
-    args = parse_arguments()
-    print("Arguments", args)
+    arguments = parse_arguments()
+    print("Arguments", arguments)
 
     from benchmark_helper import setup_logger
-    setup_logger(args.verbose)
+    setup_logger(arguments.verbose)
 
-    results = run(args)
+    results = run(arguments)
 
     print("Results:")
     print("-" * 64)

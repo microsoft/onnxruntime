@@ -222,6 +222,9 @@ TEST(CseTests, Subgraph) {
     }
   }
 
+  ASSERT_NE(if_true_graph, nullptr);
+  ASSERT_NE(if_false_graph, nullptr);
+
   output_names = GetSortedNames(if_true_graph->GetOutputs());
   ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
 

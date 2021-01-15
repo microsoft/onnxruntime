@@ -410,7 +410,7 @@ class OnnxModel:
         from packaging.version import Version
         import onnxconverter_common.float16 as oc
         if Version(oc.__version__) > Version("1.7.0"):
-            self.model = oc.convert_float_to_float16(self.model, keep_io_types = cast_input_output)
+            self.model = oc.convert_float_to_float16(self.model, keep_io_types=cast_input_output)
             return
 
         graph = self.model.graph

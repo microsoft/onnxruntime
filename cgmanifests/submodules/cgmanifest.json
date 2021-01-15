@@ -172,16 +172,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "42c53187a56c12dc5518cc25e778e5e3e7dbaf72",
-          "repositoryUrl": "https://github.com/google/gemmlowp.git"
-        },
-        "comments": "git submodule at cmake/external/gemmlowp"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
