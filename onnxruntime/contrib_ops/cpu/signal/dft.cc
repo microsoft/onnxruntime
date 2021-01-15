@@ -129,7 +129,7 @@ template <typename T, typename U>
 static Status fft_radix2(OpKernelContext* /*ctx*/, size_t batch_idx,
     const Tensor* X, Tensor* Y, const Tensor* window, bool is_onesided, bool inverse,
     std::vector<std::complex<T>>& V,
-    std::unique_ptr<std::complex<T>[]>& temp_output, size_t temp_size) {
+    std::vector<std::complex<T>>& temp_output) {
 
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
@@ -146,10 +146,10 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, size_t batch_idx,
 
   std::complex<T>* Y_data;
   if (is_onesided) {
-    if (temp_output == nullptr || temp_size != number_of_samples) {
-      temp_output = std::unique_ptr<std::complex<T>[]>(new std::complex<T>[number_of_samples]);
+    if (temp_output.size() != number_of_samples) {
+      temp_output = std::vector<std::complex<T>>(number_of_samples);
     }
-    Y_data = temp_output.get();
+    Y_data = temp_output.data();
   } else {
     Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * number_of_samples);
   }
@@ -251,7 +251,7 @@ static Status dft_naive(size_t batch_idx, const Tensor* X, Tensor* Y, const Tens
 
 template <typename T, typename U>
 static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, Tensor* Y, const Tensor* window, bool is_onesided, bool inverse,
-                                         std::vector<std::complex<T>>& V, std::unique_ptr<std::complex<T>[]>& temp_output, size_t temp_size) {
+                                         std::vector<std::complex<T>>& V, std::vector<std::complex<T>>& temp_output) {
   // Get shape
   const auto& X_shape = X->Shape();
   size_t number_of_batches = static_cast<size_t>(X_shape[0]);
@@ -260,7 +260,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
   // radix 2 fft
   for (size_t i = 0; i < number_of_batches; i++) {
     if (is_power_of_2(number_of_samples)) {
-      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, i, X, Y, window, is_onesided, inverse, V, temp_output, temp_size)));
+      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, i, X, Y, window, is_onesided, inverse, V, temp_output)));
     } else {
       ORT_RETURN_IF_ERROR((dft_naive<T, U>(i, X, Y, window, inverse)));
     }
@@ -293,21 +293,21 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, bool is_onesided,
   auto element_size = data_type->Size();
   if (element_size == sizeof(float)) {
     std::vector<std::complex<float>> V;
-    std::unique_ptr<std::complex<float>[]> temp_output = nullptr;
+    std::vector<std::complex<float>> temp_output;
     if (is_real_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, float>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output, number_of_samples)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, float>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output)));
     } else if (is_complex_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, std::complex<float>>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output, number_of_samples)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, std::complex<float>>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output)));
     } else {
         ORT_THROW("Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for complex inputs.", data_type);
     }
   } else if (element_size == sizeof(double)) {
     std::vector<std::complex<double>> V;
-    std::unique_ptr<std::complex<double>[]> temp_output = nullptr;
+    std::vector<std::complex<double>> temp_output;
     if (is_real_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, double>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output, number_of_samples)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, double>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output)));
     } else if (is_complex_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, std::complex<double>>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output, number_of_samples)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, std::complex<double>>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output)));
     } else {
       ORT_THROW("Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for complex inputs.", data_type);
     }
@@ -419,7 +419,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   auto dft_output_shape = onnxruntime::TensorShape({1, dft_output_size, output_components});
 
   std::vector<std::complex<T>> V;
-  std::unique_ptr<std::complex<T>[]> temp_output = nullptr;
+  std::vector<std::complex<T>> temp_output;
   // Run each dft of each batch as if it was a real-valued batch size 1 dft operation
   for (int64_t batch_idx = 0; batch_idx < batch_size; batch_idx++) {
     for (int64_t i = 0; i < n_dfts; i++) {
@@ -451,7 +451,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
               0);
 
       // Run individual dft
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, window, is_onesided, false, V, temp_output, window_size)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, window, is_onesided, false, V, temp_output)));
     }
   }
 
