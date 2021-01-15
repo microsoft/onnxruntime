@@ -155,9 +155,6 @@ void LearningModelSession::Initialize() {
 
   // Cache the constructed session
   engine_ = engine;
-
-  // Log to telemetry that WinML LearningModelSession was successful
-  telemetry_helper.LogWinMLSessionCreated();
 }
 
 wfc::IPropertySet
