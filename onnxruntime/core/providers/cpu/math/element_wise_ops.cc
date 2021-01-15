@@ -569,80 +569,10 @@ struct Min_8::ComputeImpl {
   }
 };
 
-template <bool is_min>
-static Status MinMaxMLFloat16(const OpKernel& inst, OpKernelContext* context) {
-  const auto typed_allocator = [](const TensorAllocator& tensor_allocator, const TensorShape& shape) {
-    return tensor_allocator.Allocate<MLFloat16>(shape);
-  };
-
-  ProcessBroadcastSpanFuncs funcs{
-      [](BroadcastHelper& per_iter_bh) {
-        auto num_elements = per_iter_bh.NumOutputElements();
-
-        const auto* input_1 = reinterpret_cast<const Eigen::half*>(per_iter_bh.EigenInput1<MLFloat16>().data());
-        ConstEigenVectorArrayMap<Eigen::half> input_1_vec_map(input_1, num_elements);
-
-        auto* output = reinterpret_cast<Eigen::half*>(per_iter_bh.OutputEigen<MLFloat16>().data());
-        EigenVectorArrayMap<Eigen::half> output_vec_map(output, num_elements);
-
-        if (is_min) {
-          output_vec_map = input_1_vec_map.min(static_cast<Eigen::half>(per_iter_bh.ScalarInput0<MLFloat16>()));
-        } else {
-          output_vec_map = input_1_vec_map.max(static_cast<Eigen::half>(per_iter_bh.ScalarInput0<MLFloat16>()));
-        }
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        auto num_elements = per_iter_bh.NumOutputElements();
-
-        const auto* input_0 = reinterpret_cast<const Eigen::half*>(per_iter_bh.EigenInput0<MLFloat16>().data());
-        ConstEigenVectorArrayMap<Eigen::half> input_0_vec_map(input_0, num_elements);
-
-        auto* output = reinterpret_cast<Eigen::half*>(per_iter_bh.OutputEigen<MLFloat16>().data());
-        EigenVectorArrayMap<Eigen::half> output_vec_map(output, num_elements);
-
-        if (is_min) {
-          output_vec_map = input_0_vec_map.min(static_cast<Eigen::half>(per_iter_bh.ScalarInput1<MLFloat16>()));
-        } else {
-          output_vec_map = input_0_vec_map.max(static_cast<Eigen::half>(per_iter_bh.ScalarInput1<MLFloat16>()));
-        }
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        auto num_elements = per_iter_bh.NumOutputElements();
-
-        const auto* input_0 = reinterpret_cast<const Eigen::half*>(per_iter_bh.EigenInput0<MLFloat16>().data());
-        ConstEigenVectorArrayMap<Eigen::half> input_0_vec_map(input_0, num_elements);
-
-        const auto* input_1 = reinterpret_cast<const Eigen::half*>(per_iter_bh.EigenInput1<MLFloat16>().data());
-        ConstEigenVectorArrayMap<Eigen::half> input_1_vec_map(input_1, num_elements);
-
-        auto* output = reinterpret_cast<Eigen::half*>(per_iter_bh.OutputEigen<MLFloat16>().data());
-        EigenVectorArrayMap<Eigen::half> output_vec_map(output, num_elements);
-
-        if (is_min) {
-          output_vec_map = input_0_vec_map.min(input_1_vec_map);
-        } else {
-          output_vec_map = input_0_vec_map.max(input_1_vec_map);
-        }
-      }};
-
-  int input_count = inst.Node().InputArgCount().front();
-  UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
-
-  return Status::OK();
-}
-
 Status Min_8::Compute(OpKernelContext* context) const {
-  auto dt_type = context->Input<Tensor>(0)->GetElementType();
-
-  switch (dt_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      return MinMaxMLFloat16<true>(*this, context);
-      break;
-    default:
-      utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, int32_t, uint32_t, int64_t, uint64_t>
-          t_disp(dt_type);
-      return t_disp.Invoke(*this, context);
-  }
+  utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t>
+      t_disp(context->Input<Tensor>(0)->GetElementType());
+  return t_disp.Invoke(*this, context);
 }
 
 template <>
@@ -692,17 +622,9 @@ struct Max_8::ComputeImpl {
 };
 
 Status Max_8::Compute(OpKernelContext* context) const {
-  auto dt_type = context->Input<Tensor>(0)->GetElementType();
-
-  switch (dt_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      return MinMaxMLFloat16<false>(*this, context);
-      break;
-    default:
-      utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, int32_t, uint32_t, int64_t, uint64_t>
-          t_disp(dt_type);
-      return t_disp.Invoke(*this, context);
-  }
+  utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t>
+      t_disp(context->Input<Tensor>(0)->GetElementType());
+  return t_disp.Invoke(*this, context);
 }
 
 Status Not::Compute(OpKernelContext* context) const {
