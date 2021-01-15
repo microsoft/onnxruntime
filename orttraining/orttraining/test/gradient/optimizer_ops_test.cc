@@ -11,15 +11,6 @@ namespace test {
 
 namespace {
 
-float GetGradientL2Norm(const std::vector<float>& gradient_vector) {
-  float gradient_norm = 0.0f;
-  for (const auto g_value : gradient_vector) {
-    gradient_norm += g_value * g_value;
-  }
-  gradient_norm = std::sqrt(gradient_norm);
-  return gradient_norm;
-}
-
 TEST(OptimizerTest, SGDOptimizerTest) {
   OpTester test("SGDOptimizer", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("ETA", {}, {0.5f});
@@ -253,6 +244,16 @@ TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
+
+float GetGradientL2Norm(const std::vector<float>& gradient_vector) {
+  float gradient_norm = 0.0f;
+  for (const auto g_value : gradient_vector) {
+    gradient_norm += g_value * g_value;
+  }
+  gradient_norm = std::sqrt(gradient_norm);
+  return gradient_norm;
+}
+
 TEST(OptimizerTest, AdamOptimizerMixPrecisionTest) {
   OpTester test("AdamOptimizer", 1, onnxruntime::kMSDomain);
   AdamOptimizerInputOutput data;
