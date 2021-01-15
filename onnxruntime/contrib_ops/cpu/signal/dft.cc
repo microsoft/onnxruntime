@@ -61,10 +61,56 @@ static bool is_power_of_2(size_t size) {
   return n_bits == 1;
 }
 
-size_t bit_reverse(size_t num, unsigned significant_bits) {
-  unsigned output = 0;
-  for (unsigned i = 0; i < significant_bits; i++) {
-    output += ((num >> i) & 1) << (significant_bits - 1 - i);
+template <unsigned TSignificantBits>
+static inline size_t bit_reverse(size_t num) {
+  size_t output = 0;
+  size_t i = 0;
+  do {
+    output <<= 1;
+    output |= (num & 1);
+    num >>= 1;
+    i++;
+  } while (i < TSignificantBits);
+  return output;
+}
+
+static inline size_t bit_reverse(size_t num, unsigned significant_bits) {
+  size_t output = 0;
+  switch (significant_bits) {
+    case 0: return bit_reverse<0>(num);
+    case 1: return bit_reverse<1>(num);
+    case 2: return bit_reverse<2>(num);
+    case 3: return bit_reverse<3>(num);
+    case 4: return bit_reverse<4>(num);
+    case 5: return bit_reverse<5>(num);
+    case 6: return bit_reverse<6>(num);
+    case 7: return bit_reverse<7>(num);
+    case 8: return bit_reverse<8>(num);
+    case 9: return bit_reverse<9>(num);
+    case 10: return bit_reverse<10>(num);
+    case 11: return bit_reverse<11>(num);
+    case 12: return bit_reverse<12>(num);
+    case 13: return bit_reverse<13>(num);
+    case 14: return bit_reverse<14>(num);
+    case 15: return bit_reverse<15>(num);
+    case 16: return bit_reverse<16>(num);
+    case 17: return bit_reverse<17>(num);
+    case 18: return bit_reverse<18>(num);
+    case 19: return bit_reverse<19>(num);
+    case 20: return bit_reverse<20>(num);
+    case 21: return bit_reverse<21>(num);
+    case 22: return bit_reverse<22>(num);
+    case 23: return bit_reverse<23>(num);
+    case 24: return bit_reverse<24>(num);
+    case 25: return bit_reverse<25>(num);
+    case 26: return bit_reverse<26>(num);
+    case 27: return bit_reverse<27>(num);
+    case 28: return bit_reverse<28>(num);
+    case 29: return bit_reverse<29>(num);
+    case 30: return bit_reverse<30>(num);
+    case 31: return bit_reverse<31>(num);
+    case 32: return bit_reverse<32>(num);
+    default: ORT_THROW("Unsupported bit size.");
   }
   return output;
 }
@@ -80,7 +126,11 @@ static T compute_angular_velocity(size_t number_of_samples, bool inverse) {
 }
 
 template <typename T, typename U>
-static Status fft_radix2(OpKernelContext* ctx, size_t batch_idx, const Tensor* X, Tensor* Y, const Tensor* window, bool is_onesided, bool inverse) {
+static Status fft_radix2(OpKernelContext* /*ctx*/, size_t batch_idx,
+    const Tensor* X, Tensor* Y, const Tensor* window, bool is_onesided, bool inverse,
+    std::vector<std::complex<T>>& V,
+    std::unique_ptr<std::complex<T>[]>& temp_output, size_t temp_size) {
+
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[1]);
@@ -93,10 +143,12 @@ static Status fft_radix2(OpKernelContext* ctx, size_t batch_idx, const Tensor* X
   if (window) {
     window_data = const_cast<U*>(reinterpret_cast<const U*>(window->DataRaw()));
   }
-  std::unique_ptr<std::complex<T>[]> temp_output = nullptr;
+
   std::complex<T>* Y_data;
   if (is_onesided) {
-    temp_output = std::unique_ptr<std::complex<T>[]>(new std::complex<T>[number_of_samples]);
+    if (temp_output == nullptr || temp_size != number_of_samples) {
+      temp_output = std::unique_ptr<std::complex<T>[]>(new std::complex<T>[number_of_samples]);
+    }
     Y_data = temp_output.get();
   } else {
     Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * number_of_samples);
@@ -105,11 +157,16 @@ static Status fft_radix2(OpKernelContext* ctx, size_t batch_idx, const Tensor* X
   auto angular_velocity = compute_angular_velocity<T>(number_of_samples, inverse);
 
   // Create vandermonde matrix V ordered with the bit-reversed permutation
-  auto V = std::vector<std::complex<T>>(number_of_samples);  // e^(i *2*pi / N * k)
+  if (V.size() != number_of_samples) {
+    V = std::vector<std::complex<T>>(number_of_samples);  // e^(i *2*pi / N * k)
+    for (size_t i = 0; i < number_of_samples; i++) {
+      size_t bit_reversed_index = bit_reverse(i, significant_bits);
+      V[bit_reversed_index] = std::complex<T>(cos(i * angular_velocity), sin(i * angular_velocity));
+    }
+  }
+
   for (size_t i = 0; i < number_of_samples; i++) {
     size_t bit_reversed_index = bit_reverse(i, significant_bits);
-    V[bit_reversed_index] = std::complex<T>(cos(i * angular_velocity), sin(i * angular_velocity));
-
     auto x = *(X_data + bit_reversed_index);
     auto window_element = window_data ? *(window_data + bit_reversed_index) : 1; 
     *(Y_data + i) = std::complex<T>(1, 0) * x * window_element;
@@ -117,35 +174,20 @@ static Status fft_radix2(OpKernelContext* ctx, size_t batch_idx, const Tensor* X
 
   // Run fft_radix2
   unsigned current_significant_bits = 0;
-  for (size_t i = 2; i <= number_of_samples; i *= 2) {
+  for (size_t i = 2; i <= number_of_samples; i <<= 1) {
     size_t midpoint = i >> 1;
     current_significant_bits++;
 
-    if (current_significant_bits < significant_bits) {
-      onnxruntime::concurrency::ThreadPool::TryBatchParallelFor(
-        ctx->GetOperatorThreadPool(),
-        static_cast<int32_t>(number_of_samples/i),
-        [=, &V](ptrdiff_t task_idx) {
-          size_t j = task_idx * i;
-          for (size_t k = 0; k < midpoint; k++) {
-            std::complex<T>* even = (Y_data + j) + k;
-            std::complex<T>* odd = (Y_data + j) + (midpoint + k);
-            std::complex<T> first = *even + (V[bit_reverse(k, current_significant_bits)] * *odd);
-            std::complex<T> second = *even + (V[bit_reverse(midpoint + k, current_significant_bits)] * *odd);
-            *even = first;
-            *odd = second;
-          }
-        }, 0);
-    } else {
+    for (size_t k = 0; k < midpoint; k++) {
+      auto first_idx = bit_reverse(k, current_significant_bits);
+      auto second_idx = bit_reverse(midpoint + k, current_significant_bits);
       for (size_t j = 0; j < number_of_samples; j += i) {
-        for (size_t k = 0; k < midpoint; k++) {
-          std::complex<T>* even = (Y_data + j) + k;
-          std::complex<T>* odd = (Y_data + j) + (midpoint + k);
-          std::complex<T> first = *even + (V[bit_reverse(k, current_significant_bits)] * *odd);
-          std::complex<T> second = *even + (V[bit_reverse(midpoint + k, current_significant_bits)] * *odd);
-          *even = first;
-          *odd = second;
-        }
+        std::complex<T>* even = (Y_data + j) + k;
+        std::complex<T>* odd = (Y_data + j) + (midpoint + k);
+        std::complex<T> first = *even + (V[first_idx] * *odd);
+        std::complex<T> second = *even + (V[second_idx] * *odd);
+        *even = first;
+        *odd = second;
       }
     }
   }
@@ -208,7 +250,8 @@ static Status dft_naive(size_t batch_idx, const Tensor* X, Tensor* Y, const Tens
 }
 
 template <typename T, typename U>
-static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, Tensor* Y, const Tensor* window, bool is_onesided, bool inverse) {
+static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, Tensor* Y, const Tensor* window, bool is_onesided, bool inverse,
+                                         std::vector<std::complex<T>>& V, std::unique_ptr<std::complex<T>[]>& temp_output, size_t temp_size) {
   // Get shape
   const auto& X_shape = X->Shape();
   size_t number_of_batches = static_cast<size_t>(X_shape[0]);
@@ -217,7 +260,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
   // radix 2 fft
   for (size_t i = 0; i < number_of_batches; i++) {
     if (is_power_of_2(number_of_samples)) {
-      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, i, X, Y, window, is_onesided, inverse)));
+      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, i, X, Y, window, is_onesided, inverse, V, temp_output, temp_size)));
     } else {
       ORT_RETURN_IF_ERROR((dft_naive<T, U>(i, X, Y, window, inverse)));
     }
@@ -235,9 +278,10 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, bool is_onesided,
 
   // Get the DFT output size. Onesided will return only the unique values!
   // note: x >> 1 === std::floor(x / 2.f)
+  int64_t number_of_samples = static_cast<int64_t>(X_shape[1]);
   auto dft_output_size = is_onesided ?
-      ((X_shape[1] >> 1) + 1) :
-      X_shape[1];
+      ((number_of_samples >> 1) + 1) :
+      number_of_samples;
 
   // Get output shape
   auto Y_shape = onnxruntime::TensorShape({X_shape[0], dft_output_size, 2});
@@ -248,18 +292,22 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, bool is_onesided,
 
   auto element_size = data_type->Size();
   if (element_size == sizeof(float)) {
+    std::vector<std::complex<float>> V;
+    std::unique_ptr<std::complex<float>[]> temp_output = nullptr;
     if (is_real_valued) {
-        ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, float>(ctx, X, Y, nullptr, is_onesided, inverse)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, float>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output, number_of_samples)));
     } else if (is_complex_valued) {
-        ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, std::complex<float>>(ctx, X, Y, nullptr, is_onesided, inverse)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, std::complex<float>>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output, number_of_samples)));
     } else {
         ORT_THROW("Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for complex inputs.", data_type);
     }
   } else if (element_size == sizeof(double)) {
+    std::vector<std::complex<double>> V;
+    std::unique_ptr<std::complex<double>[]> temp_output = nullptr;
     if (is_real_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, double>(ctx, X, Y, nullptr, is_onesided, inverse)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, double>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output, number_of_samples)));
     } else if (is_complex_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, std::complex<double>>(ctx, X, Y, nullptr, is_onesided, inverse)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, std::complex<double>>(ctx, X, Y, nullptr, is_onesided, inverse, V, temp_output, number_of_samples)));
     } else {
       ORT_THROW("Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for complex inputs.", data_type);
     }
@@ -302,6 +350,7 @@ static T get_scalar_value_from_tensor(const Tensor* tensor) {
 
 template <typename T, typename U>
 static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_onesided, bool /*inverse*/) {
+  auto start = std::chrono::high_resolution_clock::now();
   // Attr("onesided"): default = 1
   // Input(0, "signal") type = T1
   // Input(1, "frame_length") type = T2
@@ -369,6 +418,8 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   auto dft_input_shape = onnxruntime::TensorShape({1, window_size, signal_components});
   auto dft_output_shape = onnxruntime::TensorShape({1, dft_output_size, output_components});
 
+  std::vector<std::complex<T>> V;
+  std::unique_ptr<std::complex<T>[]> temp_output = nullptr;
   // Run each dft of each batch as if it was a real-valued batch size 1 dft operation
   for (int64_t batch_idx = 0; batch_idx < batch_size; batch_idx++) {
     for (int64_t i = 0; i < n_dfts; i++) {
@@ -400,10 +451,13 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
               0);
 
       // Run individual dft
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, window, is_onesided, false)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, window, is_onesided, false, V, temp_output, window_size)));
     }
   }
 
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
+  printf("\nSpectrogram evaluate took: %f\n", evaluate_duration_in_microseconds.count());
   return Status::OK();
 }
 
