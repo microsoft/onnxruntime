@@ -185,7 +185,7 @@ def parse_arguments():
         help="""When running the Test phase, run symbolic shape inference against
         available test data directories.""")
 
-    # generate documentaiton
+    # generate documentation
     parser.add_argument(
         "--gen_doc", action='store_true',
         help="Generate documentation on contrib ops")
@@ -203,6 +203,11 @@ def parse_arguments():
         "--cudnn_home", help="Path to CUDNN home. "
         "Read from CUDNN_HOME environment variable if --use_cuda is true and "
         "--cudnn_home is not specified.")
+
+    parser.add_argument("--use_cusparse_lt", action='store_true', help="Enable cusparse_lt related code")
+    parser.add_argument(
+        "--cusparselt_home", help="Path to cursparse_lt home."
+        "Must be present if --use_cusparse_lt is true")
 
     # Python bindings
     parser.add_argument(
@@ -629,6 +634,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
+        "-Donnxruntime_USE_SPARSE_LT=" + ("ON" if args.use_cusparse_lt else "OFF"),
+        "-Donnxruntime_CUSPARSELT_HOME=" + (args.cusparselt_home if args.use_cusparse_lt else ""),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
         "-Donnxruntime_USE_FEATURIZERS=" + (
             "ON" if args.use_featurizers else "OFF"),
@@ -1544,7 +1551,8 @@ def run_nodejs_tests(nodejs_binding_dir):
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
-        wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False):
+        wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False,
+        use_cusparselt=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1578,6 +1586,8 @@ def build_python_wheel(
             args.append('--use_tensorrt')
         elif use_cuda:
             args.append('--use_cuda')
+        elif use_cusparselt:
+            args.append('--use_cusparselt')
         elif use_openvino:
             args.append('--use_openvino')
         elif use_dnnl:
@@ -2044,7 +2054,8 @@ def main():
                 args.enable_training,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
-                use_ninja=(args.cmake_generator == 'Ninja')
+                use_ninja=(args.cmake_generator == 'Ninja'),
+                use_cusparselt=args.use_cusparselt
             )
         if args.build_nuget:
             build_nuget_package(
