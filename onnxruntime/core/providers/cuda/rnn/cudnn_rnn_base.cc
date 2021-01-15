@@ -69,16 +69,12 @@ void CudnnRnnBase<T>::SetWeightBias_v8(const cudnnHandle_t handle,
 
   cudnnGetTensorNdDescriptor(m_desc, 3, &dt, &num_dims, dims.data(), strides.data());
   int count = dims[0] * dims[1] * dims[2];
-  if (count == 0)
-    count = 9;
   cudaMemcpyAsync(matrix_mem_offset, matrix_pos + matrix_offset, count * sizeof(T), cudaMemcpyDeviceToDevice);
   matrix_offset += count;
 
   if (bias_pos != nullptr) {
     cudnnGetTensorNdDescriptor(b_desc, 3, &dt, &num_dims, dims.data(), strides.data());
     int bias_count = dims[0] * dims[1] * dims[2];
-    if (bias_count == 0)
-      bias_count = 6;
     cudaMemcpyAsync(bias_mem_offset, bias_pos + bias_offset, bias_count * sizeof(T), cudaMemcpyDeviceToDevice);
     bias_offset += bias_count;
   }
@@ -142,6 +138,7 @@ Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
 template <typename T>
 Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
                                           IAllocatorUniquePtr<void>& reorganized_w_data,
+                                          size_t& weightspace_bytes,
                                           CudnnFilterDescriptor& target_w_desc,
                                           CudnnRNN& rnn_desc) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -161,10 +158,9 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   const T* B_data = B == nullptr ? nullptr : B->template Data<T>();
 
   if (use_v8_api_) {
-    size_t weightspace_bytes;
     CUDNN_RETURN_IF_ERROR(cudnnGetRNNWeightSpaceSize(CudnnHandle(), rnn_desc, &weightspace_bytes));
     reorganized_w_data = GetScratchBuffer<void>(weightspace_bytes);
-    SetCudnnRnnWeightBias_v8(CudnnHandle(), rnn_desc, reorganized_w_data.get(), weightspace_bytes, W_data, R_data, B_data);
+    ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias_v8(CudnnHandle(), rnn_desc, reorganized_w_data.get(), weightspace_bytes, W_data, R_data, B_data));
   } else {
     int64_t input_size = W->Shape()[2];
     size_t number = W_lin_layer_id_.size();
@@ -219,7 +215,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
                                            GetDeviceProp()));
     }
 
-    ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, get_B ? B : nullptr, w_data_cache_, w_desc_cache_, tmp_rnn_desc));
+    ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, get_B ? B : nullptr, w_data_cache_, weightspace_bytes_cached_, w_desc_cache_, tmp_rnn_desc));
     weight_cached_ = true;
   }
 
@@ -266,8 +262,12 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   CudnnTensor hx_desc;
   CudnnTensor cx_desc;
+  CudnnTensor y_h_desc;
+  CudnnTensor y_c_desc;
   ORT_RETURN_IF_ERROR(hx_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
   ORT_RETURN_IF_ERROR(cx_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(y_h_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(y_c_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
 
   IAllocatorUniquePtr<T> x_reversed_data;
   const T* x_data = X->template Data<T>();
@@ -325,12 +325,13 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Prepare the weight data
   IAllocatorUniquePtr<void> w_data;
+  size_t weightspace_bytes = 0;  // if v8 API is used, this will be computed and stored for re-use later downstream
   CudnnFilterDescriptor w_desc;
   if (!weight_cached_) {
     const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
     const Tensor& R = *ctx->Input<Tensor>(RNN_Input_Index::R);
     const Tensor* B = ctx->Input<Tensor>(RNN_Input_Index::B);
-    ORT_RETURN_IF_ERROR(ReorganizeWeights(&W, &R, B, w_data, w_desc, rnn_desc));
+    ORT_RETURN_IF_ERROR(ReorganizeWeights(&W, &R, B, w_data, weightspace_bytes, w_desc, rnn_desc));
   }
 
   // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
@@ -342,96 +343,182 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int32_t> zero_seq_index_cache(batch_size, 0);
   int64_t zero_seq_index_cache_size = 0;
 
-  // cudnn doesn't support 0 sequence inside the batch, find the 0 sequence and set it to 1
-  // there's a ZeroMask kernel to reset the result to 0 for the 0 sequence
-  std::vector<int32_t> seq_len_array;
-  seq_len_array.reserve(batch_size);
+  if (!use_v8_api_ && nullptr == sequence_lens_data) {
+    size_t workspace_bytes;
+    CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_desc, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
+    auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
 
-  // TODO: Number of elements enforce
-  if (sequence_lens_data) {
+    CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(CudnnHandle(),
+                                                   rnn_desc,
+                                                   gsl::narrow_cast<int>(seq_length),
+                                                   x_desc.data(),
+                                                   x_data_input,
+                                                   hx_desc,
+                                                   hx_data,
+                                                   cx_desc,
+                                                   cx_data,
+                                                   weight_cached_ ? w_desc_cache_ : w_desc,
+                                                   weight_cached_ ? w_data_cache_.get() : w_data.get(),
+                                                   y_desc.data(),
+                                                   y_data,
+                                                   y_h_desc,
+                                                   y_h_data,
+                                                   y_c_desc,
+                                                   y_c_data,
+                                                   workspace_cuda.get(),
+                                                   workspace_bytes));
+  } else if (!use_v8_api_) {  // v7 API
+    // cudnn doesn't support 0 sequence inside the batch, find the 0 sequence and set it to 1
+    // there's a ZeroMask kernel to reset the result to 0 for the 0 sequence
+
+    std::vector<int32_t> seq_len_array(sequence_lens_data, sequence_lens_data + batch_size);
     for (int i = 0; i < batch_size; ++i) {
-      seq_len_array.push_back(sequence_lens_data[i]);
       if (0 == seq_len_array[i]) {
         seq_len_array[i] = 1;
         zero_seq_index_cache[zero_seq_count] = i;
         ++zero_seq_count;
       }
     }
-  } else {
-    for (int i = 0; i < batch_size; ++i) {
-      seq_len_array.push_back(gsl::narrow_cast<int32_t>(seq_length));
+
+    // Calculate the zero position cache for reverse direction if it's bidirectional
+    // The cache is for Y_h or Y_c, and the 1st sequence for Y, no need to do it for other sequence in Y since
+    // we hacked the 0 sequence to 1
+    if (zero_seq_count && num_directions_ > 1) {
+      zero_seq_index_cache_size = zero_seq_count * num_directions_;
+      zero_seq_index_cache.resize(zero_seq_index_cache_size);
+      for (int i = 0; i < zero_seq_count; ++i) {
+        zero_seq_index_cache[zero_seq_count + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
+      }
     }
-  }
 
-  CudaAsyncBuffer<int32_t> seq_len_array_gpu(this, seq_len_array);
-  ORT_RETURN_IF_ERROR(seq_len_array_gpu.CopyToGpu());
+    size_t workspace_bytes;
+    CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_desc, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
+    auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
 
-  // Calculate the zero position cache for reverse direction if it's bidirectional
-  // The cache is for Y_h or Y_c, and the 1st sequence for Y, no need to do it for other sequence in Y since
-  // we hacked the 0 sequence to 1
-  if (zero_seq_count && num_directions_ > 1) {
-    zero_seq_index_cache_size = zero_seq_count * num_directions_;
-    zero_seq_index_cache.resize(zero_seq_index_cache_size);
-    for (int i = 0; i < zero_seq_count; ++i) {
-      zero_seq_index_cache[zero_seq_count + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
+    CudnnDataTensor x_desc1;
+    ORT_RETURN_IF_ERROR(x_desc1.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, seq_len_array.data()));
+    CudnnDataTensor y_desc1;
+    ORT_RETURN_IF_ERROR(y_desc1.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, seq_len_array.data()));
+
+    CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
+                                                     rnn_desc,
+                                                     x_desc1,
+                                                     x_data_input,
+                                                     hx_desc,
+                                                     hx_data,
+                                                     cx_desc,
+                                                     cx_data,
+                                                     weight_cached_ ? w_desc_cache_ : w_desc,
+                                                     weight_cached_ ? w_data_cache_.get() : w_data.get(),
+                                                     y_desc1,
+                                                     y_data,
+                                                     y_h_desc,
+                                                     y_h_data,
+                                                     y_c_desc,
+                                                     y_c_data,
+                                                     nullptr, nullptr, nullptr, nullptr,
+                                                     nullptr, nullptr, nullptr, nullptr,
+                                                     workspace_cuda.get(),
+                                                     workspace_bytes));
+
+    // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrieve Y_h from Y data.
+    if (nullptr == Y) {
+      // Mask on output for 0 sequence batches
+      if (zero_seq_count > 0) {
+        SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data);
+      }
+      return Status::OK();
     }
-  }
+  } else {  // v8 API
 
-  CudnnDataTensor x_desc1;
-  ORT_RETURN_IF_ERROR(x_desc1.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, seq_len_array.data()));
-  CudnnDataTensor y_desc1;
-  ORT_RETURN_IF_ERROR(y_desc1.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, seq_len_array.data()));
+    // cudnn doesn't support 0 sequence inside the batch, find the 0 sequence and set it to 1
+    // there's a ZeroMask kernel to reset the result to 0 for the 0 sequence
+    std::vector<int32_t> seq_len_array;
+    seq_len_array.reserve(batch_size);
 
-  size_t weightspace_bytes;
-  CUDNN_RETURN_IF_ERROR(cudnnGetRNNWeightSpaceSize(CudnnHandle(), rnn_desc, &weightspace_bytes));
-
-  size_t workspace_bytes;
-  size_t reservespace_bytes;
-  CUDNN_RETURN_IF_ERROR(cudnnGetRNNTempSpaceSizes(CudnnHandle(),
-                                                  rnn_desc,
-                                                  CUDNN_FWD_MODE_INFERENCE,
-                                                  x_desc1,
-                                                  &workspace_bytes,
-                                                  &reservespace_bytes));
-  auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
-  auto reservespace_cuda = GetScratchBuffer<void>(reservespace_bytes);
-
-  CUDNN_RETURN_IF_ERROR(cudnnRNNForward(
-      CudnnHandle(),
-      rnn_desc,
-      CUDNN_FWD_MODE_INFERENCE,
-      seq_len_array_gpu.GpuPtr(),
-
-      x_desc1,
-      x_data_input,
-
-      y_desc1,
-      y_data,
-
-      hx_desc,
-      hx_data,
-      y_h_data,
-
-      cx_desc,
-      cx_data,
-      y_c_data,
-
-      weightspace_bytes,
-      weight_cached_ ? w_data_cache_.get() : w_data.get(),
-
-      workspace_bytes,
-      workspace_cuda.get(),
-
-      reservespace_bytes,
-      reservespace_cuda.get()));
-
-  // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrieve Y_h from Y data.
-  if (nullptr == Y) {
-    // Mask on output for 0 sequence batches
-    if (zero_seq_count > 0) {
-      SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data);
+    // TODO: Number of elements enforce
+    if (sequence_lens_data) {
+      for (int i = 0; i < batch_size; ++i) {
+        seq_len_array.push_back(sequence_lens_data[i]);
+        if (0 == seq_len_array[i]) {
+          seq_len_array[i] = 1;
+          zero_seq_index_cache[zero_seq_count] = i;
+          ++zero_seq_count;
+        }
+      }
+    } else {
+      for (int i = 0; i < batch_size; ++i) {
+        seq_len_array.push_back(gsl::narrow_cast<int32_t>(seq_length));
+      }
     }
-    return Status::OK();
+
+    CudaAsyncBuffer<int32_t> seq_len_array_gpu(this, seq_len_array);
+    ORT_RETURN_IF_ERROR(seq_len_array_gpu.CopyToGpu());
+
+    // Calculate the zero position cache for reverse direction if it's bidirectional
+    // The cache is for Y_h or Y_c, and the 1st sequence for Y, no need to do it for other sequence in Y since
+    // we hacked the 0 sequence to 1
+    if (zero_seq_count && num_directions_ > 1) {
+      zero_seq_index_cache_size = zero_seq_count * num_directions_;
+      zero_seq_index_cache.resize(zero_seq_index_cache_size);
+      for (int i = 0; i < zero_seq_count; ++i) {
+        zero_seq_index_cache[zero_seq_count + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
+      }
+    }
+
+    CudnnDataTensor x_desc1;
+    ORT_RETURN_IF_ERROR(x_desc1.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, seq_len_array.data()));
+    CudnnDataTensor y_desc1;
+    ORT_RETURN_IF_ERROR(y_desc1.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, seq_len_array.data()));
+
+    size_t workspace_bytes;
+    size_t reservespace_bytes;
+    CUDNN_RETURN_IF_ERROR(cudnnGetRNNTempSpaceSizes(CudnnHandle(),
+                                                    rnn_desc,
+                                                    CUDNN_FWD_MODE_INFERENCE,
+                                                    x_desc1,
+                                                    &workspace_bytes,
+                                                    &reservespace_bytes));
+    auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
+    auto reservespace_cuda = GetScratchBuffer<void>(reservespace_bytes);
+
+    CUDNN_RETURN_IF_ERROR(cudnnRNNForward(
+        CudnnHandle(),
+        rnn_desc,
+        CUDNN_FWD_MODE_INFERENCE,
+        seq_len_array_gpu.GpuPtr(),
+
+        x_desc1,
+        x_data_input,
+
+        y_desc1,
+        y_data,
+
+        hx_desc,
+        hx_data,
+        y_h_data,
+
+        cx_desc,
+        cx_data,
+        y_c_data,
+
+        weight_cached_ ? weightspace_bytes_cached_ : weightspace_bytes,
+        weight_cached_ ? w_data_cache_.get() : w_data.get(),
+
+        workspace_bytes,
+        workspace_cuda.get(),
+
+        reservespace_bytes,
+        reservespace_cuda.get()));
+
+    // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrieve Y_h from Y data.
+    if (nullptr == Y) {
+      // Mask on output for 0 sequence batches
+      if (zero_seq_count > 0) {
+        SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data);
+      }
+      return Status::OK();
+    }
   }
 
   IAllocatorUniquePtr<T> y_reorganized_data;

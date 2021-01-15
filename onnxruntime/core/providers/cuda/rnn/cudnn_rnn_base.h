@@ -156,6 +156,7 @@ class CudnnRnnBase : public CudaKernel {
 
   Status ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
                            IAllocatorUniquePtr<void>& target_w_data,
+                           size_t& weightspace_bytes,
                            CudnnFilterDescriptor& target_w_desc,
                            CudnnRNN& rnn_desc) const;
 
@@ -204,7 +205,7 @@ class CudnnRnnBase : public CudaKernel {
   int64_t hidden_size_;
   cudnnRNNMode_t rnn_mode_;
   // w_desc_cache_ & w_data_cache_ are changed in Constructor if we can get the weights as constant input
-  size_t weightspace_size_cached_;
+  size_t weightspace_bytes_cached_;
   CudnnFilterDescriptor w_desc_cache_;
   IAllocatorUniquePtr<void> w_data_cache_;
   bool weight_cached_;
