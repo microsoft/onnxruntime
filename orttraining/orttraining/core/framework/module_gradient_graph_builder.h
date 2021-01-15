@@ -48,6 +48,7 @@ class ModuleGradientGraphBuilder {
 
   std::string GetForwardModel() const;
   std::string GetBackwardModel() const;
+  std::string GetGradientModel() const;
   SplitGraphsInfo GetSplitGraphsInfo() const { return split_graphs_info_; }
 
  private:

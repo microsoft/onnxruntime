@@ -415,6 +415,8 @@ std::string ModuleGradientGraphBuilder::GetForwardModel() const { return Seriali
 
 std::string ModuleGradientGraphBuilder::GetBackwardModel() const { return SerializeModel(backward_model_, "backward"); }
 
+std::string ModuleGradientGraphBuilder::GetGradientModel() const { return SerializeModel(gradient_model_, "gradient"); }
+
 Status ModuleGradientGraphBuilder::Split() {
   // Get forward model, also collect some information for backward model generation.
   Graph& forward_graph = forward_model_->MainGraph();

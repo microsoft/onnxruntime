@@ -1831,7 +1831,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })
       .def("run_backward", [](PyInferenceSession* sess, SessionIOBinding& io_binding /*, RunOptions* run_options = nullptr*/) -> void {
-        Status status = sess->GetSessionHandle()->ContinueRunInBackground(io_binding.Get());
+        Status status = sess->GetSessionHandle()->ContinueRunInBackground(*io_binding.Get());
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });

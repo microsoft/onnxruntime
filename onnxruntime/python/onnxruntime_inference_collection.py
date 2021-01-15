@@ -164,6 +164,14 @@ class Session:
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
+    def run_backward(self, iobinding):
+        """
+         Compute the baward part of the graph starting from Yield Op.
+
+         :param iobinding: the iobinding object that has graph inputs/outputs bind.
+        """
+        self._sess.run_backward(iobinding._iobinding)
+
 
 class InferenceSession(Session):
     """

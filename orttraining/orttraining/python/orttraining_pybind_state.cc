@@ -399,6 +399,9 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("get_backward_model", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
         return py::bytes(module_gradient_graph_builder->GetBackwardModel());
       })
+      .def("get_gradient_model", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
+        return py::bytes(module_gradient_graph_builder->GetGradientModel());
+      })
       .def("get_split_graphs_info", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
         return module_gradient_graph_builder->GetSplitGraphsInfo();
       });
