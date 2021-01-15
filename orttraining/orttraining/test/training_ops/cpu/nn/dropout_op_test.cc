@@ -27,8 +27,10 @@ using namespace onnxruntime::test;
 namespace {
 constexpr auto k_dropout_opset_version = 12;
 
+// training_mode integer means
+// 1 for true, 0 for false, and -1 don't create training_mode input node.
 void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
-                    bool training_mode = true, bool use_float16_ratio = false) {
+                    int training_mode = 1, bool use_float16_ratio = false) {
   OpTester t{op, k_dropout_opset_version, kOnnxDomain};
 
   const auto input_size = std::accumulate(
@@ -56,8 +58,12 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
     }
   }
 
-  if (strcmp(op, "TrainableDropout") != 0 && training_mode) {
-    t.AddInput("training_mode", {}, {true});
+  if (strcmp(op, "TrainableDropout") != 0 && training_mode != -1) {
+    if (training_mode == 1) {
+      t.AddInput("training_mode", {}, {true});
+    } else {
+      t.AddInput("training_mode", {}, {false});
+    }
   }
 
   t.AddOutput<float>("output", input_shape, input);  // we'll do our own output verification
@@ -80,8 +86,13 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
     if (ratio == 1.0f) {
       ASSERT_EQ(num_dropped_values, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
-      ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), ratio, 0.1f)
-          << "provider: " << provider_type;
+      if (training_mode == 1) {
+        ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), ratio, 0.1f)
+            << "provider: " << provider_type;
+      } else {
+        ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), 0.0f, 0.1f)
+            << "provider: " << provider_type;
+      }
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {
         if (output_span[i] == 0.0f) continue;
@@ -121,13 +132,25 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
 TEST(DropoutTest, Basic) {
   RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f);
 }
+TEST(DropoutTest, BasicTrainingFalse) {
+  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f, 0);
+}
+TEST(DropoutTest, BasicNoTraining) {
+  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f, -1);
+}
 
 TEST(DropoutTest, Mask) {
   RunDropoutTest("Dropout", true, {1000}, 0.25f);
 }
+TEST(DropoutTest, MaskTrainingFalse) {
+  RunDropoutTest("Dropout", true, {1000}, 0.25f, 0);
+}
+TEST(DropoutTest, MaskNoTraining) {
+  RunDropoutTest("Dropout", true, {1000}, 0.25f, -1);
+}
 
 TEST(DropoutTest, RatioLimit) {
-  RunDropoutTest("Dropout", true, {1000}, 0.0f, false);
+  RunDropoutTest("Dropout", true, {1000}, 0.0f, 0);
 }
 
 TEST(DropoutTest, EmptyRatio) {
