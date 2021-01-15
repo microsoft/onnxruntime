@@ -9,6 +9,17 @@
 namespace onnxruntime {
 namespace test {
 
+namespace {
+
+float GetGradientL2Norm(const std::vector<float>& gradient_vector) {
+  float gradient_norm = 0.0f;
+  for (const auto g_value : gradient_vector) {
+    gradient_norm += g_value * g_value;
+  }
+  gradient_norm = std::sqrt(gradient_norm);
+  return gradient_norm;
+}
+
 TEST(OptimizerTest, SGDOptimizerTest) {
   OpTester test("SGDOptimizer", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("ETA", {}, {0.5f});
@@ -1409,11 +1420,7 @@ TEST(OptimizerTest, LambOptimizerTest5DTensorMixPrecision32_16) {
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v, lambda, alpha, beta, epsilon, max_norm);
 
-  float gradient_norm = 0.0f;
-  for (const auto g_value : g) {
-    gradient_norm += g_value * g_value;
-  }
-  gradient_norm = std::sqrt(gradient_norm);
+  float gradient_norm = GetGradientL2Norm(g);
   // gradient clipping
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
@@ -1438,14 +1445,8 @@ TEST(OptimizerTest, LambOptimizerTestSimpleBaselineMixPrecision32_16) {
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon, max_norm);
 
-  float gradient_norm = 0.0f;
-  for (const auto g_value : g) {
-    gradient_norm += g_value * g_value;
-  }
-
-  gradient_norm = std::sqrt(gradient_norm);
-
   // gradient clipping
+  float gradient_norm = GetGradientL2Norm(g);
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon, max_norm, 0, loss_scale, &gradient_norm);
@@ -1470,12 +1471,8 @@ TEST(OptimizerTest, LambOptimizerTestBaselineMixPrecision32_16) {
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon, max_norm);
 
-  float gradient_norm = 0.0f;
-  for (const auto g_value : g) {
-    gradient_norm += g_value * g_value;
-  }
-  gradient_norm = std::sqrt(gradient_norm);
   // gradient clipping
+  float gradient_norm = GetGradientL2Norm(g);
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon, max_norm, 0, loss_scale, &gradient_norm);
@@ -1500,11 +1497,8 @@ TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16) {
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon, max_norm);
 
-  float gradient_norm = 0.0f;
-  for (const auto g_value : g) {
-    gradient_norm += g_value * g_value;
-  }
-  gradient_norm = std::sqrt(gradient_norm);
+  // gradient clipping
+  float gradient_norm = GetGradientL2Norm(g);
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon, max_norm, 2, loss_scale, &gradient_norm);
@@ -1529,11 +1523,8 @@ TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16_NoDefaultMaxNormCli
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon, max_norm, 2);
 
-  float gradient_norm = 0.0f;
-  for (const auto g_value : g) {
-    gradient_norm += g_value * g_value;
-  }
-  gradient_norm = std::sqrt(gradient_norm);
+  // gradient clipping
+  float gradient_norm = GetGradientL2Norm(g);
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon, max_norm, 2, loss_scale, &gradient_norm);
@@ -1649,6 +1640,6 @@ TEST(OptimizerTest, LambOptimizerMultiTensorRatio) {
       step, loss_scale, &scaled_g_norm);
 }
 #endif
-
+}
 }  // namespace test
 }  // namespace onnxruntime
