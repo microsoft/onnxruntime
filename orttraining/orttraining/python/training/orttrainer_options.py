@@ -54,7 +54,7 @@ class ORTTrainerOptions(object):
                 },
                 'distributed': {
                     'type': 'dict',
-                    'default_setter': lambda _: {},
+                    'default': {},
                     'required': False,
                     'schema': {
                         'world_rank': {
@@ -84,7 +84,7 @@ class ORTTrainerOptions(object):
                         },
                         'pipeline_parallel' : {
                             'type': 'dict',
-                            'default_setter': lambda _: {},
+                            'default': {},
                             'required': False,
                             'schema': {
                                 'pipeline_parallel_size': {
@@ -129,7 +129,7 @@ class ORTTrainerOptions(object):
                         },
                         'deepspeed_zero_optimization': {
                             'type': 'dict',
-                            'default_setter': lambda _: {},
+                            'default': {},
                             'required': False,
                             'schema': {
                                 'stage': {
@@ -551,7 +551,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     },
                     'sliced_schema': {
                         'type': 'dict',
-                        'default': {},
+                        'default_setter': lambda _: {},
                         'keysrules': {'type': 'string'},
                         'valuesrules': {
                             'type': 'list',
@@ -560,7 +560,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     },
                     'sliced_axes': {
                         'type': 'dict',
-                        'default': {},
+                        'default_setter': lambda _: {},
                         'keysrules': {'type': 'string'},
                         'valuesrules': {'type': 'integer'}
                     },
