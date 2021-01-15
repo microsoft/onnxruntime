@@ -23,9 +23,7 @@ void WinMLTelemetryHelper::LogWinMLShutDown() {
       provider_,
       "WinMLShutDown",
       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-      TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
-      TraceLoggingString(message.c_str(), "message"),
-      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+      TraceLoggingString(message.c_str(), "message"));
 }
 
 void WinMLTelemetryHelper::LogWinMLSuspended() {
@@ -33,8 +31,16 @@ void WinMLTelemetryHelper::LogWinMLSuspended() {
       provider_,
       "WinMLSuspended",
       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-      TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
-      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"));
+}
+
+void WinMLTelemetryHelper::LogWinMLSessionCreated() {
+  WinMLTraceLoggingWrite(
+      provider_,
+      "WinMLSessionCreated",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      TraceLoggingString("LearningModelSession successfully created.", "message"),
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }
 
