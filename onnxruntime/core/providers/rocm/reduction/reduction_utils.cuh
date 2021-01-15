@@ -18,65 +18,22 @@ __forceinline__ __host__ __device__ int least_pow2_bound(int value) {
   return static_cast<int>(++value_);
 }
 
-struct Square2 {
+struct Square {
   template <typename T>
   __forceinline__ __device__ T operator()(const T& value) {
     return value * value;
   }
 };
 
-struct Sqrt2 {
-  template <typename T>
-  __forceinline__ __device__ T operator()(const T& value) {
-    return _Sqrt(value);
-  }
-};
-
-struct Identity2 {
-  template <typename T>
-  __forceinline__ __device__ T operator()(const T& value) {
-    return value;
-  }
-};
-
-
-
-//
-// TODO: DELETE EVERYTHING BELOW
-// TODO: RENAME STRUCTS ABOVE (no '2')
-//
-
-template <typename TAccumulated, typename TValue>
-struct Cast {
-  __forceinline__ __device__ TAccumulated operator()(const TValue& value) {
-    return TAccumulated(value);
-  }
-};
-
-template <typename TAccumulated, typename TValue>
-struct Square {
-  __forceinline__ __device__ TAccumulated operator()(const TValue& value) {
-    return TAccumulated(value) * TAccumulated(value);
-  }
-};
-
-template <typename TAccumulated, typename TValue>
-struct Abs {
-  __forceinline__ __device__ TAccumulated operator()(const TValue& value) {
-    TAccumulated value_ = TAccumulated(value);
-    return value_ > TAccumulated(0) ? value_ : -value_;
-  }
-};
-
-template <typename T>
 struct Sqrt {
+  template <typename T>
   __forceinline__ __device__ T operator()(const T& value) {
     return _Sqrt(value);
   }
 };
 
-template <typename T>
 struct Identity {
+  template <typename T>
   __forceinline__ __device__ T operator()(const T& value) {
     return value;
   }

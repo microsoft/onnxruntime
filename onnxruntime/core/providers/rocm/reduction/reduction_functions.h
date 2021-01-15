@@ -89,7 +89,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
  * @param reset_initial_output Whether to reset (i.e., zero) the output values first.
  */
 template <typename TIn, typename TOut>
-Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output /* TODO: = true*/);
+Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output = true);
 
 /**
  * Reduces the columns in a row-major matrix to a single column containing the sum of each row.
@@ -102,31 +102,6 @@ Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool res
  */
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
-
-
-
-
-
-//
-// TODO: DELETE EVERYTHING BELOW
-//
-
-int compute_reduction_buffer_size(int element_size, int size);
-
-template <typename TIn, typename TOut>
-void reduce_sum(const TIn* input, TOut* output, int size, TOut* buffer);
-
-template <typename TIn, typename TOut>
-void reduce_square_sum(const TIn* input, TOut* output, int size, TOut* buffer);
-
-template <typename TIn, typename TOut>
-void reduce_l2_norm(const TIn* input, TOut* output, int size, TOut* buffer);
-
-template <typename TIn, typename TOut>
-void reduce_mean(const TIn* data, TOut* output, int size, TOut* buffer);
-
-template <typename TIn, typename TOut>
-void reduce_matrix_rows(const TIn* data, TOut* output, int m, int n);
 
 }  // namespace rocm
 }  // namespace onnxruntime
