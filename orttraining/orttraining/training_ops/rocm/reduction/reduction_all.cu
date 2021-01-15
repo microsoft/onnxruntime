@@ -100,7 +100,7 @@ void MultiTensorReduce(ChunkGroup<1> chunk_group, TOut* output) {
 template <typename TIn, typename TOut>
 void MultiTensorReduceL2<TIn, TOut>::operator()(ChunkGroup<1> chunk_group, TOut* output) {
   using TBuf = AccumulationType_t<TIn>;
-  MultiTensorReduce<TIn, TOut, TBuf, Square2, Identity2>(chunk_group, output);
+  MultiTensorReduce<TIn, TOut, TBuf, Square, Identity>(chunk_group, output);
 }
 
 #define INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(TIn, TOut) \
