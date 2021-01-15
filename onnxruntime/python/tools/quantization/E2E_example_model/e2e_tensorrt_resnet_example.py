@@ -292,34 +292,13 @@ if __name__ == '__main__':
     Please download Resnet50 model from ONNX model zoo https://github.com/onnx/models/blob/master/vision/classification/resnet/model/resnet50-v2-7.tar.gz
     Untar the model into the workspace
     '''
-
-    model_path = "/home/yulong/model/model_zoo/resnet50v2/batchsize1/resnet50-v2-7.onnx"
-    #model_path = "/home/yulong/model/model_zoo/vgg19/batch1/vgg19.onnx" #input: data
-    ##model_path = "/home/yulong/model/model_zoo/resnet101v2/batch1/resnet101-v2-7.onnx"
-    ##model_path = "/home/yulong/model/turing/model.onnx" #input: data
-    
-    ilsvrc2012_dataset_path = "/home/yulong/dataset/ILSVRC2015"   
+  
+    # Dataset settings
+    model_path = "./resnet50-v2-7.onnx"
+    ilsvrc2012_dataset_path = "./ILSVRC2012"   
     augmented_model_path = "./augmented_model.onnx"
-    ##validation_dataset = ilsvrc2012_dataset_path +  "/Data/CLS-LOC/cal-temp"#small dataset
-    ##validation_dataset = ilsvrc2012_dataset_path +  "/val"  
     batch_size = 20
-    calibration_dataset_size = 500
-    
-    
-    # Dataset settings
-    #model_path = "./resnet50-v2-7.onnx"
-    #ilsvrc2012_dataset_path = "./ILSVRC2012"   
-    #augmented_model_path = "./augmented_model.onnx"
-    #batch_size = 20
-    #calibration_dataset_size = 1000 # Size of dataset for calibration
-    
-
-    # Dataset settings
-    #model_path = "./resnet50-v2-7.onnx"
-    #ilsvrc2012_dataset_path = "./ILSVRC2012"   
-    #augmented_model_path = "./augmented_model.onnx"
-    #batch_size = 20
-    #calibration_dataset_size = 1000 # Size of dataset for calibration
+    calibration_dataset_size = 1000 # Size of dataset for calibration
 
     # INT8 calibration setting    
     calibration_table_generation_enable = True # Enable/Disable INT8 calibration

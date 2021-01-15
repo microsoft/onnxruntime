@@ -7,7 +7,7 @@
 #include <string.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 6
+#define ORT_API_VERSION 7
 
 #ifdef __cplusplus
 extern "C" {
@@ -1134,6 +1134,18 @@ struct OrtApi {
                   int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out);
 
   ORT_CLASS_RELEASE(ArenaCfg);
+
+  /**
+  * Use this API to obtain the description of the graph present in the model
+  * (doc_string field of the GraphProto message within the ModelProto message).
+  * If it doesn't exist, an empty string will be returned.
+  * \param model_metadata - an instance of OrtModelMetadata
+  * \param allocator - allocator used to allocate the string that will be returned back 
+  * \param value - is set to a null terminated string allocated using 'allocator'. 
+    The caller is responsible for freeing it.
+  */
+  ORT_API2_STATUS(ModelMetadataGetGraphDescription, _In_ const OrtModelMetadata* model_metadata,
+                  _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 };
 
 /*

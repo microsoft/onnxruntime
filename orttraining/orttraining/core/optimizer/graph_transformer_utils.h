@@ -17,11 +17,9 @@ namespace transformer_utils {
 /** Generates all pre-training transformers for this level. */
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     TransformerLevel level,
-    std::unordered_set<std::string>& weights_to_train,
+    const std::unordered_set<std::string>& weights_to_train,
     const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration& config,
     const IExecutionProvider& execution_provider,  // required for constant folding
-    std::unordered_map<std::string, std::string>& updated_weight_names,
-    std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info,
     const std::vector<std::string>& rules_and_transformers_to_enable = {});
 
 /** Generates all predefined (both rule-based and non-rule-based) transformers for this level.

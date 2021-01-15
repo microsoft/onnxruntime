@@ -272,7 +272,7 @@ void BinaryElementWiseImpl(
           output_rank_or_simple_broadcast,
           *lhs_padded_strides,
           lhs_data,
-          *rhs_padded_strides,
+          TArray<int64_t>(), // rhs is not computed, so no need to deference rhs_padded_strides
           rhs_data,
           *fdm_output_strides,
           output_data,
@@ -281,7 +281,7 @@ void BinaryElementWiseImpl(
     else
       _BinaryElementWise<T, T1, T2, FuncT, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank_or_simple_broadcast,
-          *lhs_padded_strides,
+          TArray<int64_t>(), // lhs is not computed, so no need to deference lhs_padded_strides
           lhs_data,
           *rhs_padded_strides,
           rhs_data,
