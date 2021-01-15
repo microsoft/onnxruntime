@@ -293,12 +293,33 @@ if __name__ == '__main__':
     Untar the model into the workspace
     '''
 
-    # Dataset settings
-    model_path = "./resnet50-v2-7.onnx"
-    ilsvrc2012_dataset_path = "./ILSVRC2012"   
+    model_path = "/home/yulong/model/model_zoo/resnet50v2/batchsize1/resnet50-v2-7.onnx"
+    #model_path = "/home/yulong/model/model_zoo/vgg19/batch1/vgg19.onnx" #input: data
+    ##model_path = "/home/yulong/model/model_zoo/resnet101v2/batch1/resnet101-v2-7.onnx"
+    ##model_path = "/home/yulong/model/turing/model.onnx" #input: data
+    
+    ilsvrc2012_dataset_path = "/home/yulong/dataset/ILSVRC2015"   
     augmented_model_path = "./augmented_model.onnx"
+    ##validation_dataset = ilsvrc2012_dataset_path +  "/Data/CLS-LOC/cal-temp"#small dataset
+    ##validation_dataset = ilsvrc2012_dataset_path +  "/val"  
     batch_size = 20
-    calibration_dataset_size = 1000 # Size of dataset for calibration
+    calibration_dataset_size = 500
+    
+    
+    # Dataset settings
+    #model_path = "./resnet50-v2-7.onnx"
+    #ilsvrc2012_dataset_path = "./ILSVRC2012"   
+    #augmented_model_path = "./augmented_model.onnx"
+    #batch_size = 20
+    #calibration_dataset_size = 1000 # Size of dataset for calibration
+    
+
+    # Dataset settings
+    #model_path = "./resnet50-v2-7.onnx"
+    #ilsvrc2012_dataset_path = "./ILSVRC2012"   
+    #augmented_model_path = "./augmented_model.onnx"
+    #batch_size = 20
+    #calibration_dataset_size = 1000 # Size of dataset for calibration
 
     # INT8 calibration setting    
     calibration_table_generation_enable = True # Enable/Disable INT8 calibration
@@ -319,8 +340,8 @@ if __name__ == '__main__':
     # Generate INT8 calibration table
     if calibration_table_generation_enable:
         data_reader = ImageNetDataReader(ilsvrc2012_dataset_path,start_index=0, end_index=calibration_dataset_size, stride=calibration_dataset_size, batch_size=batch_size, model_path=augmented_model_path, input_name=input_name)
-        # For TensorRT calibration, augment all FP32 tensors, disable ORT graph optimization and skip quantization parameter calculation 
-        calibration_cache = calibrate(new_model_path, data_reader, augment_all=True, providers=["CUDAExecutionProvider"], ort_graph_optimization_enable=False, quantization_params_calculation_enable=False)      
+        # For TensorRT calibration, augment all FP32 tensors (empty op_types), disable ORT graph optimization and skip quantization parameter calculation 
+        calibration_cache = calibrate(new_model_path, data_reader, op_types=[], providers=["CUDAExecutionProvider"], ort_graph_optimization_enable=False, quantization_params_calculation_enable=False)      
         write_calibration_table(calibration_cache)
 
     # Run prediction in Tensorrt EP    
