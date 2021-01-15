@@ -91,7 +91,7 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {
         if (output_span[i] == 0.0f) continue;
-        const auto expected_value = (i + 1.0f) / (1 - training_mode == 1 ? ratio : 0.0f);
+        const auto expected_value = (i + 1.0f) / (1 - (training_mode == 1 ? ratio : 0.0f));
         ASSERT_NEAR(output_span[i], expected_value, 0.01f)
             << "unexpected output value at index " << i << ", provider: " << provider_type;
       }
