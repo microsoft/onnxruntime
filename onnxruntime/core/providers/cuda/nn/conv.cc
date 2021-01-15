@@ -184,7 +184,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       std::vector<int64_t> b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = b_shape[0];
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
-      //s_.b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
     } else if (bias_expected) {
       std::vector<int64_t> b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];
