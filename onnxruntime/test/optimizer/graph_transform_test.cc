@@ -2417,18 +2417,20 @@ struct BiasSoftmaxFusionTester {
   BiasSoftmaxFusionTester(
       const PathString& model_uri,
       onnxruntime::logging::Logger* logger,
-      bool on_cuda_ = true) : logger_(logger), graph_transformation_mgr_{5} {
+      const char* execution_provider = kCudaExecutionProvider) : logger_(logger), graph_transformation_mgr_{5} {
     model_load_ = Model::Load(model_uri, p_model_, nullptr, *logger_);
 
     // move to cuda since fusion only takes place in that case
-    if (on_cuda_) {
-      for (auto& node : p_model_->MainGraph().Nodes()) {
-        node.SetExecutionProviderType(kCudaExecutionProvider);
-      }
-    }
+    SetExecutionProvider(execution_provider);
 
     graph_transformation_mgr_.Register(
         onnxruntime::make_unique<BiasSoftmaxFusion>(), TransformerLevel::Level2);
+  }
+
+  void SetExecutionProvider(const char* ep) {
+    for (auto& node : p_model_->MainGraph().Nodes()) {
+      node.SetExecutionProviderType(ep);
+    }
   }
 
   void TestFusionOccurs(int expected_broadcast_axis) {
@@ -2466,13 +2468,19 @@ struct BiasSoftmaxFusionTester {
   }
 };
 
-TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_CudaOnly) {
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_GpuOnly) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
-  BiasSoftmaxFusionTester tester(model_uri, logger_.get(), false);
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get(), kCpuExecutionProvider);
   tester.TestNoFusionOccurs();
 }
 
-TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple) {
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Rocm) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get(), kRocmExecutionProvider);
+  tester.TestFusionOccurs(1);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Cuda) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
   tester.TestFusionOccurs(1);

@@ -57,8 +57,15 @@ namespace cuda {
   REGISTER_ACTIVATION_KERNEL(name, ver, T)      \
   UNARY_ACTIVATION_COMPUTE(name, T)
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#define UNARY_ACTIVATION_OP_TYPED_BF16(name, ver) UNARY_ACTIVATION_OP_TYPED(name, ver, BFloat16)
+#else
+#define UNARY_ACTIVATION_OP_TYPED_BF16(name, ver)
+#endif
+
 #define UNARY_ACTIVATION_OP_HFD(name, ver)        \
   UNARY_ACTIVATION_OP_TYPED(name, ver, MLFloat16) \
+  UNARY_ACTIVATION_OP_TYPED_BF16(name, ver)       \
   UNARY_ACTIVATION_OP_TYPED(name, ver, float)     \
   UNARY_ACTIVATION_OP_TYPED(name, ver, double)
 

@@ -19,6 +19,15 @@ class QLinearActivation(QuantOperatorBase):
             self.quantizer.new_nodes += [node]
             return
 
+        if node.op_type == 'Clip':
+            if len(node.attribute) != 2:
+                self.quantizer.new_nodes += [node]
+                return
+            for attr_idx in [0, 1]:
+                if node.attribute[attr_idx].name not in ['min', 'max']:
+                    self.quantizer.new_nodes += [node]
+                    return
+
         quantized_value = self.quantizer.quantized_value_map[node.input[0]]
         self.quantizer.quantized_value_map[node.output[0]] = quantized_value
 
@@ -46,17 +55,17 @@ class QLinearActivation(QuantOperatorBase):
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
 
-        qlinear_activation_inputs = [quantized_input_names[0], scale_names[0], zero_point_names[0], output_scale_name, output_zp_name]
+        qlinear_activation_inputs = [
+            quantized_input_names[0], scale_names[0], zero_point_names[0], output_scale_name, output_zp_name
+        ]
 
-        qlinear_activation_node = onnx.helper.make_node(
-            "QLinear" + node.op_type, qlinear_activation_inputs,
-            [qlinear_activation_output], qlinear_activation_name, **kwargs)
+        qlinear_activation_node = onnx.helper.make_node("QLinear" + node.op_type, qlinear_activation_inputs,
+                                                        [qlinear_activation_output], qlinear_activation_name, **kwargs)
 
         # Create an entry for this quantized value
-        q_output = QuantizedValue(node.output[0], qlinear_activation_output, output_scale_name,
-                                  output_zp_name, QuantizedValueType.Input)
+        q_output = QuantizedValue(node.output[0], qlinear_activation_output, output_scale_name, output_zp_name,
+                                  QuantizedValueType.Input)
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
         nodes.append(qlinear_activation_node)
         self.quantizer.new_nodes += nodes
-

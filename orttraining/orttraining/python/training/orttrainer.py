@@ -167,7 +167,6 @@ class ORTTrainer(object):
         if self.options.mixed_precision.enabled and not self.options.mixed_precision.loss_scaler:
             # TODO: Move this to model_desc_validation.py
             self.options.mixed_precision.loss_scaler = amp.loss_scaler.DynamicLossScaler()
-
         # Post processing ONNX model given as input
         if self._onnx_model:
             if self.options._internal_use.enable_internal_postprocess:
@@ -637,11 +636,28 @@ class ORTTrainer(object):
         ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
         ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
 
+        ort_parameters.data_parallel_size = self.options.distributed.data_parallel_size
+        ort_parameters.horizontal_parallel_size = self.options.distributed.horizontal_parallel_size
+        ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel.pipeline_parallel_size
+        ort_parameters.num_pipeline_micro_batches = self.options.distributed.pipeline_parallel.num_pipeline_micro_batches
+        ort_parameters.pipeline_cut_info_string = self.options.distributed.pipeline_parallel.pipeline_cut_info_string
+        # We have special handling for dictionary-typed option.
+        # sliced_schema._validated_opts is the original dictionary while sliced_schema is a _ORTTrainerOptionsInternal.
+        ort_parameters.sliced_schema = self.options.distributed.pipeline_parallel.sliced_schema._validated_opts
+        # We have special handling for dictionary-typed option.
+        # sliced_axes._validated_opts is the original dictionary while sliced_schema is a _ORTTrainerOptionsInternal.
+        ort_parameters.sliced_axes = self.options.distributed.pipeline_parallel.sliced_axes._validated_opts
+        ort_parameters.sliced_tensor_names = self.options.distributed.pipeline_parallel.sliced_tensor_names
+
+        ort_parameters.model_after_graph_transforms_path = self.options.debug.graph_save_paths.model_after_graph_transforms_path
+        ort_parameters.model_with_gradient_graph_path = self.options.debug.graph_save_paths.model_with_gradient_graph_path
+        ort_parameters.model_with_training_graph_path = self.options.debug.graph_save_paths.model_with_training_graph_path
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
-        if (self.options.graph_transformer.attn_dropout_recompute or 
-            self.options.graph_transformer.gelu_recompute or 
+        if (self.options.graph_transformer.attn_dropout_recompute or
+            self.options.graph_transformer.gelu_recompute or
             self.options.graph_transformer.transformer_layer_recompute):
             session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 
