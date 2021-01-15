@@ -649,6 +649,10 @@ class ORTTrainer(object):
         ort_parameters.sliced_axes = self.options.distributed.pipeline_parallel.sliced_axes._validated_opts
         ort_parameters.sliced_tensor_names = self.options.distributed.pipeline_parallel.sliced_tensor_names
 
+        ort_parameters.model_after_graph_transforms_path = self.options.debug.graph_save_paths.model_after_graph_transforms_path
+        ort_parameters.model_with_gradient_graph_path = self.options.debug.graph_save_paths.model_with_gradient_graph_path
+        ort_parameters.model_with_training_graph_path = self.options.debug.graph_save_paths.model_with_training_graph_path
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
