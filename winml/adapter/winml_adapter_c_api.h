@@ -201,6 +201,12 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* ModelEnsureNoFloat16)(_In_ const OrtModel* model)NO_EXCEPTION;
 
+  /**
+  * SaveModel
+  * This api save the model to the fiven file
+  */
+  OrtStatus*(ORT_API_CALL* SaveModel)(_In_ const OrtModel* in, _In_ const wchar_t* const file_name, _In_ size_t len)NO_EXCEPTION;
+
   // OrtSessionOptions methods
 
   /**

@@ -235,6 +235,14 @@ STDMETHODIMP OnnruntimeModel::CloneModel(IModel** copy) {
   return S_OK;
 }
 
+STDMETHODIMP OnnruntimeModel::SaveModel(const wchar_t* const file_name, unsigned size) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SaveModel(ort_model_.get(), file_name, size),
+                          engine_factory_->UseOrtApi());
+  return S_OK;
+}
+
 STDMETHODIMP OnnruntimeModel::DetachOrtModel(OrtModel** model) {
   *model = ort_model_.release();
   return S_OK;

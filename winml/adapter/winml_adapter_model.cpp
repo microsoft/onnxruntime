@@ -241,6 +241,27 @@ ORT_API_STATUS_IMPL(winmla::CloneModel, const OrtModel* in, OrtModel** out) {
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(winmla::SaveModel, const OrtModel* in, const wchar_t* const file_name, size_t len) {
+  API_IMPL_BEGIN
+
+  int fd;
+  std::wstring file_path = file_name;
+  Status status = onnxruntime::Env::Default().FileOpenWr(file_path, fd);
+  if (fd < 0) {
+    return OrtApis::CreateStatus(ORT_NO_SUCHFILE, "File not found!");
+  }
+
+  auto model_proto = in->UseModelProto();
+  google::protobuf::io::FileOutputStream output(fd);
+  const bool success = model_proto->SerializeToZeroCopyStream(&output) && output.Flush();
+  if (!success) {
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Failed to serialize model!");
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(winmla::ModelGetAuthor, const OrtModel* model, const char** const author, size_t* len) {
   API_IMPL_BEGIN
   *author = model->UseModelInfo()->author_.c_str();

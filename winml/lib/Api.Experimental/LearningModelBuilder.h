@@ -14,6 +14,7 @@ struct LearningModelBuilder : LearningModelBuilderT<LearningModelBuilder> {
   winml_experimental::LearningModelOutputs Outputs();
   winml_experimental::LearningModelOperatorSet Operators();
   winml::LearningModel CreateModel();
+  void Save(const winrt::hstring& file_name);
 
   static winml_experimental::LearningModelBuilder Create();
 

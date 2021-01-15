@@ -65,6 +65,9 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
   ();
   STDMETHOD(CloneModel)
   (IModel** copy);
+  STDMETHOD(SaveModel)
+  (_In_ const wchar_t* const file_name,
+   _In_ unsigned size);
   STDMETHOD(DetachOrtModel)
   (OrtModel** model);
 

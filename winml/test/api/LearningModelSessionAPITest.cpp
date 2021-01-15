@@ -830,24 +830,27 @@ static void TestMiddleCSpectrogram(
   auto lower_edge_hertz = TensorFloat::CreateFromShapeArrayAndDataArray({}, {0});
   auto upper_edge_hertz = TensorFloat::CreateFromShapeArrayAndDataArray({}, {sampling_rate / 2.f});
 
-  auto model =
+  auto builder =
       LearningModelBuilder::Create()
           // Inputs
-          .Inputs().Add(TensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, input_shape))
-          .Inputs().AddConstant(L"power_of_2_exponent", power_of_2_exponent)
+          .Inputs()
+          .Add(TensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, input_shape))
+          .Inputs()
+          .AddConstant(L"power_of_2_exponent", power_of_2_exponent)
           // Outputs
-          .Outputs().Add(TensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
+          .Outputs()
+          .Add(TensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
           // The graph
           .Operators()
           .Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
-                   .SetConstant(L"size", window_length)                 // SetConstant not implemented: bind hann0.size to window_length
+                   .SetConstant(L"size", window_length)  // SetConstant not implemented: bind hann0.size to window_length
                    .SetOutput(L"output", L"hann_window"))
           .Operators()
           .Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
                    .SetInput(L"signal", L"Input.TimeSignal")
                    .SetInput(L"window", L"hann_window")
-                   .SetConstant(L"frame_length", dft_length)              // SetConstant not implemented: bind stft0.dft_length to dft_length
-                   .SetConstant(L"frame_step", frame_step)              // SetConstant not implemented: bind stft0.frame_step to frame_step
+                   .SetConstant(L"frame_length", dft_length)  // SetConstant not implemented: bind stft0.dft_length to dft_length
+                   .SetConstant(L"frame_step", frame_step)    // SetConstant not implemented: bind stft0.frame_step to frame_step
                    .SetOutput(L"output", L"stft_output"))
           .Operators()
           .Add(Operator(L"Slice", L"real_slice")
@@ -864,12 +867,12 @@ static void TestMiddleCSpectrogram(
           .Operators()
           .Add(Operator(L"Pow", L"real_pow")
                    .SetInput(L"X", L"reals")
-                   .SetInput(L"Y", L"power_of_2_exponent")               // SetConstant not implemented: bind real_pow.Y to power_of_2_exponent
+                   .SetInput(L"Y", L"power_of_2_exponent")  // SetConstant not implemented: bind real_pow.Y to power_of_2_exponent
                    .SetOutput(L"Z", L"reals_squared"))
           .Operators()
           .Add(Operator(L"Pow", L"complex_pow")
                    .SetInput(L"X", L"imaginaries")
-                   .SetInput(L"Y", L"power_of_2_exponent")               // SetConstant not implemented: bind complex_pow.Y to power_of_2_exponent
+                   .SetInput(L"Y", L"power_of_2_exponent")  // SetConstant not implemented: bind complex_pow.Y to power_of_2_exponent
                    .SetOutput(L"Z", L"imaginaries_squared"))
           .Operators()
           .Add(Operator(L"Add", L"add0")
@@ -883,11 +886,11 @@ static void TestMiddleCSpectrogram(
                    .SetOutput(L"C", L"power_frames"))
           .Operators()
           .Add(Operator(L"MelWeightMatrix", L"melweightmatrix0", MS_DOMAIN)
-                   .SetConstant(L"num_mel_bins", num_mel_bins)            // SetConstant not implemented: bind melweightmatrix0.num_mel_bins to num_mel_bins
-                   .SetConstant(L"dft_length", dft_length)                // SetConstant not implemented: bind melweightmatrix0.dft_length to dft_length
+                   .SetConstant(L"num_mel_bins", num_mel_bins)  // SetConstant not implemented: bind melweightmatrix0.num_mel_bins to num_mel_bins
+                   .SetConstant(L"dft_length", dft_length)      // SetConstant not implemented: bind melweightmatrix0.dft_length to dft_length
                    .SetConstant(L"sample_rate", sample_rate)
-                   .SetConstant(L"lower_edge_hertz", lower_edge_hertz)    // SetConstant not implemented: bind melweightmatrix0.lower_edge_hertz to lower_edge_hertz
-                   .SetConstant(L"upper_edge_hertz", upper_edge_hertz)    // SetConstant not implemented: bind melweightmatrix0.upper_edge_hertz to upper_edge_hertz
+                   .SetConstant(L"lower_edge_hertz", lower_edge_hertz)  // SetConstant not implemented: bind melweightmatrix0.lower_edge_hertz to lower_edge_hertz
+                   .SetConstant(L"upper_edge_hertz", upper_edge_hertz)  // SetConstant not implemented: bind melweightmatrix0.upper_edge_hertz to upper_edge_hertz
                    .SetOutput(L"output", L"mel_weight_matrix"))
           .Operators()
           .Add(Operator(L"Reshape", L"reshape0")
@@ -903,8 +906,10 @@ static void TestMiddleCSpectrogram(
           .Add(Operator(L"Reshape", L"reshape1")
                    .SetInput(L"data", L"mel_spectrogram")
                    .SetConstant(L"shape", output_shape)
-                   .SetOutput(L"reshaped", L"Output.MelSpectrogram"))
-          .CreateModel();
+                   .SetOutput(L"reshaped", L"Output.MelSpectrogram"));
+
+  builder.Save(L"e:\\spectrogram.onnx");
+  auto model = builder.CreateModel();
 
   LearningModelSession session(model);
   LearningModelBinding binding(session);

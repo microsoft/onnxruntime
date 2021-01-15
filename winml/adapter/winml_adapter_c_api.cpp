@@ -40,6 +40,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::ModelGetMetadataCount,
     &winmla::ModelGetMetadata,
     &winmla::ModelEnsureNoFloat16,
+    &winmla::SaveModel,
 
     // OrtSessionOptions methods
     &OrtSessionOptionsAppendExecutionProvider_CPU,

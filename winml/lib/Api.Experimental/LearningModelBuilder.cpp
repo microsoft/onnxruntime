@@ -40,6 +40,10 @@ winml::LearningModel LearningModelBuilder::CreateModel() {
   return winrt::make<winmlp::LearningModel>(engine_factory_.get(), model_clone.get(), nullptr);
 }
 
+void LearningModelBuilder::Save(const winrt::hstring& file_name) {
+  model_->SaveModel(file_name.c_str(), file_name.size());
+}
+
 winml_experimental::LearningModelBuilder LearningModelBuilder::Create() {
   return winrt::make<LearningModelBuilder>();
 }

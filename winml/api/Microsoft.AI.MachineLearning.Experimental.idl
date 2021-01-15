@@ -94,6 +94,8 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     static LearningModelBuilder Create();
 
     ROOT_NS.AI.MachineLearning.LearningModel CreateModel();
+
+    void Save(String file_name);
   }
 
 }  // namespace ROOT_NS.AI.MachineLearning.Experimental
