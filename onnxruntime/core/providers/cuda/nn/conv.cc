@@ -331,6 +331,7 @@ Status CudnnConvolutionDescriptor::Set(
   if (!desc_)
     CUDNN_RETURN_IF_ERROR(cudnnCreateConvolutionDescriptor(&desc_));
 
+  rank_ = rank;
   std::vector<int> pad_dims(rank);
   std::vector<int> stride_dims(rank);
   std::vector<int> dilation_dims(rank);

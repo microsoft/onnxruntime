@@ -26,8 +26,11 @@ class CudnnConvolutionDescriptor final {
              cudnnDataType_t data_type);
 
   operator cudnnConvolutionDescriptor_t() const { return desc_; }
-
+  void print() const {
+    std::cout << rank_ << std::endl;
+  }
  private:
+  size_t rank_ = 0;
   cudnnConvolutionDescriptor_t desc_;
 };
 

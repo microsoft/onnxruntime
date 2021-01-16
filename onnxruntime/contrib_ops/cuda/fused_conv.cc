@@ -70,6 +70,8 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
       s_.z_tensor.print();
       std::cout << "y: ";
       s_.y_tensor.print();
+      std::cout << "conv desc rank: ";
+      s_.conv_desc.print();
       std::cout << "has_z: " << (has_z ? "true" : "false") << std::endl;
       std::cout << "has_b: " << (has_b ? "true" : "false") << std::endl;
     }
