@@ -37,7 +37,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                      TransformerLevel::Level2);
 
   for (const auto& name : y_node_arg_names) {
-    const NodeArg* node_arg = graph->GetNodeArg(name);
+    const NodeArg* node_arg = graph->GetNodeArg(name, true);
     if (!node_arg) {
       std::stringstream ss;
       bool first = true;
@@ -66,7 +66,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
 
   // building x_nodes_
   for (const auto& name : x_node_arg_names) {
-    const NodeArg* node_arg = graph->GetNodeArg(name);
+    const NodeArg* node_arg = graph->GetNodeArg(name, true);
     if (!node_arg) {
       ORT_THROW("Node arg ", name, " is not found in the graph.");
     }
