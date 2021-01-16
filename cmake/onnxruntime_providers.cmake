@@ -166,6 +166,7 @@ if(HAS_DEPRECATED_COPY)
 endif()
 
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${RE2_INCLUDE_DIR})
+target_include_directories(onnxruntime_providers PRIVATE "D:/source/mp11/include") # test - include mp11
 
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 

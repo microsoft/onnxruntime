@@ -14,6 +14,8 @@
 #include "core/mlas/inc/mlas.h"
 #endif
 
+#include <boost/mp11.hpp>
+
 // FUTURE:
 // Float16 and String have expensive special cased handling. Enable by default, but provide an easy way to disable
 // in the future if needed. Disabling both saves ~50KB.
@@ -22,6 +24,52 @@
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
+
+// test changes
+using namespace boost::mp11;
+namespace {
+template <typename... Ts>
+using TypeList = mp_list<Ts...>;
+
+template <typename... Types>
+class MLTypeCallDispatcher2 {
+  int32_t dt_type_;
+
+ public:
+  explicit MLTypeCallDispatcher2(int32_t dt_type) noexcept : dt_type_(dt_type) {}
+
+  template <template <typename> class Fn, typename... Args>
+  void Invoke(Args&&... args) const {
+    utils::mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
+    int results[] = {0, helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
+    static_cast<void>(results);
+    ORT_ENFORCE(helper.called_ == 1);
+  }
+
+  template <template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
+  void InvokeWithLeadingTemplateArgs(Args&&... args) const {
+    utils::mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
+    int results[] = {0, helper.template Invoke<Types>(mp_apply<Fn, mp_push_back<LeadingTemplateArgTypeList, Types>>(), std::forward<Args>(args)...)...};
+    static_cast<void>(results);
+    ORT_ENFORCE(helper.called_ == 1);
+  }
+};
+
+#define LIMIT_TYPES
+#ifdef LIMIT_TYPES
+using ImplementedSrcTypes = TypeList<float, int64_t>;
+
+using ImplementedDestTypes = TypeList<float, int64_t>;
+#else
+using ImplementedSrcTypes = TypeList<
+    float, double, int8_t, uint8_t, int16_t, uint16_t,
+    int32_t, uint32_t, int64_t, uint64_t, bool>;
+
+using ImplementedDestTypes = TypeList<
+    float, double, int8_t, uint8_t, int16_t, uint16_t,
+    int32_t, uint32_t, int64_t, uint64_t, bool>;
+#endif
+}  // namespace
 
 namespace {
 template <typename SrcType, typename DstType>
@@ -264,12 +312,16 @@ struct Cast::Dispatcher {
 template <typename TSrc>
 struct Cast::SrcDispatcher {
   void operator()(int32_t to, const Tensor& src, Tensor& dst, const TensorShape& shape) {
-    utils::MLTypeCallDispatcherWithCarriedType<TSrc, Cast::Dispatcher,
-                                               float, double, int8_t, uint8_t, int16_t, uint16_t,
-                                               int32_t, uint32_t, int64_t, uint64_t, bool>
-        t_disp(to);
+    // utils::MLTypeCallDispatcherWithCarriedType<TSrc, Cast::Dispatcher,
+    //                                            float, double, int8_t, uint8_t, int16_t, uint16_t,
+    //                                            int32_t, uint32_t, int64_t, uint64_t, bool>
+    //     t_disp(to);
 
-    t_disp.Invoke(src, dst, shape);
+    // t_disp.Invoke(src, dst, shape);
+
+    using DestTypes = mp_remove_if_q<ImplementedDestTypes, mp_bind_front<std::is_same, TSrc>>;
+    mp_apply<MLTypeCallDispatcher2, DestTypes> dispatcher{to};
+    dispatcher.InvokeWithLeadingTemplateArgs<Cast::Dispatcher, TypeList<TSrc>>(src, dst, shape);
   }
 };
 
@@ -324,12 +376,15 @@ Status Cast::Compute(OpKernelContext* context) const {
 #endif
   {
     auto do_cast = [](int32_t from, int32_t to, const Tensor& src, Tensor& dst, const TensorShape& shape) {
-      utils::MLTypeCallDispatcher<SrcDispatcher,
-                                  float, double,  // MLFloat16 is special cased below
-                                  int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t, bool>
-          t_disp(from);
+      // utils::MLTypeCallDispatcher<SrcDispatcher,
+      //                             float, double,  // MLFloat16 is special cased below
+      //                             int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t, bool>
+      //     t_disp(from);
 
-      t_disp.Invoke(to, src, dst, shape);
+      // t_disp.Invoke(to, src, dst, shape);
+
+      mp_apply<MLTypeCallDispatcher2, ImplementedSrcTypes> dispatcher{from};
+      dispatcher.Invoke<SrcDispatcher>(to, src, dst, shape);
     };
 
 #ifdef CAST_FLOAT16_ENABLED
@@ -386,8 +441,7 @@ Status Cast::Compute(OpKernelContext* context) const {
         do_cast(from, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, *X, tmp_tensor, shape);
         CastData<float, BFloat16>(tmp_tensor, *Y, shape);
       }
-    }
-    else
+    } else
 #endif
     {
       do_cast(from, to_, *X, *Y, shape);
