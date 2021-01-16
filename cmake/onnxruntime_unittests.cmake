@@ -1007,3 +1007,22 @@ if (onnxruntime_BUILD_JAVA)
 endif()
 
 include(onnxruntime_fuzz_test.cmake)
+
+# distributed inference
+if(onnxruntime_USE_CUDA)
+  set (CXXOPTS ${PROJECT_SOURCE_DIR}/external/cxxopts/include)
+  set(onnxruntime_distributed_inference_src_dir ${TEST_SRC_DIR}/distributed_inference)
+  set(onnxruntime_distributed_inference_src_patterns
+    "${onnxruntime_distributed_inference_src_dir}/*.cc"
+    "${onnxruntime_distributed_inference_src_dir}/*.h")
+
+
+  file(GLOB onnxruntime_distributed_inference_src CONFIGURE_DEPENDS
+    ${onnxruntime_distributed_inference_src_patterns}
+    )
+  add_executable(onnxruntime_distributed_inference ${onnxruntime_distributed_inference_src})
+  target_include_directories(onnxruntime_distributed_inference PRIVATE ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT}
+    ${onnxruntime_exec_src_dir} ${TEST_INC_DIR} ${CMAKE_CURRENT_BINARY_DIR} ${CXXOPTS})
+  target_link_libraries(onnxruntime_distributed_inference PRIVATE onnx_test_runner_common ${onnx_test_libs})
+  set_target_properties(onnxruntime_distributed_inference PROPERTIES FOLDER "ONNXRuntimeTest")
+endif() 

@@ -89,6 +89,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   // The detail:
   // for each candidate, if one of its input is a cpu tensor and the Non-CPU kernel doesn't mark it as cpu input,
   // force the node to CPU to avoid memory cpu and add its output to the small cpu tensors.
+  std::set<std::string> fallback_nodes;
   while (!candidates.empty()) {
     NodeIndex cur = candidates.top();
     candidates.pop();
@@ -132,7 +133,8 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
     if (place_in_cpu) {
       cpu_nodes.insert(cur);
-      LOGS_DEFAULT(WARNING) << "Force fallback to CPU execution for node: " << node->Name();
+      fallback_nodes.insert(node->OpType());
+      //LOGS_DEFAULT(WARNING) << "Force fallback to CPU execution for node: " << node->Name();
       for (auto* output : node->OutputDefs()) {
         cpu_output_args.insert(output);
       }
@@ -141,7 +143,13 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       }
     }
   }
-
+  if (!fallback_nodes.empty()) {
+    std::ostringstream ostr;
+    for (const auto& elem : fallback_nodes) {
+      ostr << elem << " ";
+    }
+    LOGS_DEFAULT(WARNING) << "Force fallback to CPU execution for the following nodes: " << ostr.str();
+  }
   return cpu_nodes;
 }
 

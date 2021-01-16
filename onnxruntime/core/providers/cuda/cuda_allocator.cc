@@ -23,7 +23,28 @@ void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
   int current_device;
   auto cuda_err = cudaGetDevice(&current_device);
   if (cuda_err == cudaSuccess) {
-    ORT_ENFORCE(current_device == Info().id);
+    ORT_ENFORCE(current_device == Info().id, "Current device (", current_device, ") is not equal to the device set in the session (", Info().id, ")");
+  } else if (throw_when_fail) {
+    CUDA_CALL_THROW(cuda_err);
+  }
+#else
+  ORT_UNUSED_PARAMETER(throw_when_fail);
+#endif
+}
+
+void CUDAAllocator::ChangeDevice(bool throw_when_fail) const {
+#ifndef NDEBUG
+  // check device to match at debug build
+  // if it's expected to change, call cudaSetDevice instead of the check
+  int current_device;
+  auto cuda_err = cudaGetDevice(&current_device);
+  if (cuda_err == cudaSuccess) {
+    if (current_device != Info().id) {
+      auto cuda_err2 = cudaSetDevice(Info().id);
+      if (cuda_err2 != cudaSuccess && throw_when_fail) {
+        CUDA_CALL_THROW(cuda_err2);
+      }
+    }
   } else if (throw_when_fail) {
     CUDA_CALL_THROW(cuda_err);
   }
@@ -33,6 +54,7 @@ void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
 }
 
 void* CUDAAllocator::Alloc(size_t size) {
+  ChangeDevice(true);
   CheckDevice(true);
   void* p = nullptr;
   if (size > 0) {
@@ -43,6 +65,10 @@ void* CUDAAllocator::Alloc(size_t size) {
 }
 
 void CUDAAllocator::Free(void* p) {
+  int current_device;
+  cudaGetDevice(&current_device);
+  std::cout << "in cuda allocator free " << current_device << " " << Info().id << std::endl;
+  ChangeDevice(false);
   CheckDevice(false);  // ignore CUDA failure when free
   cudaFree(p);         // do not throw error since it's OK for cudaFree to fail during shutdown
 }
@@ -60,6 +86,9 @@ void* CUDAPinnedAllocator::Alloc(size_t size) {
 }
 
 void CUDAPinnedAllocator::Free(void* p) {
+  int current_device;
+  cudaGetDevice(&current_device);
+  std::cout << "in cuda allocator pinned free " << current_device << " " << Info().id << std::endl;
   CUDA_CALL_THROW(cudaFreeHost(p));
 }
 

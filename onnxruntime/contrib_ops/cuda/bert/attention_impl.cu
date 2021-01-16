@@ -73,7 +73,7 @@ bool QkvToContext(
 
   // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
   if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, input, scratch3)) {
-    return false;
+    std::cout << "Found error here"; return false;
   }
 
   // now scratch3 has Q, K, V: each has size BxNxSxH
@@ -94,7 +94,7 @@ bool QkvToContext(
   const int present_size_per_batch = all_sequence_length * head_size;
   if (nullptr != present) {
     if (!LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, head_size, num_heads, past, k, present)) {
-      return false;
+      std::cout << "Found error here"; return false;
     }
 
     // update pointers to present_k and present_v.
@@ -114,24 +114,24 @@ bool QkvToContext(
   if (!CUBLAS_CALL(CublasGemmStridedBatched(
           cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size, alpha, k, head_size, present_size_per_batch,
           q, head_size, size_per_batch, 0.f, scratch1, all_sequence_length, temp_matrix_size, batches))) {
-    return false;
+    std::cout << "Found error here"; return false;
   }
 
   // apply softmax and store result P to scratch2: BxNxSxS*
   if (use_raw_attention_mask) {  // 2d or 3d attention mask
     if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2, is_unidirectional, rsqrt_head_size, static_cast<int>(mask_index_dims->size()))) {
-      return false;
+      std::cout << "Found error here"; return false;
     }
   } else if (nullptr != mask_index) {  // 1d mask index
     ORT_ENFORCE(nullptr != mask_index_dims && mask_index_dims->size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
     const int* mask_start = (mask_index_dims->at(0) > batch_size) ? mask_index + batch_size : nullptr;
     if (!ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, mask_start, scratch1, scratch2, is_unidirectional)) {
-      return false;
+      std::cout << "Found error here"; return false;
     }
   } else {  // no mask
     if (!ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, scratch1, scratch2, is_unidirectional)) {
-      return false;
+      std::cout << "Found error here"; return false;
     }
   }
 
@@ -139,7 +139,7 @@ bool QkvToContext(
   if (!CUBLAS_CALL(CublasGemmStridedBatched(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, all_sequence_length, 1.f, v, head_size, present_size_per_batch,
           scratch2, all_sequence_length, temp_matrix_size, 0.f, scratch3, head_size, size_per_batch, batches))) {
-    return false;
+    std::cout << "Found error here"; return false;
   }
 
   // scratch3 is BxNxSxH, transpose to output BxSxNxH

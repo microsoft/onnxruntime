@@ -5,6 +5,7 @@
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include <sstream>
 
 #ifdef _WIN32
 #else  // POSIX
@@ -107,11 +108,18 @@ bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
       int currentCudaDevice;
       cudaGetDevice(&currentCudaDevice);
       cudaGetLastError();  // clear last CUDA error
-      static char str[1024];
-      snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; expr=%s; %s",
+      static char str1[1024];
+      snprintf(str1, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; expr=%s; %s",
                libName, (int)retCode, CudaErrString(retCode), currentCudaDevice,
                hostname,
                exprString, msg);
+      std::ostringstream ostr;
+      ostr << str1;
+      auto vec = onnxruntime::GetStackTrace();
+      for (auto& elem : vec) {
+	ostr << elem << "\n";
+      }
+      std::string str = ostr.str();
       if (THRW) {
         // throw an exception with the error info
         ORT_THROW(str);

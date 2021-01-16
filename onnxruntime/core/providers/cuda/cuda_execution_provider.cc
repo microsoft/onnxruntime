@@ -255,6 +255,7 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
 
 Status CUDAExecutionProvider::OnRunStart() {
   // always set CUDA device when session::Run() in case it runs in a worker thread
+  LOGS_DEFAULT(VERBOSE) << "Setting cuda device id to " << GetDeviceId();
   CUDA_RETURN_IF_ERROR(cudaSetDevice(GetDeviceId()));
   auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
   // check if cudaEvents has passed for deferred release

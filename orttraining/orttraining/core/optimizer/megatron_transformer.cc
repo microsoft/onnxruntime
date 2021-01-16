@@ -242,6 +242,19 @@ Status MegatronTransformer::TransformMLP(Graph& graph, bool& modified, int graph
                                          int32_t& counter) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (auto node_index : node_topology_list) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType().find("Gelu") != std::string::npos) {
+      std::cout << "Found Gelu node: " << std::endl;
+      break;
+    }
+    if (node.OpType().find("FastGelu") != std::string::npos) {
+      std::cout << "Found FastGelu node: " << std::endl;
+      break;
+    }
+  }
+
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
@@ -251,43 +264,44 @@ Status MegatronTransformer::TransformMLP(Graph& graph, bool& modified, int graph
         node.GetOutputEdgesCount() != 1) {
       continue;
     }
-
+    //std::cout << "after matmul: " << node.OpType() << std::endl;
     if (node.GetInputEdgesCount() > 0) {
       Node& matmul_input_node = const_cast<Node&>(*(node.InputNodesBegin()));
       if (matmul_input_node.OpType().compare("MegatronF") == 0) {
         continue;
       }
     }
-
+    //std::cout << "after megatronF: " << node.OpType() << std::endl;
     Node& add_node = *graph.GetNode(node.OutputNodesBegin()->Index());
+    std::cout << "After MatMul, is it Add node? " << add_node.OpType() << std::endl;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7, 13}) ||
         add_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         add_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-
     Node& gelu_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
+    std::cout << "after Add, is it Gelu?: " << gelu_node.OpType() << std::endl;
     if (!(graph_utils::IsSupportedOptypeVersionAndDomain(gelu_node, "Gelu", {1}, kMSDomain) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(gelu_node, "FastGelu", {1}, kMSDomain)) ||
         gelu_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         gelu_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-
     Node& matmul2_node = *graph.GetNode(gelu_node.OutputNodesBegin()->Index());
+    std::cout << "after Gelu/FastGelu, is it MatMul2?: " << matmul2_node.OpType() << std::endl;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(matmul2_node, "MatMul", {9, 13}) ||
         matmul2_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         matmul2_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-
     Node& add2_node = *graph.GetNode(matmul2_node.OutputNodesBegin()->Index());
+    std::cout << "after matmul2, is it Add node?: " << node.OpType() << std::endl;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(add2_node, "Add", {7, 13}) ||
         add2_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         add2_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-
+    std::cout << "after Add2" << std::endl;
     nodes_to_clear_shape.insert(nodes_to_clear_shape.end(), {&node, &add_node, &gelu_node,
                                                              &matmul2_node});
 
@@ -296,19 +310,19 @@ Status MegatronTransformer::TransformMLP(Graph& graph, bool& modified, int graph
     if (!PartitionWeightByColumn(graph, *a_weight_arg, a_weight_initializer_partition)) {
       continue;
     }
-
+    std::cout << "after partition 1: " << node.OpType() << std::endl;
     auto a_bias_arg = add_node.MutableInputDefs()[1];
     ONNX_NAMESPACE::TensorProto a_bias_initializer_partition;
     if (!PartitionWeightByColumn(graph, *a_bias_arg, a_bias_initializer_partition)) {
       continue;
     }
-
+    std::cout << "after partition 2: " << node.OpType() << std::endl;
     auto b_weight_arg = matmul2_node.MutableInputDefs()[1];
     ONNX_NAMESPACE::TensorProto b_weight_initializer_partition;
     if (!PartitionWeightByRow(graph, *b_weight_arg, b_weight_initializer_partition)) {
       continue;
     }
-
+    std::cout << "after partition 3: " << node.OpType() << std::endl;
     NodeArg& a_weight_partition_arg = graph_utils::AddInitializer(graph, a_weight_initializer_partition);
     graph_utils::ReplaceNodeInput(node, 1, a_weight_partition_arg);
     updated_weight_names_.insert({a_weight_arg->Name(), a_weight_partition_arg.Name()});
