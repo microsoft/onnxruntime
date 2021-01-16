@@ -4,6 +4,7 @@
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "orttraining/training_ops/cpu/controlflow/message_queue.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,14 +25,16 @@ Status Yield::Compute(OpKernelContext* ctx) const {
   OrtEventPool::GetInstance().ResetAndWaitEvent(background_thread_event_id);
 
   // Get output grad from somewhere and prepare Op outputs.
+  const std::vector<OrtValue>& output_grads = OrtMessageQueue::GetInstance().GetOutputGrads();
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-    // TODO: need to get the tensor from somewhere.
-    const Tensor* X = nullptr;
-    const TensorShape& data_shape = X->Shape();
+    OrtValue value = output_grads[i_out];
+    const Tensor& X = value.Get<Tensor>();
+    const TensorShape& data_shape = X.Shape();
     Tensor* Y = ctx->Output(i_out, data_shape);
-    CopyCpuTensor(X, Y);
+    CopyCpuTensor(&X, Y);
   }
 
+  OrtMessageQueue::GetInstance().ClearOutputGrads();
   return Status::OK();
 }
 

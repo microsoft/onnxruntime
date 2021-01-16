@@ -25,6 +25,16 @@ __TEMP_ENABLE_METHOD_TIMING__ = False
 T = TypeVar('T', bound='Module')
 
 
+def get_ort_device_type(device):
+    device = device.lower()
+    if device == 'cuda':
+        return C.OrtDevice.cuda()
+    elif device == 'cpu':
+        return C.OrtDevice.cpu()
+    else:
+        raise Exception('Unsupported device type: ' + device)
+
+
 def _get_device_index(device):
     if isinstance(device, str):
         # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
@@ -200,7 +210,7 @@ class ORTModule(torch.nn.Module):
         Next, a full training graph is splitted in forward and backward graph which are used
         to instantiate ONNX Runtime InferenceSession`s
         '''
-        if not self._onnx_forward or self._require_export:
+        if not self._onnx_gradient or self._require_export:
             self._require_export = False
             self._onnx_training = ORTModule._get_forward_graph(
                 self._original_module, *inputs, **kwargs)
@@ -291,11 +301,25 @@ class ORTModule(torch.nn.Module):
                 TODO: Input gradient is hard-coded to torch.tensor([1.])
                 '''
 
-                # TODO: push user output grads to ONNX backend.
+                # Push user output grads to ONNX backend.
+                grad_output_dict = dict(
+                    zip(self._onnx_graphs_info.user_output_grad_names, grad_output))
+                backward_grad_output = [grad_output_dict[name]
+                                        for name in self._onnx_graphs_info.backward_output_grad_names]
+                for grad_output in backward_grad_output:
+                    device = C.OrtDevice(get_ort_device_type(grad_output.device.type), C.OrtDevice.default_memory(),
+                                         _get_device_index(grad_output.device))
+                    self._module_gradient_graph_builder.add_output_grad(device,
+                                                                        _utils.dtype_torch_to_numpy(
+                                                                            grad_output.dtype),
+                                                                        list(
+                                                                            grad_output.size()),
+                                                                        grad_output.data_ptr())
 
                 # Run
                 self._gradient_session.run_backward(self._gradient_io_binding)
-                backward_outputs = self._gradient_io_binding.get_outputs()
+                backward_outputs = self._gradient_io_binding.get_outputs(
+                )[len(self._onnx_graphs_info.user_output_names):]
 
                 # Return input and initializer gradients
                 results = [torch.tensor(

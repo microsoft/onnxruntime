@@ -153,8 +153,8 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(const std::vector<std::vector<i
   gradient_graph_config.set_gradients_as_graph_outputs = true;
   std::unordered_set<std::string> y_node_arg_names(split_graphs_info_.user_output_names.begin(),
                                                    split_graphs_info_.user_output_names.end());
-  GradientGraphBuilder grad_graph_builder(&graph, y_node_arg_names, x_node_arg_names, "",
-                                          gradient_graph_config, *logger_);
+  GradientGraphBuilder grad_graph_builder(&graph, y_node_arg_names, x_node_arg_names, "", gradient_graph_config,
+                                          *logger_);
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
 
   // Fix inputs/outputs related to gradients.
@@ -168,7 +168,7 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(const std::vector<std::vector<i
   }
 
   input_args.clear();
-  for (const NodeArg* input_node_arg: graph.GetInputsIncludingInitializers()) {
+  for (const NodeArg* input_node_arg : graph.GetInputsIncludingInitializers()) {
     input_args.emplace_back(input_node_arg);
   }
 
@@ -304,8 +304,8 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   gradient_graph_config.set_gradients_as_graph_outputs = true;
   std::unordered_set<std::string> y_node_arg_names(split_graphs_info_.user_output_names.begin(),
                                                    split_graphs_info_.user_output_names.end());
-  GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "", gradient_graph_config,
-                                          *logger_);
+  GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "",
+                                          gradient_graph_config, *logger_);
 
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
 
@@ -323,10 +323,13 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   GraphViewer gradient_graph_viewer(gradient_graph);
   const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
   std::vector<Node*> forward_nodes_to_remove;
-  std::unordered_set<std::string> user_output_grad_names;
+  split_graphs_info_.user_output_grad_names.clear();
   for (const auto& name : split_graphs_info_.user_output_names) {
-    user_output_grad_names.insert(name + "_grad");
+    split_graphs_info_.user_output_grad_names.emplace_back(name + "_grad");
   }
+
+  std::unordered_set<std::string> user_output_grad_names{split_graphs_info_.user_output_grad_names.begin(),
+                                                         split_graphs_info_.user_output_grad_names.end()};
 
   std::unordered_set<std::string> non_backward_user_output_grad_names;
   for (auto node_index : gradient_node_topology_list) {
@@ -339,12 +342,12 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   }
 
   std::vector<std::string> yield_input_names;
-  std::vector<std::string> yield_output_names;
+  split_graphs_info_.backward_output_grad_names.clear();
   for (const auto& name : split_graphs_info_.user_output_names) {
     std::string grad_name = name + "_grad";
     if (non_backward_user_output_grad_names.find(grad_name) == non_backward_user_output_grad_names.end()) {
       yield_input_names.emplace_back(name);
-      yield_output_names.emplace_back(grad_name);
+      split_graphs_info_.backward_output_grad_names.emplace_back(grad_name);
     }
   }
 
@@ -360,7 +363,7 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
     yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
 
-  for (const auto& name : yield_output_names) {
+  for (const auto& name : split_graphs_info_.backward_output_grad_names) {
     yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
 
