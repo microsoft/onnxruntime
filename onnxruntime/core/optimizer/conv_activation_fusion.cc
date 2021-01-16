@@ -135,8 +135,8 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
               break;
             }
           }
-          auto node_name = graph.GenerateNodeName(conv_node.Name() + "_" +
-                                                  add_node.Name() + "_" +
+          auto node_name = graph.GenerateNodeName(conv_node.Name() + "-" +
+                                                  add_node.Name() + "-" +
                                                   act_node.Name());
           Node& fused_conv = graph.AddNode(node_name,
                                            "FusedConv",
