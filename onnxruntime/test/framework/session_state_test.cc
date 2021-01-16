@@ -182,9 +182,7 @@ class PrePackingTestOpKernel : public OpKernel {
     return Status::OK();
   }
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override {
-    ORT_UNUSED_PARAMETER(tensor);
-    ORT_UNUSED_PARAMETER(input_idx);
+  Status PrePack(const Tensor&, const PrepackParam&, bool& is_packed) override {
     is_packed = true;
     return Status::OK();
   }

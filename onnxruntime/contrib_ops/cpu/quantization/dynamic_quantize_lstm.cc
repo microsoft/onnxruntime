@@ -12,7 +12,7 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
   DynamicQuantizeLSTM(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, const PrepackParam&, bool& is_packed) override;
 #endif
 
   Status Compute(OpKernelContext* context) const override;
@@ -72,12 +72,12 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
   return Status::OK();
 }
 
-Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
   is_packed = false;
 
-  if (input_idx == 1) {
+  if (param.input_idx == 1) {
     return TryPackWeights(tensor, packed_W_, is_packed, is_W_signed_);
-  } else if (input_idx == 2) {
+  } else if (param.input_idx == 2) {
     return TryPackWeights(tensor, packed_R_, is_packed, is_R_signed_);
   }
 

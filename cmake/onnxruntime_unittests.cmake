@@ -621,6 +621,12 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
 
+if(onnxruntime_USE_SPARSE_LT)
+  target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_CUSPARSELT_HOME}/include)
+  target_compile_definitions(onnxruntime_test_all PRIVATE -DUSE_CUSPARSELT)
+endif()
+
+
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_ROCM_HOME}/include/hiprand ${onnxruntime_ROCM_HOME}/include/rocrand)
 endif()

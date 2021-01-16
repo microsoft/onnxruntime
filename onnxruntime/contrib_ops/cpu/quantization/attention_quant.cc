@@ -24,7 +24,7 @@ class QAttention : public OpKernel, public AttentionCPUBase {
   Status Compute(OpKernelContext* context) const override;
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, const PrepackParam&, bool& is_packed) override;
 #endif
 
  private:
@@ -53,10 +53,10 @@ QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionC
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
 template <typename T>
-Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
+Status QAttention<T>::PrePack(const Tensor& weights, const PrepackParam& param, bool& is_packed) {
   is_packed = false;
 
-  if (1 != input_idx) {
+  if (1 != param.input_idx) {
     return Status::OK();
   }
 

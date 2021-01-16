@@ -18,7 +18,7 @@ class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
  public:
   DeepCpuLstmOp(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, const PrepackParam&, bool& is_packed) override;
   Status Compute(OpKernelContext* context) const override;
 
   ~DeepCpuLstmOp() override = default;

@@ -12,11 +12,11 @@ class MatMulIntegerBase : public OpKernel {
   MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override {
+  Status PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) override {
     is_packed = false;
 
     // only pack Matrix B
-    if (input_idx == 1) {
+    if (param.input_idx == 1) {
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
       b_shape_ = tensor.Shape();

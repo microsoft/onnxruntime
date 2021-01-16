@@ -204,13 +204,13 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
   return Status::OK();
 }
 
-Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status DeepCpuLstmOp::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
   is_packed = false;
 
   if (tensor.IsDataType<float>()) {
-    if (input_idx == 1) {
+    if (param.input_idx == 1) {
       return TryPackWeights(tensor, packed_W_, is_packed);
-    } else if (input_idx == 2) {
+    } else if (param.input_idx == 2) {
       return TryPackWeights(tensor, packed_R_, is_packed);
     }
   }

@@ -49,9 +49,17 @@ class OpKernel {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
+  enum class SparseFlags : uint32_t {
+    kNothing = 0,
+    kTreatAs2x4 = 0x1   // 2:4 dense format
+  };
+
   struct PrepackParam {
-    int input_idx;      // Input index
-    bool treat_as_2x4;  // Hint to treat this initializer as sparse 2:4 format.
+    int input_idx = 0;           // Input index
+    uint32_t sparse_flags = 0;   // Sparse initializer annotations
+    bool Is2x4Format() const {
+      return (sparse_flags & static_cast<uint32_t>(SparseFlags::kTreatAs2x4)) != 0;
+    }
   };
 
   // Override this function to PrePack initialized constant tensor to the format as needed.
@@ -59,7 +67,7 @@ class OpKernel {
   //   Status PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) override {
   //     is_packed = false;
   //     if (param.input_idx == 1) {
-  //       if(param.treat_as_2x4 && Verify2x4Format(tensor)) {
+  //       if(param.Is2x4Format() && Verify2x4Format(tensor)) {
   //          // Compress and copy to GPU
   //       } else {
   //          this.Pack(tensor, this.buffer_);
@@ -74,7 +82,7 @@ class OpKernel {
   // @param is_packed: Set it to true if the kernel packed the tensor or to false
   //                   The kernel is responsible keep the packed data and related metadata if is_packed is set to true
   //                   And the original initialized constant tensor will be released and not accessible anymore in Compute function.
-  virtual Status PrePack(const Tensor& /*tensor*/, int /*input_idx*/, bool& is_packed) {
+  virtual Status PrePack(const Tensor& /*tensor*/, const PrepackParam& /* param */, bool& is_packed) {
     is_packed = false;
     return Status::OK();
   }

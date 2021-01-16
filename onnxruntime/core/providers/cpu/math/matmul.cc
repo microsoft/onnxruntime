@@ -126,11 +126,11 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status MatMul<float>::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
   is_packed = false;
 
   // only pack Matrix B
-  if (input_idx == 1) {
+  if (param.input_idx == 1) {
     is_packed = GemmPackBFp32(Info(), tensor, trans_b_attr_, packed_b_, b_shape_);
   }
   return Status::OK();

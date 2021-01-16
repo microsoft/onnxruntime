@@ -21,7 +21,7 @@ class Attention : public OpKernel, public AttentionCPUBase {
   explicit Attention(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, const PrepackParam&, bool& is_packed) override;
 
  private:
   BufferUniquePtr packed_weights_;
@@ -181,10 +181,10 @@ Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPU
 
 
 template <typename T>
-Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
+Status Attention<T>::PrePack(const Tensor& weights, const PrepackParam& param, bool& is_packed) {
   is_packed = false;
 
-  if (1 != input_idx) {
+  if (1 != param.input_idx) {
     return Status::OK();
   }
 

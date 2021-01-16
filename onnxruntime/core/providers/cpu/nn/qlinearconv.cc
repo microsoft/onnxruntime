@@ -22,7 +22,7 @@ class QLinearConv : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override;
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, const PrepackParam&, bool& is_packed) override;
 
  private:
   static void ReorderFilter(const uint8_t* input,
@@ -84,11 +84,11 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #endif
 
-Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status QLinearConv::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
   is_packed = false;
 
   // Support packing the weight matrix.
-  if (input_idx != 3) {
+  if (param.input_idx != 3) {
     return Status::OK();
   }
 

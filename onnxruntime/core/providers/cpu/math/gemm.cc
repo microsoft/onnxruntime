@@ -164,17 +164,17 @@ template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE 
                                        concurrency::ThreadPool* thread_pool);
 
 template <typename T>
-Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, bool& is_packed) {
+Status Gemm<T>::PrePack(const Tensor& /* tensor */, const PrepackParam&, bool& is_packed) {
   is_packed = false;
   return Status::OK();
 }
 
 template <>
-Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status Gemm<float>::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
   is_packed = false;
 
   // only pack Matrix B
-  if (input_idx == 1) {
+  if (param.input_idx == 1) {
     is_packed = GemmPackBFp32(Info(), tensor, trans_B_ != CblasNoTrans, packed_b_, b_shape_);
   }
   return Status::OK();

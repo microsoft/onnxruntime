@@ -47,6 +47,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().CudnnHandle();
   }
 
+#ifdef USE_CUSPARSELT
+  const cusparseLtHandle_t* PerThreadCuspraseLightHandle() const {
+    return GetPerThreadContext().CusparseLightHandle();
+  }
+#endif
+
   template <typename T>
   const T* GetConstOnes(size_t count) {
     return GetPerThreadContext().template GetConstOnes<T>(count);
@@ -100,6 +106,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
     }
+#ifdef USE_CUSPARSELT
+    const cusparseLtHandle_t* CusparseLightHandle() const {
+      return &cusparse_lt_handle_;
+    }
+#endif
 
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
       return current_deferred_release_event_;
@@ -141,9 +152,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
    private:
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
+#ifdef USE_CUSPARSELT
+    cusparseLtHandle_t cusparse_lt_handle_;
+#endif
 
     // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
-    // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
+    // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destroy
     // so the ownership is passed to deferred_release_cpu_ptr_
     cudaEvent_t current_deferred_release_event_ = nullptr;
 

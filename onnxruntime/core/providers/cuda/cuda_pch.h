@@ -12,6 +12,7 @@
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <cusparse.h>
+#include <cusparseLt.h>
 #include <curand.h>
 #include <cudnn.h>
 #include <cufft.h>

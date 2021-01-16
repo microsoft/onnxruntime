@@ -133,6 +133,12 @@ class CudaKernel : public OpKernel {
     return provider_->PerThreadCudnnHandle();
   }
 
+#ifdef USE_CUSPARSELT
+  const cusparseLtHandle_t* CusparseLightHandle() const {
+    return provider_->PerThreadCuspraseLightHandle();
+  }
+#endif
+
  protected:
   template <typename T>
   inline const T* GetConstOnes(size_t count) const {

@@ -63,6 +63,9 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+#ifdef USE_CUSPARSELT
+  CUSPARSELT_CALL_THROW(cusparseLtInit(&cusparse_lt_handle_));
+#endif
 
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId id) {
@@ -93,6 +96,15 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
+
+#ifdef USE_CUSPARSELT
+  try {
+    // Curious thing that destroy takes handle by a const ptr
+    CUSPARSELT_CALL(cusparseLtDestroy(&cusparse_lt_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "cusparseLtDestroy threw:" << ex.what();
+  }
+#endif
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)

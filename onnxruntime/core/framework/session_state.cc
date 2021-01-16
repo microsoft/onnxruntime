@@ -233,14 +233,14 @@ Status SessionState::GetInitializedTensors(
           "Failed to get OrtValue index from name: ", status.ErrorMessage());
       continue;
     }
-    if (initialized_tensors_.find(idx) != initialized_tensors_.end()){
+    if (initialized_tensors_.find(idx) != initialized_tensors_.end()) {
       result.emplace(weight_name, initialized_tensors_.at(idx));
     } else {
       ORT_RETURN_IF_NOT(
           allow_missing_weights,
           "Failed to get initializer with name: ", weight_name, " and index:", idx);
       continue;
-    }    
+    }
   }
   retrieved_weights = std::move(result);
   return Status::OK();
@@ -258,7 +258,13 @@ void SessionState::CleanInitializedTensorsFromGraph() {
   graph_.CleanAllInitializedTensors();
 }
 
-Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
+Status SessionState::PrepackConstantInitializedTensors(const SessionOptions& session_options,
+                                                       std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
+  uint32_t sparse_flags = 0U;
+  if (session_options.treat_constant_initializers_as_2x4) {
+    sparse_flags |= static_cast<uint32_t>(OpKernel::SparseFlags::kTreatAs2x4);
+  }
+
   for (auto& node : GetGraphViewer().Nodes()) {
     auto kernel = GetMutableKernel(node.Index());
     int input_idx = 0;
@@ -275,7 +281,7 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
             if (constant_initialized_tensors.count(ort_value_idx)) {
               bool is_packed = false;
               const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
-              ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
+              ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, {input_idx, sparse_flags}, is_packed));
               if (is_packed && constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
                 // release the constant initialized tensor
                 st->initialized_tensors_.erase(ort_value_idx);
@@ -1023,7 +1029,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       session_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
 
   if (disable_prepacking != "1") {
-    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count));
+    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(session_options, constant_initializers_use_count));
   }
 
   ORT_RETURN_IF_ERROR(
