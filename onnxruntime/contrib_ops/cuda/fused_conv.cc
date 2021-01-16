@@ -64,6 +64,11 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     if (CUDNN_STATUS_BAD_PARAM == cudnn_status) {
       std::cout << "x: ";
       s_.x_tensor.print();
+      std::cout << "w: ";
+      for (auto w_dim : s_.last_w_dims) {
+        std::cout << w_dim << " ";
+      }
+      std::cout << std::endl;
       std::cout << "b: ";
       s_.b_tensor.print();
       std::cout << "z: ";
