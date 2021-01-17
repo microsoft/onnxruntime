@@ -45,8 +45,8 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     bool has_b = nullptr != Base::s_.b_data;
     auto alpha = &(Base::alpha_);
     auto beta = &(Base::beta_);
-    IAllocatorUniquePtr<void> workspace = CudaKernel::GetScratchBuffer<void>(Base::s_.workspace_bytes);
-    auto cudnn_status = cudnnConvolutionBiasActivationForward(CudnnHandle(),
+    IAllocatorUniquePtr<void> workspace = Base::GetScratchBuffer<void>(Base::s_.workspace_bytes);
+    auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
                                                               alpha,
                                                               Base::s_.x_tensor,
                                                               Base::s_.x_data,
@@ -65,7 +65,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                               Base::s_.y_tensor,
                                                               Base::s_.y_data);
     if (CUDNN_STATUS_SUCCESS != cudnn_status) {
-      CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(CudnnHandle(),
+      CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(Base::CudnnHandle(),
                                                     alpha,
                                                     Base::s_.x_tensor,
                                                     Base::s_.x_data,
@@ -79,14 +79,14 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                     Base::s_.y_tensor,
                                                     Base::s_.y_data));
       if (has_b) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), alpha, Base::s_.b_tensor, Base::s_.b_data,
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), alpha, Base::s_.b_tensor, Base::s_.b_data,
                                              alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
       if (has_z) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), alpha, Base::s_.z_tensor, Base::s_.z_data,
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), alpha, Base::s_.z_tensor, Base::s_.z_data,
                                              alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
-      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(CudnnHandle(), activation_desc_, alpha, Base::s_.y_tensor,
+      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(Base::CudnnHandle(), activation_desc_, alpha, Base::s_.y_tensor,
                                                    Base::s_.y_data, beta, Base::s_.y_tensor, Base::s_.y_data));
     }
     if (Base::s_.post_slicing_required) {
