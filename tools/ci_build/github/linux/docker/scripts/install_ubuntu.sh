@@ -186,7 +186,7 @@ else # ubuntu20.04
         #put at /usr/local/. Then there will be two pips.
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
-	  echo "Install python3.8 done" ##
+	echo "Install python3.8 done" ##
 fi
 
 rm -rf /var/lib/apt/lists/*
@@ -196,5 +196,7 @@ if [ "$SYS_LONG_BIT" = "64" ]; then
 	aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
 	tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
     fi
+	echo "Install llvm done" ##
 fi
+echo "Install_ubuntu.sh done" ##
 
