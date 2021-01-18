@@ -178,9 +178,12 @@ class Conv : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
+  inline IAllocatorUniquePtr<void> GetWorkSpace() const {
+    return GetScratchBuffer<void>(s_.workspace_bytes);
+  }
   const CudaT alpha_ = Consts<CudaT>::One;
   const CudaT beta_ = Consts<CudaT>::Zero;
+  Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
   ConvAttributes conv_attrs_;
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;

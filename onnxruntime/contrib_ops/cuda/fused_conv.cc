@@ -11,6 +11,7 @@ namespace cuda {
 template <typename T>
 class FusedConv : public onnxruntime::cuda::Conv<T> {
  public:
+  using Base = onnxruntime::cuda::Conv<T>;
   FusedConv(const OpKernelInfo& info) : onnxruntime::cuda::Conv<T>(info) {
     std::string activation;
     if (info.GetAttr<std::string>("activation", &activation) == Status::OK() &&
@@ -35,60 +36,62 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
 
   Status ComputeInternal(OpKernelContext* context) const override {
     CUDNN_RETURN_IF_ERROR(status_);
-    std::lock_guard<OrtMutex> lock(s_.mutex);
-    ORT_RETURN_IF_ERROR(UpdateState(context, true));
-    if (s_.Y->Shape().Size() == 0) {
+    std::lock_guard<OrtMutex> lock(Base::s_.mutex);
+    ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
+    if (Base::s_.Y->Shape().Size() == 0) {
       return Status::OK();
     }
-    bool has_z = nullptr != s_.z_data;
-    bool has_b = nullptr != s_.b_data;
-    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
-    auto cudnn_status = cudnnConvolutionBiasActivationForward(CudnnHandle(),
-                                                              &alpha_,
-                                                              s_.x_tensor,
-                                                              s_.x_data,
-                                                              s_.w_desc,
-                                                              s_.w_data,
-                                                              s_.conv_desc,
-                                                              s_.algo,
+    bool has_z = nullptr != Base::s_.z_data;
+    bool has_b = nullptr != Base::s_.b_data;
+    auto alpha = &(Base::alpha_);
+    auto beta = &(Base::beta_);
+    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
+    auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
+                                                              alpha,
+                                                              Base::s_.x_tensor,
+                                                              Base::s_.x_data,
+                                                              Base::s_.w_desc,
+                                                              Base::s_.w_data,
+                                                              Base::s_.conv_desc,
+                                                              Base::s_.algo,
                                                               workspace.get(),
-                                                              s_.workspace_bytes,
-                                                              has_z ? &alpha_ : &beta_,
-                                                              has_z ? s_.z_tensor : s_.y_tensor,
-                                                              has_z ? s_.z_data : s_.y_data,
-                                                              s_.b_tensor,
-                                                              has_b ? s_.b_data : s_.b_zero,
+                                                              Base::s_.workspace_bytes,
+                                                              has_z ? alpha : beta,
+                                                              has_z ? Base::s_.z_tensor : Base::s_.y_tensor,
+                                                              has_z ? Base::s_.z_data : Base::s_.y_data,
+                                                              Base::s_.b_tensor,
+                                                              has_b ? Base::s_.b_data : Base::s_.b_zero,
                                                               activation_desc_,
-                                                              s_.y_tensor,
-                                                              s_.y_data);
+                                                              Base::s_.y_tensor,
+                                                              Base::s_.y_data);
     if (CUDNN_STATUS_SUCCESS != cudnn_status) {
-      CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(CudnnHandle(),
-                                                    &alpha_,
-                                                    s_.x_tensor,
-                                                    s_.x_data,
-                                                    s_.w_desc,
-                                                    s_.w_data,
-                                                    s_.conv_desc,
-                                                    s_.algo,
+      CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(Base::CudnnHandle(),
+                                                    alpha,
+                                                    Base::s_.x_tensor,
+                                                    Base::s_.x_data,
+                                                    Base::s_.w_desc,
+                                                    Base::s_.w_data,
+                                                    Base::s_.conv_desc,
+                                                    Base::s_.algo,
                                                     workspace.get(),
-                                                    s_.workspace_bytes,
-                                                    &beta_,
-                                                    s_.y_tensor,
-                                                    s_.y_data));
+                                                    Base::s_.workspace_bytes,
+                                                    beta,
+                                                    Base::s_.y_tensor,
+                                                    Base::s_.y_data));
       if (has_b) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha_, s_.b_tensor, s_.b_data,
-                                             &alpha_, s_.y_tensor, s_.y_data));
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), alpha, Base::s_.b_tensor, Base::s_.b_data,
+                                             alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
       if (has_z) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha_, s_.z_tensor, s_.z_data,
-                                             &alpha_, s_.y_tensor, s_.y_data));
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), alpha, Base::s_.z_tensor, Base::s_.z_data,
+                                             alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
-      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(CudnnHandle(), activation_desc_, &alpha_, s_.y_tensor,
-                                                   s_.y_data, &beta_, s_.y_tensor, s_.y_data));
+      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(Base::CudnnHandle(), activation_desc_, alpha, Base::s_.y_tensor,
+                                                   Base::s_.y_data, beta, Base::s_.y_tensor, Base::s_.y_data));
     }
-    if (s_.post_slicing_required) {
-      onnxruntime::cuda::SliceOutUnwantedOutputSection(s_.y_data, s_.y_dims_with_adjusted_pads, s_.Y->MutableDataRaw(),
-                                                       s_.y_dims, s_.slice_starts, s_.slice_ends, s_.slice_axes, s_.element_size);
+    if (Base::s_.post_slicing_required) {
+      onnxruntime::cuda::SliceOutUnwantedOutputSection(Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
+                                                       Base::s_.y_dims, Base::s_.slice_starts, Base::s_.slice_ends, Base::s_.slice_axes, Base::s_.element_size);
     }
     return Status::OK();
   }

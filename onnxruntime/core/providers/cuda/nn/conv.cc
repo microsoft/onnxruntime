@@ -285,7 +285,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
   }
-  IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
+  IAllocatorUniquePtr<void> workspace = GetWorkSpace();
   CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(CudnnHandle(),
                                                 &alpha_,
                                                 s_.x_tensor,
