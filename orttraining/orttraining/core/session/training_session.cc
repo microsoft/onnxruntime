@@ -233,7 +233,7 @@ Status TrainingSession::PartitionGraphForPipeline(
 
   // Apply online pipeline partition to graph obj. This needs to be done first before any graph
   // transportation which may alter node_arg and invalidate cut_list info from the original graph.
-  ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
+  ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipeline stage id (", pipeline_stage_id, ") before doing online partition.");
   const int n_stages = distributed_config.value().pipeline_parallel_size;
   std::map<const Node*, int> op_to_stage;
   const auto& cut_list = pipeline_config.value().cut_list;
@@ -249,7 +249,8 @@ Status TrainingSession::PartitionGraphForPipeline(
   auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel);
   ORT_RETURN_IF_ERROR(
       ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
-                                        pipeline_stage_id, n_stages, ranks));
+                                        pipeline_stage_id, n_stages, ranks,
+                                        pipeline_config.value().partition_after_ad));
 
   if (pipeline_config.value().partitioned_model_path.has_value()) {
     // Save the partitioned file out.
@@ -369,12 +370,16 @@ Status TrainingSession::ConfigureForTraining(
 
   const int32_t pipeline_stage_id = config.pipeline_config.has_value() ? DistributedRunContext::RankInGroup(WorkerGroupType::PipelineParallel) : -1;
 
-  ORT_RETURN_IF_ERROR(PartitionGraphForPipeline(
-      pipeline_stage_id,
-      config.pipeline_config,
-      config.distributed_config,
-      config.weight_names_to_train,
-      filtered_config_weight_names_to_train));
+  bool partition_after_ad = config.pipeline_config.has_value() && config.pipeline_config.value().partition_after_ad;
+
+  if (!partition_after_ad) {
+    ORT_RETURN_IF_ERROR(PartitionGraphForPipeline(
+        pipeline_stage_id,
+        config.pipeline_config,
+        config.distributed_config,
+        config.weight_names_to_train,
+        filtered_config_weight_names_to_train));
+  }
 
   std::string loss_name{};
 
@@ -473,6 +478,28 @@ Status TrainingSession::ConfigureForTraining(
   if (IsRootNode(config) && config.model_with_gradient_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_gradient_graph_path.value(), SaveOption::NO_RELOAD));
+  }
+
+  if (partition_after_ad) {
+    ORT_RETURN_IF_ERROR(PartitionGraphForPipeline(
+      pipeline_stage_id,
+      config.pipeline_config,
+      config.distributed_config,
+      // The next two arguments are not used in TrainingSession::PartitionGraphForPipeline.
+      config.weight_names_to_train, 
+      filtered_config_weight_names_to_train));
+
+    // TODO(jufranc): why can't I use FilterUnusedWeights? There seems to be
+    // too many versions of `weights to train`. Can we improve this?
+    std::unordered_set<std::string> weights_to_keep;
+    for (auto& name : weight_names_to_train) {
+      auto nodes = model_->MainGraph().GetConsumerNodes(name);
+      if (!nodes.empty()) {
+        weights_to_keep.insert(name);
+      } 
+    }
+    weight_names_to_train = weights_to_keep;
+    weights_to_train_ = weights_to_keep;
   }
 
   ORT_RETURN_IF_ERROR(SetEventSynchronization(
@@ -1539,7 +1566,7 @@ Status PipelineTrainingSession::PartitionGraphForPipeline(
   if (pipeline_config.has_value() && pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
-    ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
+    ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipeline stage id (", pipeline_stage_id, ") before doing online partition.");
 
     // Recording the original graph-level outputs before conducting pipeline partition.
     // It's for maintaining the same output schema at each pipeline stage.
@@ -1562,8 +1589,11 @@ Status PipelineTrainingSession::PartitionGraphForPipeline(
 
     auto ranks = DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel);
     ORT_RETURN_IF_ERROR(
+        // Note: for now, we assume that the PipelineTrainingSession only does
+        // partition before AD, as this is the API used by ORTTrainer.
         ApplyPipelinePartitionToMainGraph(model_->MainGraph(), op_to_stage,
-                                          pipeline_stage_id, n_stages, ranks));
+                                          pipeline_stage_id, n_stages, ranks,
+                                          true));
 
     if (pipeline_config.value().partitioned_model_path.has_value()) {
       // Save the partitioned file out.

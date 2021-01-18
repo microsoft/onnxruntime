@@ -228,10 +228,12 @@ class TrainingSession : public InferenceSession {
       // cut_list[i] contains the CutInfo to make the partition between stage i and stage i+1
       std::vector<CutInfo> cut_list;
       // Alternative for partition. We map each operator's string identifier to
-      // a stage identifier. We identify operators using the name of any of
-      // their outputs. All operators in the graph must be in the domain of this
-      // map.
+      // a stage identifier. We identify an operator using its name, or when the
+      // name is not defined, we use the name of any of their outputs.
+      // All operators in the graph must be in the domain of this map.
       std::map<std::string, int> op_id_to_stage;
+      // Flag to describe whether pipeline partition will run after AD.
+      bool partition_after_ad = false;
 
       // The base path at which to save the intermediate partitioned input model (forward pass only).
       optional<PathString> partitioned_model_path{};

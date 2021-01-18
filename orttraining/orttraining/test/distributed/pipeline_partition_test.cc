@@ -51,7 +51,7 @@ TEST(PipelinePartition, DropoutGraph2stages) {
   }
   status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage,
                                              pipeline_stage_id, num_stages,
-                                             rank_ids);
+                                             rank_ids, false);
   EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                              << status.ErrorMessage();
 
@@ -86,12 +86,13 @@ void LoadAndPartitionWithCuts(const PathString& model_path,
                                << status.ErrorMessage();
     status = ApplyPipelinePartitionToMainGraph(graph, op_to_stage,
                                                pipeline_stage_id, num_stages,
-                                               rank_ids);
+                                               rank_ids, false);
     EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                                << status.ErrorMessage();
   } else {
     status = CutBasedApplyPipelinePartitionToMainGraph(graph, cuts,
-                                                       pipeline_stage_id, num_stages);
+                                                       pipeline_stage_id, 
+                                                       num_stages);
     EXPECT_TRUE(status.IsOK()) << "Failed to apply partition. Error: "
                                << status.ErrorMessage();
   }

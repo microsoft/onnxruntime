@@ -167,13 +167,15 @@ class TrainingRunner {
     // pre-partitioned, no need to fill this value.
     std::vector<TrainingSession::TrainingConfiguration::CutInfo> pipeline_partition_cut_list;
     // Alternative for partition. We map each operator's string identifier to
-    // a stage identifier. We identify operators using the name of any of
-    // their outputs. All operators in the graph must be in the domain of this
-    // map.
+    // a stage identifier. We identify an operator using its name, or when the
+    // name is not defined, we use the name of any of their outputs.
+    // All operators in the graph must be in the domain of this map.
     // For example, op_id_to_stage["MatMul0"] being 5 means the operator node
     // called "MatMul0" locates on the 6th stage. Note that stage ID is 0-based
     // index.
     std::map<std::string, int> op_id_to_stage;
+    // Flag to describe whether pipeline partition will run after AD.
+    bool partition_after_ad = false;
 
     // model_paths[i] is the name of the pipeline stage for i-th process.
     // The i-th file is run by the i-th MPI rank.

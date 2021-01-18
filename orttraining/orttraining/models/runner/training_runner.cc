@@ -121,11 +121,14 @@ Status TrainingRunner::Initialize() {
     config.mixed_precision_config = mp;
   }
 
-  // configure the loss function if no pipeline is used or it's the last stage of pipeline
+  // If the model is not running with pipeline parallelism, or if it is but we
+  // partition it after building the gradient nodes, or if we partition it
+  // before building the gradinent graph but this rank is in the last stage
+  // of the pipeline, then we need to configure the loss parameters.
   auto pipeline_stage_id = GetPipelineStageId(MPIContext::GetInstance().GetWorldRank(),
                                               params_.horizontal_parallel_size,
                                               params_.data_parallel_size);
-  if (params_.pipeline_parallel_size == 1 ||
+  if (params_.pipeline_parallel_size == 1 || params_.partition_after_ad || 
       (pipeline_stage_id + 1) == params_.pipeline_parallel_size) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
@@ -176,6 +179,7 @@ Status TrainingRunner::Initialize() {
     pipe.cut_list = params_.pipeline_partition_cut_list;
     pipe.op_id_to_stage = params_.op_id_to_stage;
     pipe.partitioned_model_path = params_.pipeline_partitioned_model_path;
+    pipe.partition_after_ad = params_.partition_after_ad;
     // Do not assign value to config.pipeline_config if pipeline is not used.
     config.pipeline_config = pipe;
   }
