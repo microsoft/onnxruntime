@@ -32,6 +32,7 @@ struct ModelInfo {
 struct MachineConfig {
   Platform platform{Platform::kWindows};
   std::string provider_type_name{onnxruntime::kCpuExecutionProvider};
+  std::basic_string<ORTCHAR_T> enclave_file_path = ORT_TSTR("onnxruntime_perf_test_enclave");
 };
 
 struct RunConfig {
@@ -50,6 +51,7 @@ struct RunConfig {
   int inter_op_num_threads{0};
   GraphOptimizationLevel optimization_level{ORT_ENABLE_ALL};
   std::basic_string<ORTCHAR_T> optimized_model_path;
+  bool enable_openenclave_simulation{false}; 
   int cudnn_conv_algo{0};
   bool do_cuda_copy_in_separate_stream{false};
   bool set_denormal_as_zero{false};

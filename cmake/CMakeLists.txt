@@ -82,6 +82,9 @@ option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 
 option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
+option(onnxruntime_USE_OPENENCLAVE "Build with Open Enclave support" OFF)
+option(onnxruntime_OPENENCLAVE_PHASE "Whether the build is a 'host' or 'enclave' Open Enclave build. A host build depends on an enclave build for testing.")
+option(onnxruntime_OPENENCLAVE_ENCLAVE_BUILD_DIR "Build directory of 'enclave' Open Enclave build, needed for testing")
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
@@ -160,6 +163,51 @@ endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
+endif()
+
+if (onnxruntime_USE_OPENENCLAVE)
+  if (onnxruntime_OPENENCLAVE_PHASE STREQUAL "enclave")
+    set(onnxruntime_OPENENCLAVE_BUILD_ENCLAVE ON)
+  endif()
+  # Shared library on host currently not supported.
+  set(onnxruntime_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
+endif()
+
+if (onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+  set(onnxruntime_USE_OPENENCLAVE ON CACHE BOOL "" FORCE)
+  # OpenMP not supported in Open Enclave.
+  set(onnxruntime_USE_OPENMP OFF CACHE BOOL "" FORCE)
+  # Open Enclave libraries can only be built statically.
+  set(onnxruntime_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
+  # Must build here for Open Enclave support.
+  set(onnxruntime_USE_PREBUILT_PB OFF CACHE BOOL "" FORCE)
+  # Remove once https://github.com/Microsoft/openenclave/issues/1550 is resolved.
+  add_compile_definitions(EIGEN_NO_CPUID)
+  # Open Enclave uses -fvisibility=hidden which causes some maybe-uninitialized false positives in GCC.
+  if (CMAKE_C_COMPILER_ID STREQUAL GNU)
+    string(APPEND CMAKE_C_FLAGS " -Wno-error=maybe-uninitialized")
+    string(APPEND CMAKE_CXX_FLAGS " -Wno-error=maybe-uninitialized")
+  endif()
+
+  # We need protoc on the host side, but libprotobuf as Open Enclave build.
+  # This is equivalent to the cross-compilation scenario explained above.
+  # Note that the protoc version must match that of the submodule.
+  if(NOT EXISTS "${ONNX_CUSTOM_PROTOC_EXECUTABLE}")
+    message(FATAL_ERROR "ONNX_CUSTOM_PROTOC_EXECUTABLE=${ONNX_CUSTOM_PROTOC_EXECUTABLE} not found, build and install protoc first")
+  endif()
+
+  set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build protobuf with ZLib" FORCE)
+  # TODO check if the latest Open Enclave still requires that
+  add_compile_definitions(GOOGLE_PROTOBUF_NO_THREADLOCAL)
+  # Open Enclave does not support rdtsc.
+  add_compile_definitions(GOOGLE_PROTOBUF_NO_RDTSC)
+
+  # Partial replacement for date/date.h header library.
+  add_library(date_interface INTERFACE)
+  target_include_directories(date_interface INTERFACE
+    ${CMAKE_CURRENT_LIST_DIR}/patches/openenclave/date)
+
+  list(INSERT CMAKE_MODULE_PATH 0 ${PROJECT_SOURCE_DIR}/patches/openenclave/cmake)
 endif()
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
@@ -554,10 +602,23 @@ if(onnxruntime_BUILD_BENCHMARKS)
 endif()
 
 if(NOT WIN32 AND NOT onnxruntime_PREFER_SYSTEM_LIB)
+  if (onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+    # Force nsync to fall-back to mutex (POSIX) instead of
+    # using futex which Open Enclave does not support.
+    set(CMAKE_SYSTEM_NAME_original ${CMAKE_SYSTEM_NAME})
+    set(CMAKE_SYSTEM_NAME dummy)
+  endif()
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
+  if (onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+    set(CMAKE_SYSTEM_NAME ${CMAKE_SYSTEM_NAME_original})
+  endif()
 endif()
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
+
+if (onnxruntime_USE_OPENENCLAVE)
+  include(openenclave)
+endif()
 
 #protobuf begin
 
@@ -654,10 +715,19 @@ get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
-add_subdirectory(external/date EXCLUDE_FROM_ALL)
+if (NOT onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+  add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
-if(onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(re2)
+  if(onnxruntime_PREFER_SYSTEM_LIB)
+    find_package(re2)  
+  endif()
+
+  if(NOT TARGET re2::re2)
+    add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
+    set_target_properties(re2 PROPERTIES FOLDER "External/re2")
+    add_library(re2::re2 ALIAS re2)
+    set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
+  endif()
 endif()
 
 set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
@@ -667,13 +737,6 @@ target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
 set(OPTIONAL_LITE_INCLUDE_DIR ${REPO_ROOT}/cmake/external/optional-lite/include)
 if(onnxruntime_DISABLE_EXCEPTIONS)
   add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
-endif()
-
-if(NOT TARGET re2::re2)
-  add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
-  set_target_properties(re2 PROPERTIES FOLDER "External/re2")
-  add_library(re2::re2 ALIAS re2)
-  set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
 endif()
 
 # bounds checking behavior.
@@ -696,7 +759,10 @@ include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
 # dnnl/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB})
+if (NOT onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES re2::re2)
+endif()
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
@@ -1396,7 +1462,9 @@ if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
+  if (NOT onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
+  endif()
 endif()
 
 if (WIN32)
@@ -1446,6 +1514,10 @@ if (onnxruntime_BUILD_SHARED_LIB)
   include(onnxruntime.cmake)
 endif()
 
+if (onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+  include(onnxruntime_openenclave.cmake)
+endif()
+
 if (onnxruntime_BUILD_JAVA)
   message(STATUS "Java Build is enabled")
   include(onnxruntime_java.cmake)
@@ -1462,7 +1534,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   if (onnxruntime_ENABLE_PYTHON)
     include(onnxruntime_python.cmake)
   endif()
-  include(onnxruntime_unittests.cmake)
+  if (onnxruntime_USE_OPENENCLAVE)
+    include(onnxruntime_unittests_openenclave.cmake)
+  endif()
+  if (NOT onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+    include(onnxruntime_unittests.cmake)
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -1489,3 +1566,29 @@ if (WINDOWS_STORE)
 endif()
 
 include(flake8.cmake)
+
+if (onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+  cmake_policy(SET CMP0079 NEW)
+
+  set(openenclave_libraries
+    onnx
+    onnx_proto
+    nsync_cpp
+    onnxruntime_common
+    onnxruntime_framework
+    onnxruntime_graph
+    onnxruntime_optimizer
+    onnxruntime_providers
+    onnxruntime_session
+    onnxruntime_util
+    onnxruntime_mlas
+    onnxruntime_flatbuffers
+    )
+
+  foreach(openenclave_lib ${openenclave_libraries})
+    target_link_libraries(${openenclave_lib} PRIVATE openenclave-enclave)
+  endforeach()
+
+  target_link_libraries(libprotobuf openenclave-enclave)
+  target_link_libraries(libprotobuf-lite openenclave-enclave)
+endif()

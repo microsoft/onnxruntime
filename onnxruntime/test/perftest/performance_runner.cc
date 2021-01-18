@@ -13,6 +13,9 @@
 #include "TFModelInfo.h"
 #include "utils.h"
 #include "ort_test_session.h"
+#ifdef HAVE_OPENENCLAVE
+#include "ort_openenclave_test_session.h"
+#endif
 #ifdef HAVE_TENSORFLOW
 #include "tf_test_session.h"
 #endif
@@ -247,7 +250,9 @@ static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfi
 
     ORT_NOT_IMPLEMENTED(ToMBString(file_path), " is not supported");
   }
-
+  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort-openenclave")) == 0) {
+    return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
+  }
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
     return TFModelInfo::Create(performance_test_config_.model_info.model_file_path.c_str());
   }
@@ -262,6 +267,12 @@ static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_dev
     return std::unique_ptr<TestSession>(
         new OnnxRuntimeTestSession(env, rd, performance_test_config_, test_model_info));
   }
+#ifdef HAVE_OPENENCLAVE
+  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort-openenclave")) == 0) {
+    return std::unique_ptr<TestSession>(
+        new OnnxRuntimeOpenEnclaveTestSession(rd, performance_test_config_, test_model_info));
+  }
+#endif
 #ifdef HAVE_TENSORFLOW
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
     return new TensorflowTestSession(rd, performance_test_config_, test_model_info);

@@ -36,7 +36,9 @@ namespace perftest {
       "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
       "'openvino', 'nuphar', 'dml' or 'acl'. "
       "Default:'cpu'.\n"
-      "\t-b [tf|ort]: backend to use. Default:ort\n"
+      "\t-b [tf|ort|ort-openenclave]: backend to use. Default:ort\n"
+      "\t-i: Use simulation mode for ort-openenclave backend.\n"
+      "\t-a [enclave_file]: Specifies the file path to the enclave image for the ort-openenclave backend. Default:onnxruntime_session_test_enclave.\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
       "\t-t [seconds_to_run]: Specifies the seconds to run for 'duration' mode. Default:600.\n"
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
@@ -56,7 +58,7 @@ namespace perftest {
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:AMPIvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:a:m:e:r:t:p:x:y:c:d:o:u:AMPIivhsqz"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -69,6 +71,12 @@ namespace perftest {
         break;
       case 'b':
         test_config.backend = optarg;
+        break;
+      case 'i':
+        test_config.run_config.enable_openenclave_simulation = true;
+        break;
+      case 'a':
+        test_config.machine_config.enclave_file_path = optarg;
         break;
       case 'p':
         test_config.run_config.profile_file = optarg;

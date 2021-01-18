@@ -1,0 +1,51 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+enclave {
+
+    trusted {
+        public int EnclaveCreateSession(
+            [user_check] char** error_msg /* out */,
+            [out] size_t* output_count,
+            [in, count=model_size] const char* model_buf,
+            size_t model_size,
+            int logging_level,
+            int enable_sequential_execution,
+            int intra_op_num_threads,
+            int inter_op_num_threads,
+            uint32_t optimization_level
+            );
+
+        public int EnclaveRunInference(
+            [user_check] char** error_msg /* out */,
+            [user_check] char** input_bufs,
+            [in, count=input_count] size_t* input_sizes,
+            size_t input_count,
+            [user_check] char** output_bufs /* out */,
+            [out, count=output_count] size_t* output_sizes,
+            size_t output_count, /* if 0, don't return outputs */
+            size_t output_max_size
+            );
+
+        public void EnclaveThreadFun (
+            uint64_t enc_key);
+
+        public void EnclaveDestroySession();
+    };
+
+    untrusted {
+        void host_exit(
+            int arg);
+
+        void host_create_thread(
+            uint64_t enc_key,
+            [user_check] oe_enclave_t* enc);
+
+        int host_join_thread(
+            uint64_t enc_key);
+
+        int host_detach_thread(
+            uint64_t enc_key);
+    };
+};
+

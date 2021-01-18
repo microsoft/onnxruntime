@@ -126,7 +126,7 @@ endif()
 # check if we need to link against librt on Linux
 include(CheckLibraryExists)
 include(CheckFunctionExists)
-if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux" AND NOT onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
   check_library_exists(rt clock_gettime "time.h" HAVE_CLOCK_GETTIME)
 
   if (NOT HAVE_CLOCK_GETTIME)

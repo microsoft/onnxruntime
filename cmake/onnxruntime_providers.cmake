@@ -55,6 +55,13 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
 
+if (onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+  list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs
+    # Exclude due to re2 dependency.
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/tokenizer.cc"
+  )
+endif()
+
 if(onnxruntime_USE_NUPHAR)
   set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
@@ -165,8 +172,10 @@ if(HAS_DEPRECATED_COPY)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/where_op.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
 endif()
 
-target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR})
-
+target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
+if (NOT onnxruntime_OPENENCLAVE_BUILD_ENCLAVE)
+  target_include_directories(onnxruntime_providers PRIVATE ${RE2_INCLUDE_DIR})
+endif()
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if (onnxruntime_ENABLE_TRAINING)

@@ -1,0 +1,6 @@
+set(Threads_FOUND TRUE)
+set(CMAKE_USE_PTHREADS_INIT TRUE)
+set(CMAKE_THREAD_LIBS_INIT "")
+if (NOT TARGET Threads::Threads)
+    add_library(Threads::Threads INTERFACE IMPORTED)
+endif()

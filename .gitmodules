@@ -59,6 +59,9 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
+[submodule "cmake/external/compiler-rt"]
+	path = cmake/external/compiler-rt
+	url = https://github.com/llvm-mirror/compiler-rt.git
 [submodule "cmake/external/optional-lite"]
 	path = cmake/external/optional-lite
 	url = https://github.com/martinmoene/optional-lite.git
