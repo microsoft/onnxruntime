@@ -110,7 +110,6 @@ else # ubuntu20.04
         libcurl4 \
         libssl1.1 \
         libkrb5-3 \
-        libicu60 \
         libtinfo-dev \
         libtool \
         openssh-server \
@@ -156,7 +155,7 @@ if [ "$OS_VERSION" = "16.04" ]; then
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
     
-else # ubuntu18.04
+elif [ "$OS_VERSION" = "18.04" ]; then
     if [ "$PYTHON_VER" != "3.6" ]; then
 	    add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
@@ -165,6 +164,21 @@ else # ubuntu18.04
                 python${PYTHON_VER}-dev
         update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
         update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 2
+        update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+        #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
+        #put at /usr/local/. Then there will be two pips.
+        /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
+    fi
+
+else # ubuntu20.04
+    if [ "$PYTHON_VER" != "3.8" ]; then
+	    add-apt-repository -y ppa:deadsnakes/ppa
+        apt-get update
+        apt-get install -y --no-install-recommends \
+                python${PYTHON_VER} \
+                python${PYTHON_VER}-dev
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
         update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
         #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
         #put at /usr/local/. Then there will be two pips.
