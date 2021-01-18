@@ -110,6 +110,7 @@ else # ubuntu20.04
         libcurl4 \
         libssl1.1 \
         libkrb5-3 \
+        libicu66 \
         libtinfo-dev \
         libtool \
         openssh-server \
