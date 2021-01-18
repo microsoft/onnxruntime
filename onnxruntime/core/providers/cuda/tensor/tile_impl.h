@@ -18,11 +18,12 @@ void TileImpl(
     T* output_data,
     const size_t N);
 
+template <typename T>
 void TileMemcpyImpl(
-    const void* input_data,
-    const size_t num_bytes,
-    void* output_data,
-    const size_t N);
+    const T* input_data,
+    const size_t num_input_elements,
+    T* output_data,
+    const size_t num_output_elements);
 
 }  // namespace cuda
 }  // namespace onnxruntime
