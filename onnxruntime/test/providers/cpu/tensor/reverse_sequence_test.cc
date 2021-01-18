@@ -140,7 +140,7 @@ TEST(ReverseSequenceTest, InvalidInput) {
     test.AddInput<int64_t>("sequence_lens", {3}, sequence_lens);
     test.AddOutput<int64_t>("Y", {2, 4, 1}, expected_output);
     test.Run(test::OpTester::ExpectResult::kExpectFailure,
-             "sequence_lens shape must be {batch_size}. Got:{3}. batch_size=2");
+             "sequence_lens shape must be {batch_size}. Got:{3}. batch_size=2", {kTensorrtExecutionProvider});  //TensorRT engine build error
   }
 }
 
