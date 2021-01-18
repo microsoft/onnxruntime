@@ -599,9 +599,18 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx) {
   return output_edges.size();
 }
 
-void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx) {
+void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx,
+                                std::function<bool(const Node&)> downstream_node_filter) {
   // get the output edges from node for output_idx
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node, output_idx);
+  std::vector<GraphEdge> output_edges;
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    if (static_cast<size_t>(it->GetSrcArgIndex()) == static_cast<size_t>(output_idx)) {
+      if (downstream_node_filter != nullptr && false == downstream_node_filter(it->GetNode())) {
+        continue;
+      }
+      output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
+    }
+  }
 
   if (!output_edges.empty()) {
     const auto& replacement_name = replacement.MutableOutputDefs()[replacement_output_idx]->Name();

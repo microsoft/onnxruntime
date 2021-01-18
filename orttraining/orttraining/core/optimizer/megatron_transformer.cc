@@ -12,6 +12,9 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
+static bool FilterMatMulDownstreamNode(const Node& node) {
+  return node.OpType().compare("MatMul") == 0;
+}
 
 struct OpInfo {
   OpInfo(const std::string& op_type,
@@ -343,7 +346,7 @@ Status MegatronTransformer::TransformGPT2MLP(Graph& graph, bool& modified,
     graph_utils::ReplaceNodeInput(node, 0, *(mlp_f_node.MutableOutputDefs()[0]));
   } else {
     auto input_node = const_cast<Node*>(&edge->GetNode());
-    graph_utils::ReplaceDownstreamNodeInput(graph, *input_node, edge->GetDstArgIndex(), mlp_f_node, 0);
+    graph_utils::ReplaceDownstreamNodeInput(graph, *input_node, edge->GetDstArgIndex(), mlp_f_node, 0, FilterMatMulDownstreamNode);
   }
 
   const std::vector<NodeArg*> mlp_g_input_defs{matmul2_node.MutableOutputDefs()[0]};
@@ -485,7 +488,7 @@ Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified,
     graph_utils::ReplaceNodeInput(node, 0, *(mlp_f_node.MutableOutputDefs()[0]));
   } else {
     auto input_node = const_cast<Node*>(&edge->GetNode());
-    graph_utils::ReplaceDownstreamNodeInput(graph, *input_node, edge->GetSrcArgIndex(), mlp_f_node, 0);
+    graph_utils::ReplaceDownstreamNodeInput(graph, *input_node, edge->GetSrcArgIndex(), mlp_f_node, 0, FilterMatMulDownstreamNode);
   }
 
   const std::vector<NodeArg*> mlp_g_input_defs{matmul2_node.MutableOutputDefs()[0]};
@@ -723,7 +726,7 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
     graph_utils::ReplaceNodeInput(node, 0, *(sa_f_node.MutableOutputDefs()[0]));
   } else {
     auto input_node = const_cast<Node*>(&edge->GetNode());
-    graph_utils::ReplaceDownstreamNodeInput(graph, *input_node, edge->GetDstArgIndex(), sa_f_node, 0);
+    graph_utils::ReplaceDownstreamNodeInput(graph, *input_node, edge->GetDstArgIndex(), sa_f_node, 0, FilterMatMulDownstreamNode);
   }
 
   const std::vector<NodeArg*> sa_g_input_defs{matmul_node.MutableOutputDefs()[0]};
