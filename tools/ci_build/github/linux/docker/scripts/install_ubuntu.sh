@@ -139,6 +139,7 @@ if [ "$SYS_LONG_BIT" = "64" ]; then
   apt-get update
   apt-get install -y dotnet-sdk-2.1
   rm -rf /tmp/dotnet
+  echo "Install dotnet-sdk done" ##
 fi
 
 if [ "$OS_VERSION" = "16.04" ]; then
@@ -185,6 +186,7 @@ else # ubuntu20.04
         #put at /usr/local/. Then there will be two pips.
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
+	  echo "Install python3.8 done" ##
 fi
 
 rm -rf /var/lib/apt/lists/*
