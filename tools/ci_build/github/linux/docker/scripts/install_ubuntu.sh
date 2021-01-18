@@ -131,7 +131,6 @@ apt-get update && apt-get install -y --no-install-recommends $PACKAGE_LIST
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
-echo "Installing dotnet-sdk"
 if [ "$SYS_LONG_BIT" = "64" ]; then
   mkdir -p /tmp/dotnet
   aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VERSION}/packages-microsoft-prod.deb
@@ -139,7 +138,6 @@ if [ "$SYS_LONG_BIT" = "64" ]; then
   apt-get update
   apt-get install -y dotnet-sdk-2.1
   rm -rf /tmp/dotnet
-  echo "Install dotnet-sdk done" ##
 fi
 
 if [ "$OS_VERSION" = "16.04" ]; then
@@ -186,18 +184,17 @@ else # ubuntu20.04
         #put at /usr/local/. Then there will be two pips.
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
-	echo "Install python3.8 done" ##
 fi
 
 rm -rf /var/lib/apt/lists/*
 
 if [ "$SYS_LONG_BIT" = "64" ]; then
     if [ "$DEVICE_TYPE" = "Normal" ]; then
-	##aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
-	aria2c -q -d /tmp -o llvm.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-11.0.0/llvm-project-11.0.0.tar.xz	
+        if [ "$OS_VERSION" = "20.04" ]; then
+            aria2c -q -d /tmp -o llvm.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-11.0.0/llvm-project-11.0.0.tar.xz
+        else			
+	        aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
+        fi	
 	tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
     fi
-	echo "Install llvm done" ##
 fi
-echo "Install_ubuntu.sh done" ##
-
