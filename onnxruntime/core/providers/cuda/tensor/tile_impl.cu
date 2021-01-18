@@ -30,6 +30,16 @@ __global__ void _TileKernel(
   output_data[id] = input_data[input_index];
 }
 
+__global__ void _TileMemcpyKernel(
+    const void* input_data,
+    const size_t num_bytes,
+    void* output_data,
+    const size_t N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  void* output_ptr = reinterpret_cast<void*>(reinterpret_cast<int8_t*>(output_data) + id * num_bytes);
+  memcpy(output_ptr, input_data, num_bytes);
+}
+
 template <typename T>
 void TileImpl(
     const size_t shape_rank,
@@ -43,6 +53,16 @@ void TileImpl(
   _TileKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       shape_rank, fdm_input_shape, input_stride, input_data,
       fdm_output_strides, output_data, (CUDA_LONG)N);
+}
+
+void TileMemcpyImpl(
+    const void* input_data,
+    const size_t num_bytes,
+    void* output_data,
+    const size_t N) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  _TileMemcpyKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      input_data, num_bytes, output_data, (CUDA_LONG)N);
 }
 
 #define SPECIALIZED_IMPL(T) \
