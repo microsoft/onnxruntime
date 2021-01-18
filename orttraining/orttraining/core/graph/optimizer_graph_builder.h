@@ -97,10 +97,9 @@ class OptimizerGraphBuilder {
   Status AddGradientScalingNodes(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const float scale,
-      std::vector<ArgDef>& gradient_argdefs,        // update argdefs in place
-      std::vector<ArgDef>& output_gradient_argdef,  // update argdef in place
+      std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
       GraphAugmenter::GraphDefs& graph_defs,
-      ONNX_NAMESPACE::TensorProto_DataType target_type);
+      ONNX_NAMESPACE::TensorProto_DataType allreduce_element_type);
 
   Status AddGradientNorm(
       const NodeArgNameGeneratorFn& nodearg_name_generator,

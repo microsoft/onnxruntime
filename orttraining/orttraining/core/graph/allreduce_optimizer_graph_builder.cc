@@ -18,23 +18,22 @@ static bool IsNcclAvailable() {
 
 static Status AddNcclAllReduceForGradients(
     std::vector<ArgDef>& gradient_argdefs,
-    std::vector<ArgDef>& input_gradient_argdef,
     GraphAugmenter::GraphDefs& graph_defs) {
   std::vector<ArgDef> allreduce_outputs(gradient_argdefs.size());
   for (size_t i = 0; i < gradient_argdefs.size(); i++) {
     TypeProto* allreduced_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[i]);
     allreduced_gradient_type_proto->mutable_tensor_type()->set_elem_type(
-        input_gradient_argdef[0].type_proto->tensor_type().elem_type());
+        gradient_argdefs[0].type_proto->tensor_type().elem_type());
 
     allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", allreduced_gradient_type_proto);
   }
 
   // Add NCCL Allreduce node.
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
-                                  input_gradient_argdef,
+                                  gradient_argdefs,
                                   allreduce_outputs,
                                   {ONNX_NAMESPACE::MakeAttribute("group_type",
-                                                                static_cast<int64_t>(WorkerGroupType::DataParallel))},
+                                                                 static_cast<int64_t>(WorkerGroupType::DataParallel))},
                                   "NcclAllReduce")});
 
   gradient_argdefs = allreduce_outputs;
@@ -56,7 +55,7 @@ AllreduceOptimizerGraphBuilder::AllreduceOptimizerGraphBuilder(
               "Allreduce optimizer graph builder can only be used for distributed training.");
   if (opt_graph_config.use_nccl) {
     ORT_ENFORCE(IsNcclAvailable(), "Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
-  } else if(!opt_graph_config.use_nccl && opt_graph_config.adasum_reduction_type == AdasumReductionType::None){
+  } else if (!opt_graph_config.use_nccl && opt_graph_config.adasum_reduction_type == AdasumReductionType::None) {
     ORT_THROW("Performing Allreduce is only supported using NCCL.");
   }
 }
@@ -75,15 +74,14 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   };
 
   // add gradient scaling
-  std::vector<ArgDef> output_gradient_argdef;
   const auto total_num_accumulations =
       opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   const float scale = 1.0f / total_num_accumulations;
-  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, output_gradient_argdef, graph_defs,
+  ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, graph_defs,
                                               opt_graph_config_.AllReduceDataType()));
 
-  ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, output_gradient_argdef, graph_defs));
+  ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, graph_defs));
 
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
