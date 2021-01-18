@@ -55,7 +55,7 @@ if [ "$OS_VERSION" = "16.04" ]; then
         rsync libunwind8 libpng16-dev libexpat1-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
         openjdk-8-jdk"
-else # ubuntu18.04
+elif [ "$OS_VERSION" = "18.04" ]; then
     PACKAGE_LIST="autotools-dev \
         automake \
         build-essential \
@@ -76,6 +76,39 @@ else # ubuntu18.04
         liblttng-ust0 \
         libcurl4 \
         libssl1.0.0 \
+        libkrb5-3 \
+        libicu60 \
+        libtinfo-dev \
+        libtool \
+        openssh-server \
+        aria2 \
+        bzip2 \
+        unzip \
+        zip \
+        rsync libunwind8 libpng-dev libexpat1-dev \
+        python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
+        openjdk-11-jdk"
+else # ubuntu20.04
+    PACKAGE_LIST="autotools-dev \
+        automake \
+        build-essential \
+        git apt-transport-https apt-utils \
+        ca-certificates \
+        pkg-config \
+        wget \
+        zlib1g \
+        zlib1g-dev \
+        libssl-dev \
+        curl libcurl4-openssl-dev \
+        autoconf \
+        sudo \
+        gfortran \
+        python3-dev \
+        language-pack-en \
+        libopenblas-dev \
+        liblttng-ust0 \
+        libcurl4 \
+        libssl1.1 \
         libkrb5-3 \
         libicu60 \
         libtinfo-dev \
