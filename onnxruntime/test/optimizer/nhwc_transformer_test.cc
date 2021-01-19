@@ -462,7 +462,7 @@ TEST(NhwcTransformerTests, ConvPad) {
       auto* input_arg = helper.MakeInput<uint8_t>({1, 23, 13, 13});
       auto* conv1_output_arg = helper.MakeIntermediate();
       auto* pads_const = helper.MakeScalarInitializer<uint8_t>(131);
-      auto* pads_arg = helper.MakeInitializer<int64_t>({8LL}, {0, 0, 1, 1, 0, 0, 1, 1});
+      auto* pads_arg = helper.Make1DInitializer<int64_t>({0, 0, 1, 2, 0, 0, 3, 4});
       auto* pad_output_arg = helper.MakeIntermediate();
       auto* conv2_output_arg = helper.MakeIntermediate();
       auto* output_arg = helper.MakeOutput();

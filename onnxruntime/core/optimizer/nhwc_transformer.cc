@@ -295,7 +295,7 @@ void NhwcTransformerImpl::TransformPad(Node& node) {
   if (!graph_utils::NodeArgIsConstant(graph_, *input_defs[1]) ||
       !graph_.GetInitializedTensor(input_defs[1]->Name(), pads_tensor_proto) ||
       (pads_tensor_proto->dims_size() != 1) ||
-      (nhwc_input->rank_ != pads_tensor_proto->dims(0) / 2) ||
+      (pads_tensor_proto->dims(0) != nhwc_input->rank_ * 2) ||
       (nhwc_input->rank_ <= 2)) {  // nc only, no any hw axises
     return;
   }
@@ -303,10 +303,10 @@ void NhwcTransformerImpl::TransformPad(Node& node) {
   // perm nchw to nhwc on pad tensor
   Initializer pads_initializer{*pads_tensor_proto, graph_.ModelPath()};
   const int64_t* nchw_pads_data = pads_initializer.data<int64_t>();
-  size_t n_dim = pads_tensor_proto->dims(0) / 2;
+  size_t n_dim = static_cast<size_t>(pads_tensor_proto->dims(0)) / 2;
   std::vector<int64_t> nhwc_pads(nchw_pads_data, nchw_pads_data + pads_tensor_proto->dims(0));
-  std::copy_n(nchw_pads_data + 2, n_dim - 2, nhwc_pads.begin() + 1);
-  std::copy_n(nchw_pads_data + 2 + n_dim, n_dim - 2, nhwc_pads.begin() + 1 + n_dim);
+  std::copy_n(nchw_pads_data + 2, n_dim - 2, nhwc_pads.data() + 1);
+  std::copy_n(nchw_pads_data + 2 + n_dim, n_dim - 2, nhwc_pads.data() + 1 + n_dim);
   nhwc_pads[n_dim - 1] = nchw_pads_data[1];
   nhwc_pads[2 * n_dim - 1] = nchw_pads_data[n_dim + 1];
 
