@@ -6,18 +6,30 @@
 #include "core/framework/op_kernel.h"
 #include "core/session/ort_env.h"
 
+#include <mutex>
+
 namespace onnxruntime {
-ORTInvoker::ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider) : execution_provider_(std::move(execution_provider)) {
+
+std::once_flag init_flag;
+std::unique_ptr<Environment> ort_env;
+
+void init_env(){
   std::string default_logger_id{"Default"};
-  default_logging_manager_ = onnxruntime::make_unique<logging::LoggingManager>(std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
+  std::unique_ptr<logging::LoggingManager> default_logging_manager = onnxruntime::make_unique<logging::LoggingManager>(std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
                                                                                logging::Severity::kWARNING, false,
                                                                                logging::LoggingManager::InstanceType::Default,
                                                                                &default_logger_id);
-  Environment::Create(nullptr, ort_env_);
+  std::cout << "Init env" << std::endl;
+  Environment::Create(std::move(default_logging_manager), ort_env);                                                                             
 }
 
-logging::LoggingManager& ORTInvoker::DefaultLoggingManager() {
-  return *default_logging_manager_;
+ORTInvoker::ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider) : execution_provider_(std::move(execution_provider)) {
+  std::string default_logger_id{"Default"};
+  logging_manager_ = onnxruntime::make_unique<logging::LoggingManager>(std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
+                                                                               logging::Severity::kWARNING, false,
+                                                                               logging::LoggingManager::InstanceType::Temporal,
+                                                                               &default_logger_id);
+  std::call_once(init_flag, init_env);
 }
 
 IExecutionProvider& ORTInvoker::GetCurrentExecutionProvider() {
@@ -32,7 +44,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
                                   const std::string domain,
                                   const int /*version*/) {
   //create a graph
-  Model model("test", false, DefaultLoggingManager().DefaultLogger());
+  Model model("test", false, ort_env->GetLoggingManager()->DefaultLogger());
 
   std::vector<onnxruntime::NodeArg*> input_args;
   std::vector<onnxruntime::NodeArg*> output_args;
@@ -67,6 +79,8 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
 
   node.SetExecutionProviderType(kCpuExecutionProvider);
   std::vector<const Node*> frame_nodes{&node};
+  if (!execution_provider_)
+    std::cout << "NULL ptr EP" << std::endl;
   OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_provider_);
   auto kernel = info.CreateKernel(&node);
   if (!kernel) {
@@ -79,7 +93,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   }
 
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
-  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, DefaultLoggingManager().DefaultLogger());
+  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, ort_env->GetLoggingManager()->DefaultLogger());
   ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
   return frame.GetOutputs(outputs);

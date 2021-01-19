@@ -33,11 +33,9 @@ class ORTInvoker {
                         const int version = -1);
 
  private:
-  logging::LoggingManager& DefaultLoggingManager();
 
   std::unique_ptr<IExecutionProvider> execution_provider_;
-  std::unique_ptr<Environment> ort_env_;
-  std::unique_ptr<logging::LoggingManager> default_logging_manager_;
+  std::unique_ptr<logging::LoggingManager> logging_manager_;
 };
 
 #ifdef __GNUC__
