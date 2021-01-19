@@ -272,10 +272,8 @@ else()
       set(CMAKE_REQUIRED_FLAGS "")
     endif()
     check_cxx_source_compiles("
-      #include <immintrin.h>
       int main() {
-        __m512 zeros = _mm512_set1_ps(0.f);
-        (void)zeros;
+        asm(\"vpxord %zmm0,%zmm0,%zmm0\");
         return 0;
       }"
       COMPILES_AVX512F
@@ -288,8 +286,22 @@ else()
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelAvx512F.S
-        ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx512/quantize_avx512f.cpp
       )
+      check_cxx_source_compiles("
+        #include <immintrin.h>
+        int main() {
+          __m512 zeros = _mm512_set1_ps(0.f);
+          (void)zeros;
+          return 0;
+        }"
+        COMPILES_AVX512F_INTRINSICS
+      )
+      if(COMPILES_AVX512F_INTRINSICS)
+        set(mlas_platform_srcs_avx512f
+          ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx512/quantize_avx512f.cpp
+          ${mlas_platform_srcs_avx512f}
+        )
+      endif()
       if(HAS_AVX512F)
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
       endif()

@@ -140,7 +140,7 @@ Return Value:
     this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
     this->QLinearAddS8Kernel = MlasQLinearAddS8Kernel;
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
-    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernal;
+    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernal;
 
     this->NchwcBlockSize = 8;
