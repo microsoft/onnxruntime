@@ -131,17 +131,17 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICE
   ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_miopen, miopen_type_X));
   MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
   MIOPEN_RETURN_IF_ERROR(miopenGetReductionWorkspaceSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
-  IAllocatorUniquePtr<uint32_t> indices_miopen = GetScratchBuffer<uint32_t>(indices_bytes);
-  IAllocatorUniquePtr<HipT> workspace_miopen = GetScratchBuffer<HipT>(workspace_bytes);
+  IAllocatorUniquePtr<uint32_t> indices_rocm = GetScratchBuffer<uint32_t>(indices_bytes);
+  IAllocatorUniquePtr<HipT> workspace_rocm = GetScratchBuffer<HipT>(workspace_bytes);
 
   const auto one = Consts<float>::One;
   const auto zero = Consts<float>::Zero;
   auto temp_Y = GetScratchBuffer<float>(output_count);
   MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(MiopenHandle(),
                                             reduce_desc,
-                                            indices_miopen.get(),
+                                            indices_rocm.get(),
                                             indices_bytes,
-                                            workspace_miopen.get(),
+                                            workspace_rocm.get(),
                                             workspace_bytes,
                                             &one,
                                             input_tensor,

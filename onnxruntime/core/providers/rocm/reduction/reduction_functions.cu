@@ -13,13 +13,6 @@
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/reduction/reduction_utils.cuh"
 
-#define NUM_ELEMENTS_PER_THREAD 4
-#define NUM_WARPS_PER_BLOCK 8
-#define MAX_NUM_BLOCKS 256
-
-#define ALL_ONE_MASK 0xFFFFFFFF
-#define ONE_MASK 0x00000001
-
 namespace onnxruntime {
 namespace rocm {
 
@@ -115,7 +108,7 @@ template <typename TIn, typename TOut, typename TBuf, typename TOp, typename TFi
 __device__ void reduce_all(
     const int num_elements, const TIn* const input, TOut* const output,
     TBuf* const block_reductions_buffer, int* const block_done_count_buffer) {
-  extern __shared__ unsigned char shared_memory_bytes[];
+  HIP_DYNAMIC_SHARED( unsigned char, shared_memory_bytes)
   TBuf* shared_memory = reinterpret_cast<TBuf*>(shared_memory_bytes);
   // Thread-level indices:
   // Linear index of thread in block.
@@ -175,11 +168,7 @@ __device__ void reduce_all(
     }
   }
 
-#if __ROCM_ARCH__ >= 700
-  __syncwarp();
-#else
   __syncthreads();
-#endif
 
   // Warp-level reduction (storage change: register -> register).
   // The values in a warp will be summed up to a scalar. After warp-level
@@ -312,9 +301,8 @@ Status call_reduce_matrix_columns(
   }
 
   const int shared_mem_size = sizeof(TBuf) * block_dim.x * block_dim.y / GPU_WARP_SIZE;
-  hipLaunchKernelGGL(HIP_KERNEL_NAME(reduce_matrix_columns_kernel<TIn, TOut, TBuf, TOp, TFinalOp, DivideResultBySize>),
-      grid_dim, block_dim, shared_mem_size, 0,
-      num_rows, num_cols, input, output, block_reductions_buffer, block_done_counts_buffer);
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(reduce_matrix_columns_kernel<TIn, TOut, TBuf, TOp, TFinalOp, DivideResultBySize>), dim3(grid_dim), dim3(block_dim), shared_mem_size, 0, 
+          num_rows, num_cols, input, output, block_reductions_buffer, block_done_counts_buffer);
 
   return Status::OK();
 }
@@ -390,7 +378,7 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
   const int tid_in_block = threadIdx.x + blockDim.x * threadIdx.y;
 
   // Shape is blockDim.y-by-blockDim.x and element type is TBuf.
-  extern __shared__ unsigned char shared_memory_bytes[];
+  HIP_DYNAMIC_SHARED( unsigned char, shared_memory_bytes)
   TBuf* shared_memory = reinterpret_cast<TBuf*>(shared_memory_bytes);
 
   // to prevent int overflow in index calculation for input size m*n
@@ -454,8 +442,7 @@ Status call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, boo
   const dim3 grid(grid_x_dim, grid_y_dim, 1);
   const dim3 block(block_x_dim, block_y_dim, 1);
 
-  hipLaunchKernelGGL(HIP_KERNEL_NAME(reduce_matrix_rows_kernel<TIn, TOut, TBuf>),
-      grid, block, block.y * block.x * sizeof(TBuf), 0,
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(reduce_matrix_rows_kernel<TIn, TOut, TBuf>), dim3(grid), dim3(block), block.y * block.x * sizeof(TBuf), 0, 
       input, output, m, n);
 
   return Status::OK();
