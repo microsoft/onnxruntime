@@ -15,7 +15,7 @@
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_00024ThreadingOptions_createThreadingOptions
   (JNIEnv * jniEnv, jclass clazz, jlong apiHandle) {
-    (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host class.
+    (void) clazz; // Required JNI parameter not needed by functions which don't need to access their host class.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtThreadingOptions* opts;
     checkOrtStatus(jniEnv,api,api->CreateThreadingOptions(&opts));
