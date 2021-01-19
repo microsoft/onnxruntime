@@ -296,10 +296,9 @@ class InferenceSession {
 
   // For ORTModule.forward()
   virtual common::Status RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
-  common::Status RunInBackgroundAndWaitForYield(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
   // For ORTModule.backward()
-  common::Status ContinueRunInBackground(IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  common::Status ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
 
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.

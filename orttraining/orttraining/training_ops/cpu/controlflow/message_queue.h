@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <vector>
+#include <queue>
 
 #include "core/common/common.h"
 #include "core/framework/ml_value.h"
@@ -18,9 +18,12 @@ class OrtMessageQueue final {
     return instance_;
   }
 
-  void AddOutputGrad(const OrtValue& ort_value) { output_grad.emplace_back(ort_value); }
-  const std::vector<OrtValue>& GetOutputGrads() { return output_grad; }
-  void ClearOutputGrads() { output_grad.clear(); }
+  void PushOutputGrad(const OrtValue& ort_value) { output_grads.emplace(ort_value); }
+  OrtValue PopOutputGrad() {
+    OrtValue ort_value = output_grads.front();
+    output_grads.pop();
+    return ort_value;
+  }
 
  private:
   OrtMessageQueue() = default;
@@ -28,7 +31,7 @@ class OrtMessageQueue final {
   OrtMessageQueue(const OrtMessageQueue&) = delete;
   OrtMessageQueue& operator=(const OrtMessageQueue&) = delete;
 
-  std::vector<OrtValue> output_grad;
+  std::queue<OrtValue> output_grads;
 };
 
 }  // namespace contrib

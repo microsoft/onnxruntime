@@ -51,6 +51,7 @@
 #include "core/util/thread_utils.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "orttraining/training_ops/cpu/controlflow/message_queue.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/customregistry.h"
@@ -1710,13 +1711,10 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions
   return Status::OK();
 }
 
-common::Status InferenceSession::RunInBackgroundAndWaitForYield(IOBinding& io_binding) {
-  RunOptions run_options;
-  return RunInBackgroundAndWaitForYield(run_options, io_binding);
-}
-
-common::Status InferenceSession::ContinueRunInBackground(IOBinding& /*io_binding*/) {
-  // TODO: Place data in message passing structure
+common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) {
+  for (const auto& ort_value : backward_output_grads) {
+    onnxruntime::contrib::OrtMessageQueue::GetInstance().PushOutputGrad(ort_value);
+  }
 
   // resume background thread
   const int64_t background_thread_event_id = 1;

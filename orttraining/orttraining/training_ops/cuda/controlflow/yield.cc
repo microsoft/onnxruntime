@@ -4,6 +4,7 @@
 #include "orttraining/training_ops/cuda/controlflow/yield.h"
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/message_queue.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -22,7 +23,7 @@ Status Yield::ComputeInternal(OpKernelContext* ctx) const {
   // !!! Potential TODO here: If graph output approach doesn't work, need to place the Yield Input tensors into some shared location
 
   // Do we need to synchronize here?
-  //cudaStreamSynchronize(0);
+  // cudaStreamSynchronize(0);
 
   // single event for InferenceSession::RunInBackgroundAndWaitForYield() that FW graph is done
   const int64_t main_thread_event_id = 0;
@@ -33,16 +34,14 @@ Status Yield::ComputeInternal(OpKernelContext* ctx) const {
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAndWaitEvent(background_thread_event_id);
 
   // Get output grad from somewhere and prepare Op outputs.
-  const std::vector<OrtValue>& output_grads = onnxruntime::contrib::OrtMessageQueue::GetInstance().GetOutputGrads();
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-    OrtValue value = output_grads[i_out];
+    OrtValue value = onnxruntime::contrib::OrtMessageQueue::GetInstance().PopOutputGrad();
     const Tensor& X = value.Get<Tensor>();
     const TensorShape& data_shape = X.Shape();
     Tensor* Y = ctx->Output(i_out, data_shape);
     CopyTensor(X, *Y);
   }
 
-  onnxruntime::contrib::OrtMessageQueue::GetInstance().ClearOutputGrads();
   return Status::OK();
 }
 

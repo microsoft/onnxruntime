@@ -3,12 +3,6 @@
 
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_state_common.h"
-#include "python/onnxruntime_pybind_mlvalue.h"
-
-#define NO_IMPORT_ARRAY
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
-#include <numpy/arrayobject.h>
 
 // pybind11/stl.h is needed to support std::unordered_set, etc.
 #include <pybind11/stl.h>
@@ -19,7 +13,6 @@
 #include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/core/framework/module_gradient_graph_builder.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
-#include "orttraining/training_ops/cpu/controlflow/message_queue.h"
 
 namespace onnxruntime {
 namespace python {
@@ -27,19 +20,6 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
-
-static const char* GetDeviceName(const OrtDevice& device) {
-  switch (device.Type()) {
-    case OrtDevice::CPU:
-      return CPU;
-    case OrtDevice::GPU:
-      return CUDA;
-    case OrtDevice::FPGA:
-      return "FPGA";
-    default:
-      ORT_THROW("Unknown device type: ", device.Type());
-  }
-}
 
 struct TrainingParameters {
   std::string model_with_loss_function_path;
@@ -427,28 +407,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("get_split_graphs_info",
            [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
              return module_gradient_graph_builder->GetSplitGraphsInfo();
-           })
-      .def("add_output_grad", [](ModuleGradientGraphBuilder*, const OrtDevice& device, py::object& element_type,
-                                 std::vector<int64_t>& shape, int64_t data_ptr) {
-        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
-        PyArray_Descr* dtype;
-        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
-          throw std::runtime_error("Not a valid numpy type");
-        }
-
-        int type_num = dtype->type_num;
-        Py_DECREF(dtype);
-
-        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
-        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape,
-                                                                            reinterpret_cast<void*>(data_ptr), info);
-
-        OrtValue ml_value;
-        ml_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-
-        onnxruntime::contrib::OrtMessageQueue::GetInstance().AddOutputGrad(ml_value);
-      });
+           });
 }
 }  // namespace python
 }  // namespace onnxruntime

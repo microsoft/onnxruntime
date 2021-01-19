@@ -25,16 +25,14 @@ Status Yield::Compute(OpKernelContext* ctx) const {
   OrtEventPool::GetInstance().ResetAndWaitEvent(background_thread_event_id);
 
   // Get output grad from somewhere and prepare Op outputs.
-  const std::vector<OrtValue>& output_grads = OrtMessageQueue::GetInstance().GetOutputGrads();
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-    OrtValue value = output_grads[i_out];
+    OrtValue value = OrtMessageQueue::GetInstance().PopOutputGrad();
     const Tensor& X = value.Get<Tensor>();
     const TensorShape& data_shape = X.Shape();
     Tensor* Y = ctx->Output(i_out, data_shape);
     CopyCpuTensor(&X, Y);
   }
 
-  OrtMessageQueue::GetInstance().ClearOutputGrads();
   return Status::OK();
 }
 

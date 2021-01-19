@@ -164,13 +164,13 @@ class Session:
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
-    def run_backward(self, iobinding):
+    def run_backward(self, backward_output_grads):
         """
          Compute the baward part of the graph starting from Yield Op.
 
-         :param iobinding: the iobinding object that has graph inputs/outputs bind.
+         :param backward_output_grads: Output gradients for backward.
         """
-        self._sess.run_backward(iobinding._iobinding)
+        self._sess.run_backward([ortvalue._ortvalue for ortvalue in backward_output_grads])
 
 
 class InferenceSession(Session):
@@ -412,6 +412,23 @@ class OrtValue:
 
         return OrtValue(C.OrtValue.ortvalue_from_shape_and_type(shape, element_type,
                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id)))
+
+    @staticmethod
+    def ortvalue_from_data_ptr(shape=None, element_type=None, device_type='cpu', device_id=0, buffer_ptr=None):
+        '''
+        Factory method to construct an OrtValue (which holds a Tensor) from given buffer_ptr
+        :param shape: List of integers indicating the shape of the OrtValue
+        :param element_type: The data type of the elements in the OrtValue (numpy type)
+        :param device_type: e.g. cpu, cuda, cpu by default
+        :param device_id: device id, e.g. 0
+        :param buffer_ptr: data buffer pointer
+        '''
+        if shape is None or element_type is None or buffer_ptr is None:
+            raise ValueError("`element_type`, `shape` and `buffer_ptr` are to be provided")
+
+        return OrtValue(C.OrtValue.ortvalue_from_data_ptr(shape, element_type,
+                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id),
+                        buffer_ptr))
 
     def data_ptr(self):
         '''
