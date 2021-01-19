@@ -202,6 +202,7 @@ endif()
 file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
     "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/test/python/*.json"
 )
 file(GLOB onnxruntime_python_checkpoint_test_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/python/checkpoint/*.py"
