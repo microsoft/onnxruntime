@@ -3,7 +3,7 @@ plugins {
 	id 'maven-publish'
 	id 'signing'
 	id 'jacoco'
-	id 'com.diffplug.gradle.spotless' version '3.26.0'
+	id 'com.diffplug.spotless' version '5.9.0'
 }
 
 allprojects {
@@ -76,6 +76,7 @@ spotless {
 }
 
 compileJava {
+	dependsOn spotlessJava
 	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
 }
 
@@ -121,6 +122,7 @@ if (cmakeBuildDir != null) {
 		include 'docs/**'
 		into cmakeBuildOutputDir
 	}
+	cmakeBuild.dependsOn test
 	cmakeBuild.dependsOn allJar
 	cmakeBuild.dependsOn sourcesJar
 	cmakeBuild.dependsOn javadocJar
@@ -136,12 +138,19 @@ if (cmakeBuildDir != null) {
 }
 
 dependencies {
-	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.1'
-	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.1'
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
 	testImplementation 'com.google.protobuf:protobuf-java:3.10.0'
 }
 
+processTestResources {
+	duplicatesStrategy(DuplicatesStrategy.INCLUDE) // allows duplicates in the test resources
+}
+
 test {
+	java {
+		dependsOn spotlessJava
+	}
 	useJUnitPlatform()
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
