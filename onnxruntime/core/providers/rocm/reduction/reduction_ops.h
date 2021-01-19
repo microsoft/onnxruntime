@@ -3,8 +3,8 @@
 
 #pragma once
 #include "core/common/optional.h"
-#include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/rocm/rocm_kernel.h"
+#include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/rocm/reduction/reduction_functions.h"
 
 namespace onnxruntime {
@@ -61,7 +61,7 @@ class ReduceKernel : public RocmKernel, public ReduceKernelBase<allow_multi_axes
   template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
   Status ComputeImplEx(OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const;
 
-  template <typename T, typename OutT, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
+  template <typename T, typename OutT, miopenReduceTensorIndices_t ReduceTensorIndices>
   Status ReduceKernelShared(
       const T* X,
       const TensorShape& input_shape,
