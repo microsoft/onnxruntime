@@ -30,6 +30,7 @@ struct TrainingParameters {
   // optimizer
   std::string training_optimizer_name;
   std::string lr_params_feed_name = "Learning_Rate";
+  std::string sample_count_feed_name = "Accumulated_Sample_Count_Per_Rank";
   std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
   std::unordered_map<std::string, std::unordered_map<std::string, int64_t>> optimizer_int_attributes_map;
   onnxruntime::training::TrainingSession::OptimizerState optimizer_initial_state;
@@ -54,6 +55,7 @@ struct TrainingParameters {
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
   bool use_invertible_layernorm_grad = false;
+  bool prescale_grads_with_sample_count = false;
 
   std::string pipeline_cut_info_string = {};
 
@@ -205,6 +207,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // Need to have another option to support more values in the future.
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
+    opt.prescale_grads_with_sample_count = parameters.prescale_grads_with_sample_count;
+    opt.sample_count_input_name = parameters.sample_count_feed_name;
     // TODO reduction types
     if (parameters.enable_adasum) {
 #ifdef USE_CUDA
@@ -276,9 +280,9 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
 
 std::unordered_map<std::string, std::unordered_map<std::string, py::object>> ConvertORTTensorMapToNumpy(std::unordered_map<std::string, NameMLValMap> c_tensor_state, const DataTransferManager& data_transfer_manager) {
   std::unordered_map<std::string, std::unordered_map<std::string, py::object>> py_tensor_state;
-  for (const auto& layer1_item: c_tensor_state) {
+  for (const auto& layer1_item : c_tensor_state) {
     py_tensor_state[layer1_item.first] = {};
-    for (const auto& layer2_item: layer1_item.second) {
+    for (const auto& layer2_item : layer1_item.second) {
       assert(layer2_item.second.IsTensor());
       py::object obj;
       const Tensor& rtensor = layer2_item.second.Get<Tensor>();
@@ -326,6 +330,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
       .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
       .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
+      .def_readwrite("prescale_grads_with_sample_count", &TrainingParameters::prescale_grads_with_sample_count)
+      .def_readwrite("sample_count_feed_name", &TrainingParameters::sample_count_feed_name)
       .def("set_optimizer_initial_state",
            [](TrainingParameters& parameters, const std::unordered_map<std::string, std::unordered_map<std::string, py::object>>& py_state) -> void {
              onnxruntime::training::TrainingSession::OptimizerState optim_state;

@@ -129,10 +129,10 @@ static Status AddNcclAllReduceForGradientsWithGroups(
     allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", allreduced_gradient_type_proto);
   }
   graph_defs.AddNodeDefs({NodeDef(OpDef{"View", kMSDomain, 1},
-                                    view_inputs,
-                                    allreduce_outputs,
-                                    NodeAttributes(),
-                                    "AllReduceOutputView")});
+                                  view_inputs,
+                                  allreduce_outputs,
+                                  NodeAttributes(),
+                                  "AllReduceOutputView")});
 
   gradient_argdefs = allreduce_outputs;
   return Status::OK();
@@ -153,7 +153,7 @@ static Status AddAdasumAllReduceForGradients(
                                   gradient_argdefs,
                                   adasum_output_argdefs,
                                   {ONNX_NAMESPACE::MakeAttribute("reduce_algo",
-                                    static_cast<int64_t>(adasum_reduction_type))},
+                                                                 static_cast<int64_t>(adasum_reduction_type))},
                                   "AdasumAllReduce")});
   gradient_argdefs = std::move(adasum_output_argdefs);
   return Status::OK();
@@ -168,7 +168,6 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     std::vector<ArgDef>& gradient_argdefs,
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
-  
   // Set weight update to false for optimizer
   for (auto& opt_config : opt_configs_) {
     opt_config.update_weight = false;
@@ -189,9 +188,12 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     scale_divisor *= opt_graph_config_.local_size;
   }
 
-  const float scale = 1.0f / scale_divisor;
+  const float scale_value = 1.0f / scale_divisor;
+  ArgDef scale = ArgDef(nodearg_name_generator("grad_pre_scaler"), graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  graph_defs.AddInitializers({CreateTensorProto<float>(scale.name, scale_value, {})});
+
   // Only fuse if using hierarchical reduce.
-  const bool fuse_scaling_outputs = opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction ? true: false;
+  const bool fuse_scaling_outputs = opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction ? true : false;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                               opt_graph_config_.AllReduceDataType(), fuse_scaling_outputs));
 
@@ -200,7 +202,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchicalReduction) {
 #ifdef ORT_USE_NCCL
     ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradientsWithGroups(gradient_argdefs, fused_gradient_argdef, graph_defs,
-                                                              reduced_fused_gradient_argdef, WorkerGroupType::NodeLocalDataParallel));
+                                                               reduced_fused_gradient_argdef, WorkerGroupType::NodeLocalDataParallel));
 #else
     ORT_THROW("ORT is not built with NCCL.");
 #endif

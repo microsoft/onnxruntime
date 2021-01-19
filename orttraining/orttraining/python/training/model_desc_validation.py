@@ -5,6 +5,7 @@ from ._utils import static_vars
 
 
 LEARNING_RATE_IO_DESCRIPTION_NAME = "__learning_rate"
+SAMPLE_COUNT_IO_DESCRIPTION_NAME = "__accumulated_sample_count_per_rank"
 ALL_FINITE_IO_DESCRIPTION_NAME = "__all_finite"
 LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME = "__loss_scale_input_name"
 GRADIENT_ACCUMULATION_IO_DESCRIPTION_NAME = "__gradient_accumulation_name"
@@ -50,6 +51,7 @@ class _ORTTrainerModelDesc(object):
 
         # Hard-code learning rate, all_finite descriptors
         self.learning_rate = self._InputDescriptionTyped(LEARNING_RATE_IO_DESCRIPTION_NAME, [1], torch.float32)
+        self.sample_count = self._InputDescriptionTyped(SAMPLE_COUNT_IO_DESCRIPTION_NAME, [1], torch.float32)
 
         # Convert dict in object
         for k, v in self._validated.items():
@@ -91,6 +93,11 @@ class _ORTTrainerModelDesc(object):
         if self.learning_rate:
             pretty_msg += '\nLearning rate: '
             pretty_msg += f'(name={self.learning_rate.name}, shape={self.learning_rate.shape}, dtype={self.learning_rate.dtype})'
+
+        # Sample count per rank
+        if self.sample_count:
+            pretty_msg += '\nSample count per rank: '
+            pretty_msg += f'(name={self.sample_count.name}, shape={self.sample_count.shape}, dtype={self.sample_count.dtype})'
 
         # Mixed precision
         if getattr(self, ALL_FINITE_IO_DESCRIPTION_NAME, None) or getattr(self, LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME, None):

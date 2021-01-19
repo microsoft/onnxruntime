@@ -12,6 +12,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/optimizer_builder.h"
@@ -104,16 +105,12 @@ Status OptimizerGraphBuilder::AddGradientPassThroughNode(
 
 Status OptimizerGraphBuilder::AddGradientScalingNodes(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
-    const float scale,
+    const ArgDef& pre_allreduce_scale,
     std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
     ArgDef& fused_gradient_argdef,          // update argdef in place
     GraphAugmenter::GraphDefs& graph_defs,
     ONNX_NAMESPACE::TensorProto_DataType allreduce_element_type,
     const bool fuse_scaling_outputs) {
-  ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
-                             graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-  graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
-
   if (fuse_scaling_outputs) {
     TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
     fused_gradient_type_proto->mutable_tensor_type()->set_elem_type(allreduce_element_type);
@@ -154,15 +151,10 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
 
 Status OptimizerGraphBuilder::AddGradientScalingNodes(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
-    const float scale,
+    const ArgDef& pre_allreduce_scale,
     std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
     GraphAugmenter::GraphDefs& graph_defs,
     ONNX_NAMESPACE::TensorProto_DataType target_type) {
-  ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
-                             graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-
-  graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
-
   TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
   fused_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
 
@@ -207,6 +199,40 @@ ArgDef AddGradientAccumulationNodes(const NodeArgNameGeneratorFn& nodearg_name_g
                                                            graph_defs);
   graph_defs.AddGraphOutputs({group_accumulate_gradient_output.name});
   return group_accumulate_gradient_output;
+}
+
+ArgDef OptimizerGraphBuilder::GetGradientPreAllReduceScaler(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    GraphAugmenter::GraphDefs& graph_defs) {
+  ArgDef one_argdef(nodearg_name_generator("one"),
+                    graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  graph_defs.AddInitializers({CreateTensorProto<float>(one_argdef.name, 1.0f, {})});
+
+  ArgDef scale_argdef = ArgDef(opt_graph_config_.sample_count_input_name,
+                               graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  graph_defs.AddGraphInputs({scale_argdef.name});
+
+  if (DistributedRunContext::GroupSize(WorkerGroupType::DataParallel) > 1) {
+    TypeProto* allreduced_sacle_type_proto = graph_defs.CopyTypeProto(scale_argdef);
+    ArgDef reduced_scale_argdef = ArgDef(scale_argdef.name + "_AllReduce_Out", allreduced_sacle_type_proto);
+    graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
+                                    {scale_argdef},
+                                    {reduced_scale_argdef},
+                                    NodeAttributes(),
+                                    nodearg_name_generator("NcclAllReduce_allreduce_scale"))});
+
+    scale_argdef = reduced_scale_argdef;
+  }
+
+  TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(scale_argdef);
+  ArgDef reciprocal_of_sample_size_count_argdef = ArgDef(nodearg_name_generator("reciprocal_of_sample_count"), scaled_gradient_type_proto);
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"Div"},
+                                  {one_argdef, scale_argdef},
+                                  {reciprocal_of_sample_size_count_argdef},
+                                  NodeAttributes(),
+                                  nodearg_name_generator("reciprocal_of_sample_count"))});
+
+  return reciprocal_of_sample_size_count_argdef;
 }
 
 ArgDef BuildZeroGradientNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
@@ -479,13 +505,20 @@ Status OptimizerGraphBuilder::BuildInternal(
   const bool is_gradient_accumulation_enabled = opt_graph_config_.gradient_accumulation_steps > 1;
 
   // add gradient scaling
-  ArgDef fused_gradient_argdef;
-  if (is_gradient_accumulation_enabled) {
-    const float scale = 1.0f / opt_graph_config_.gradient_accumulation_steps;
+  if (opt_graph_config_.prescale_grads_with_sample_count || is_gradient_accumulation_enabled) {
+    ArgDef fused_gradient_argdef;
+    ArgDef scale;
+    if (opt_graph_config_.prescale_grads_with_sample_count) {
+      scale = GetGradientPreAllReduceScaler(nodearg_name_generator, graph_defs);
+    } else if (is_gradient_accumulation_enabled) {
+      const float scale_value = 1.0f / opt_graph_config_.gradient_accumulation_steps;
+      scale = ArgDef(nodearg_name_generator("grad_pre_scaler"), graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      graph_defs.AddInitializers({CreateTensorProto<float>(scale.name, scale_value, {})});
+    }
+
     ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                                 opt_graph_config_.AllReduceDataType(), false));
   }
-
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;

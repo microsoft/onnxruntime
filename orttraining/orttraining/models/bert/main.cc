@@ -169,6 +169,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"))
+      ("prescale_grads_with_sample_count", "Specify whether to prescale gradients with accumulated sample count.",
+        cxxopts::value<bool>()->default_value("false"))
       ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
         cxxopts::value<bool>()->default_value("true"))
       ("attn_dropout_recompute", "Enable checkpointing of attention dropout to save memory.",
@@ -348,6 +350,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+    params.prescale_grads_with_sample_count = flags["prescale_grads_with_sample_count"].as<bool>();
 
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
@@ -802,7 +805,8 @@ int main(int argc, char* argv[]) {
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   bool keep_looping = params.debug_break;
-  while(keep_looping);
+  while (keep_looping)
+    ;
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};

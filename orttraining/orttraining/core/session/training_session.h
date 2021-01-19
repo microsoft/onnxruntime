@@ -39,7 +39,7 @@ class TrainingSession : public InferenceSession {
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env) {}
-  virtual ~TrainingSession() {};
+  virtual ~TrainingSession(){};
 
   /**
    * The training configuration options.
@@ -179,6 +179,10 @@ class TrainingSession : public InferenceSession {
       AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
       // Whether to enable gradient clipping.
       bool enable_grad_norm_clip{true};
+      // Whether to prescale gradient with accumulated sample count instead of accumulation_step * data_parallel_size.
+      bool prescale_grads_with_sample_count{false};
+      // The sample count input name.
+      std::string sample_count_input_name{};
     };
     // The optimizer configuration.
     // If not provided, no optimizer is added.
@@ -503,16 +507,16 @@ class TrainingSession : public InferenceSession {
       std::string& loss_name,
       const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
       optional<std::string>& loss_scale_input_name);
-  
+
   virtual common::Status BuildLossAndLossScaling(
-    const int32_t pipeline_stage_id,
-    const optional<std::string>& external_loss_name,
-    const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
-    const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
-    const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
-    std::string& loss_name,
-    optional<std::string>& loss_scale_input_name,
-    optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result);
+      const int32_t pipeline_stage_id,
+      const optional<std::string>& external_loss_name,
+      const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
+      std::string& loss_name,
+      optional<std::string>& loss_scale_input_name,
+      optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result);
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
@@ -595,14 +599,14 @@ class PipelineTrainingSession final : public TrainingSession {
       optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result) override;
 
   common::Status BuildLossAndLossScaling(
-    const int32_t pipeline_stage_id,
-    const optional<std::string>& external_loss_name,
-    const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
-    const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
-    const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
-    std::string& loss_name,
-    optional<std::string>& loss_scale_input_name,
-    optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) override;
+      const int32_t pipeline_stage_id,
+      const optional<std::string>& external_loss_name,
+      const optional<TrainingConfiguration::MixedPrecisionConfiguration>& mixed_precision_config,
+      const optional<TrainingConfiguration::DistributedConfiguration>& distributed_config,
+      const optional<TrainingConfiguration::LossFunctionConfiguration>& loss_function_config,
+      std::string& loss_name,
+      optional<std::string>& loss_scale_input_name,
+      optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) override;
 
   // Set some PipelineContext fields based on configuration result
   // returned by TrainingSession::ConfigureForTraining.

@@ -128,6 +128,8 @@ Status SetupOptimizerParams(
   opt_graph_config.adasum_reduction_type = optimizer_config.adasum_reduction_type;
   opt_graph_config.enable_grad_norm_clip = optimizer_config.enable_grad_norm_clip;
   opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
+  opt_graph_config.prescale_grads_with_sample_count = optimizer_config.prescale_grads_with_sample_count;
+  opt_graph_config.sample_count_input_name = optimizer_config.sample_count_input_name;
 
   // check if shared initial optimizer states have been provided
   if (config.init_optimizer_states) {
@@ -422,7 +424,7 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config_result));
 
   weight_partition_info_ = config_result.weight_partition_info;
-  
+
   // Save the model after graph transformations
   if (IsRootNode(config) && config.model_after_graph_transforms_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
@@ -464,7 +466,7 @@ Status TrainingSession::ConfigureForTraining(
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
-    
+
   if (IsRootNode(config) && config.model_with_gradient_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_gradient_graph_path.value(), SaveOption::NO_RELOAD));
@@ -1685,10 +1687,10 @@ Status PipelineTrainingSession::BuildLossAndLossScaling(
   loss_scale_input_name = enable_true_loss_scale ? optional<std::string>{""} : optional<std::string>{};
 
   ORT_RETURN_IF_ERROR(BuildLoss(
-    external_loss_name,
-    loss_name,
-    loss_function_config,
-    loss_scale_input_name));
+      external_loss_name,
+      loss_name,
+      loss_function_config,
+      loss_scale_input_name));
 
   if (enable_true_loss_scale) {
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};

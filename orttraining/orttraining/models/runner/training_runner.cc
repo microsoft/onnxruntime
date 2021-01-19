@@ -146,6 +146,7 @@ Status TrainingRunner::Initialize() {
     opt.deepspeed_zero = params_.deepspeed_zero;
     opt.adasum_reduction_type = params_.GetAdasumReductionType();
     opt.enable_grad_norm_clip = params_.enable_grad_norm_clip;
+    opt.prescale_grads_with_sample_count = params_.prescale_grads_with_sample_count;
     config.optimizer_config = opt;
   }
 

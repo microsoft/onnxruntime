@@ -31,6 +31,7 @@ class TrainStepInfo(object):
         fetches (list of str, default is []): list of output names to fetch from train_step/eval_step. Set it to [] to reset normal behavior.
         optimization_step (int): indicates the number of optimizations performed. Used for learning rate scheduling
         step (int): indicates current training step. Used for gradient accumulation
+        accumulated_sample_count (int): indicates how many sample ares accessed so far within current optimization_step
 
     Example:
 
@@ -42,7 +43,7 @@ class TrainStepInfo(object):
 
     """
 
-    def __init__(self, optimizer_config, all_finite=True, fetches=[], optimization_step=0, step=0):
+    def __init__(self, optimizer_config, all_finite=True, fetches=[], optimization_step=0, step=0, accumulated_sample_count=0):
         assert isinstance(optimizer_config, optim._OptimizerConfig),\
             "optimizer_config must be a optim._OptimizerConfig"
         assert isinstance(all_finite, bool),\
@@ -59,6 +60,7 @@ class TrainStepInfo(object):
         self.fetches = fetches
         self.optimization_step = optimization_step
         self.step = step
+        self.accumulated_sample_count = accumulated_sample_count
 
 
 class ORTTrainer(object):
@@ -623,6 +625,8 @@ class ORTTrainer(object):
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
         ort_parameters.set_gradients_as_graph_outputs = False
         ort_parameters.use_invertible_layernorm_grad = self.options.utils.invertible_layer_norm_gradient
+        ort_parameters.prescale_grads_with_sample_count = self.options.utils.prescale_grads_with_sample_count
+        ort_parameters.sample_count_feed_name = self.model_desc.sample_count.name
         ort_parameters.training_optimizer_name = self.optim_config.name
         ort_parameters.lr_params_feed_name = self.model_desc.learning_rate.name
         ort_parameters.weights_to_train = trainable_params
@@ -740,7 +744,13 @@ class ORTTrainer(object):
                 self.model_desc.add_type_to_output_description(idx, o_desc.dtype, torch.float16)
 
         # Update model description
-        self._model_desc_inputs_with_lr = [*self.model_desc.inputs, self.model_desc.learning_rate]
+        self._model_desc_inputs_with_lr = [*self.model_desc.inputs]
+
+        # Update sample count description, if applicable
+        if self.self.options.utils.prescale_grads_with_sample_count is True:
+            self._model_desc_inputs_with_lr.append(self.model_desc.sample_count)
+
+        self._model_desc_inputs_with_lr.append(self.model_desc.learning_rate)
 
         # Update Mixed Precision, if applicable
         if self.options.mixed_precision.enabled:

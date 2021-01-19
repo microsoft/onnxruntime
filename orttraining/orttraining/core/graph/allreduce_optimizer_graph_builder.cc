@@ -74,10 +74,17 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   };
 
   // add gradient scaling
-  const auto total_num_accumulations =
-      opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
-  ORT_RETURN_IF_NOT(total_num_accumulations > 0);
-  const float scale = 1.0f / total_num_accumulations;
+  ArgDef scale;
+  if (opt_graph_config_.prescale_grads_with_sample_count) {
+    scale = GetGradientPreAllReduceScaler(nodearg_name_generator, graph_defs);
+  } else {
+    const auto total_num_accumulations =
+        opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
+    ORT_RETURN_IF_NOT(total_num_accumulations > 0);
+    const float scale_value = 1.0f / total_num_accumulations;
+    scale = ArgDef(nodearg_name_generator("grad_pre_scaler"), graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    graph_defs.AddInitializers({CreateTensorProto<float>(scale.name, scale_value, {})});
+  }
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, graph_defs,
                                               opt_graph_config_.AllReduceDataType()));
 

@@ -67,6 +67,8 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("use_bfloat16", "Whether to use BFloat16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("enable_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
+      ("prescale_grads_with_sample_count", "Specify whether to prescale gradients with accumulated sample count.", 
+        cxxopts::value<bool>()->default_value("false"))
       ("loss_scale", "Loss scaling, positive power of 2 values can improve fp16 convergence. "
         "Set it 0 to uses dynamic scaling; Other none-zero value will used as static scale",
         cxxopts::value<float>()->default_value("0.0"))
@@ -208,6 +210,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+    params.prescale_grads_with_sample_count = flags["prescale_grads_with_sample_count"].as<bool>();
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
@@ -237,7 +240,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     int64_t seed = flags["seed"].as<int64_t>();
     if (params.horizontal_parallel_size > 1 && seed <= 0) {
-      seed = 8211; // Megatron needs a random seed.
+      seed = 8211;  // Megatron needs a random seed.
     }
     if (seed > 0) {
       utils::SetRandomSeed(seed);
@@ -277,7 +280,7 @@ float GetLossValue(const Tensor& loss_tensor) {
 // mapping to define what to be stored in mapped_dimensions
 // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
 const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
-  {"input_ids", {"SeqLen", 0}},   // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
+    {"input_ids", {"SeqLen", 0}},  // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
 };
 
 // generic properties for storing perf metrics

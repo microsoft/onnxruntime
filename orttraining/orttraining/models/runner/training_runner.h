@@ -181,6 +181,8 @@ class TrainingRunner {
     VectorString pipeline_stage_paths;
     // Enable gradient clipping.
     bool enable_grad_norm_clip = true;
+    // Enable gradient prescaling with sample count
+    bool prescale_grads_with_sample_count = false;
 
     // Enable GELU approximation
     bool enable_gelu_approximation = false;
@@ -237,7 +239,7 @@ class TrainingRunner {
                         size_t& gradient_accumulation_step_count);
   void CheckWorkerException(const std::exception_ptr& p);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
-    const MapStringToString& mapped_dimensions);
+                      const MapStringToString& mapped_dimensions);
   Status Evaluate(TrainingSession& session, IDataLoader& data_loader);
 
   Status SaveCheckpoint(const PathString& checkpoint_path);

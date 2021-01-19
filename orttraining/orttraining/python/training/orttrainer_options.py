@@ -211,7 +211,11 @@ class ORTTrainerOptions(object):
                         'run_symbolic_shape_infer' : {
                             'type' : 'boolean',
                             'default' : False
-                        }
+                        },
+                        'prescale_grads_with_sample_count' : {
+                            'type' : 'boolean',
+                            'default' : False
+                        },
                     }
                 },
                 'debug' : {
@@ -348,6 +352,8 @@ class ORTTrainerOptions(object):
             enables use of invertible layer norm gradients
         utils.run_symbolic_shape_infer (bool, default is False):
             runs symbolic shape inference on the model
+        utils.prescale_grads_with_sample_count  (bool, default is False):
+            prescales gradients with accumulated sample count.
         debug (dict):
             debug options
         debug.deterministic_compute (bool, default is False)
@@ -657,6 +663,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': False
             },
             'run_symbolic_shape_infer': {
+                'type': 'boolean',
+                'default': False
+            },
+            'prescale_grads_with_sample_count': {
                 'type': 'boolean',
                 'default': False
             }
