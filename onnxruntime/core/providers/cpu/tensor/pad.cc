@@ -326,6 +326,8 @@ static Status PadImpl(OpKernelContext* ctx,
             PadAxisConstant(axisStart - prePad, *axisStart, prePad);
             PadAxisConstant(output, *(output - 1), postPad);
           } else {
+            // When inner_most axis(es) do not need pad, above PadAxisConstant() do not fit for Edge mode.
+            // Also general loop below after handling first pad axis with non-pad axis works fine.
             PadAxis(axisStart - prePad, axisStart, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, pads[inner_axis]);
             PadAxis(output, output - inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, pads[inner_axis + data_rank]);
           }
@@ -362,6 +364,7 @@ static Status PadImpl(OpKernelContext* ctx,
             PadInnermostAxis(axisStart - prePad, axisStart + prePad, -1 /* inputDelta */, prePad);
             PadInnermostAxis(output, output - 2, -1 /* inputDelta */, postPad);
           } else {
+            // When inner_most axis(es) do not need pad, Above PadInnermostAxis() do not fit for Reflect mode.
             PadAxis(axisStart - prePad, axisStart + prePad, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, pads[inner_axis]);
             PadAxis(output, output - 2 * inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, pads[inner_axis + data_rank]);
           }
