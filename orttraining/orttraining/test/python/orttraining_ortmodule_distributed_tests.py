@@ -24,7 +24,10 @@ def parse_arguments():
 def run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log):
     log.debug('Running: ORTModule deepspeed zero stage 1 tests')
 
-    # TODO: add the actual deepspeed test here
+    command = ['deepspeed', 'orttraining_test_ortmodule_deepspeed_zero_stage_1.py',
+        '--deepspeed_config', 'orttraining_test_ortmodule_deepspeed_zero_stage_1_config.json']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
 def main():

@@ -193,6 +193,7 @@ endif()
 file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
     "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/test/python/*.json"
 )
 file(GLOB onnxruntime_python_quantization_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/quantization/*.py"
