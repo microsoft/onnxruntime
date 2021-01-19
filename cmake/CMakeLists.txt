@@ -139,6 +139,7 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
+option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
@@ -160,6 +161,10 @@ endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
+endif()
+
+if (onnxruntime_ENABLE_MEMORY_PROFILE)
+  add_definitions(-DORT_MEMORY_PROFILE=1)
 endif()
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)

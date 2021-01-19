@@ -156,6 +156,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_nvtx_profile", action='store_true', help="Enable NVTX profile in ORT.")
     parser.add_argument(
+        "--enable_memory_profile", action='store_true', help="Enable memory profile in ORT.")
+    parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument(
         "--enable_training_python_frontend_e2e_tests", action="store_true",
@@ -722,6 +724,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
         "-Donnxruntime_USE_MPI=" + (
             "ON" if args.use_mpi else "OFF"),
+        "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + (
+            "ON" if args.enable_memory_profile else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
