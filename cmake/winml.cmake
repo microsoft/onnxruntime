@@ -121,6 +121,7 @@ target_cppwinrt(winml_api_experimental
   ${winml_api_use_ns_prefix}                   # set ns_prefix
 )
 add_dependencies(winml_api_experimental RESTORE_NUGET_PACKAGES)
+add_dependencies(winml_api_experimental winml_api)
 
 target_midl(winml_api_native
   ${idl_native}             # winml native idl to compile
@@ -538,6 +539,10 @@ endif(onnxruntime_USE_DML)
 add_library(winml_lib_api_experimental STATIC
   ${winml_lib_api_experimental_dir}/Dummy.cpp
   ${winml_lib_api_experimental_dir}/Dummy.h
+  ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.h
+  ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.h
 )
 
 # Compiler options
@@ -559,6 +564,7 @@ target_precompiled_header(winml_lib_api_experimental pch.h)
 # Includes
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental) # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated) # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 
@@ -764,7 +770,9 @@ add_dependencies(winml_dll winml_api_native_internal)
 target_link_libraries(winml_dll PRIVATE re2)
 target_link_libraries(winml_dll PRIVATE wil)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
-target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)
+if (NOT winml_is_inbox)
+  target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)
+endif()
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
