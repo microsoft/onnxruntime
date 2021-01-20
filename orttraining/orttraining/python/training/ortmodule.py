@@ -394,6 +394,6 @@ class ORTModule(torch.nn.Module):
         pt_count_params = sum([1 for param in module.parameters()])
         onnx_count_params = sum([1 for param in model.graph.initializer])
         if pt_count_params < 1 or onnx_count_params < 1:
-            raise('ORTModule only supports model with at least one trainable parameter')
+            raise RuntimeError('ORTModule only supports model with at least one trainable parameter')
 
         return model

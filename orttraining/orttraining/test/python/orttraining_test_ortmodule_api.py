@@ -239,3 +239,45 @@ def test_model_to_device_and_back_to_original(original_device, to_device):
     assert model._device == torch.device(original_device+':0')
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == original_device
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_model_without_parameters(device):
+    class Net(torch.nn.Module):
+        def forward(self, x):
+            return x
+
+    model = Net().to(device)
+    model = ORTModule(model).to(device)
+    with pytest.raises(RuntimeError) as e:
+        model(torch.tensor(1.))
+        assert e.value == 'ORTModule only supports model with at least one trainable parameter'
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_model_without_trainable_parameters(device):
+    class Net(torch.nn.Module):
+        def forward(self, x):
+            return torch.nn.ReLU(x)
+
+    model = Net()
+    model = ORTModule(model).to(device)
+    with pytest.raises(RuntimeError) as e:
+        model(torch.tensor(1.).to(device))
+        assert e.value == 'ORTModule only supports model with at least one trainable parameter'
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_model_with_unused_trainable_parameters(device):
+    class Net(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(Net, self).__init__()
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1):
+            return input1
+
+    model = Net(784, 500, 10)
+    model = ORTModule(model).to(device)
+    with pytest.raises(RuntimeError) as e:
+        model(torch.tensor(1.).to(device))
+        assert e.value == 'ORTModule only supports model with at least one trainable parameter'
