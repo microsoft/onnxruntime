@@ -381,7 +381,7 @@ Status TrainingSession::ConfigureForTraining(
   std::string loss_name{};
 
   if (config.pipeline_config.has_value()) {
-    // if use pipeline, first check if model contains send op. If it does, set the
+    // If use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
     GetPipelineSendOutput(model_->MainGraph(), loss_name);
   }
@@ -425,14 +425,14 @@ Status TrainingSession::ConfigureForTraining(
   ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config_result));
 
   weight_partition_info_ = config_result.weight_partition_info;
-  
+
   // Save the model after graph transformations
   if (IsRootNode(config) && config.model_after_graph_transforms_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_after_graph_transforms_path.value(), SaveOption::NO_RELOAD));
   }
 
-  // derive actual set of weights to train
+  // Derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
       !filtered_config_weight_names_to_train.empty()
           ? trainable_initializers
@@ -467,7 +467,7 @@ Status TrainingSession::ConfigureForTraining(
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
-    
+
   if (IsRootNode(config) && config.model_with_gradient_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_gradient_graph_path.value(), SaveOption::NO_RELOAD));
@@ -495,7 +495,7 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  // add optimizer or gradient accumulation
+  // Add optimizer or gradient accumulation
   if (config.optimizer_config.has_value()) {
     OptimizerGraphConfig opt_graph_config{};
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
@@ -516,7 +516,7 @@ Status TrainingSession::ConfigureForTraining(
   // Set eval feed names for nodes that differ between training and inferencing.
   ORT_RETURN_IF_ERROR(SetEvalFeedNames());
 
-  // add Tensorboard
+  // Add Tensorboard
   if (config.tensorboard_config.has_value()) {
     const auto& tensorboard_config = config.tensorboard_config.value();
 
@@ -526,7 +526,7 @@ Status TrainingSession::ConfigureForTraining(
       tensorboard_scalar_names.emplace_back(loss_scale_input_name.value());
     }
 
-    // add some tensors from optimizer graph outputs
+    // Add some tensors from optimizer graph outputs
     if (config_result.opt_config_result.has_value()) {
       const auto& opt_output_key_to_graph_output_name =
           config_result.opt_config_result.value().output_key_to_graph_output_name;
@@ -549,7 +549,7 @@ Status TrainingSession::ConfigureForTraining(
         tensorboard_config.dump_convergence_metrics));
   }
 
-  // add GIST encoding
+  // Add GIST encoding
   if (config.gist_config.has_value()) {
     ORT_RETURN_IF_ERROR(AddGistEncoding());
   }
@@ -595,7 +595,7 @@ static Status AddLossScaling(
     return Status::OK();
   }
 
-  // add node to scale loss_name by loss_scale_input_name
+  // Add node to scale loss_name by loss_scale_input_name
   GraphAugmenter::GraphDefs defs{};
   *loss_scale_input_name = graph.GenerateNodeArgName("loss_scale");
   const auto* loss_scale_input_type =
@@ -621,7 +621,7 @@ static Status ConfigureLossFunctionInternal(
     Graph& graph,
     std::string* loss_scale_input_name,
     std::string& actual_loss_name) {
-  // build loss function or use external one
+  // Build loss function or use external one
   ORT_RETURN_IF_NOT(
       (loss_func_info.has_value() && loss_graph_builder) ^ external_loss_name.has_value(),
       "Either loss function information should be provided or an external "
@@ -808,7 +808,6 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
     graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1);
   }
 
-  // apply transformers
   Graph& graph = model_->MainGraph();
   ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
       graph, TransformerLevel::Level1, *session_logger_));
@@ -1688,10 +1687,10 @@ Status PipelineTrainingSession::BuildLossAndLossScaling(
   loss_scale_input_name = enable_true_loss_scale ? optional<std::string>{""} : optional<std::string>{};
 
   ORT_RETURN_IF_ERROR(BuildLoss(
-    external_loss_name,
-    loss_name,
-    loss_function_config,
-    loss_scale_input_name));
+      external_loss_name,
+      loss_name,
+      loss_function_config,
+      loss_scale_input_name));
 
   if (enable_true_loss_scale) {
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
