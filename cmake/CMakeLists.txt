@@ -596,6 +596,8 @@ else()
   # use protobuf as a submodule
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
+    set(CMAKE_CXX_COMPILER_ID AppleClang)
+    set(CMAKE_C_COMPILER_ID AppleClang)
   endif()
 
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
