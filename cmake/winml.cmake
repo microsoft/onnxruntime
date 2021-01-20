@@ -106,19 +106,21 @@ target_cppwinrt(winml_api
   ${target_folder}           # the folder this target will be placed under
   "${winml_midl_defines}"    # the midl compiler defines
   ${winml_api_use_ns_prefix} # set ns_prefix
+  ""                         # set additional cppwinrt ref path
 )
 add_dependencies(winml_api RESTORE_NUGET_PACKAGES)
 
 # generate winml.experimental headers from idl
 target_cppwinrt(winml_api_experimental
-  ${winrt_experimental_idl}                    # winml winrt idl to compile
-  ${experimental_output_name}                  # outputs name
-  ${winml_lib_api_dir}                         # location for cppwinrt generated component sources
-  ${sdk_folder}                                # location of sdk folder
-  ${sdk_version}                               # sdk version
-  ${target_folder}                             # the folder this target will be placed under
-  ${winml_midl_defines}                        # the midl compiler defines
-  ${winml_api_use_ns_prefix}                   # set ns_prefix
+  ${winrt_experimental_idl}                                        # winml winrt idl to compile
+  ${experimental_output_name}                                      # outputs name
+  ${winml_lib_api_dir}                                             # location for cppwinrt generated component sources
+  ${sdk_folder}                                                    # location of sdk folder
+  ${sdk_version}                                                   # sdk version
+  ${target_folder}                                                 # the folder this target will be placed under
+  ${winml_midl_defines}                                            # the midl compiler defines
+  ${winml_api_use_ns_prefix}                                       # set ns_prefix
+  "${CMAKE_CURRENT_BINARY_DIR}/Microsoft.AI.MachineLearning.winmd" # set additional cppwinrt ref path
 )
 add_dependencies(winml_api_experimental RESTORE_NUGET_PACKAGES)
 add_dependencies(winml_api_experimental winml_api)
