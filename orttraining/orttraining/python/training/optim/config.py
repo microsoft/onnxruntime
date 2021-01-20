@@ -155,6 +155,7 @@ class AdamConfig(_OptimizerConfig):
         assert beta >= 0, "'beta' must be a positive number"
         assert lambda_coef >= 0, "'lambda_coef' must be a positive number"
         assert epsilon >= 0, "'epsilon' must be a positive number"
+        assert max_norm_clip != 0, "'max_norm_clip' must not be 0"
         assert isinstance(do_bias_correction, bool), "'do_bias_correction' must be a boolean"
         assert isinstance(weight_decay_mode, AdamConfig.DecayMode), "'weight_decay_mode' must be a AdamConfig.DecayMode"
         for param in params:
@@ -221,6 +222,7 @@ class LambConfig(_OptimizerConfig):
         assert isinstance(ratio_min, float), "'ratio_min' must be a valid float"
         assert isinstance(ratio_max, float), "'ratio_max' must be a valid float"
         assert epsilon >= 0, "'epsilon' must be a positive number"
+        assert max_norm_clip != 0, "'max_norm_clip' must not be 0"
         assert isinstance(do_bias_correction, bool), "'do_bias_correction' must be a boolean"
         for param in params:
             assert 'lr' not in param, "'lr' is not supported inside params"
