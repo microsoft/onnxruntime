@@ -1592,7 +1592,8 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   // always tensors being copied from stage s to s+1 (for forward computation)
   // and from s+1 to s (for backward computation).
   std::vector<int> stage_to_rank(num_stages);
-  ORT_ENFORCE(static_cast<int>(rank_ids.size()) == num_stages);
+  ORT_ENFORCE(static_cast<int>(rank_ids.size()) == num_stages,
+              "Expected ", num_stages, " but instead got ", rank_ids.size());
   std::vector<std::pair<int, int>> messages;
   for (int s = 0; s < num_stages - 1; ++s) {
     messages.emplace_back(s, s + 1);

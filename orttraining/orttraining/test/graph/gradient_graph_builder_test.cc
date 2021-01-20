@@ -1161,36 +1161,6 @@ PathString GenerateFileNameWithIndex(const std::string& base_str, int index, con
   return path_utils::MakePathString(base_str, index, file_suffix);
 }
 
-// DistributedRunTestContext provides a method to override existing DistributedRunTestContext instance.
-// This is for test purpose only. Please don't use it for other scenarios.
-class DistributedRunTestContext : public DistributedRunContext
-{
-public:
-    DistributedRunTestContext(const TrainingSession::TrainingConfiguration &config)
-        : DistributedRunContext(config.distributed_config.world_rank,
-                                config.distributed_config.world_size,
-                                config.distributed_config.local_rank,
-                                config.distributed_config.local_size,
-                                config.distributed_config.data_parallel_size,
-                                config.distributed_config.horizontal_parallel_size,
-                                config.distributed_config.pipeline_parallel_size)
-    {
-    }
-
-    // Reset the static DistributedRunContext object with new value.
-    void ResetDistributedRunContext(){
-      DistributedRunContext::GetRunConfig() = params_;
-      auto& dp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::DataParallel);
-      dp_group = groups_[WorkerGroupType::DataParallel];
-
-      auto& hp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::HorizontalParallel);
-      hp_group = groups_[WorkerGroupType::HorizontalParallel];
-
-      auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::PipelineParallel);
-      mp_group = groups_[WorkerGroupType::PipelineParallel];
-    }
-};
-
 void OverwritePipelineRank(const TrainingSession::TrainingConfiguration& config, const int pipeline_rank) {
   // DistributedRunContext is a static global. Create one if it hasn't been created yet.
   DistributedRunContext::CreateInstance({config.distributed_config.world_rank,

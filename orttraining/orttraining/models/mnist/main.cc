@@ -36,7 +36,6 @@ using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
-
 const static int NUM_CLASS = 10;
 const static vector<int64_t> IMAGE_DIMS_GEMM = {784};        // for mnist_gemm models
 const static vector<int64_t> IMAGE_DIMS_CONV = {1, 28, 28};  // for mnist_conv models
@@ -112,7 +111,6 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
     ORT_RETURN_IF_NOT(params.data_parallel_size > 0, "data_parallel_size must > 0");
     ORT_RETURN_IF_NOT(params.horizontal_parallel_size > 0, "horizontal_parallel_size must > 0");
     ORT_RETURN_IF_NOT(params.pipeline_parallel_size > 0, "pipeline_parallel_size must > 0");
-
 
     // If user doesn't provide partitioned model files, a cut list should be provided for ORT to do partition
     // online. If the pipeline contains n stages, the cut list should be of length (n-1), in order to cut the
@@ -310,5 +308,5 @@ int main(int argc, char* args[]) {
   auto runner = onnxruntime::make_unique<TrainingRunner>(params, *env);
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
-  // RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
+  RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
 }

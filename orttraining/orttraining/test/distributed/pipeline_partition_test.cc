@@ -11,13 +11,15 @@
 
 #include "partition_utils.hpp"
 
+#include "orttraining/test/session/training_session_test_utils.h"
+
 namespace onnxruntime {
 namespace test {
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
-
+using namespace onnxruntime::test::training_session_test_utils;
 
 using CutList = std::vector<TrainingSession::TrainingConfiguration::CutInfo>;
 
@@ -234,6 +236,146 @@ TEST(ComparePartitions, BertToy) {
   for (int stage = 0; stage < num_stages; ++stage) {
     comparePartitionTest(filename, num_stages, stage, cuts);
   }
+}
+
+void partitionBackwardGraph(const std::map<std::string, int>& op_id_to_stage,
+                            const size_t total_partition_count) {
+  // Create pipeline configuration.
+  TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+  pipe.do_partition = true;
+  pipe.partition_after_ad = true;
+  pipe.op_id_to_stage = op_id_to_stage;
+
+  for (size_t stage = 0; stage < total_partition_count; ++stage) {
+    // Create training configuration.
+    auto config = MakeBasicTrainingConfig();
+    config.pipeline_config = pipe;
+    config.distributed_config.world_rank = stage;
+    config.distributed_config.world_size = total_partition_count;
+    config.distributed_config.local_rank = stage;
+    config.distributed_config.local_size = total_partition_count;
+    config.distributed_config.data_parallel_size = 1;
+    config.distributed_config.horizontal_parallel_size = 1;
+    config.distributed_config.pipeline_parallel_size = total_partition_count;
+    config.model_with_training_graph_path = path_utils::MakePathString("pipeline_partition_", stage, ".onnx");
+
+    // We need to reset it, so it doesn't reuse the values of the previous tests.
+    DistributedRunTestContext ctx(config);
+    ctx.ResetDistributedRunContext();
+
+    const auto forward_model_file = ORT_TSTR("testdata/test_training_model.onnx");
+
+    std::unique_ptr<Environment> env;
+    EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
+
+    SessionOptions so{};
+    TrainingSession training_session{so, *env};
+
+    // Load model.
+    EXPECT_TRUE(training_session.Load(forward_model_file).IsOK());
+
+    // Transform graph, including the partition transformation.
+    TrainingSession::TrainingConfigurationResult config_result{};
+    auto status = training_session.ConfigureForTraining(config, config_result);
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  }
+}
+
+
+TEST(PipelinePartitionAfterAD, TwoStages) {
+  const std::map<std::string, int> op_id_to_stage = {
+    {"T2", 1}, {"T1", 0}, {"T3", 1}, {"T4", 1}, {"T5", 1}, {"T6", 1}, {"T7", 1},
+    {"predictions", 1}, {"MeanSquaredError_diff", 1}, {"MeanSquaredError_diff_square", 1},
+    {"MeanSquaredError_reduce_mean_Grad/Shaped_X", 1}, {"MeanSquaredError_reduce_mean_Grad/Sized_Grad", 1},
+    {"MeanSquaredError_reduce_mean_Grad/Sized_X", 1}, {"MeanSquaredError_reduce_mean_Grad/Scale", 1},
+    {"MeanSquaredError_reduce_mean_Grad/Scaled_Grad", 1}, {"MeanSquaredError_diff_square_grad", 1},
+    {"MeanSquaredError_pow_Grad/Sub_I1", 1}, {"MeanSquaredError_pow_Grad/Pow_I0", 1},
+    {"MeanSquaredError_pow_Grad/Mul_Pow_I0_I1", 1}, {"MeanSquaredError_diff_grad", 1},
+    {"predictions_grad", 1}, {"B3_grad", 1}, {"T7_grad", 1}, {"W3_grad", 1},
+    {"T6_grad", 1}, {"T5_grad", 1}, {"B2_grad", 0}, {"T4_grad", 1}, {"W2_grad", 1},
+    {"T3_grad", 1}, {"T2_grad", 1}, {"B1_grad", 0}, {"T1_grad", 0}, {"W1_grad", 0}, {"loss", 1}
+  };
+  partitionBackwardGraph(op_id_to_stage, 2);
+}
+
+TEST(PipelinePartitionAfterAD, TwoStages1) {
+  const std::map<std::string, int> op_id_to_stage = {
+    {"T2", 1}, {"T1", 0}, {"T3", 1}, {"T4", 1}, {"T5", 1}, {"T6", 1}, {"T7", 1},
+    {"predictions", 1}, {"MeanSquaredError_diff", 1}, {"MeanSquaredError_diff_square", 1},
+    {"MeanSquaredError_reduce_mean_Grad/Shaped_X", 1}, {"MeanSquaredError_reduce_mean_Grad/Sized_Grad", 1},
+    {"MeanSquaredError_reduce_mean_Grad/Sized_X", 1}, {"MeanSquaredError_reduce_mean_Grad/Scale", 1},
+    {"MeanSquaredError_reduce_mean_Grad/Scaled_Grad", 1}, {"MeanSquaredError_diff_square_grad", 1},
+    {"MeanSquaredError_pow_Grad/Sub_I1", 1}, {"MeanSquaredError_pow_Grad/Pow_I0", 1},
+    {"MeanSquaredError_pow_Grad/Mul_Pow_I0_I1", 1}, {"MeanSquaredError_diff_grad", 1},
+    {"predictions_grad", 1}, {"B3_grad", 1}, {"T7_grad", 1}, {"W3_grad", 1},
+    {"T6_grad", 1}, {"T5_grad", 1}, {"B2_grad", 0}, {"T4_grad", 1}, {"W2_grad", 1},
+    {"T3_grad", 1}, {"T2_grad", 1}, {"B1_grad", 1}, {"T1_grad", 0}, {"W1_grad", 0}, {"loss", 1}
+  };
+  partitionBackwardGraph(op_id_to_stage, 2);
+}
+
+TEST(PipelinePartitionAfterAD, TwoStages3) {
+  const std::map<std::string, int> op_id_to_stage = {
+    {"T2", 0}, {"T1", 0}, {"T3", 1}, {"T4", 1}, {"T5", 1}, {"T6", 1}, {"T7", 1},
+    {"predictions", 1}, {"MeanSquaredError_diff", 1}, {"MeanSquaredError_diff_square", 1},
+    {"MeanSquaredError_reduce_mean_Grad/Shaped_X", 1}, {"MeanSquaredError_reduce_mean_Grad/Sized_Grad", 1},
+    {"MeanSquaredError_reduce_mean_Grad/Sized_X", 1}, {"MeanSquaredError_reduce_mean_Grad/Scale", 1},
+    {"MeanSquaredError_reduce_mean_Grad/Scaled_Grad", 1}, {"MeanSquaredError_diff_square_grad", 1},
+    {"MeanSquaredError_pow_Grad/Sub_I1", 1}, {"MeanSquaredError_pow_Grad/Pow_I0", 1},
+    {"MeanSquaredError_pow_Grad/Mul_Pow_I0_I1", 1}, {"MeanSquaredError_diff_grad", 1},
+    {"predictions_grad", 1}, {"B3_grad", 1}, {"T7_grad", 1}, {"W3_grad", 1},
+    {"T6_grad", 1}, {"T5_grad", 1}, {"B2_grad", 1}, {"T4_grad", 1}, {"W2_grad", 1},
+    {"T3_grad", 1}, {"T2_grad", 1}, {"B1_grad", 1}, {"T1_grad", 0}, {"W1_grad", 0}, {"loss", 1}
+  };
+  partitionBackwardGraph(op_id_to_stage, 2);
+}
+
+TEST(PipelinePartitionAfterAD, ThreeStages) {
+  const std::map<std::string, int> op_id_to_stage = {
+    {"T2", 1}, {"T1", 0}, {"T3", 2}, {"T4", 2}, {"T5", 2}, {"T6", 2}, {"T7", 2},
+    {"predictions", 2}, {"MeanSquaredError_diff", 2}, {"MeanSquaredError_diff_square", 2},
+    {"MeanSquaredError_reduce_mean_Grad/Shaped_X", 2}, {"MeanSquaredError_reduce_mean_Grad/Sized_Grad", 2},
+    {"MeanSquaredError_reduce_mean_Grad/Sized_X", 2}, {"MeanSquaredError_reduce_mean_Grad/Scale", 2},
+    {"MeanSquaredError_reduce_mean_Grad/Scaled_Grad", 2}, {"MeanSquaredError_diff_square_grad", 2},
+    {"MeanSquaredError_pow_Grad/Sub_I1", 2}, {"MeanSquaredError_pow_Grad/Pow_I0", 2},
+    {"MeanSquaredError_pow_Grad/Mul_Pow_I0_I1", 2}, {"MeanSquaredError_diff_grad", 2},
+    {"predictions_grad", 2}, {"B3_grad", 2}, {"T7_grad", 2}, {"W3_grad", 2}, {"T6_grad", 2},
+    {"T5_grad", 2}, {"B2_grad", 2}, {"T4_grad", 2}, {"W2_grad", 2}, {"T3_grad", 2},
+    {"T2_grad", 2}, {"B1_grad", 1}, {"T1_grad", 0}, {"W1_grad", 0}, {"loss", 2}
+  };
+  partitionBackwardGraph(op_id_to_stage, 3);
+}
+
+TEST(PipelinePartitionAfterAD, ThreeStages1) {
+  const std::map<std::string, int> op_id_to_stage = {
+    {"T2", 1}, {"T1", 0}, {"T3", 1}, {"T4", 1}, {"T5", 1}, {"T6", 1}, {"T7", 1},
+    {"predictions", 2}, {"MeanSquaredError_diff", 2}, {"MeanSquaredError_diff_square", 2},
+    {"MeanSquaredError_reduce_mean_Grad/Shaped_X", 2}, {"MeanSquaredError_reduce_mean_Grad/Sized_Grad", 2},
+    {"MeanSquaredError_reduce_mean_Grad/Sized_X", 2}, {"MeanSquaredError_reduce_mean_Grad/Scale", 2},
+    {"MeanSquaredError_reduce_mean_Grad/Scaled_Grad", 2}, {"MeanSquaredError_diff_square_grad", 2},
+    {"MeanSquaredError_pow_Grad/Sub_I1", 2}, {"MeanSquaredError_pow_Grad/Pow_I0", 2},
+    {"MeanSquaredError_pow_Grad/Mul_Pow_I0_I1", 2}, {"MeanSquaredError_diff_grad", 2},
+    {"predictions_grad", 2}, {"B3_grad", 1}, {"T7_grad", 2}, {"W3_grad", 1}, {"T6_grad", 1},
+    {"T5_grad", 1}, {"B2_grad", 0}, {"T4_grad", 1}, {"W2_grad", 1}, {"T3_grad", 1},
+    {"T2_grad", 1}, {"B1_grad", 1}, {"T1_grad", 1}, {"W1_grad", 0}, {"loss", 2}
+  };
+  partitionBackwardGraph(op_id_to_stage, 3);
+}
+
+TEST(PipelinePartitionAfterAD, ThreeStages3) {
+  const std::map<std::string, int> op_id_to_stage = {
+    {"T2", 0}, {"T1", 0}, {"T3", 0}, {"T4", 1}, {"T5", 2}, {"T6", 2}, {"T7", 2},
+    {"predictions", 2}, {"MeanSquaredError_diff", 2}, {"MeanSquaredError_diff_square", 2},
+    {"MeanSquaredError_reduce_mean_Grad/Shaped_X", 2}, {"MeanSquaredError_reduce_mean_Grad/Sized_Grad", 2},
+    {"MeanSquaredError_reduce_mean_Grad/Sized_X", 2}, {"MeanSquaredError_reduce_mean_Grad/Scale", 2},
+    {"MeanSquaredError_reduce_mean_Grad/Scaled_Grad", 2}, {"MeanSquaredError_diff_square_grad", 2},
+    {"MeanSquaredError_pow_Grad/Sub_I1", 2}, {"MeanSquaredError_pow_Grad/Pow_I0", 2},
+    {"MeanSquaredError_pow_Grad/Mul_Pow_I0_I1", 2}, {"MeanSquaredError_diff_grad", 2},
+    {"predictions_grad", 2}, {"B3_grad", 2}, {"T7_grad", 2}, {"W3_grad", 2}, {"T6_grad", 2},
+    {"T5_grad", 2}, {"B2_grad", 1}, {"T4_grad", 1}, {"W2_grad", 0}, {"T3_grad", 1},
+    {"T2_grad", 0}, {"B1_grad", 0}, {"T1_grad", 0}, {"W1_grad", 0}, {"loss", 2}
+  };
+  partitionBackwardGraph(op_id_to_stage, 3);
 }
 
 }

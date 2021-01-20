@@ -12,6 +12,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/core/session/training_session.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
@@ -19,6 +20,8 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
+
+using namespace onnxruntime::training;
 
 namespace onnxruntime {
 namespace test {
@@ -70,6 +73,37 @@ training::TrainingSession::TrainingConfiguration MakeBasicTrainingConfig();
 std::unique_ptr<training::TrainingSession> BuildAndRunTrainingSessionWithChecks(
     const SessionOptions& so, const PathString& forward_model_file,
     const training::TrainingSession::TrainingConfiguration& config);
+
+
+// DistributedRunTestContext provides a method to override existing DistributedRunTestContext instance.
+// This is for test purpose only. Please don't use it for other scenarios.
+class DistributedRunTestContext : public DistributedRunContext
+{
+public:
+    DistributedRunTestContext(const TrainingSession::TrainingConfiguration &config)
+        : DistributedRunContext(config.distributed_config.world_rank,
+                                config.distributed_config.world_size,
+                                config.distributed_config.local_rank,
+                                config.distributed_config.local_size,
+                                config.distributed_config.data_parallel_size,
+                                config.distributed_config.horizontal_parallel_size,
+                                config.distributed_config.pipeline_parallel_size)
+    {
+    }
+
+    // Reset the static DistributedRunContext object with new value.
+    void ResetDistributedRunContext(){
+      DistributedRunContext::GetRunConfig() = params_;
+      auto& dp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::DataParallel);
+      dp_group = groups_[WorkerGroupType::DataParallel];
+
+      auto& hp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::HorizontalParallel);
+      hp_group = groups_[WorkerGroupType::HorizontalParallel];
+
+      auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::PipelineParallel);
+      mp_group = groups_[WorkerGroupType::PipelineParallel];
+    }
+};
 
 }  // namespace training_session_test_utils
 }  // namespace test
