@@ -178,7 +178,7 @@ Status Tile::Compute(OpKernelContext* ctx) const {
 
     // TODO: Add multi-threading logic if num_of_copies is large enough
     for (size_t i = 0; i < num_of_copies; ++i) {
-      memcpy(reinterpret_cast<void*>(output_data_casted), input_data_raw, tensor_size_in_bytes);
+      memcpy(static_cast<void*>(output_data_casted), input_data_raw, tensor_size_in_bytes);
       output_data_casted += tensor_size_in_bytes;
     }
 
