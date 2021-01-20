@@ -458,14 +458,14 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
 }
 
 void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
-  auto cuda_alloc = AllocatorManager__GetAllocator(allocator_manager.get(), device_id_, OrtMemTypeDefault);
-  if (nullptr == cuda_alloc) {
+  allocator_ = AllocatorManager__GetAllocator(allocator_manager.get(), device_id_, OrtMemTypeDefault);
+  if (nullptr == allocator_) {
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
-    cuda_alloc = CreateAllocator(default_memory_info);
-    AllocatorManager__InertAllocator(allocator_manager.get(), cuda_alloc);
+    allocator_ = CreateAllocator(default_memory_info);
+    AllocatorManager__InertAllocator(allocator_manager.get(), allocator_);
   }
-  InsertAllocator(cuda_alloc);
+  InsertAllocator(allocator_);
 
   auto cuda_pinned_alloc = AllocatorManager__GetAllocator(allocator_manager.get(), CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
   if (nullptr == cuda_pinned_alloc) {
