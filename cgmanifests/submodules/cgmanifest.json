@@ -222,7 +222,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "bc7a70b46f4ae88383a4ca49c477fd859715620c",
+          "commitHash": "174de7d086a768cba29374a56a7461eff87cfdb3",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"

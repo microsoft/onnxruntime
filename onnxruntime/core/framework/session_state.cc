@@ -233,14 +233,14 @@ Status SessionState::GetInitializedTensors(
           "Failed to get OrtValue index from name: ", status.ErrorMessage());
       continue;
     }
-    if (initialized_tensors_.find(idx) != initialized_tensors_.end()){
+    if (initialized_tensors_.find(idx) != initialized_tensors_.end()) {
       result.emplace(weight_name, initialized_tensors_.at(idx));
     } else {
       ORT_RETURN_IF_NOT(
           allow_missing_weights,
           "Failed to get initializer with name: ", weight_name, " and index:", idx);
       continue;
-    }    
+    }
   }
   retrieved_weights = std::move(result);
   return Status::OK();
@@ -990,9 +990,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
+  //Record the allocation plan
 
   // Uncomment the below to dump the allocation plan to std::cout
   // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::GenerateTensorMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
+#endif
 
   std::unique_ptr<ITensorAllocator> tensor_allocator(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
@@ -1009,6 +1013,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             return AddInitializedTensor(idx, value, &d, constant);
           },
           logger_, data_transfer_mgr_, *p_seq_exec_plan_.get(), session_options));
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  //Record Weight allocation info on device
+  MemoryInfo::RecordInitializerAllocInfo(GetInitializedTensors());
+#endif
 
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.

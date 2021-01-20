@@ -261,8 +261,11 @@ template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path, /*out*/ T* p_data, size_t expected_size) {
 #if !defined(ORT_MINIMAL_BUILD)
   if (HasExternalData(tensor)) {
-    auto tensor_proto_path = model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str();
-    return UnpackTensorWithExternalData(tensor, tensor_proto_path, expected_size, p_data);
+    return UnpackTensorWithExternalData(
+        tensor,
+        model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(),
+        expected_size,
+        p_data);
   }
 #else
   ORT_UNUSED_PARAMETER(model_path);
