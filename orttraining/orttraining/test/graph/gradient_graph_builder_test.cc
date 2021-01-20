@@ -180,6 +180,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
   RunTrainingSessionWithChecks(so, backprop_model_file);
 }
 
+#ifdef USE_CUDA
 TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   // Setup training session configuration including GIST config (op_flag 9 ensures GIST will be applied to all possible supported node types)
   auto config = MakeBasicTrainingConfig();
@@ -246,6 +247,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   auto elapsed = TimeDiffMicroSeconds(start_time, end_time);
   std::cout << "Training session run completed in " << elapsed << " microseconds.\n";
 }
+#endif
 
 TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
   const auto& log_manager = DefaultLoggingManager();
