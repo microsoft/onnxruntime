@@ -265,8 +265,11 @@ Return Value:
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
                     this->NchwcBlockSize = 16;
                     this->PreferredBufferAlignment = 64;
+
+#if !defined(MLAS_AVX512F_INTRINSICS_UNSUPPORTED)
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
+#endif
 
                     //
                     // Check if the processor supports AVX512 core features
