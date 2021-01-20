@@ -624,9 +624,9 @@ static void TestThreeToneSpectrogram(
   using Operator = winml_experimental::LearningModelOperator;
 
   static const wchar_t MS_DOMAIN[] = L"com.microsoft";
+
   int64_t number_of_dfts = static_cast<int64_t>(ceil((signal_size - dft_size) / hop_size));
   int64_t onesided_dft_size = (dft_size >> 1) + 1;
-
   std::vector<int64_t> signal_shape = {batch_size, signal_size};
   std::vector<int64_t> mel_spectrogram_shape = {batch_size, 1, number_of_dfts, n_mel_bins};
 
@@ -700,22 +700,21 @@ static void TestThreeToneSpectrogram(
             .SetInput(L"data", L"mel_spectrogram")
             .SetConstant(L"shape", TensorInt64Bit::CreateFromShapeArrayAndDataArray({4}, mel_spectrogram_shape))
             .SetOutput(L"reshaped", L"Output.MelSpectrogram"));
-
-  builder.Save(L"e:\\spectrogram.onnx");
   auto model = builder.CreateModel();
 
   LearningModelSession session(model);
   LearningModelBinding binding(session);
 
-  // Populate binding
-  auto signal = make_3_tones<float>(signal_size, 8192);
+  // Bind input
+  auto signal = make_3_tones<float>(signal_size, sampling_rate);
   binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromShapeArrayAndDataArray(signal_shape, signal));
   
-  winrt::Windows::Media::VideoFrame output_image(
+  // Bind output
+  auto output_image =
+    winrt::Windows::Media::VideoFrame(
       winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
       static_cast<int32_t>(n_mel_bins),
       static_cast<int32_t>(number_of_dfts));
-
   binding.Bind(L"Output.MelSpectrogram", output_image);
 
   // Evaluate
@@ -725,23 +724,17 @@ static void TestThreeToneSpectrogram(
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
   printf("\nSpectrogram evaluate took: %f\n", evaluate_duration_in_microseconds.count());
 
-  // check the output video frame object by saving output image to disk
+  // Check the output video frame object by saving output image to disk
   std::wstring out_name = L"mel_spectrogram.jpg";
   winrt::Windows::Storage::StorageFolder folder = winrt::Windows::Storage::StorageFolder::GetFolderFromPathAsync(L"e:\\").get();
   winrt::Windows::Storage::StorageFile file = folder.CreateFileAsync(out_name, winrt::Windows::Storage::CreationCollisionOption::ReplaceExisting).get();
   winrt::Windows::Storage::Streams::IRandomAccessStream write_stream = file.OpenAsync(winrt::Windows::Storage::FileAccessMode::ReadWrite).get();
   winrt::Windows::Graphics::Imaging::BitmapEncoder encoder = winrt::Windows::Graphics::Imaging::BitmapEncoder::CreateAsync(winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(), write_stream).get();
-  // Set the software bitmap
   encoder.SetSoftwareBitmap(output_image.SoftwareBitmap());
   encoder.FlushAsync().get();
 
-
-  /*auto final_tensor = result.Outputs().Lookup(L"Output.MelSpectrogram").as<TensorFloat>();
-  auto final_ivv = final_tensor.GetAsVectorView();
-  printf("Output.MelSpectrogram\n\n");
-  for (uint32_t i = 0; i < final_ivv.Size(); i++) {
-    printf("%f\n", final_ivv.GetAt(i));
-  }*/
+  // Save the model
+  builder.Save(L"e:\\spectrogram.onnx");
 }
 
 static void TestGemm() {
