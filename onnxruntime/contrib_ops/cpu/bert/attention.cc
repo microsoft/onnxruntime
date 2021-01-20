@@ -25,7 +25,7 @@ class Attention : public OpKernel, public AttentionCPUBase {
 
  private:
   BufferUniquePtr packed_weights_;
-  size_t packed_weights_size_;
+  size_t packed_weights_size_ = 0;
   TensorShape weight_shape_;
 };
 
@@ -210,9 +210,9 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
     return Status::OK();
   }
 
-  const size_t loop_len = 3 * num_heads_;
+  const size_t loop_len = static_cast<size_t>(3) * num_heads_;
   auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
-  auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_size_ * loop_len));
+  auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packed_weights_size_, loop_len));
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
   for (size_t i = 0; i < loop_len; i++) {
@@ -228,16 +228,30 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
 template <typename T>
 Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
-  const Tensor* weights = packed_weights_ ? nullptr : context->Input<Tensor>(1);
+  const Tensor* weights;
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
 
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  packed_weights_ ? weight_shape_ : weights->Shape(),
-                                  bias->Shape(),
-                                  mask_index,
-                                  past));
+  if (packed_weights_) {
+    weights = nullptr;
+    ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
+                                    weight_shape_,
+                                    bias->Shape(),
+                                    mask_index,
+                                    past));
+  } else {
+    weights = context->Input<Tensor>(1);
+    //Normally we don't check if an input is NULL, but this one is needed to make VC++
+    //static analyzer happy
+    if (weights == nullptr)
+      return Status(common::ONNXRUNTIME, common::FAIL, "the second input cannot be NULL");
+    ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
+                                    weights->Shape(),
+                                    bias->Shape(),
+                                    mask_index,
+                                    past));
+  }
 
   const auto& shape = input->Shape().GetDims();
   const int batch_size = static_cast<int>(shape[0]);
@@ -259,14 +273,14 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + batch_size * sequence_length * hidden_size;
-  auto V = K + batch_size * sequence_length * hidden_size;
+  auto K = Q + static_cast<size_t>(batch_size) * sequence_length * hidden_size;
+  auto V = K + static_cast<size_t>(batch_size) * sequence_length * hidden_size;
   T* QKV[3] = {Q, K, V};
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
     const auto* input_data = input->template Data<T>();
-    const auto* weights_data = packed_weights_ ? nullptr : weights->template Data<T>();
+    const auto* weights_data = weights == nullptr ? nullptr : weights->template Data<T>();
     const auto* bias_data = bias->template Data<T>();
 
     const double cost =
