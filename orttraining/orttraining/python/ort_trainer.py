@@ -3,7 +3,7 @@ import os
 import warnings
 import numpy as np
 import onnx
-from onnx import numpy_helper
+from onnx import numpy_helper, external_data_helper, save_model
 from onnx import helper
 import torch
 import torch.nn
@@ -456,7 +456,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                horizontal_parallel_size=1,
                                                pipeline_parallel_size=1,
                                                output_model_path="",
-                                               use_external_data_format=True):
+                                               use_external_data_format=True,
+                                               checkpoint_path=None):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -541,14 +542,46 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.optimizer_attributes_map = optimizer_attributes_map
     ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
+    if checkpoint_path is not None:
+        print("Restoring from checkpoint ", checkpoint_path)
+        checkpoint_state = torch.load(checkpoint_path, map_location='cpu')
+        state_dict = checkpoint_state['model']
+
+        # update onnx model from loaded state dict
+        cur_initializers_names = [n.name for n in model.graph.initializer]
+        new_initializers = {}
+
+        for name in state_dict:
+            if name in cur_initializers_names:
+                new_initializers[name] = state_dict[name].numpy()
+            # else:
+            #     print("Ignore checkpoint tensor: {} is not present in the model.".format(name))
+
+        #self._update_onnx_model_initializers(new_initializers)
+        # replace the initializers with new value
+        new_weights = []
+        replace_indices = []
+        for i, w in enumerate(model.graph.initializer):
+            if w.name in new_initializers:
+                new_weights.append(numpy_helper.from_array(new_initializers[w.name], w.name))
+                replace_indices.append(i)
+        replace_indices.sort(reverse=True)
+        for w_i in replace_indices:
+            del model.graph.initializer[w_i]
+        model.graph.initializer.extend(new_weights)
+
     file_name_or_serialized_string = None
     if ort_parameters.use_external_data_format:
-        if check_onnx_model_exists()[0] is True:
+        if check_onnx_model_exists()[0] is True and checkpoint_path is None:
             file_name_or_serialized_string = check_onnx_model_exists()[1]
             print("reuse models to train model from ", file_name_or_serialized_string)
         else:
-            exported_model_dir = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), "ort_cache/models_to_train/" + str(os.environ['ORT_TRAIN_MODEL_NAME']))
-            lock_file = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".model_to_train.lock")
+            postfix=""
+            if checkpoint_path is not None:
+                postfix = "_" + checkpoint_path.split('/')[-3] + "_" + checkpoint_path.split('/')[-1]
+            folder_name = "models_to_train" + postfix 
+            exported_model_dir = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), "ort_cache/" + folder_name + "/" + str(os.environ['ORT_TRAIN_MODEL_NAME']))
+            lock_file = os.path.join(str(os.environ['ORT_MODEL_CACHE_ROOT_DIR']), str(os.environ['ORT_TRAIN_MODEL_NAME']) + "." + folder_name + ".lock")
             exported_model_file_name = os.path.join(exported_model_dir, str(os.environ['ORT_TRAIN_MODEL_NAME']) + ".onnx")
             lock = FileLock(lock_file)
             lock.acquire()
@@ -557,6 +590,9 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
             else:
                 print("start saving model to ", exported_model_file_name)
                 os.makedirs(exported_model_dir, exist_ok=True)
+
+                external_data_helper.convert_model_to_external_data(model, all_tensors_to_one_file=False)
+
                 onnx.save_model(model, exported_model_file_name)
                 print("finish saving model to ", exported_model_file_name)
             lock.release()
@@ -624,6 +660,9 @@ def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partiti
         model.horizontal_parallel_size, model.pipeline_parallel_size)
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
+    # pengwa (todo) we load aggregated ckpt for now.
+    checkpoint_file = os.path.join(checkpoint_dir, checkpoint_prefix)
+
     if is_partitioned:
         assert_msg = ("Couldn't find checkpoint file {}." +
             "Optimizer partitioning is enabled using ZeRO. Please make sure that the "+
@@ -679,7 +718,7 @@ class ORTTrainer():
                  use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False,
                  transformer_layer_recompute=False, number_recompute_layers=0,
                  data_parallel_size=1, horizontal_parallel_size=1,
-                 pipeline_parallel_size=1, output_model_path="", use_external_data_format=True):
+                 pipeline_parallel_size=1, output_model_path="", use_external_data_format=True, checkpoint_path=None):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -823,6 +862,7 @@ class ORTTrainer():
         self.run_symbolic_shape_infer = run_symbolic_shape_infer
         self.transformer_layer_recompute = transformer_layer_recompute
         self.number_recompute_layers = number_recompute_layers
+        self.checkpoint_path = checkpoint_path
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -860,7 +900,8 @@ class ORTTrainer():
                 horizontal_parallel_size=self.horizontal_parallel_size,
                 pipeline_parallel_size=self.pipeline_parallel_size,
                 output_model_path=self.output_model_path,
-                use_external_data_format=self.use_external_data_format)
+                use_external_data_format=self.use_external_data_format,
+                checkpoint_path=self.checkpoint_path)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
