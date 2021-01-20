@@ -282,11 +282,11 @@ def _aggregate_megatron_partition_info(rank_state_dict, state_dict):
         state_dict[partition_info] = {}
     
     rank_partition_info = rank_state_dict[partition_info]
-    for k,v in rank_partition_info.items():
-        if k not in state_dict[partition_info]:
+    for model_state_key, partition_info_dict in rank_partition_info.items():
+        if model_state_key not in state_dict[partition_info]:
             # add partition info only if weight is megatron partitioned
-            if (v["megatron_row_partition"] >= 0):
-                state_dict[partition_info][k] = v
+            if (partition_info_dict["megatron_row_partition"] >= 0):
+                state_dict[partition_info][model_state_key] = partition_info_dict
 
 def _to_pytorch_format(state_dict):
     """Convert ORT state dictionary schema (hierarchical structure) to PyTorch state dictionary schema (flat structure)"""
@@ -300,7 +300,7 @@ def _to_pytorch_format(state_dict):
 
 def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world_size):
     """Returns the D and H groups for the given sizes"""
-    num_data_groups = int(world_size / data_parallel_size)
+    num_data_groups = world_size // data_parallel_size
     data_groups = {}
     for data_group_id in range(num_data_groups):
         data_group_ranks=[]
@@ -308,7 +308,7 @@ def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world
             data_group_ranks.append(data_group_id + horizontal_parallel_size * r)
         data_groups[data_group_id] = data_group_ranks
 
-    num_horizontal_groups = int(world_size / horizontal_parallel_size)
+    num_horizontal_groups = world_size // horizontal_parallel_size
     horizontal_groups = {}
     for hori_group_id in range(num_horizontal_groups):
         hori_group_ranks=[]
@@ -383,6 +383,10 @@ def _aggregate_over_ranks(ordered_paths, ranks, sharded_states_original_dims = N
             # aggregate all optimizer states if pytorch_format is False
             _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict, mode)
 
+            # for D+H aggregation scenario, the first pass of aggregation(partial aggregation) is over D groups 
+            # to aggregate over Zero, and another pass to aggregate Megatron partitioned
+            # states. Preserve the relevant partition info only for weights that are megatron partitioned for 
+            # a partial aggregation call
             if partial_aggregation:
                 _aggregate_megatron_partition_info(rank_state_dict, state_dict)
 
@@ -395,6 +399,7 @@ def _aggregate_over_ranks(ordered_paths, ranks, sharded_states_original_dims = N
                 _utils.state_dict_user_dict_key() in rank_state_dict:
                 state_dict[_utils.state_dict_user_dict_key()] = rank_state_dict[_utils.state_dict_user_dict_key()]
 
+    # for a partial aggregation scenario, we might not have the entire tensor aggregated yet, thus skip reshape
     if not partial_aggregation:
         # reshape all the sharded tensors based on the original dimensions stored in sharded_states_original_dims
         _reshape_states(sharded_states_original_dims, state_dict, loaded_mixed_precision)
@@ -402,6 +407,33 @@ def _aggregate_over_ranks(ordered_paths, ranks, sharded_states_original_dims = N
     # return a flat structure for PyTorch model in case pytorch_format is True
     # else return the hierarchical structure for ORTTrainer
     return _to_pytorch_format(state_dict) if pytorch_format else state_dict
+
+def _aggregate_over_D_H(ordered_paths, D_groups, H_groups, pytorch_format):
+    sharded_states_original_dims = {}
+    save_dir = tempfile.mkdtemp()
+    os.makedirs(save_dir, exist_ok = True) 
+
+    aggregate_data_checkpoint_files = []
+    # combine for Zero over data groups and save to temp file
+    for group_id in range(len(D_groups)):
+        aggregate_state_dict = _aggregate_over_ranks(ordered_paths['D'][group_id], D_groups[group_id], sharded_states_original_dims, partial_aggregation = True, pytorch_format=False)
+
+        filename = 'ort.data_group.' + str(group_id) + '.ort.pt'
+        filepath = os.path.join(save_dir, filename)
+        _checkpoint_storage.save(aggregate_state_dict, filepath)
+        aggregate_data_checkpoint_files.append(filepath)
+
+    assert len(aggregate_data_checkpoint_files) > 0
+
+    # combine for megatron:            
+    aggregate_state = _aggregate_over_ranks(aggregate_data_checkpoint_files, H_groups[0], sharded_states_original_dims, mode = _AGGREGATION_MODE.Megatron, pytorch_format = pytorch_format)
+
+    # remove temp files created
+    for f in aggregate_data_checkpoint_files:
+        os.remove(f)
+    os.rmdir(save_dir)
+
+    return aggregate_state
 
 def aggregate_checkpoints(paths, pytorch_format=True):
     """Aggregate checkpoint files and return a single state dictionary
@@ -438,29 +470,7 @@ def aggregate_checkpoints(paths, pytorch_format=True):
 
     aggregate_state = None
     if combine_zero and combine_megatron:
-        sharded_states_original_dims = {}
-        save_dir = tempfile.mkdtemp()
-        os.makedirs(save_dir, exist_ok = True) 
-
-        aggregate_data_checkpoint_files = []
-        # combine for Zero over data groups and save to temp file
-        for group_id in range(len(D_groups)):
-            aggregate_state_dict = _aggregate_over_ranks(ordered_paths['D'][group_id], D_groups[group_id], sharded_states_original_dims, partial_aggregation = True, pytorch_format=False)
-
-            filename = 'ort.data_group.' + str(group_id) + '.ort.pt'
-            filepath = os.path.join(save_dir, filename)
-            _checkpoint_storage.save(aggregate_state_dict, filepath)
-            aggregate_data_checkpoint_files.append(filepath)
-
-        assert len(aggregate_data_checkpoint_files) > 0
-
-        # combine for megatron:            
-        aggregate_state = _aggregate_over_ranks(aggregate_data_checkpoint_files, H_groups[0], sharded_states_original_dims, mode = _AGGREGATION_MODE.Megatron, pytorch_format = pytorch_format)
-
-        # remove temp files created
-        for f in aggregate_data_checkpoint_files:
-            os.remove(f)
-        os.rmdir(save_dir)
+        aggregate_state = _aggregate_over_D_H(ordered_paths, D_groups, H_groups, pytorch_format)
     elif combine_zero:
         aggregate_state = _aggregate_over_ranks(ordered_paths['D'][0], D_groups[0], mode = _AGGREGATION_MODE.Zero, pytorch_format = pytorch_format)
     elif combine_megatron:

@@ -121,13 +121,13 @@ void MegatronTransformer::PartitionBufferByColumn(const T* input,
                                                   const int64_t column_stride,
                                                   const int stride,
                                                   std::vector<T>& result) const {
-  int64_t column_stride_partition = column_stride / horizontal_parallel_size_;
+  const int64_t column_stride_partition = column_stride / horizontal_parallel_size_;
 
   const int64_t stride_partition_column_offset = horizontal_parallel_rank_ * column_stride_partition;
   for (auto row_index = 0; row_index < row_count; row_index++) {
-    auto row_offset = row_index * column_count;
+    const auto row_offset = row_index * column_count;
     for (auto stride_index = 0; stride_index < stride; stride_index++) {
-      auto column_offset = row_offset + stride_index * column_stride + stride_partition_column_offset;
+      const auto column_offset = row_offset + stride_index * column_stride + stride_partition_column_offset;
       std::copy(input + column_offset, input + column_offset + column_stride_partition, std::back_inserter(result));
     }
   }
@@ -166,6 +166,10 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
                           << " is not divisible by horizontal_parallel_size_ times stride "
                           << (horizontal_parallel_size_ * stride) << ", not supported currently.";
     return false;
+  }
+
+  if (stride > 1){
+    LOGS_DEFAULT(WARNING) << "Checkpointing is not currently supported for graphs requiring partitioning of weight with stride > 1";
   }
 
   auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
@@ -218,9 +222,15 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
           result_buffer.reserve(element_count);
           PartitionBufferByColumn(data_buffer, row_count, column_count, column_stride, stride, result_buffer);
 
-          // allocate a new buffer to hold the partitioned optimizer state 
+          // We need to maintain the initial optimizer states as an OrtValue, 
+          // which is converted eventually to a TensorProto in the optimizer builder
+          // after Megatron and Zero partitioning. This approach saves CPU memory 
+          // as creating a TensorProto involves a copy, and by delaying the copy until 
+          // after the partitioning results in a smaller copy only for the optimizer 
+          // states currently present on the rank.
+          // Allocate a new buffer to hold the partitioned optimizer state 
           // as column partitioning cannot re-use the original
-          // buffer as its non-contiguous read
+          // buffer as it is a non-contiguous read
           auto alloc = cpu_execution_provider_ .GetAllocator(0, OrtMemTypeDefault);
           p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                       partition_shape,

@@ -611,7 +611,7 @@ class ORTTrainer(object):
                         raise ValueError("Optimizer attributes must be either float or int.")
 
         self.options.distributed.horizontal_parallel_size = max(self.options.distributed.horizontal_parallel_size, 1)
-        self.options.distributed.data_parallel_size = int(self.options.distributed.world_size/self.options.distributed.horizontal_parallel_size)
+        self.options.distributed.data_parallel_size = self.options.distributed.world_size // self.options.distributed.horizontal_parallel_size
         
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
@@ -1031,6 +1031,14 @@ class ORTTrainer(object):
                     "optimizer_name":
                     {
                         type: str
+                    },
+                    "data_parallel_size":
+                    {
+                        type: int
+                    },
+                    "horizontal_parallel_size":
+                    {
+                        type: int
                     }
                 }
             },
@@ -1048,6 +1056,10 @@ class ORTTrainer(object):
                             "original_dim":
                             {
                                 type: array
+                            },
+                            "megatron_row_partition":
+                            {
+                                type: int
                             }
                         }
                     }
