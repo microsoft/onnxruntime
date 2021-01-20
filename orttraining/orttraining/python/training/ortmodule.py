@@ -231,6 +231,8 @@ class ORTModule(torch.nn.Module):
                 # Configure the InferenceSessions to use the specific GPU on which the model is placed.
                 providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
                 provider_options = [{"device_id": str(self._device.index)}]
+                # Release CUDA cache used by PyTorch during exporter
+                torch.cuda.empty_cache()
             elif self._device.type == 'cpu':
                 providers = ["CPUExecutionProvider"]
                 provider_options = [{}]
