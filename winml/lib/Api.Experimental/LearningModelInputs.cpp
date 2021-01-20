@@ -1,7 +1,7 @@
 ﻿#include "pch.h"
 #include "LearningModelInputs.h"
 #include "LearningModelOperator.h"
-
+#include "LearningModelSession.h"
 #include "LearningModelBuilder.h"
 #include "TensorFeatureDescriptor.h"
 
@@ -16,21 +16,28 @@ LearningModelInputs::LearningModelInputs(winml_experimental::LearningModelBuilde
                                                                                       constant_values_(winrt::single_threaded_vector<wf::IInspectable>()) {
 }
 
-winml_experimental::LearningModelBuilder LearningModelInputs::AddInput(winml::ILearningModelFeatureDescriptor const& input, Windows::Foundation::IInspectable const& /*default_value*/, bool is_constant) {
+winml_experimental::LearningModelBuilder LearningModelInputs::AddInput(winml::ILearningModelFeatureDescriptor const& input, Windows::Foundation::IInspectable const& default_value, bool is_constant) {
   // Perform model update inside the builder
   auto model = builder_.as<winml_experimentalp::LearningModelBuilder>()->UseModel();
   auto descriptor_provider = input.as<_winml::IDescriptorInfoProvider>();
   auto input_name = _winml::Strings::UTF8FromHString(input.Name());
 
+
+
   winrt::com_ptr<_winml::IValue> default_value_ivalue;
 
-#ifdef ENABLE_CONTANT_INTIALIZERS
   if (default_value) {
     auto default_value_value_provider = default_value.as<_winml::ILotusValueProviderPrivate>();
-    _winml::BindingContext bc{};
-    default_value_value_provider->GetValue(bc, default_value_ivalue.put());
+    // Create the Binding Context to pass to the feature value
+    _winml::BindingContext context{
+        _winml::BindingType::kInput,
+        builder_.as<winml_experimentalp::LearningModelBuilder>()->InertSession(),
+        nullptr,
+        nullptr,
+        {}  // SubresourceId is set by callee
+    };
+    default_value_value_provider->GetValue(context, default_value_ivalue.put());
   }
-#endif
 
   model->AddModelInput(input_name.c_str(), descriptor_provider.get(), is_constant, default_value_ivalue.get());
 

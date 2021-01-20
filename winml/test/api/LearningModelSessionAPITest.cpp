@@ -587,9 +587,6 @@ static void TestSTFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, 
 
 
   binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromShapeArrayAndDataArray(input_shape, signal));
-  binding.Bind(L"hann0.size", dft_length);
-  binding.Bind(L"stft0.frame_length", dft_length);
-  binding.Bind(L"stft0.frame_step", frame_step);
 
   // Evaluate
   auto result = session.Evaluate(binding, L"");
@@ -627,109 +624,82 @@ static void TestThreeToneSpectrogram(
   using Operator = winml_experimental::LearningModelOperator;
 
   static const wchar_t MS_DOMAIN[] = L"com.microsoft";
-
-  auto number_of_dfts = static_cast<int64_t>(ceil((signal_size - dft_size) / hop_size));
-  // Input and output shapes
-  std::vector<int64_t> scalar_shape = {};
-  std::vector<int64_t> input_shape = {batch_size, signal_size};
-  std::vector<int64_t> mel_spectrogram_shape = {batch_size, 1, number_of_dfts, n_mel_bins};
-
-  // Constant initializers
-  auto frame_step = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {hop_size});
-  auto window_length = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {window_size});
-  auto dft_length = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {dft_size});
-  auto dft_length_as_float = TensorFloat::CreateFromShapeArrayAndDataArray({}, {static_cast<float>(dft_size)});
-
-  // real slice
-  auto real_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {0, 0, 0, 0});
-  auto real_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {INT_MAX, INT_MAX, INT_MAX, 1});
-
-  // complex slice
-  auto complex_slice_start = TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {0, 0, 0, 1});
-  auto complex_slice_ends = TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {INT_MAX, INT_MAX, INT_MAX, 2});
-
+  int64_t number_of_dfts = static_cast<int64_t>(ceil((signal_size - dft_size) / hop_size));
   int64_t onesided_dft_size = (dft_size >> 1) + 1;
-  auto mel_input_shape = TensorInt64Bit::CreateFromShapeArrayAndDataArray({2}, {batch_size * number_of_dfts, onesided_dft_size});
-  auto output_shape = TensorInt64Bit::CreateFromShapeArrayAndDataArray({4}, mel_spectrogram_shape);
 
-  // Mel spectrogram
-  auto num_mel_bins = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {n_mel_bins});
-  auto sample_rate = TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {sampling_rate});
-  auto lower_edge_hertz = TensorFloat::CreateFromShapeArrayAndDataArray({}, {0});
-  auto upper_edge_hertz = TensorFloat::CreateFromShapeArrayAndDataArray({}, {sampling_rate / 2.f});
+  std::vector<int64_t> signal_shape = {batch_size, signal_size};
+  std::vector<int64_t> mel_spectrogram_shape = {batch_size, 1, number_of_dfts, n_mel_bins};
 
   auto builder =
       LearningModelBuilder::Create()
-          // Inputs
-          .Inputs().Add(TensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, input_shape))
-          // Outputs
+          .Inputs().Add(TensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, signal_shape))
           .Outputs().Add(TensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
-          // The graph
-          .Operators().Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
-                   .SetConstant(L"size", window_length)  // SetConstant not implemented: bind hann0.size to window_length
-                   .SetOutput(L"output", L"hann_window"))
+          .Operators()
+          .Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
+            .SetConstant(L"size", TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {window_size}))
+            .SetOutput(L"output", L"hann_window"))
           .Operators()
           .Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
-                   .SetInput(L"signal", L"Input.TimeSignal")
-                   .SetInput(L"window", L"hann_window")
-                   .SetConstant(L"frame_length", dft_length)  // SetConstant not implemented: bind stft0.dft_length to dft_length
-                   .SetConstant(L"frame_step", frame_step)    // SetConstant not implemented: bind stft0.frame_step to frame_step
-                   .SetOutput(L"output", L"stft_output"))
+            .SetInput(L"signal", L"Input.TimeSignal")
+            .SetInput(L"window", L"hann_window")
+            .SetConstant(L"frame_length", TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {dft_size}))
+            .SetConstant(L"frame_step", TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {hop_size}))
+            .SetOutput(L"output", L"stft_output"))
           .Operators()
           .Add(Operator(L"Slice", L"real_slice")
-                   .SetInput(L"data", L"stft_output")
-                   .SetConstant(L"starts", real_slice_start)
-                   .SetConstant(L"ends", real_slice_ends)
-                   .SetOutput(L"output", L"reals"))
+            .SetInput(L"data", L"stft_output")
+            .SetConstant(L"starts", TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {0, 0, 0, 0}))
+            .SetConstant(L"ends",   TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {INT_MAX, INT_MAX, INT_MAX, 1}))
+            .SetOutput(L"output", L"reals"))
           .Operators()
           .Add(Operator(L"Slice", L"complex_slice")
-                   .SetInput(L"data", L"stft_output")
-                   .SetConstant(L"starts", complex_slice_start)
-                   .SetConstant(L"ends", complex_slice_ends)
-                   .SetOutput(L"output", L"imaginaries"))
+            .SetInput(L"data", L"stft_output")
+            .SetConstant(L"starts", TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {0, 0, 0, 1}))
+            .SetConstant(L"ends", TensorInt32Bit::CreateFromShapeArrayAndDataArray({4}, {INT_MAX, INT_MAX, INT_MAX, 2}))
+            .SetOutput(L"output", L"imaginaries"))
           .Operators()
           .Add(Operator(L"Mul", L"real_squared")
-                   .SetInput(L"A", L"reals")
-                   .SetInput(L"B", L"reals")
-                   .SetOutput(L"C", L"reals_squared"))
+            .SetInput(L"A", L"reals")
+            .SetInput(L"B", L"reals")
+            .SetOutput(L"C", L"reals_squared"))
           .Operators()
           .Add(Operator(L"Mul", L"complex_squared")
-                   .SetInput(L"A", L"imaginaries")
-                   .SetInput(L"B", L"imaginaries")  // SetConstant not implemented: bind complex_pow.Y to power_of_2_exponent
-                   .SetOutput(L"C", L"imaginaries_squared"))
+            .SetInput(L"A", L"imaginaries")
+            .SetInput(L"B", L"imaginaries")
+            .SetOutput(L"C", L"imaginaries_squared"))
           .Operators()
           .Add(Operator(L"Add", L"add0")
-                   .SetInput(L"A", L"reals_squared")
-                   .SetInput(L"B", L"imaginaries_squared")
-                   .SetOutput(L"C", L"magnitude_squared"))
+            .SetInput(L"A", L"reals_squared")
+            .SetInput(L"B", L"imaginaries_squared")
+            .SetOutput(L"C", L"magnitude_squared"))
           .Operators()
           .Add(Operator(L"Div", L"div0")
-                   .SetInput(L"A", L"magnitude_squared")
-                   .SetConstant(L"B", dft_length_as_float)  // SetConstant not implemented: bind div0.B to dft_length_as_float
-                   .SetOutput(L"C", L"power_frames"))
+            .SetInput(L"A", L"magnitude_squared")
+            .SetConstant(L"B", TensorFloat::CreateFromShapeArrayAndDataArray({}, {static_cast<float>(dft_size)}))
+            .SetOutput(L"C", L"power_frames"))
           .Operators()
           .Add(Operator(L"MelWeightMatrix", L"melweightmatrix0", MS_DOMAIN)
-                   .SetConstant(L"num_mel_bins", num_mel_bins)  // SetConstant not implemented: bind melweightmatrix0.num_mel_bins to num_mel_bins
-                   .SetConstant(L"dft_length", dft_length)      // SetConstant not implemented: bind melweightmatrix0.dft_length to dft_length
-                   .SetConstant(L"sample_rate", sample_rate)
-                   .SetConstant(L"lower_edge_hertz", lower_edge_hertz)  // SetConstant not implemented: bind melweightmatrix0.lower_edge_hertz to lower_edge_hertz
-                   .SetConstant(L"upper_edge_hertz", upper_edge_hertz)  // SetConstant not implemented: bind melweightmatrix0.upper_edge_hertz to upper_edge_hertz
-                   .SetOutput(L"output", L"mel_weight_matrix"))
+            .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {n_mel_bins}))
+            .SetConstant(L"dft_length", TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {dft_size}))
+            .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromShapeArrayAndDataArray({}, {sampling_rate}))
+            .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromShapeArrayAndDataArray({}, {0}))
+            .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromShapeArrayAndDataArray({}, {sampling_rate / 2.f}))
+            .SetOutput(L"output", L"mel_weight_matrix"))
           .Operators()
           .Add(Operator(L"Reshape", L"reshape0")
-                   .SetInput(L"data", L"power_frames")
-                   .SetConstant(L"shape", mel_input_shape)
-                   .SetOutput(L"reshaped", L"reshaped_output"))
+            .SetInput(L"data", L"power_frames")
+            .SetConstant(L"shape", TensorInt64Bit::CreateFromShapeArrayAndDataArray({2}, {batch_size * number_of_dfts, onesided_dft_size}))
+            .SetOutput(L"reshaped", L"reshaped_output"))
           .Operators()
           .Add(Operator(L"MatMul", L"matmul0")
-                   .SetInput(L"A", L"reshaped_output")
-                   .SetInput(L"B", L"mel_weight_matrix")
-                   .SetOutput(L"Y", L"mel_spectrogram"))
+            .SetInput(L"A", L"reshaped_output")
+            .SetInput(L"B", L"mel_weight_matrix")
+            .SetOutput(L"Y", L"mel_spectrogram"))
           .Operators()
           .Add(Operator(L"Reshape", L"reshape1")
-                   .SetInput(L"data", L"mel_spectrogram")
-                   .SetConstant(L"shape", output_shape)
-                   .SetOutput(L"reshaped", L"Output.MelSpectrogram"));
+            .SetInput(L"data", L"mel_spectrogram")
+            .SetConstant(L"shape", TensorInt64Bit::CreateFromShapeArrayAndDataArray({4}, mel_spectrogram_shape))
+            .SetOutput(L"reshaped", L"Output.MelSpectrogram"));
 
   builder.Save(L"e:\\spectrogram.onnx");
   auto model = builder.CreateModel();
@@ -739,25 +709,7 @@ static void TestThreeToneSpectrogram(
 
   // Populate binding
   auto signal = make_3_tones<float>(signal_size, 8192);
-  binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromShapeArrayAndDataArray(input_shape, signal));
- 
-  // These are constant initializers. Constants should be automatically generated and set... but since that is not implemented... they need to be duplicated
-  binding.Bind(L"hann0.size", window_length);
-  binding.Bind(L"stft0.frame_length", dft_length);
-  binding.Bind(L"stft0.frame_step", frame_step);
-  binding.Bind(L"real_slice.starts", real_slice_start);
-  binding.Bind(L"real_slice.ends", real_slice_ends);
-  binding.Bind(L"complex_slice.starts", complex_slice_start);
-  binding.Bind(L"complex_slice.ends", complex_slice_ends);
-
-  binding.Bind(L"div0.B", dft_length_as_float);
-  binding.Bind(L"melweightmatrix0.dft_length", dft_length);
-  binding.Bind(L"melweightmatrix0.num_mel_bins", num_mel_bins);
-  binding.Bind(L"melweightmatrix0.sample_rate", sample_rate);
-  binding.Bind(L"melweightmatrix0.lower_edge_hertz", lower_edge_hertz);
-  binding.Bind(L"melweightmatrix0.upper_edge_hertz", upper_edge_hertz);
-  binding.Bind(L"reshape0.shape", mel_input_shape);
-  binding.Bind(L"reshape1.shape", output_shape);
+  binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromShapeArrayAndDataArray(signal_shape, signal));
   
   winrt::Windows::Media::VideoFrame output_image(
       winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,

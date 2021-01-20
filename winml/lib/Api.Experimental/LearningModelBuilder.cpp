@@ -1,7 +1,7 @@
 ﻿#include "pch.h"
 #include "LearningModelBuilder.h"
 #include "LearningModel.h"
-
+#include "LearningModelSession.h"
 #include "LearningModelInputs.h"
 #include "LearningModelOutputs.h"
 #include "LearningModelOperatorSet.h"
@@ -9,17 +9,25 @@
 
 namespace WINML_EXPERIMENTALP {
 
-LearningModelBuilder::LearningModelBuilder() : inputs_(nullptr), outputs_(nullptr), operators_(nullptr) {
+LearningModelBuilder::LearningModelBuilder() : inputs_(nullptr), outputs_(nullptr), operators_(nullptr), inert_session_(nullptr) {
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
   WINML_THROW_IF_FAILED(engine_factory_->CreateEmptyModel(model_.put()));
   inputs_ = winrt::make<winml_experimentalp::LearningModelInputs>(*this);
   outputs_ = winrt::make<winml_experimentalp::LearningModelOutputs>(*this);
   operators_ = winrt::make<winml_experimentalp::LearningModelOperatorSet>(*this);
+
+  winrt::com_ptr<_winml::IEngineBuilder> builder;
+  WINML_THROW_IF_FAILED(engine_factory_->CreateEngineBuilder(builder.put()));
+  winrt::com_ptr<_winml::IEngine> engine;
+  WINML_THROW_IF_FAILED(builder->CreateEngine(engine.put()));
+  inert_session_ = winmlp::LearningModelSession::CreateInertSession(engine.get());
 }
 
 LearningModelBuilder::LearningModelBuilder(LearningModelBuilder& builder) : inputs_(builder.inputs_),
                                                                             outputs_(builder.outputs_),
-                                                                            operators_(builder.operators_) {
+                                                                            operators_(builder.operators_),
+                                                                            inert_session_(nullptr)
+{
 }
 
 winml_experimental::LearningModelInputs LearningModelBuilder::Inputs() {

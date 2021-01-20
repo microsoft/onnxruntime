@@ -428,7 +428,8 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* CreateMapTypeInfo)(_Out_ OrtTypeInfo** type_info)NO_EXCEPTION;
 
   OrtStatus*(ORT_API_CALL* CreateModel)(_Outptr_ OrtModel** out)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelAddInput)(_In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ bool is_constant)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelAddInput)(_In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelAddConstantInput)(_In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* ModelAddOutput)(_In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* ModelAddOperator)(
       _In_ OrtModel* model,

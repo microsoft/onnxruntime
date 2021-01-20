@@ -523,8 +523,7 @@ static void CreateTypeProto_Tensor(ONNX_NAMESPACE::TypeProto_Tensor* mutable_ten
   }
 }
 
-
-ORT_API_STATUS_IMPL(winmla::ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ bool /*is_constant*/) {
+ORT_API_STATUS_IMPL(winmla::ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info) {
  API_IMPL_BEGIN
   auto model_proto = model->UseModelProto();
   ONNX_NAMESPACE::GraphProto& graph = *model_proto->mutable_graph();
@@ -540,6 +539,30 @@ ORT_API_STATUS_IMPL(winmla::ModelAddInput, _In_ OrtModel* model, _In_ const char
         num_dims,
         ONNXTensorElementDataTypeToTensorProto_DataType(info->data->type));
   }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelAddConstantInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value) {
+  API_IMPL_BEGIN
+  auto model_proto = model->UseModelProto();
+  ONNX_NAMESPACE::GraphProto& graph = *model_proto->mutable_graph();
+  ONNX_NAMESPACE::TensorProto& input = *graph.add_initializer();
+  input.set_name(input_name);
+
+  auto num_dims = info->data->shape.NumDimensions();
+  for (size_t i = 0; i < num_dims; i++) {
+    input.add_dims(info->data->shape[i]);
+  }
+
+  input.set_data_type(ONNXTensorElementDataTypeToTensorProto_DataType(info->data->type));
+  
+  void* data;
+  OrtApis::GetTensorMutableData(value, &data);
+
+  auto tensor = value->GetMutable<onnxruntime::Tensor>();
+  input.set_raw_data(tensor->DataRaw(), tensor->SizeInBytes());
+
   return nullptr;
   API_IMPL_END
 }

@@ -362,7 +362,7 @@ ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
   }
 }
 
-STDMETHODIMP OnnruntimeModel::AddModelInput(_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* /*default_value*/) {
+STDMETHODIMP OnnruntimeModel::AddModelInput(_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* constant_value) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   auto ort_api = engine_factory_->UseOrtApi();
 
@@ -373,8 +373,14 @@ STDMETHODIMP OnnruntimeModel::AddModelInput(_In_ const char* const name, _In_ ID
   OrtTypeInfo* type_info;
   ort_type_info_provider->GetTypeInfo(&type_info);
 
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddInput(ort_model_.get(), name, type_info, is_constant),
-                          ort_api);
+  if (is_constant) {
+    RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddConstantInput(ort_model_.get(), name, type_info, static_cast<OnnxruntimeValue*>(constant_value)->UseOrtValue()),
+                            ort_api);
+  } else {
+    RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddInput(ort_model_.get(), name, type_info),
+                            ort_api);
+  }
+
   return S_OK;
 }
 

@@ -84,6 +84,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::CreateMapTypeInfo,
     &winmla::CreateModel,
     &winmla::ModelAddInput,
+    &winmla::ModelAddConstantInput,
     &winmla::ModelAddOutput,
     &winmla::ModelAddOperator,
     &winmla::OperatorGetNumInputs,

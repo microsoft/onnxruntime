@@ -85,7 +85,8 @@ ORT_API_STATUS(CreateTensorTypeInfo, _In_ const int64_t* shape, size_t shape_len
 ORT_API_STATUS(CreateSequenceTypeInfo, _Out_ OrtTypeInfo** type_info);
 ORT_API_STATUS(CreateMapTypeInfo, _Out_ OrtTypeInfo** type_info);
 ORT_API_STATUS(CreateModel, _Outptr_ OrtModel** out);
-ORT_API_STATUS(ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ bool is_constant);
+ORT_API_STATUS(ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info);
+ORT_API_STATUS(ModelAddConstantInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value);
 ORT_API_STATUS(ModelAddOutput, _In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info);
 ORT_API_STATUS(ModelAddOperator, 
     _In_ OrtModel* model,

@@ -20,8 +20,13 @@ struct LearningModelBuilder : LearningModelBuilderT<LearningModelBuilder> {
 
   _winml::IModel* UseModel();
   
+  winml::LearningModelSession InertSession() {
+    return inert_session_;
+  }
+
  private:
   com_ptr<_winml::IEngineFactory> engine_factory_;
+  winml::LearningModelSession inert_session_;
   com_ptr<_winml::IModel> model_;
 
   winml_experimental::LearningModelInputs inputs_;

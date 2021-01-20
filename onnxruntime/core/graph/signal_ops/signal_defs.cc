@@ -307,8 +307,9 @@ void RegisterSignalSchemas() {
         auto dft_length = get_scalar_value_from_tensor<int64_t>(ctx.getInputData(1));
         if (num_mel_bins > 0 && dft_length > 0) {
           ONNX_NAMESPACE::TensorShapeProto result_shape;
+          // Figure out how to specify one-sided???
+          result_shape.add_dim()->set_dim_value(static_cast<int64_t>(std::floor(dft_length / 2.f + 1)));
           result_shape.add_dim()->set_dim_value(num_mel_bins);
-          result_shape.add_dim()->set_dim_value(static_cast<int64_t>(std::floor(dft_length/2.f + 1)));
           updateOutputShape(ctx, 0, result_shape);
         }
         propagateElemTypeFromAttributeToOutput(ctx, "output_datatype", 0);
