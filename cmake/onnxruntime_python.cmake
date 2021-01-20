@@ -97,6 +97,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_ROCM}
     onnxruntime_optimizer
     onnxruntime_providers
+    onnxruntime_providers_shared
     onnxruntime_util
     ${onnxruntime_tvm_libs}
     onnxruntime_framework
