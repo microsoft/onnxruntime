@@ -1,7 +1,7 @@
 trigger: none
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'macOS-10.15'
 
 jobs:
 - job: Job
@@ -10,8 +10,4 @@ jobs:
   - checkout: none
 
   - script: |
-      sleep 300 &
-      echo $! >> pid.txt
-
-  - script: |
-      kill $( cat pid.txt )
+      /usr/bin/clang --version
