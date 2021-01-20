@@ -754,11 +754,7 @@ TEST(CApiTest, io_binding_cuda) {
 #endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
-#ifdef USE_TENSORRT
-  Ort::MemoryInfo info_cuda("Tensorrt", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#else
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#endif
 
   Ort::Allocator cuda_allocator(session, info_cuda);
   auto allocator_info = cuda_allocator.GetInfo();
