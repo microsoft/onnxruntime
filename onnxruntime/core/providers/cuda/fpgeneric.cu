@@ -55,7 +55,7 @@ __global__ void CopyVectorHalf(const half* x, int incx, half* y, int incy, int n
   y[id * incy] = x[id * incx];
 }
 
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+#if CUDA_VERSION >= 11000
 __global__ void CopyVectorBFloat16(const nv_bfloat16* x, int incx, nv_bfloat16* y, int incy, int n) {
   int id = blockIdx.x * blockDim.x + threadIdx.x;
   if (id >= n) return;
@@ -84,11 +84,13 @@ cublasStatus_t cublasCopyHelper(cublasHandle_t, int n, const half* x, int incx, 
   return CUBLAS_STATUS_SUCCESS;
 }
 
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+#if CUDA_VERSION >= 11000
 cublasStatus_t cublasCopyHelper(cublasHandle_t, int n, const nv_bfloat16* x, int incx, nv_bfloat16* y, int incy) {
   dim3 dimGrid((unsigned int)(n + COPY_BLOCK_DIM - 1) / COPY_BLOCK_DIM, 1, 1);
   dim3 dimBlock(COPY_BLOCK_DIM, 1, 1);
   CopyVectorBFloat16<<<dimGrid, dimBlock>>>(x, incx, y, incy, n);
   return CUBLAS_STATUS_SUCCESS;
 }
+
+
 #endif
