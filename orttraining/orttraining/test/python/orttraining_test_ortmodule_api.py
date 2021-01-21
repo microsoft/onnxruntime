@@ -281,3 +281,71 @@ def test_model_with_unused_trainable_parameters(device):
     with pytest.raises(RuntimeError) as e:
         model(torch.tensor(1.).to(device))
         assert e.value == 'ORTModule only supports model with at least one trainable parameter'
+
+def test_model_with_multiple_devices_cpu_cuda():
+    class MultipleDeviceModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10).cpu()
+            self.fc2 = torch.nn.Linear(10, 10).cuda()
+
+        def forward(self, x):
+            x = self.fc1(x)
+            x = self.fc2(x)
+            return x
+
+    model = MultipleDeviceModel()
+    with pytest.raises(RuntimeError) as e:
+        model = ORTModule(model)
+        assert e.value == 'ORTModule supports a single device per model for now'
+
+def test_model_with_multiple_devices_to_to():
+    class MultipleDeviceModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10).to('cpu')
+            self.fc2 = torch.nn.Linear(10, 10).to('cuda')
+
+        def forward(self, x):
+            x = self.fc1(x)
+            x = self.fc2(x)
+            return x
+
+    model = MultipleDeviceModel()
+    with pytest.raises(RuntimeError) as e:
+        model = ORTModule(model)
+        assert e.value == 'ORTModule supports a single device per model for now'
+
+def test_model_with_multiple_devices_to_cpu():
+    class MultipleDeviceModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10).to('cuda')
+            self.fc2 = torch.nn.Linear(10, 10).cpu()
+
+        def forward(self, x):
+            x = self.fc1(x)
+            x = self.fc2(x)
+            return x
+
+    model = MultipleDeviceModel()
+    with pytest.raises(RuntimeError) as e:
+        model = ORTModule(model)
+        assert e.value == 'ORTModule supports a single device per model for now'
+
+def test_model_with_multiple_devices_to_cuda():
+    class MultipleDeviceModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10).to('cpu')
+            self.fc2 = torch.nn.Linear(10, 10).cuda()
+
+        def forward(self, x):
+            x = self.fc1(x)
+            x = self.fc2(x)
+            return x
+
+    model = MultipleDeviceModel()
+    with pytest.raises(RuntimeError) as e:
+        model = ORTModule(model)
+        assert e.value == 'ORTModule supports a single device per model for now'
