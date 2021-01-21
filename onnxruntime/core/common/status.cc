@@ -43,7 +43,6 @@ int Status::Code() const noexcept {
 }
 
 const std::string& Status::ErrorMessage() const noexcept {
-  return IsOK() ? EmptyString() : state_->msg;
 }
 
 std::string Status::ToString() const {
