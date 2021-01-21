@@ -57,6 +57,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     const IExecutionProvider& execution_provider,
     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
+  return transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
 
   // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
