@@ -62,3 +62,6 @@
 [submodule "cmake/external/optional-lite"]
 	path = cmake/external/optional-lite
 	url = https://github.com/martinmoene/optional-lite.git
+[submodule "cmake/external/coremltools"]
+	path = cmake/external/coremltools
+	url = https://github.com/apple/coremltools.git
