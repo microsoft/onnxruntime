@@ -35,9 +35,7 @@ CoreMLExecutionProvider::CoreMLExecutionProvider()
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
-CoreMLExecutionProvider::~CoreMLExecutionProvider() {
-  // Need to delete the temp coreml files
-}
+CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view,
@@ -214,12 +212,11 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       coreml_model->SetOutputs(std::move(onnx_output_names));
     }
 
-    coreml_models_.emplace(fused_node.Name(),
-                           std::make_pair(coreml_model_file_path, std::move(coreml_model)));
+    coreml_models_.emplace(fused_node.Name(), std::move(coreml_model));
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [&](ComputeContext* context, FunctionState* state) {
-      *state = std::get<1>(coreml_models_[context->node_name]).get();
+      *state = coreml_models_[context->node_name].get();
       return 0;
     };
 
@@ -229,10 +226,6 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     };
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      (void)state;
-      (void)context;
-      (void)api;
-
       Ort::CustomOpApi ort{*api};
       coreml::Model* model = reinterpret_cast<coreml::Model*>(state);
       const size_t num_inputs = ort.KernelContext_GetInputCount(context);

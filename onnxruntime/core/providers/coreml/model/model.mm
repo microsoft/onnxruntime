@@ -128,14 +128,24 @@
 }
 
 - (void)cleanup {
+  NSError* error = nil;
   if (compiled_model_path_ != nil) {
-    NSError* error = nil;
     [[NSFileManager defaultManager] removeItemAtPath:compiled_model_path_ error:&error];
-    compiled_model_path_ = nil;
-
     if (error != nil) {
-      LOGS_DEFAULT(WARNING) << "Failed cleaning up compiled model: " << [[error localizedDescription] UTF8String];
+      LOGS_DEFAULT(WARNING) << "Failed cleaning up the compiled model: " << [compiled_model_path_ UTF8String]
+                            << ", error message: " << [[error localizedDescription] UTF8String];
     }
+    compiled_model_path_ = nil;
+  }
+
+  if (coreml_model_path_ != nil) {
+    error = nil;
+    [[NSFileManager defaultManager] removeItemAtPath:coreml_model_path_ error:&error];
+    if (error != nil) {
+      LOGS_DEFAULT(WARNING) << "Failed cleaning up the coreml model: " << [coreml_model_path_ UTF8String]
+                            << ", error message: " << [[error localizedDescription] UTF8String];
+    }
+    coreml_model_path_ = nil;
   }
 }
 

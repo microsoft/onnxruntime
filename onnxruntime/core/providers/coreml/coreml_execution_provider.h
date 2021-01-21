@@ -33,6 +33,6 @@ class CoreMLExecutionProvider : public IExecutionProvider {
   mutable int metadef_id_{0};
 
   // <fused_node_name, <coreml_model_file_path, compiled_coreml_model>>
-  std::unordered_map<std::string, std::pair<std::string, std::unique_ptr<onnxruntime::coreml::Model>>> coreml_models_;
+  std::unordered_map<std::string, std::unique_ptr<onnxruntime::coreml::Model>> coreml_models_;
 };
 }  // namespace onnxruntime
