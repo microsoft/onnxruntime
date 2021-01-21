@@ -4,9 +4,10 @@
 
 import torch
 import pytest
+import warnings
 
 import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training import _utils, ORTModule
 
 # PyTorch model definitions for tests
 
@@ -349,3 +350,20 @@ def test_model_with_multiple_devices_to_cuda():
     with pytest.raises(RuntimeError) as e:
         model = ORTModule(model)
         assert e.value == 'ORTModule supports a single device per model for now'
+
+@pytest.mark.parametrize("device", ['cuda', 'cuda:0', 'cuda:1', 'cuda:2'])
+def test_model_with_different_cuda_devices(device):
+
+    # Trick to run this test in single GPU machines
+    device_id = _utils.get_device_index(device)
+    print(torch.cuda.device_count())
+    if device_id >= torch.cuda.device_count():
+        warnings.warn('Skipping test_model_with_different_cuda_devices(cuda:{})'.format(device_id))
+        return
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    model.to(device)
+    x = torch.randn(N, D_in, device=device)
+    model(x)
