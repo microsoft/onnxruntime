@@ -137,6 +137,12 @@ class CudaKernel : public OpKernel {
   const cusparseLtHandle_t* CusparseLightHandle() const {
     return provider_->PerThreadCuspraseLightHandle();
   }
+
+  // Check if NVidia A100 available
+  bool IsAmpereAvaiable() const {
+    const auto& props = GetDeviceProp();
+    return (props.major * 10 + props.minor) >= 80;
+  }
 #endif
 
  protected:

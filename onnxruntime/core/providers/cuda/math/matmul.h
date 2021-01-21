@@ -22,6 +22,10 @@ class MatMul final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
+#ifdef USE_CUSPARSELT
+  Status PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) override;
+#endif
+
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;

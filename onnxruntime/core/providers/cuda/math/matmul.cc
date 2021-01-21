@@ -22,7 +22,7 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       MatMul,                                                     \
       kOnnxDomain,                                                \
-      9, 12,                                                       \
+      9, 12,                                                      \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -31,7 +31,7 @@ namespace cuda {
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       MatMul,                                                     \
       kOnnxDomain,                                                \
-      13,                                                          \
+      13,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -80,6 +80,37 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
   batch_count = left_p;
   return true;
 }
+
+#ifdef USE_CUSPARSELT
+
+struct Sparse2x4WeightDescriptor {
+  cusparseLtMatDescriptor_t mat_desc_;
+};
+
+template <typename T>
+Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
+  is_packed = false;
+  // We only pack Matrix B just like CPU version
+  // only if it is 2:4 pruned and only if A100 available
+  if (param.input_idx == 1 && param.Is2x4Format() && IsAmpereAvaiable()) {
+    if (!tensor.IsDataType<T>()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Wrong type for the initializer");
+    }
+    const auto& shape = tensor.Shape();
+    if (!shape.NumDimensions() != 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expecting a 2 dim matrix as a weight");
+    }
+    const cusparseLtHandle_t* handle = CusparseLightHandle();
+    std::unique_ptr<Sparse2x4WeightDescriptor> mat_B;
+    cudaDataType
+    cusparseLtStructuredDescriptorInit(handle, &mat_B->mat_desc_, shape.at(0), shape.at(1),
+                                       shape.at(0), sizeof(T), type, CUSPARSE_ORDER_ROW,
+                                       CUSPARSELT_SPARSITY_50_PERCENT);
+    // is_packed = GemmPackBFp32(Info(), tensor, trans_b_attr_, packed_b_, b_shape_);
+  }
+  return Status::OK();
+}
+#endif
 
 template <typename T>
 Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
