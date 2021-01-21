@@ -480,6 +480,9 @@ Status TrainingSession::ConfigureForTraining(
         config.model_with_gradient_graph_path.value(), SaveOption::NO_RELOAD));
   }
 
+  ORT_IGNORE_RETURN_VALUE(
+    Save("with_gradients.onnx", SaveOption::NO_RELOAD));
+
   if (partition_after_ad) {
     ORT_RETURN_IF_ERROR(PartitionGraphForPipeline(
       pipeline_stage_id,
@@ -496,7 +499,7 @@ Status TrainingSession::ConfigureForTraining(
       auto nodes = model_->MainGraph().GetConsumerNodes(name);
       if (!nodes.empty()) {
         weights_to_keep.insert(name);
-      } 
+      }
     }
     weight_names_to_train = weights_to_keep;
     weights_to_train_ = weights_to_keep;

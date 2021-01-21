@@ -128,6 +128,10 @@ bool IsBackward(Node& node) {
   return (node.Description() == "Backward pass");
 }
 
+bool IsBackward(const Node& node) {
+  return (node.Description() == "Backward pass");
+}
+
 NodeArg& CreateTypedNodeArg(Graph& graph, onnx::TensorProto_DataType type, const std::string& name) {
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(type);
@@ -1670,17 +1674,33 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
 //   - stages[i] is the stage id assigned to the operator with Index() == i.
 //   - num_stages is the total number of stages.
 //   - graph is the graph being partitioned into multiple pipeline stages.
-Status VerifyAssignment(const std::vector<int>& stages,
-                        const int num_stages,
-                        const Graph& graph) {
-  // All stages are used.
+// TODO(jufranc): update the documentation.
+Status VerifyAssignment(const Graph& graph,
+                        const std::map<const Node*, int>& op_to_stage,
+                        const int num_stages) {
+  const auto& nodes = graph.Nodes();
+  // First, we build an auxiliary vector of stages, where stages[i] contains the
+  // stage assigned to nodes[i] or -1 if nodes[i] has not been assigned a stage.
+  std::vector<int> stages(graph.NumberOfNodes(), -1);
+  int i = 0;
+  for (const auto& node : nodes) {
+    const auto found = op_to_stage.find(&node);
+    if (found != op_to_stage.end()) {
+      stages.at(i) = found->second;
+    }
+    i++;
+  }
+  
+  // All stages are used, i.e., for each stage s, there is at least one instance
+  // of s in stages.
   for (int s = 0; s < num_stages; ++s) {
     const auto stage_is_used = std::find(std::begin(stages), std::end(stages), s);
     ORT_RETURN_IF_NOT(stage_is_used != std::end(stages),
-                      "Stage " + std::to_string(s) + " was not assigned to any node.");
+                      "Stage ", s, " was not assigned to any node.");
   }
 
-  // All nodes have been assigned to a stage.
+  // All nodes have been assigned to a stage, i.e., there is not instance of -1
+  // in stages.
   const auto op_assigned = std::find(std::begin(stages), std::end(stages), -1);
   ORT_RETURN_IF_NOT(op_assigned == std::end(stages),
                     "All ops must be assigned to a stage");
@@ -1691,32 +1711,43 @@ Status VerifyAssignment(const std::vector<int>& stages,
                       "All stage ids must be in range.");
   }
 
-  // Edges always go forward.
-  GraphViewer graph_viewer(graph);
-  const auto& all_nodes = graph_viewer.GetNodesInTopologicalOrder();
-  for (auto& idx : all_nodes) {
-    const Node* node = graph.GetNode(idx);
-    const int node_stage = stages.at(idx);
-    const auto& node_outputs = node->OutputDefs();
+  // Edges always go forward, i.e, for each tensor produced in the forward
+  // stages of this graph, the stage assigned to its producer is smaller/equal
+  // to the stage assigned to any of its consumers, and for each tensor producer
+  // equal to the stage assigned to any of its consumers.
+  for (const auto& producer : nodes) {
+    const int producer_stage = op_to_stage.at(&producer);
+    const auto& node_outputs = producer.OutputDefs();
     for (const NodeArg* arg : node_outputs) {
       if (arg == nullptr || !arg->HasTensorOrScalarShape() || !arg->Exists())
         continue;
-      auto cs = graph.GetConsumerNodes(arg->Name());
-      for (const Node* c : cs) {
-        const int outgoing_stage = stages.at(c->Index());
-        ORT_RETURN_IF_NOT(node_stage <= outgoing_stage,
-                          "Sending a tensor from stage ", node_stage, " to ", outgoing_stage, " is not possible.");
+      const auto consumers = graph.GetConsumerNodes(arg->Name());
+      for (const Node* consumer : consumers) {
+        const int consumer_stage = op_to_stage.at(consumer);
+        if (!IsBackward(producer)) {
+          // If the producer is a forward node, then the consumer will be either
+          // forward or backward. Either way the stage of the consumer should be
+          // assigned to a later stage.
+          ORT_RETURN_IF_NOT(producer_stage <= consumer_stage,
+                            "Sending a tensor from stage ", producer_stage, " to ",
+                            consumer_stage, " during forward phase is not possible.");
+        } else {
+          // If the producer is a backward node, then the consumer will be a
+          // backward node as well and assigned to an earlier stage.
+          ORT_RETURN_IF_NOT(producer_stage >= consumer_stage,
+                            "Sending a tensor from stage ", producer_stage, " to ", 
+                            consumer_stage, " during backward phase is not possible.");
+        }
       }
     }
   }
-
   return Status::OK();
 }
 
 Status GetDeviceAssignmentMap(const Graph& graph,
                               const std::map<std::string, int>& id_to_stage,
                               std::map<const Node*, int>& op_to_stage,
-                              const int /*num_stages*/) {
+                              const int num_stages) {
   const auto& all_nodes = graph.Nodes();
   for (const auto& node : all_nodes) {
     const auto& node_name = node.Name();
@@ -1739,8 +1770,7 @@ Status GetDeviceAssignmentMap(const Graph& graph,
     ORT_RETURN_IF_NOT(found, "Can't find node's stage: ", node_info);
   }
 
-  // TODO(jufranc). This assignment needs to be verified.
-  // ORT_RETURN_IF_ERROR(VerifyAssignment(stages, num_stages, graph));
+  ORT_RETURN_IF_ERROR(VerifyAssignment(graph, op_to_stage, num_stages));
 
   return Status::OK();
 }
@@ -1887,11 +1917,11 @@ Status GetDeviceAssignmentMap(const Graph& graph,
         visit_and_assign(all_consumers.at(cid), cid + 1, stop_visit, stages));
   }
 
-  ORT_RETURN_IF_ERROR(VerifyAssignment(stages, num_cuts + 1, graph));
-
   for (size_t i = 0, t = graph.NumberOfNodes(); i < t; ++i) {
     op_to_stage.emplace(graph.GetNode(i), stages.at(i));
   }
+  
+  ORT_RETURN_IF_ERROR(VerifyAssignment(graph, op_to_stage, num_stages));
 
   return Status::OK();
 }
