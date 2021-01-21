@@ -252,6 +252,15 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
   return true;
 }
 
+const char* convert_wchar_to_char(const PathString& path_string) {
+#ifdef _WIN32
+  char model_path[4096];
+  wcstombs(model_path, path_string.c_str(), sizeof(model_path));
+  return model_path;
+#else
+  return path_string.c_str();
+#endif
+}
 }  // namespace
 
 namespace google {
@@ -872,9 +881,8 @@ std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // Get ModelPath
-  const auto& wchar_path = graph.ModelPath().ToPathString();
-  char model_path[4096];
-  wcstombs(model_path, wchar_path.c_str(), sizeof(model_path));
+  const auto& path_string = graph.ModelPath().ToPathString();
+  const char* model_path = convert_wchar_to_char(path_string);
 
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
@@ -947,12 +955,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     }
     const Graph& graph_body = func_body->Body();
     auto graph_body_viewer = graph_body.CreateGraphViewer();
-    const auto& wchar_path = graph_body_viewer->ModelPath().ToPathString();
-    char model_path[4096];
-    wcstombs(model_path, wchar_path.c_str(), sizeof(model_path));
+    const auto& path_string = graph_body_viewer->ModelPath().ToPathString();
+    const char* model_path = convert_wchar_to_char(path_string);
+
     auto model = graph_body_viewer->CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
-
     *model_proto->mutable_graph() = *graph_body.ToGraphProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     std::string string_buf;
