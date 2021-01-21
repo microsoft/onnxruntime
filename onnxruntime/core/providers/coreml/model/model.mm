@@ -92,8 +92,8 @@
 
     MLMultiArrayDataType data_type = MLMultiArrayDataTypeFloat32;
     if (input.tensor_info.data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      LOGS_DEFAULT(WARNING) << "Input data type is not float, actual type: "
-                            << input.tensor_info.data_type;
+      LOGS_DEFAULT(ERROR) << "Input data type is not float, actual type: "
+                          << input.tensor_info.data_type;
       return nil;
     }
 
@@ -105,8 +105,8 @@
                                                           deallocator:(^(void* /* bytes */){
                                                                       })error:&error];
     if (error != nil) {
-      LOGS_DEFAULT(WARNING) << "Failed to create MLMultiArray for feature: " << [featureName UTF8String]
-                            << ", error: " << [[error localizedDescription] UTF8String];
+      LOGS_DEFAULT(ERROR) << "Failed to create MLMultiArray for feature: " << [featureName UTF8String]
+                          << ", error: " << [[error localizedDescription] UTF8String];
       return nil;
     }
 
@@ -132,8 +132,8 @@
   if (compiled_model_path_ != nil) {
     [[NSFileManager defaultManager] removeItemAtPath:compiled_model_path_ error:&error];
     if (error != nil) {
-      LOGS_DEFAULT(WARNING) << "Failed cleaning up the compiled model: " << [compiled_model_path_ UTF8String]
-                            << ", error message: " << [[error localizedDescription] UTF8String];
+      LOGS_DEFAULT(ERROR) << "Failed cleaning up the compiled model: " << [compiled_model_path_ UTF8String]
+                          << ", error message: " << [[error localizedDescription] UTF8String];
     }
     compiled_model_path_ = nil;
   }
@@ -142,8 +142,8 @@
     error = nil;
     [[NSFileManager defaultManager] removeItemAtPath:coreml_model_path_ error:&error];
     if (error != nil) {
-      LOGS_DEFAULT(WARNING) << "Failed cleaning up the coreml model: " << [coreml_model_path_ UTF8String]
-                            << ", error message: " << [[error localizedDescription] UTF8String];
+      LOGS_DEFAULT(ERROR) << "Failed cleaning up the coreml model: " << [coreml_model_path_ UTF8String]
+                          << ", error message: " << [[error localizedDescription] UTF8String];
     }
     coreml_model_path_ = nil;
   }
@@ -234,9 +234,6 @@
                              "Input data type is not float, actual type: ",
                              output_tensor.tensor_info.data_type);
     }
-
-    // Delete
-    NSLog(@"outputData[0] %f", ((float*)model_output_data)[5]);
 
     size_t output_data_byte_size = num_elements * sizeof(float);
     memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);

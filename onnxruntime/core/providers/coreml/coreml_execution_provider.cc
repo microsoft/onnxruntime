@@ -253,10 +253,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
         inputs.emplace(
             input_name,
             coreml::OnnxTensorData{
-                coreml::OnnxTensorInfo{
-                    ort.GetTensorElementType(tensor_info),
-                    shape,
-                },
+                coreml::OnnxTensorInfo{ort.GetTensorElementType(tensor_info), shape},
                 // CoreML MLMultiArray API expect input to be non-const
                 // https://developer.apple.com/documentation/coreml/mlmultiarray/2881219-initwithdatapointer?language=objc
                 const_cast<void*>(inputBuffer),
@@ -283,9 +280,8 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           if (model->IsScalarOutput(output_name))
             output_shape.clear();
 
-          auto* output_tensor = ort.KernelContext_GetOutput(context, i,
-                                                            output_shape.data(),
-                                                            output_shape.size());
+          auto* output_tensor =
+              ort.KernelContext_GetOutput(context, i, output_shape.data(), output_shape.size());
 
           void* output_buffer;
           switch (output_type) {
@@ -294,19 +290,15 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
               break;
             default:
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                     "Unsupported output name: ", output_name, ", type: ", output_type);
+                                     "Unsupported type: ", output_type, " for output: ", output_name);
               break;
           }
 
-          outputs.emplace(
-              output_name,
-              coreml::OnnxTensorData{
-                  coreml::OnnxTensorInfo{
-                      output_type,
-                      output_shape,
-                  },
-                  output_buffer,
-              });
+          outputs.emplace(output_name,
+                          coreml::OnnxTensorData{
+                              coreml::OnnxTensorInfo{output_type, output_shape},
+                              output_buffer,
+                          });
         }
 
         return model->Predict(inputs, outputs);

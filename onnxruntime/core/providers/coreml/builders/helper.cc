@@ -35,12 +35,35 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer) {
   }
 }
 
+bool GraphHasValidInputs(const GraphViewer& graph_viewer) {
+  for (const auto* node_arg : graph_viewer.GetInputs()) {
+    const auto& input_name = node_arg->Name();
+    const auto* shape_proto = node_arg->Shape();
+    if (!shape_proto) {
+      LOGS_DEFAULT(WARNING) << "Input [" << input_name << "] has no shape";
+      return false;
+    }
+
+    for (const auto& dim : shape_proto->dim()) {
+      if (!dim.has_dim_value()) {
+        LOGS_DEFAULT(WARNING) << "Dynamic shape is not supported yet, for input:" << input_name;
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer) {
   std::vector<std::vector<size_t>> supported_node_vecs;
   if (!util::HasRequiredBaseOS()) {
     LOGS_DEFAULT(WARNING) << "All ops will fallback to CPU EP, because we do not have supported OS";
     return supported_node_vecs;
   }
+
+  if (!GraphHasValidInputs(graph_viewer))
+    return supported_node_vecs;
 
   std::vector<size_t> supported_node_vec;
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
@@ -55,12 +78,16 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
     if (supported) {
       supported_node_vec.push_back(i);
     } else {
-      supported_node_vecs.push_back(supported_node_vec);
-      supported_node_vec.clear();
+      if (!supported_node_vec.empty()) {
+        supported_node_vecs.push_back(supported_node_vec);
+        supported_node_vec.clear();
+      }
     }
   }
 
-  supported_node_vecs.push_back(supported_node_vec);
+  if (!supported_node_vec.empty()) {
+    supported_node_vecs.push_back(supported_node_vec);
+  }
 
   return supported_node_vecs;
 }
