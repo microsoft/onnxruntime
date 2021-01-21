@@ -875,7 +875,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 #ifdef _WIN32
   wcstombs(model_path_, path_string.c_str(), sizeof(model_path_));
 #else
-  model_path_ = path_string.c_str());
+  strcpy(model_path_, path_string.c_str());
 #endif
 
   // Get supported node list from TensorRT parser
