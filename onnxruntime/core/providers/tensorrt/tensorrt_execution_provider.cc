@@ -41,14 +41,6 @@ std::string GetCachePath(const std::string& root, const std::string& name) {
   }
 }
 
-std::string GetVecHash(const std::string& vec) {
-  std::size_t ret = vec.size();
-  for (auto i : vec) {
-    ret ^= static_cast<int>(i) + 0x9e3779b9 + (ret << 6) + (ret >> 2);
-  }
-  return std::to_string(ret);
-}
-
 float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
   int s = (input >> 31) & 0x01;
   int e = ((input & 0x7f800000) >> 23) - 127;
