@@ -53,7 +53,7 @@ Status SequencePooling<T>::Compute(OpKernelContext* context) const {
   const Tensor* input_tensor = context->Input<Tensor>(0);
   const T* input_data = input_tensor->template Data<T>();
   const Tensor* sentence_lengthes_tensor = context->Input<Tensor>(1);
-  const int32_t* sentence_lengthes_data = sentence_lengthes_tensor->template Data<int32_t>();
+  const int64_t* sentence_lengthes_data = sentence_lengthes_tensor->template Data<int64_t>();
 
   // shape info
   const auto& input_shape = input_tensor->Shape().GetDims();
@@ -64,9 +64,9 @@ Status SequencePooling<T>::Compute(OpKernelContext* context) const {
   const int num_sequences = static_cast<int>(sentence_lengthes_shape[1]);
 
   // check inputs
-  std::vector<std::vector<int32_t>> sentence_lengthes_prefixsum;
+  std::vector<std::vector<int64_t>> sentence_lengthes_prefixsum;
   for (int batch = 0; batch < batch_size; ++batch) {
-    std::vector<int32_t> sentence_length_prefixsum;
+    std::vector<int64_t> sentence_length_prefixsum;
     sentence_length_prefixsum.reserve(num_sequences);
 
     const std::ptrdiff_t offset(batch * num_sequences);
@@ -91,8 +91,8 @@ Status SequencePooling<T>::Compute(OpKernelContext* context) const {
   for (int batch = 0; batch < batch_size; ++batch) {
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
-        const int32_t* sentence_length_data(sentence_lengthes_data + i);
-        const int32_t sentence_length(*sentence_length_data);
+        const int64_t* sentence_length_data(sentence_lengthes_data + i);
+        const int64_t sentence_length(*sentence_length_data);
         if (sentence_length == 0) {
           continue;
         }
@@ -109,7 +109,8 @@ Status SequencePooling<T>::Compute(OpKernelContext* context) const {
   }
 
   // optional 2: column-based, need to transpose first, easy to parallel(even distribution), especially in cuda
-  // todo
+  // todo:
+
   return Status::OK();
 }
 
