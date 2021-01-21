@@ -251,16 +251,6 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
   }
   return true;
 }
-
-const char* convert_wchar_to_char(const PathString& path_string) {
-#ifdef _WIN32
-  char model_path[4096];
-  wcstombs(model_path, path_string.c_str(), sizeof(model_path));
-  return model_path;
-#else
-  return path_string.c_str();
-#endif
-}
 }  // namespace
 
 namespace google {
@@ -630,7 +620,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 }
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
-                                                                 const GraphViewer& graph, const char* model_path, bool* early_termination) const {
+                                                                 const GraphViewer& graph, const std::string& model_path, bool* early_termination) const {
   // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
   if (iterations > max_iterations) {
@@ -747,7 +737,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
 
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path);
+        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path.c_str());
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
@@ -882,7 +872,12 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // Get ModelPath
   const auto& path_string = graph.ModelPath().ToPathString();
-  const char* model_path = convert_wchar_to_char(path_string);
+#ifdef _WIN32
+  model_path_.reserve[4096];
+  wcstombs(model_path_.c_str(), path_string.c_str(), sizeof(model_path_));
+#else
+  model_path_ = std::string(path_string);
+#endif
 
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
@@ -890,7 +885,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
   SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
   bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, model_path, &early_termination);
+  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, model_path_, &early_termination);
   if (early_termination) {
     supported_nodes_vector.clear();
   }
@@ -955,9 +950,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     }
     const Graph& graph_body = func_body->Body();
     auto graph_body_viewer = graph_body.CreateGraphViewer();
-    const auto& path_string = graph_body_viewer->ModelPath().ToPathString();
-    const char* model_path = convert_wchar_to_char(path_string);
-
     auto model = graph_body_viewer->CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
     *model_proto->mutable_graph() = *graph_body.ToGraphProto();
@@ -977,7 +969,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
     auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
     auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-    trt_parser->parse(string_buf.data(), string_buf.size(), model_path);
+    trt_parser->parse(string_buf.data(), string_buf.size(), model_path_.c_str());
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
     int num_inputs = trt_network->getNbInputs();
