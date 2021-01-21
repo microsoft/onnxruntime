@@ -565,7 +565,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .Input(1, "batch_sentence_lengthes", "2D batch_sentence_lengthes with shape (batch_size, num_sequences)", "M")
       .Output(0, "output", "3D output tensor with shape (batch_size, num_sequences, hidden_size)", "T")
       .Output(1, "masks", "2D masks tensor with shape (batch_size, num_sequences)", "T")
-      .TypeConstraint("M", {"tensor(int32)"}, "Constrain input and output integer tensors types")
+      .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output integer tensors types")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
