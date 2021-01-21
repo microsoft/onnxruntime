@@ -75,7 +75,7 @@ jobs:
           --display_loss_steps 1 --use_nccl --use_mixed_precision --allreduce_in_fp16 --gradient_accumulation_steps 48 --num_train_steps 96 \
           --train_batch_size 40 --data_parallel_size 2 --pipeline_parallel_size 2 \
           --cut_group_info 1881:407-1951/2073/2195/2317/2439/2561/2683/2805/2927/3049/3171/3293
-              displayName: 'mpirun onnxruntime_training_bert --pipeline_parallel_size 4'
+    displayName: 'mpirun onnxruntime_training_bert --data_parallel_size 2 --pipeline_parallel_size 2'
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 10
 
