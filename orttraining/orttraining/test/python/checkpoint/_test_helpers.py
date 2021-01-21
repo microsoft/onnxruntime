@@ -12,7 +12,7 @@ from onnxruntime import set_seed
 from onnxruntime.training import amp, checkpoint, _checkpoint_storage, optim, orttrainer
 from onnxruntime.capi._pybind_state import set_cuda_device_id, get_mpi_context_world_rank, get_mpi_context_world_size
 
-from _test_commons import generate_random_input_from_model_desc, generate_dummy_optim_state, \
+from _test_commons import generate_random_input_from_bart_model_desc, generate_dummy_optim_state, \
                           _load_pytorch_transformer_model, _load_bart_model, \
                           assert_all_states_close_ort, assert_all_states_close_pytorch
 
@@ -64,8 +64,8 @@ def _setup_test_infra(world_rank, world_size):
     dist.init_process_group(backend='nccl', world_size=world_size, rank=world_rank)
 
 def _is_model_parallel_run(trainer_options):
-    zero = ('distributed' in trainer_options) and ('deepspeed_zero_optimization' in trainer_options['distributed']) and (trainer_options['distributed']['deepspeed_zero_optimization']['stage'] > 0)
-    megatron = ('distributed' in trainer_options) and ('horizontal_parallel_size' in trainer_options['distributed']) and (trainer_options['distributed']['horizontal_parallel_size'] > 1)
+    zero = trainer_options.distributed.deepspeed_zero_optimization.stage > 0
+    megatron = trainer_options.distributed.horizontal_parallel_size > 1
     return zero or megatron
 
 def distributed_setup(func):
@@ -89,7 +89,7 @@ def distributed_setup(func):
 
     return setup
 
-def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir, use_lamb=True):
+def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir, use_lamb=True, seed=1, learning_rate=0.1):
     """Instantiate and load checkpoint into trainer
 
     - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple transformer model
@@ -97,12 +97,10 @@ def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir, 
     - Runs eval_step on the trainer so the trainer onnx graph is initialized
     - Returns the trainer state_dict and the pytorch model
     """
-    seed = 1
     torch.manual_seed(seed)
     set_seed(seed)
 
-    # PyTorch transformer model setup
-    learning_rate = 0.1
+    # PyTorch transformer model setup    
     optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
     model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
@@ -120,7 +118,7 @@ def create_orttrainer_and_load_checkpoint(device, trainer_opts, checkpoint_dir, 
 
     return trainer.state_dict(), model
 
-def create_orttrainer_and_load_checkpoint_bart(device, trainer_opts, checkpoint_dir, use_lamb=True):
+def create_orttrainer_and_load_checkpoint_bart(device, trainer_opts, checkpoint_dir, use_lamb=True, seed=1, learning_rate=0.1):
     """Instantiate and load checkpoint into trainer
 
     - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple BART model
@@ -128,12 +126,10 @@ def create_orttrainer_and_load_checkpoint_bart(device, trainer_opts, checkpoint_
     - Runs eval_step on the trainer so the trainer onnx graph is initialized
     - Returns the trainer state_dict, the expected state dict if present, and the onnx model
     """
-    seed = 1
     torch.manual_seed(seed)
     set_seed(seed)
 
     # model setup
-    learning_rate = 0.1
     optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
     model, model_desc = _load_bart_model()
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=orttrainer.ORTTrainerOptions(trainer_opts))
@@ -144,7 +140,7 @@ def create_orttrainer_and_load_checkpoint_bart(device, trainer_opts, checkpoint_
     trainer.load_checkpoint(*checkpoint_files)
 
     # run an eval step to innitialize the graph
-    src_tokens, prev_output_tokens, target = generate_random_input_from_model_desc(model_desc, seed = seed)
+    src_tokens, prev_output_tokens, target = generate_random_input_from_bart_model_desc(model_desc, seed = seed)
     trainer.eval_step(src_tokens, prev_output_tokens, target)
 
     expected_state_dict = None
@@ -155,12 +151,10 @@ def create_orttrainer_and_load_checkpoint_bart(device, trainer_opts, checkpoint_
 
     return trainer.state_dict(), expected_state_dict, model
 
-def create_initialized_orttrainer(device, trainer_opts, use_lamb=True):
-    seed = 1
+def create_initialized_orttrainer(device, trainer_opts, use_lamb=True, seed=1, learning_rate=1e-10):
     torch.manual_seed(seed)
     set_seed(seed)
 
-    learning_rate = 1e-10
     optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
     model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
@@ -290,16 +284,14 @@ def aggregate_states(checkpoint_dir, filename_prefix='state_dict', state_dict_ke
     
     return aggregated_states
 
-def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, state_dict_key_name='state_dict', use_lamb=True):
-    learning_rate = 0.1
-    seed = 1
-
+def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, state_dict_key_name='state_dict', use_lamb=True, seed=1, learning_rate=0.1):
     torch.manual_seed(seed)
     set_seed(seed)
 
+    ort_trainer_opts = orttrainer.ORTTrainerOptions(trainer_opts)
     optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
     model, model_desc, loss_fn, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=orttrainer.ORTTrainerOptions(trainer_opts))
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=loss_fn, options=ort_trainer_opts)
 
     if 'distributed' in trainer_opts:
         train_data = next(islice(_chunkify(train_data, trainer_opts['distributed']['world_size']), trainer_opts['distributed']['world_rank'], None))
@@ -309,28 +301,26 @@ def create_orttrainer_and_save_checkpoint(device, trainer_opts, checkpoint_dir, 
 
     # save current model parameters as a checkpoint
     if checkpoint_dir:
-        if _is_model_parallel_run(trainer_opts):
-            _save(trainer, checkpoint_dir, state_dict_key_name, world_rank=trainer_opts['distributed']['world_rank'])
+        if _is_model_parallel_run(ort_trainer_opts):
+            _save(trainer, checkpoint_dir, state_dict_key_name, world_rank=ort_trainer_opts.distributed.world_rank)
         else:
             _save(trainer, checkpoint_dir, state_dict_key_name)
 
-def create_orttrainer_and_save_checkpoint_bart(device, trainer_opts, checkpoint_dir, state_dict_key_name='state_dict', use_lamb=True):
-    """Instantiate trainer and save checkpoint for BART. BART is used for Megatron checkpoint tests.
+def create_orttrainer_and_save_checkpoint_bart(device, trainer_opts, checkpoint_dir, state_dict_key_name='state_dict', use_lamb=True, seed=1, learning_rate=0.1):
+    """Instantiate trainer and save checkpoint for BART.
 
     - Instantiates the ORTTrainer with given input trainer_opts configuration for a simple BART model
     - Loads a dummy optimizer state into the trainer
     - Runs eval_step on the trainer so the trainer onnx graph is initialized
     - Returns the trainer state_dict, the expected state dict if present, and the onnx model
     """
-    learning_rate = 0.1
-    seed = 1
-
     torch.manual_seed(seed)
     set_seed(seed)
 
+    ort_trainer_opts = orttrainer.ORTTrainerOptions(trainer_opts)
     optim_config = optim.LambConfig(lr=learning_rate) if use_lamb else optim.AdamConfig(lr=learning_rate)
     model, model_desc = _load_bart_model()
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=orttrainer.ORTTrainerOptions(trainer_opts))
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=ort_trainer_opts)
 
     # load dummy optimizer state as we are not going to run real training
     dummy_init_state = generate_dummy_optim_state(model, optim_config)
@@ -338,15 +328,15 @@ def create_orttrainer_and_save_checkpoint_bart(device, trainer_opts, checkpoint_
     trainer.load_state_dict(dummy_init_state)
 
     # run an eval step to innitialize the graph
-    src_tokens, prev_output_tokens, target = generate_random_input_from_model_desc(model_desc, seed = seed)
+    src_tokens, prev_output_tokens, target = generate_random_input_from_bart_model_desc(model_desc, seed = seed)
     trainer.eval_step(src_tokens, prev_output_tokens, target)
 
     # save current model parameters as a checkpoint
     if checkpoint_dir:
-        if _is_model_parallel_run(trainer_opts):
-            _save(trainer, checkpoint_dir, state_dict_key_name, world_rank=trainer_opts['distributed']['world_rank'])
+        if _is_model_parallel_run(ort_trainer_opts):
+            _save(trainer, checkpoint_dir, state_dict_key_name, world_rank=ort_trainer_opts.distributed.world_rank)
             # save the initial complete model and optimizer states
-            if trainer_opts['distributed']['world_rank'] == 0:
+            if ort_trainer_opts.distributed.world_rank == 0:
                 init_state['model'] = {'full_precision': dict()}
                 for initializer in model.graph.initializer:
                     init_state['model']['full_precision'][initializer.name] = numpy_helper.to_array(initializer)
@@ -355,10 +345,7 @@ def create_orttrainer_and_save_checkpoint_bart(device, trainer_opts, checkpoint_
         else:
             _save(trainer, checkpoint_dir, state_dict_key_name)
 
-def load_model_optim_state_and_eval(device, trainer_opts, use_lamb=True):
-    learning_rate = 0.1
-    seed = 1
-
+def load_model_optim_state_and_eval(device, trainer_opts, use_lamb=True, seed=1, learning_rate=0.1):
     torch.manual_seed(seed)
     set_seed(seed)
 

@@ -301,20 +301,20 @@ def _to_pytorch_format(state_dict):
 def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world_size):
     """Returns the D and H groups for the given sizes"""
     num_data_groups = world_size // data_parallel_size
-    data_groups = {}
+    data_groups = []
     for data_group_id in range(num_data_groups):
         data_group_ranks=[]
         for r in range(data_parallel_size):
             data_group_ranks.append(data_group_id + horizontal_parallel_size * r)
-        data_groups[data_group_id] = data_group_ranks
+        data_groups.append(data_group_ranks)
 
     num_horizontal_groups = world_size // horizontal_parallel_size
-    horizontal_groups = {}
+    horizontal_groups = []
     for hori_group_id in range(num_horizontal_groups):
         hori_group_ranks=[]
         for r in range(horizontal_parallel_size):
             hori_group_ranks.append(hori_group_id * horizontal_parallel_size + r)
-        horizontal_groups[hori_group_id] = hori_group_ranks
+        horizontal_groups.append(hori_group_ranks)
 
     return data_groups, horizontal_groups
 
@@ -409,36 +409,36 @@ def _aggregate_over_ranks(ordered_paths, ranks, sharded_states_original_dims = N
     return _to_pytorch_format(state_dict) if pytorch_format else state_dict
 
 def _aggregate_over_D_H(ordered_paths, D_groups, H_groups, pytorch_format):
+    """Aggregate checkpoint files and return a single state dictionary for the D+H
+        (Zero+Megatron) partitioning strategy.
+        For D+H aggregation scenario, the first pass of aggregation(partial aggregation) is over D groups 
+        to aggregate over Zero, and another pass over the previously aggregated states 
+        to aggregate Megatron partitioned states.
+    """
     sharded_states_original_dims = {}
-    save_dir = tempfile.mkdtemp()
-    os.makedirs(save_dir, exist_ok = True) 
-
     aggregate_data_checkpoint_files = []
+
     # combine for Zero over data groups and save to temp file
-    for group_id in range(len(D_groups)):
-        aggregate_state_dict = _aggregate_over_ranks(ordered_paths['D'][group_id], D_groups[group_id], sharded_states_original_dims, partial_aggregation = True, pytorch_format=False)
+    with tempfile.TemporaryDirectory() as save_dir:
+        for group_id, d_group in enumerate(D_groups):
+            aggregate_state_dict = _aggregate_over_ranks(ordered_paths['D'][group_id], d_group, sharded_states_original_dims, partial_aggregation = True, pytorch_format=False)
 
-        filename = 'ort.data_group.' + str(group_id) + '.ort.pt'
-        filepath = os.path.join(save_dir, filename)
-        _checkpoint_storage.save(aggregate_state_dict, filepath)
-        aggregate_data_checkpoint_files.append(filepath)
+            filename = 'ort.data_group.' + str(group_id) + '.ort.pt'
+            filepath = os.path.join(save_dir, filename)
+            _checkpoint_storage.save(aggregate_state_dict, filepath)
+            aggregate_data_checkpoint_files.append(filepath)
 
-    assert len(aggregate_data_checkpoint_files) > 0
+        assert len(aggregate_data_checkpoint_files) > 0
 
-    # combine for megatron:            
-    aggregate_state = _aggregate_over_ranks(aggregate_data_checkpoint_files, H_groups[0], sharded_states_original_dims, mode = _AGGREGATION_MODE.Megatron, pytorch_format = pytorch_format)
-
-    # remove temp files created
-    for f in aggregate_data_checkpoint_files:
-        os.remove(f)
-    os.rmdir(save_dir)
+        # combine for megatron:
+        aggregate_state = _aggregate_over_ranks(aggregate_data_checkpoint_files, H_groups[0], sharded_states_original_dims, mode = _AGGREGATION_MODE.Megatron, pytorch_format = pytorch_format)
 
     return aggregate_state
 
 def aggregate_checkpoints(paths, pytorch_format=True):
     """Aggregate checkpoint files and return a single state dictionary
 
-    Aggregates checkpoint files specified by paths and laods the checkpoint file one at a time merging
+    Aggregates checkpoint files specified by paths and loads them one at a time, merging
     them into a single state dictionary.
     The checkpoint files represented by paths must be saved through ORTTrainer.save_checkpoint() function.
     The schema of the state_dict returned will be in the same as the one returned by ORTTrainer.state_dict()

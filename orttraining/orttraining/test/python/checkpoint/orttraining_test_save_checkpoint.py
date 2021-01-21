@@ -13,12 +13,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from _test_helpers import distributed_setup, create_orttrainer_and_save_checkpoint, create_orttrainer_and_save_checkpoint_bart
 
-def single_node_full_precision(device = 'cuda', checkpoint_dir = 'checkpoint_dir/single_node/full_precision/'):
+def single_node_full_precision(checkpoint_dir, device = 'cuda'):
     opts = {'device' : {'id' : device},
             'debug' : {'deterministic_compute': True}}
     create_orttrainer_and_save_checkpoint(device, opts, checkpoint_dir)
 
-def single_node_mixed_precision(device = 'cuda', checkpoint_dir = 'checkpoint_dir/single_node/mixed_precision/'):
+def single_node_mixed_precision(checkpoint_dir, device = 'cuda'):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -29,12 +29,12 @@ def single_node_mixed_precision(device = 'cuda', checkpoint_dir = 'checkpoint_di
             }
     create_orttrainer_and_save_checkpoint(device, opts, checkpoint_dir)
 
-def single_node_full_precision_bart(device = 'cuda', checkpoint_dir = 'checkpoint_dir/bart/single_node/full_precision/'):
+def single_node_full_precision_bart(checkpoint_dir, device = 'cuda'):
     opts = {'device' : {'id' : device},
             'debug' : {'deterministic_compute': True}}
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir)
 
-def single_node_mixed_precision_bart(device = 'cuda', checkpoint_dir = 'checkpoint_dir/bart/single_node/mixed_precision/'):
+def single_node_mixed_precision_bart(checkpoint_dir, device = 'cuda'):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -46,7 +46,7 @@ def single_node_mixed_precision_bart(device = 'cuda', checkpoint_dir = 'checkpoi
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir)
 
 @distributed_setup
-def data_parallelism_full_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/data_parallelism/full_precision/'):
+def data_parallelism_full_precision(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -60,7 +60,7 @@ def data_parallelism_full_precision(world_rank, world_size, device, checkpoint_d
     create_orttrainer_and_save_checkpoint(device, opts, checkpoint_dir if world_rank == 0 else None)
 
 @distributed_setup
-def data_parallelism_mixed_precision(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/data_parallelism/mixed_precision/'):
+def data_parallelism_mixed_precision(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -78,7 +78,7 @@ def data_parallelism_mixed_precision(world_rank, world_size, device, checkpoint_
     create_orttrainer_and_save_checkpoint(device, opts, checkpoint_dir if world_rank == 0 else None)
 
 @distributed_setup
-def data_parallelism_full_precision_bart(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/bart/data_parallelism/full_precision/'):
+def data_parallelism_full_precision_bart(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -92,7 +92,7 @@ def data_parallelism_full_precision_bart(world_rank, world_size, device, checkpo
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir if world_rank == 0 else None)
 
 @distributed_setup
-def data_parallelism_mixed_precision_bart(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/bart/data_parallelism/mixed_precision/'):
+def data_parallelism_mixed_precision_bart(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -110,7 +110,7 @@ def data_parallelism_mixed_precision_bart(world_rank, world_size, device, checkp
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir if world_rank == 0 else None)
 
 @distributed_setup
-def distributed_zero_full_precision_adam(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/adam/'):
+def distributed_zero_full_precision_adam(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -128,7 +128,7 @@ def distributed_zero_full_precision_adam(world_rank, world_size, device, checkpo
     create_orttrainer_and_save_checkpoint(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank), use_lamb=False)
 
 @distributed_setup
-def distributed_zero_mixed_precision_adam(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/adam/'):
+def distributed_zero_mixed_precision_adam(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -150,7 +150,7 @@ def distributed_zero_mixed_precision_adam(world_rank, world_size, device, checkp
     create_orttrainer_and_save_checkpoint(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank), use_lamb=False)
 
 @distributed_setup
-def distributed_zero_full_precision_lamb(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/full_precision/lamb/'):
+def distributed_zero_full_precision_lamb(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -168,7 +168,7 @@ def distributed_zero_full_precision_lamb(world_rank, world_size, device, checkpo
     create_orttrainer_and_save_checkpoint(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank))
 
 @distributed_setup
-def distributed_zero_mixed_precision_lamb(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero/mixed_precision/lamb/'):
+def distributed_zero_mixed_precision_lamb(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -190,7 +190,7 @@ def distributed_zero_mixed_precision_lamb(world_rank, world_size, device, checkp
     create_orttrainer_and_save_checkpoint(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank))
 
 @distributed_setup
-def distributed_zero_full_precision_lamb_bart(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/bart/distributed_zero/full_precision/lamb/'):
+def distributed_zero_full_precision_lamb_bart(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -208,7 +208,7 @@ def distributed_zero_full_precision_lamb_bart(world_rank, world_size, device, ch
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank))
 
 @distributed_setup
-def distributed_zero_mixed_precision_lamb_bart(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/bart/distributed_zero/mixed_precision/lamb/'):
+def distributed_zero_mixed_precision_lamb_bart(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -231,7 +231,7 @@ def distributed_zero_mixed_precision_lamb_bart(world_rank, world_size, device, c
 
 
 @distributed_setup
-def distributed_megatron_full_precision_adam(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_megatron/full_precision/adam/'):
+def distributed_megatron_full_precision_adam(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -246,7 +246,7 @@ def distributed_megatron_full_precision_adam(world_rank, world_size, device, che
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank), use_lamb=False)
 
 @distributed_setup
-def distributed_megatron_mixed_precision_adam(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_megatron/mixed_precision/adam/'):
+def distributed_megatron_mixed_precision_adam(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -265,7 +265,7 @@ def distributed_megatron_mixed_precision_adam(world_rank, world_size, device, ch
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank), use_lamb=False)
 
 @distributed_setup
-def distributed_megatron_full_precision_lamb(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_megatron/full_precision/lamb/'):
+def distributed_megatron_full_precision_lamb(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -280,7 +280,7 @@ def distributed_megatron_full_precision_lamb(world_rank, world_size, device, che
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank))
 
 @distributed_setup
-def distributed_megatron_mixed_precision_lamb(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_megatron/mixed_precision/lamb/'):
+def distributed_megatron_mixed_precision_lamb(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -299,7 +299,7 @@ def distributed_megatron_mixed_precision_lamb(world_rank, world_size, device, ch
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank))
 
 @distributed_setup
-def distributed_zero_megatron_full_precision_adam(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero_megatron/full_precision/adam/'):
+def distributed_zero_megatron_full_precision_adam(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -318,7 +318,7 @@ def distributed_zero_megatron_full_precision_adam(world_rank, world_size, device
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank), use_lamb=False)
 
 @distributed_setup
-def distributed_zero_megatron_mixed_precision_adam(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero_megatron/mixed_precision/adam/'):
+def distributed_zero_megatron_mixed_precision_adam(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':
@@ -341,7 +341,7 @@ def distributed_zero_megatron_mixed_precision_adam(world_rank, world_size, devic
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank), use_lamb=False)
 
 @distributed_setup
-def distributed_zero_megatron_full_precision_lamb(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero_megatron/full_precision/lamb/'):
+def distributed_zero_megatron_full_precision_lamb(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'distributed' :
@@ -360,7 +360,7 @@ def distributed_zero_megatron_full_precision_lamb(world_rank, world_size, device
     create_orttrainer_and_save_checkpoint_bart(device, opts, checkpoint_dir, state_dict_key_name='state_dict_'+str(world_rank))
 
 @distributed_setup
-def distributed_zero_megatron_mixed_precision_lamb(world_rank, world_size, device, checkpoint_dir = 'checkpoint_dir/distributed_zero_megatron/mixed_precision/lamb/'):
+def distributed_zero_megatron_mixed_precision_lamb(world_rank, world_size, device, checkpoint_dir):
     opts = {
                 'device' : {'id' : device},
                 'mixed_precision':

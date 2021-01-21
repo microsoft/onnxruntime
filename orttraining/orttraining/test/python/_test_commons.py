@@ -168,7 +168,7 @@ def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False
     train_data, val_data, test_data = utils.prepare_data(device, 20, 20)
     return model, model_desc, my_loss, utils.get_batch, train_data, val_data, test_data
 
-def generate_random_input_from_model_desc(desc, seed=1, device = "cuda:0"):
+def generate_random_input_from_bart_model_desc(desc, seed=1, device = "cuda:0"):
     '''Generates a sample input for the BART model using the model desc'''
 
     torch.manual_seed(seed)
