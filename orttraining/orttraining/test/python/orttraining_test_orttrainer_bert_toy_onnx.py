@@ -90,7 +90,7 @@ def load_bert_onnx_model(training_mode=True):
         # To switch into eval mode, change every
         # dropout_training_mode_node_* constant to false.
         false_raw_data = b'\x00'
-        zero_raw_data = b'\x00\x00\x00\x00\x00\x00\x00\x00'
+        zero_raw_data = b'\x00\x00\x00\x00'
         for node in model.graph.node:
             if node.name.startswith("dropout_training_mode_node_"):
                 for a in node.attribute:
