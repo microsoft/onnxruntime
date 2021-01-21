@@ -179,7 +179,6 @@ template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
 }
 
-
 template <typename T>
 Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
   is_packed = false;
