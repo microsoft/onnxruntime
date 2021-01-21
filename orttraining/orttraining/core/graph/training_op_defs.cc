@@ -2277,6 +2277,30 @@ Return true if all elements are true and false otherwise.
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Yield)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Yield Op.")
+      .Input(0, "UserOutput", "User outputs.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "OutputGrad", "Output gradients.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Assume that the inputs and outputs are matching, those outputs that has grads comes first.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, i, i);
+          auto typeProto = ctx.getInputType(i);
+          if (!hasShape(*typeProto)) {
+            continue;
+          }
+          propagateShapeFromInputToOutput(ctx, i, i);
+        }
+      });
 }
 }  // namespace training
 }  // namespace onnxruntime

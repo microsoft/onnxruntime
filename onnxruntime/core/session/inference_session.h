@@ -5,6 +5,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <thread>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -292,6 +293,12 @@ class InferenceSession {
 
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
+
+  // For ORTModule.forward()
+  virtual common::Status RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
+
+  // For ORTModule.backward()
+  common::Status ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
 
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
@@ -649,6 +656,9 @@ class InferenceSession {
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
   std::vector<uint8_t> ort_format_model_bytes_;
+
+  // background thread for RunInBackgroundAndWaitForYield
+  std::thread bg_thread_;
 };
 
 struct SessionIOBinding {

@@ -22,7 +22,7 @@
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/platform/env.h"
-#include "python/dl_convertor.h"
+#include "python/dlpack_convertor.h"
 
 struct OrtStatus {
   OrtErrorCode code;
@@ -667,8 +667,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           if (option.first == "device_type") {
             openvino_device_type = option.second;
             params.device_type = openvino_device_type.c_str();
-          }  
-          else if (option.first == "enable_vpu_fast_compile") {
+          } else if (option.first == "enable_vpu_fast_compile") {
             if (option.second == "True") {
               params.enable_vpu_fast_compile = true;
             } else if (option.second == "False") {
@@ -1251,6 +1250,27 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         return ml_value;
       })
+      .def_static("ortvalue_from_data_ptr", [](std::vector<int64_t>& shape, py::object& element_type,
+                                               OrtDevice& device, int64_t data_ptr) {
+        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
+          throw std::runtime_error("Not a valid numpy type");
+        }
+
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape,
+                                                                            reinterpret_cast<void*>(data_ptr), info);
+
+        auto ort_value = onnxruntime::make_unique<OrtValue>();
+        ort_value->Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+                        DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+        return ort_value;
+      })
       .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
@@ -1306,8 +1326,8 @@ void addObjectMethods(py::module& m, Environment& env) {
 #endif
         return obj;
       })
-      .def("to_dlpack", [](OrtValue* ml_value) -> py::object {
-        DLManagedTensor* dlmanaged_tensor = ort_value_to_dlpack(*ml_value);
+      .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
+        DLManagedTensor* dlmanaged_tensor = ort_value_to_dlpack(*ort_value);
         return py::reinterpret_steal<py::object>(
             PyCapsule_New(dlmanaged_tensor, "dltensor", dlpack_capsule_destructor));
       });
@@ -1828,6 +1848,17 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           status = sess->GetSessionHandle()->Run(*io_binding.Get());
         else
           status = sess->GetSessionHandle()->Run(*run_options, *io_binding.Get());
+        if (!status.IsOK())
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+      })
+      .def("run_forward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options) -> void {
+        Status status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(run_options, *io_binding.Get());
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+        }
+      })
+      .def("run_backward", [](PyInferenceSession* sess, const std::vector<OrtValue>& backward_output_grads) -> void {
+        Status status = sess->GetSessionHandle()->ContinueRunInBackground(backward_output_grads);
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });
