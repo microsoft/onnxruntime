@@ -481,4 +481,11 @@ inline std::vector<MLDataType> BuildKernelDefConstraints() {
   return {DataTypeImpl::GetTensorType<T>(), DataTypeImpl::GetTensorType<Types>()...};
 }
 
+template <typename... Types>
+struct BuildKernelDefConstraintsFunctor {
+  std::vector<MLDataType> operator()() const {
+    return BuildKernelDefConstraints<Types...>();
+  }
+};
+
 }  // namespace onnxruntime
