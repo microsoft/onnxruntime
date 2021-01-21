@@ -79,6 +79,7 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
       return Status::OK();
     }
   }
+
   InPlaceAccumulatorImpl(
       reinterpret_cast<const CudaT*>(left_addee_buffer.template Data<T>()),
       reinterpret_cast<const CudaT_GRAD*>(right_addee_buffer.template Data<T_GRAD>()),
