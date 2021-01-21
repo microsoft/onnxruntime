@@ -96,7 +96,10 @@ def load_bert_onnx_model(training_mode=True):
                 for a in node.attribute:
                     if a.name == "value":
                         a.t.raw_data = false_raw_data
-
+            if node.name.startswith("dropout_ratio_"):
+                for a in node.attribute:
+                    if a.name == "value":
+                        a.t.raw_data = zero_raw_data
     return model
 
 
