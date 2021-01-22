@@ -15,5 +15,5 @@ echo "Copying PyTorch frontend source-code to build folder"
 cp -Rf ../../../orttraining/orttraining/python/training/* ../../../build/Linux/RelWithDebInfo/onnxruntime/training/
 
 echo "Running Flexible API (ORTModule)"
-python ../../../orttraining/orttraining/test/python/orttraining_test_ortmodule_mnist_deepspeed.py --help
-deepspeed ../../../orttraining/orttraining/test/python/orttraining_test_ortmodule_mnist_deepspeed.py --deepspeed_config ../../../orttraining/orttraining/test/python/orttraining_test_ortmodule_mnist_deepspeed_config.json $@
+python ../../../orttraining/orttraining/test/python/orttraining_test_ortmodule_deepspeed_zero_stage_1.py --help
+deepspeed ../../../orttraining/orttraining/test/python/orttraining_test_ortmodule_deepspeed_zero_stage_1.py --deepspeed_config ../../../orttraining/orttraining/test/python/orttraining_test_ortmodule_deepspeed_zero_stage_1_config.json $@
