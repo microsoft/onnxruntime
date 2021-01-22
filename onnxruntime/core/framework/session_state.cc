@@ -389,7 +389,7 @@ void TryCalculateSizeFromResolvedShape(int ml_value_idx, std::unordered_map<int,
 
 }  // namespace
 
-// If this function fails NO TRAINING will take place, hence lets ONLY FAIL and stop training where warranted, example SIZE overflow.
+// If this function fails NO memory planning will take place, hence lets ONLY FAIL and stop training where warranted, example SIZE overflow.
 Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                                const std::vector<int>& feed_mlvalue_idxs,
                                                MemoryPatternGroup* output,
