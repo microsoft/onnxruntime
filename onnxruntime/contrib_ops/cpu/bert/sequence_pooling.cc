@@ -34,12 +34,12 @@ inline static void MaxPoolingByRowImpl(T* start_dst, const T* start_src, const T
 }
 
 template <typename T>
-static void MaxPoolingByRow(T* start_dst, const T* start_src, int32_t sentence_length, int hidden_size) {
+static void MaxPoolingByRow(T* start_dst, const T* start_src, int64_t sentence_length, int hidden_size) {
   ORT_ENFORCE(sentence_length > 0);
   memcpy(start_dst, start_src, hidden_size * sizeof(T));
   for (int offset = 1; offset < sentence_length; ++offset) {
     start_src += hidden_size;
-    MaxPoolingByRowImpl(start_dst, start_src, start_src + hidden_size);
+    MaxPoolingByRowImpl<T>(start_dst, start_src, start_src + hidden_size);
   }
 }
 
@@ -99,7 +99,7 @@ Status SequencePooling<T>::Compute(OpKernelContext* context) const {
         const std::ptrdiff_t past_sentence_length_sum = (i == 0) ? 0 : sentence_lengthes_prefixsum[batch][i - 1];
         const std::ptrdiff_t input_offset(batch * sequence_length_for_split * hidden_size + past_sentence_length_sum * hidden_size);
         const std::ptrdiff_t output_offset(batch * num_sequences * hidden_size + i * hidden_size);
-        MaxPoolingByRow(output_data + output_offset, input_data + input_offset, sentence_length, hidden_size);
+        MaxPoolingByRow<T>(output_data + output_offset, input_data + input_offset, sentence_length, hidden_size);
       }
     });
   }
