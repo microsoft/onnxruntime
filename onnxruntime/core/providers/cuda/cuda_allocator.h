@@ -35,4 +35,19 @@ class CUDAPinnedAllocator : public IAllocator {
   void Free(void* p) override;
   FencePtr CreateFence(const SessionState* session_state) override;
 };
+
+class TorchCUDAAllocator : public IAllocator {
+ public:
+  TorchCUDAAllocator(OrtDevice::DeviceId device_id, const char* name);
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
+  // FencePtr CreateFence(const SessionState* session_state) override;
+
+ private:
+  // void CheckDevice(bool throw_when_fail) const;
+  void* libtorch_;
+  void* (*torchMalloc)(size_t);  // torch's alloc function handle
+  void (*torchFree)(void*);      // torch's free function handle
+};
+
 }  // namespace onnxruntime

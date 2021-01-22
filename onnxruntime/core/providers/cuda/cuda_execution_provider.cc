@@ -65,10 +65,10 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId id) {
-        return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+        return onnxruntime::make_unique<TorchCUDAAllocator>(id, CUDA);
       },
       device_id,
-      true,
+      false,
       {cuda_mem_limit,
        static_cast<int>(arena_extend_strategy),
        -1, -1});
@@ -136,10 +136,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
+        return onnxruntime::make_unique<TorchCUDAAllocator>(device_id, CUDA);
       },
       device_id_,
-      true,
+      false,
       {cuda_mem_limit_,
        static_cast<int>(arena_extend_strategy_),
        -1, -1});
