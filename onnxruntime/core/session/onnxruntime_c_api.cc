@@ -407,10 +407,10 @@ namespace {
 // provider either model_path, or modal_data + model_data_length.
 static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
                                                 _In_ const OrtEnv* env,
-                                                _In_ const ORTCHAR_T* model_path,
-                                                _In_ const void* model_data,
-                                                _In_ size_t model_data_length,
-                                                _Outptr_ std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+                                                _In_opt_z_ const ORTCHAR_T* model_path,
+                                                _In_opt_ const void* model_data,
+                                                size_t model_data_length,
+                                                std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
@@ -605,8 +605,8 @@ struct OrtIoBinding {
   OrtIoBinding& operator=(const OrtIoBinding&) = delete;
 };
 
-ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
-                    const OrtIoBinding* binding_ptr) {
+ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_ const OrtRunOptions* run_options,
+                    _In_ const OrtIoBinding* binding_ptr) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
   auto status = session->Run(*run_options, *binding_ptr->binding_);
@@ -665,7 +665,7 @@ ORT_API_STATUS_IMPL(OrtApis::BindOutputToDevice, _Inout_ OrtIoBinding* binding_p
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputNames, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
-                    _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count) {
+                    _Out_ char** buffer, _Outptr_result_maybenull_ size_t** lengths, _Out_ size_t* count) {
   API_IMPL_BEGIN
   const auto& output_names = binding_ptr->binding_->GetOutputNames();
   if (output_names.empty()) {
@@ -712,7 +712,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputNames, _In_ const OrtIoBinding* bindi
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
-                    _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count) {
+                    _Outptr_result_maybenull_ OrtValue*** output, _Out_ size_t* output_count) {
   API_IMPL_BEGIN
   const auto& outputs = binding_ptr->binding_->GetOutputs();
   if (outputs.empty()) {
@@ -1713,14 +1713,16 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
 ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
                     _In_ int* providers_length) {
   API_IMPL_BEGIN
+  //TODO: there is no need to manually malloc/free these memory, it is insecure
+  //and inefficient. Instead, the implementation could scan the array twice,
+  //and use a single string object to hold all the names.
   const size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
   const int available_count = gsl::narrow<int>(available_providers.size());
-  char** const out = (char**)malloc(available_count * sizeof(char*));
+  char** const out = new char*[available_count];
   if (out) {
     for (int i = 0; i < available_count; i++) {
-      out[i] = (char*)malloc((MAX_LEN + 1) * sizeof(char));
-      if (out[i]) {
+      out[i] = new char[MAX_LEN + 1];
 #ifdef _MSC_VER
         strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
         out[i][MAX_LEN] = '\0';
@@ -1730,7 +1732,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
         strncpy(out[i], available_providers[i].c_str(), MAX_LEN);
         out[i][MAX_LEN] = '\0';
 #endif
-      }
     }
   }
   *providers_length = available_count;
@@ -1739,16 +1740,15 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   return nullptr;
 }
 
+//TODO: we don't really need the second parameter
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
                     _In_ int providers_length) {
   API_IMPL_BEGIN
   if (ptr) {
     for (int i = 0; i < providers_length; i++) {
-      if (ptr[i]) {
-        free(ptr[i]);
-      }
+      delete[] ptr[i];
     }
-    free(ptr);
+    delete[] ptr;
   }
   API_IMPL_END
   return NULL;
@@ -1807,7 +1807,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetLanguageProjection, _In_ const OrtEnv* ort_env, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out) {
+ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Out_ uint64_t* out) {
   API_IMPL_BEGIN
   const auto* session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   auto profiling_start_time = session->GetProfiling().GetStartTimeNs();

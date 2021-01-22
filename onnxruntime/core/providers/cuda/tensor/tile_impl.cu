@@ -45,8 +45,31 @@ void TileImpl(
       fdm_output_strides, output_data, (CUDA_LONG)N);
 }
 
-#define SPECIALIZED_IMPL(T) \
-  template void TileImpl<T>(const size_t shape_rank, const TArray<fast_divmod>& fdm_input_shape, const TArray<int64_t>& input_stride, const T* input_data, const TArray<fast_divmod>& fdm_output_strides, T* output_data, const size_t N);
+template <typename T>
+__global__ void _TileMemcpyKernel(
+    const T* input_data,
+    const size_t num_input_elements,
+    T* output_data,
+    const size_t N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  auto input_index = id % num_input_elements;
+  output_data[id] = input_data[input_index];
+}
+
+template <typename T>
+void TileMemcpyImpl(
+    const T* input_data,
+    const size_t num_input_elements,
+    T* output_data,
+    const size_t num_output_elements) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(num_output_elements) / GridDim::maxThreadsPerBlock));
+  _TileMemcpyKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      input_data, num_input_elements, output_data, (CUDA_LONG)num_output_elements);
+}
+
+#define SPECIALIZED_IMPL(T)                                                                                                                                                                                                                \
+  template void TileImpl<T>(const size_t shape_rank, const TArray<fast_divmod>& fdm_input_shape, const TArray<int64_t>& input_stride, const T* input_data, const TArray<fast_divmod>& fdm_output_strides, T* output_data, const size_t N); \
+  template void TileMemcpyImpl<T>(const T* input_data, const size_t num_input_elements, T* output_data, const size_t num_output_elements);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

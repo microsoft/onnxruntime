@@ -13,12 +13,12 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // FastGelu supports limited data types.
-static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
+static constexpr const char* const supported_data_types[] = {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
-    if (std::find(supported_data_types.begin(), supported_data_types.end(),
-                  *(input_arg->Type())) == supported_data_types.end()) {
+    if (std::find(std::begin(supported_data_types), std::end(supported_data_types), *(input_arg->Type())) ==
+        std::end(supported_data_types)) {
       return false;
     }
   }
@@ -27,9 +27,7 @@ static bool IsSupportedDataType(const Node& node) {
 
 static bool CheckInputShape(const Node& node, const NodeArg& input, const NodeArg& bias) {
   const TensorShapeProto* bias_shape = bias.Shape();
-  if (nullptr == bias_shape ||
-      bias_shape->dim_size() != 1 || 
-      !utils::HasDimValue(bias_shape->dim(0))) {
+  if (nullptr == bias_shape || bias_shape->dim_size() != 1 || !utils::HasDimValue(bias_shape->dim(0))) {
     return false;
   }
   auto bias_length = bias_shape->dim(0).dim_value();
@@ -38,8 +36,7 @@ static bool CheckInputShape(const Node& node, const NodeArg& input, const NodeAr
   if (nullptr != input_shape) {
     if (input_shape->dim_size() >= 1) {
       int last_dim = input_shape->dim_size() - 1;
-      if (utils::HasDimValue(input_shape->dim(last_dim)) &&
-          input_shape->dim(last_dim).dim_value() == bias_length) {
+      if (utils::HasDimValue(input_shape->dim(last_dim)) && input_shape->dim(last_dim).dim_value() == bias_length) {
         return true;
       }
     }
@@ -68,37 +65,31 @@ static bool CheckGeluInputShape(const NodeArg& input) {
 
 static bool IsCandidateNode(const Node& node, const std::unordered_set<std::string>& compatible_providers) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BiasGelu", {1}, kMSDomain)) {
-    return graph_utils::IsSupportedProvider(node, compatible_providers) &&
-           IsSupportedDataType(node) &&
+    return graph_utils::IsSupportedProvider(node, compatible_providers) && IsSupportedDataType(node) &&
            CheckInputShape(node, *(node.InputDefs()[0]), *(node.InputDefs()[1]));
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gelu", {1}, kMSDomain)) {
-    return graph_utils::IsSupportedProvider(node, compatible_providers) &&
-           IsSupportedDataType(node) &&
+    return graph_utils::IsSupportedProvider(node, compatible_providers) && IsSupportedDataType(node) &&
            CheckGeluInputShape(*(node.InputDefs()[0]));
   }
   return false;
 }
 
-Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                    const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
   int count = 0;
   for (auto node_index : node_topology_list) {
     auto* p_node = graph.GetNode(node_index);
-    if (p_node == nullptr)
-      continue;  // we removed the node as part of an earlier fusion
+    if (p_node == nullptr) continue;  // we removed the node as part of an earlier fusion
 
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (IsCandidateNode(node, GetCompatibleExecutionProviders())) {
-      Node& fastgelu = graph.AddNode(
-          graph.GenerateNodeName("FastGelu"),
-          "FastGelu",
-          "Gelu approximation",
-          node.MutableInputDefs(),
-          node.MutableOutputDefs(), nullptr, kMSDomain);
+      Node& fastgelu = graph.AddNode(graph.GenerateNodeName("FastGelu"), "FastGelu", "Gelu approximation",
+                                     node.MutableInputDefs(), node.MutableOutputDefs(), nullptr, kMSDomain);
 
       fastgelu.SetExecutionProviderType(node.GetExecutionProviderType());
 
