@@ -7,7 +7,9 @@
 #include "gsl/gsl"
 
 #include "core/common/common.h"
+#include "core/common/type_list.h"
 #include "core/framework/data_types.h"
+#include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/util/math_cpuonly.h"
@@ -26,33 +28,6 @@ namespace onnxruntime {
 // test changes
 using namespace boost::mp11;
 namespace {
-template <typename... Ts>
-using TypeList = mp_list<Ts...>;
-
-template <typename... Types>
-class MLTypeCallDispatcher2 {
-  int32_t dt_type_;
-
- public:
-  explicit MLTypeCallDispatcher2(int32_t dt_type) noexcept : dt_type_(dt_type) {}
-
-  template <template <typename> class Fn, typename... Args>
-  void Invoke(Args&&... args) const {
-    utils::mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
-    int results[] = {0, helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
-    static_cast<void>(results);
-    ORT_ENFORCE(helper.called_ == 1);
-  }
-
-  template <template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
-  void InvokeWithLeadingTemplateArgs(Args&&... args) const {
-    utils::mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
-    int results[] = {0, helper.template Invoke<Types>(mp_apply<Fn, mp_push_back<LeadingTemplateArgTypeList, Types>>(), std::forward<Args>(args)...)...};
-    static_cast<void>(results);
-    ORT_ENFORCE(helper.called_ == 1);
-  }
-};
-
 //#define LIMIT_TYPES
 //#define LIMIT_TYPES_NO_STRING_OR_FLOAT16
 #if defined(LIMIT_TYPES)
@@ -214,14 +189,9 @@ template <typename SrcType, typename DstType>
 struct TensorCaster {
   void Cast(const Tensor& in, Tensor& out, const TensorShape& shape) const {
     const auto shape_size = shape.Size();
-
-    // const auto in_vector = ConstEigenVectorMap<SrcType>(in.Data<SrcType>(), shape_size);
-    // auto output_vector = EigenVectorMap<DstType>(out.MutableData<DstType>(), shape_size);
-    // output_vector = in_vector.template cast<DstType>();
-
     const auto in_vector = ConstEigenVectorMap<SrcType>(in.Data<SrcType>(), shape_size);
-    auto output_vector = EigenVectorMap<DstType>(out.MutableData<DstType>(), shape_size);
-    output_vector = in_vector.unaryExpr([](const SrcType& in_scalar) {
+    auto out_vector = EigenVectorMap<DstType>(out.MutableData<DstType>(), shape_size);
+    out_vector = in_vector.unaryExpr([](const SrcType& in_scalar) {
       DstType out_scalar;
       ScalarCaster<SrcType, DstType>{}.Cast(in_scalar, out_scalar);
       return out_scalar;
@@ -296,7 +266,7 @@ template <typename TSrc>
 struct SrcDispatcher {
   void operator()(int32_t to, const Tensor& src, Tensor& dst, const TensorShape& shape) {
     using DstTypes = mp_remove_if_q<ImplementedDstTypes, mp_bind_front<std::is_same, TSrc>>;
-    mp_apply<MLTypeCallDispatcher2, DstTypes> dispatcher{to};
+    mp_apply<utils::MLTypeCallDispatcher2, DstTypes> dispatcher{to};
     dispatcher.InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(src, dst, shape);
   }
 };
@@ -305,11 +275,12 @@ Status Cast::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& shape = X->Shape();
   Tensor* Y = context->Output(0, shape);
+
   if (shape.Size() == 0) {
     return Status::OK();
   }
 
-  auto from = X->GetElementType();
+  const auto from = X->GetElementType();
 
   if (from == to_) {
     // will copy if X and Y have different buffers
@@ -317,7 +288,7 @@ Status Cast::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  mp_apply<MLTypeCallDispatcher2, ImplementedSrcTypes> dispatcher{from};
+  mp_apply<utils::MLTypeCallDispatcher2, ImplementedSrcTypes> dispatcher{from};
   dispatcher.Invoke<SrcDispatcher>(to_, *X, *Y, shape);
 
   return Status::OK();
@@ -328,9 +299,8 @@ const std::vector<MLDataType> castSrcTypeConstraints =
 
 const std::vector<MLDataType> castDstTypeConstraints =
     mp_apply<BuildKernelDefConstraintsFunctor, ImplementedDstTypes>{}();
+
 }  // namespace
-
-
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast,
