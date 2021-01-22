@@ -158,7 +158,7 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
 
   //Check for inference mode.
   const Tensor* training_mode = context->Input<Tensor>(4);
-  bool is_training_mode = (training_mode != nullptr) && training_mode->Data<bool>();
+  bool is_training_mode = (training_mode != nullptr) && *(training_mode->Data<bool>());
   std::cout << "is_training_mode " << is_training_mode << std::endl;
   if (!is_training_mode) {
     ratio_data = 0.0f;
