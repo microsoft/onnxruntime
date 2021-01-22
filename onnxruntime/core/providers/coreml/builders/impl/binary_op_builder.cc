@@ -30,7 +30,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   layer->set_name(node.Name());
 
   if (op_type == "Add") {
-    layer->mutable_addbroadcastable();
+    layer->mutable_add();
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
   }

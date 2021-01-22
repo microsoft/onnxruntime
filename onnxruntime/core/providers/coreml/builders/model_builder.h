@@ -27,7 +27,7 @@ class ModelBuilder {
   ~ModelBuilder() = default;
 
   Status Compile(std::unique_ptr<Model>& model, const std::string& path) ORT_MUST_USE_RESULT;
-  Status SaveCoreMLModel(const std::string& path);
+  Status SaveCoreMLModel(const std::string& path) ORT_MUST_USE_RESULT;
 
   // Accessors for members
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }

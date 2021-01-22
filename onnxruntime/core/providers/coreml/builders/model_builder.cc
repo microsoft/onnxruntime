@@ -38,7 +38,7 @@ Status ModelBuilder::Initialize() {
   const auto& op_builders = GetOpBuilders();
   const auto it = op_builders.find(node.OpType());
   if (it != op_builders.cend())
-    return op_builders.at(node.OpType());
+    return it->second;
 
   return nullptr;
 }
