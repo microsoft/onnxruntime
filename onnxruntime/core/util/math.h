@@ -95,9 +95,9 @@ void Scale(int N, const float* alpha, const T* x, T* y, Provider* provider);
 
 template <typename T>
 void MatMul(
-    int M,
-    int N,
-    int K,
+    ptrdiff_t M,
+    ptrdiff_t N,
+    ptrdiff_t K,
     const T* A,
     const T* B,
     T* C, concurrency::ThreadPool* threadpool);
@@ -108,9 +108,9 @@ template <typename T, class Provider>
 void Gemm(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
-    int64_t M,
-    int64_t N,
-    int64_t K,
+    ptrdiff_t M,
+    ptrdiff_t N,
+    ptrdiff_t K,
     T alpha,
     const T* A,
     const T* B,
@@ -124,9 +124,9 @@ template <typename T, class Provider>
 void GemmEx(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
-    int M,
-    int N,
-    int K,
+    ptrdiff_t M,
+    ptrdiff_t N,
+    ptrdiff_t K,
     T alpha,
     const T* A,
     int lda,
@@ -154,7 +154,7 @@ void Gemv(
     Provider* provider);
 
 template <typename T, class Provider>
-void Set(int64_t N, T alpha, T* X, Provider* provider);
+void Set(ptrdiff_t N, T alpha, T* X, Provider* provider);
 
 template <typename T, class Provider>
 void Dot(int N, const T* a, const T* b, T* y, Provider* provider);
@@ -200,7 +200,7 @@ struct Im2col<T, StorageOrder::NCHW> {
       const int64_t* stride,
       const int64_t* dilation,
       const int64_t* pad,
-      int64_t rank,
+      ptrdiff_t rank,
       T* data_col,
       bool accumulate_output = false,
       T padding_value = 0);
@@ -237,7 +237,7 @@ struct Im2col<T, StorageOrder::NHWC> {
       const int64_t* stride,
       const int64_t* dilation,
       const int64_t* pad,
-      int64_t rank,
+      ptrdiff_t rank,
       T* data_col,
       T padding_value = 0);
 };
@@ -253,7 +253,7 @@ void Col2imNd(
     const int64_t* stride,
     const int64_t* dilation,
     const int64_t* pad,
-    int64_t N,
+    ptrdiff_t N,
     T* data_img,
     Provider* provider);
 
