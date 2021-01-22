@@ -32,9 +32,15 @@ class TrainingSession : public InferenceSession {
    * Partition information of each paritioned weight
    */
   struct PartitionInfo {
+    // value of the original shape of the weight
     std::vector<int64_t> original_dim;
+    // indicates whether weight was megatron partitioned or not.
+    // -1: not partitioned; 0: column partitioned; 1: row partitioned
     int megatron_row_partition = -1;
-    std::string view_name;
+    // name of the partition used to look up partitioned weight and optimizer state values
+    std::string partition_name;
+    // whether the weight itself was paritioned or not(eg:just the optimizer state for fp32 Zero-1)
+    bool weight_partitioned = false;
   };
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
@@ -551,6 +557,7 @@ class TrainingSession : public InferenceSession {
   bool is_configured_{false};
 
   std::unordered_set<std::string> weights_to_train_;
+  OptimizerState init_optimizer_states_;
   // names of additional initializers to be included in checkpoints
   std::unordered_map<std::string, std::string> updated_weight_names_map_;
   std::unordered_set<std::string> opt_state_initializer_names_;
