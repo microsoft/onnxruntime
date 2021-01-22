@@ -243,12 +243,12 @@ class ORTTrainerOptions(object):
                                 'model_with_training_graph_path': {
                                     'type': 'string',
                                     'default': ''
-                                }
+                                },
+                                'model_with_training_graph_after_optimization_path': {
+                                    'type': 'string',
+                                    'default': ''
+                                },
                             }
-                        },
-                        'optimized_model_filepath' : {
-                            'type' : 'str',
-                            'default' : ''
                         },
                     }
                 },
@@ -369,7 +369,7 @@ class ORTTrainerOptions(object):
         debug.graph_save_paths.model_with_training_graph_path (str, default is "")
             path to export the training ONNX graph with forward, gradient and optimizer nodes.
             No output when it is empty.
-        debug.optimized_model_filepath (str, default is empty)
+        debug.graph_save_paths.model_with_training_graph_after_optimization_path (str, default is "")
             outputs the optimized training graph to the path if nonempty.
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
@@ -683,7 +683,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'graph_save_paths' : {
                 'type' : 'dict',
-               'default_setter': lambda _: {},
+                'default_setter': lambda _: {},
                 'required': False,
                 'schema': {
                     'model_after_graph_transforms_path': {
@@ -697,12 +697,12 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     'model_with_training_graph_path': {
                         'type': 'string',
                         'default': ''
-                    }
+                    },
+                    'model_with_training_graph_after_optimization_path': {
+                        'type': 'string',
+                        'default': ''
+                    },
                 }
-            },
-            'optimized_model_filepath' : {
-                'type' : 'str',
-                'default' : ''
             },
         }
     },
