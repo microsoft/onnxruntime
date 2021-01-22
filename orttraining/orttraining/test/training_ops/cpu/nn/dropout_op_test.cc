@@ -27,10 +27,10 @@ using namespace onnxruntime::test;
 namespace {
 constexpr auto k_dropout_opset_version = 12;
 
-// training_mode integer means
-// 1 for true, 0 for false, and -1 don't create training_mode input node.
+enum TrainingMode { TrainingFalse, TrainingTrue, NoTraining };
+
 void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
-                    int training_mode = 1, bool use_float16_ratio = false) {
+                    TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false) {
   OpTester t{op, k_dropout_opset_version, kOnnxDomain};
 
   const auto input_size = std::accumulate(
@@ -58,8 +58,8 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
     }
   }
 
-  if (strcmp(op, "TrainableDropout") != 0 && training_mode != -1) {
-    if (training_mode == 1) {
+  if (strcmp(op, "TrainableDropout") != 0 && training_mode != NoTraining ) {
+    if (training_mode == TrainingTrue) {
       t.AddInput("training_mode", {}, {true});
     } else {
       t.AddInput("training_mode", {}, {false});
@@ -86,12 +86,12 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
     if (ratio == 1.0f) {
       ASSERT_EQ(num_dropped_values, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
-      ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), training_mode == 1 ? ratio : 0.0f, 0.1f)
+      ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), training_mode == TrainingTrue ? ratio : 0.0f, 0.1f)
           << "provider: " << provider_type;
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {
         if (output_span[i] == 0.0f) continue;
-        const auto expected_value = (i + 1.0f) / (1 - (training_mode == 1 ? ratio : 0.0f));
+        const auto expected_value = (i + 1.0f) / (1 - (training_mode == TrainingTrue ? ratio : 0.0f));
         ASSERT_NEAR(output_span[i], expected_value, 0.01f)
             << "unexpected output value at index " << i << ", provider: " << provider_type;
       }
@@ -128,24 +128,24 @@ TEST(DropoutTest, Basic) {
   RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f);
 }
 TEST(DropoutTest, BasicTrainingFalse) {
-  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f, 0);
+  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f, TrainingFalse);
 }
 TEST(DropoutTest, BasicNoTraining) {
-  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f, -1);
+  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f, NoTraining);
 }
 
 TEST(DropoutTest, Mask) {
   RunDropoutTest("Dropout", true, {1000}, 0.25f);
 }
 TEST(DropoutTest, MaskTrainingFalse) {
-  RunDropoutTest("Dropout", true, {1000}, 0.25f, 0);
+  RunDropoutTest("Dropout", true, {1000}, 0.25f, TrainingFalse);
 }
 TEST(DropoutTest, MaskNoTraining) {
-  RunDropoutTest("Dropout", true, {1000}, 0.25f, -1);
+  RunDropoutTest("Dropout", true, {1000}, 0.25f, NoTraining);
 }
 
 TEST(DropoutTest, RatioLimit) {
-  RunDropoutTest("Dropout", true, {1000}, 0.0f, 0);
+  RunDropoutTest("Dropout", true, {1000}, 0.0f, TrainingFalse);
 }
 
 TEST(DropoutTest, EmptyRatio) {
