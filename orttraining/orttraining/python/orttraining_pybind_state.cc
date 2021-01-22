@@ -371,7 +371,6 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("initializer_names_to_train", &SplitGraphsInfo::initializer_names_to_train)
       .def_readwrite("initializer_grad_names_to_train", &SplitGraphsInfo::initializer_grad_names_to_train)
       .def_readwrite("user_output_names", &SplitGraphsInfo::user_output_names)
-      .def_readwrite("user_output_grad_names", &SplitGraphsInfo::user_output_grad_names)
       .def_readwrite("backward_output_grad_names", &SplitGraphsInfo::backward_output_grad_names);
 
   py::class_<ModuleGradientGraphBuilder> module_gradient_graph_builder(m, "ModuleGradientGraphBuilder");

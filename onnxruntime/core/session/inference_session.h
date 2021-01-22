@@ -295,7 +295,8 @@ class InferenceSession {
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
   // For ORTModule.forward()
-  virtual common::Status RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  virtual common::Status RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding,
+                                                        std::vector<OrtValue>& user_outputs) ORT_MUST_USE_RESULT;
 
   // For ORTModule.backward()
   common::Status ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;

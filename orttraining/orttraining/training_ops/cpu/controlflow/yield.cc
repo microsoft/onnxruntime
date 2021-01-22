@@ -5,6 +5,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/message_queue.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -13,9 +14,10 @@ ONNX_OPERATOR_KERNEL_EX(Yield, kMSDomain, 1, kCpuExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()), Yield);
 
 Status Yield::Compute(OpKernelContext* ctx) const {
-  // FW output should be ready by this point, they are currently exposed as graph output
-  // !!! Potential TODO here: If graph output approach doesn't work, need to place the Yield Input tensors into some
-  // shared location
+  auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  for (int i_in = 0; i_in < ctx->InputCount(); ++i_in) {
+    onnxruntime::contrib::OrtMessageQueue::GetInstance().Push(*ctx_internal->GetInputMLValue(i_in));
+  }
 
   // single event for InferenceSession::RunInBackgroundAndWaitForYield() that FW graph is done
   const int64_t main_thread_event_id = 0;
@@ -27,7 +29,7 @@ Status Yield::Compute(OpKernelContext* ctx) const {
 
   // Get output grad from somewhere and prepare Op outputs.
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-    OrtValue value = OrtMessageQueue::GetInstance().PopOutputGrad();
+    OrtValue value = OrtMessageQueue::GetInstance().Pop();
     const Tensor& X = value.Get<Tensor>();
     const TensorShape& data_shape = X.Shape();
     Tensor* Y = ctx->Output(i_out, data_shape);

@@ -1692,7 +1692,8 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
   return Run(run_options, io_binding);
 }
 
-common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding) {
+common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding,
+                                                                std::vector<OrtValue>& user_outputs) {
   bg_thread_ = std::thread([&]() {
     common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                            &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
@@ -1706,12 +1707,13 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions
   const int64_t main_thread_event_id = 0;
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAndWaitEvent(main_thread_event_id);
 
+  onnxruntime::contrib::OrtMessageQueue::GetInstance().PopAll(user_outputs);
   return Status::OK();
 }
 
 common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) {
   for (const auto& ort_value : backward_output_grads) {
-    onnxruntime::contrib::OrtMessageQueue::GetInstance().PushOutputGrad(ort_value);
+    onnxruntime::contrib::OrtMessageQueue::GetInstance().Push(ort_value);
   }
 
   // resume background thread

@@ -55,7 +55,7 @@ def _get_default_device_str(type):
     else:
         return 'cpu'
 
-def _create_iobinding(io_binding, inputs, model, device, output_buffers, len_user_outputs):
+def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, value_info in enumerate(model.graph.input):
         io_binding.bind_input(value_info.name, inputs[idx].device.type,
@@ -64,19 +64,8 @@ def _create_iobinding(io_binding, inputs, model, device, output_buffers, len_use
                               list(inputs[idx].size()),
                               inputs[idx].data_ptr())
 
-    # If it's user output, bind to output buffers, else, bind to OrtValue.
     for idx, value_info in enumerate(model.graph.output):
-        name = value_info.name
-        if idx < len_user_outputs:
-            output_tensor = output_buffers[name]
-            io_binding.bind_output(name, output_tensor.device.type,
-                                   _get_device_index(device),
-                                   _utils.dtype_torch_to_numpy(output_tensor.dtype),
-                                   list(output_tensor.size()),
-                                   output_tensor.data_ptr())
-        else:
-            io_binding.bind_output(name, device.type,
-                                   device_id=_get_device_index(device))
+        io_binding.bind_output(value_info.name, device.type, device_id=_get_device_index(device))
 
 def _onnx_value_info_to_buffer_tensor(value_info, device):
     '''Create a torch zeroed tensor with the same shape and type of `value_info`'''
@@ -122,7 +111,6 @@ class ORTModule(torch.nn.Module):
         self._gradient_session = None
         self._gradient_io_binding = None
         self._run_options = None
-        self._user_output_buffers = {}
 
         # Log level
         self._loglevel = getattr(logging, 'WARNING')
@@ -244,9 +232,6 @@ class ORTModule(torch.nn.Module):
             # IO binding
             # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
             self._gradient_io_binding = self._gradient_session.io_binding()
-            # Bind user outputs in old way, so create the buffer.
-            for output in self._onnx_gradient.graph.output[:len(self._onnx_graphs_info.user_output_names)]:
-                self._user_output_buffers[output.name] = _onnx_value_info_to_buffer_tensor(output, str(self._device))
 
             if self._save_onnx:
                 onnx.save(self._onnx_gradient, self._save_onnx_prefix + '_gradient.onnx')
@@ -268,17 +253,11 @@ class ORTModule(torch.nn.Module):
                 '''
 
                 # Use IO binding
-                _create_iobinding(self._gradient_io_binding, inputs,
-                                  self._onnx_gradient,
-                                  self._device,
-                                  self._user_output_buffers,
-                                  len(self._onnx_graphs_info.user_output_names))
+                _create_iobinding(self._gradient_io_binding, inputs, self._onnx_gradient, self._device)
 
-                # Run
-                self._gradient_session.run_forward(self._gradient_io_binding, self._run_options)
-
-                # Return model output
-                user_outputs = tuple(self._user_output_buffers[name] for name in self._onnx_graphs_info.user_output_names)
+                # Run and return user outputs.
+                user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) \
+                    for forward_output in self._gradient_session.run_forward(self._gradient_io_binding, self._run_options))
                 return user_outputs[0] if len(user_outputs) == 1 else user_outputs
 
             @staticmethod
@@ -294,16 +273,14 @@ class ORTModule(torch.nn.Module):
 
                 # Use IO binding
                 # Push user output grads to ONNX backend.
-                grad_output_dict = dict(zip(self._onnx_graphs_info.user_output_grad_names, grad_output))
-                backward_grad_output = [grad_output_dict[name] for name in self._onnx_graphs_info.backward_output_grad_names]
                 backward_grad_output_ortvalue = []
-                for grad_output in backward_grad_output:
+                for grad_output in grad_output[:len(self._onnx_graphs_info.backward_output_grad_names)]:
                     backward_grad_output_ortvalue.append(onnxruntime.OrtValue.ortvalue_from_data_ptr(list(grad_output.size()), _utils.dtype_torch_to_numpy(
                         grad_output.dtype), grad_output.device.type, _get_device_index(grad_output.device), grad_output.data_ptr()))
 
                 # Run and get results
                 self._gradient_session.run_backward(backward_grad_output_ortvalue)
-                backward_outputs = self._gradient_io_binding.get_outputs()[len(self._onnx_graphs_info.user_output_names):]
+                backward_outputs = self._gradient_io_binding.get_outputs()
 
                 # Return input and initializer gradients
                 results = [torch.tensor([1])] * len(self._onnx_graphs_info.user_input_names)

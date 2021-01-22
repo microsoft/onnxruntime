@@ -13,12 +13,10 @@ ONNX_OPERATOR_KERNEL_EX(Yield, kMSDomain, 1, kCudaExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()), Yield);
 
 Status Yield::ComputeInternal(OpKernelContext* ctx) const {
-  // FW output should be ready by this point, they are currently exposed as graph output
-  // !!! Potential TODO here: If graph output approach doesn't work, need to place the Yield Input tensors into some
-  // shared location
-
-  // Do we need to synchronize here?
-  // cudaStreamSynchronize(0);
+  auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  for (int i_in = 0; i_in < ctx->InputCount(); ++i_in) {
+    onnxruntime::contrib::OrtMessageQueue::GetInstance().Push(*ctx_internal->GetInputMLValue(i_in));
+  }
 
   // single event for InferenceSession::RunInBackgroundAndWaitForYield() that FW graph is done
   const int64_t main_thread_event_id = 0;
@@ -30,7 +28,7 @@ Status Yield::ComputeInternal(OpKernelContext* ctx) const {
 
   // Get output grad from somewhere and prepare Op outputs.
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-    OrtValue value = onnxruntime::contrib::OrtMessageQueue::GetInstance().PopOutputGrad();
+    OrtValue value = onnxruntime::contrib::OrtMessageQueue::GetInstance().Pop();
     const Tensor& X = value.Get<Tensor>();
     const TensorShape& data_shape = X.Shape();
     Tensor* Y = ctx->Output(i_out, data_shape);

@@ -173,13 +173,10 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   Graph& gradient_graph = gradient_model_->MainGraph();
   GraphViewer gradient_graph_viewer(gradient_graph);
   const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
-  split_graphs_info_.user_output_grad_names.clear();
+  std::unordered_set<std::string> user_output_grad_names_set;
   for (const auto& name : split_graphs_info_.user_output_names) {
-    split_graphs_info_.user_output_grad_names.emplace_back(name + "_grad");
+    user_output_grad_names_set.insert(name + "_grad");
   }
-
-  std::unordered_set<std::string> user_output_grad_names_set{split_graphs_info_.user_output_grad_names.begin(),
-                                                             split_graphs_info_.user_output_grad_names.end()};
 
   // If an NodeArg is output of one of nodes, it's not the user output gradient needed by backward graph.
   std::unordered_set<std::string> non_backward_user_output_grad_names;
@@ -194,25 +191,32 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
 
   // Yield inputs include all user outputs, those require output gradients come first, so Yield Op can use their shapes
   // to infer Op output shapes.
-  std::vector<std::string> yield_input_names;
+  std::vector<std::string> user_output_names_require_grad;
+  std::vector<std::string> user_output_names_no_grad;
   split_graphs_info_.backward_output_grad_names.clear();
   for (const auto& name : split_graphs_info_.user_output_names) {
     std::string grad_name = name + "_grad";
     if (non_backward_user_output_grad_names.find(grad_name) == non_backward_user_output_grad_names.end()) {
-      yield_input_names.emplace_back(name);
+      user_output_names_require_grad.emplace_back(name);
       split_graphs_info_.backward_output_grad_names.emplace_back(grad_name);
+    } else {
+      user_output_names_no_grad.emplace_back(name);
     }
   }
 
-  for (const auto& name : split_graphs_info_.user_output_names) {
-    if (non_backward_user_output_grad_names.find(name + "_grad") != non_backward_user_output_grad_names.end()) {
-      yield_input_names.emplace_back(name);
-    }
+  // Reorder the user outputs.
+  split_graphs_info_.user_output_names.clear();
+  for (const auto& name : user_output_names_require_grad) {
+    split_graphs_info_.user_output_names.emplace_back(name);
+  }
+
+  for (const auto& name : user_output_names_no_grad) {
+    split_graphs_info_.user_output_names.emplace_back(name);
   }
 
   std::vector<NodeArg*> yield_input_node_args;
   std::vector<NodeArg*> yield_output_node_args;
-  for (const auto& name : yield_input_names) {
+  for (const auto& name : split_graphs_info_.user_output_names) {
     yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
 
@@ -225,9 +229,8 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
 
 void ModuleGradientGraphBuilder::ReorderOutputs() {
   // Adjust gradient graph outputs by the following order:
-  // 1. user outputs,
-  // 2. user input grads if required, with same order of user inputs,
-  // 3. trainable initailizer grads, with same order of trainable initializers.
+  // 1. user input grads if required, with same order of user inputs,
+  // 2. trainable initailizer grads, with same order of trainable initializers.
   Graph& gradient_graph = gradient_model_->MainGraph();
   const std::vector<const NodeArg*>& gradient_graph_outputs = gradient_graph.GetOutputs();
   std::unordered_map<std::string, const NodeArg*> gradient_output_arg_map;
@@ -235,14 +238,10 @@ void ModuleGradientGraphBuilder::ReorderOutputs() {
     gradient_output_arg_map[node_arg->Name()] = node_arg;
   }
 
-  std::vector<const NodeArg*> new_output_args;
-  for (const auto& user_output_name : split_graphs_info_.user_output_names) {
-    new_output_args.emplace_back(gradient_graph.GetNodeArg(user_output_name));
-  }
-
   std::unordered_set<std::string> user_input_require_grad_set(config_.input_names_require_grad.begin(),
                                                               config_.input_names_require_grad.end());
 
+  std::vector<const NodeArg*> new_output_args;
   split_graphs_info_.user_input_grad_names.clear();
   for (const auto& input_name : split_graphs_info_.user_input_names) {
     if (user_input_require_grad_set.find(input_name) != user_input_require_grad_set.end()) {
