@@ -434,6 +434,9 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         if (is_resolved != 0) {
           resolved_shapes[ml_value_idx] = resolved_shape;
         }
+      } else {
+        LOGS(logger_, INFO) << "[Static memory planning] Could not resolve shape for tensor with ML index "
+                            << ml_value_idx << ", will allocate dynamically.";
       }
     }
   }
