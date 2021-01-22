@@ -275,10 +275,9 @@ typedef struct OrtCUDAProviderOptions {
 /// </summary>
 typedef struct OrtROCMProviderOptions {
   int device_id;                                    // hip device with id=0 as default device.
-  OrtMIOpenConvAlgoSearch miopen_conv_algo_search;  // miopen conv algo search option
+  bool miopen_conv_exhaustive_search;               // miopen conv algo exhaustive search option
   size_t hip_mem_limit;                             // default hip memory limitation to maximum finite value of size_t.
   int arena_extend_strategy;                        // default area extend strategy to KNextPowerOfTwo.
-  int do_copy_in_default_stream;
 } OrtROCMProviderOptions;
 
 /// <summary>
