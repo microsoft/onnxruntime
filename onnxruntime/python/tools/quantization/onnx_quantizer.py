@@ -500,7 +500,7 @@ class ONNXQuantizer:
 
         return True, scale_name, zero_point_name, scale_shape, zero_point_shape
 
-    def _get_quantize_input_nodes(self, node, input_index, qType):
+    def _get_quantize_input_nodes(self, node, input_index, qType, given_scale_name = None, given_zp_name = None):
         '''
         Given an input for a node (which is not a initializer), this function
             - add nodes to compute zero point and scale for this input if they don't exist.
@@ -508,13 +508,17 @@ class ONNXQuantizer:
             parameter node: node being quantized in NodeProto format.
             parameter input_index: index of input in node.input.
             parameter qType: type to quantize to.
+            parameter given_scale_name: if those inputs need to be quanitzed using this scale tensor.
+            parameter given_zp_name: if those inputs to be quantized using this zeropoint tensor.
             return: List of newly created nodes in NodeProto format.
         '''
         input_name = node.input[input_index]
         output_name = input_name + "_quantized"
 
-        data_found, scale_name, zp_name, _, _ = \
-            self._get_quantization_params(input_name)
+        if (given_scale_name is not None) and (given_zp_name is not None):
+            data_found, scale_name, zp_name = (True, given_scale_name, given_zp_name)
+        else:
+            data_found, scale_name, zp_name, _, _ = self._get_quantization_params(input_name)
 
         if self.static:
             if data_found == False:

@@ -1,4 +1,5 @@
 import onnx
+import numpy as np
 from .base_operator import QuantOperatorBase
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg
 
@@ -14,33 +15,50 @@ class QPad(QuantOperatorBase):
         if (self.quantizer.opset_version < 11) or (node.input[0] not in self.quantizer.quantized_value_map):
             super().quantize()
             return
+        quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
 
         kwargs = {}
         for attribute in node.attribute:
             kv = attribute_to_kwarg(attribute)
             kwargs.update(kv)
 
-        constant_value = None
         if 'mode' not in kwargs or kwargs['mode'] == 'constant':
-            tensor = self.quantizer.model.get_initializer(quantized_input_value.zp_name)
-            if tensor is None:
-                super().quantize()
-                return
-            tensor_array = onnx.numpy_helper.to_array(tensor)
-            constant_value = tensor_array.item() if tensor_array.ndim == 0 else tensor_array[0]
-            kwargs.update({'const_value' : constant_value})
+            if len(node.input) > 2: # There is 3rd input 'constant_value'
+                zp_tensor = self.quantizer.model.get_initializer(quantized_input_value.zp_name)
+                scale_tensor = self.quantizer.model.get_initializer(quantized_input_value.scale_name)
+                if zp_tensor is None or scale_tensor is None:
+                    super().quantize()
+                    return
+
+                padding_constant_initializer = self.quantizer.model.get_initializer(node.input[2])
+                if (padding_constant_initializer is not None) and (zp_tensor is not None) and (scale_tensor is not None):
+                    zp_array = onnx.numpy_helper.to_array(zp_tensor)
+                    zp_value = zp_array.item() if zp_array.ndim == 0 else zp_array[0]
+                    scale_array = onnx.numpy_helper.to_array(scale_tensor)
+                    scale_value = scale_array.item() if scale_array.ndim == 0 else scale_array[0]
+                    padding_constant_array = onnx.numpy_helper.to_array(padding_constant_initializer)
+                    quantized_padding_constant_array = (padding_constant_array.astype(np.float32) / scale_value).round() + zp_value).astype(np.uint8)
+                    quantized_padding_constant_name = node.input[2] + "_quantized"
+                    quantized_padding_constant_initializer = onnx.numpy_helper.from_array(quantized_padding_constant_array, quantized_padding_constant_name)
+                    # Suppose this padding constant initializer only used by the node
+                    self.quantizer.model.remove_initializer(padding_constant_initializer)
+                    self.quantizer.model.add_initializer(quantized_padding_constant_initializer)
+                    node.input[2] = quantized_padding_constant_name
+                else:
+                    pad_value_qnodes = self.quantizer._get_quantize_input_nodes(
+                        node, 2, quantized_input_value.qType,
+                        quantized_input_value.scale_name, quantized_input_value.zp_name)
+                    self.quantizer.new_nodes += [pad_value_qnodes]
+                    node.input[2] = pad_value_qnodes.output[0]
+            else:
+                node.input.extend([quantized_input_value.zp_name])  # pad zero_point for original zero
 
         # Create an entry for output quantized value
-        quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
         quantized_output_value = QuantizedValue(node.output[0], node.output[0] + "_quantized",
                                                 quantized_input_value.scale_name, quantized_input_value.zp_name,
                                                 QuantizedValueType.Input)
         self.quantizer.quantized_value_map[node.output[0]] = quantized_output_value
 
-        if constant_value is not None:
-            qnode = onnx.helper.make_node("Pad", [quantized_input_value.q_name], [quantized_output_value.q_name], node.name, **kwargs)
-            self.quantizer.new_nodes += [qnode]
-        else:
-            node.input[0] = quantized_input_value.q_name
-            node.output[0] = quantized_output_value.q_name
-            self.quantizer.new_nodes += [node]
+        node.input[0] = quantized_input_value.q_name
+        node.output[0] = quantized_output_value.q_name
+        self.quantizer.new_nodes += [node]
