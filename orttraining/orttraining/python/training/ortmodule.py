@@ -111,6 +111,7 @@ class ORTModule(torch.nn.Module):
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
         self._onnx_training = None
+        self._is_training = True
 
         # Related to training graph split/shape inference
         self._current_input_shape = None
@@ -177,13 +178,26 @@ class ORTModule(torch.nn.Module):
                 self._device = torch.device(device_str)
         return super(ORTModule, self).to(*args, **kwargs)
 
+    def eval(self: T) -> T:
+        self._is_training = False
+        self._original_module.eval()
+
+    def train(self: T, mode: bool = True) -> T:
+        self._is_training = mode
+        self._original_module.train(mode)
+        if self._is_training and self._device.type == 'cuda':
+            torch.cuda.empty_cache()
+
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
 
         ONNX model is exported the first time this method is executed.
-        Next, a full training graph with gradient graph are built which are used
+        Next, a full training graph is splitted in forward and backward graph which are used
         to instantiate ONNX Runtime InferenceSession`s
         '''
+        if not self._is_training:
+            return self._original_module(*inputs, **kwargs)
+
         if not self._onnx_gradient or self._require_export:
             self._require_export = False
             self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
@@ -191,7 +205,7 @@ class ORTModule(torch.nn.Module):
             # TODO: PyTorch exporter bug: changes the initializer order
             initializer_names = [p[0] for p in self._original_module.named_parameters()]
 
-            # Initialize ModuleGradientGraphBuilder
+            # Build full training graph and split in forward/backward
             grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
             grad_builder_config.initializer_names_to_train = initializer_names
             grad_builder_config.input_names_require_grad = []
@@ -237,7 +251,8 @@ class ORTModule(torch.nn.Module):
             if self._save_onnx:
                 onnx.save(self._onnx_gradient, self._save_onnx_prefix + '_gradient.onnx')
 
-        # Use a custom torch.autograd.Function.
+        # Use a custom torch.autograd.Function to associate self.backward_graph as the
+        # gradient implementation for self.forward_graph.
         class _ORTModuleFunction(torch.autograd.Function):
             @staticmethod
             def forward(ctx, *inputs, **kwargs):
@@ -302,6 +317,7 @@ class ORTModule(torch.nn.Module):
     def _convert_gradient_graph_input_to_list(self, module, *inputs, **kwargs):
         '''Creates forward `*inputs` list from user input and PyTorch initializers
 
+        TODO: **kwargs is not supported
         TODO: How IO binding model inputs and outputs affects initializer copies?
 
         ONNX Runtime forward requires an order list of:
