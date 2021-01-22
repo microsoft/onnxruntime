@@ -30,7 +30,7 @@ template <typename T>
 void PostProcess(const std::vector<int64_t>& signal_dims, int64_t N, T* output_data) {
   int64_t scale = std::accumulate(signal_dims.begin(), signal_dims.end(), 1ll, std::multiplies<int64_t>());
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _Normalize<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output_data, N, scale);
+  _Normalize<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output_data, N, static_cast<int>(scale));
 }
 
 #define SPECIALIZED_IMPL(T) \

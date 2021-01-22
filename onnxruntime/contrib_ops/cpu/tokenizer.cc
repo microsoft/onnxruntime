@@ -471,10 +471,10 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
   size_t C = 0;
   if (input_dims.size() == 1) {
     N = 1;
-    C = input_dims[0];
+    C = gsl::narrow<size_t>(input_dims[0]);
   } else if (input_dims.size() == 2) {
-    N = input_dims[0];
-    C = input_dims[1];
+    N = gsl::narrow<size_t>(input_dims[0]);
+    C = gsl::narrow<size_t>(input_dims[1]);
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Input dimensions are either [C] or [N][C] allowed");
