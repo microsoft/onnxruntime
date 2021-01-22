@@ -10,7 +10,6 @@
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
 #include "Eigen/src/Core/arch/Default/Half.h"
@@ -179,14 +178,6 @@ struct ScalarDirectCaster<std::string, DstType> {
   }
 };
 
-// scalar float -> MLFloat16
-template <>
-struct ScalarDirectCaster<float, MLFloat16> {
-  void Cast(const float& in, MLFloat16& out) {
-    out = MLFloat16{math::floatToHalf(in)};
-  }
-};
-
 // helper for indirect cast types
 template <typename SrcType, typename DstType, typename IntermediateType>
 struct ScalarIndirectCaster {
@@ -266,19 +257,7 @@ struct TensorCaster<std::string, DstType> {
   }
 };
 
-// tensor float -> MLFloat16
-template <>
-struct TensorCaster<float, MLFloat16> {
-  void Cast(const Tensor& in, Tensor& out, const TensorShape& shape) const {
-    auto out_data = out.MutableData<MLFloat16>();
-    auto shape_size = shape.Size();
-    auto in_vector = ConstEigenVectorMap<float>(in.Data<float>(), shape_size);
-    auto output_vector = EigenVectorMap<Eigen::half>(static_cast<Eigen::half*>(static_cast<void*>(out_data)),
-                                                     shape_size);
-    output_vector = in_vector.template cast<Eigen::half>();
-  }
-};
-
+#if defined(_M_AMD64)
 // tensor MLFloat16 -> float
 template <>
 struct TensorCaster<MLFloat16, float> {
@@ -286,16 +265,10 @@ struct TensorCaster<MLFloat16, float> {
     auto out_data = out.MutableData<float>();
     auto in_data = in.Data<MLFloat16>();
     auto shape_size = shape.Size();
-#if defined(_M_AMD64)
     MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
-#else
-    auto in_vector = ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(in_data)),
-                                                      shape_size);
-    auto output_vector = EigenVectorMap<float>(out_data, shape_size);
-    output_vector = in_vector.template cast<float>();
-#endif
   }
 };
+#endif
 
 class Cast final : public OpKernel {
  public:
