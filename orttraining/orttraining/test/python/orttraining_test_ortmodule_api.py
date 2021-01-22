@@ -356,7 +356,6 @@ def test_model_with_different_cuda_devices(device):
 
     # Trick to run this test in single GPU machines
     device_id = _utils.get_device_index(device)
-    print(torch.cuda.device_count())
     if device_id >= torch.cuda.device_count():
         warnings.warn('Skipping test_model_with_different_cuda_devices(cuda:{})'.format(device_id))
         return
