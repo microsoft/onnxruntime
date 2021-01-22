@@ -57,7 +57,7 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime_e2e_test_image \
           mpirun -n 4 -x NCCL_DEBUG=INFO \
-          $(pipeline_test_command) \
+          ${{ variables.pipeline_test_command }} \
           --train_batch_size 40 --pipeline_parallel_size 4 \
           --cut_group_info 1149:407-1219/1341/1463/1585/1707/1829,1881:407-1951/2073/2195/2317/2439/2561,2613:407-2683/2805/2927/3049/3171/3293
     displayName: 'mpirun onnxruntime_training_bert --pipeline_parallel_size 4'
@@ -73,7 +73,7 @@ jobs:
         --volume /bert_data:/bert_data \
         onnxruntime_e2e_test_image \
           mpirun -n 4 -x NCCL_DEBUG=INFO \
-          $(pipeline_test_command) \
+          ${{ variables.pipeline_test_command }} \
           --train_batch_size 40 --data_parallel_size 2 --pipeline_parallel_size 2 \
           --cut_group_info 1881:407-1951/2073/2195/2317/2439/2561/2683/2805/2927/3049/3171/3293
     displayName: 'mpirun onnxruntime_training_bert --data_parallel_size 2 --pipeline_parallel_size 2'
