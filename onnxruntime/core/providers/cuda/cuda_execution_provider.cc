@@ -1965,6 +1965,8 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
   if (nullptr == cuda_cpu_alloc) {
     // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
     // This will be refactored/removed when allocator and execution provider are decoupled.
+    // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
+    // CPUAllocator is OrtMemTypeDefault for CPU EP
     AllocatorCreationInfo cpu_memory_info(
         [](int device_id) {
           return onnxruntime::make_unique<CPUAllocator>(

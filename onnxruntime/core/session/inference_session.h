@@ -386,6 +386,10 @@ class InferenceSession {
     */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
 
+  std::shared_ptr<onnxruntime::AllocatorManager> GetAllocatorManager() {
+    return allocator_manager;
+  }
+
   /**
     *Get InferenceSession logger.
     */

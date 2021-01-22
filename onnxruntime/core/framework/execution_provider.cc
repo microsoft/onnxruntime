@@ -66,7 +66,8 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
   auto ite = mem_info_set_.find(info);
   if (ite != mem_info_set_.end()) {
-    ORT_THROW("duplicated allocator");
+    LOGS_DEFAULT(WARNING) << "duplicated allocator: " << info.ToString();
+    return;
   }
   const int key = MakeKey(info.id, info.mem_type);
   allocators_.insert({key, allocator});
