@@ -250,7 +250,6 @@ class TestCalibrate(unittest.TestCase):
         #test calculation of quantization params
         #TO_DO: check rmin/rmax
         dict_for_quantization = calibrater.get_intermediate_outputs()
-        print(len(dict_for_quantization))
         quantization_params_dict = calibrater.calculate_quantization_params(dict_for_quantization)
 
         #check the size of the quantization dictionary
