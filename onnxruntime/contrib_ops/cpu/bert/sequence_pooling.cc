@@ -22,8 +22,9 @@ namespace contrib {
 
 REGISTER_KERNEL_TYPED(float)
 
+namespace {
 template <typename T>
-inline static void MaxPoolingByRowImpl(T* start_dst, const T* start_src, const T* end_src) {
+inline void MaxPoolingByRowImpl(T* start_dst, const T* start_src, const T* end_src) {
   while (start_src != end_src) {
     if (*start_src > *start_dst) {
       *start_dst = *start_src;
@@ -34,7 +35,7 @@ inline static void MaxPoolingByRowImpl(T* start_dst, const T* start_src, const T
 }
 
 template <typename T>
-static void MaxPoolingByRow(T* start_dst, const T* start_src, int64_t sentence_length, int hidden_size) {
+void MaxPoolingByRow(T* start_dst, const T* start_src, int64_t sentence_length, int hidden_size) {
   ORT_ENFORCE(sentence_length > 0);
   memcpy(start_dst, start_src, hidden_size * sizeof(T));
   for (int offset = 1; offset < sentence_length; ++offset) {
@@ -42,6 +43,7 @@ static void MaxPoolingByRow(T* start_dst, const T* start_src, int64_t sentence_l
     MaxPoolingByRowImpl<T>(start_dst, start_src, start_src + hidden_size);
   }
 }
+} //namespace
 
 template <typename T>
 SequencePooling<T>::SequencePooling(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
