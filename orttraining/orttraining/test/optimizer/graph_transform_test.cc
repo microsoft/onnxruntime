@@ -462,11 +462,11 @@ TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
 
 // We only tested on CUDA run.
 #if defined(USE_CUDA)
-static void RunPartitionCorrectnessTest(std::string model_path, 
-const logging::Logger& logger, 
-const int total_rank, 
-std::vector<std::string> input_names,
-std::vector<std::vector<int64_t>> input_dims) {
+static void RunPartitionCorrectnessTest(std::string model_path,
+                                        const logging::Logger& logger,
+                                        const int total_rank,
+                                        std::vector<std::string> input_names,
+                                        std::vector<std::vector<int64_t>> input_dims) {
   const PathString model_uri = ToPathString(model_path) + ORT_TSTR(".onnx");
   // const int total_rank = 4;
   std::vector<Graph*> graphs;
@@ -503,12 +503,12 @@ std::vector<std::vector<int64_t>> input_dims) {
 
   ORT_ENFORCE(input_names.size() == input_dims.size());
   NameMLValMap feeds;
-  for(size_t i = 0; i< input_dims.size();i++){
+  for (size_t i = 0; i < input_dims.size(); i++) {
     std::vector<int64_t> dims_X = input_dims[i];
     std::vector<float> values_X(TensorShape(dims_X).Size());
     std::for_each(values_X.begin(), values_X.end(),
                   [&generator, &distribution](float& value) { value = distribution(generator); });
-    
+
     OrtValue ml_value;
     CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
     feeds.insert(std::make_pair(input_names[i], ml_value));

@@ -303,9 +303,6 @@ bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const 
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
 
-constexpr const char* TRT = "Tensorrt";
-constexpr const char* TRT_PINNED = "TensorrtPinned";
-
 class Memcpy final : public Provider_OpKernel {
  public:
   Memcpy(const OpKernelInfo&) {}
@@ -387,12 +384,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   AllocatorCreationInfo default_memory_info(
-      [](int id) { return CreateCUDAAllocator(id, TRT); }, device_id_);
+      [](int id) { return CreateCUDAAllocator(id, onnxruntime::TRT); }, device_id_);
   allocator_ = CreateAllocator(default_memory_info);
   InsertAllocator(allocator_);
 
   AllocatorCreationInfo pinned_allocator_info(
-      [](int) { return CreateCUDAPinnedAllocator(0, TRT_PINNED); }, device_id_);
+      [](int) { return CreateCUDAPinnedAllocator(0, onnxruntime::TRT_PINNED); }, device_id_);
   InsertAllocator(CreateAllocator(pinned_allocator_info));
 
   // Get environment variables

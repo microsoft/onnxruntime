@@ -6,6 +6,7 @@ from PIL import Image
 import cv2
 import pdb
 
+
 def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_limit=0):
     '''
     Loads a batch of images and preprocess them
@@ -15,19 +16,20 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
     parameter size_limit: number of images to load. Default is 0 which means all images are picked.
     return: list of matrices characterizing multiple images
     '''
+
     # this function is from yolo3.utils.letterbox_image
     # https://github.com/qqwweee/keras-yolo3/blob/master/yolo3/utils.py
     def letterbox_image(image, size):
         '''resize image with unchanged aspect ratio using padding'''
         iw, ih = image.size
         w, h = size
-        scale = min(w/iw, h/ih)
-        nw = int(iw*scale)
-        nh = int(ih*scale)
+        scale = min(w / iw, h / ih)
+        nw = int(iw * scale)
+        nh = int(ih * scale)
 
-        image = image.resize((nw,nh), Image.BICUBIC)
-        new_image = Image.new('RGB', size, (128,128,128))
-        new_image.paste(image, ((w-nw)//2, (h-nh)//2))
+        image = image.resize((nw, nh), Image.BICUBIC)
+        new_image = Image.new('RGB', size, (128, 128, 128))
+        new_image.paste(image, ((w - nw) // 2, (h - nh) // 2))
         return new_image
 
     image_names = os.listdir(images_folder)
@@ -42,7 +44,6 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
     else:
         batch_filenames = image_names
 
-
     unconcatenated_batch_data = []
     image_size_list = []
 
@@ -51,7 +52,7 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
 
     for image_name in batch_filenames:
         image_filepath = images_folder + '/' + image_name
-        img = Image.open(image_filepath) 
+        img = Image.open(image_filepath)
         model_image_size = (height, width)
         boxed_image = letterbox_image(img, tuple(reversed(model_image_size)))
         image_data = np.array(boxed_image, dtype='float32')
@@ -64,8 +65,8 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data, batch_filenames, image_size_list
 
-def yolov3_vision_preprocess_func(images_folder, height, width, start_index=0, size_limit=0):
 
+def yolov3_vision_preprocess_func(images_folder, height, width, start_index=0, size_limit=0):
     def letterbox(img, new_shape=(416, 416), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True):
         # Resize image to a 32-pixel-multiple rectangle https://github.com/ultralytics/yolov3/issues/232
         shape = img.shape[:2]  # current shape [height, width]
@@ -98,8 +99,6 @@ def yolov3_vision_preprocess_func(images_folder, height, width, start_index=0, s
         img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
         return img, ratio, (dw, dh)
 
-
-
     image_names = os.listdir(images_folder)
     if start_index >= len(image_names):
         return np.asanyarray([]), np.asanyarray([]), np.asanyarray([])
@@ -112,7 +111,6 @@ def yolov3_vision_preprocess_func(images_folder, height, width, start_index=0, s
     else:
         batch_filenames = image_names
 
-
     unconcatenated_batch_data = []
     image_size_list = []
 
@@ -122,15 +120,15 @@ def yolov3_vision_preprocess_func(images_folder, height, width, start_index=0, s
     for image_name in batch_filenames:
         image_filepath = images_folder + '/' + image_name
         img0 = cv2.imread(image_filepath)
-        img = letterbox(img0, new_shape=(height, width), auto = False)[0]
-        img = img[:,:,::-1].transpose(2,0,1)
-        img = np.expand_dims(img, axis = 0)
-        img = np.repeat(img, 1, axis = 0)
+        img = letterbox(img0, new_shape=(height, width), auto=False)[0]
+        img = img[:, :, ::-1].transpose(2, 0, 1)
+        img = np.expand_dims(img, axis=0)
+        img = np.repeat(img, 1, axis=0)
 
-        img = img.astype('float32')/255.0
+        img = img.astype('float32') / 255.0
 
         unconcatenated_batch_data.append(img)
-        image_size_list.append(img0.shape[0:2]) # img.shape is h, w, c
+        image_size_list.append(img0.shape[0:2])  # img.shape is h, w, c
 
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data, batch_filenames, image_size_list

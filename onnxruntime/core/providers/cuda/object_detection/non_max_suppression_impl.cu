@@ -25,7 +25,10 @@ limitations under the License.
 #include <thrust/execution_policy.h>
 
 #include <cub/cub.cuh>
-
+//TODO:fix the warnings
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#endif
 namespace onnxruntime {
 namespace cuda {
 

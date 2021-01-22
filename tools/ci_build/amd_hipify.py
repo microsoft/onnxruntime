@@ -84,8 +84,6 @@ provider_excluded_files = [
                 'math/einsum_utils/einsum_auxiliary_ops.h',
                 'math/einsum_utils/einsum_auxiliary_ops_diagonal.cu',
                 'math/einsum_utils/einsum_auxiliary_ops_diagonal.h',
-                'math/binary_elementwise_ops.cc',
-                'math/binary_elementwise_ops_impl.cu',
                 'math/cumsum.cc',
                 'math/cumsum.h',
                 'math/cumsum_impl.cu',
@@ -206,6 +204,8 @@ provider_excluded_files = [
                 'cuda_execution_provider_info.h',
                 'cuda_execution_provider.cc',
                 'cuda_execution_provider.h',
+                'cuda_memory_check.cc',
+                'cuda_memory_check.h',
                 'cuda_fence.cc',
                 'cuda_fence.h',
                 'cuda_fwd.h',
@@ -224,6 +224,7 @@ provider_excluded_files = [
 ]
 
 training_ops_excluded_files = [
+                    'activation/gelu_grad_impl_common.cuh',
                     'collective/adasum_kernels.cc',
                     'collective/adasum_kernels.h',
                     'collective/nccl_common.cc',

@@ -891,7 +891,6 @@ void OpTester::Run(
             }
 
             if (!valid) {
-              std::cerr << "No kernel registered from EP: " << provider_type << "for node: " << node.OpType() << std::endl;
               break;
             }
           }

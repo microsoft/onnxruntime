@@ -15,41 +15,51 @@ package_url = None
 
 registrations = []
 
-with open(os.path.join(REPO_DIR,'tools','ci_build','github','linux','docker','manylinux2014_build_scripts','build_env.sh'), "r") as f:
-  for line in f:
-    if not line.strip():      
-      package_name = None
-      package_filename = None
-      package_url = None
-    if package_filename is None:
-      m = re.match("(.+?)_ROOT=(.*)$",line)
-      if m != None:
-        package_name = m.group(1)
-        package_filename = m.group(2)
-      else:
-        m = re.match("(.+?)_AUTOCONF_VERSION=(.*)$",line)
-        if m != None:
-          package_name = m.group(1)
-          package_filename = m.group(2)        
-    elif package_url is None:
-      m = re.match("(.+?)_DOWNLOAD_URL=(.+)$",line)
-      if m != None:
-        package_url = m.group(2) + "/" + package_filename + ".tar.gz"
-        registration = {
-          "Component": {
-            "Type": "other",
-            "other": {
-                "Name": package_name.lower(),
-                "Version": package_filename.split("-")[-1],
-                "DownloadUrl": package_url,
-            },
-            "comments": "manylinux dependency"
-          }
-        }
-        registrations.append(registration)
-        package_name = None
-        package_filename = None
-        package_url = None
+with open(os.path.join(REPO_DIR, 'tools', 'ci_build', 'github', 'linux', 'docker', 'manylinux2014_build_scripts',
+                       'build_env.sh'), "r") as f:
+    for line in f:
+        if not line.strip():
+            package_name = None
+            package_filename = None
+            package_url = None
+        if package_filename is None:
+            m = re.match("(.+?)_ROOT=(.*)$", line)
+            if m is not None:
+                package_name = m.group(1)
+                package_filename = m.group(2)
+            else:
+                m = re.match("(.+?)_VERSION=(.*)$", line)
+                if m is not None:
+                    package_name = m.group(1)
+                    package_filename = m.group(2)
+        elif package_url is None:
+            m = re.match("(.+?)_DOWNLOAD_URL=(.+)$", line)
+            if m is not None:
+                package_url = m.group(2)
+                if package_name == 'LIBXCRYPT':
+                    package_url = m.group(2) + "/v" + \
+                        package_filename + ".tar.gz"
+                elif package_name == 'CMAKE':
+                    package_url = m.group(
+                        2) + "/v" + package_filename + "/cmake-" + package_filename + ".tar.gz"
+                else:
+                    package_url = m.group(2) + "/" + \
+                        package_filename + ".tar.gz"
+                registration = {
+                    "Component": {
+                        "Type": "other",
+                        "other": {
+                            "Name": package_name.lower(),
+                            "Version": package_filename.split("-")[-1],
+                            "DownloadUrl": package_url,
+                        },
+                        "comments": "manylinux dependency"
+                    }
+                }
+                registrations.append(registration)
+                package_name = None
+                package_filename = None
+                package_url = None
 
 
 proc = subprocess.run(

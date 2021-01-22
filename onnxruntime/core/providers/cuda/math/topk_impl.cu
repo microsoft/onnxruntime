@@ -10,7 +10,10 @@
 #include "cub/util_allocator.cuh"
 #include "cub/device/device_radix_sort.cuh"
 #include <limits>
-
+//TODO:fix the warnings
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#endif
 namespace onnxruntime {
 namespace cuda {
 
@@ -214,7 +217,7 @@ __device__ int32_t Radix(const float* f, int64_t skip) {
 }
 
 __device__ int32_t Radix(const double* d, int64_t skip) {
-  return Radix((const double*)d, skip);
+  return Radix((const int64_t*)d, skip);
 }
 
 template<typename T>

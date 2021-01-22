@@ -71,6 +71,7 @@ if %run_install% == true (
     )
   )
 
+  pip install --upgrade onnxconverter_common
   pip install --upgrade onnxruntime-tools
   pip install --upgrade git+https://github.com/huggingface/transformers
 )
@@ -145,7 +146,7 @@ if %run_torch% == true (
   >>benchmark.log echo python %optimizer_script% -e torch -m %1 %benchmark_options% %2 %3 %4
   if %run_tests%==true python %optimizer_script% -e torch -m %1 %benchmark_options% %2 %3 %4
 )
-  
+
 if %run_torchscript% == true (
   >>benchmark.log echo python %optimizer_script% -e torchscript -m %1 %benchmark_options% %2 %3 %4
   if %run_tests%==true python %optimizer_script% -e torchscript -m %1 %benchmark_options% %2 %3 %4

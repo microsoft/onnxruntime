@@ -42,6 +42,9 @@ SPECIALIZED_GRAD_IMPL(float);
 SPECIALIZED_GRAD_IMPL(half);
 SPECIALIZED_GRAD_IMPL(double);
 #endif
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_GRAD_IMPL(nv_bfloat16);
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -202,8 +202,10 @@ table Model {
   domain:string;
   model_version:int64;
   doc_string:string;
-
+  
   graph:Graph;
+  
+  graph_doc_string:string;
 }
 
 table KernelCreateInfos {
