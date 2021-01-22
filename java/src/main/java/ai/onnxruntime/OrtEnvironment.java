@@ -125,7 +125,7 @@ public class OrtEnvironment implements AutoCloseable {
       OrtLoggingLevel loggingLevel, String name, ThreadingOptions threadOptions) {
     if (INSTANCE == null) {
       try {
-        INSTANCE = new OrtEnvironment(loggingLevel, name);
+        INSTANCE = new OrtEnvironment(loggingLevel, name, threadOptions);
         curLogLevel = loggingLevel;
         curLoggingName = name;
       } catch (OrtException e) {
@@ -379,7 +379,7 @@ public class OrtEnvironment implements AutoCloseable {
 
   /**
    * Controls the global thread pools in the environment. Only used if the session is constructed
-   * using an options with {@link OrtSession.SessionOptions#disablePerSessionThreads} set.
+   * using an options with {@link OrtSession.SessionOptions#disablePerSessionThreads()} set.
    */
   public static final class ThreadingOptions implements AutoCloseable {
 
