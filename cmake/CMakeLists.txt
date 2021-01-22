@@ -204,14 +204,14 @@ if(onnxruntime_USE_OPENMP)
   if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    include_directories(${OpenMP_CXX_INCLUDE_DIR})    
+    include_directories(${OpenMP_CXX_INCLUDE_DIR})
   else()
     message(WARNING "Flag --use_openmp is specified, but OpenMP is not found in current build environment. Setting it to OFF.")
     set(onnxruntime_USE_OPENMP OFF)
   endif()
 endif()
 
-# 'extended' implies minimal. 
+# 'extended' implies minimal.
 if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
 endif()
@@ -225,7 +225,7 @@ if (onnxruntime_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
     add_compile_definitions(ORT_EXTENDED_MINIMAL_BUILD)
   endif()
- 
+
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -656,10 +656,6 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
-if(onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(re2)
-endif()
-
 set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
 add_library(safeint_interface INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
@@ -669,6 +665,11 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
   add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
 endif()
 
+add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
+
+if(onnxruntime_PREFER_SYSTEM_LIB)
+  find_package(re2)
+endif()
 if(NOT TARGET re2::re2)
   add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
   set_target_properties(re2 PROPERTIES FOLDER "External/re2")
@@ -1037,7 +1038,7 @@ if(onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_2021_1=1)
   elseif (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
     set(OPENVINO_VERSION "2021.2")
-    add_definitions(-DOPENVINO_2021_2=1)  
+    add_definitions(-DOPENVINO_2021_2=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
