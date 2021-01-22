@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y gnupg2 --no-install-recommends curl && 
   sh -c 'echo deb [arch=amd64] http://repo.radeon.com/rocm/apt/4.0/ xenial main > /etc/apt/sources.list.d/rocm.list'
 
 RUN apt-get update &&\
-    apt-get install -y sudo git bash build-essential cmake rocm-dkms libpython3.6-dev python3-pip miopen-hip rocblas\
+    apt-get install -y --no-install-recommends sudo git bash build-essential cmake libelf1 rocm-dkms libpython3.6-dev python3-pip miopen-hip rocblas\
     libnuma-dev kmod half hipsparse rocfft
 
 # Install yapf
