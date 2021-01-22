@@ -149,7 +149,7 @@ typedef enum OrtErrorCode {
 
 // The actual types defined have an Ort prefix
 ORT_RUNTIME_CLASS(Env);
-ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
+ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success   
 ORT_RUNTIME_CLASS(MemoryInfo);
 ORT_RUNTIME_CLASS(IoBinding);
 ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)

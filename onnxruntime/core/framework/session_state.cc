@@ -6,6 +6,8 @@
 #include <string>
 #include <sstream>
 #include <fstream>
+#include <unistd.h>
+#include <limits.h>
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
@@ -571,8 +573,28 @@ optional<std::pair<OrtValuePatternPlanner*, const MemoryPatternGroup*>> SessionS
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
+
+  if (mem_patterns_.size() == 0) {
+    int64_t key_local;
+    char cwd[PATH_MAX];
+    getcwd(cwd, sizeof(cwd));
+    std::string path = std::string(cwd) + (std::string("pattern"));
+    std::ifstream file(path, std::ios::binary | std::ios::in);
+    if (file && file.good()) {
+      while (!file.eof()) {
+        file.read((char*)&key_local, sizeof(key_local));
+        auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
+        mem_patterns.get()->Deserialize(file);
+        mem_patterns_[key_local] = std::move(mem_patterns);
+        //std::cout << "feteched entry" << getpid() << std::flush;
+      }
+
+      file.close();
+    }
+  }
+
   auto it = mem_patterns_.find(key);
-  if ((it == mem_patterns_.end()) || (it != mem_patterns_.end())) {
+  if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
     auto planner = onnxruntime::make_unique<OrtValuePatternPlanner>(*GetExecutionPlan(), true /*trace_using_counters*/);
     auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
@@ -583,6 +605,16 @@ optional<std::pair<OrtValuePatternPlanner*, const MemoryPatternGroup*>> SessionS
       auto mem_planner_ptr = planner.get();
       auto mem_pattern_ptr = mem_patterns.get();
       mem_planners_[key] = std::move(planner);
+      char cwd[PATH_MAX];
+      getcwd(cwd, sizeof(cwd));
+      std::string path;
+      int pid = getpid();
+      path = std::string(cwd) + std::string("pattern") + std::to_string(pid);
+      std::ofstream file(path, std::ios::binary | std::ios::app);
+      file.write((char*)&key, sizeof(key));
+      mem_patterns->Serialize(file);
+      file.close();
+      //std::cout << "added entry" << getpid() << std::flush;
       mem_patterns_[key] = std::move(mem_patterns);
       shape_patterns_[key] = inferred_shapes;
       ret_val = std::make_pair(mem_planner_ptr, mem_pattern_ptr);
@@ -593,11 +625,12 @@ optional<std::pair<OrtValuePatternPlanner*, const MemoryPatternGroup*>> SessionS
   } else {
     inferred_shapes = shape_patterns_[key];
 #ifdef ENABLE_TRAINING
-    auto mem_planner = mem_planners_.find(key);
+    //auto mem_planner = mem_planners_.find(key);
 
-    ORT_ENFORCE(mem_planner != mem_planners_.end());
+    //ORT_ENFORCE(mem_planner != mem_planners_.end());
 
-    ret_val = std::make_pair(mem_planner->second.get(), it->second.get());
+    //ret_val = std::make_pair(mem_planner->second.get(), it->second.get());
+    ret_val = std::make_pair(nullptr, it->second.get());
 #else
     ret_val = std::make_pair(nullptr, it->second.get());
 #endif

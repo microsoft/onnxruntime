@@ -16,7 +16,7 @@ using namespace common;
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   auto device_allocator = std::unique_ptr<IAllocator>(info.device_alloc_factory(info.device_id));
 
-  if (!info.use_arena) {
+  if (info.use_arena) {
     size_t max_mem = info.arena_cfg.max_mem == 0 ? BFCArena::DEFAULT_MAX_MEM : info.arena_cfg.max_mem;
     int initial_chunk_size_bytes = info.arena_cfg.initial_chunk_size_bytes == -1
                                        ? BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES

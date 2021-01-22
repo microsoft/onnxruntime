@@ -156,7 +156,7 @@ class MemPatternPlanner {
 
     best_fit_it = blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
 
-    if(best_fit_it != blocks_.begin()){
+    /*if(best_fit_it != blocks_.begin()){
       std::list<int>::iterator it_local = best_fit_it;
       if(allocs_[*(--it_local)].block_.offset_ > allocs_[*best_fit_it].block_.offset_) {
         auto t = std::prev(best_fit_it);
@@ -181,7 +181,7 @@ class MemPatternPlanner {
         t1 = t1;
         tt = tt;
       }
-    }
+    }*/
 
     if (offset_out) {
       *offset_out = best_offset;

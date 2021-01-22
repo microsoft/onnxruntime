@@ -94,6 +94,8 @@ class SessionState {
         data_transfer_mgr_(data_transfer_mgr),
         use_deterministic_compute_(use_deterministic_compute) {
     SetupAllocators();
+    cuda_buffer_ = nullptr;
+    cuda_buffer_size_ = 0;
   }
 
   ~SessionState() {
@@ -102,6 +104,10 @@ class SessionState {
     }
     for (auto& kvp : deleter_for_initialized_tensors_) {
       kvp.second.f(kvp.second.param);
+    }
+
+    if (cuda_buffer_ != nullptr) {
+      cuda_alloc_->Free(cuda_buffer_);
     }
   }
 
@@ -290,6 +296,9 @@ class SessionState {
   SessionState* Parent() {
     return parent_;
   }
+  mutable void* cuda_buffer_;
+  mutable size_t cuda_buffer_size_;
+  mutable AllocatorPtr cuda_alloc_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);

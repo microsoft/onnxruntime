@@ -4,7 +4,7 @@
 #include "core/framework/execution_frame.h"
 
 #include <sstream>
-
+#include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/mem_pattern_planner.h"
 #include "core/framework/execution_plan_base.h"
 #include "core/framework/sequential_execution_plan.h"
@@ -265,48 +265,72 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
           const auto& location = mem_patterns_->locations[i];
           ORT_ENFORCE(buffers_.find(location) == buffers_.end());
           if (mem_patterns_->patterns[i].PeakSize() > 0) {
-            AllocatorPtr alloc = GetAllocator(location);
-            void* buffer = nullptr;
-            // it's possible we can't allocate the large block. if we have memory patterns we know we have successfully
-            // executed once before, so if there's an arena involved it probably has smaller blocks available.
-            // due to that we can still run and use those blocks (inside the arena logic) instead of one large one.
-            // it's less efficient (the arena will add some overhead to coalesce individual allocations
-            // back into blocks on 'free'), but better than failing completely.
-            ORT_TRY {
-              auto peak_size = mem_patterns_->patterns[i].PeakSize();
-              // Planning of one memory type should only happen once.
-              ORT_ENFORCE(
-                  static_activation_memory_sizes_in_byte_.find(location.name) ==
-                      static_activation_memory_sizes_in_byte_.end(),
-                  "Memory type ",
-                  location.name,
-                  " should only appear once.");
-              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
-              // Memory dynamically allocated when executing kernels is not recorded using this field.
-              static_activation_memory_sizes_in_byte_[location.name] = peak_size;
+            
+            if (strcmp(location.name, "Cuda") == 0) {
+              if (session_state_.cuda_buffer_size_ == 0) {
+                session_state_.cuda_alloc_ = AllocatorPtr(std::move(onnxruntime::make_unique<CUDAAllocator>(location.id, CUDA)));
+              }
 
-              buffer = alloc->Alloc(peak_size);
-            }
-            ORT_CATCH(const OnnxRuntimeException& ex) {
-              ORT_HANDLE_EXCEPTION([&]() {
+              if (session_state_.cuda_buffer_size_ < mem_patterns_->patterns[i].PeakSize()) {
+                
+                ORT_ENFORCE((session_state_.cuda_buffer_size_ == 0) || (session_state_.cuda_buffer_ != nullptr));
+
+                if (session_state_.cuda_buffer_ != nullptr) {
+                  session_state_.cuda_alloc_->Free(session_state_.cuda_buffer_);
+                }
+
+                session_state_.cuda_buffer_ = session_state_.cuda_alloc_->Alloc(mem_patterns_->patterns[i].PeakSize());
+                session_state_.cuda_buffer_size_ = mem_patterns_->patterns[i].PeakSize();
+              }
+              
+              static_activation_memory_sizes_in_byte_[location.name] = session_state_.cuda_buffer_size_;
+
+              ORT_ENFORCE(session_state_.cuda_buffer_ != nullptr);
+
+            } else {
+              AllocatorPtr alloc = GetAllocator(location);
+              void* buffer = nullptr;
+              // it's possible we can't allocate the large block. if we have memory patterns we know we have successfully
+              // executed once before, so if there's an arena involved it probably has smaller blocks available.
+              // due to that we can still run and use those blocks (inside the arena logic) instead of one large one.
+              // it's less efficient (the arena will add some overhead to coalesce individual allocations
+              // back into blocks on 'free'), but better than failing completely.
+              ORT_TRY {
+                auto peak_size = mem_patterns_->patterns[i].PeakSize();
+                // Planning of one memory type should only happen once.
+                ORT_ENFORCE(
+                    static_activation_memory_sizes_in_byte_.find(location.name) ==
+                        static_activation_memory_sizes_in_byte_.end(),
+                    "Memory type ",
+                    location.name,
+                    " should only appear once.");
+                // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
+                // Memory dynamically allocated when executing kernels is not recorded using this field.
+                static_activation_memory_sizes_in_byte_[location.name] = peak_size;
+                buffer = alloc->Alloc(peak_size);
+              }
+              ORT_CATCH(const OnnxRuntimeException& ex) {
+                ORT_HANDLE_EXCEPTION([&]() {
+                  LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
+                                                      << location.ToString() << " failed. Error:" << ex.what();
+                });
+              }
+
+              if (buffer != nullptr) {
+                buffers_[location] = BufferUniquePtr(buffer, alloc);
+              }
+
+              if (buffer == nullptr) {
+                // INFO level as this may fire on every run and there may not be much a user can do
                 LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
-                                                    << location.ToString() << " failed. Error:" << ex.what();
-              });
-            }
+                                                    << location.ToString() << " returned nullptr";
+                //std::cout << "\n" << "Allocation of memory pattern buffer for " << location.ToString() << " returned nullptr for " <<mem_patterns_->patterns[i].PeakSize() << std::flush;
+              }
 
-            if (buffer != nullptr) {
-              buffers_[location] = BufferUniquePtr(buffer, alloc);
+              // log size of activation. Keep it commented out for now to avoid log flooding.
+              // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: " <<mem_patterns_->patterns[i].PeakSize();
+              // printf("\n **** Allocated memory for activations, size: %zu ***\n", mem_patterns_->patterns[i].PeakSize());
             }
-
-            if (buffer == nullptr) {
-              // INFO level as this may fire on every run and there may not be much a user can do
-              LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
-                                                  << location.ToString() << " returned nullptr";
-            }
-
-            // log size of activation. Keep it commented out for now to avoid log flooding.
-            // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: " <<mem_patterns_->patterns[i].PeakSize();
-            // printf("\n **** Allocated memory for activations, size: %zu ***\n", mem_patterns_->patterns[i].PeakSize());
           }
         }
       }
@@ -317,7 +341,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       // For inferenceing side I'm leaving the behavior untouched for now to minimize disruption but ideally we would want to reconcile
       // the memory allocation logic for both modes.
 
-      ORT_ENFORCE((cached_planner_ && !planner_) || (planner_ && !cached_planner_));
+      //ORT_ENFORCE((cached_planner_ && !planner_) || (planner_ && !cached_planner_));
     }
   }
 }
@@ -380,6 +404,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
       if (block_ptr && (block_ptr->size_ == size)) {
         block = *block_ptr;
       }
+      /*
 #ifdef ENABLE_TRAINING
       else {
 
@@ -402,15 +427,15 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
           block_ptr = &block;
         }
       }
-#endif
+#endif*/
 
       // if block not found, fall back to default behavior
       if (block_ptr) {
         auto it = buffers_.find(location);
-        if (it != buffers_.end()) {
+        if ((it != buffers_.end()) || (strcmp(location.name, "Cuda") == 0)) {
           // if the block is not correct, log message then fall back to default behavior
           if (block.size_ == size) {
-            void* buffer = it->second.get();
+            void* buffer = strcmp(location.name, "Cuda") == 0 ? session_state_.cuda_buffer_ : it->second.get();
             ORT_ENFORCE((static_cast<char*>(buffer) + block.offset_ + size) <=
                         (static_cast<char*>(buffer) + static_activation_memory_sizes_in_byte_[location.name]));
 
@@ -436,6 +461,10 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
           }
         }
         // else { we couldn't allocate the large block for the buffer so we didn't insert an entry }
+      } else {
+        /*std::cout << "For ort_value with index: " << ort_value_index
+                      << "block NOT FOUND\n"
+                      << std::flush;*/
       }
     }
   }
