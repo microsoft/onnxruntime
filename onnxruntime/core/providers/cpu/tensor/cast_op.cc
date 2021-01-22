@@ -12,6 +12,7 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/op_implemented_type_utils.h"
 #include "core/util/math_cpuonly.h"
 
 #include "Eigen/src/Core/arch/Default/Half.h"
@@ -23,49 +24,54 @@
 #include <boost/mp11.hpp>
 
 using namespace ONNX_NAMESPACE;
+using namespace boost::mp11;
+
 namespace onnxruntime {
 
-// test changes
-using namespace boost::mp11;
-namespace {
+ORT_DECLARE_OP_ARG_DEFAULT_IMPLEMENTED_TYPES(
+    Cast, Input, 0,
+    bool,
+    float, double,
+    uint8_t, uint16_t, uint32_t, uint64_t,
+    int8_t, int16_t, int32_t, int64_t);
+
+ORT_DECLARE_OP_ARG_DEFAULT_IMPLEMENTED_TYPES(
+    Cast, Output, 0,
+    bool,
+    float, double,
+    uint8_t, uint16_t, uint32_t, uint64_t,
+    int8_t, int16_t, int32_t, int64_t);
+
 //#define LIMIT_TYPES
-//#define LIMIT_TYPES_NO_STRING_OR_FLOAT16
+#define LIMIT_TYPES_NO_STRING_OR_FLOAT16
 #if defined(LIMIT_TYPES)
-using ImplementedSrcTypes = TypeList<float, int64_t>;
+ORT_DECLARE_OP_ARG_OVERRIDDEN_IMPLEMENTED_TYPES(
+    Cast, Input, 0,
+    float, int64_t);
 
-using ImplementedDstTypes = TypeList<float, int64_t>;
+ORT_DECLARE_OP_ARG_OVERRIDDEN_IMPLEMENTED_TYPES(
+    Cast, Output, 0,
+    float, int64_t);
 #elif defined(LIMIT_TYPES_NO_STRING_OR_FLOAT16)
-using ImplementedSrcTypes = TypeList<
+ORT_DECLARE_OP_ARG_OVERRIDDEN_IMPLEMENTED_TYPES(
+    Cast, Input, 0,
     bool,
     float, double,
     uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t>;
+    int8_t, int16_t, int32_t, int64_t);
 
-using ImplementedDstTypes = TypeList<
+ORT_DECLARE_OP_ARG_OVERRIDDEN_IMPLEMENTED_TYPES(
+    Cast, Output, 0,
     bool,
     float, double,
     uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t>;
-#else
-using ImplementedSrcTypes = TypeList<
-    bool,
-    float, double,
-    uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t,
-    MLFloat16, BFloat16,
-    std::string>;
-
-using ImplementedDstTypes = TypeList<
-    bool,
-    float, double,
-    uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t,
-    MLFloat16, BFloat16,
-    std::string>;
+    int8_t, int16_t, int32_t, int64_t);
 #endif
-}  // namespace
 
 namespace {
+
+using ImplementedSrcTypes = ORT_OP_ARG_IMPLEMENTED_TYPE_LIST(Cast, Input, 0);
+using ImplementedDstTypes = ORT_OP_ARG_IMPLEMENTED_TYPE_LIST(Cast, Output, 0);
 
 using IndirectCastTypes = TypeList<MLFloat16, BFloat16>;
 
