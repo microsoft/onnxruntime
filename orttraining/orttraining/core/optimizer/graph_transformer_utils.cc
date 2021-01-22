@@ -161,6 +161,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     gsl::span<const FreeDimensionOverride> free_dimension_overrides,
     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
+  return transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
   switch (level) {
     case TransformerLevel::Level1: {
