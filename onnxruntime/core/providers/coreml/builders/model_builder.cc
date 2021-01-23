@@ -64,11 +64,13 @@ Status ModelBuilder::RegisterInitializers() {
       continue;
 
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = std::make_unique<COREML_SPEC::NeuralNetworkLayer>();
-    layer->set_name(name);
+    layer->set_name(GetUniqueName("initializer_" + name));
+
     // TODO,look at using LoadConstantLayer instead of LoadConstantNDLayer
     auto* constant_tensor = layer->mutable_loadconstantnd();
     const auto& shape = tensor.dims();
     if (shape.empty()) {
+      // This is a scalar initializer, CoreML constant layer requires a shape, make this a {1} tensor
       constant_tensor->mutable_shape()->Add(1);
     } else {
       std::transform(shape.cbegin(), shape.cend(),
@@ -217,6 +219,17 @@ void ModelBuilder::AddLayer(COREML_SPEC::NeuralNetworkLayer* layer) {
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
   skipped_initializers_.insert(tensor_name);
+}
+
+std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
+  std::string unique_name;
+  do {
+    std::ostringstream os;
+    os << base_name << "_token_" << name_token_++;
+    unique_name = os.str();
+  } while (Contains(unique_names_, unique_name));
+
+  return unique_name;
 }
 
 }  // namespace coreml

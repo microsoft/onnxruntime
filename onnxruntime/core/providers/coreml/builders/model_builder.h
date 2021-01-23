@@ -32,6 +32,8 @@ class ModelBuilder {
   // The initializer will be processed separately, skip it as an initializer
   void AddInitializerToSkip(const std::string& tensor_name);
 
+  std::string GetUniqueName(const std::string& base_name);
+
  private:
   const GraphViewer& graph_viewer_;
   std::unique_ptr<CoreML::Specification::Model> coreml_model_;
@@ -39,6 +41,9 @@ class ModelBuilder {
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
 
   std::unordered_set<std::string> skipped_initializers_;
+
+  uint32_t name_token_{0};
+  std::unordered_set<std::string> unique_names_;
 
   // Convert the onnx model to CoreML::Specification::Model
   Status Initialize() ORT_MUST_USE_RESULT;
