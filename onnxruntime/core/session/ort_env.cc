@@ -13,6 +13,8 @@
 #include "core/framework/provider_shutdown.h"
 #ifdef __ANDROID__
 #include "core/platform/android/logging/android_log_sink.h"
+#elif __APPLE__
+#include "core/platform/apple/logging/nslog_sink.h"
 #else
 #include "core/common/logging/sinks/clog_sink.h"
 #endif
@@ -64,6 +66,8 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
     } else {
 #ifdef __ANDROID__
       ISink* sink = new AndroidLogSink();
+#elif __APPLE__
+      ISink* sink = new NSLogSink();
 #else
       ISink* sink = new CLogSink();
 #endif

@@ -53,6 +53,13 @@ else()
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.cc"
         )
     endif()
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME MATCHES "Darwin")
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/nslog_sink.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/nslog_sink.mm"
+        )
+    endif()
 endif()
 
 if(CMAKE_GENERATOR_PLATFORM)
