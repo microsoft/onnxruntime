@@ -13,6 +13,12 @@ class NodeArg;
 namespace coreml {
 
 // TODO, move this to shared_library
+template <template <typename> class Container, typename T>
+T Product(const Container<T>& c) {
+  return static_cast<T>(accumulate(c.cbegin(), c.cend(), 1, std::multiplies<T>()));
+}
+
+// TODO, move this to shared_library
 template <class Map, class Key>
 inline bool Contains(const Map& map, const Key& key) {
   return map.find(key) != map.end();

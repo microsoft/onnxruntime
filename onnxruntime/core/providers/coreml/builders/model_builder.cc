@@ -2,12 +2,15 @@
 // Licensed under the MIT License.
 
 #include <fstream>
+#include <core/common/safeint.h>
 
 #include "model_builder.h"
 #include "helper.h"
 #include "op_builder_factory.h"
+
 #include "core/providers/coreml/model/model.h"
 #include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -54,7 +57,30 @@ void ModelBuilder::PreprocessInitializers() {
 }
 
 Status ModelBuilder::RegisterInitializers() {
-  // TODO, create LoadConstantNDLayer(s) for initializers
+  for (const auto& pair : GetInitializerTensors()) {
+    const auto& tensor = *pair.second;
+    const auto& name = tensor.name();
+    if (Contains(skipped_initializers_, name))
+      continue;
+
+    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = std::make_unique<COREML_SPEC::NeuralNetworkLayer>();
+    layer->set_name(name);
+    // TODO,look at using LoadConstantLayer instead of LoadConstantNDLayer
+    auto* constant_tensor = layer->mutable_loadconstantnd();
+    const auto& shape = tensor.dims();
+    if (shape.empty()) {
+      constant_tensor->mutable_shape()->Add(1);
+    } else {
+      std::transform(shape.cbegin(), shape.cend(),
+                     google::protobuf::RepeatedFieldBackInserter(constant_tensor->mutable_shape()),
+                     [](int64_t dim) -> uint64_t { return SafeInt<uint64_t>(dim); });
+    }
+
+    CreateCoreMLWeight(*constant_tensor->mutable_data(), tensor);
+    *layer->mutable_output()->Add() = name;
+    AddLayer(layer.release());
+  }
+
   return Status::OK();
 }
 
@@ -187,6 +213,10 @@ void ModelBuilder::AddScalarOutput(const std::string& output_name) {
 void ModelBuilder::AddLayer(COREML_SPEC::NeuralNetworkLayer* layer) {
   auto* neural_network = coreml_model_->mutable_neuralnetwork();
   neural_network->mutable_layers()->AddAllocated(layer);
+}
+
+void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
+  skipped_initializers_.insert(tensor_name);
 }
 
 }  // namespace coreml

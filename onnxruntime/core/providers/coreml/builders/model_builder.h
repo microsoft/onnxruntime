@@ -6,12 +6,6 @@
 #include <core/graph/graph_viewer.h>
 #include "coreml/Model.pb.h"
 
-// namespace CoreML {
-// namespace Specification {
-// class Model;
-// }
-// }  // namespace CoreML
-
 namespace COREML_SPEC = CoreML::Specification;
 
 namespace onnxruntime {
@@ -35,11 +29,16 @@ class ModelBuilder {
 
   void AddLayer(COREML_SPEC::NeuralNetworkLayer* layer);
 
+  // The initializer will be processed separately, skip it as an initializer
+  void AddInitializerToSkip(const std::string& tensor_name);
+
  private:
   const GraphViewer& graph_viewer_;
   std::unique_ptr<CoreML::Specification::Model> coreml_model_;
   std::unordered_set<std::string> scalar_outputs_;
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
+
+  std::unordered_set<std::string> skipped_initializers_;
 
   // Convert the onnx model to CoreML::Specification::Model
   Status Initialize() ORT_MUST_USE_RESULT;

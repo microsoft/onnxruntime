@@ -3,8 +3,8 @@
 
 #include <core/providers/common.h>
 
-#include "../model_builder.h"
-#include "../helper.h"
+#include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/builders/helper.h"
 
 #include "base_op_builder.h"
 
@@ -32,7 +32,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   if (op_type == "Add") {
     layer->mutable_add();
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
   }
 
   *layer->mutable_input()->Add() = input_defs[0]->Name();
