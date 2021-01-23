@@ -122,7 +122,6 @@ if (cmakeBuildDir != null) {
 		include 'docs/**'
 		into cmakeBuildOutputDir
 	}
-	cmakeBuild.dependsOn test
 	cmakeBuild.dependsOn allJar
 	cmakeBuild.dependsOn sourcesJar
 	cmakeBuild.dependsOn javadocJar
@@ -134,7 +133,6 @@ if (cmakeBuildDir != null) {
 		into cmakeBuildOutputDir
 	}
 	cmakeCheck.dependsOn check
-
 }
 
 dependencies {
