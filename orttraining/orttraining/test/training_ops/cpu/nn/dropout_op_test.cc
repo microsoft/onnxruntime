@@ -58,7 +58,7 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
     }
   }
 
-  if (strcmp(op, "TrainableDropout") != 0 && training_mode != NoTraining ) {
+  if (strcmp(op, "TrainableDropout") != 0 && training_mode != NoTraining) {
     if (training_mode == TrainingTrue) {
       t.AddInput("training_mode", {}, {true});
     } else {
@@ -172,7 +172,7 @@ TEST(TrainableDropoutTest, EmptyRatio) {
 #ifdef USE_CUDA
 namespace {
 void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
-                        bool training_mode = true, bool use_float16_ratio = false, bool has_residual = true) {
+                        TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false, bool has_residual = true) {
   OpTester t{"BiasDropout", 1, kMSDomain};
   const int64_t seed = 42;
   t.AddAttribute("seed", seed);
@@ -213,8 +213,12 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     }
   }
 
-  if (training_mode) {
-    t.AddInput("training_mode", {}, {true});
+  if (training_mode != NoTraining) {
+    if (training_mode == TrainingTrue) {
+      t.AddInput("training_mode", {}, {true});
+    } else {
+      t.AddInput("training_mode", {}, {false});
+    }
   }
 
   t.AddOutput<float>("output", input_shape, input);  // we'll do our own output verification
@@ -237,12 +241,12 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     if (ratio == 1.0f) {
       ASSERT_EQ(num_dropped_values, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
-      ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), ratio, 0.1f)
+      ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), training_mode == TrainingTrue ? ratio : 0.0f, 0.1f)
           << "provider: " << provider_type;
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {
         if (output_span[i] == residual_value) continue;
-        const auto expected_value = (bias[i % bias_size] + i + 1.0f) / (1 - ratio) + residual_value;
+        const auto expected_value = (bias[i % bias_size] + i + 1.0f) / (1 - (training_mode == TrainingTrue ? ratio : 0.0f)) + residual_value;
         ASSERT_NEAR(output_span[i], expected_value, 0.01f)
             << "unexpected output value at index " << i << ", provider: " << provider_type;
       }
@@ -276,16 +280,32 @@ TEST(BiasDropoutTest, Basic) {
   RunBiasDropoutTest(false, {10, 10, 10}, 0.75f);
 }
 
+TEST(BiasDropoutTest, BasicTrainingFalse) {
+  RunBiasDropoutTest(false, {10, 10, 10}, 0.75f, TrainingFalse);
+}
+
+TEST(BiasDropoutTest, BasicNoTraining) {
+  RunBiasDropoutTest(false, {10, 10, 10}, 0.75f, NoTraining);
+}
+
 TEST(BiasDropoutTest, BasicWithoutResidual) {
-  RunBiasDropoutTest(false, {10, 10, 10}, 0.75f, true, false, false);
+  RunBiasDropoutTest(false, {10, 10, 10}, 0.75f, TrainingTrue, false, false);
 }
 
 TEST(BiasDropoutTest, Mask) {
   RunBiasDropoutTest(true, {3, 5, 768}, 0.25f);
 }
 
+TEST(BiasDropoutTest, MaskTrainingFalse) {
+  RunBiasDropoutTest(true, {3, 5, 768}, 0.25f, TrainingFalse);
+}
+
+TEST(BiasDropoutTest, MaskNoTraining) {
+  RunBiasDropoutTest(true, {3, 5, 768}, 0.25f, NoTraining);
+}
+
 TEST(BiasDropoutTest, RatioLimit) {
-  RunBiasDropoutTest(true, {4, 8, 1024}, 0.0f, false);
+  RunBiasDropoutTest(true, {4, 8, 1024}, 0.0f, TrainingFalse);
 }
 
 TEST(BiasDropoutTest, EmptyRatio) {
