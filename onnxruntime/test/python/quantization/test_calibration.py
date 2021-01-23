@@ -75,7 +75,7 @@ class TestCalibrate(unittest.TestCase):
         matmul_node = onnx.helper.make_node('MatMul', ['D', 'E'], ['F'], name='MatMul')
         graph = helper.make_graph([conv_node, clip_node, matmul_node], 'test_graph_1', [A, B, E], [F])
 
-        model = helper.make_model(graph)
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         test_model_path = './test_model_1.onnx'
         onnx.save(model, test_model_path)
 
@@ -120,7 +120,7 @@ class TestCalibrate(unittest.TestCase):
                                             kernel_shape=[3, 3],
                                             pads=[1, 1, 1, 1])
         graph = helper.make_graph([conv_node_1, conv_node_2], 'test_graph_2', [G, H, J], [K])
-        model = helper.make_model(graph)
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         test_model_path = './test_model_2.onnx'
         onnx.save(model, test_model_path)
 
@@ -166,7 +166,7 @@ class TestCalibrate(unittest.TestCase):
         clip_node = onnx.helper.make_node('Clip', ['O'], ['P'], name='Clip')
         matmul_node = onnx.helper.make_node('MatMul', ['P', 'M'], ['Q'], name='MatMul')
         graph = helper.make_graph([relu_node, conv_node, clip_node, matmul_node], 'test_graph_3', [L, N], [Q])
-        model = helper.make_model(graph)
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         test_model_path = './test_model_3.onnx'
         onnx.save(model, test_model_path)
 
@@ -238,7 +238,7 @@ class TestCalibrate(unittest.TestCase):
         graph.initializer.add().CopyFrom(X5_weight)
         graph.initializer.add().CopyFrom(X5_bias)
 
-        model = helper.make_model(graph)
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         test_model_path = './test_model_4.onnx'
         onnx.save(model, test_model_path)
         data_reader = TestDataReaderSecond()
