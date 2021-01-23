@@ -64,8 +64,8 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
-  auto n1 = x_shape.SizeToDimension(axis);
-  auto n2 = x_shape.SizeFromDimension(axis);
+  int n1 = gsl::narrow<int>(x_shape.SizeToDimension(axis));
+  int n2 = gsl::narrow<int>(x_shape.SizeFromDimension(axis));
 
   ORT_ENFORCE(n2 != 1, "n2 should not be 1");
 

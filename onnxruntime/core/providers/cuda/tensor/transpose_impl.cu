@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-constexpr int TILE_DIM = 16;
+constexpr unsigned int TILE_DIM = 16;
 
 template <typename T>
 __global__ void Transpose3DKernel(const TArray<int64_t> input_shape,
@@ -44,7 +44,7 @@ Status Transpose3DImpl(size_t element_size,
                        const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
                        const void* input_data, void* output_data, int64_t N) {
   dim3 block_size(TILE_DIM, TILE_DIM);
-  dim3 grid_size(input_shape[2] / TILE_DIM, input_shape[1] / TILE_DIM, input_shape[0]);
+  dim3 grid_size(static_cast<unsigned int>(input_shape[2] / TILE_DIM), static_cast<unsigned int>(input_shape[1] / TILE_DIM), static_cast<unsigned int>(input_shape[0]));
 
   switch (element_size) {
     case sizeof(int8_t):
@@ -114,7 +114,7 @@ bool CanDoTranspose4D(const cudaDeviceProp& prop,
       permutations[rank - 1] == (rank - 1)) {
     // The block size will be set based on the last two dimensions of 4D tensor.
     // the number threads per block will be calculated as below.
-    int num_elements_per_thread = 4 * sizeof(int) / element_size;  // int4 is used in the kernel to access data.
+    unsigned int num_elements_per_thread = 4 * sizeof(int) / static_cast<unsigned int>(element_size);  // int4 is used in the kernel to access data.
     int64_t num_elements_in_last_two_dimensions = input_dims[rank - 2] * input_dims[rank - 1];
     int64_t num_threads_per_block = num_elements_in_last_two_dimensions / num_elements_per_thread;
 
@@ -130,10 +130,10 @@ bool CanDoTranspose4D(const cudaDeviceProp& prop,
 }
 
 Status Transpose4DImpl(size_t element_size, const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides, const void* input_data,
-                       const TArray<int64_t>& output_strides, void* output_data, int64_t N) {
-  int num_elements_per_thread = 4 * sizeof(int) / element_size;  // int4 is used in the kernel to access data.
-  dim3 block_size(input_shape[3] / num_elements_per_thread, input_shape[2]);
-  dim3 grid_size(input_shape[1], input_shape[0]);
+                       const TArray<int64_t>& output_strides, void* output_data, int N) {
+  unsigned int num_elements_per_thread = 4 * sizeof(int) / static_cast<unsigned int>(element_size);  // int4 is used in the kernel to access data.
+  dim3 block_size(static_cast<unsigned int>(input_shape[3] / num_elements_per_thread), static_cast<unsigned int>(input_shape[2]));
+  dim3 grid_size(static_cast<unsigned int>(input_shape[1]), static_cast<unsigned int>(input_shape[0]));
 
   switch (element_size) {
     case sizeof(int8_t):
@@ -185,7 +185,7 @@ __global__ void TransposeKernel(int32_t shape_rank, const TArray<int64_t> input_
 }
 
 Status TransposeImpl(size_t element_size, int32_t shape_rank, const TArray<int64_t>& input_strides,
-                     const void* input_data, const TArray<fast_divmod>& fdm_output_strides, void* output_data, int64_t N) {
+                     const void* input_data, const TArray<fast_divmod>& fdm_output_strides, void* output_data, int N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   switch (element_size) {
     case sizeof(int8_t):

@@ -41,11 +41,11 @@ namespace onnxruntime {
 namespace math {
 
 // MatMul implementation purely based on Eigen.
-#define EIGEN_MATMUL_FUNCTION(T)                                                                \
-  template <>                                                                                   \
-  void MatMul<T>(int M, int N, int K, const T* A, const T* B, T* C, concurrency::ThreadPool*) { \
-    auto C_mat = EigenMatrixMap<T>(C, N, M);                                                    \
-    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M);        \
+#define EIGEN_MATMUL_FUNCTION(T)                                                                                  \
+  template <>                                                                                                     \
+  void MatMul<T>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const T* A, const T* B, T* C, concurrency::ThreadPool*) { \
+    auto C_mat = EigenMatrixMap<T>(C, N, M);                                                                      \
+    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M);                          \
   }
 
 EIGEN_MATMUL_FUNCTION(int32_t)
@@ -76,8 +76,8 @@ EIGEN_MATMUL_FUNCTION(uint64_t)
 // (transpose) if the argument TransA or TransB is set to CblasNoTrans or
 // CblasTrans, respectively, for each of A and B.
 template <>
-void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                             const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
+void Gemm<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
+                             ptrdiff_t N, ptrdiff_t K, float alpha, const float* A, const float* B, float beta,
                              float* C, ThreadPool* threadpool) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
@@ -86,8 +86,8 @@ void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE
 
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
-void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
+void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
+                              ptrdiff_t N, ptrdiff_t K, double alpha, const double* A, const double* B, double beta,
                               double* C, ThreadPool* threadpool) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
@@ -95,8 +95,8 @@ void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOS
 }
 #else
 template <>
-void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
+void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
+                              ptrdiff_t N, ptrdiff_t K, double alpha, const double* A, const double* B, double beta,
                               double* C, ThreadPool*) {
   auto C_mat = EigenMatrixMap<double>(C, N, M);
   if (beta == 0) {
@@ -140,13 +140,13 @@ void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOS
 #endif
 
 template <>
-void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
+void MatMul<float>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
 }
 
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
-void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C, ThreadPool* threadpool) {
+void MatMul<double>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const double* A, const double* B, double* C, ThreadPool* threadpool) {
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
 }
 #else
@@ -154,7 +154,7 @@ EIGEN_MATMUL_FUNCTION(double)
 #endif
 
 template <>
-void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
+void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                                float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
                                int ldc, ThreadPool* threadpool) {
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
@@ -256,14 +256,14 @@ SPECIALIZED_ROWWISEMAX(float)
 SPECIALIZED_ROWWISEMAX(double)
 #undef SPECIALIZED_ROWWISEMAX
 
-#define SPECIALIZED_SET(T)                                                       \
-  template <>                                                                    \
-  void Set<T, CPUMathUtil>(const int64_t N, const T alpha, T* Y, CPUMathUtil*) { \
-    if (alpha == (T)0) {                                                         \
-      memset(Y, 0, N * sizeof(T));                                               \
-    } else {                                                                     \
-      EigenVectorMap<T>(Y, N).setConstant(alpha);                                \
-    }                                                                            \
+#define SPECIALIZED_SET(T)                                                         \
+  template <>                                                                      \
+  void Set<T, CPUMathUtil>(const ptrdiff_t N, const T alpha, T* Y, CPUMathUtil*) { \
+    if (alpha == (T)0) {                                                           \
+      memset(Y, 0, N * sizeof(T));                                                 \
+    } else {                                                                       \
+      EigenVectorMap<T>(Y, N).setConstant(alpha);                                  \
+    }                                                                              \
   }
 
 SPECIALIZED_SET(float);
@@ -372,7 +372,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
     const int64_t* stride,
     const int64_t* dilation,
     const int64_t* pad,
-    int64_t rank,
+    ptrdiff_t rank,
     T* data_col,
     bool accumulate_output,
     T padding_value) {
@@ -382,7 +382,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
   for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
     // Loop over spatial axes in reverse order to compute a per-axis offset.
     int64_t offset = c_col;
-    for (int64_t d_i = rank - 1; d_i >= 0; --d_i) {
+    for (ptrdiff_t d_i = rank - 1; d_i >= 0; --d_i) {
       if (d_i < rank - 1) {
         offset /= kernel_shape[d_i + 1];
       }
@@ -394,7 +394,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
       int64_t index_col = c_col;
       int64_t index_im = c_col / kernel_size;
       bool is_padding = false;
-      for (int64_t d_i = 0; d_i < rank; ++d_i) {
+      for (ptrdiff_t d_i = 0; d_i < rank; ++d_i) {
         int64_t d = d_iter[d_i];
         int64_t d_im = d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
         is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i]);
@@ -456,7 +456,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
             if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
               // Increase the copy count size to reduce the number of copy calls.
               int64_t batch_w = std::min(kw, input_w - iw);
-              std::memcpy(data_col, data_im + (ih * input_w + iw) * group_channels, sizeof(T) * batch_w * group_channels);
+              std::memcpy(data_col, data_im + (ih * input_w + iw) * group_channels, gsl::narrow<size_t>(sizeof(T) * batch_w * group_channels));
               data_col += batch_w * group_channels;
               iw += batch_w;
               kw -= batch_w;
@@ -471,7 +471,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
             if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
               // N.B. Using std::memcpy helped here over std::copy_n when doing a
               // transform for an image with a small number of group channels.
-              std::memcpy(data_col, data_im + (ih * input_w + iw) * input_channels, sizeof(T) * group_channels);
+              std::memcpy(data_col, data_im + (ih * input_w + iw) * input_channels, gsl::narrow<size_t>(sizeof(T) * group_channels));
               data_col += group_channels;
             } else {
               data_col = std::fill_n(data_col, group_channels, padding_value);
@@ -502,7 +502,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
     const int64_t* stride,
     const int64_t* dilation,
     const int64_t* pad,
-    int64_t rank,
+    ptrdiff_t rank,
     T* data_col,
     T padding_value) {
   // iterate dimensions on output image shape (without Batch and Channel)
@@ -518,7 +518,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
       // and the inner col, and whether the index lies in the padding.
       int64_t index_im = 0;
       bool is_padding = false;
-      for (int64_t d_i = 0; d_i < rank; ++d_i) {
+      for (ptrdiff_t d_i = 0; d_i < rank; ++d_i) {
         int64_t d_im = d_output[d_i] * stride[d_i] - pad[d_i] + d_kernel[d_i] * dilation[d_i];
         is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i]);
         index_im *= im_shape[d_i];
@@ -549,8 +549,8 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
   const int64_t output_w =
       (width + pad_l + pad_r - (dilation_w * (kernel_w - 1) + 1)) / stride_w +
       1;
-
-  Set<float, CPUMathUtil>(height * width * channels, 0, data_im, context);
+  const int64_t hwc = height * width * channels;
+  Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
   // Fast path for zero padding and no dilation
   // From Torch, modified THNN_(unfolded_acc)
@@ -650,7 +650,8 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64
   const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
-  Set<float, CPUMathUtil>(height * width * channels, 0, data_im, context);
+  const int64_t hwc = height * width * channels;
+  Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(hwc), 0, data_im, context);
   int64_t height_col = (height + pad_t + pad_b - dkernel_h) / stride_h + 1;
   int64_t width_col = (width + pad_l + pad_r - dkernel_w) / stride_w + 1;
   int64_t h_pad = -pad_t;
@@ -677,9 +678,9 @@ template <>
 void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, const int64_t* img_shape,
                                                       const int64_t* output_shape, int64_t channels_col, int64_t img_size,
                                                       const int64_t* kernel_shape, const int64_t* stride,
-                                                      const int64_t* dilation, const int64_t* pad, int64_t N,
+                                                      const int64_t* dilation, const int64_t* pad, ptrdiff_t N,
                                                       float* data_img, CPUMathUtil* context) {
-  Set<float, CPUMathUtil>(img_size, 0, data_img, context);
+  Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(img_size), 0, data_img, context);
   Im2col<float, StorageOrder::NCHW>()(
       data_col,
       img_shape,
