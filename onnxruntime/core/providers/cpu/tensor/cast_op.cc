@@ -12,7 +12,7 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/op_implemented_type_utils.h"
+#include "core/providers/op_arg_type_specification.h"
 #include "core/util/math_cpuonly.h"
 
 #include "Eigen/src/Core/arch/Default/Half.h"
@@ -28,39 +28,43 @@ using namespace boost::mp11;
 
 namespace onnxruntime {
 
-ORT_DECLARE_OP_ARG_DEFAULT_IMPLEMENTED_TYPES(
+ORT_SPECIFY_OP_ARG_SUPPORTED_TYPES(
     Cast, Input, 0,
     bool,
     float, double,
     uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t);
+    int8_t, int16_t, int32_t, int64_t,
+    MLFloat16, BFloat16,
+    std::string);
 
-ORT_DECLARE_OP_ARG_DEFAULT_IMPLEMENTED_TYPES(
+ORT_SPECIFY_OP_ARG_SUPPORTED_TYPES(
     Cast, Output, 0,
     bool,
     float, double,
     uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t);
+    int8_t, int16_t, int32_t, int64_t,
+    MLFloat16, BFloat16,
+    std::string);
 
-//#define LIMIT_TYPES
-#define LIMIT_TYPES_NO_STRING_OR_FLOAT16
+#define LIMIT_TYPES
+// #define LIMIT_TYPES_NO_STRING_OR_FLOAT16
 #if defined(LIMIT_TYPES)
-ORT_DECLARE_OP_ARG_OVERRIDDEN_IMPLEMENTED_TYPES(
+ORT_SPECIFY_OP_ARG_REDUCED_TYPES(
     Cast, Input, 0,
     float, int64_t);
 
-ORT_DECLARE_OP_ARG_OVERRIDDEN_IMPLEMENTED_TYPES(
+ORT_SPECIFY_OP_ARG_REDUCED_TYPES(
     Cast, Output, 0,
     float, int64_t);
 #elif defined(LIMIT_TYPES_NO_STRING_OR_FLOAT16)
-ORT_DECLARE_OP_ARG_OVERRIDDEN_IMPLEMENTED_TYPES(
+ORT_SPECIFY_OP_ARG_REDUCED_TYPES(
     Cast, Input, 0,
     bool,
     float, double,
     uint8_t, uint16_t, uint32_t, uint64_t,
     int8_t, int16_t, int32_t, int64_t);
 
-ORT_DECLARE_OP_ARG_OVERRIDDEN_IMPLEMENTED_TYPES(
+ORT_SPECIFY_OP_ARG_REDUCED_TYPES(
     Cast, Output, 0,
     bool,
     float, double,
@@ -68,10 +72,13 @@ ORT_DECLARE_OP_ARG_OVERRIDDEN_IMPLEMENTED_TYPES(
     int8_t, int16_t, int32_t, int64_t);
 #endif
 
+// TODO doesn't work with a single enabled type
+//ORT_SPECIFY_GLOBAL_REDUCED_TYPES(float);
+
 namespace {
 
-using ImplementedSrcTypes = ORT_OP_ARG_IMPLEMENTED_TYPE_LIST(Cast, Input, 0);
-using ImplementedDstTypes = ORT_OP_ARG_IMPLEMENTED_TYPE_LIST(Cast, Output, 0);
+using ImplementedSrcTypes = ORT_OP_ARG_ENABLED_TYPE_LIST(Cast, Input, 0);
+using ImplementedDstTypes = ORT_OP_ARG_ENABLED_TYPE_LIST(Cast, Output, 0);
 
 using IndirectCastTypes = TypeList<MLFloat16, BFloat16>;
 
