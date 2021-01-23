@@ -454,6 +454,7 @@ public class InferenceTest {
         OrtEnvironment newEnv =
             OrtEnvironment.getEnvironment(
                 OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL, "fail", threadOpts);
+        // fail as we can't recreate environments with different threading options
         fail("Should have thrown IllegalStateException");
       } catch (IllegalStateException e) {
         // pass
@@ -686,7 +687,7 @@ public class InferenceTest {
   }
 
   @Test
-  @EnabledIfSystemProperty(named = "USE_CUDA", matches = "*")
+  @EnabledIfSystemProperty(named = "USE_CUDA", matches = "1")
   public void testCUDA() throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
