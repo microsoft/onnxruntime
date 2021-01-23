@@ -161,7 +161,7 @@ TEST(TrainableDropoutTest, Mask) {
 }
 
 TEST(TrainableDropoutTest, RatioLimit) {
-  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, false);
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, TrainingFalse);
 }
 
 TEST(TrainableDropoutTest, EmptyRatio) {
