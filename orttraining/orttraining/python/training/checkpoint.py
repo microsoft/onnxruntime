@@ -3,6 +3,8 @@ import onnx
 import os
 import torch
 import warnings
+import tempfile
+from enum import Enum
 from . import _checkpoint_storage, _utils
 
 
@@ -109,8 +111,14 @@ def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
     else:
         return _load_single_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix, is_partitioned, strict)
 
-def _order_paths(paths):
-    """Reorders the given paths in ascending order of rank and return the ordered list"""
+
+class _AGGREGATION_MODE(Enum):
+    Zero = 0 
+    Megatron = 1
+
+def _order_paths(paths, D_groups, H_groups):
+    """Reorders the given paths in order of aggregation of ranks for D and H parallellism respectively
+       and returns the ordered dict"""
 
     trainer_options_path_tuples = []
     world_rank = _utils.state_dict_trainer_options_world_rank_key()
@@ -119,29 +127,39 @@ def _order_paths(paths):
         trainer_options_path_tuples.append((_checkpoint_storage.load(path,
             key=_utils.state_dict_trainer_options_key()), path))
 
-    ordered_paths = [path for _, path in sorted(trainer_options_path_tuples,
+    # sort paths according to rank
+    sorted_paths = [path for _, path in sorted(trainer_options_path_tuples,
         key=lambda trainer_options_path_pair: trainer_options_path_pair[0][world_rank])]
+    
+    ordered_paths = dict()
+    ordered_paths['D'] = [[sorted_paths[i] for i in D_groups[group_id]] for group_id in range(len(D_groups))]
+    ordered_paths['H'] = [[sorted_paths[i] for i in H_groups[group_id]] for group_id in range(len(H_groups))]
 
     return ordered_paths
 
-def _add_or_update_sharded_key_for_zero(state_key, state_value, state_sub_dict,
-                               model_state_key, original_dim, sharded_states_original_dims):
+def _add_or_update_sharded_key(state_key, state_value, state_sub_dict,
+                               model_state_key, state_partition_info, sharded_states_original_dims, mode):
     """Add or update the record for the sharded state_key in the state_sub_dict"""
 
     # record the original dimension for this state
-    sharded_states_original_dims[model_state_key] = original_dim
+    original_dim = _utils.state_dict_original_dimension_key()
+    sharded_states_original_dims[model_state_key] = state_partition_info[original_dim]
+
+    axis = 0
+    if mode == _AGGREGATION_MODE.Megatron and state_partition_info["megatron_row_partition"] == 0:
+        axis = -1
 
     if state_key in state_sub_dict:
         # state_dict already contains a record for this state
         # since this state is sharded, concatenate the state value to
         # the record in the state_dict
         state_sub_dict[state_key] = \
-            np.concatenate((state_sub_dict[state_key], state_value))
+            np.concatenate((state_sub_dict[state_key], state_value), axis)
     else:
         # create a new entry for this state in the state_dict
         state_sub_dict[state_key] = state_value
 
-def _add_or_validate_unsharded_key_for_zero(state_key, state_value, state_sub_dict, mismatch_error_string):
+def _add_or_validate_unsharded_key(state_key, state_value, state_sub_dict, mismatch_error_string):
     """Add or validate the record for the unsharded state_key in the state_sub_dict"""
 
     if state_key in state_sub_dict:
@@ -152,13 +170,12 @@ def _add_or_validate_unsharded_key_for_zero(state_key, state_value, state_sub_di
         # create a new entry for this state in the state_sub_dict
         state_sub_dict[state_key] = state_value
 
-def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, mixed_precision_enabled):
+def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, mixed_precision_enabled, mode = _AGGREGATION_MODE.Zero):
     """Aggregates all model states from the rank_state_dict into state_dict"""
 
     model = _utils.state_dict_model_key()
     full_precision = _utils.state_dict_full_precision_key()
     partition_info = _utils.state_dict_partition_info_key()
-    original_dim = _utils.state_dict_original_dimension_key()
 
     # if there are no model states in the rank_state_dict, no model aggregation is needed
     if model not in rank_state_dict:
@@ -172,24 +189,24 @@ def _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state
 
     # iterate over all model state keys
     for model_state_key, model_state_value in rank_state_dict[model][full_precision].items():
-        # full precision model states are sharded only when they exist in the partition_info subdict and mixed
+        # ZERO: full precision model states are sharded only when they exist in the partition_info subdict and mixed
         # precision training was enabled. for full precision training, full precision model states are not sharded
-        if mixed_precision_enabled and (model_state_key in rank_state_dict[partition_info]):
-            # this model state is sharded since a record exists in the partition_info subdict
-            _add_or_update_sharded_key_for_zero(model_state_key, model_state_value,
+        # MEGATRON : full precision model states are sharded when they exist in the partition_info subdict
+        if (model_state_key in rank_state_dict[partition_info]) and (mode == _AGGREGATION_MODE.Megatron or mixed_precision_enabled):
+            # this model state is sharded
+            _add_or_update_sharded_key(model_state_key, model_state_value,
                 state_dict[model][full_precision], model_state_key,
-                rank_state_dict[partition_info][model_state_key][original_dim], sharded_states_original_dims)
+                rank_state_dict[partition_info][model_state_key], sharded_states_original_dims, mode)
         else:
             # this model state is not sharded since a record for it does not exist in the partition_info subdict
-            _add_or_validate_unsharded_key_for_zero(model_state_key, model_state_value,
+            _add_or_validate_unsharded_key(model_state_key, model_state_value,
                 state_dict[model][full_precision], "Value mismatch for model state {}".format(model_state_key))
 
-def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict):
+def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict, mode = _AGGREGATION_MODE.Zero):
     """Aggregates all optimizer states from the rank_state_dict into state_dict"""
 
     optimizer = _utils.state_dict_optimizer_key()
     partition_info = _utils.state_dict_partition_info_key()
-    original_dim = _utils.state_dict_original_dimension_key()
     sharded_optimizer_keys = _utils.state_dict_sharded_optimizer_keys()
 
     # if there are no optimizer states in the rank_state_dict, no optimizer aggregation is needed
@@ -207,13 +224,13 @@ def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, s
 
             if optimizer_key in sharded_optimizer_keys and model_state_key in rank_state_dict[partition_info]:
                 # this optimizer state is sharded since a record exists in the partition_info subdict
-                _add_or_update_sharded_key_for_zero(optimizer_key, optimizer_value,
+                _add_or_update_sharded_key(optimizer_key, optimizer_value,
                     state_dict[optimizer][model_state_key], model_state_key,
-                    rank_state_dict[partition_info][model_state_key][original_dim], sharded_states_original_dims)
+                    rank_state_dict[partition_info][model_state_key], sharded_states_original_dims, mode)
             else:
                 # this optimizer state is not sharded since a record for it does not exist in the partition_info subdict
                 # or this optimizer key is not one of the sharded optimizer keys
-                _add_or_validate_unsharded_key_for_zero(optimizer_key, optimizer_value,
+                _add_or_validate_unsharded_key(optimizer_key, optimizer_value,
                     state_dict[optimizer][model_state_key],
                     "Value mismatch for model state {} and optimizer state {}".format(model_state_key, optimizer_key))
 
@@ -237,24 +254,39 @@ def _reshape_states(sharded_states_original_dims, state_dict, mixed_precision_en
                 if optimizer_key in sharded_optimizer_keys:
                     state_dict[optimizer][sharded_state_key][optimizer_key] = optimizer_value.reshape(original_dim)
 
-def _aggregate_trainer_options(rank_state_dict, state_dict):
+def _aggregate_trainer_options(rank_state_dict, state_dict, partial_aggregation):
     """Extracts trainer options from rank_state_dict and loads them accordingly on state_dict"""
-
-    state_dict[_utils.state_dict_trainer_options_key()] = {}
+    trainer_options = _utils.state_dict_trainer_options_key()
+    state_dict[trainer_options] = {}
 
     mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
     zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
     world_rank = _utils.state_dict_trainer_options_world_rank_key()
     world_size = _utils.state_dict_trainer_options_world_size_key()
     optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+    D_size = _utils.state_dict_trainer_options_data_parallel_size_key()
+    H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()
 
-    state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = \
-        rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
-    state_dict[_utils.state_dict_trainer_options_key()][zero_stage] = 0
-    state_dict[_utils.state_dict_trainer_options_key()][world_rank] = 0
-    state_dict[_utils.state_dict_trainer_options_key()][world_size] = 1
-    state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = \
-        rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
+    state_dict[trainer_options][mixed_precision] = rank_state_dict[trainer_options][mixed_precision]
+    state_dict[trainer_options][zero_stage] = 0
+    state_dict[trainer_options][world_rank] = rank_state_dict[trainer_options][world_rank] if partial_aggregation else 0
+    state_dict[trainer_options][world_size] = 1
+    state_dict[trainer_options][optimizer_name] = rank_state_dict[trainer_options][optimizer_name]
+    state_dict[trainer_options][D_size] = 1
+    state_dict[trainer_options][H_size] = 1
+
+def _aggregate_megatron_partition_info(rank_state_dict, state_dict):
+    """Extracts partition_info from rank_state_dict and loads on state_dict for megatron-partitioned weights"""
+    partition_info = _utils.state_dict_partition_info_key()
+    if partition_info not in state_dict:
+        state_dict[partition_info] = {}
+    
+    rank_partition_info = rank_state_dict[partition_info]
+    for model_state_key, partition_info_dict in rank_partition_info.items():
+        if model_state_key not in state_dict[partition_info]:
+            # add partition info only if weight is megatron partitioned
+            if (partition_info_dict["megatron_row_partition"] >= 0):
+                state_dict[partition_info][model_state_key] = partition_info_dict
 
 def _to_pytorch_format(state_dict):
     """Convert ORT state dictionary schema (hierarchical structure) to PyTorch state dictionary schema (flat structure)"""
@@ -266,26 +298,44 @@ def _to_pytorch_format(state_dict):
         pytorch_state_dict[model_state_key] = torch.tensor(model_state_value)
     return pytorch_state_dict
 
-def aggregate_checkpoints(paths, pytorch_format=True):
-    """Aggregate checkpoint files and return a single state dictionary
+def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world_size):
+    """Returns the D and H groups for the given sizes"""
+    num_data_groups = world_size // data_parallel_size
+    data_groups = []
+    for data_group_id in range(num_data_groups):
+        data_group_ranks=[]
+        for r in range(data_parallel_size):
+            data_group_ranks.append(data_group_id + horizontal_parallel_size * r)
+        data_groups.append(data_group_ranks)
 
-    Aggregates checkpoint files specified by paths and laods the checkpoint file one at a time merging
-    them into a single state dictionary.
-    The checkpoint files represented by paths must be saved through ORTTrainer.save_checkpoint() function.
-    The schema of the state_dict returned will be in the same as the one returned by ORTTrainer.state_dict()
+    num_horizontal_groups = world_size // horizontal_parallel_size
+    horizontal_groups = []
+    for hori_group_id in range(num_horizontal_groups):
+        hori_group_ranks=[]
+        for r in range(horizontal_parallel_size):
+            hori_group_ranks.append(hori_group_id * horizontal_parallel_size + r)
+        horizontal_groups.append(hori_group_ranks)
+
+    return data_groups, horizontal_groups
+
+def _aggregate_over_ranks(ordered_paths, ranks, sharded_states_original_dims = None, mode = _AGGREGATION_MODE.Zero, partial_aggregation = False, pytorch_format=True):
+    """Aggregate checkpoint files over set of ranks and return a single state dictionary
 
     Args:
-        paths: list of more than one file represented as strings where the checkpoint is saved
+        ordered_paths: list of paths in the order in which they must be aggregated
+        ranks: list of ranks that are to be aggregated
+        sharded_states_original_dims: dict containing the original dims for sharded states that are persisted over 
+                                        multiple calls to _aggregate_over_ranks()
+        mode: mode of aggregation: Zero or Megatron
+        partial_aggregation: boolean flag to indicate whether to produce a partially 
+                                aggregated state which can be further aggregated over
         pytorch_format: boolean flag to select either ONNX Runtime or PyTorch state schema of the returned state_dict
     Returns:
         state_dict that can be loaded into an ORTTrainer or into a PyTorch model
     """
-
-    # order the paths in ascending order of ranks
-    ordered_paths = _order_paths(paths)
-
     state_dict = {}
-    sharded_states_original_dims = {}
+    if sharded_states_original_dims is None:
+        sharded_states_original_dims = dict()
     world_rank = _utils.state_dict_trainer_options_world_rank_key()
     mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
     zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
@@ -297,12 +347,12 @@ def aggregate_checkpoints(paths, pytorch_format=True):
     loaded_zero_stage = None
     loaded_optimizer_name = None
 
-    for rank, path in enumerate(ordered_paths):
+    for i, path in enumerate(ordered_paths):
         rank_state_dict = _checkpoint_storage.load(path)
 
         assert _utils.state_dict_partition_info_key() in rank_state_dict, "Missing information: partition_info"
         assert _utils.state_dict_trainer_options_key() in rank_state_dict, "Missing information: trainer_options"
-        assert rank == rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank], \
+        assert ranks[i] == rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank], \
             "Unexpected rank in file at path {}. Expected {}, got {}".\
                 format(path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank])
         if loaded_mixed_precision is None:
@@ -327,27 +377,106 @@ def aggregate_checkpoints(paths, pytorch_format=True):
                 "Optimizer name mismatch among checkpoint files. File: {}".format(path)
 
         # aggregate all model states
-        _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, loaded_mixed_precision)
+        _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, loaded_mixed_precision, mode)
 
         if not pytorch_format:
             # aggregate all optimizer states if pytorch_format is False
-            _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict)
+            _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, state_dict, mode)
+
+            # for D+H aggregation scenario, the first pass of aggregation(partial aggregation) is over D groups 
+            # to aggregate over Zero, and another pass to aggregate Megatron partitioned
+            # states. Preserve the relevant partition info only for weights that are megatron partitioned for 
+            # a partial aggregation call
+            if partial_aggregation:
+                _aggregate_megatron_partition_info(rank_state_dict, state_dict)
 
             # entry for trainer_options in the state_dict to perform other sanity checks
             if _utils.state_dict_trainer_options_key() not in state_dict:
-                _aggregate_trainer_options(rank_state_dict, state_dict)
+                _aggregate_trainer_options(rank_state_dict, state_dict, partial_aggregation)
 
             # entry for user_dict in the state_dict if not already present
             if _utils.state_dict_user_dict_key() not in state_dict and \
                 _utils.state_dict_user_dict_key() in rank_state_dict:
                 state_dict[_utils.state_dict_user_dict_key()] = rank_state_dict[_utils.state_dict_user_dict_key()]
 
-    # reshape all the sharded tensors based on the original dimensions stored in sharded_states_original_dims
-    _reshape_states(sharded_states_original_dims, state_dict, loaded_mixed_precision)
+    # for a partial aggregation scenario, we might not have the entire tensor aggregated yet, thus skip reshape
+    if not partial_aggregation:
+        # reshape all the sharded tensors based on the original dimensions stored in sharded_states_original_dims
+        _reshape_states(sharded_states_original_dims, state_dict, loaded_mixed_precision)
 
     # return a flat structure for PyTorch model in case pytorch_format is True
     # else return the hierarchical structure for ORTTrainer
     return _to_pytorch_format(state_dict) if pytorch_format else state_dict
+
+def _aggregate_over_D_H(ordered_paths, D_groups, H_groups, pytorch_format):
+    """Aggregate checkpoint files and return a single state dictionary for the D+H
+        (Zero+Megatron) partitioning strategy.
+        For D+H aggregation scenario, the first pass of aggregation(partial aggregation) is over D groups 
+        to aggregate over Zero, and another pass over the previously aggregated states 
+        to aggregate Megatron partitioned states.
+    """
+    sharded_states_original_dims = {}
+    aggregate_data_checkpoint_files = []
+
+    # combine for Zero over data groups and save to temp file
+    with tempfile.TemporaryDirectory() as save_dir:
+        for group_id, d_group in enumerate(D_groups):
+            aggregate_state_dict = _aggregate_over_ranks(ordered_paths['D'][group_id], d_group, sharded_states_original_dims, partial_aggregation = True, pytorch_format=False)
+
+            filename = 'ort.data_group.' + str(group_id) + '.ort.pt'
+            filepath = os.path.join(save_dir, filename)
+            _checkpoint_storage.save(aggregate_state_dict, filepath)
+            aggregate_data_checkpoint_files.append(filepath)
+
+        assert len(aggregate_data_checkpoint_files) > 0
+
+        # combine for megatron:
+        aggregate_state = _aggregate_over_ranks(aggregate_data_checkpoint_files, H_groups[0], sharded_states_original_dims, mode = _AGGREGATION_MODE.Megatron, pytorch_format = pytorch_format)
+
+    return aggregate_state
+
+def aggregate_checkpoints(paths, pytorch_format=True):
+    """Aggregate checkpoint files and return a single state dictionary
+
+    Aggregates checkpoint files specified by paths and loads them one at a time, merging
+    them into a single state dictionary.
+    The checkpoint files represented by paths must be saved through ORTTrainer.save_checkpoint() function.
+    The schema of the state_dict returned will be in the same as the one returned by ORTTrainer.state_dict()
+
+    Args:
+        paths: list of more than one file represented as strings where the checkpoint is saved
+        pytorch_format: boolean flag to select either ONNX Runtime or PyTorch state schema of the returned state_dict
+    Returns:
+        state_dict that can be loaded into an ORTTrainer or into a PyTorch model
+    """
+
+    loaded_trainer_options = _checkpoint_storage.load(paths[0], key=_utils.state_dict_trainer_options_key())
+    D_size = _utils.state_dict_trainer_options_data_parallel_size_key()
+    H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()
+    world_size = _utils.state_dict_trainer_options_world_size_key()
+
+    D_size = loaded_trainer_options[D_size]
+    H_size = loaded_trainer_options[H_size]
+    world_size = loaded_trainer_options[world_size]
+    D_groups, H_groups = _get_parallellism_groups(D_size, H_size, world_size)
+
+    combine_zero = loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0
+    combine_megatron = len(H_groups[0]) > 1
+
+    # order the paths in the order of groups in which they must be aggregated according to 
+    # data-parallel groups and H-parallel groups obtained
+    # eg: {'D': [[path_0, path_2],[path_1, path_3]], 'H': [[path_0, path_1],[path_2, path_3]]}
+    ordered_paths = _order_paths(paths, D_groups, H_groups)
+
+    aggregate_state = None
+    if combine_zero and combine_megatron:
+        aggregate_state = _aggregate_over_D_H(ordered_paths, D_groups, H_groups, pytorch_format)
+    elif combine_zero:
+        aggregate_state = _aggregate_over_ranks(ordered_paths['D'][0], D_groups[0], mode = _AGGREGATION_MODE.Zero, pytorch_format = pytorch_format)
+    elif combine_megatron:
+        aggregate_state = _aggregate_over_ranks(ordered_paths['H'][0], H_groups[0], mode = _AGGREGATION_MODE.Megatron, pytorch_format = pytorch_format)
+
+    return aggregate_state
 
 ################################################################################
 # Helper functions

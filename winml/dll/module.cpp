@@ -7,6 +7,8 @@
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
 #include "Dummy.h"
+#include "LearningModelSessionOptionsExperimental.h"
+#include "LearningModelSessionExperimental.h"
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
@@ -97,10 +99,15 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
       return std::equal(left.rbegin(), left.rend(), right.rbegin(), right.rend());
     };
 
-    std::wostringstream dummy_class;
-    dummy_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.Dummy";
-    if (requal(name, dummy_class.str())) {
+    winrt::hstring winml_namespace = winrt::to_hstring(XSTRINGIFY(WINML_ROOT_NS));
+
+    if (requal(name, winml_namespace + L".AI.MachineLearning.Experimental.Dummy")) {
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::Dummy>());
+      return 0;
+    }
+
+    if (requal(name, winml_namespace + L".AI.MachineLearning.Experimental.LearningModelSessionExperimental")) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionExperimental>());
       return 0;
     }
 
