@@ -199,7 +199,8 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
 }
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
-  ParallelForFixedBlockSizeScheduling(total, 1, [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+  ptrdiff_t block_size = static_cast<ptrdiff_t>(std::ceil((static_cast<double>(total))/DegreeOfParallelism(this)));
+  ParallelForFixedBlockSizeScheduling(total, block_size, [&](std::ptrdiff_t first, std::ptrdiff_t last) {
     for (std::ptrdiff_t idx = first; idx < last; idx++) {
       fn(idx);
     }
