@@ -1,5 +1,5 @@
 from onnxruntime.quantization import CalibrationDataReader
-from .preprocessing import yolov3_preprocess_func, yolov3_vision_preprocess_func
+from preprocessing import yolov3_preprocess_func, yolov3_vision_preprocess_func
 import onnxruntime
 from argparse import Namespace
 import os
