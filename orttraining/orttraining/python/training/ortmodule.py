@@ -425,7 +425,10 @@ class ORTModule(torch.nn.Module):
         # Deepcopy inputs, since input values may change after model run.
         # Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
         # Deepcopy only the data component of the input tensors for export.
-        sample_inputs_copy = copy.deepcopy(tuple(model_input.data for model_input in inputs))
+        sample_inputs_copy = []
+        for model_input in inputs:
+            sample_inputs_copy.append(model_input.data if isinstance(model_input, torch.Tensor) else model_input)
+        sample_inputs_copy = copy.deepcopy(tuple(sample_inputs_copy))
 
         # TODO: Support contrib OPs support? user model has no hint
         # from onnxruntime.training import register_custom_ops_pytorch_exporter
