@@ -23,7 +23,8 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     cpu_list = Env::Default().GetThreadAffinityMasks();
     if (cpu_list.empty() || cpu_list.size() == 1)
       return nullptr;
-    options.thread_pool_size = static_cast<int>(cpu_list.size());
+    //options.thread_pool_size = static_cast<int>(cpu_list.size());
+    options.thread_pool_size = std::thread::hardware_concurrency();
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
   }

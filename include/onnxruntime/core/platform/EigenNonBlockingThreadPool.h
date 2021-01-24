@@ -1227,19 +1227,17 @@ int CurrentThreadId() const EIGEN_FINAL {
           // In addition, priodically make a best-effort attempt to steal from other
           // threads which are not themselves spinning.
 
-          /*
           SetGoodWorkerHint(thread_id, true);
           for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
             t = ((i+1)%steal_count == 0) ? TrySteal() : q.PopFront();
             onnxruntime::concurrency::SpinPause();
           }
           SetGoodWorkerHint(thread_id, false);
-          */
           if (!t) {
             // No work passed to us while spinning; make a further full attempt to
             // steal work from other threads prior to blocking.
             if (num_threads_ != 1) {
-              //t = Steal(true);
+              t = Steal(true);
             }
             if (!t) {
               td.SetBlocked(
