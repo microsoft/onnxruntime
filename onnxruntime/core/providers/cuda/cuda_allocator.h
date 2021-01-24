@@ -48,6 +48,7 @@ class TorchCUDAAllocator : public IAllocator {
   void* libtorch_;
   void* (*torchMalloc)(size_t);  // torch's alloc function handle
   void (*torchFree)(void*);      // torch's free function handle
-};
+  void (*torchEmptyCache)();      // torch's free function handle
+  };
 
 }  // namespace onnxruntime

@@ -86,6 +86,9 @@ TorchCUDAAllocator::TorchCUDAAllocator(OrtDevice::DeviceId device_id, const char
 
   Env::Default().GetSymbolFromLibrary(libtorch_, "_ZN3c104cuda20CUDACachingAllocator9raw_allocEm", (void**)&torchMalloc);
   Env::Default().GetSymbolFromLibrary(libtorch_, "_ZN3c104cuda20CUDACachingAllocator10raw_deleteEPv", (void**)&torchFree);
+  Env::Default().GetSymbolFromLibrary(libtorch_, "_ZN3c104cuda20CUDACachingAllocator10emptyCacheEv", (void**)&torchEmptyCache);
+
+  torchEmptyCache();
 }
 
 void* TorchCUDAAllocator::Alloc(size_t size) {

@@ -188,7 +188,8 @@ class ORTModule(torch.nn.Module):
 
         if not self._onnx_gradient or self._require_export:
             self._require_export = False
-            self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
+            with torch.no_grad():
+                self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
 
             # TODO: PyTorch exporter bug: changes the initializer order
             initializer_names = [p[0] for p in self._original_module.named_parameters()]
