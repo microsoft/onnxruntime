@@ -134,67 +134,6 @@ class ONNXQuantizer:
         self.fuse_dynamic_quant = True
         return opset_version
 
-    def replace_gemm_with_matmul(self):
-        new_nodes = []
-
-        for node in self.model.nodes():
-            if node.op_type == 'Gemm':
-                alpha = 1.0
-                beta = 1.0
-                transA = 0
-                transB = 0
-                for attr in node.attribute:
-                    if attr.name == 'alpha':
-                        alpha = onnx.helper.get_attribute_value(attr)
-                    elif attr.name == 'beta':
-                        beta = onnx.helper.get_attribute_value(attr)
-                    elif attr.name == 'transA':
-                        transA = onnx.helper.get_attribute_value(attr)
-                    elif attr.name == 'transB':
-                        transB = onnx.helper.get_attribute_value(attr)
-                if alpha == 1.0 and beta == 1.0 and transA == 0:
-                    inputB = node.input[1]
-                    if transB == 1:
-                        B = self.model.get_initializer(node.input[1])
-                        if B:
-                            # assume B is not used by any other node
-                            B_array = onnx.numpy_helper.to_array(B)
-                            B_trans = onnx.numpy_helper.from_array(B_array.T)
-                            B_trans.name = B.name
-                            self.model.remove_initializer(B)
-                            self.model.add_initializer(B_trans)
-                        else:
-                            inputB += '_Transposed'
-                            transpose_node = onnx.helper.make_node('Transpose',
-                                                                inputs=[node.input[1]],
-                                                                outputs=[inputB],
-                                                                name=node.name+'_Transpose')
-                            new_nodes.append(transpose_node)
-
-                    matmul_node = onnx.helper.make_node('MatMul',
-                                                        inputs=[node.input[0], inputB],
-                                                        outputs=[node.output[0] + ('_MatMul' if len(node.input)>2 else '')],
-                                                        name=node.name + '_MatMul')
-                    new_nodes.append(matmul_node)
-
-                    if len(node.input) > 2:
-                        add_node = onnx.helper.make_node('Add',
-                                                         inputs=[node.output[0] + '_MatMul', node.input[2]],
-                                                         outputs=node.output,
-                                                         name=node.name + '_Add')
-                        new_nodes.append(add_node)  
-                
-                # unsupported
-                else:
-                    new_nodes.append(node)
-            
-            # not GEMM
-            else:
-                new_nodes.append(node)
-
-        self.model.graph().ClearField('node')
-        self.model.graph().node.extend(new_nodes)
-
     def remove_fake_quantized_nodes(self):
         '''
             Detect and remove the quantize/dequantizelinear node pairs(fake quantized nodes in Quantization-Aware training) 
@@ -276,9 +215,6 @@ class ONNXQuantizer:
         return True
 
     def quantize_model(self):
-
-        self.replace_gemm_with_matmul()
-
         self.remove_fake_quantized_nodes()
 
         for node in self.model.nodes():
@@ -318,7 +254,7 @@ class ONNXQuantizer:
         return initializer is not None
 
     def is_per_channel(self):
-            return self.per_channel
+        return self.per_channel
 
     def is_valid_quantize_weight(self, weight_name):
         weight = find_by_name(weight_name, self.model.initializer())
@@ -636,7 +572,8 @@ class ONNXQuantizer:
 
         reshape_shape = np.ones((len(weight.dims)), dtype=np.int64)
         reshape_shape[1] = -1
-        init_shape = onnx.helper.make_tensor(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)], reshape_shape)
+        init_shape = onnx.helper.make_tensor(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)],
+                                             reshape_shape)
         self.model.add_initializer(init_shape)
 
         reshape_op_output = node.output[0] + "_reshape"
@@ -806,7 +743,8 @@ class ONNXQuantizer:
             # Quantize the input
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:
-                weight = self._get_quantized_weight(initializer, self.weight_qType if initializer_use_weight_qType else self.input_qType)
+                weight = self._get_quantized_weight(
+                    initializer, self.weight_qType if initializer_use_weight_qType else self.input_qType)
 
                 # Update graph
                 self._update_weight(weight)
@@ -839,7 +777,7 @@ class ONNXQuantizer:
         if weight_name in self.quantized_value_map:
             quantized_value = self.quantized_value_map[weight_name]
             return (quantized_value.q_name, quantized_value.zp_name, quantized_value.scale_name)
-        
+
         initializer = find_by_name(weight_name, self.model.initializer())
         if initializer is None:
             raise ValueError("{} is not an initializer", weight_name)
@@ -854,7 +792,8 @@ class ONNXQuantizer:
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
-                per_channel_data.flatten().tolist(), _get_qrange_for_qType(weight_qType, self.reduce_range), weight_qType)
+                per_channel_data.flatten().tolist(), _get_qrange_for_qType(weight_qType, self.reduce_range),
+                weight_qType)
             rmin_list.append(rmin)
             rmax_list.append(rmax)
             zero_point_list.append(zero_point)
@@ -876,7 +815,8 @@ class ONNXQuantizer:
         # Make entry for this quantized weight
         assert (weight.name not in self.quantized_value_map)
         quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale",
-                                         weight.name + "_zero_point", QuantizedValueType.Initializer, None, weight_qType)
+                                         weight.name + "_zero_point", QuantizedValueType.Initializer, None,
+                                         weight_qType)
         self.quantized_value_map[weight.name] = quantized_value
 
         self._update_weight(weight)

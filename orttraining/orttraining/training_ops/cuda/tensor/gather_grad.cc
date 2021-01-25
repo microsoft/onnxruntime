@@ -10,6 +10,15 @@
 namespace onnxruntime {
 namespace cuda {
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#define ALL_IEEE_FLOAT_TENSOR_TYPES {DataTypeImpl::GetTensorType<float>(),      \
+                                     DataTypeImpl::GetTensorType<double>(),     \
+                                     DataTypeImpl::GetTensorType<MLFloat16>(),  \
+                                     DataTypeImpl::GetTensorType<BFloat16>()}
+#else
+#define ALL_IEEE_FLOAT_TENSOR_TYPES DataTypeImpl::AllIEEEFloatTensorTypes()
+#endif
+
 ONNX_OPERATOR_KERNEL_EX(
     GatherGrad,
     kMSDomain,
@@ -18,8 +27,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(0)
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<MLFloat16>()})
+        .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
                                     DataTypeImpl::GetTensorType<int64_t>()}),
@@ -83,6 +91,11 @@ Status DispatchToGatherGradImpl(
   } else if (utils::IsPrimitiveDataType<MLFloat16>(t_data_type)) {
     return DispatchToGatherGradImplByTindex<MLFloat16>(
         tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  } else if (utils::IsPrimitiveDataType<BFloat16>(t_data_type)) {
+    return DispatchToGatherGradImplByTindex<BFloat16>(
+        tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
+#endif
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported T type: ", t_data_type);

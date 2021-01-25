@@ -10,7 +10,10 @@
 #include "cub/util_allocator.cuh"
 #include "cub/device/device_radix_sort.cuh"
 #include <limits>
-
+//TODO:fix the warnings
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#endif
 namespace onnxruntime {
 namespace cuda {
 
