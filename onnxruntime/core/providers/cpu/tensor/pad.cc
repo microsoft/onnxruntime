@@ -177,7 +177,7 @@ static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std:
 
   // Find all inner most dimensions that can be flattened.
   do {
-    inner_size *= input_dims[inner_axis];
+    inner_size *= static_cast<size_t>(input_dims[inner_axis]);
 
     if (inner_axis == 0)
       break;

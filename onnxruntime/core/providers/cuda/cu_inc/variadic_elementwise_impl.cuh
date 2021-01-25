@@ -68,7 +68,7 @@ void VariadicElementWiseNoBroadcastInputBatchImpl(
     T* output) {
   constexpr int32_t elements_per_thread = GridDim::maxElementsPerThread;
   constexpr int32_t threads_per_block = GridDim::maxThreadsPerBlock;
-  const int32_t blocks_per_grid = CeilDiv(N, elements_per_thread * threads_per_block);
+  const int32_t blocks_per_grid = static_cast<int32_t>(CeilDiv(N, elements_per_thread * threads_per_block));
   VariadicElementWiseNoBroadcastInputBatchKernel<T, Func, max_input_batch_size, elements_per_thread>
       <<<blocks_per_grid, threads_per_block>>>(func, N, inputs, output);
 }

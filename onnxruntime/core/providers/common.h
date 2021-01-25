@@ -88,6 +88,9 @@ inline Status ComputePad(const int64_t in_dim,
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                       "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
 
+      // The ONNX spec says if `auto_pad` attribute is set, pad until the `legacy_target_size`
+      // is `ceil (in_dim / stride)`. The following line of code is essentially just that and
+      // is retained as is
       int64_t legacy_target_size = (in_dim + stride - 1) / stride;
       int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
       // make sure padding is symmetric

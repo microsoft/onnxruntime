@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstddef>
 #include <iomanip>
 #include <sstream>
 
@@ -203,7 +204,7 @@ struct ScalarCaster<
 template <typename SrcType, typename DstType>
 struct TensorCaster {
   void Cast(const Tensor& in, Tensor& out, const TensorShape& shape) const {
-    const auto shape_size = shape.Size();
+    const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
     const auto in_vector = ConstEigenVectorMap<SrcType>(in.Data<SrcType>(), shape_size);
     auto out_vector = EigenVectorMap<DstType>(out.MutableData<DstType>(), shape_size);
     out_vector = in_vector.unaryExpr([](const SrcType& in_scalar) {
@@ -214,17 +215,23 @@ struct TensorCaster {
   }
 };
 
+template <typename SrcType, typename DstType>
+void CastStringTensor(const Tensor& in, Tensor& out, const TensorShape& shape) {
+  static_assert(std::is_same<SrcType, std::string>::value || std::is_same<DstType, std::string>::value,
+                "Either SrcType or DstType must be std::string.");
+  const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
+  const auto in_data = in.DataAsSpan<SrcType>();
+  const auto out_data = out.MutableDataAsSpan<DstType>();
+  for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+    ScalarCaster<SrcType, DstType>{}.Cast(in_data[i], out_data[i]);
+  }
+}
+
 // tensor X -> string
 template <typename SrcType>
 struct TensorCaster<SrcType, std::string> {
   void Cast(const Tensor& in, Tensor& out, const TensorShape& shape) const {
-    using DstType = std::string;
-    const auto shape_size = shape.Size();
-    const auto in_data = in.DataAsSpan<SrcType>();
-    const auto out_data = out.MutableDataAsSpan<DstType>();
-    for (int64_t i = 0; i < shape_size; ++i) {
-      ScalarCaster<SrcType, DstType>{}.Cast(in_data[i], out_data[i]);
-    }
+    CastStringTensor<SrcType, std::string>(in, out, shape);
   }
 };
 
@@ -232,13 +239,7 @@ struct TensorCaster<SrcType, std::string> {
 template <typename DstType>
 struct TensorCaster<std::string, DstType> {
   void Cast(const Tensor& in, Tensor& out, const TensorShape& shape) const {
-    using SrcType = std::string;
-    const auto shape_size = shape.Size();
-    const auto in_data = in.DataAsSpan<SrcType>();
-    const auto out_data = out.MutableDataAsSpan<DstType>();
-    for (int64_t i = 0; i < shape_size; ++i) {
-      ScalarCaster<SrcType, DstType>{}.Cast(in_data[i], out_data[i]);
-    }
+    CastStringTensor<std::string, DstType>(in, out, shape);
   }
 };
 
@@ -249,7 +250,7 @@ struct TensorCaster<MLFloat16, float> {
   void Cast(const Tensor& in, Tensor& out, const TensorShape& shape) const {
     auto out_data = out.MutableData<float>();
     auto in_data = in.Data<MLFloat16>();
-    auto shape_size = shape.Size();
+    const size_t shape_size = gsl::narrow<size_t>(shape.Size());
     MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
   }
 };

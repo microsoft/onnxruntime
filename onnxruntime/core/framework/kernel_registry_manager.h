@@ -32,7 +32,6 @@ class KernelRegistryManager {
   // Register kernels from providers
   Status RegisterKernels(const ExecutionProviders& execution_providers) ORT_MUST_USE_RESULT;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // The registry passed in this function has highest priority than anything already in this KernelRegistryManager,
   // and anything registered from RegisterKernels
   // For example, if you do:
@@ -42,6 +41,7 @@ class KernelRegistryManager {
   // Then B > A > providers
   void RegisterKernelRegistry(std::shared_ptr<KernelRegistry> kernel_registry);
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /**
    * Search kernel registry by provider type.
    * @param type provider type string

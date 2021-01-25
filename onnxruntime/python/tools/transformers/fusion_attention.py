@@ -177,8 +177,7 @@ class FusionAttention(Fusion):
             (_, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
         else:
             # Match Albert
-            qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'Einsum', 'Transpose', 'MatMul'],
-                                                     [1, 0, 0, 0])
+            qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'Einsum', 'Transpose', 'MatMul'], [1, 0, 0, 0])
             if qkv_nodes is not None:
                 (_, einsum_node, transpose_qkv, matmul_qkv) = qkv_nodes
             else:
@@ -296,12 +295,13 @@ class FusionAttention(Fusion):
             if einsum_node is not None:
                 unique_index = einsum_node.input[0]
                 new_edge = "edge_modified_" + unique_index
-                shape_tensor = helper.make_tensor(
-                    name="shape_modified_tensor" + unique_index,
-                    data_type=TensorProto.INT64,
-                    dims=[4],
-                    vals=np.int64([0, 0, self.num_heads, int(self.hidden_size / self.num_heads)]).tobytes(),
-                    raw=True)
+                shape_tensor = helper.make_tensor(name="shape_modified_tensor" + unique_index,
+                                                  data_type=TensorProto.INT64,
+                                                  dims=[4],
+                                                  vals=np.int64(
+                                                      [0, 0, self.num_heads,
+                                                       int(self.hidden_size / self.num_heads)]).tobytes(),
+                                                  raw=True)
                 self.model.add_initializer(shape_tensor)
                 self.model.add_node(
                     helper.make_node("Reshape", [attention_last_node.output[0], shape_tensor.name], [new_edge],
