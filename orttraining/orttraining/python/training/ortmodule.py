@@ -160,10 +160,6 @@ class ORTModule(torch.nn.Module):
         self._forward_io_binding = self._forward_session.io_binding()
         self._backward_io_binding = self._backward_session.io_binding()
 
-        if self._save_onnx:
-            onnx.save(self._onnx_forward, self._save_onnx_prefix + '_forward.onnx')
-            onnx.save(self._onnx_backward, self._save_onnx_prefix + '_backward.onnx')
-
     def _split_training_graph(self, *inputs, **kwargs):
         # Perform shape inference and re-split forward/backward graph for batches with different shapes
         self._module_gradient_graph_builder.build_and_split(self._current_input_shape)
@@ -171,6 +167,10 @@ class ORTModule(torch.nn.Module):
         self._onnx_backward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_backward_model())
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
         self._create_training_session()
+
+        if self._save_onnx:
+            onnx.save(self._onnx_forward, self._save_onnx_prefix + '_forward.onnx')
+            onnx.save(self._onnx_backward, self._save_onnx_prefix + '_backward.onnx')
 
     def cpu(self: T) -> T:
         '''Thin layer to capture device for ORTModule IO bindings'''
@@ -389,7 +389,6 @@ class ORTModule(torch.nn.Module):
             inputs_pos += 1
 
         return result
-
 
     @staticmethod
     def _get_forward_graph(module, *inputs, **kwargs):
