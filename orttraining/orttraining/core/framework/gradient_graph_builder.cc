@@ -60,6 +60,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     y_nodes_.insert(node);
   }
 
+
   reachable_nodes_ = ReverseBFS(y_nodes_);
 
   std::string unreachable_nodes;
