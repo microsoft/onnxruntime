@@ -21,6 +21,7 @@
 #include "providers.h"
 #include "test_allocator.h"
 #include "test_fixture.h"
+#include "utils.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -32,11 +33,9 @@
 #include <cuda_runtime.h>
 #endif
 
-struct Input {
-  const char* name = nullptr;
-  std::vector<int64_t> dims;
-  std::vector<float> values;
-};
+// Once we use C++17 this could be replaced with std::size
+template <typename T, size_t N>
+constexpr size_t countof(T (&)[N]) { return N; }
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -51,14 +50,18 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   std::vector<const char*> input_names;
   for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
-    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()), inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
+    ort_inputs.emplace_back(
+        Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()),
+                                        inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
   }
 
   std::vector<Ort::Value> ort_outputs;
   if (output_tensor)
-    session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, output_tensor, 1);
+    session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                       &output_name, output_tensor, 1);
   else {
-    ort_outputs = session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
+    ort_outputs = session_object.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                     &output_name, 1);
     ASSERT_EQ(ort_outputs.size(), 1u);
     output_tensor = &ort_outputs[0];
   }
@@ -74,17 +77,17 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   }
 }
 
-template <typename T, typename OutT>
-void TestInference(Ort::Env& env, T model_uri,
-                   const std::vector<Input>& inputs,
-                   const char* output_name,
-                   const std::vector<int64_t>& expected_dims_y,
-                   const std::vector<OutT>& expected_values_y,
-                   int provider_type,
-                   OrtCustomOpDomain* custom_op_domain_ptr,
-                   const char* custom_op_library_filename,
-                   void** library_handle = nullptr,
-                   bool test_session_creation_only = false) {
+template <typename OutT>
+static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
+                          const std::vector<Input>& inputs,
+                          const char* output_name,
+                          const std::vector<int64_t>& expected_dims_y,
+                          const std::vector<OutT>& expected_values_y,
+                          int provider_type,
+                          OrtCustomOpDomain* custom_op_domain_ptr,
+                          const char* custom_op_library_filename,
+                          void** library_handle = nullptr,
+                          bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
   if (provider_type == 1) {
@@ -103,7 +106,8 @@ void TestInference(Ort::Env& env, T model_uri,
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_NUPHAR
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options,
+                                                                      /*allow_unaligned_buffers*/ 1, ""));
     std::cout << "Running simple inference with nuphar provider" << std::endl;
 #else
     return;
@@ -116,11 +120,12 @@ void TestInference(Ort::Env& env, T model_uri,
   }
 
   if (custom_op_library_filename) {
-    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, library_handle));
+    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary(session_options,
+                                                             custom_op_library_filename, library_handle));
   }
 
   // if session creation passes, model loads fine
-  Ort::Session session(env, model_uri, session_options);
+  Ort::Session session(env, model_uri.c_str(), session_options);
 
   // caller wants to test running the model (not just loading the model)
   if (!test_session_creation_only) {
@@ -136,7 +141,8 @@ void TestInference(Ort::Env& env, T model_uri,
                      expected_values_y,
                      nullptr);
     //with preallocated output tensor
-    Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(), expected_dims_y.data(), expected_dims_y.size());
+    Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(),
+                                                         expected_dims_y.data(), expected_dims_y.size());
 
     //test it twice
     for (int i = 0; i != 2; ++i)
@@ -181,7 +187,8 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE, float>(*ort_env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
+  TestInference<float>(*ort_env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(),
+                       nullptr, nullptr);
 }
 
 TEST(CApiTest, dim_param) {
@@ -216,70 +223,6 @@ INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
                          CApiTestWithProvider,
                          ::testing::Values(0, 1, 2, 3, 4));
 
-struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
-    OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
-    std::vector<int64_t>::operator=(ort.GetTensorShape(info));
-    ort.ReleaseTensorTypeAndShapeInfo(info);
-  }
-};
-
-// Once we use C++17 this could be replaced with std::size
-template <typename T, size_t N>
-constexpr size_t countof(T (&)[N]) { return N; }
-void cuda_add(int64_t, float*, const float*, const float*);
-
-struct MyCustomKernel {
-  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
-  }
-
-  void Compute(OrtKernelContext* context) {
-    // Setup inputs
-    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
-    const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
-    const float* X = ort_.GetTensorData<float>(input_X);
-    const float* Y = ort_.GetTensorData<float>(input_Y);
-
-    // Setup output
-    OrtTensorDimensions dimensions(ort_, input_X);
-    OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
-    float* out = ort_.GetTensorMutableData<float>(output);
-
-    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
-    int64_t size = ort_.GetTensorShapeElementCount(output_info);
-    ort_.ReleaseTensorTypeAndShapeInfo(output_info);
-
-    // Do computation
-#ifdef USE_CUDA
-    cuda_add(size, out, X, Y);
-#else
-    for (int64_t i = 0; i < size; i++) {
-      out[i] = X[i] + Y[i];
-    }
-#endif
-  }
-
- private:
-  Ort::CustomOpApi ort_;
-};
-
-struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
-  explicit MyCustomOp(const char* provider) : provider_(provider) {}
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
-  const char* GetName() const { return "Foo"; };
-
-  const char* GetExecutionProviderType() const { return provider_; };
-
-  size_t GetInputTypeCount() const { return 2; };
-  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
-
-  size_t GetOutputTypeCount() const { return 1; };
-  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
-
- private:
-  const char* provider_;
-};
-
 TEST(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
 
@@ -303,9 +246,11 @@ TEST(CApiTest, custom_op_handler) {
   custom_op_domain.Add(&custom_op);
 
 #ifdef USE_CUDA
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr, nullptr);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
+                       custom_op_domain, nullptr, nullptr);
 #else
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr);
 #endif
 }
 
@@ -368,9 +313,11 @@ struct SliceCustomOpKernel {
 
 struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
   explicit SliceCustomOp(const char* provider) : provider_(provider) {}
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new SliceCustomOpKernel(api, info); };
-  const char* GetName() const { return "Slice"; };
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const {
+    return new SliceCustomOpKernel(api, info);
+  };
 
+  const char* GetName() const { return "Slice"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
   size_t GetInputTypeCount() const { return 3; };
@@ -427,9 +374,11 @@ TEST(CApiTest, varied_input_custom_op_handler) {
   custom_op_domain.Add(&slice_custom_op);
 
 #ifdef USE_CUDA
-  TestInference<PATH_TYPE, float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z", expected_dims_z, expected_values_z, 1, custom_op_domain, nullptr, nullptr);
+  TestInference<float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z",
+                       expected_dims_z, expected_values_z, 1, custom_op_domain, nullptr, nullptr);
 #else
-  TestInference<PATH_TYPE, float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z", expected_dims_z, expected_values_z, 0, custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z",
+                       expected_dims_z, expected_values_z, 0, custom_op_domain, nullptr);
 #endif
 }
 
@@ -454,8 +403,8 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   custom_op_domain.Add(&custom_op_cpu);
   custom_op_domain.Add(&custom_op_cuda);
 
-  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y,
-                                  expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y,
+                       expected_values_y, 1, custom_op_domain, nullptr, nullptr, true);
 }
 #endif
 
@@ -496,8 +445,8 @@ lib_name = "./libcustom_op_library.so";
 #endif
 
   void* library_handle = nullptr;
-  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                                    expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
 
 #ifdef _WIN32
   bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
@@ -552,7 +501,8 @@ TEST(CApiTest, test_pyop) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
-  TestInference<PATH_TYPE, float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  TestInference<float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       nullptr, nullptr);
 }
 
 TEST(CApiTest, test_pyop_multi) {
@@ -564,7 +514,8 @@ TEST(CApiTest, test_pyop_multi) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {8.0f, 16.0f, 24.0f, 32.0f};
-  TestInference<PATH_TYPE, float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  TestInference<float>(*ort_env, PYOP_MULTI_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0,
+                       nullptr, nullptr);
 }
 
 TEST(CApiTest, test_pyop_kwarg) {
@@ -576,7 +527,8 @@ TEST(CApiTest, test_pyop_kwarg) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {25.0f, 50.0f, 75.0f, 100.0f};
-  TestInference<PATH_TYPE, float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  TestInference<float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0,
+                       nullptr, nullptr);
 }
 #endif
 
@@ -596,7 +548,8 @@ TEST(ReducedOpsBuildTest, test_included_ops) {
   std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
   std::vector<int64_t> expected_dims_y = {1};
   std::vector<float> expected_values_y = {0.75};
-  TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       nullptr, nullptr);
 }
 
 TEST(ReducedOpsBuildTest, test_excluded_ops) {
@@ -609,7 +562,8 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   bool failed = false;
   try {
     //only test model loading, exception expected
-    TestInference<PATH_TYPE, float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr, nullptr, true);
+    TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                         nullptr, nullptr, nullptr, true);
   } catch (const Ort::Exception& e) {
     failed = e.GetOrtErrorCode() == ORT_NOT_IMPLEMENTED;
   }
@@ -782,8 +736,8 @@ TEST(CApiTest, io_binding_cuda) {
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
-  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()), expected_y.size(),
-                                                expected_y_shape.data(), expected_y_shape.size());
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
+                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
@@ -854,7 +808,8 @@ TEST(CApiTest, create_tensor) {
   int64_t expected_len = 2;
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
 
-  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
+                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   Ort::ThrowOnError(Ort::GetApi().FillStringTensor(tensor, s, expected_len));
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
@@ -874,7 +829,8 @@ TEST(CApiTest, fill_string_tensor) {
   int64_t expected_len = 2;
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
 
-  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
+                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   for (int64_t i = 0; i < expected_len; i++) {
     tensor.FillStringTensorElement(s[i], i);
@@ -892,7 +848,8 @@ TEST(CApiTest, get_string_tensor_element) {
   int64_t element_index = 0;
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
 
-  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
+                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
   tensor.FillStringTensor(s, expected_len);
 
@@ -1007,7 +964,8 @@ TEST(CApiTest, override_initializer) {
 
   std::string f2_data{"f2_string"};
   // Place a string into Tensor OrtValue and assign to the
-  Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(),
+                                                        ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
   const char* const input_char_string[] = {f2_data.c_str()};
   f2_input_tensor.FillStringTensor(input_char_string, 1U);
 
@@ -1138,7 +1096,8 @@ TEST(CApiTest, model_metadata) {
     ASSERT_TRUE(version == 1);
 
     int64_t num_keys_in_custom_metadata_map;
-    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(), num_keys_in_custom_metadata_map);
+    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(),
+                                                                              num_keys_in_custom_metadata_map);
     ASSERT_TRUE(num_keys_in_custom_metadata_map == 2);
 
     allocator.get()->Free(custom_metadata_map_keys[0]);
@@ -1147,7 +1106,8 @@ TEST(CApiTest, model_metadata) {
 
     char* lookup_value_1 = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
     ASSERT_TRUE(strcmp(lookup_value_1,
-                       "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}") == 0);
+                       "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, "
+                       "\"graph_optimization_level\": 99, \"enable_profiling\": 1}}") == 0);
     allocator.get()->Free(lookup_value_1);
 
     char* lookup_value_2 = model_metadata.LookupCustomMetadataMap("dummy_key", allocator.get());
@@ -1180,7 +1140,8 @@ TEST(CApiTest, model_metadata) {
 
     // Model does not contain custom metadata map
     int64_t num_keys_in_custom_metadata_map;
-    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(), num_keys_in_custom_metadata_map);
+    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(),
+                                                                              num_keys_in_custom_metadata_map);
     ASSERT_TRUE(num_keys_in_custom_metadata_map == 0);
     ASSERT_TRUE(custom_metadata_map_keys == nullptr);
   }
@@ -1235,9 +1196,9 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
   ASSERT_TRUE(api.CreateAndRegisterAllocator(env_ptr, mem_info, arena_cfg) == nullptr);
 
   // test for duplicates
-  std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(api.CreateAndRegisterAllocator(env_ptr, mem_info,
-                                                                                                         arena_cfg),
-                                                                          api.ReleaseStatus);
+  std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(
+      api.CreateAndRegisterAllocator(env_ptr, mem_info, arena_cfg),
+      api.ReleaseStatus);
   ASSERT_FALSE(status_releaser.get() == nullptr);
 
   Ort::SessionOptions session_options;
