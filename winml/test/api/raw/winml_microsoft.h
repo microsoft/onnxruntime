@@ -262,7 +262,7 @@ private:
 
     int32_t Initialize(const char* bytes, size_t size)
     {
-        RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED);
+        RETURN_HR_IF_FAILED(RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED));
 
         // Create in memory stream
         Microsoft::WRL::ComPtr<IInspectable> in_memory_random_access_stream_insp;
