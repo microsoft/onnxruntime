@@ -462,7 +462,7 @@ def testToyBertCheckpointFrozenWeights():
     # Load previous state into another instance of ORTTrainer.
     # Again, use non-training mode to disable dropouts
     # and match the previous result.
-    model2 = load_bert_onnx_model(
+    model2 = load_bert_onnx_model()
     model_desc2 = bert_model_description()
     optim_config2 = optim.LambConfig()
     trainer2 = orttrainer.ORTTrainer(model2, model_desc2, optim_config2, options=opts)
