@@ -52,6 +52,8 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
+  // onnxruntime::GraphViewer GraphConstantFolding(const onnxruntime::GraphViewer& graph_viewer);
+
 private:
   bool fp16_enable_ = false;
   int device_id_;

@@ -12,7 +12,9 @@
 #include "core/graph/graph_utils.h"
 #include "core/platform/env.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/optimizer/reshape_fusion.h"
+#include "core/optimizer/constant_folding.h"
+#include "core/optimizer/graph_transformer_mgr.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "migraphx_inc.h"
 #include "migraphx_execution_provider.h"
 #include "hip_allocator.h"
@@ -204,7 +206,8 @@ static bool get_migraphx_type(ONNXTensorElementDataType type,
   return true;
 }
 
-static bool can_eval_shape_general(const Graph& graph, const Node* node, const logging::Logger& logger)
+
+static bool can_eval_shape_general(const Graph& graph, const Node* node, const logging::Logger& logger, std::vector<NodeIndex>& input_nodes)
 {
   if (node == nullptr)
   {
@@ -213,6 +216,7 @@ static bool can_eval_shape_general(const Graph& graph, const Node* node, const l
 
   if (node->OpType() == "Shape")
   {
+    input_nodes.push_back(node->Index());
     return true;
   }
 
@@ -245,7 +249,7 @@ static bool can_eval_shape_general(const Graph& graph, const Node* node, const l
       continue;
     }
 
-    if (can_eval_shape_general(graph, input_node, logger))
+    if (can_eval_shape_general(graph, input_node, logger, input_nodes))
     {
       continue;
     }
@@ -253,11 +257,15 @@ static bool can_eval_shape_general(const Graph& graph, const Node* node, const l
     return false;
   }
 
+  input_nodes.push_back(node->Index());
+
   return true;
 }
 
-static bool can_eval_node_argument(const Graph& graph, const Node* node, std::vector<std::size_t> indices, const logging::Logger& logger)
+static bool can_eval_node_argument(const Graph& graph, const Node* node, std::vector<std::size_t> indices, const logging::Logger& logger, std::vector<NodeIndex>& input_nodes)
 {
+  input_nodes.clear();
+
   for (auto& arg_index : indices)
   {
     const std::string& input_name = graph_utils::GetNodeInputName(*node, arg_index);
@@ -275,7 +283,7 @@ static bool can_eval_node_argument(const Graph& graph, const Node* node, std::ve
     }
 
     auto input_node = graph_utils::GetInputNode(*node, arg_index);
-    if (!can_eval_shape_general(graph, input_node, logger))
+    if (!can_eval_shape_general(graph, input_node, logger, input_nodes))
     {
       return false;
     }
@@ -285,6 +293,7 @@ static bool can_eval_node_argument(const Graph& graph, const Node* node, std::ve
 }
 
 static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node, const logging::Logger& logger) {
+  std::vector<NodeIndex> input_nodes;
   const auto& optype = node->OpType();
   // const auto& initializers = graph_viewer.GetAllInitializedTensors();
   if (optype == "ArgMax" or optype == "ArgMin") {
@@ -295,7 +304,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "ConstantOfShape") {
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger))
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger, input_nodes))
     {
       return true;
     }
@@ -320,7 +329,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
   } else if (optype == "Expand") {
     // MIGraphX only supports constant shape input values
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
     {
       return true;
     }
@@ -390,12 +399,12 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "NonZero") {
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger))
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger, input_nodes))
     {
       return true;
     }
   } else if (optype == "OneHot") {
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
     {
       return true;
     }
@@ -403,7 +412,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     const auto& args = node->InputDefs();
     // if pad size is not constant, migraphx cannot support
     if (args.size() >= 2) {
-      if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
+      if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
       {
         return true;
       }
@@ -424,7 +433,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     // input value only applied to constant mode
     if (mode == "constant") {
       if (args.size() == 3) {
-        if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {2}, logger))
+        if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {2}, logger, input_nodes))
         {
           return true;
         }
@@ -434,14 +443,14 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     auto arg_num = node->InputDefs().size();
     std::vector<std::size_t> vec(arg_num);
     std::iota(vec.begin(), vec.end(), 0);
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, vec, logger))
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, vec, logger, input_nodes))
     {
       return true;
     }
   } else if (optype == "Reshape") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
-      if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
+      if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
       {
         return false;
       }
@@ -455,7 +464,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     std::vector<std::size_t> vec(arg_num);
     std::iota(vec.begin(), vec.end(), 0);
     vec.erase(vec.begin());
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, vec, logger))
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, vec, logger, input_nodes))
     {
       return true;
     }
@@ -491,7 +500,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       }
     }
   } else if (optype == "Tile") {
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger))
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
     {
       return true;
     }
@@ -501,8 +510,28 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
   return false;
 }
 
-void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters)
+template<class T>
+void print_vec(std::ostream& os, const std::vector<T>& node_indices)
 {
+  os << "{";
+  for (std::size_t i = 0; i < node_indices.size(); ++i)
+  {
+    if (i != 0) os << ", ";
+    os << node_indices[i];
+  }
+  os << "}";
+}
+
+template<class T>
+std::ostream& operator << (std::ostream& os, const std::vector<T>& vec)
+{
+  print_vec(os, vec);
+  return os;
+}
+
+void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters, const logging::Logger& logger)
+{
+std::cout << "loc1" << std::endl;
   // If the number of nodes in the graph is less than 5, do nothing
   // this is to deal with onnx unit tests
   if (graph_viewer.NumberOfNodes() <= 5)
@@ -510,12 +539,45 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
     return;
   }
 
+std::cout << "loc2" << std::endl;
   // Then check whether a subgraph should fallback to CPU
   // 1. Check whether a subgraph contains a RNN operator
   std::unordered_set<std::string> rnn_names = {"RNN", "GRU", "LSTM"};
   std::unordered_set<std::string> op_names = {"AveragePool", "Conv", "Gemm", "LRN", "MatMul", "MaxPool"};
+std::cout << "loc3" << std::endl;
 
   auto it = std::remove_if(clusters.begin(), clusters.end(), [&](auto git) {
+std::cout << "loc4, node_list = " << git << std::endl;
+    for (auto index : git)
+    {
+std::cout << "loc5" << std::endl;
+      auto node = graph_viewer.GetNode(index);
+      std::cout << "post_processing_op_type = " << node->OpType() << std::endl;
+std::cout << "loc6" << std::endl;
+      if (node->OpType() == "Reshape")
+      {
+std::cout << "loc7" << std::endl;
+        const auto& args = node->InputDefs();
+        if (args.size() == 2) {
+std::cout << "loc8" << std::endl;
+          std::vector<NodeIndex> node_inputs;
+          if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, node_inputs))
+          {
+            std::cout << "node_inputs = " << node_inputs << std::endl;
+            bool ret = (not std::all_of(node_inputs.begin(), node_inputs.end(), [&](auto index) {
+              return std::find(git.begin(), git.end(), index) != git.end();
+            }));
+std::cout << "loc9, ret = " << ret << std::endl;
+            return ret;
+          }
+          else
+          {
+std::cout << "loc10" << std::endl;
+          }
+        }
+      }
+    }
+
     // if 6 operators or more
     if (git.size() > 5)
     {
@@ -573,7 +635,11 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
     return true;
   });
 
+  std::cout << "loc111" << std::endl;
+
   clusters.erase(it, clusters.end());
+
+  std::cout << "loc112" << std::endl;
 }
 
 static bool IsNodeSupported(const std::set<std::string>& op_set,
@@ -636,25 +702,121 @@ static void AppendNodesToSubGraph(const std::vector<NodeIndex>& nodes,
   result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
 }
 
+static void print_arg_shape(const NodeArg *arg)
+{
+  const auto* type_proto = arg->TypeAsProto();
+  if (type_proto)
+  { 
+    auto type = type_proto->tensor_type().elem_type();
+    std::cout << "type = " << type << ", dims = {";
+    auto&& tensor_dims = type_proto->tensor_type().shape().dim();
+    for (int i = 0; i < tensor_dims.size(); ++i)
+    {
+      const auto& td = tensor_dims[i];
+      if (i > 0) std::cout << ", ";
+      if (td.has_dim_value())
+      {
+        std::cout << td.dim_value();
+      }
+      else if (td.has_dim_param())
+      {
+        std::cout << td.dim_param();
+      }
+    }
+    std::cout << "}";
+  }
+  else
+  { 
+    std::cout << "<<<<< No shape >>>>>";
+  }
+}
+
+static void print_node_info(const Node* node)
+{
+  std::cout << "=========================" << std::endl;
+  std::cout << "node_name = " << node->Name() << std::endl;
+  std::cout << "node_optype = " << node->OpType() << std::endl;
+
+  // input arguments info
+  auto inputs = node->InputDefs();
+  std::cout << "\tintput_arg_info:" << std::endl;
+  std::cout << "\tinpput_arg_count = " << inputs.size() << std::endl;
+  for (std::size_t i = 0; i < inputs.size(); ++i)
+  { 
+    const auto& arg = inputs[i];
+    if (arg)
+    { 
+      std::cout << "\t\targ_" << i << ": name = " << arg->Name() << ", shape: ";
+      print_arg_shape(arg);
+      std::cout << std::endl;
+    }
+    else
+    { 
+      std::cout << "\t\tnullptr" << std::endl;
+    }
+  }
+  
+  std::cout << "\toutput_arg_info = " << std::endl;
+  auto outputs = node->OutputDefs();
+  std::cout << "\toutput_arg_count = " << outputs.size() << std::endl;
+  for (std::size_t i = 0; i < outputs.size(); ++i)
+  { 
+    const auto& arg = outputs[i];
+    if (arg)
+    { 
+      std::cout << "\t\targ_" << i << ": name = " << arg->Name() << ", shape: ";
+      print_arg_shape(arg);
+      std::cout << std::endl;
+    }
+    else
+    { 
+      std::cout << "\t\tnullptr" << std::endl;
+    }
+  }
+  
+  // Input node info
+  std::cout << "\tInput node info:" << std::endl;
+  auto edges_begin = node->InputEdgesBegin();
+  auto edges_end = node->InputEdgesEnd();
+  std::cout << "\tInput_node_num = " << std::distance(edges_begin, edges_end) << std::endl;
+  for (auto eit = edges_begin; eit != edges_end; ++eit)
+  {
+    std::cout << "\t\tnode_name = " << eit->GetNode().Name() << ", op_type = " << eit->GetNode().OpType();
+    std::cout << ", index = " << eit->GetNode().Index() << std::endl;
+  } 
+  std::cout << "*****************************" << std::endl << std::endl;
+}
+
+void print_graph(const Graph& graph)
+{
+  GraphViewer graph_viewer(graph);
+  const auto& orders = graph_viewer.GetNodesInTopologicalOrder();
+  std::cout << "graph_size = " << orders.size() << std::endl;
+  for (const auto& node_idx : orders) {
+    auto node = graph_viewer.GetNode(node_idx);
+    print_node_info(node);
+  }
+}
+
 static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
                           const logging::Logger& logger) {
-  static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "ArgMax", "ArgMin", 
-      "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", 
-      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", 
-      "Div", "Dropout", "Elu", "Equal", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", 
-      "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
-      "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", 
-      "MaxPool", "Min", "Mul", "Neg", "NonZero", "OneHot", "Pad", "Pow", "PRelu",
-      "RNN", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
-      "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", 
-      "Round", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", 
-      "Sub", "Sum", "Tan", "Tanh", "Tile", "Transpose", "Unsqueeze", "Where"};
+  static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "And", "ArgMax", "ArgMin",
+      "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip",
+      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", "DequantizeLinear",
+      "Div", "Dropout", "Elu", "Equal", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather",
+      "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Greater", "Identity", "ImageScaler",
+      "InstanceNormalization", "Less", "LRN", "LSTM", "LeakyRelu", "Less", "Log", "LogSoftmax", "MatMul", "Max",
+      "MaxPool", "Min", "Mul", "Neg", "NonZero", "OneHot", "Or", "Pad", "Pow", "PRelu", "QuantizeLinear",
+      "RNN", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax",
+      "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape",
+      "Round", "Selu", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze",
+      "Sub", "Sum", "Tan", "Tanh", "Tile", "Transpose", "Unsqueeze", "Where", "Xor"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
-    // auto node = graph_viewer.GetNode(node_idx);
-    // print_node_info(node);
+    auto node = graph_viewer.GetNode(node_idx);
+    print_node_info(node);
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
       // Collect inputs that are initializers
       graph_viewer.GetNode(node_idx)->ForEachDef([&mgx_required_initializers, &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
@@ -810,6 +972,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 
   std::unordered_map<std::string, std::size_t> map_dim_param_values;
   onnxruntime::Graph& graph_build = model.MainGraph();
+
   for (const auto& node : graph_viewer.Nodes()) {
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (auto input : node.InputDefs()) {
@@ -831,10 +994,76 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     graph_build.AddInitializedTensor(*(tensor.second));
   }
 
+
+  // if (graph_viewer_orig.IsSubgraph()) {
+  //   return result;
+  // }
+
+  // for (const auto& tensor : graph_viewer_orig.GetAllInitializedTensors()) {
+  //   if (tensor.second->has_data_location() && tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+  //     LOGS_DEFAULT(WARNING) << "MIGraphX: Initializers with external data lepcation are not currently supported";
+  //     return result;
+  //   }
+  // }
+
+  // // Construct modelproto from graph
+  // onnxruntime::Model model(graph_viewer_orig.Name(), true, ModelMetaData(), PathString{},
+  //                          IOnnxRuntimeOpSchemaRegistryList(), graph_viewer_orig.DomainToVersionMap(),
+  //                          std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+
+  // std::unordered_map<std::string, std::size_t> map_dim_param_values;
+  // onnxruntime::Graph& graph_build = model.MainGraph();
+  // onnxruntime::GraphViewer graph_viewer(graph_build);
+
+  // for (const auto& node : graph_viewer_orig.Nodes()) {
+  //   std::vector<onnxruntime::NodeArg*> inputs, outputs;
+  //   for (auto input : node.InputDefs()) {
+  //     auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+  //     inputs.push_back(&n_input);
+  //   }
+  //   for (auto output : node.OutputDefs()) {
+  //     auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+  //     outputs.push_back(&n_output);
+  //   }
+  //   graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
+  // }
+
+  // //Add initializer to graph
+  // std::size_t init_tensor_num = 0;
+  // const auto& init_tensors = graph_viewer_orig.GetAllInitializedTensors();
+  // for (const auto& tensor : init_tensors) {
+  //   init_tensor_num++;
+  //   graph_build.AddInitializedTensor(*(tensor.second));
+  // }
+
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   auto status = graph_build.Resolve();
+
+
+  // std::unique_ptr<CPUExecutionProvider> e =
+  //     onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  // onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  // graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get()), TransformerLevel::Level1);
+
+  // // assign all nodes to CUDA. the constant folding should override this to perform the constant folding on cpu
+  // for (auto& node : graph_build.Nodes()) {
+  //   std::cout << "In_setting_execution_provider_type" << std::endl;
+  //   node.SetExecutionProviderType(kMIGraphXExecutionProvider);
+  // }
+
+  // std::cout << "Before Constant Folding===================" << std::endl;
+  // print_graph(graph_build);
+
+  // graph_transformation_mgr.ApplyTransformers(graph_build, TransformerLevel::Level1, *GetLogger());
+
+  // std::cout << "After Constant Folding===================" << std::endl;
+  // print_graph(graph_build);
+
+  //  onnxruntime::GraphViewer graph_viewer(graph_build);
+  // const onnxruntime::GraphViewer& graph_viewer = graph_viewer_orig;
+
   std::string onnx_string_buffer;
   model_proto.SerializeToString(&onnx_string_buffer);
 
@@ -879,9 +1108,21 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     //   return result;
     // }
 
+    if (!unsupported_nodes.empty())
+    {
+      std::cout << "=======================================" << std::endl;
+      std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
+      for (auto& idx : unsupported_nodes)
+      {
+        auto&& node = graph_viewer.GetNode(idx);
+        std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
+      }
+      std::cout << "=======================================" << std::endl;
+    }
+
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
     // check whether a subgrap should fallback to CPU
-    SubgraphPostProcessing(graph_viewer, mgx_clusters);
+    SubgraphPostProcessing(graph_viewer, mgx_clusters, *GetLogger());
 
     for (const auto& this_cluster : mgx_clusters) {
       std::vector<std::string> cluster_inputs, cluster_outputs;
@@ -972,6 +1213,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
   bool no_input_shape = false;
 
   for (const auto& fused_node : fused_nodes) {
+    std::cout << "In compile funciton ======================== " << std::endl;
     // map parameter input name to index
     std::unordered_map<std::string, std::size_t> input_name_index;
     const auto& input_defs = fused_node->InputDefs();
