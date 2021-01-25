@@ -6,8 +6,8 @@
 # license information.
 # --------------------------------------------------------------------------
 
-from .calibrate import CalibrationDataReader, calibrate
 import onnxruntime
+from onnxruntime.quantization.calibrate import CalibrationDataReader, calibrate
 import numpy as np
 
 
