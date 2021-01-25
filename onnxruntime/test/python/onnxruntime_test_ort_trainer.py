@@ -162,7 +162,6 @@ def runBertTrainingTest(gradient_accumulation_steps,
         if batch_count == num_batches - 1:
             # test eval_step api with fetches at the end of the training.
             # if eval_step is called during the training, it will affect the actual training loss (training session is stateful).
-            # Note that after opset 12 update, the Dropout is in the training mode at this stage.
             eval_loss = model.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels, fetches=['loss'])
             eval_loss = eval_loss.cpu().numpy().item(0)
 

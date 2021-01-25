@@ -82,19 +82,9 @@ def optimizer_parameters(model):
     return params
 
 
-def load_bert_onnx_model(training_mode=True):
+def load_bert_onnx_model():
     bert_onnx_model_path = os.path.join('testdata', "bert_toy_postprocessed.onnx")
     model = onnx.load(bert_onnx_model_path)
-    if training_mode == False:
-        # The ONNX file was saved in training mode.
-        # To switch into eval mode, change every
-        # dropout_training_mode_node_* constant to false.
-        false_raw_data = b'\x00'
-        for node in model.graph.node:
-            if node.name.startswith("dropout_training_mode_node_"):
-                for a in node.attribute:
-                    if a.name == "value":
-                        a.t.raw_data = false_raw_data
     return model
 
 
@@ -189,7 +179,8 @@ def testToyBERTModelBasicTraining(dynamic_shape):
 
 
 @pytest.mark.parametrize("expected_losses", [
-    ([10.991958, 10.975625, 11.032847, 11.034771, 10.987653, 11.039469, 10.971498, 11.101391, 11.047601, 11.077588])
+    ([10.991958, 10.975625, 11.032847, 11.034771, 10.987653,
+      11.039469, 10.971498, 11.101391, 11.047601, 11.077588])
 ])
 def testToyBERTDeterministicCheck(expected_losses):
     # Common setup
@@ -303,9 +294,12 @@ def testToyBERTModelLRScheduler(initial_lr, lr_scheduler, expected_learning_rate
 
 
 @pytest.mark.parametrize("loss_scaler, expected_losses", [
-    (None, [10.992018, 10.975699, 11.032809, 11.034765, 10.987625, 11.039452, 10.971539, 11.10148 , 11.047551, 11.077468]),
-    (amp.DynamicLossScaler(), [10.992018, 10.975699, 11.032809, 11.034765, 10.987625, 11.039452, 10.971539, 11.10148 , 11.047551, 11.077468]),
-    (CustomLossScaler(), [10.992018, 10.975699, 11.032791, 11.034729, 10.987614, 11.039479, 10.971532, 11.101475, 11.04761, 11.077413])
+    (None, [10.992018, 10.975699, 11.032809, 11.034765, 10.987625,
+            11.039452, 10.971539, 11.10148, 11.047551, 11.077468]),
+    (amp.DynamicLossScaler(), [10.992018, 10.975699, 11.032809, 11.034765,
+                               10.987625, 11.039452, 10.971539, 11.10148, 11.047551, 11.077468]),
+    (CustomLossScaler(), [10.992018, 10.975699, 11.032791, 11.034729,
+                          10.987614, 11.039479, 10.971532, 11.101475, 11.04761, 11.077413])
 ])
 def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
     # Common setup
@@ -345,9 +339,12 @@ def testToyBERTModelMixedPrecisionLossScaler(loss_scaler, expected_losses):
 
 
 @pytest.mark.parametrize("gradient_accumulation_steps, expected_losses", [
-    (1, [10.991958, 10.975625, 11.032847, 11.034771, 10.987653, 11.039469, 10.971498, 11.101391, 11.047601, 11.077588]),
-    (4, [10.991958, 10.97373 , 11.033534, 11.028931, 10.988836, 11.04126, 10.969865, 11.085526, 11.036701, 11.0628]),
-    (7, [10.991958, 10.97373 , 11.033534, 11.028931, 10.994967, 11.043544, 10.974638, 11.085087, 11.034944, 11.059022])
+    (1, [10.991958, 10.975625, 11.032847, 11.034771, 10.987653,
+         11.039469, 10.971498, 11.101391, 11.047601, 11.077588]),
+    (4, [10.991958, 10.97373, 11.033534, 11.028931, 10.988836,
+         11.04126, 10.969865, 11.085526, 11.036701, 11.0628]),
+    (7, [10.991958, 10.97373, 11.033534, 11.028931, 10.994967,
+         11.043544, 10.974638, 11.085087, 11.034944, 11.059022])
 ])
 def testToyBERTModelGradientAccumulation(gradient_accumulation_steps, expected_losses):
     # Common setup
@@ -434,11 +431,8 @@ def testToyBertCheckpointFrozenWeights():
     opts = orttrainer.ORTTrainerOptions({'debug' : {'deterministic_compute': True},
                                          'utils' : {'frozen_weights' : ['bert.encoder.layer.0.attention.self.value.weight']}})
 
-    # Create ORTTrainer and save initial state in a dict.
-    # Because the eval_step will be performed on the same graph as train_step,
-    # load the ONNX model in non-training mode to
-    # disable dropouts and avoid random discrepancies during eval_step.
-    model = load_bert_onnx_model(training_mode=False)
+    # Create ORTTrainer and save initial state in a dict
+    model = load_bert_onnx_model()
     model_desc = bert_model_description()
     optim_config = optim.LambConfig()
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
@@ -448,15 +442,13 @@ def testToyBertCheckpointFrozenWeights():
         sample_input = generate_random_input_from_model_desc(model_desc, seed)
         _ = trainer.train_step(*sample_input)
     sample_input = generate_random_input_from_model_desc(model_desc, seed + total_steps + 1)
-    # Save checkpoint
-    state_dict = trainer.state_dict()
     # Evaluate once to get a base loss
     loss = trainer.eval_step(*sample_input)
+    # Save checkpoint
+    state_dict = trainer.state_dict()
 
-    # Load previous state into another instance of ORTTrainer.
-    # Again, use non-training mode to disable dropouts
-    # and match the previous result.
-    model2 = load_bert_onnx_model(training_mode=False)
+    # Load previous state into another instance of ORTTrainer
+    model2 = load_bert_onnx_model()
     model_desc2 = bert_model_description()
     optim_config2 = optim.LambConfig()
     trainer2 = orttrainer.ORTTrainer(model2, model_desc2, optim_config2, options=opts)
