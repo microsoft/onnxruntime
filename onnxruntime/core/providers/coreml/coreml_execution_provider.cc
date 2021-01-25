@@ -18,7 +18,7 @@ namespace onnxruntime {
 constexpr const char* COREML = "CoreML";
 
 CoreMLExecutionProvider::CoreMLExecutionProvider()
-    : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider} {
+    : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider, true} {
   AllocatorCreationInfo device_info(
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(COREML, OrtAllocatorType::OrtDeviceAllocator));
@@ -38,145 +38,126 @@ CoreMLExecutionProvider::CoreMLExecutionProvider()
 CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
-CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view,
+CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                        const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // We do not run CoreML EP on subgraph, instead we cover this in the control flow nodes
-  if (graph_view.IsSubgraph()) {
+  // TODO investigate whether we want to support subgraph using CoreML EP
+  if (graph_viewer.IsSubgraph()) {
     return result;
   }
 
-  std::unordered_set<std::string> all_node_inputs;
-  for (const auto& node : graph_view.Nodes()) {
-    for (auto* input : node.InputDefs()) {
-      all_node_inputs.insert(input->Name());
-    }
+  /*
+  Very basic search for groups of nodes that can be handled by the EP.
+  This doesn't work perfectly if you have a scenario like the following where A and D could be handled by the EP
+  but B is between them in the topological sort as you'll get two single node capabilities. However if can also
+  be advantageous if C and E could be handled by the EP as they would be combined with D even though not connected.
+  Not sure how often each of these scenarios happens.
+
+    A  B  C
+    | /   |
+    D     E
+    |     |
+
+  Would probably be better to walk the edges for each node the EP can handle as they are iterated in topological order,
+  accumulating nodes (and saving which ones have been taken) until you run out. This would guarantee all
+  connected nodes that can be handled are grouped together.
+  */
+
+  const auto node_groups = coreml::GetSupportedNodes(graph_viewer);
+
+  if (node_groups.empty()) {
+    return result;
   }
 
-  const auto supported_nodes_vector = coreml::GetSupportedNodes(graph_view);
+  const auto& graph_output_list = graph_viewer.GetOutputs();
+  std::unordered_set<const NodeArg*> graph_outputs(graph_output_list.cbegin(), graph_output_list.cend());
 
-  // Find inputs, initializers and outputs for each supported subgraph
   size_t num_of_supported_nodes = 0;
-  const std::vector<NodeIndex>& node_index = graph_view.GetNodesInTopologicalOrder();
-  const auto& graph_outputs = graph_view.GetOutputs();
-  for (const auto& group : supported_nodes_vector) {
+  auto& logger = *GetLogger();
+  for (const auto& group : node_groups) {
     if (group.empty())
       continue;
 
     num_of_supported_nodes += group.size();
-    LOGS_DEFAULT(VERBOSE) << "CoreMLExecutionProvider::GetCapability, current supported node group size: "
+    LOGS(logger, VERBOSE) << "CoreMLExecutionProvider::GetCapability, current supported node group size: "
                           << group.size();
 
-    std::unordered_set<size_t> node_set;
+    std::unordered_set<NodeIndex> node_set;
     node_set.reserve(group.size());
     for (const auto& index : group) {
-      node_set.insert(node_index[index]);
+      node_set.insert(index);
     }
 
     std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
-    // Find inputs and outputs of the subgraph
-    std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;
-    std::unordered_set<const NodeArg*> erased;
-    int input_order = 0;
-    int output_order = 0;
+
+    std::unordered_set<const NodeArg*> node_outputs;
+    std::unordered_set<const NodeArg*> subgraph_inputs;
+    std::unordered_set<const NodeArg*> subgraph_outputs;
+    std::vector<const NodeArg*> ordered_subgraph_inputs;
+    std::vector<const NodeArg*> ordered_subgraph_outputs;
 
     for (const auto& index : group) {
-      sub_graph->nodes.push_back(node_index[index]);
-      const auto* node = graph_view.GetNode(node_index[index]);
+      sub_graph->nodes.push_back(index);
+      const auto* node = graph_viewer.GetNode(index);
 
       for (const auto* input : node->InputDefs()) {
-        const auto it = fused_outputs.find(input);
-        if (it != fused_outputs.end()) {
-          fused_outputs.erase(it);
-          erased.insert(input);
-        }
-        //only when input is neither in output list nor erased list, add the input to input list
-        else if (erased.find(input) == erased.end()) {
-          fused_inputs[input] = input_order++;
-        }
-      }
-
-      // For output searching, there is a special case:
-      // If certain output is used more than once,
-      // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
-      // to the output list
-
-      std::unordered_set<const NodeArg*> processed_outputs;
-      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-        const auto node_idx = it->GetNode().Index();
-        const auto* output = node->OutputDefs()[it->GetSrcArgIndex()];
-
-        if (node_set.find(node_idx) != node_set.end()) {
-          const auto iter = fused_inputs.find(output);
-          if (iter != fused_inputs.end()) {
-            fused_inputs.erase(iter);
-            erased.insert(output);
-          } else if (erased.find(output) == erased.end()) {
-            fused_outputs[output] = output_order++;
+        // if the node input was not produced by this subgraph, add it to the subgraph inputs.
+        if (node_outputs.count(input) == 0) {
+          if (subgraph_inputs.count(input) == 0) {
+            subgraph_inputs.insert(input);
+            ordered_subgraph_inputs.push_back(input);
           }
-        } else {
-          fused_outputs_to_add[output] = output_order++;
-        }
-
-        processed_outputs.insert(output);
-      }
-
-      for (const auto* output : node->OutputDefs()) {
-        if (processed_outputs.find(output) != processed_outputs.end())
-          continue;
-
-        const auto iter = fused_inputs.find(output);
-        if (iter != fused_inputs.end()) {
-          fused_inputs.erase(iter);
-          erased.insert(output);
-        }
-        // only when output is neither in input list nor erased list, add the output to output list
-        else if (erased.find(output) == erased.end() && output->Exists()) {
-          fused_outputs[output] = output_order++;
         }
       }
-    }
 
-    fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
-    // Sort inputs and outputs by the order they were added
-    std::multimap<int, const NodeArg*> inputs, outputs;
+      const auto& output_defs = node->OutputDefs();
+      for (const auto* output_def : output_defs) {
+        node_outputs.insert(output_def);
+        // if output is overall graph output we need to produce it.
+        if (graph_outputs.count(output_def) != 0) {
+          ordered_subgraph_outputs.push_back(output_def);
+        }
+      }
 
-    for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
-      inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
-    }
-
-    for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
-      if (all_node_inputs.find(it->first->Name()) != all_node_inputs.end()) {
-        outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
-      } else if (std::find(graph_outputs.begin(), graph_outputs.end(), it->first) != graph_outputs.end()) {
-        outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+      // if output connects to a node not in this subgraph we need to produce it
+      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+        if (node_set.count(it->GetNode().Index()) == 0) {
+          const auto* output_def = output_defs[it->GetSrcArgIndex()];
+          if (subgraph_outputs.count(output_def) == 0) {
+            subgraph_outputs.insert(output_def);
+            ordered_subgraph_outputs.push_back(output_def);
+          }
+        }
       }
     }
 
     // Assign inputs and outputs to subgraph's meta_def
+    uint64_t model_hash;
+    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-    meta_def->name = "COREML_" + std::to_string(metadef_id_++);
+    meta_def->name = "COREML_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain = kMSDomain;
-
-    for (const auto& input : inputs) {
-      meta_def->inputs.push_back(input.second->Name());
-    }
-
-    for (const auto& output : outputs) {
-      meta_def->outputs.push_back(output.second->Name());
-    }
-
-    // meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
     meta_def->since_version = 1;
+    meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+
+    for (const auto& input : ordered_subgraph_inputs) {
+      meta_def->inputs.push_back(input->Name());
+    }
+
+    for (const auto& output : ordered_subgraph_outputs) {
+      meta_def->outputs.push_back(output->Name());
+    }
+
     sub_graph->SetMetaDef(std::move(meta_def));
 
     result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
 
-  LOGS_DEFAULT(INFO) << "CoreMLExecutionProvider::GetCapability,"
+  LOGS(logger, INFO) << "CoreMLExecutionProvider::GetCapability,"
                      << " number of partitions supported by CoreML: " << result.size()
-                     << " number of nodes in the graph: " << graph_view.NumberOfNodes()
+                     << " number of nodes in the graph: " << graph_viewer.NumberOfNodes()
                      << " number of nodes supported by CoreML: " << num_of_supported_nodes;
 
   return result;
@@ -192,7 +173,6 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     std::unique_ptr<coreml::Model> coreml_model;
     const std::string coreml_model_file_path = coreml::util::GetTemporaryFilePath();
     ORT_RETURN_IF_ERROR(builder.Compile(coreml_model, coreml_model_file_path));
-    ORT_RETURN_IF_ERROR(coreml_model->LoadModel());
 
     {
       const auto& input_defs = fused_node.InputDefs();

@@ -25,7 +25,7 @@ common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
   } else {
     // TODO: support other type
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "The initializer of graph doesn't have valid type, name: ",
+                           "The initializer of graph has unsupported type, name: ",
                            tensor.name(), " type: ", data_type);
   }
 

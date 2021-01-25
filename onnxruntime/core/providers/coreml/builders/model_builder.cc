@@ -190,10 +190,10 @@ Status ModelBuilder::RegisterModelOutputs() {
 
 Status ModelBuilder::Compile(std::unique_ptr<Model>& model, const std::string& path) {
   ORT_RETURN_IF_ERROR(SaveCoreMLModel(path));
-  model = onnxruntime::make_unique<Model>(path);
+  model.reset(new Model(path));
   model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
-  return Status::OK();
+  return model->LoadModel();
 }
 
 Status ModelBuilder::SaveCoreMLModel(const std::string& path) {

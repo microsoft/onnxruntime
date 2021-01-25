@@ -170,7 +170,7 @@
   _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
 
   if (error != NULL) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error Creating MLModel",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error Creating MLModel ",
                            [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
   }
 

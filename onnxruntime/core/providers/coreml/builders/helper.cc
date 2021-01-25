@@ -35,7 +35,7 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer) {
   }
 }
 
-bool GraphHasValidInputs(const GraphViewer& graph_viewer) {
+bool GraphHasSupportedInputs(const GraphViewer& graph_viewer) {
   for (const auto* node_arg : graph_viewer.GetInputs()) {
     const auto& input_name = node_arg->Name();
     const auto* shape_proto = node_arg->Shape();
@@ -62,7 +62,7 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
     return supported_node_vecs;
   }
 
-  if (!GraphHasValidInputs(graph_viewer))
+  if (!GraphHasSupportedInputs(graph_viewer))
     return supported_node_vecs;
 
   std::vector<size_t> supported_node_vec;

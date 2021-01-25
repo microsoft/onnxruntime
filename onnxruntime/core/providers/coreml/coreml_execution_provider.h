@@ -17,7 +17,7 @@ class CoreMLExecutionProvider : public IExecutionProvider {
   virtual ~CoreMLExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph_view,
+  GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
   // we implement the Compile that takes FusedNodeAndGraph instances
@@ -29,9 +29,6 @@ class CoreMLExecutionProvider : public IExecutionProvider {
 #endif
 
  private:
-  // unique counter to name each fused kernel across the entire model
-  mutable int metadef_id_{0};
-
   // <fused_node_name, <coreml_model_file_path, compiled_coreml_model>>
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::coreml::Model>> coreml_models_;
 };

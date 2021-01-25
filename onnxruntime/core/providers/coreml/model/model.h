@@ -22,20 +22,16 @@ struct OnnxTensorData {
 };
 
 class Model {
- public:
-  Model(const std::string& path);
-  ~Model();
-  Model(const Model&) = delete;
-  Model& operator=(const Model&) = delete;
+  friend class ModelBuilder;
 
-  onnxruntime::common::Status LoadModel();
+ public:
+  ~Model();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Model);
+
   onnxruntime::common::Status Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
                                       const std::unordered_map<std::string, OnnxTensorData>& outputs);
 
   bool IsScalarOutput(const std::string& output_name) const;
-  void SetScalarOutputs(std::unordered_set<std::string>&& scalar_outputs) {
-    scalar_outputs_ = std::move(scalar_outputs);
-  }
 
   // Mutex for exclusive lock to this model object
   OrtMutex& GetMutex() { return mutex_; }
@@ -46,10 +42,6 @@ class Model {
 
   const std::vector<std::string>& GetOutputs() const { return outputs_; }
   void SetOutputs(std::vector<std::string>&& outputs) { outputs_ = std::move(outputs); }
-
-  void SetInputOutputInfo(std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info) {
-    input_output_info_ = std::move(input_output_info);
-  }
 
   const OnnxTensorInfo& GetInputOutputInfo(const std::string& name) const;
 
@@ -63,6 +55,17 @@ class Model {
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
 
   OrtMutex mutex_;
+
+  Model(const std::string& path);
+  onnxruntime::common::Status LoadModel();
+
+  void SetInputOutputInfo(std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info) {
+    input_output_info_ = std::move(input_output_info);
+  }
+
+  void SetScalarOutputs(std::unordered_set<std::string>&& scalar_outputs) {
+    scalar_outputs_ = std::move(scalar_outputs);
+  }
 };
 
 }  // namespace coreml
