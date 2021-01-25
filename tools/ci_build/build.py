@@ -1980,6 +1980,12 @@ def main():
             install_python_deps(args.numpy_version)
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
+        if args.cuda_version is None:
+            if is_windows():
+                # cuda_version is used while generating version_info.py on Windows.
+                raise BuildError("cuda_version must be specified on Windows.")
+            else:
+                args.cuda_version = ""
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
