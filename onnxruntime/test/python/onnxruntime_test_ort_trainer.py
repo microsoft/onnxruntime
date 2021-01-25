@@ -161,7 +161,8 @@ def runBertTrainingTest(gradient_accumulation_steps,
 
         if batch_count == num_batches - 1:
             # test eval_step api with fetches at the end of the training.
-            # if eval_step is called during the training, it will affect the actual training loss (training session is stateful),
+            # if eval_step is called during the training, it will affect the actual training loss (training session is stateful).
+            # Note that after opset 12 update, the Dropout is in the training mode at this stage.
             eval_loss = model.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels, fetches=['loss'])
             eval_loss = eval_loss.cpu().numpy().item(0)
 
@@ -653,7 +654,7 @@ class TestOrtTrainer(unittest.TestCase):
 
     def testBertTrainingBasic(self):
         expected_losses = [11.027887, 11.108191, 11.055356, 11.040912, 10.960277, 11.02691, 11.082471, 10.920979]
-        expected_eval_loss = [10.976489]
+        expected_eval_loss = [10.958977]
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=False, allreduce_post_accumulation=False)
 
@@ -670,7 +671,7 @@ class TestOrtTrainer(unittest.TestCase):
 
     def testBertTrainingGradientAccumulation(self):
         expected_losses = [11.027887, 11.108191, 11.055354, 11.040904, 10.960266, 11.026897, 11.082475, 10.920998]
-        expected_eval_loss = [10.976518]
+        expected_eval_loss = [10.958998]
 
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=False, allreduce_post_accumulation=False)
