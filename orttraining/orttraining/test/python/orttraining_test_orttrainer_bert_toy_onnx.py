@@ -85,16 +85,16 @@ def optimizer_parameters(model):
 def load_bert_onnx_model(training_mode=True):
     bert_onnx_model_path = os.path.join('testdata', "bert_toy_postprocessed.onnx")
     model = onnx.load(bert_onnx_model_path)
-    if training_mode == False:
-        # The ONNX file was saved in training mode.
-        # To switch into eval mode, change every
-        # dropout_training_mode_node_* constant to false.
-        false_raw_data = b'\x00'
-        for node in model.graph.node:
-            if node.name.startswith("dropout_training_mode_node_"):
-                for a in node.attribute:
-                    if a.name == "value":
-                        a.t.raw_data = false_raw_data
+    # if training_mode == False:
+    #     # The ONNX file was saved in training mode.
+    #     # To switch into eval mode, change every
+    #     # dropout_training_mode_node_* constant to false.
+    #     false_raw_data = b'\x00'
+    #     for node in model.graph.node:
+    #         if node.name.startswith("dropout_training_mode_node_"):
+    #             for a in node.attribute:
+    #                 if a.name == "value":
+    #                     a.t.raw_data = false_raw_data
     return model
 
 
