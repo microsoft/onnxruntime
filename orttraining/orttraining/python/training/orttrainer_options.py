@@ -290,7 +290,7 @@ class ORTTrainerOptions(object):
         distributed (dict):
             distributed training options.
         distributed.world_rank (int, default is 0):
-            rank ID used for data parallelism
+            rank ID used for data/horizontal parallelism
         distributed.world_size (int, default is 1):
             number of ranks participating in parallelism
         distributed.data_parallel_size (int, default is 1):
