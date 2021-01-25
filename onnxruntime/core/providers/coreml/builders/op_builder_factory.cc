@@ -12,17 +12,17 @@
 namespace onnxruntime {
 namespace coreml {
 
+struct OpBuilderRegistrations {
+  std::vector<std::unique_ptr<IOpBuilder>> builders;
+  std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
+};
+
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
   {  // Add
-    CreateBinaryOpBuilder("Add", op_registrations);
-  }
-
-  {  // Activations
-    CreateActivationOpBuilder("Sigmoid", op_registrations);
-    CreateActivationOpBuilder("Tanh", op_registrations);
-    CreateActivationOpBuilder("Relu", op_registrations);
+    op_registrations.builders.push_back(CreateBinaryOpBuilder());
+    op_registrations.op_builder_map.emplace("Add", op_registrations.builders.back().get());
   }
 
   return op_registrations;
