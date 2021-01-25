@@ -36,6 +36,9 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(double, double)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+REGISTER_KERNEL_TYPED(BFloat16, float)
+#endif
 
 template <typename T, typename U, bool simplified>
 LayerNorm<T, U, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
@@ -61,8 +64,8 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
-  auto n1 = x_shape.SizeToDimension(axis);
-  auto n2 = x_shape.SizeFromDimension(axis);
+  int n1 = gsl::narrow<int>(x_shape.SizeToDimension(axis));
+  int n2 = gsl::narrow<int>(x_shape.SizeFromDimension(axis));
 
   ORT_ENFORCE(n2 != 1, "n2 should not be 1");
 

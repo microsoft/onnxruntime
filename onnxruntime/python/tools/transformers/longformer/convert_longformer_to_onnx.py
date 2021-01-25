@@ -1,4 +1,4 @@
-# Before running this script, please run "python setup.py install" to build the longformer_attention.cpp
+# Before running this script, please run "python setup.py install" in ../torch_extensions to build longformer_attention.cpp
 # under a python environment with PyTorch installed. Then you can update the path of longformer_attention.cpython-*.so
 # and run this script in same environment.
 # Conversion tested in Ubuntu 18.04 in WSL (Windows Subsystem for Linux), python 3.6, onnxruntime 1.5.2, PyTorch 1.6.0+cpu, transformers 3.0.2
@@ -13,15 +13,27 @@ from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import parse_args
 from packaging import version
 
-@parse_args('v', 'v', 'v', 'v','v', 'v', 'v', 'i', 'i')
+
+@parse_args('v', 'v', 'v', 'v', 'v', 'v', 'v', 'i', 'i')
 def my_longformer_attention(g, input, weight, bias, mask, global_weight, global_bias, global_mask, num_heads, window):
-  return g.op("com.microsoft::LongformerAttention", input, weight, bias, mask, global_weight, global_bias, global_mask, num_heads_i=num_heads, window_i=window)
+    return g.op("com.microsoft::LongformerAttention",
+                input,
+                weight,
+                bias,
+                mask,
+                global_weight,
+                global_bias,
+                global_mask,
+                num_heads_i=num_heads,
+                window_i=window)
+
 
 # namespace is onnxruntime which is registered in longformer_attention.cpp
 register_custom_op_symbolic('onnxruntime::LongformerAttention', my_longformer_attention, 9)
 
 # TODO: update the path according to output of "python setup.py install" when your python version is not 3.6
-torch.ops.load_library(r'build/lib.linux-x86_64-3.6/longformer_attention.cpython-36m-x86_64-linux-gnu.so')
+torch.ops.load_library(
+    r'../torch_extensions/build/lib.linux-x86_64-3.6/longformer_attention.cpython-36m-x86_64-linux-gnu.so')
 
 # mapping from model name to pretrained model name
 MODELS = {
@@ -30,6 +42,7 @@ MODELS = {
 }
 
 is_debug = False
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -44,10 +57,7 @@ def parse_arguments():
 
     # Sequence length shall choose properly.
     # If multiple of windows size is used, there is no padding in ONNX model so you will need padding by yourself before running onnx model.
-    parser.add_argument("-s",
-                        "--sequence_length",
-                        type=int,
-                        default=4 if is_debug else 512)
+    parser.add_argument("-s", "--sequence_length", type=int, default=4 if is_debug else 512)
 
     parser.add_argument("-g", "--global_length", type=int, default=1 if is_debug else 8)
 
@@ -58,17 +68,17 @@ def parse_arguments():
                         help='Use optimizer.py to optimize onnx model')
     parser.set_defaults(optimize_onnx=False)
 
-    parser.add_argument(
-        "-p",
-        "--precision",
-        required=False,
-        type=str,
-        default='fp32',
-        choices=['fp32', 'fp16'],
-        help="Precision of model to run: fp32 for full precision, fp16 for mixed precision")
+    parser.add_argument("-p",
+                        "--precision",
+                        required=False,
+                        type=str,
+                        default='fp32',
+                        choices=['fp32', 'fp16'],
+                        help="Precision of model to run: fp32 for full precision, fp16 for mixed precision")
 
     args = parser.parse_args()
     return args
+
 
 def get_dummy_inputs(sequence_length, num_global_tokens, device):
     # Create dummy inputs
@@ -82,51 +92,61 @@ def get_dummy_inputs(sequence_length, num_global_tokens, device):
     # TODO: support more inputs like token_type_ids, position_ids
     return input_ids, attention_mask, global_attention_mask
 
+
 args = parse_arguments()
 
 model_name = args.model
 onnx_model_path = model_name + ".onnx"
 
 from transformers import LongformerModel
-model = LongformerModel.from_pretrained(MODELS[model_name]) # pretrained model name or directory
+model = LongformerModel.from_pretrained(MODELS[model_name])  # pretrained model name or directory
 
-input_ids, attention_mask, global_attention_mask = get_dummy_inputs(sequence_length=args.sequence_length, num_global_tokens=args.global_length, device=torch.device('cpu'))
+input_ids, attention_mask, global_attention_mask = get_dummy_inputs(sequence_length=args.sequence_length,
+                                                                    num_global_tokens=args.global_length,
+                                                                    device=torch.device('cpu'))
 
 example_outputs = model(input_ids, attention_mask=attention_mask, global_attention_mask=global_attention_mask)
 
+
 # A new function to replace LongformerSelfAttention.forward
 #For transformers 4.0
-def my_longformer_self_attention_forward_4(self, hidden_states, attention_mask=None, is_index_masked=None, is_index_global_attn=None, is_global_attn=None):
+def my_longformer_self_attention_forward_4(self,
+                                           hidden_states,
+                                           attention_mask=None,
+                                           is_index_masked=None,
+                                           is_index_global_attn=None,
+                                           is_global_attn=None):
     # TODO: move mask calculation to LongFormerModel class to avoid calculating it again and again in each layer.
     global_mask = is_index_global_attn.int()
     torch.masked_fill(attention_mask, is_index_global_attn, 0.0)
 
-    weight = torch.stack((self.query.weight.transpose(0,1), self.key.weight.transpose(0,1), self.value.weight.transpose(0,1)), dim=1)
-    weight = weight.reshape(self.embed_dim, 3*self.embed_dim)
+    weight = torch.stack(
+        (self.query.weight.transpose(0, 1), self.key.weight.transpose(0, 1), self.value.weight.transpose(0, 1)), dim=1)
+    weight = weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
     bias = torch.stack((self.query.bias, self.key.bias, self.value.bias), dim=0)
     bias = bias.reshape(3 * self.embed_dim)
 
-    global_weight = torch.stack((self.query_global.weight.transpose(0,1), self.key_global.weight.transpose(0,1), self.value_global.weight.transpose(0,1)), dim=1)
-    global_weight = global_weight.reshape(self.embed_dim, 3*self.embed_dim)
+    global_weight = torch.stack((self.query_global.weight.transpose(0, 1), self.key_global.weight.transpose(
+        0, 1), self.value_global.weight.transpose(0, 1)),
+                                dim=1)
+    global_weight = global_weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
     global_bias = torch.stack((self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0)
     global_bias = global_bias.reshape(3 * self.embed_dim)
 
-    attn_output = torch.ops.onnxruntime.LongformerAttention(hidden_states, weight, bias, attention_mask, global_weight, global_bias, global_mask, self.num_heads, self.one_sided_attn_window_size)
+    attn_output = torch.ops.onnxruntime.LongformerAttention(hidden_states, weight, bias, attention_mask, global_weight,
+                                                            global_bias, global_mask, self.num_heads,
+                                                            self.one_sided_attn_window_size)
 
     assert attn_output.size() == hidden_states.size(), "Unexpected size"
 
-    outputs = (attn_output,)
+    outputs = (attn_output, )
     return outputs
 
 
 # For transformers 3.0
-def my_longformer_attention_forward_3(
-    self,
-    hidden_states,
-    attention_mask,
-    output_attentions=False):
+def my_longformer_attention_forward_3(self, hidden_states, attention_mask, output_attentions=False):
 
     assert output_attentions is False
 
@@ -135,24 +155,30 @@ def my_longformer_attention_forward_3(
     global_mask = (attention_mask > 0).int()
     torch.masked_fill(attention_mask, attention_mask > 0, 0.0)
 
-    weight = torch.stack((self.query.weight.transpose(0,1), self.key.weight.transpose(0,1), self.value.weight.transpose(0,1)), dim=1)
-    weight = weight.reshape(self.embed_dim, 3*self.embed_dim)
+    weight = torch.stack(
+        (self.query.weight.transpose(0, 1), self.key.weight.transpose(0, 1), self.value.weight.transpose(0, 1)), dim=1)
+    weight = weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
     bias = torch.stack((self.query.bias, self.key.bias, self.value.bias), dim=0)
     bias = bias.reshape(3 * self.embed_dim)
 
-    global_weight = torch.stack((self.query_global.weight.transpose(0,1), self.key_global.weight.transpose(0,1), self.value_global.weight.transpose(0,1)), dim=1)
-    global_weight = global_weight.reshape(self.embed_dim, 3*self.embed_dim)
+    global_weight = torch.stack((self.query_global.weight.transpose(0, 1), self.key_global.weight.transpose(
+        0, 1), self.value_global.weight.transpose(0, 1)),
+                                dim=1)
+    global_weight = global_weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
     global_bias = torch.stack((self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0)
     global_bias = global_bias.reshape(3 * self.embed_dim)
 
-    attn_output = torch.ops.onnxruntime.LongformerAttention(hidden_states, weight, bias, attention_mask, global_weight, global_bias, global_mask, self.num_heads, self.one_sided_attn_window_size)
+    attn_output = torch.ops.onnxruntime.LongformerAttention(hidden_states, weight, bias, attention_mask, global_weight,
+                                                            global_bias, global_mask, self.num_heads,
+                                                            self.one_sided_attn_window_size)
 
     assert attn_output.size() == hidden_states.size(), "Unexpected size"
 
-    outputs = (attn_output,)
+    outputs = (attn_output, )
     return outputs
+
 
 # Here we replace LongformerSelfAttention.forward using our implmentation for exporting ONNX model
 if version.parse(transformers.__version__) < version.parse("4.0.0"):
@@ -167,22 +193,42 @@ else:
 # TODO: support more inputs like (input_ids, attention_mask, global_attention_mask, token_type_ids, position_ids)
 example_inputs = (input_ids, attention_mask, global_attention_mask)
 
-torch.onnx.export(model, example_inputs, onnx_model_path,
+torch.onnx.export(model,
+                  example_inputs,
+                  onnx_model_path,
                   opset_version=11,
                   example_outputs=example_outputs,
-                  input_names=["input_ids", "attention_mask", "global_attention_mask"], output_names=["last_state", "pooler"],
-                  dynamic_axes={'input_ids': {0: 'batch_size', 1: 'sequence_length'},
-                                'attention_mask': {0: 'batch_size', 1: 'sequence_length'},
-                                'global_attention_mask': {0: 'batch_size', 1: 'sequence_length'},
-                                'last_state': {0: 'batch_size', 1: 'sequence_length'},
-                                'pooler': {0: 'batch_size', 1: 'sequence_length'}
-                                },
-                  custom_opsets={"com.microsoft": 1}
-                  )
+                  input_names=["input_ids", "attention_mask", "global_attention_mask"],
+                  output_names=["last_state", "pooler"],
+                  dynamic_axes={
+                      'input_ids': {
+                          0: 'batch_size',
+                          1: 'sequence_length'
+                      },
+                      'attention_mask': {
+                          0: 'batch_size',
+                          1: 'sequence_length'
+                      },
+                      'global_attention_mask': {
+                          0: 'batch_size',
+                          1: 'sequence_length'
+                      },
+                      'last_state': {
+                          0: 'batch_size',
+                          1: 'sequence_length'
+                      },
+                      'pooler': {
+                          0: 'batch_size',
+                          1: 'sequence_length'
+                      }
+                  },
+                  custom_opsets={"com.microsoft": 1})
 print(f"ONNX model exported to {onnx_model_path}")
 
 if args.sequence_length % model.config.attention_window[0] == 0:
-    print(f"*Attention*: You need input padding for inference: input sequece length shall be multiple of {model.config.attention_window[0]}. It is because the example input for export ONNX model does not need padding so padding logic is not in onnx model.")
+    print(
+        f"*Attention*: You need input padding for inference: input sequece length shall be multiple of {model.config.attention_window[0]}. It is because the example input for export ONNX model does not need padding so padding logic is not in onnx model."
+    )
 
 # Restore Huggingface implementaiton like the following:
 # LongformerSelfAttention.forward = original_forward

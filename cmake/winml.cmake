@@ -106,21 +106,24 @@ target_cppwinrt(winml_api
   ${target_folder}           # the folder this target will be placed under
   "${winml_midl_defines}"    # the midl compiler defines
   ${winml_api_use_ns_prefix} # set ns_prefix
+  ""                         # set additional cppwinrt ref path
 )
 add_dependencies(winml_api RESTORE_NUGET_PACKAGES)
 
 # generate winml.experimental headers from idl
 target_cppwinrt(winml_api_experimental
-  ${winrt_experimental_idl}                    # winml winrt idl to compile
-  ${experimental_output_name}                  # outputs name
-  ${winml_lib_api_dir}                         # location for cppwinrt generated component sources
-  ${sdk_folder}                                # location of sdk folder
-  ${sdk_version}                               # sdk version
-  ${target_folder}                             # the folder this target will be placed under
-  ${winml_midl_defines}                        # the midl compiler defines
-  ${winml_api_use_ns_prefix}                   # set ns_prefix
+  ${winrt_experimental_idl}                                        # winml winrt idl to compile
+  ${experimental_output_name}                                      # outputs name
+  ${winml_lib_api_dir}                                             # location for cppwinrt generated component sources
+  ${sdk_folder}                                                    # location of sdk folder
+  ${sdk_version}                                                   # sdk version
+  ${target_folder}                                                 # the folder this target will be placed under
+  ${winml_midl_defines}                                            # the midl compiler defines
+  ${winml_api_use_ns_prefix}                                       # set ns_prefix
+  "${CMAKE_CURRENT_BINARY_DIR}/Microsoft.AI.MachineLearning.winmd" # set additional cppwinrt ref path
 )
 add_dependencies(winml_api_experimental RESTORE_NUGET_PACKAGES)
+add_dependencies(winml_api_experimental winml_api)
 
 target_midl(winml_api_native
   ${idl_native}             # winml native idl to compile
@@ -546,6 +549,10 @@ add_library(winml_lib_api_experimental STATIC
   ${winml_lib_api_experimental_dir}/LearningModelOperator.h
   ${winml_lib_api_experimental_dir}/LearningModelOperatorSet.cpp
   ${winml_lib_api_experimental_dir}/LearningModelOperatorSet.h
+  ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.h
+  ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.h
 )
 
 # Compiler options
@@ -773,7 +780,9 @@ add_dependencies(winml_dll winml_api_native_internal)
 target_link_libraries(winml_dll PRIVATE re2)
 target_link_libraries(winml_dll PRIVATE wil)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
-target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)
+if (NOT winml_is_inbox)
+  target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)
+endif()
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)

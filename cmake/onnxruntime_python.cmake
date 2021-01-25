@@ -194,8 +194,14 @@ file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
     "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
 )
+file(GLOB onnxruntime_python_quantization_test_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/test/python/quantization/*.py"
+)
 file(GLOB onnxruntime_python_checkpoint_test_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/python/checkpoint/*.py"
+)
+file(GLOB onnxruntime_python_dhp_parallel_test_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/test/python/dhp_parallel/*.py"
 )
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
@@ -212,8 +218,9 @@ file(GLOB onnxruntime_python_quantization_operators_src CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_transformers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/*.py"
 )
-list(REMOVE_ITEM onnxruntime_python_transformers_src
-  "${ONNXRUNTIME_ROOT}/python/tools/transformers/test_optimizer.py")
+file(GLOB onnxruntime_python_transformers_longformer_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/longformer/*.py"
+)
 file(GLOB onnxruntime_python_datasets_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
 )
@@ -233,9 +240,12 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers/longformer
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/checkpoint
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/dhp_parallel
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -252,8 +262,14 @@ add_custom_command(
       ${onnxruntime_python_test_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_test_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/quantization/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_checkpoint_test_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/checkpoint/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_dhp_parallel_test_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/dhp_parallel/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_backend_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend/
@@ -287,6 +303,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_src}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_longformer_src}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/transformers/longformer/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${test_data_target}>
