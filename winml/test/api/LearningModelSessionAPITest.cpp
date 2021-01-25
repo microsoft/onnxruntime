@@ -737,6 +737,140 @@ static void TestThreeToneSpectrogram(
   builder.Save(L"e:\\spectrogram.onnx");
 }
 
+
+static void TestMatmul() {
+  printf("\nTest MatMul with Dynamic B\n");
+
+  using namespace winml_experimental;
+  using Operator = winml_experimental::LearningModelOperator;
+
+  static const wchar_t MS_DOMAIN[] = L"com.microsoft";
+
+  std::vector<int64_t> input1_shape = {318, 129};
+  std::vector<int64_t> input2_shape = {129, 1024};
+  std::vector<int64_t> output_shape = {1, 1, 318, 1024};
+
+  auto builder =
+      LearningModelBuilder::Create()
+          .Inputs()
+          .Add(TensorFeatureDescriptor(L"Input1", L"The input1 matrix", TensorKind::Float, input1_shape))
+          .Inputs()
+          .Add(TensorFeatureDescriptor(L"Input2", L"The input2 matrix", TensorKind::Float, input2_shape))
+          .Outputs()
+          .Add(TensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, output_shape))
+          .Operators()
+          .Add(Operator(L"MatMul", L"matmul0")
+                   .SetInput(L"A", L"Input1")
+                   .SetInput(L"B", L"Input2")
+                   .SetOutput(L"Y", L"matmul_out"))
+          .Operators()
+          .Add(Operator(L"Reshape", L"reshape0")
+                   .SetInput(L"data", L"matmul_out")
+                   .SetConstant(L"shape", TensorInt64Bit::CreateFromShapeArrayAndDataArray({4}, output_shape))
+                   .SetOutput(L"reshaped", L"Output"));
+  auto model = builder.CreateModel();
+
+  LearningModelSession session(model);
+  LearningModelBinding binding(session);
+
+  // Bind input
+  auto signal = std::vector<float>(318 * 129, 1);
+  auto signal2 = std::vector<float>(129 * 1024, 1);
+  binding.Bind(L"Input1", TensorFloat::CreateFromShapeArrayAndDataArray(input1_shape, signal));
+  binding.Bind(L"Input2", TensorFloat::CreateFromShapeArrayAndDataArray(input2_shape, signal2));
+
+  // Bind output
+  auto output_image =
+      winrt::Windows::Media::VideoFrame(
+          winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
+          static_cast<int32_t>(318),
+          static_cast<int32_t>(1024));
+  binding.Bind(L"Output", output_image);
+
+  // Evaluate
+  auto start = std::chrono::high_resolution_clock::now();
+  auto result = session.Evaluate(binding, L"");
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
+  printf("\nSpectrogram evaluate took: %f\n", evaluate_duration_in_microseconds.count());
+
+  // Check the output video frame object by saving output image to disk
+  std::wstring out_name = L"mel_spectrogram.jpg";
+  winrt::Windows::Storage::StorageFolder folder = winrt::Windows::Storage::StorageFolder::GetFolderFromPathAsync(L"e:\\").get();
+  winrt::Windows::Storage::StorageFile file = folder.CreateFileAsync(out_name, winrt::Windows::Storage::CreationCollisionOption::ReplaceExisting).get();
+  winrt::Windows::Storage::Streams::IRandomAccessStream write_stream = file.OpenAsync(winrt::Windows::Storage::FileAccessMode::ReadWrite).get();
+  winrt::Windows::Graphics::Imaging::BitmapEncoder encoder = winrt::Windows::Graphics::Imaging::BitmapEncoder::CreateAsync(winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(), write_stream).get();
+  encoder.SetSoftwareBitmap(output_image.SoftwareBitmap());
+  encoder.FlushAsync().get();
+
+  // Save the model
+  builder.Save(L"e:\\matmul.onnx");
+}
+
+static void TestMatmul2() {
+  printf("\nTest MatMul with constant B\n");
+
+  using namespace winml_experimental;
+  using Operator = winml_experimental::LearningModelOperator;
+
+  static const wchar_t MS_DOMAIN[] = L"com.microsoft";
+
+  std::vector<int64_t> input1_shape = {318, 129};
+  std::vector<int64_t> output_shape = {1, 1, 318, 1024};
+
+  auto builder =
+      LearningModelBuilder::Create()
+          .Inputs()
+          .Add(TensorFeatureDescriptor(L"Input1", L"The input1 matrix", TensorKind::Float, input1_shape))
+          .Outputs()
+          .Add(TensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, output_shape))
+          .Operators()
+          .Add(Operator(L"MatMul", L"matmul0")
+                   .SetInput(L"A", L"Input1")
+                   .SetConstant(L"B", TensorFloat::CreateFromShapeArrayAndDataArray({129, 1024}, std::vector<float>(129 * 1024, 1)))
+                   .SetOutput(L"Y", L"matmul_out"))
+          .Operators()
+          .Add(Operator(L"Reshape", L"reshape0")
+                   .SetInput(L"data", L"matmul_out")
+                   .SetConstant(L"shape", TensorInt64Bit::CreateFromShapeArrayAndDataArray({4}, output_shape))
+                   .SetOutput(L"reshaped", L"Output"));
+  auto model = builder.CreateModel();
+
+  LearningModelSession session(model);
+  LearningModelBinding binding(session);
+
+  // Bind input
+  auto signal = std::vector<float>(318 * 129, 1);
+  binding.Bind(L"Input1", TensorFloat::CreateFromShapeArrayAndDataArray(input1_shape, signal));
+
+  // Bind output
+  auto output_image =
+      winrt::Windows::Media::VideoFrame(
+          winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
+          static_cast<int32_t>(318),
+          static_cast<int32_t>(1024));
+  binding.Bind(L"Output", output_image);
+
+  // Evaluate
+  auto start = std::chrono::high_resolution_clock::now();
+  auto result = session.Evaluate(binding, L"");
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
+  printf("\nSpectrogram evaluate took: %f\n", evaluate_duration_in_microseconds.count());
+
+  // Check the output video frame object by saving output image to disk
+  std::wstring out_name = L"mel_spectrogram.jpg";
+  winrt::Windows::Storage::StorageFolder folder = winrt::Windows::Storage::StorageFolder::GetFolderFromPathAsync(L"e:\\").get();
+  winrt::Windows::Storage::StorageFile file = folder.CreateFileAsync(out_name, winrt::Windows::Storage::CreationCollisionOption::ReplaceExisting).get();
+  winrt::Windows::Storage::Streams::IRandomAccessStream write_stream = file.OpenAsync(winrt::Windows::Storage::FileAccessMode::ReadWrite).get();
+  winrt::Windows::Graphics::Imaging::BitmapEncoder encoder = winrt::Windows::Graphics::Imaging::BitmapEncoder::CreateAsync(winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(), write_stream).get();
+  encoder.SetSoftwareBitmap(output_image.SoftwareBitmap());
+  encoder.FlushAsync().get();
+
+  // Save the model
+  builder.Save(L"e:\\matmul.onnx");
+}
+
 static void TestGemm() {
   printf("\nGemm\n");
   using namespace winml_experimental;
@@ -787,6 +921,8 @@ static void TestModelBuilding() {
   int64_t window_size = 256;
   int64_t n_mel_bins = 1024;
   TestThreeToneSpectrogram(batch_size, signal_size, dft_size, window_size, hop_size, n_mel_bins, sample_rate);
+  TestMatmul();
+  TestMatmul2();
 }
 
 static void SetIntraOpNumThreads() {
