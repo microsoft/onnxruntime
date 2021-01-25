@@ -88,7 +88,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'graph_save_paths' : {
                 'model_after_graph_transforms_path': '',
                 'model_with_gradient_graph_path': '',
-                'model_with_training_graph_path': ''                            
+                'model_with_training_graph_path': '',
+                'model_with_training_graph_after_optimization_path': ''
             }
         },
         '_internal_use': {
