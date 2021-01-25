@@ -224,7 +224,7 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     if (ratio == 1.0f) {
       ASSERT_EQ(num_dropped_values, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
-      ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), training_mode == TrainingTrue ? ratio : 0.0f, 0.1f, 0.1f)
+      ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), training_mode == TrainingTrue ? ratio : 0.0f, 0.1f)
           << "provider: " << provider_type;
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {
