@@ -4,8 +4,8 @@ To run on the local GPU(s):
 
 ```
 $ pip install deepspeed
-$ deepspeed orttraining_test_ortmodule_mnist_deepspeed.py \
-    --deepspeed_config=orttraining_test_ortmodule_mnist_deepspeed_config.json
+$ deepspeed orttraining_test_ortmodule_deepspeed_zero_stage_1.py \
+    --deepspeed_config=orttraining_test_ortmodule_deepspeed_zero_stage_1_config.json
 ```
 """
 import argparse
@@ -13,6 +13,7 @@ import logging
 import torch
 import time
 from torchvision import datasets, transforms
+import torch.distributed as dist
 
 import onnxruntime
 from onnxruntime.training import ORTModule
@@ -166,9 +167,15 @@ def main():
         device = "cpu"
 
     ## Data loader
-    train_set = datasets.MNIST('./data', train=True, download=True,
-                               transform=transforms.Compose([transforms.ToTensor(),
-                                                             transforms.Normalize((0.1307,), (0.3081,))]))
+    dist.init_process_group(backend='nccl')
+    if args.local_rank == 0:
+        # download only once on rank 0
+        datasets.MNIST('./data', download=True)
+    dist.barrier()
+    train_set = datasets.MNIST('./data', train=True,
+                            transform=transforms.Compose([transforms.ToTensor(),
+                                                        transforms.Normalize((0.1307,), (0.3081,))]))
+
     test_loader = None
     if args.test_batch_size > 0:
         test_loader = torch.utils.data.DataLoader(
