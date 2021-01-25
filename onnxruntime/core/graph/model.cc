@@ -93,7 +93,8 @@ Model::Model(const ModelProto& model_proto, const PathString& model_path,
     : Model(ModelProto(model_proto), model_path, local_registries, logger) {
 }
 
-Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+Model::Model(ModelProto&& model_proto, const PathString& model_path,
+             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
              const logging::Logger& logger)
     : model_path_(Path::Parse(model_path)) {
   if (!utils::HasGraph(model_proto)) {
@@ -618,6 +619,9 @@ Model::Model() : model_path_{} {
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
+#if !defined(ORT_MINIMAL_BUILD)
+                                        const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+#endif
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
   model.reset(new Model());
@@ -632,6 +636,13 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   }
   model->model_proto_.set_model_version(fbs_model.model_version());
   model->model_proto_.set_ir_version(fbs_model.ir_version());
+
+  auto schema_registry = std::make_shared<SchemaRegistryManager>();
+  if (local_registries != nullptr) {
+    for (const auto& schema_collection : *local_registries) {
+      schema_registry->RegisterRegistry(schema_collection);
+    }
+  }
 #else
   experimental::utils::LoadStringFromOrtFormat(model->producer_name_, fbs_model.producer_name());
   experimental::utils::LoadStringFromOrtFormat(model->producer_version_, fbs_model.producer_version());
@@ -648,10 +659,14 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   auto fbs_graph = fbs_model.graph();
   ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");
 
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry, logger,
+                                               model->graph_));
+#else
   ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, logger, model->graph_));
-
+#endif
   return Status::OK();
 }
-#endif
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace onnxruntime
