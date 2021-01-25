@@ -48,16 +48,11 @@ Status SequencePooling<T>::ComputeInternal(OpKernelContext* ctx) const {
   const int num_sequences = static_cast<int>(sentence_lengthes_shape[1]);
 
   // check inputs
-  std::vector<std::vector<int64_t>> sentence_lengthes_prefixsum;
+  int sentence_lengthes_prefixsum[batch_size * num_sequences];
   for (int batch = 0; batch < batch_size; ++batch) {
-    std::vector<int64_t> sentence_length_prefixsum;
-    sentence_length_prefixsum.reserve(num_sequences);
-
-    const std::ptrdiff_t offset(batch * num_sequences);
-    std::partial_sum(sentence_lengthes_data + offset, sentence_lengthes_data + offset + num_sequences, sentence_length_prefixsum.begin());
-
-    ORT_ENFORCE(sentence_length_prefixsum[num_sequences - 1] == sequence_length_for_split);
-    sentence_lengthes_prefixsum.push_back(std::move(sentence_length_prefixsum));
+    const int offset(batch * num_sequences);
+    std::partial_sum(sentence_lengthes_data + offset, sentence_lengthes_data + offset + num_sequences, sentence_length_prefixsum.begin() + offset);
+    ORT_ENFORCE(sentence_length_prefixsum[offset + num_sequences - 1] == sequence_length_for_split);
   }
 
   // initialize outputs
@@ -74,6 +69,7 @@ Status SequencePooling<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (!LaunchSequencePoolingKernel(
           output_tensor->template MutableData<T>(),
           input->template Data<T>(),
+          sentence_lengthes_prefixsum,
           batch_size,
           hidden_size,
           num_sequences,
