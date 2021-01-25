@@ -15,7 +15,7 @@ To run the entire set of ortmodule tests locally, run the following command from
 python orttraining_ortmodule_tests.py
 ```
 
-## Adding Tests to the Pipeline
+## Adding Tests to the Pipeline test
 
 Follow the below steps to add new ortmodule tests that will run in this pipeline.
 
