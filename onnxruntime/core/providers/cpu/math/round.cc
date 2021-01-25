@@ -12,10 +12,9 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 11, MLFloat16, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()), Round<MLFloat16>);
+//ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 11, MLFloat16, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()), Round<MLFloat16>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Round<float>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Round<double>);
-
 
 template <typename T>
 Status Round<T>::Compute(OpKernelContext* ctx) const {
@@ -29,6 +28,7 @@ Status Round<T>::Compute(OpKernelContext* ctx) const {
   }
   return Status::OK();
 }
+/*
 template <>
 Status Round<MLFloat16>::Compute(OpKernelContext* ctx) const {
   const auto& X = *ctx->Input<Tensor>(0);
@@ -38,8 +38,16 @@ Status Round<MLFloat16>::Compute(OpKernelContext* ctx) const {
   const auto size = X.Shape().Size();
   for (int64_t i = 0; i < size; ++i, ++output, ++input) {
     *output = MLFloat16(math::floatToHalf(::rint(math::halfToFloat(input->val))));
+    if (ctx->GetNodeName() == "na_speech_model/parallel_0_3/na_speech_model/na_speech_model/body/Round" && i == 87) {
+      auto input_val = math::halfToFloat(input->val);
+      auto output_val = math::halfToFloat(output->val);
+      ORT_UNUSED_PARAMETER(input_val);
+      ORT_UNUSED_PARAMETER(output_val);
+      int a = 3 / 5;
+      ORT_UNUSED_PARAMETER(a);
+    }
   }
   return Status::OK();
 }
-
+*/
 };  // namespace onnxruntime
