@@ -249,10 +249,15 @@ class IExecutionProvider {
    @remarks e.g. the TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
             compiled kernels, so the name must be unique and deterministic across models and sessions.
             NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
-			      virtual, and ModelMetadefIdGenerator but be defined in the header as well.
+                  virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
 
+  /**
+     Register allocators used for EP
+     TODO: Used for CUDA & TRT only for now, will have one more PR to apply this for all EPs.
+     EPs will have a shared pointer to allocator_manager, allocator_managerall will be the only place for allocators
+  */
   virtual void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager);
 
  private:

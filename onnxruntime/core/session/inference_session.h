@@ -387,7 +387,7 @@ class InferenceSession {
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
 
   std::shared_ptr<onnxruntime::AllocatorManager> GetAllocatorManager() {
-    return allocator_manager;
+    return allocator_manager_;
   }
 
   /**
@@ -656,7 +656,7 @@ class InferenceSession {
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
   std::vector<uint8_t> ort_format_model_bytes_;
   
-  std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager;
+  std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };
 
 struct SessionIOBinding {
