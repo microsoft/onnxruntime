@@ -28,11 +28,7 @@ Status Yield::ComputeInternal(OpKernelContext* ctx) const {
 
   // Get output grad from somewhere and prepare Op outputs.
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-    OrtValue value = onnxruntime::contrib::OrtMessageQueue::GetInstance().Pop();
-    const Tensor& X = value.Get<Tensor>();
-    const TensorShape& data_shape = X.Shape();
-    Tensor* Y = ctx->Output(i_out, data_shape);
-    CopyTensor(X, *Y);
+    ctx_internal->SetOutputMLValue(i_out, onnxruntime::contrib::OrtMessageQueue::GetInstance().Pop());
   }
 
   return Status::OK();

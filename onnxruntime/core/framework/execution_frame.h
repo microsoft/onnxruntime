@@ -48,6 +48,7 @@ class IExecutionFrame {
   // Return nullptr if index map to an value that is an unused optional input/output
   const OrtValue* GetNodeInputOrOutputMLValue(int index) const;
   OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
+  Status SetOutputMLValue(int index, const OrtValue& ort_value);
 
   // TO DO: make it thread safe
   // This method is not thread safe!

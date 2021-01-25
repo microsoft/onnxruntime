@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
-#include "core/providers/cpu/tensor/utils.h"
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/message_queue.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -29,11 +28,7 @@ Status Yield::Compute(OpKernelContext* ctx) const {
 
   // Get output grad from somewhere and prepare Op outputs.
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-    OrtValue value = OrtMessageQueue::GetInstance().Pop();
-    const Tensor& X = value.Get<Tensor>();
-    const TensorShape& data_shape = X.Shape();
-    Tensor* Y = ctx->Output(i_out, data_shape);
-    CopyCpuTensor(&X, Y);
+    ctx_internal->SetOutputMLValue(i_out, OrtMessageQueue::GetInstance().Pop());
   }
 
   return Status::OK();
