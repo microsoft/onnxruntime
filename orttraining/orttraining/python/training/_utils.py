@@ -43,16 +43,13 @@ def get_device_index_from_input(input):
     return device_index
 
 def get_device(module):
-    '''Returns the first device found in the `module`'s parameters
-
-    TODO: This approach assumes a single device per model
-    '''
+    '''Returns the first device found in the `module`'s parameters'''
     device = torch.device('cpu')
     try:
         device = next(module.parameters()).device
         for param in module.parameters():
             if param.device != device:
-                raise('ORTModule supports a single device per model for now')
+                raise RuntimeError('ORTModule supports a single device per model for now')
     except StopIteration:
         # Model doesn't have a device set to any of the model parameters
         pass
@@ -71,7 +68,7 @@ def get_device_str(device):
         else:
             device = device.type + ':' + str(device.index)
     else:
-        raise ('Unsupported device type')
+        raise RuntimeError('Unsupported device type')
     return device
 
 def get_default_device_str(type):

@@ -72,11 +72,11 @@ Status ModuleGradientGraphBuilder::Initialize(std::istream& model_istream,
   // Remove the training initializers from the graph and move them to input to save memory.
   std::vector<const NodeArg*> input_args;
   for (const auto& input_name : split_graphs_info_.user_input_names) {
-    input_args.emplace_back(graph.GetNodeArg(input_name));
+    input_args.emplace_back(graph.GetNodeArg(input_name, true));
   }
 
   for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
-    input_args.emplace_back(graph.GetNodeArg(initializer_name));
+    input_args.emplace_back(graph.GetNodeArg(initializer_name, true));
     graph.RemoveInitializedTensor(initializer_name);
   }
 

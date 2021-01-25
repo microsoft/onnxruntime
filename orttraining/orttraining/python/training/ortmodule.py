@@ -388,4 +388,12 @@ class ORTModule(torch.nn.Module):
                           training=torch.onnx.TrainingMode.TRAINING,
                           dynamic_axes=dynamic_axes)
 
-        return onnx.load_model_from_string(f.getvalue())
+        model = onnx.load_model_from_string(f.getvalue())
+
+        # Models without parameters are not allowed
+        pt_count_params = sum([1 for param in module.parameters()])
+        onnx_count_params = sum([1 for param in model.graph.initializer])
+        if pt_count_params < 1 or onnx_count_params < 1:
+            raise RuntimeError('ORTModule only supports model with at least one trainable parameter')
+
+        return model

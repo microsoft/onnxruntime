@@ -728,18 +728,20 @@ class Graph {
 
   /** Gets the mutable NodeArg with the provided name.
   @returns Pointer to NodeArg if found, nullptr if not. */
-  NodeArg* GetNodeArg(const std::string& name) {
+  NodeArg* GetNodeArg(const std::string& name, bool must_exist = false) {
     auto iter = node_args_.find(name);
     if (iter != node_args_.end()) {
       return iter->second.get();
+    } else if (must_exist) {
+      ORT_THROW("Invalid input node ", name, ".");
     }
     return nullptr;
   }
 
   /** Gets the const NodeArg with the provided name.
   @returns Pointer to const NodeArg if found, nullptr if not. */
-  const NodeArg* GetNodeArg(const std::string& name) const {
-    return const_cast<Graph*>(this)->GetNodeArg(name);
+  const NodeArg* GetNodeArg(const std::string& name, bool must_exist = false) const {
+    return const_cast<Graph*>(this)->GetNodeArg(name, must_exist);
   }
 
   // search this and up through any parent_graph_ instance for a NodeArg
