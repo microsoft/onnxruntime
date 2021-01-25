@@ -438,7 +438,7 @@ def testToyBertCheckpointFrozenWeights():
     # Because the eval_step will be performed on the same graph as train_step,
     # load the ONNX model in non-training mode to
     # disable dropouts and avoid random discrepancies during eval_step.
-    model = load_bert_onnx_model(training_mode=False)
+    model = load_bert_onnx_model()
     model_desc = bert_model_description()
     optim_config = optim.LambConfig()
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
@@ -453,11 +453,16 @@ def testToyBertCheckpointFrozenWeights():
     state_dict = trainer.state_dict()
     # Evaluate once to get a base loss
     loss = trainer.eval_step(*sample_input)
+    print(loss)
+    loss = trainer.eval_step(*sample_input)
+    print(loss)
+    loss = trainer.eval_step(*sample_input)
+    print(loss)
 
     # Load previous state into another instance of ORTTrainer.
     # Again, use non-training mode to disable dropouts
     # and match the previous result.
-    model2 = load_bert_onnx_model(training_mode=False)
+    model2 = load_bert_onnx_model(
     model_desc2 = bert_model_description()
     optim_config2 = optim.LambConfig()
     trainer2 = orttrainer.ORTTrainer(model2, model_desc2, optim_config2, options=opts)
