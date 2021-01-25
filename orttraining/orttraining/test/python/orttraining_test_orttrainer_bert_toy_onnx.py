@@ -447,6 +447,7 @@ def testToyBertCheckpointFrozenWeights():
     for i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, seed)
         _ = trainer.train_step(*sample_input)
+        print(_)
     sample_input = generate_random_input_from_model_desc(model_desc, seed + total_steps + 1)
     # Save checkpoint
     state_dict = trainer.state_dict()
