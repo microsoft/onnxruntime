@@ -1,5 +1,7 @@
 import os
-from onnxruntime.quantization import get_calibrator, YoloV3DataReader, YoloV3VisionDataReader, YoloV3Evaluator, YoloV3VisionEvaluator, generate_calibration_table, write_calibration_table
+from onnxruntime.quantization import get_calibrator, write_calibration_table, generate_calibration_table
+from data_reader import YoloV3DataReader, YoloV3VisionDataReader
+from evaluate import YoloV3Evaluator, YoloV3VisionEvaluator
 from dataset_utils import *
 
 
