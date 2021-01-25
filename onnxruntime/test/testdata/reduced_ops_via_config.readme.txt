@@ -1,0 +1,10 @@
+reduced_ops_via_config.onnx_model_with_included_ops.config contains the ops from
+reduced_ops_via_config.onnx_model_with_included_ops, which is intentionally named 
+to not have a '.onnx' extension so that the reduced build configuration generation script ignores it. 
+The model involves some ops that are not present in any other testdata models (specifically ReduceProd), 
+so failure to include the information in the configuration file in a minimal build should result in
+ that model being unable to be loaded.
+
+reduced_ops_via_config.onnx_model_with_excluded_ops contains a SampleOp node. As no real model uses 
+the internal ORT SampleOp, that model should never be able to be loaded in a minimal build where 
+operator reduction was correctly applied, as the reduction should always exclude the SampleOp implementation.

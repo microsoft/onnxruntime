@@ -13,25 +13,29 @@ from logger import get_logger
 
 log = get_logger("op_registration_utils")
 
-domain_map = {'': 'kOnnxDomain',
-              'ai.onnx': 'kOnnxDomain',
-              'ai.onnx.ml': 'kMLDomain',
-              'ai.onnx.training': 'ai.onnx.training',  # we don't have a constant for the training domains currently
-              'ai.onnx.preview.training': 'ai.onnx.preview.training',
-              'com.microsoft': 'kMSDomain',
-              'com.microsoft.nchwc': 'kMSNchwcDomain',
-              'com.microsoft.mlfeaturizers': 'kMSFeaturizersDomain',
-              'com.microsoft.dml': 'kMSDmlDomain',
-              'com.xilinx': 'kVitisAIDomain'}
 
+def map_ort_constant_to_domain(ort_constant_name: str):
+    '''
+    Map a string domain value to the internal ONNX Runtime constant for that domain.
+    :param domain: Domain string to map.
+    :return:
+    '''
 
-def map_domain(domain):
+    # constants are defined in <ORT root>/include/onnxruntime/core/graph/constants.h
+    constant_to_domain_map = {'kOnnxDomain': 'ai.onnx',
+                              'kMLDomain': 'ai.onnx.ml',
+                              'kMSDomain': 'com.microsoft',
+                              'kMSNchwcDomain': 'com.microsoft.nchwc',
+                              'kMSFeaturizersDomain': 'com.microsoft.mlfeaturizers',
+                              'kMSDmlDomain': 'com.microsoft.dml',
+                              'kNGraphDomain': 'com.intel.ai',
+                              'kVitisAIDomain': 'com.xilinx'}
 
-    if domain in domain_map:
-        return domain_map[domain]
-
-    log.warning("Attempt to map unknown domain of {}".format(domain))
-    return 'UnknownDomain'
+    if ort_constant_name in constant_to_domain_map:
+        return constant_to_domain_map[ort_constant_name]
+    else:
+        log.warning('Unknown domain for ONNX Runtime constant of {}.'.format(ort_constant_name))
+        return None
 
 
 def get_kernel_registration_files(ort_root=None, include_cuda=False):
