@@ -510,28 +510,8 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
   return false;
 }
 
-template<class T>
-void print_vec(std::ostream& os, const std::vector<T>& node_indices)
-{
-  os << "{";
-  for (std::size_t i = 0; i < node_indices.size(); ++i)
-  {
-    if (i != 0) os << ", ";
-    os << node_indices[i];
-  }
-  os << "}";
-}
-
-template<class T>
-std::ostream& operator << (std::ostream& os, const std::vector<T>& vec)
-{
-  print_vec(os, vec);
-  return os;
-}
-
 void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters, const logging::Logger& logger)
 {
-std::cout << "loc1" << std::endl;
   // If the number of nodes in the graph is less than 5, do nothing
   // this is to deal with onnx unit tests
   if (graph_viewer.NumberOfNodes() <= 5)
@@ -539,40 +519,29 @@ std::cout << "loc1" << std::endl;
     return;
   }
 
-std::cout << "loc2" << std::endl;
   // Then check whether a subgraph should fallback to CPU
   // 1. Check whether a subgraph contains a RNN operator
   std::unordered_set<std::string> rnn_names = {"RNN", "GRU", "LSTM"};
   std::unordered_set<std::string> op_names = {"AveragePool", "Conv", "Gemm", "LRN", "MatMul", "MaxPool"};
-std::cout << "loc3" << std::endl;
 
   auto it = std::remove_if(clusters.begin(), clusters.end(), [&](auto git) {
-std::cout << "loc4, node_list = " << git << std::endl;
     for (auto index : git)
     {
-std::cout << "loc5" << std::endl;
       auto node = graph_viewer.GetNode(index);
-      std::cout << "post_processing_op_type = " << node->OpType() << std::endl;
-std::cout << "loc6" << std::endl;
       if (node->OpType() == "Reshape")
       {
-std::cout << "loc7" << std::endl;
         const auto& args = node->InputDefs();
         if (args.size() == 2) {
-std::cout << "loc8" << std::endl;
           std::vector<NodeIndex> node_inputs;
           if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, node_inputs))
           {
-            std::cout << "node_inputs = " << node_inputs << std::endl;
-            bool ret = (not std::all_of(node_inputs.begin(), node_inputs.end(), [&](auto index) {
+            return (not std::all_of(node_inputs.begin(), node_inputs.end(), [&](auto index) {
               return std::find(git.begin(), git.end(), index) != git.end();
             }));
-std::cout << "loc9, ret = " << ret << std::endl;
-            return ret;
           }
           else
           {
-std::cout << "loc10" << std::endl;
+            return true;
           }
         }
       }
@@ -635,11 +604,7 @@ std::cout << "loc10" << std::endl;
     return true;
   });
 
-  std::cout << "loc111" << std::endl;
-
   clusters.erase(it, clusters.end());
-
-  std::cout << "loc112" << std::endl;
 }
 
 static bool IsNodeSupported(const std::set<std::string>& op_set,
@@ -994,76 +959,13 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     graph_build.AddInitializedTensor(*(tensor.second));
   }
 
-
-  // if (graph_viewer_orig.IsSubgraph()) {
-  //   return result;
-  // }
-
-  // for (const auto& tensor : graph_viewer_orig.GetAllInitializedTensors()) {
-  //   if (tensor.second->has_data_location() && tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-  //     LOGS_DEFAULT(WARNING) << "MIGraphX: Initializers with external data lepcation are not currently supported";
-  //     return result;
-  //   }
-  // }
-
-  // // Construct modelproto from graph
-  // onnxruntime::Model model(graph_viewer_orig.Name(), true, ModelMetaData(), PathString{},
-  //                          IOnnxRuntimeOpSchemaRegistryList(), graph_viewer_orig.DomainToVersionMap(),
-  //                          std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-
-  // std::unordered_map<std::string, std::size_t> map_dim_param_values;
-  // onnxruntime::Graph& graph_build = model.MainGraph();
-  // onnxruntime::GraphViewer graph_viewer(graph_build);
-
-  // for (const auto& node : graph_viewer_orig.Nodes()) {
-  //   std::vector<onnxruntime::NodeArg*> inputs, outputs;
-  //   for (auto input : node.InputDefs()) {
-  //     auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-  //     inputs.push_back(&n_input);
-  //   }
-  //   for (auto output : node.OutputDefs()) {
-  //     auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-  //     outputs.push_back(&n_output);
-  //   }
-  //   graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
-  // }
-
-  // //Add initializer to graph
-  // std::size_t init_tensor_num = 0;
-  // const auto& init_tensors = graph_viewer_orig.GetAllInitializedTensors();
-  // for (const auto& tensor : init_tensors) {
-  //   init_tensor_num++;
-  //   graph_build.AddInitializedTensor(*(tensor.second));
-  // }
-
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   auto status = graph_build.Resolve();
-
-
-  // std::unique_ptr<CPUExecutionProvider> e =
-  //     onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  // onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  // graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get()), TransformerLevel::Level1);
-
-  // // assign all nodes to CUDA. the constant folding should override this to perform the constant folding on cpu
-  // for (auto& node : graph_build.Nodes()) {
-  //   std::cout << "In_setting_execution_provider_type" << std::endl;
-  //   node.SetExecutionProviderType(kMIGraphXExecutionProvider);
-  // }
-
-  // std::cout << "Before Constant Folding===================" << std::endl;
-  // print_graph(graph_build);
-
-  // graph_transformation_mgr.ApplyTransformers(graph_build, TransformerLevel::Level1, *GetLogger());
-
-  // std::cout << "After Constant Folding===================" << std::endl;
-  // print_graph(graph_build);
-
-  //  onnxruntime::GraphViewer graph_viewer(graph_build);
-  // const onnxruntime::GraphViewer& graph_viewer = graph_viewer_orig;
-
+  std::cout << "The graph is: ========================" << std::endl;
+  print_graph(graph_build);
+  
   std::string onnx_string_buffer;
   model_proto.SerializeToString(&onnx_string_buffer);
 
@@ -1099,15 +1001,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     AppendNodesToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
-    // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
-    // so if a model contain any of these operators, fall back to CPU
-    // std::unordered_set<std::string> vec_ops = {"If", "Loop", "SoftmaxCrossEntropyLoss"};
-    // if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
-    //   return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
-    // })) {
-    //   return result;
-    // }
-
     if (!unsupported_nodes.empty())
     {
       std::cout << "=======================================" << std::endl;
@@ -1121,6 +1014,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     }
 
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
+
     // check whether a subgrap should fallback to CPU
     SubgraphPostProcessing(graph_viewer, mgx_clusters, *GetLogger());
 
