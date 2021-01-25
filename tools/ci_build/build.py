@@ -628,10 +628,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
+        "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
+        "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
         "-Donnxruntime_USE_FEATURIZERS=" + (
             "ON" if args.use_featurizers else "OFF"),
-        "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
         "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
             "ON" if args.use_mimalloc == "stl" or
             args.use_mimalloc == "all" else "OFF"),

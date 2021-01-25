@@ -404,3 +404,29 @@ endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
 endif()
+
+# Generate version_info.py in Windows build.
+if (WIN32)
+  set(VERSION_INFO_FILE "${ONNXRUNTIME_ROOT}/python/version_info.py")
+
+  if (onnxruntime_USE_CUDA)
+    file(WRITE "${VERSION_INFO_FILE}" "use_cuda = True\n")
+
+    file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/lib/x64/cudnn64_*.lib")
+    get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
+    string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
+
+    file(APPEND "${VERSION_INFO_FILE}"
+      "cuda_version = \"${onnxruntime_CUDA_VERSION}\"\n"
+      "cudnn_version = \"${CUDNN_VERSION}\"\n"
+    )
+  else()
+    file(WRITE "${VERSION_INFO_FILE}" "use_cuda = False\n")
+  endif()
+
+  if ("${MSVC_TOOLSET_VERSION}" STREQUAL "142")
+    file(APPEND "${VERSION_INFO_FILE}" "vs2019 = True\n")
+  else()
+    file(APPEND "${VERSION_INFO_FILE}" "vs2019 = False\n")
+  endif()
+endif()
