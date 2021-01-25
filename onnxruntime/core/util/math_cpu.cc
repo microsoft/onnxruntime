@@ -86,7 +86,7 @@ void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE
   MlasGemm(TransA, TransB, gsl::narrow<size_t>(M), n_casted, gsl::narrow<size_t>(K), alpha, A, lda, B, ldb, beta, C, n_casted, threadpool);
 }
 
-#ifdef false
+#ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
 void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
                               const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
