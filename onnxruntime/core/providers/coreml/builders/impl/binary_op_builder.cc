@@ -4,6 +4,7 @@
 #include <core/providers/common.h>
 
 #include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/builders/helper.h"
 
 #include "base_op_builder.h"
@@ -44,8 +45,9 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   return Status::OK();
 }
 
-std::unique_ptr<IOpBuilder> CreateBinaryOpBuilder() {
-  return onnxruntime::make_unique<BinaryOpBuilder>();
+void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(onnxruntime::make_unique<BinaryOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
 }  // namespace coreml
