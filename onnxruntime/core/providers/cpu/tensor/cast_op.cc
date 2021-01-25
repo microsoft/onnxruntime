@@ -12,7 +12,7 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/op_arg_type_specification.h"
+#include "core/providers/op_kernel_type_control.h"
 #include "core/util/math_cpuonly.h"
 
 #include "Eigen/src/Core/arch/Default/Half.h"
@@ -28,7 +28,8 @@ using namespace boost::mp11;
 
 namespace onnxruntime {
 
-ORT_SPECIFY_OP_ARG_SUPPORTED_TYPES(
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
     Cast, Input, 0,
     bool,
     float, double,
@@ -37,7 +38,7 @@ ORT_SPECIFY_OP_ARG_SUPPORTED_TYPES(
     MLFloat16, BFloat16,
     std::string);
 
-ORT_SPECIFY_OP_ARG_SUPPORTED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
     Cast, Output, 0,
     bool,
     float, double,
@@ -49,22 +50,22 @@ ORT_SPECIFY_OP_ARG_SUPPORTED_TYPES(
 #define LIMIT_TYPES
 // #define LIMIT_TYPES_NO_STRING_OR_FLOAT16
 #if defined(LIMIT_TYPES)
-ORT_SPECIFY_OP_ARG_REDUCED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(
     Cast, Input, 0,
     float, int64_t);
 
-ORT_SPECIFY_OP_ARG_REDUCED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(
     Cast, Output, 0,
     float, int64_t);
 #elif defined(LIMIT_TYPES_NO_STRING_OR_FLOAT16)
-ORT_SPECIFY_OP_ARG_REDUCED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(
     Cast, Input, 0,
     bool,
     float, double,
     uint8_t, uint16_t, uint32_t, uint64_t,
     int8_t, int16_t, int32_t, int64_t);
 
-ORT_SPECIFY_OP_ARG_REDUCED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(
     Cast, Output, 0,
     bool,
     float, double,
@@ -73,12 +74,13 @@ ORT_SPECIFY_OP_ARG_REDUCED_TYPES(
 #endif
 
 // TODO doesn't work with a single enabled type
-//ORT_SPECIFY_GLOBAL_REDUCED_TYPES(float);
+//ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES(float);
+}  // namespace op_kernel_type_control
 
 namespace {
 
-using ImplementedSrcTypes = ORT_OP_ARG_ENABLED_TYPE_LIST(Cast, Input, 0);
-using ImplementedDstTypes = ORT_OP_ARG_ENABLED_TYPE_LIST(Cast, Output, 0);
+using ImplementedSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Cast, Input, 0);
+using ImplementedDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Cast, Output, 0);
 
 using IndirectCastTypes = TypeList<MLFloat16, BFloat16>;
 
