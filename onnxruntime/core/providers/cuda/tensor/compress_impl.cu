@@ -4,7 +4,10 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "compress_impl.h"
-
+//TODO:fix the warnings
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#endif
 #include <thrust/scan.h>
 #include <thrust/execution_policy.h>
 

@@ -305,20 +305,20 @@ void ComputeGemm(const int M,
   }
 #endif
 
-  QGemm(static_cast<size_t>(M),
-        static_cast<size_t>(N),
-        static_cast<size_t>(K),
-        a_data_quant,
-        static_cast<size_t>(K),
-        a_zero_point,
-        static_cast<const uint8_t*>(weights.buffer_),
-        static_cast<size_t>(N),
-        b_zero_point,
-        b_is_signed,
-        C_buffer,
-        ld_C_buffer,
-        thread_pool,
-        &output_processor);
+  MlasGemm(static_cast<size_t>(M),
+           static_cast<size_t>(N),
+           static_cast<size_t>(K),
+           a_data_quant,
+           static_cast<size_t>(K),
+           a_zero_point,
+           static_cast<const uint8_t*>(weights.buffer_),
+           static_cast<size_t>(N),
+           b_zero_point,
+           b_is_signed,
+           C_buffer,
+           ld_C_buffer,
+           thread_pool,
+           &output_processor);
 }
 
 namespace deepcpu {

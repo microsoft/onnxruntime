@@ -569,11 +569,10 @@ TEST_F(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] != 0);
 }
 
-TEST_F(GraphTransformationTests, FuseConvAddMul3D) {
-  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-add-mul-3d.onnx";
-
+template <typename CharType>
+static void TestFuseConvAddMul(logging::Logger& logger, const CharType* model_uri) {
   std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logger));
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -582,31 +581,31 @@ TEST_F(GraphTransformationTests, FuseConvAddMul3D) {
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
 }
 
+TEST_F(GraphTransformationTests, FuseConvAddMul3D) {
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-add-mul-3d.onnx";
+  TestFuseConvAddMul(*logger_, model_uri);
+}
+
+TEST_F(GraphTransformationTests, FuseConvAddMul1D) {
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-add-mul-1d.onnx";
+  TestFuseConvAddMul(*logger_, model_uri);
+}
+
 TEST_F(GraphTransformationTests, FuseConvAddMul3D_2) {
   auto model_uri = MODEL_FOLDER "fusion/fuse-conv-add-mul-3d-2.onnx";
+  TestFuseConvAddMul(*logger_, model_uri);
+}
 
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
-  rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
-  rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
-  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["Mul"] == 0);
+TEST_F(GraphTransformationTests, FuseConvAddMul1D_2) {
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-add-mul-1d-2.onnx";
+  TestFuseConvAddMul(*logger_, model_uri);
 }
 
 TEST_F(GraphTransformationTests, MatMulAddFusion_two_input) {
@@ -2418,18 +2417,20 @@ struct BiasSoftmaxFusionTester {
   BiasSoftmaxFusionTester(
       const PathString& model_uri,
       onnxruntime::logging::Logger* logger,
-      bool on_cuda_ = true) : logger_(logger), graph_transformation_mgr_{5} {
+      const char* execution_provider = kCudaExecutionProvider) : logger_(logger), graph_transformation_mgr_{5} {
     model_load_ = Model::Load(model_uri, p_model_, nullptr, *logger_);
 
     // move to cuda since fusion only takes place in that case
-    if (on_cuda_) {
-      for (auto& node : p_model_->MainGraph().Nodes()) {
-        node.SetExecutionProviderType(kCudaExecutionProvider);
-      }
-    }
+    SetExecutionProvider(execution_provider);
 
     graph_transformation_mgr_.Register(
         onnxruntime::make_unique<BiasSoftmaxFusion>(), TransformerLevel::Level2);
+  }
+
+  void SetExecutionProvider(const char* ep) {
+    for (auto& node : p_model_->MainGraph().Nodes()) {
+      node.SetExecutionProviderType(ep);
+    }
   }
 
   void TestFusionOccurs(int expected_broadcast_axis) {
@@ -2467,13 +2468,19 @@ struct BiasSoftmaxFusionTester {
   }
 };
 
-TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_CudaOnly) {
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_GpuOnly) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
-  BiasSoftmaxFusionTester tester(model_uri, logger_.get(), false);
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get(), kCpuExecutionProvider);
   tester.TestNoFusionOccurs();
 }
 
-TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple) {
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Rocm) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get(), kRocmExecutionProvider);
+  tester.TestFusionOccurs(1);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Cuda) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
   tester.TestFusionOccurs(1);

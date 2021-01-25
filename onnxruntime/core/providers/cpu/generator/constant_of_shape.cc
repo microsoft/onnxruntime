@@ -41,6 +41,7 @@ void onnxruntime::ConstantOfShapeBase::SetValueFromTensorProto(const ONNX_NAMESP
   using namespace utils;
   ORT_ENFORCE(utils::HasDataType(t_proto));
   ORT_ENFORCE(TensorProto::DataType_IsValid(t_proto.data_type()));
+  ORT_ENFORCE(!utils::HasExternalData(t_proto), "Tensor proto with external data for value attribute is not supported.");
   const auto tensor_type = static_cast<TensorProto_DataType>(t_proto.data_type());
   const void* const raw_data = utils::HasRawData(t_proto) ? t_proto.raw_data().data() : nullptr;
   const size_t raw_data_len = utils::HasRawData(t_proto) ? t_proto.raw_data().size() : 0;
@@ -48,7 +49,7 @@ void onnxruntime::ConstantOfShapeBase::SetValueFromTensorProto(const ONNX_NAMESP
     case TensorProto::BOOL:
       FETCH_VALUE_DATA(bool);
       break;
-    case TensorProto::FLOAT:
+    case TensorProto::FLOAT: 
       FETCH_VALUE_DATA(float);
       break;
     case TensorProto::FLOAT16:
@@ -89,14 +90,13 @@ void onnxruntime::ConstantOfShapeBase::SetValueFromTensorProto(const ONNX_NAMESP
 
 #undef FETCH_VALUE_DATA
 
-
 template <class T>
 inline void FilloutOutput(T value, void* output_data, size_t size) {
   auto out = gsl::make_span(reinterpret_cast<T*>(output_data), size);
   std::fill(out.begin(), out.end(), value);
 }
 
-ConstantOfShapeBase::ConstantOfShapeBase(const OpKernelInfo& info){
+ConstantOfShapeBase::ConstantOfShapeBase(const OpKernelInfo& info) {
   TensorProto t_proto;
   if (info.GetAttr<TensorProto>("value", &t_proto).IsOK()) {
     ORT_ENFORCE(t_proto.dims_size() == 1, "Must have a single dimension");
@@ -128,7 +128,6 @@ Status ConstantOfShapeBase::PrepareCompute(OpKernelContext* ctx, Tensor** output
 }
 
 Status ConstantOfShape::Compute(OpKernelContext* ctx) const {
-
   Tensor* output_tensor = nullptr;
   ORT_RETURN_IF_ERROR(PrepareCompute(ctx, &output_tensor));
 
