@@ -133,6 +133,8 @@ ORT_API_STATUS_IMPL(winmla::DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Re
   API_IMPL_BEGIN
 #ifdef USE_DML
   *dml_resource = Dml::CreateGPUAllocationFromD3DResource(pResource);
+#else
+  *dml_resource = nullptr;
 #endif  // USE_DML USE_DML
   return nullptr;
   API_IMPL_END
@@ -147,6 +149,8 @@ ORT_API_STATUS_IMPL(winmla::DmlGetD3D12ResourceFromAllocation, _In_ OrtExecution
           dml_provider_internal->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault).get(),
           allocation);
   (*d3d_resource)->AddRef();
+#else
+  *d3d_resource = nullptr;
 #endif  // USE_DML USE_DML
   return nullptr;
   API_IMPL_END

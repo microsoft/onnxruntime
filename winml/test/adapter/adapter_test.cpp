@@ -264,7 +264,7 @@ static void EnvConfigureCustomLoggerAndProfiler() {
   ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
   winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env,
                                                     &TestLoggingCallback, &TestProfileEventCallback, nullptr,
-                                                    OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+                                                    OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default");
   logging_function_called = false;
   OrtSession* ort_session = nullptr;
   std::wstring squeezenet_path = FileHelpers::GetModulePath() + L"relu.onnx";
