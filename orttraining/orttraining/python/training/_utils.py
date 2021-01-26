@@ -42,9 +42,19 @@ def get_device_index_from_input(input):
         device_index = get_device_index(input.device)
     return device_index
 
-def get_device(module):
-    '''Returns the first device found in the `module`'s parameters'''
-    device = torch.device('cpu')
+def get_device_index_from_input_args_kwargs(*args, **kwargs):
+    '''Returns device index from first PyTorch Tensor within *args or **kwargs'''
+
+    device = None
+    if args:
+        device = torch.device(args[0].device)
+    elif not device and kwargs:
+        device = torch.device(next(iter(kwargs.values())).device)
+    return device
+
+def get_device_from_module(module):
+    '''Returns the first device found in the `module`'s parameters or None'''
+    device = None
     try:
         device = next(module.parameters()).device
         for param in module.parameters():
@@ -72,10 +82,13 @@ def get_device_str(device):
     return device
 
 def get_default_device_str(type):
-    if type == 'cuda':
-        return 'cuda:' + str(torch.cuda.current_device())
+    if isinstance(type, str):
+        if type == 'cuda':
+            return 'cuda:' + str(torch.cuda.current_device())
+        else:
+            return 'cpu'
     else:
-        return 'cpu'
+        raise RuntimeError('Unsupported device type')
 
 def get_all_gradients_finite_name_from_session(session):
     '''Find all_gradients_finite node on Session graph and return its name'''

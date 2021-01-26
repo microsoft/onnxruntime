@@ -65,7 +65,7 @@ class ORTModule(torch.nn.Module):
 
         self._export_again = False
         # TODO: Single device support for now
-        self._device = _utils.get_device(module)
+        self._device = _utils.get_device_from_module(module)
         self._require_export = False
 
         # User module is wrapped to use its initializers and save computed gradients
@@ -80,6 +80,7 @@ class ORTModule(torch.nn.Module):
         self._onnx_forward = None
         self._forward_session = None
         self._forward_io_binding = None
+        self._use_pytorch_forward = False
 
         # Backward pass
         self._onnx_backward = None
@@ -96,7 +97,7 @@ class ORTModule(torch.nn.Module):
     def cpu(self: T) -> T:
         '''Thin layer to capture device for ORTModule IO bindings'''
 
-        if self._device.type != 'cpu':
+        if not self._device or self._device.type != 'cpu':
             self._require_export = True
             self._device = torch.device('cpu')
 
@@ -106,10 +107,10 @@ class ORTModule(torch.nn.Module):
         '''Thin layer to capture device for ORTModule IO bindings'''
 
         if device is None:
-            if _utils.get_device_str(self._device) != _utils.get_default_device_str('cuda'):
+            if self._device and _utils.get_device_str(self._device) != _utils.get_default_device_str('cuda'):
                 self._require_export = True
                 self._device = torch.device(_utils.get_default_device_str('cuda'))
-        elif _utils.get_device_str(self._device) != _utils.get_device_str(device):
+        elif not self._device or _utils.get_device_str(self._device) != _utils.get_device_str(device):
             self._require_export = True
             self._device = torch.device(_utils.get_device_str(device))
 
@@ -134,10 +135,15 @@ class ORTModule(torch.nn.Module):
 
         device, _, _, _ = torch._C._nn._parse_to(*args, **kwargs)
         if device:
-            device_str = _utils.get_device_str(device)
-            if _utils.get_device_str(self._device) != device_str:
+            try:
+                device_str = _utils.get_device_str(device)
+                if _utils.get_device_str(self._device) != device_str:
+                    self._require_export = True
+                    self._device = torch.device(device_str)
+            except RuntimeError:
                 self._require_export = True
                 self._device = torch.device(device_str)
+
         return super(ORTModule, self).to(*args, **kwargs)
 
     def forward(self, *inputs, **kwargs):
@@ -149,53 +155,59 @@ class ORTModule(torch.nn.Module):
         '''
         if not self._onnx_forward or self._require_export:
             self._require_export = False
-            self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
+            if not self._device:
+                self._device = _utils.get_device_index_from_input_args_kwargs(self._original_module, *inputs, **kwargs)
+                if not self._device:
+                    raise RuntimeError('A device must be specified in the model or data!')
 
-            if self._save_onnx:
-                onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
+            self._onnx_training, self._use_pytorch_forward = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
+            if not self._use_pytorch_forward:
+                if self._save_onnx:
+                    onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
 
-            # TODO: PyTorch exporter bug: changes the initializer order
-            initializer_names = [p[0] for p in self._original_module.named_parameters()]
+                # TODO: PyTorch exporter bug: changes the initializer order
+                initializer_names = [p[0] for p in self._original_module.named_parameters()]
 
-            # Build full training graph and split in forward/backward
-            grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
-            grad_builder_config.initializer_names_to_train = initializer_names
-            grad_builder_config.input_names_require_grad = []
-            self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
-            self._module_gradient_graph_builder.initialize(self._onnx_training.SerializeToString(), grad_builder_config)
+                # Build full training graph and split in forward/backward
+                grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
+                grad_builder_config.initializer_names_to_train = initializer_names
+                grad_builder_config.input_names_require_grad = []
+                self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
+                self._module_gradient_graph_builder.initialize(self._onnx_training.SerializeToString(), grad_builder_config)
 
         # Perform shape inference and re-split forward/backward graph for bacthes with different shapes
-        new_input_shape = [list(input.size()) for input in inputs if input is not None]
-        if self._current_input_shape is None or self._current_input_shape != new_input_shape:
-            self._current_input_shape = new_input_shape
-            self._module_gradient_graph_builder.build_and_split(self._current_input_shape)
-            self._onnx_forward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_forward_model())
-            self._onnx_backward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_backward_model())
-            self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
+        if not self._use_pytorch_forward:
+            new_input_shape = [list(input.size()) for input in inputs if input is not None]
+            if self._current_input_shape is None or self._current_input_shape != new_input_shape:
+                self._current_input_shape = new_input_shape
+                self._module_gradient_graph_builder.build_and_split(self._current_input_shape)
+                self._onnx_forward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_forward_model())
+                self._onnx_backward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_backward_model())
+                self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
 
-            providers = None
-            provider_options = None
-            if self._device.type == 'cuda':
-                # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-                provider_options = [{"device_id": str(self._device.index)}]
-            elif self._device.type == 'cpu':
-                providers = ["CPUExecutionProvider"]
-                provider_options = [{}]
+                providers = None
+                provider_options = None
+                if self._device.type == 'cuda':
+                    # Configure the InferenceSessions to use the specific GPU on which the model is placed.
+                    providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                    provider_options = [{"device_id": str(self._device.index)}]
+                elif self._device.type == 'cpu':
+                    providers = ["CPUExecutionProvider"]
+                    provider_options = [{}]
 
-            self._forward_session = onnxruntime.InferenceSession(
-                self._onnx_forward.SerializeToString(), providers=providers, provider_options=provider_options)
-            self._backward_session = onnxruntime.InferenceSession(
-                self._onnx_backward.SerializeToString(), providers=providers, provider_options=provider_options)
+                self._forward_session = onnxruntime.InferenceSession(
+                    self._onnx_forward.SerializeToString(), providers=providers, provider_options=provider_options)
+                self._backward_session = onnxruntime.InferenceSession(
+                    self._onnx_backward.SerializeToString(), providers=providers, provider_options=provider_options)
 
-            # IO binding
-            # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
-            self._forward_io_binding = self._forward_session.io_binding()
-            self._backward_io_binding = self._backward_session.io_binding()
+                # IO binding
+                # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
+                self._forward_io_binding = self._forward_session.io_binding()
+                self._backward_io_binding = self._backward_session.io_binding()
 
-            if self._save_onnx:
-                onnx.save(self._onnx_forward, self._save_onnx_prefix + '_forward.onnx')
-                onnx.save(self._onnx_backward, self._save_onnx_prefix + '_backward.onnx')
+                if self._save_onnx:
+                    onnx.save(self._onnx_forward, self._save_onnx_prefix + '_forward.onnx')
+                    onnx.save(self._onnx_backward, self._save_onnx_prefix + '_backward.onnx')
 
         # Use a custom torch.autograd.Function to associate self.backward_graph as the
         # gradient implementation for self.forward_graph.
@@ -265,8 +277,12 @@ class ORTModule(torch.nn.Module):
                     for backward_output in backward_outputs[:len(self._onnx_graphs_info.initializer_grad_names_to_train)]]
                 return tuple(results)
 
-        proc_inputs = [data for data in inputs if data is not None]
-        return _ORTModuleFunction.apply(*self._convert_forward_input_to_list(*proc_inputs, **kwargs))
+        # This is where we choose whether ORT or PyTorch will handle the train/eval step
+        if not self._use_pytorch_forward:
+            proc_inputs = [data for data in inputs if data is not None]
+            return _ORTModuleFunction.apply(*self._convert_forward_input_to_list(*proc_inputs, **kwargs))
+        else:
+            return self._original_module(*inputs, **kwargs)
 
     @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
     def _convert_forward_input_to_list(self, *inputs, **kwargs):
@@ -379,21 +395,30 @@ class ORTModule(torch.nn.Module):
         # register_custom_ops_pytorch_exporter.register_custom_op()
 
         # Export torch.nn.Module to ONNX
-        torch.onnx.export(module,
-                          tuple(sample_inputs_copy),
-                          f,
-                          input_names=input_names,
-                          opset_version=ONNX_OPSET_VERSION,
-                          do_constant_folding=False,
-                          training=torch.onnx.TrainingMode.TRAINING,
-                          dynamic_axes=dynamic_axes)
+        model = None
+        try:
+            torch.onnx.export(module,
+                            tuple(sample_inputs_copy),
+                            f,
+                            input_names=input_names,
+                            opset_version=ONNX_OPSET_VERSION,
+                            do_constant_folding=False,
+                            training=torch.onnx.TrainingMode.TRAINING,
+                            dynamic_axes=dynamic_axes)
 
-        model = onnx.load_model_from_string(f.getvalue())
+            model = onnx.load_model_from_string(f.getvalue())
+            onnx_count_params = sum([1 for param in model.graph.initializer])
+        except RuntimeError as e:
+            _use_pytorch_forward = True
+            onnx_count_params = 0
+            warnings.warn('There was an error while exporting the model to ONNX: {}'.format(e))
 
-        # Models without parameters are not allowed
+        # Models without parameters use PyTorch engine
         pt_count_params = sum([1 for param in module.parameters()])
-        onnx_count_params = sum([1 for param in model.graph.initializer])
         if pt_count_params < 1 or onnx_count_params < 1:
-            raise RuntimeError('ORTModule only supports model with at least one trainable parameter')
+            _use_pytorch_forward = True
+            warnings.warn('The model will be executed by PyTorch, not ONNX Runtime')
+        else:
+            _use_pytorch_forward = False
 
-        return model
+        return model, _use_pytorch_forward

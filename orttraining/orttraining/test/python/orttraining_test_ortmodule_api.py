@@ -249,21 +249,35 @@ def test_model_without_parameters(device):
 
     model = Net().to(device)
     model = ORTModule(model).to(device)
-    with pytest.raises(RuntimeError) as e:
-        model(torch.tensor(1.))
-        assert e.value == 'ORTModule only supports model with at least one trainable parameter'
+    _ = model(torch.tensor(1.))
+    assert model._use_pytorch_forward == True
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_model_without_trainable_parameters(device):
+
+    model = torch.nn.ReLU()
+    model = ORTModule(model).to(device)
+
+    batch_size = 5
+    nb_classes = 2
+    in_features = 10
+    input = torch.randn(batch_size, in_features, device=device)
+    target = torch.empty(batch_size, dtype=torch.long, device=device).random_(nb_classes)
+    _ = model(input)
+    assert model._use_pytorch_forward == True
+
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_custom_model_without_trainable_parameters(device):
     class Net(torch.nn.Module):
         def forward(self, x):
             return torch.nn.ReLU(x)
 
     model = Net()
     model = ORTModule(model).to(device)
-    with pytest.raises(RuntimeError) as e:
-        model(torch.tensor(1.).to(device))
-        assert e.value == 'ORTModule only supports model with at least one trainable parameter'
+    model.to(device)
+    _ = model(torch.tensor(1.).to(device))
+    assert model._use_pytorch_forward == True
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_model_with_unused_trainable_parameters(device):
@@ -279,9 +293,8 @@ def test_model_with_unused_trainable_parameters(device):
 
     model = Net(784, 500, 10)
     model = ORTModule(model).to(device)
-    with pytest.raises(RuntimeError) as e:
-        model(torch.tensor(1.).to(device))
-        assert e.value == 'ORTModule only supports model with at least one trainable parameter'
+    model(torch.tensor(1.).to(device))
+    assert model._use_pytorch_forward == True
 
 def test_model_with_multiple_devices_cpu_cuda():
     class MultipleDeviceModel(torch.nn.Module):
