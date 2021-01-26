@@ -32,7 +32,7 @@ if platform.system() == "Windows":
             # installed on the machine.)
             os.environ["PATH"] += cuda_bin_dir + os.pathsep + os.environ["PATH"]
 
-    if version_info.vs2019:
+    if version_info.vs2019 and platform.architecture()[0] == "64bit":
         if not os.path.isfile("C:\\Windows\\System32\\vcruntime140_1.dll"):
             raise ImportError(
                 "Microsoft Visual C++ Redistributable for Visual Studio 2019 not installed on the machine.")
