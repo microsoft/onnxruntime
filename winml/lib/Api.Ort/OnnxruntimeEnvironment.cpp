@@ -16,12 +16,24 @@ static bool debug_output_ = false;
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
-static std::string System32Path() {
-  std::string system32_path;
-  system32_path.reserve(MAX_PATH);
-  auto size_system32_path = GetSystemDirectoryA(system32_path.data(), MAX_PATH);
-  FAIL_FAST_IF(size_system32_path == 0);
-  return system32_path;
+static std::string SystemPath() {
+  std::string system_path;
+  system_path.reserve(MAX_PATH);
+
+  BOOL is_wow;
+  ::IsWow64Process(::GetCurrentProcess(), &is_wow);
+  if (is_wow)
+  {
+    auto size_system_path = GetSystemWow64DirectoryA(system_path.data(), MAX_PATH);
+    FAIL_FAST_IF(size_system_path == 0);
+  }
+  else
+  {
+    auto size_system_path = GetSystemDirectoryA(system_path.data(), MAX_PATH);
+    FAIL_FAST_IF(size_system_path == 0);
+  }
+
+  return system_path;
 }
 
 static bool IsCurrentModuleInPath(const std::string& path) {
@@ -38,12 +50,13 @@ static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
 #else
   std::string onnxruntime_dll = "onnxruntime.dll";
   DWORD flags = 0;
+  
 #ifdef BUILD_INBOX
-  auto system32_path = System32Path();
-  if (IsCurrentModuleInPath(system32_path))
+  auto system_path = SystemPath();
+  if (IsCurrentModuleInPath(system_path))
   {
     flags |= LOAD_LIBRARY_SEARCH_SYSTEM32;
-    onnxruntime_dll = system32_path + "\\" + onnxruntime_dll;
+    onnxruntime_dll = system_path + "\\" + onnxruntime_dll;
   }
 #endif
 
