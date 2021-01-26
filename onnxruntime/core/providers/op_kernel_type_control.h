@@ -9,8 +9,23 @@
 
 #include "core/common/type_list.h"
 
-namespace onnxruntime {
+/**
+ * These utilities provide a way to control what types are enabled for an Op kernel implementation.
+ *
+ * At a high level, we have the notion of supported, allowed, and enabled types.
+ * - Supported types are the types that the Op kernel implementation supports by default.
+ * - Allowed types are the types for which support is requested (for example, by external configuration).
+ * - Enabled types are the types that are supported in the actual, compiled implementation. They are obtained from the
+ *   intersection of supported and allowed types.
+ *
+ * The types are associated with an Op kernel argument. It is also possible to specify a global list of allowed types.
+ *
+ * Use of these utilities is optional. They are useful for cases where one registered Op kernel handles multiple types.
+ *
+ * See the macros below for usage details.
+ */
 
+namespace onnxruntime {
 namespace op_kernel_type_control {
 
 enum class OpKernelArgDirection {
@@ -21,6 +36,7 @@ enum class OpKernelArgDirection {
 using OpKernelArgIndex = size_t;
 
 namespace tags {
+
 // a tag that identifies the target (Op kernel argument) of the specified types
 template <typename OpKernelTag, OpKernelArgDirection ArgDirection, OpKernelArgIndex ArgIndex>
 struct OpKernelArg {};
@@ -35,10 +51,11 @@ struct Allowed {};
 
 // a tag that indicates the globally allowed types
 struct GlobalAllowed {};
+
 }  // namespace tags
 
-// contains specified Op kernel argument types
-// if types are defined (optional), the data member 'value' should be a type list
+// holds specified Op kernel argument types
+// if types are defined, the data member 'value' should contain them in a type list
 // see the tags in onnxruntime::op_kernel_type_control::tags for intended uses
 template <typename Tag>
 struct OpKernelArgTypes {};
@@ -50,6 +67,7 @@ struct EnabledOpKernelArgTypes {
   template <typename T>
   using GetTypeMember = typename T::type;
 
+  // checks whether T has data member 'type'
   template <typename T>
   using HasTypeMember = boost::mp11::mp_valid<GetTypeMember, T>;
 
@@ -57,6 +75,7 @@ struct EnabledOpKernelArgTypes {
                 "OpKernelArgTypes<Supported<OpKernelArgTag>> must have a 'type' data member. "
                 "Check that the Op kernel argument supported types are specified.");
 
+  // type list of 'type' members to consider
   using TypeMembers =
       boost::mp11::mp_transform<
           GetTypeMember,
@@ -64,8 +83,8 @@ struct EnabledOpKernelArgTypes {
               // OpKernelArgTypes<Supported<OpKernelArgTag>> should always contain a 'type' member
               TypeList<
                   OpKernelArgTypes<tags::Supported<OpKernelArgTag>>>,
-              // OpKernelArgTypes<Reduced<OpKernelArgTag>> and OpKernelArgTypes<GlobalReduced> each may
-              // optionally contain a 'type' member, so only include their 'type's if they do
+              // OpKernelArgTypes<Reduced<OpKernelArgTag>> and OpKernelArgTypes<GlobalReduced> each may optionally
+              // contain a 'type' member, so only include their 'type's if they do
               boost::mp11::mp_filter<
                   HasTypeMember,
                   TypeList<
@@ -75,12 +94,14 @@ struct EnabledOpKernelArgTypes {
   static_assert(boost::mp11::mp_all_of<TypeMembers, boost::mp11::mp_is_list>::value,
                 "All OpKernelArgTypes<Tag> 'type' data members must be type lists.");
 
+  // converts type list L into a type set (type list with unique elements)
   template <typename L>
   using MakeSet =
       boost::mp11::mp_apply<
           boost::mp11::mp_set_push_back,
           boost::mp11::mp_append<TypeList<TypeList<>>, L>>;
 
+  // type list of 'type' members converted to type sets
   using TypeMemberSets = boost::mp11::mp_transform<MakeSet, TypeMembers>;
 
  public:
