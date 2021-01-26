@@ -35,7 +35,9 @@ __global__ void SequencePoolingKernel(const T* input, const int64_t* sentence_le
 
   const int offset = blockIdx.y * num_sequences;
 
-  PrefixSumLinear(sentence_lengthes + offset, sentence_lengthes + offset + num_sequences, sentence_lengthes_prefixsum);
+  if (threadIdx.x == 0) {
+    PrefixSumLinear(sentence_lengthes + offset, sentence_lengthes + offset + num_sequences, sentence_lengthes_prefixsum);
+  }
 
   if (blockIdx.x == 0) {
     *(masks + offset + threadIdx.x) = 1;
