@@ -235,7 +235,7 @@ STDMETHODIMP OnnruntimeModel::CloneModel(IModel** copy) {
   return S_OK;
 }
 
-STDMETHODIMP OnnruntimeModel::SaveModel(const wchar_t* const file_name, unsigned size) {
+STDMETHODIMP OnnruntimeModel::SaveModel(_In_ const wchar_t* const file_name, _In_ unsigned size) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SaveModel(ort_model_.get(), file_name, size),
@@ -267,22 +267,20 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
     _In_ const char* const* op_output_names, _In_ const char* const* actual_output_names, size_t num_outputs,
     _In_ const char* const* op_attribute_names, _In_ IValue** attribute_values, size_t num_attributes) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  auto ort_api = engine_factory_->UseOrtApi();
 
   size_t input_count;
-  //RETURN_HR_IF_NOT_OK_MSG(
-  winml_adapter_api->OperatorGetNumInputs(op_type, op_domain, &input_count);
-  //);
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetNumInputs(op_type, op_domain, &input_count),
+                           ort_api);
   size_t output_count;
-  //RETURN_HR_IF_NOT_OK_MSG(
-  winml_adapter_api->OperatorGetNumOutputs(op_type, op_domain, & output_count);
-  //);
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetNumOutputs(op_type, op_domain, & output_count),
+                           ort_api);
 
   std::vector<const char*> input_names(input_count);
   for (int i = 0; i < input_count; i++) {
     const char* name;
-    //RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->OperatorGetInputName(op_type, op_domain, i, &name);
-    //);
+    RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetInputName(op_type, op_domain, i, &name),
+                            ort_api);
 
     const char* actual_name;
     if (S_OK == GetValue(name, op_input_names, actual_input_names, num_inputs, &actual_name))
@@ -294,9 +292,8 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   std::vector<const char*> output_names(output_count);
   for (int i = 0; i < output_count; i++) {
     const char* name;
-    //RETURN_HR_IF_NOT_OK_MSG(
-        winml_adapter_api->OperatorGetOutputName(op_type, op_domain, i, &name);
-    //);
+    RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetOutputName(op_type, op_domain, i, &name),
+                             ort_api);
     const char* actual_name = nullptr;
     if (S_OK == GetValue(name, op_output_names, actual_output_names, num_outputs, &actual_name)) {
         output_names[i] = actual_name;
