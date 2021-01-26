@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include <assert.h>
-#include <stdint.h>
+#include <array>
+#include <cassert>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -349,7 +350,7 @@ class MLTypeCallDispatcherRet {
 template <typename... Types>
 class MLTypeCallDispatcher2 {
   static_assert(boost::mp11::mp_is_set<TypeList<Types...>>::value,
-                "MLTypeCallDispatcher requires a unique set of types.");
+                "MLTypeCallDispatcher requires a set of unique types.");
 
   int32_t dt_type_;
 
@@ -385,6 +386,7 @@ class MLTypeCallDispatcher2 {
   }
 };
 
+// the type MLTypeCallDispatcher2<T...> given a type list L<T...>
 template <typename L>
 using MLTypeCallDispatcherFromTypeList = boost::mp11::mp_apply<MLTypeCallDispatcher2, L>;
 

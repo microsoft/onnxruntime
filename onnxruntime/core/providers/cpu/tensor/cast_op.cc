@@ -47,38 +47,12 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
     int8_t, int16_t, int32_t, int64_t,
     MLFloat16, BFloat16,
     std::string);
-
-// #define LIMIT_TYPES
-// #define LIMIT_TYPES_NO_STRING_OR_FLOAT16
-#if defined(LIMIT_TYPES)
-ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(
-    Cast, Input, 0,
-    float, int64_t);
-
-ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(
-    Cast, Output, 0,
-    float, int64_t);
-#elif defined(LIMIT_TYPES_NO_STRING_OR_FLOAT16)
-ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(
-    Cast, Input, 0,
-    bool,
-    float, double,
-    uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t);
-
-ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(
-    Cast, Output, 0,
-    bool,
-    float, double,
-    uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t);
-#endif
 }  // namespace op_kernel_type_control
 
 namespace {
 
-using ImplementedSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Cast, Input, 0);
-using ImplementedDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Cast, Output, 0);
+using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Cast, Input, 0);
+using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Cast, Output, 0);
 
 using IndirectCastTypes = TypeList<MLFloat16, BFloat16>;
 
@@ -278,7 +252,7 @@ struct Dispatcher {
 template <typename TSrc>
 struct SrcDispatcher {
   void operator()(int32_t to, const Tensor& src, Tensor& dst, const TensorShape& shape) {
-    using DstTypes = mp_remove_if_q<ImplementedDstTypes, mp_bind_front<std::is_same, TSrc>>;
+    using DstTypes = mp_remove_if_q<EnabledDstTypes, mp_bind_front<std::is_same, TSrc>>;
     utils::MLTypeCallDispatcherFromTypeList<DstTypes> dispatcher{to};
     dispatcher.InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(src, dst, shape);
   }
@@ -301,17 +275,17 @@ Status Cast::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  utils::MLTypeCallDispatcherFromTypeList<ImplementedSrcTypes> dispatcher{from};
+  utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
   dispatcher.Invoke<SrcDispatcher>(to_, *X, *Y, shape);
 
   return Status::OK();
 }
 
 const std::vector<MLDataType> castSrcTypeConstraints =
-    BuildKernelDefConstraintsFromTypeListFunctor<ImplementedSrcTypes>{}();
+    BuildKernelDefConstraintsFunctorFromTypeList<EnabledSrcTypes>{}();
 
 const std::vector<MLDataType> castDstTypeConstraints =
-    BuildKernelDefConstraintsFromTypeListFunctor<ImplementedDstTypes>{}();
+    BuildKernelDefConstraintsFunctorFromTypeList<EnabledDstTypes>{}();
 
 }  // namespace
 

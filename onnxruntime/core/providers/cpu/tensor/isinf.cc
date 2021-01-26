@@ -34,7 +34,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     10,
     KernelDefBuilder()
         .TypeConstraint(
-            "T1", BuildKernelDefConstraintsFromTypeListFunctor<IsInf::EnabledTypes>{}())
+            "T1", BuildKernelDefConstraintsFunctorFromTypeList<IsInf::EnabledTypes>{}())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     IsInf);
 
