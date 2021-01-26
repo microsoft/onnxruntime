@@ -651,7 +651,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       p_ds,
       p_m1_news, p_m2_news,
       alpha_, beta_, lambda_, epsilon_, max_norm_clip_,
-      do_bias_correction_);
+      do_bias_correction_));
 
   ORT_RETURN_IF_ERROR(launch_lamb_reduction(
       *this,
