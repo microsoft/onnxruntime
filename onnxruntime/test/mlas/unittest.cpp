@@ -714,7 +714,7 @@ private:
 
         for (size_t f = 0; f < M * N; f++) {
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, offa, offb);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, int(offa), int(offb));
                 break;
             }
         }
@@ -921,7 +921,7 @@ private:
         for (size_t f = 0; f < M * N; f++) {
             // Sensitive to comparing positive/negative zero.
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, offa, offb, C[f], CReference[f]);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, int(offa), int(offb), C[f], CReference[f]);
                 break;
             }
         }

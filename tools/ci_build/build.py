@@ -1309,77 +1309,12 @@ def run_training_python_frontend_e2e_tests(cwd):
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_mixed_precision'], cwd=cwd)
 
-    # this test is not stable. it occasionally causes segfault due to its session creation/release pattern.
-    # need to skip to unblock release
-    # run_subprocess([
-    #     sys.executable, 'orttraining_test_transformers.py',
-    #     'BertModelTest.test_for_pretraining_mixed_precision_with_gradient_accumulation'], cwd=cwd)
-
-
-def run_training_pipeline_e2e_tests(cwd):
-    # pipeline tests are to be added here:
-    log.info("Running pipeline e2e tests.")
-
-    import torch
-    ngpus = torch.cuda.device_count()
-
-    command = ['./onnxruntime_training_bert',
-               '--ort_log_severity', '1',
-               '--optimizer=Lamb',
-               '--learning_rate=3e-3',
-               '--max_seq_length=128',
-               '--max_predictions_per_seq=20',
-               '--warmup_ratio=0.2843',
-               '--warmup_mode=Poly',
-               '--model_name', '/bert_ort/bert_models/nv/bert-large/' +
-               'bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12',
-               '--train_data_dir', '/bert_data/128/books_wiki_en_corpus/train',
-               '--test_data_dir', '/bert_data/128/books_wiki_en_corpus/test',
-               '--display_loss_steps', '1',
-               '--use_nccl',
-               '--use_mixed_precision',
-               '--allreduce_in_fp16',
-               '--gradient_accumulation_steps', '48',
-               '--num_train_steps', '96',
-               '--train_batch_size', '50']
-
-    # TODO: currently the CI machine only has 4 GPUs for parallel tests.
-    # Fill in more pipeline partition options when the machine has different GPUs counts.
-    if ngpus != 4:
-        return
-
-    # Test 4-way pipeline parallel
-    pp_command = ['mpirun', '-n', str(ngpus)] + command + ['--pipeline_parallel_size', '4', '--cut_group_info',
-                                                           '1149:407-1219/1341/1463/1585/1707/1829,' +
-                                                           '1881:407-1951/2073/2195/2317/2439/2561,' +
-                                                           '2613:407-2683/2805/2927/3049/3171/3293']
-    command_str = ', '.join(pp_command)
-    log.debug('RUN: ' + command_str)
-    run_subprocess(pp_command, cwd=cwd)
-
-    # Test 2-way data parallel + 2-way pipeline parallel
-    pp_dp_command = ['mpirun', '-n', str(ngpus)]
-    pp_dp_command = pp_dp_command + command
-    pp_dp_command = pp_dp_command + ['--data_parallel_size', '2', '--pipeline_parallel_size',
-                                     '2', '--cut_group_info',
-                                     '1881:407-1951/2073/2195/2317/2439/2561/2683/2805/2927/3049/3171/3293']
-    command_str = ', '.join(pp_dp_command)
-    log.debug('RUN: ' + command_str)
-    run_subprocess(pp_dp_command, cwd=cwd)
-
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
         cwd = os.path.abspath(cwd)
-
-        # TODO: temporarily disable this test to restore pipeline health. This test fails due to
-        # an OOM regression. Invetigation undergoing.
-        # if args.enable_training and args.use_cuda and args.enable_training_pipeline_e2e_tests:
-        #     # run distributed pipeline test on 4-GPU CI machine.
-        #     run_training_pipeline_e2e_tests(cwd=cwd)
-        #     continue
 
         if args.android:
             run_android_tests(args, source_dir, config, cwd)
@@ -1467,6 +1402,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if onnx_test:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
+                run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
+                               cwd=cwd, dll_path=dll_path)
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
