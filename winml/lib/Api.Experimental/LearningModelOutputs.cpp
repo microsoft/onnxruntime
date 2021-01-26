@@ -15,13 +15,10 @@ winml_experimental::LearningModelBuilder LearningModelOutputs::Add(winml::ILearn
 {
   // Perform model update inside the builder
   auto model = builder_.as<winml_experimentalp::LearningModelBuilder>()->UseModel();
-
   auto descriptor_provider = output.as<_winml::IDescriptorInfoProvider>();
-
   auto name = _winml::Strings::UTF8FromHString(output.Name());
   model->AddModelOutput(name.c_str(), descriptor_provider.get());
   output_descriptors_.Append(output);
-
   return builder_;
 }
 

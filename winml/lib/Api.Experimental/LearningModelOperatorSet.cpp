@@ -50,13 +50,6 @@ winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(winml_exp
     i++;
   }
 
-  
-  std::vector<std::string> attribute_names(attribute_map.Size());
-  std::vector<const char*> raw_attribute_names(attribute_map.Size());
-  std::vector<winrt::com_ptr<_winml::IValue>> attribute_values(attribute_map.Size());
-  std::vector<_winml::IValue*> raw_attribute_values(attribute_map.Size());
-  i = 0;
-
   // Create the Binding Context to pass to the feature value
   _winml::BindingContext context{
       _winml::BindingType::kInput,
@@ -66,6 +59,11 @@ winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(winml_exp
       {}  // SubresourceId is set by callee
   };
 
+  std::vector<std::string> attribute_names(attribute_map.Size());
+  std::vector<const char*> raw_attribute_names(attribute_map.Size());
+  std::vector<winrt::com_ptr<_winml::IValue>> attribute_values(attribute_map.Size());
+  std::vector<_winml::IValue*> raw_attribute_values(attribute_map.Size());
+  i = 0;
   for (auto kvp : attribute_map) {
     attribute_names[i] = _winml::Strings::UTF8FromHString(kvp.Key());
     auto default_value_value_provider = kvp.Value().as<_winml::ILotusValueProviderPrivate>();

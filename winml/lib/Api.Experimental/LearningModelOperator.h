@@ -32,11 +32,10 @@ private:
     winrt::hstring domain_;
     winrt::hstring type_;
 
+    wfc::IMap<winrt::hstring, wf::IInspectable> attribute_values_;
     wfc::IMap<winrt::hstring, wf::IInspectable> constant_input_mapping_;
     wfc::IMap<winrt::hstring, winrt::hstring> input_mapping_;
     wfc::IMap<winrt::hstring, winrt::hstring> output_mapping_;
-
-    wfc::IMap<winrt::hstring, wf::IInspectable> attribute_values_;
 };
 
 } // namespace WINML_EXPERIMENTALP

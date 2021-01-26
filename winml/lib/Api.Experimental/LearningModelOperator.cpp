@@ -5,7 +5,8 @@ namespace WINML_EXPERIMENTALP {
 
 static uint32_t c_operator_index = 0;
 
-LearningModelOperator::LearningModelOperator(hstring const& type, hstring const& name) : LearningModelOperator(type, name, L"")
+LearningModelOperator::LearningModelOperator(hstring const& type, hstring const& name) :
+    LearningModelOperator(type, name, L"")
 {}
 
 LearningModelOperator::LearningModelOperator(hstring const& type, hstring const& name, hstring const& domain) :
@@ -41,7 +42,6 @@ winml_experimental::LearningModelOperator LearningModelOperator::SetConstant(
   return *this;
 }
 
-
 winml_experimental::LearningModelOperator LearningModelOperator::SetOutput(
     hstring const& operator_output_name, hstring const& output_name) {
   // TODO Validate against allowed operator output NAMES. The types are not deduced.
@@ -49,7 +49,8 @@ winml_experimental::LearningModelOperator LearningModelOperator::SetOutput(
   return *this;
 }
 
-winml_experimental::LearningModelOperator LearningModelOperator::SetAttribute(hstring const& name, Windows::Foundation::IInspectable const& value) {
+winml_experimental::LearningModelOperator LearningModelOperator::SetAttribute(
+    hstring const& name, Windows::Foundation::IInspectable const& value) {
   attribute_values_.Insert(name, value);
   return *this;
 }
