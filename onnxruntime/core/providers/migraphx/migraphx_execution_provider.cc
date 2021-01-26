@@ -12,9 +12,6 @@
 #include "core/graph/graph_utils.h"
 #include "core/platform/env.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/optimizer/constant_folding.h"
-#include "core/optimizer/graph_transformer_mgr.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
 #include "migraphx_inc.h"
 #include "migraphx_execution_provider.h"
 #include "hip_allocator.h"
@@ -1105,7 +1102,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
   migraphx::onnx_options options;
   bool no_input_shape = false;
-
+  std::size_t fused_node_index = 0;
   for (const auto& fused_node : fused_nodes) {
     std::cout << "In compile funciton ======================== " << std::endl;
     // map parameter input name to index
@@ -1120,6 +1117,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     onnx::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
     std::string onnx_string_buffer;
     model_proto.SerializeToString(&onnx_string_buffer);
+
+    std::string name = "ort_compile_" + std::to_string(fused_node_index++) + ".onnx";
+    std::ofstream ofs(name, std::ios::binary);
+    ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
+    ofs.close();
 
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);
