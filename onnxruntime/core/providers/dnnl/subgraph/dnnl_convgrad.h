@@ -191,6 +191,30 @@ class DnnlConvGrad : public DnnlKernel {
     weights_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
         dnnl::memory::desc({w_dims}, DnnnType<T>(), ort_source_format_));
 
+    // Verify that the inputs to the ConvGrad operator match the passed in forward Conv operator
+    // The Convolution forward operator is passed in from a stack durring the creation of the subgraph.
+    // There is an assumption that the ConvGrad nodes will be visited in the reverse order from the
+    // corresponding Conv Nodes. Unfortantly this is not guaranteed.
+    // It is possible that the push/pop order on the stack may endup incorrect.
+    // This checks the following:
+    //   - the output tensor dimensions from Conv match the dy_dims input of ConvGrad
+    //   - the input tensor dimensions from Conv match the x_dims input of ConvGrad
+    //   - the input weight tensor dimensions to Conv and ConvGrad match
+    // If any of these don't match then the stack did not assign the correct forward operator to this
+    // ConvGrad operator and the model will not be able to be trained using DNNL.
+    // See: dnnl_func_kernel.cc search for `fwd_conv_stack`.
+    // TODO: find a non-stack method to map the forward conv operator to the backward conv.
+    dnnl::memory::desc conv_fwd_dst_desc_ = conv_fwd_->GetPrimitiveDesc()->dst_desc();
+    dnnl::memory::desc conv_fwd_src_desc_ = conv_fwd_->GetPrimitiveDesc()->src_desc();
+    dnnl::memory::desc conv_fwd_weights_desc_ = conv_fwd_->GetPrimitiveDesc()->weights_desc();
+
+    if (conv_fwd_dst_desc_.dims() != dy_dims ||
+        conv_fwd_src_desc_.dims() != x_dims ||
+        conv_fwd_weights_desc_.dims() != w_dims) {
+      primitive_created_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Model structure is not supported by the DNNL execution provider.");
+      return;
+    }
+
     // src and diff_src have the same memory dimensions
     TensorShape dx_shape(x_dims);
     //diff_src_shape_ = dx_shape;
@@ -461,8 +485,6 @@ class DnnlConvGrad : public DnnlKernel {
   size_t src_size_;
   size_t filter_size_;
   size_t dst_size_;
-
-  std::unique_ptr<dnnl::convolution_forward::desc> conv_fwd_desc_;
 
   std::unique_ptr<dnnl::convolution_backward_data::desc> conv_bwd_data_desc_;
   std::unique_ptr<dnnl::convolution_backward_data::primitive_desc> conv_bwd_data_pd_;
