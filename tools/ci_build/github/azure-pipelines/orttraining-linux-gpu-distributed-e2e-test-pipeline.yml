@@ -299,7 +299,7 @@ jobs:
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 30
 
-    - script: |
+  - script: |
       docker run \
         --gpus all \
         --shm-size=1024m \
