@@ -227,30 +227,16 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
 template <typename T>
 Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
-  const Tensor* weights;
+  const Tensor* weights = packed_weights_ ? nullptr : context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
 
-  if (packed_weights_) {
-    weights = nullptr;
-    ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                    weight_shape_,
-                                    bias->Shape(),
-                                    mask_index,
-                                    past));
-  } else {
-    weights = context->Input<Tensor>(1);
-    //Normally we don't check if an input is NULL, but this one is needed to make VC++
-    //static analyzer happy
-    if (weights == nullptr)
-      return Status(common::ONNXRUNTIME, common::FAIL, "the second input cannot be NULL");
-    ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                    weights->Shape(),
-                                    bias->Shape(),
-                                    mask_index,
-                                    past));
-  }
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
+                                  weights ? weights->Shape() : weight_shape_,
+                                  bias->Shape(),
+                                  mask_index,
+                                  past));
 
   const auto& shape = input->Shape().GetDims();
   const int batch_size = static_cast<int>(shape[0]);
@@ -279,7 +265,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   {
     const int loop_len = 3 * batch_size * num_heads_;
     const auto* input_data = input->template Data<T>();
-    const auto* weights_data = weights == nullptr ? nullptr : weights->template Data<T>();
+    const auto* weights_data = weights ? weights->template Data<T>() : nullptr;
     const auto* bias_data = bias->template Data<T>();
 
     const double cost =
