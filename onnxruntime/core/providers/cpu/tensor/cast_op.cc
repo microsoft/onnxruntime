@@ -26,7 +26,7 @@ namespace onnxruntime {
 namespace {
 template <typename SrcType, typename DstType>
 inline void CastData(const Tensor& in, Tensor& out, const TensorShape& shape) {
-  auto shape_size = shape.Size();
+  ptrdiff_t shape_size = gsl::narrow<ptrdiff_t>(shape.Size());
   auto in_vector = ConstEigenVectorMap<SrcType>(in.Data<SrcType>(), shape_size);
   auto output_vector = EigenVectorMap<DstType>(out.MutableData<DstType>(), shape_size);
   output_vector = in_vector.template cast<DstType>();
@@ -36,7 +36,7 @@ inline void CastData(const Tensor& in, Tensor& out, const TensorShape& shape) {
 template <>
 inline void CastData<float, MLFloat16>(const Tensor& in, Tensor& out, const TensorShape& shape) {
   auto out_data = out.MutableData<MLFloat16>();
-  auto shape_size = shape.Size();
+  ptrdiff_t shape_size = gsl::narrow<ptrdiff_t>(shape.Size());
   auto in_vector = ConstEigenVectorMap<float>(in.Data<float>(), shape_size);
   auto output_vector = EigenVectorMap<Eigen::half>(static_cast<Eigen::half*>(static_cast<void*>(out_data)),
                                                    shape_size);
@@ -47,7 +47,7 @@ template <>
 inline void CastData<MLFloat16, float>(const Tensor& in, Tensor& out, const TensorShape& shape) {
   auto out_data = out.MutableData<float>();
   auto in_data = in.Data<MLFloat16>();
-  auto shape_size = shape.Size();
+  ptrdiff_t shape_size = gsl::narrow<ptrdiff_t>(shape.Size());
 #if defined(_M_AMD64)
   MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
 #else
@@ -61,7 +61,7 @@ inline void CastData<MLFloat16, float>(const Tensor& in, Tensor& out, const Tens
 template <>
 inline void CastData<float, BFloat16>(const Tensor& in, Tensor& out, const TensorShape& shape) {
   auto out_data = out.template MutableData<BFloat16>();
-  auto shape_size = shape.Size();
+  ptrdiff_t shape_size = gsl::narrow<ptrdiff_t>(shape.Size());
   auto in_vector = ConstEigenVectorMap<float>(in.template Data<float>(), shape_size);
   auto output_vector = EigenVectorMap<BFloat16>(out_data, shape_size);
   output_vector = in_vector.template cast<BFloat16>();
@@ -71,7 +71,7 @@ template <>
 inline void CastData<BFloat16, float>(const Tensor& in, Tensor& out, const TensorShape& shape) {
   auto out_data = out.template MutableData<float>();
   auto in_data = in.template Data<BFloat16>();
-  auto shape_size = shape.Size();
+  ptrdiff_t shape_size = gsl::narrow<ptrdiff_t>(shape.Size());
   auto in_vector = ConstEigenVectorMap<BFloat16>(in_data, shape_size);
   auto output_vector = EigenVectorMap<float>(out_data, shape_size);
   output_vector = in_vector.unaryExpr([](BFloat16 val) { return val.ToFloat(); });
@@ -341,7 +341,7 @@ Status Cast::Compute(OpKernelContext* context) const {
         // need to cast to float first in a temporary buffer
         AllocatorPtr allocator;
         ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-        auto tmp_buffer = IAllocator::MakeUniquePtr<float>(allocator, shape.Size());
+        auto tmp_buffer = IAllocator::MakeUniquePtr<float>(allocator, gsl::narrow<size_t>(shape.Size()));
         Tensor tmp_tensor(DataTypeImpl::GetType<float>(), shape, tmp_buffer.get(), allocator->Info());
 
         CastData<MLFloat16, float>(*X, tmp_tensor, shape);
@@ -354,7 +354,7 @@ Status Cast::Compute(OpKernelContext* context) const {
         // need to cast to float first in a temporary buffer
         AllocatorPtr allocator;
         ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-        auto tmp_buffer = IAllocator::MakeUniquePtr<float>(allocator, shape.Size());
+        auto tmp_buffer = IAllocator::MakeUniquePtr<float>(allocator, gsl::narrow<size_t>(shape.Size()));
         Tensor tmp_tensor(DataTypeImpl::GetType<float>(), shape, tmp_buffer.get(), allocator->Info());
 
         do_cast(from, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, *X, tmp_tensor, shape);
@@ -367,7 +367,7 @@ Status Cast::Compute(OpKernelContext* context) const {
         // need to cast to float first in a temporary buffer
         AllocatorPtr allocator;
         ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-        auto tmp_buffer = IAllocator::MakeUniquePtr<float>(allocator, shape.Size());
+        auto tmp_buffer = IAllocator::MakeUniquePtr<float>(allocator, gsl::narrow<size_t>(shape.Size()));
         Tensor tmp_tensor(DataTypeImpl::GetType<float>(), shape, tmp_buffer.get(), allocator->Info());
 
         CastData<BFloat16, float>(*X, tmp_tensor, shape);
@@ -380,7 +380,7 @@ Status Cast::Compute(OpKernelContext* context) const {
         // need to cast to float first in a temporary buffer
         AllocatorPtr allocator;
         ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-        auto tmp_buffer = IAllocator::MakeUniquePtr<float>(allocator, shape.Size());
+        auto tmp_buffer = IAllocator::MakeUniquePtr<float>(allocator, gsl::narrow<size_t>(shape.Size()));
         Tensor tmp_tensor(DataTypeImpl::GetType<float>(), shape, tmp_buffer.get(), allocator->Info());
 
         do_cast(from, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, *X, tmp_tensor, shape);

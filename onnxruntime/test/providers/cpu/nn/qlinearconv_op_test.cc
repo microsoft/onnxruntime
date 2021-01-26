@@ -260,8 +260,6 @@ TEST(QLinearConvTest, WithGroup_2D) {
                     {});
 }
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-
 template <typename T1, typename T2>
 class QLinearConvOpTester {
  private:
@@ -823,8 +821,6 @@ TEST(QLinearConvTest, Conv2D_U8S8_Requantize_Bias_PerChannel) {
     test.Run();
   }
 }
-
-#endif
 
 }  // namespace
 }  // namespace test

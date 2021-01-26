@@ -1,6 +1,6 @@
 jobs:
 - job: Linux_Build
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
   workspace:
     clean: all
   pool: Linux-GPU-CUDA10

@@ -11,7 +11,7 @@
 #include "mem_buffer.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
-#include "core/common/string_utils.h"
+#include "core/common/make_string.h"
 #include "core/framework/data_types.h"
 #include "core/framework/endian.h"
 #include "core/framework/allocator.h"
