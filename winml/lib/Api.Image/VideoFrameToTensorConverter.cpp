@@ -540,10 +540,10 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
 }
 
 void VideoFrameToTensorConverter::ConvertBuffersToBatchedGPUTensor(
-    const std::vector<wss::IBuffer>& buffers,
-    size_t buffer_size_in_bytes,
-    _winml::D3DDeviceCache& device_cache,
-    ID3D12Resource* output_resource) {
+    _In_ const std::vector<wss::IBuffer>& buffers,
+    _In_ size_t buffer_size_in_bytes,
+    _In_ _winml::D3DDeviceCache& device_cache,
+    _Inout_ ID3D12Resource* output_resource) {
   // Copy the cpu memory into the gpu resource
   if (!upload_heap_ || upload_heap_->GetDesc().Width < buffer_size_in_bytes) {
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(

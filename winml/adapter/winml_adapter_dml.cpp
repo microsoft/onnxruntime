@@ -78,7 +78,7 @@ void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* f
 #endif  // USE_DML
 
 ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
-                    ID3D12Device* d3d_device, ID3D12CommandQueue* queue, bool metacommands_enabled) {
+                    _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* queue, bool metacommands_enabled) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   auto dml_device = CreateDmlDevice(d3d_device);

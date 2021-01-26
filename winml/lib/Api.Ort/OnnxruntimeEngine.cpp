@@ -1344,7 +1344,7 @@ const WinmlAdapterApi* OnnxruntimeEngineFactory::UseWinmlAdapterApi() {
   return winml_adapter_api_;
 }
 
-HRESULT OnnxruntimeEngineFactory::GetOrtEnvironment(OrtEnv** ort_env) {
+HRESULT OnnxruntimeEngineFactory::GetOrtEnvironment(_Out_ OrtEnv** ort_env) {
   RETURN_IF_FAILED(EnsureEnvironment());
   RETURN_IF_FAILED(environment_->GetOrtEnvironment(ort_env));
   return S_OK;
@@ -1356,7 +1356,7 @@ HRESULT OnnxruntimeEngineFactory::EnableDebugOutput(bool is_enabled) {
   return S_OK;
 }
 
-HRESULT OnnxruntimeEngineFactory::CreateCustomRegistry(IMLOperatorRegistry** registry) {
+HRESULT OnnxruntimeEngineFactory::CreateCustomRegistry(_Out_ IMLOperatorRegistry** registry) {
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api_->CreateCustomRegistry(registry),
                           ort_api_);
   return S_OK;
