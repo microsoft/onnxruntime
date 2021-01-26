@@ -3,6 +3,7 @@ import numpy as np
 from .base_operator import QuantOperatorBase
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg
 
+
 class QPad(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
@@ -12,6 +13,7 @@ class QPad(QuantOperatorBase):
         assert (node.op_type == "Pad")
 
         # Only after version 11, it has the optional constant_value
+        # If input[0] is not quantized, do not quanitize this node
         if (self.quantizer.opset_version < 11) or (node.input[0] not in self.quantizer.quantized_value_map):
             super().quantize()
             return
@@ -22,8 +24,8 @@ class QPad(QuantOperatorBase):
             kv = attribute_to_kwarg(attribute)
             kwargs.update(kv)
 
-        if 'mode' not in kwargs or kwargs['mode'] == 'constant':
-            if len(node.input) > 2: # There is 3rd input 'constant_value'
+        if 'mode' not in kwargs or kwargs['mode'] == b'constant':
+            if len(node.input) > 2:  # There is 3rd input 'constant_value'
                 zp_tensor = self.quantizer.model.get_initializer(quantized_input_value.zp_name)
                 scale_tensor = self.quantizer.model.get_initializer(quantized_input_value.scale_name)
                 if zp_tensor is None or scale_tensor is None:
@@ -37,9 +39,11 @@ class QPad(QuantOperatorBase):
                     scale_array = onnx.numpy_helper.to_array(scale_tensor)
                     scale_value = scale_array.item() if scale_array.ndim == 0 else scale_array[0]
                     padding_constant_array = onnx.numpy_helper.to_array(padding_constant_initializer)
-                    quantized_padding_constant_array = (padding_constant_array.astype(np.float32) / scale_value).round() + zp_value).astype(np.uint8)
+                    quantized_padding_constant_array = (
+                        (padding_constant_array.astype(np.float32) / scale_value).round() + zp_value).astype(np.uint8)
                     quantized_padding_constant_name = node.input[2] + "_quantized"
-                    quantized_padding_constant_initializer = onnx.numpy_helper.from_array(quantized_padding_constant_array, quantized_padding_constant_name)
+                    quantized_padding_constant_initializer = onnx.numpy_helper.from_array(
+                        quantized_padding_constant_array, quantized_padding_constant_name)
                     # Suppose this padding constant initializer only used by the node
                     self.quantizer.model.remove_initializer(padding_constant_initializer)
                     self.quantizer.model.add_initializer(quantized_padding_constant_initializer)
