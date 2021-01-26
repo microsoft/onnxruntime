@@ -21,6 +21,10 @@ using namespace wfc;
 
 using wf::IPropertyValue;
 
+#define INT64(x) static_cast<int64_t>(x)
+#define SIZET(x) static_cast<size_t>(x)
+#define INT32(x) static_cast<int32_t>(x)
+
 static void LearningModelSessionAPITestsClassSetup() {
   init_apartment();
 #ifdef BUILD_INBOX
@@ -537,11 +541,11 @@ static void DiscreteFourierTransform(bool is_onesided = false) {
 }
 
 template <typename T>
-static auto MakePureFrequency(float frequency_in_hertz, int64_t signal_size, int64_t sample_rate) {
+static auto MakePureFrequency(float frequency_in_hertz, size_t signal_size, size_t sample_rate) {
   float amplitude = 4;
   float angular_velocity = frequency_in_hertz * 2 * 3.1415f;
   std::vector<T> signal(signal_size);
-  for (int64_t i = 0; i < signal_size; i++) {
+  for (size_t i = 0; i < signal_size; i++) {
     T time = i / static_cast<T>(sample_rate);
     signal[i] = amplitude * cos(angular_velocity * time);
   }
@@ -549,29 +553,29 @@ static auto MakePureFrequency(float frequency_in_hertz, int64_t signal_size, int
 }
 
 template <typename T>
-static auto MakeMiddleC(int64_t signal_size, int64_t sample_rate) {
+static auto MakeMiddleC(size_t signal_size, size_t sample_rate) {
   float middle_c_in_hertz = 261.626f;
   return MakePureFrequency<T>(middle_c_in_hertz, signal_size, sample_rate);
 }
 
 template <typename T>
-static auto MakeC2(int64_t signal_size, int64_t sample_rate) {
+static auto MakeC2(size_t signal_size, size_t sample_rate) {
   float middle_c_in_hertz = 261.626f * 2;
   return MakePureFrequency<T>(middle_c_in_hertz, signal_size, sample_rate);
 }
 
 template <typename T>
-static auto MakeC4(int64_t signal_size, int64_t sample_rate) {
+static auto MakeC4(size_t signal_size, size_t sample_rate) {
   float middle_c_in_hertz = 261.626f * 4;
   return MakePureFrequency<T>(middle_c_in_hertz, signal_size, sample_rate);
 }
 
 template <typename T>
-static auto MakeThreeTones(int64_t signal_size, int64_t sample_rate) {
+static auto MakeThreeTones(size_t signal_size, size_t sample_rate) {
   auto middle_c = MakeMiddleC<T>(signal_size, sample_rate);
   auto c2 = MakeC2<T>(signal_size, sample_rate);
   auto c4 = MakeC4<T>(signal_size, sample_rate);
-  for (int64_t i = 0; i < signal_size; i++) {
+  for (size_t i = 0; i < signal_size; i++) {
     middle_c[i] = (i < signal_size / 3) ?
                     middle_c[i] :
                     (i < 2*signal_size/3) ?
@@ -581,20 +585,20 @@ static auto MakeThreeTones(int64_t signal_size, int64_t sample_rate) {
   return middle_c;
 }
 
-
-static void STFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int64_t hop_size, int64_t sample_rate, bool is_onesided = false) {
+static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
+    size_t hop_size, size_t sample_rate, bool is_onesided = false) {
   printf("\nTest STFT\n");
   using namespace winml_experimental;
   using Operator = winml_experimental::LearningModelOperator;
 
   static const wchar_t MS_DOMAIN[] = L"com.microsoft";
 
-  auto n_dfts = static_cast<int64_t>(ceil((signal_size - dft_size) / hop_size));
-  auto input_shape = std::vector<int64_t>{1, signal_size};
+  auto n_dfts = static_cast<size_t>(ceil((signal_size - dft_size) / hop_size));
+  auto input_shape = std::vector<int64_t>{1, INT64(signal_size)};
   auto output_shape =
     std::vector<int64_t>{
-      batch_size,
-      n_dfts,
+      INT64(batch_size),
+      INT64(n_dfts),
       is_onesided ? ((input_shape[1] >> 1) + 1) : input_shape[1],
       2
     };
@@ -610,7 +614,7 @@ static void STFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int6
               TensorKind::Float, output_shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
               L"Output.HannWindow", L"The HannWindow used",
-              TensorKind::Float, {dft_size}))
+              TensorKind::Float, {INT64(dft_size)}))
           .Operators().Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
               .SetConstant(L"size", dft_length)
               .SetOutput(L"output", L"Output.HannWindow"))
@@ -618,7 +622,7 @@ static void STFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int6
               .SetInput(L"signal", L"Input.TimeSignal")
               .SetInput(L"window", L"Output.HannWindow")
               .SetConstant(L"frame_length", dft_length)
-              .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {hop_size}))
+              .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {INT64(hop_size)}))
               .SetOutput(L"output", L"Output.STFT"))
           .CreateModel();
 
@@ -627,7 +631,7 @@ static void STFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int6
 
   // Create signal binding
   auto signal = MakeMiddleC<float>(signal_size, sample_rate);
-  for (int64_t i = 0; i < dft_size + 128; i++) {
+  for (size_t i = 0; i < dft_size; i++) {
     printf("%f\n", signal[i]);
   }
 
@@ -641,8 +645,8 @@ static void STFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int6
   printf("\nHann Window Output\n\n");
   auto window_tensor = result.Outputs().Lookup(L"Output.HannWindow").as<TensorFloat>();
   auto window_ivv = window_tensor.GetAsVectorView();
-  for (int64_t i = 0; i < window_ivv.Size(); i++) {
-    printf("%f \n", window_ivv.GetAt(static_cast<uint32_t>(i)));
+  for (uint32_t i = 0; i < window_ivv.Size(); i++) {
+    printf("%f \n", window_ivv.GetAt(i));
   }
 
   printf("\nSTFT Output\n\n");
@@ -651,8 +655,8 @@ static void STFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int6
   auto y_ivv = y_tensor.GetAsVectorView();
   auto size = y_ivv.Size();
   if (size == n_dfts * output_shape[2] * 2) {
-    for (int64_t dft_idx = 0; dft_idx < n_dfts; dft_idx++) {
-      for (int64_t i = 0; i < output_shape[2]; i++) {
+    for (size_t dft_idx = 0; dft_idx < n_dfts; dft_idx++) {
+      for (size_t i = 0; INT64(i) < output_shape[2]; i++) {
         auto real_idx = static_cast<uint32_t>((i * 2) + (2 * dft_idx * output_shape[2]));
         printf("%d , %f , %f\n", static_cast<uint32_t>(i), y_ivv.GetAt(real_idx), y_ivv.GetAt(real_idx + 1));
       }
@@ -661,13 +665,13 @@ static void STFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int6
  }
 
 static void MelSpectrogramOnThreeToneSignal(
-    int64_t batch_size,
-    int64_t signal_size,
-    int64_t window_size,
-    int64_t dft_size,
-    int64_t hop_size,
-    int64_t n_mel_bins,
-    int64_t sampling_rate) {
+    size_t batch_size,
+    size_t signal_size,
+    size_t window_size,
+    size_t dft_size,
+    size_t hop_size,
+    size_t n_mel_bins,
+    size_t sampling_rate) {
   printf("\nTest Three Tone (C1, C2, C4) Spectrogram\n");
 
   using namespace winml_experimental;
@@ -675,10 +679,10 @@ static void MelSpectrogramOnThreeToneSignal(
 
   static const wchar_t MS_DOMAIN[] = L"com.microsoft";
 
-  int64_t n_dfts = static_cast<int64_t>(ceil((signal_size - dft_size) / hop_size));
-  int64_t onesided_dft_size = (dft_size >> 1) + 1;
-  std::vector<int64_t> signal_shape = {batch_size, signal_size};
-  std::vector<int64_t> mel_spectrogram_shape = {batch_size, 1, n_dfts, n_mel_bins};
+  auto n_dfts = static_cast<size_t>(ceil((signal_size - dft_size) / hop_size));
+  auto onesided_dft_size = (dft_size >> 1) + 1;
+  std::vector<int64_t> signal_shape = {INT64(batch_size), INT64(signal_size)};
+  std::vector<int64_t> mel_spectrogram_shape = {INT64(batch_size), 1, INT64(n_dfts), INT64(n_mel_bins)};
 
   auto builder =
       LearningModelBuilder::Create()
@@ -686,14 +690,14 @@ static void MelSpectrogramOnThreeToneSignal(
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
           .Operators()
           .Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
-            .SetConstant(L"size", TensorInt64Bit::CreateFromArray({}, {window_size}))
+            .SetConstant(L"size", TensorInt64Bit::CreateFromArray({}, {INT64(window_size)}))
             .SetOutput(L"output", L"hann_window"))
           .Operators()
           .Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
             .SetInput(L"signal", L"Input.TimeSignal")
             .SetInput(L"window", L"hann_window")
-            .SetConstant(L"frame_length", TensorInt64Bit::CreateFromArray({}, {dft_size}))
-            .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {hop_size}))
+            .SetConstant(L"frame_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
+            .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {INT64(hop_size)}))
             .SetOutput(L"output", L"stft_output"))
           .Operators()
           .Add(Operator(L"Slice", L"real_slice")
@@ -729,16 +733,16 @@ static void MelSpectrogramOnThreeToneSignal(
             .SetOutput(L"C", L"power_frames"))
           .Operators()
           .Add(Operator(L"MelWeightMatrix", L"melweightmatrix0", MS_DOMAIN)
-            .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {n_mel_bins}))
-            .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {dft_size}))
-            .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {sampling_rate}))
+            .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(n_mel_bins)}))
+            .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
+            .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(sampling_rate)}))
             .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
             .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {sampling_rate / 2.f}))
             .SetOutput(L"output", L"mel_weight_matrix"))
           .Operators()
           .Add(Operator(L"Reshape", L"reshape0")
             .SetInput(L"data", L"power_frames")
-            .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({2}, {batch_size * n_dfts, onesided_dft_size}))
+            .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({2}, {INT64(batch_size * n_dfts), INT64(onesided_dft_size)}))
             .SetOutput(L"reshaped", L"reshaped_output"))
           .Operators()
           .Add(Operator(L"MatMul", L"matmul0")
@@ -763,8 +767,8 @@ static void MelSpectrogramOnThreeToneSignal(
   auto output_image =
     winrt::Windows::Media::VideoFrame(
       winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
-      static_cast<int32_t>(n_mel_bins),
-      static_cast<int32_t>(n_dfts));
+      INT32(n_mel_bins),
+      INT32(n_dfts));
   binding.Bind(L"Output.MelSpectrogram", output_image);
 
   // Evaluate
@@ -813,11 +817,11 @@ static void DynamicMatmul() {
   LearningModelBinding binding(session);
 
   // Bind A
-  auto a_matrix = std::vector<float>(a_shape[0] * a_shape[1], 1);
+  auto a_matrix = std::vector<float>(SIZET(a_shape[0] * a_shape[1]), 1);
   binding.Bind(L"InputA", TensorFloat::CreateFromArray(a_shape, a_matrix));
 
   // Bind B
-  auto b_matrix = std::vector<float>(b_shape[0] * b_shape[1], 1);
+  auto b_matrix = std::vector<float>(SIZET(b_shape[0] * b_shape[1]), 1);
   binding.Bind(L"InputB", TensorFloat::CreateFromArray(b_shape, b_matrix));
 
   // Evaluate
@@ -844,10 +848,10 @@ static void ConstantMatmul() {
   auto model =
       LearningModelBuilder::Create()
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", L"The input1 matrix", TensorKind::Float, a_shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, {a_shape[0], a_shape[1]}))
+          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, {a_shape[0], b_shape[1]}))
           .Operators().Add(Operator(L"MatMul", L"matmul0")
                    .SetInput(L"A", L"InputA")
-                   .SetConstant(L"B", TensorFloat::CreateFromArray({b_shape[0], b_shape[1]}, std::vector<float>(b_shape[0] * b_shape[1], 1)))
+                   .SetConstant(L"B", TensorFloat::CreateFromArray(b_shape, std::vector<float>(SIZET(b_shape[0] * b_shape[1]), 1)))
                    .SetOutput(L"Y", L"Output"))
           .CreateModel();
 
@@ -920,14 +924,14 @@ static void TestModelBuilding() {
   WindowFunction(L"BlackmanWindow", TensorKind::Float);
   WindowFunction(L"BlackmanWindow", TensorKind::Double);
 
-  int64_t batch_size = 1;
-  int64_t sample_rate = 8192;
+  size_t batch_size = 1;
+  size_t sample_rate = 8192;
   float signal_duration_in_seconds = 5.f;
-  int64_t signal_size = static_cast<int64_t>(sample_rate * signal_duration_in_seconds);
-  int64_t dft_size = 256;
-  int64_t hop_size = 128;
-  int64_t window_size = 256;
-  int64_t n_mel_bins = 1024;
+  size_t signal_size = static_cast<size_t>(sample_rate * signal_duration_in_seconds);
+  size_t dft_size = 256;
+  size_t hop_size = 128;
+  size_t window_size = 256;
+  size_t n_mel_bins = 1024;
 
   // stft
   STFT(batch_size, signal_size, dft_size, hop_size, sample_rate, true);
