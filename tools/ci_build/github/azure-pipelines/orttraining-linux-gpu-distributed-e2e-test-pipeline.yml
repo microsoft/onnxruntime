@@ -1,7 +1,7 @@
 trigger: none
 
 jobs:
-- job: Orttraining_Linux_GPU_Training_E2E_Test_Nightly
+- job: Orttraining_Linux_GPU_Distributed_E2E_Test
 
   timeoutInMinutes: 120
   pool: 'Linux-Multi-GPU-V100-E2E3'
@@ -317,7 +317,7 @@ jobs:
             --cwd /build/RelWithDebInfo \
     displayName: 'Run orttraining_distributed_tests.py'
     condition: succeededOrFailed()
-    timeoutInMinutes: 30
+    timeoutInMinutes: 60
   
   - template: templates/component-governance-component-detection-steps.yml
     parameters:
