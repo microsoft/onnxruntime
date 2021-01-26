@@ -909,40 +909,6 @@ class ONNXQuantizer:
             raise ValueError("{} is not an initializer", weight_name)
 
         weight = self._get_quantized_weight_per_channel(initializer, weight_name, channel_axis, symmetric=False, reduce_range=False)
-        # weights = self.tensor_proto_to_array(initializer)
-        # channel_count = weights.shape[channel_axis]
-        # rmin_list = []
-        # rmax_list = []
-        # zero_point_list = []
-        # scale_list = []
-        # quantized_per_channel_data_list = []
-        # for i in range(channel_count):
-        #     per_channel_data = weights.take(i, channel_axis)
-        #     rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
-        #         per_channel_data.flatten().tolist(), _get_qrange_for_qType(weight_qType, self.reduce_range), weight_qType)
-        #     rmin_list.append(rmin)
-        #     rmax_list.append(rmax)
-        #     zero_point_list.append(zero_point)
-        #     scale_list.append(scale)
-        #     quantized_per_channel_data_list.append(quantized_per_channel_data)
-
-        # # combine per_channel_data into one
-        # reshape_dims = list(weights.shape)  # deep copy
-        # reshape_dims[channel_axis] = 1  # only one per channel for reshape
-        # quantized_weights = np.asarray(quantized_per_channel_data_list[0]).reshape(reshape_dims)
-        # for i in range(1, len(quantized_per_channel_data_list)):
-        #     channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
-        #     quantized_weights = np.concatenate((quantized_weights, channel_weights), channel_axis)
-
-        # weight = QuantizedInitializer(initializer.name, initializer, rmin_list, rmax_list, zero_point_list, scale_list,
-        #                               weights,
-        #                               quantized_weights.flatten().tolist(), channel_axis, weight_qType)
-
-        # # Make entry for this quantized weight
-        # assert (weight.name not in self.quantized_value_map)
-        # quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale",
-        #                                  weight.name + "_zero_point", QuantizedValueType.Initializer, None, weight_qType)
-        # self.quantized_value_map[weight.name] = quantized_value
 
         self._update_weight(weight)
         return (weight.name + "_quantized", weight.name + "_zero_point", weight.name + "_scale")
