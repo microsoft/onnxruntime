@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+namespace onnxruntime {
+struct OrtTypeInfo;
+}
 
 namespace _winml {
 
