@@ -859,7 +859,7 @@ static void ConstantMatmul() {
   LearningModelBinding binding(session);
 
   // Bind input
-  auto a_matrix = std::vector<float>(a_shape[0] * a_shape[1], 1);
+  auto a_matrix = std::vector<float>(SIZET(a_shape[0] * a_shape[1]), 1);
   binding.Bind(L"InputA", TensorFloat::CreateFromArray(a_shape, a_matrix));
 
   // Evaluate
