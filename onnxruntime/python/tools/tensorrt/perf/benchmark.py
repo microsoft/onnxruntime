@@ -770,8 +770,7 @@ def parse_models_info_from_directory(path, models):
     if test_data_dir:
         model_name = os.path.split(path)[-1]
         model_name = model_name + '_' + os.path.split(os.path.split(path)[0])[-1] # get opset version as model_name
-        model_path = find_model_path(path)
-
+        model_path = find_model_path(path) if model_name != "test_resnet34v2_opset7" else None
         if not model_path:
             logger.info("Can't find model in " + path)
             return

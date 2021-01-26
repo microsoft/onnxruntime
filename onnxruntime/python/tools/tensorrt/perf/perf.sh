@@ -20,8 +20,8 @@ cleanup_files() {
 }
 
 download_files() {
-    sudo wget -c $SYMBOLIC_SHAPE_INFER_LINK
-    sudo wget -c $FLOAT_16_LINK
+    wget --no-check-certificate -c $SYMBOLIC_SHAPE_INFER_LINK
+    wget --no-check-certificate -c $FLOAT_16_LINK 
 }
 
 update_files() {
@@ -33,14 +33,15 @@ update_files() {
 if [ "$1" == "many-models" ]
 then
     update_files
-    python3 benchmark_wrapper.py -r validate -m /home/hcsuser/mount/many-models -o result/"$1"
-    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m /home/hcsuser/mount/many-models -o result/"$1"
+    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m /usr/share/mount/many-models -o result/"$1" 
+    #python3 benchmark_wrapper.py -r validate -m /home/hcsuser/mount/many-models -o result/"$1"
+    #python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m /home/hcsuser/mount/many-models -o result/"$1"
 fi
 
 # ONNX model zoo
 if [ "$1" == "onnx-zoo-models" ]
 then
-    MODEL_LIST="model_list.json"
+    MODEL_LIST="model.json"
     update_files
     python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/"$1"
     python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/"$1"

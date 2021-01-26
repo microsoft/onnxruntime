@@ -34,10 +34,12 @@ def install_new_ort_wheel(ort_master_path):
 def main():
     args = parse_arguments()
 
-    p1 = subprocess.Popen(["sudo", "wget", "https://cmake.org/files/v3.17/cmake-3.17.4-Linux-x86_64.tar.gz"])
-    p1.wait()
+    cmake_tar = "cmake-3.17.4-Linux-x86_64.tar.gz" 
+    if not os.path.exists(cmake_tar):
+        p1 = subprocess.Popen(["wget", "-c", "https://cmake.org/files/v3.17/" + cmake_tar])
+        p1.wait()
 
-    p1 = subprocess.Popen(["tar", "zxvf", "cmake-3.17.4-Linux-x86_64.tar.gz"])
+    p1 = subprocess.Popen(["tar", "zxvf", cmake_tar])
     p1.wait()
 
     os.environ["PATH"] = os.path.join(os.path.abspath("cmake-3.17.4-Linux-x86_64"), "bin") + ":" + os.environ["PATH"]
@@ -61,7 +63,7 @@ def main():
             p1 = subprocess.Popen(["git", "pull", "origin", "master"])
         p1.wait()
 
-        p1 = subprocess.Popen(["./build.sh", "--config", "Release", "--use_tensorrt", "--tensorrt_home", args.tensorrt_home, "--cuda_home", args.cuda_home, "--cudnn", "/usr/lib/x86_64-linux-gnu", "--build_wheel", "--skip_tests", "--parallel"])
+        p1 = subprocess.Popen(["./build.sh", "--config", "Release", "--use_tensorrt", "--tensorrt_home", args.tensorrt_home, "--cuda_home", args.cuda_home, "--cudnn", "/usr/lib/x86_64-linux-gnu/", "--build_wheel", "--skip_tests", "--parallel"])
         p1.wait()
 
         ort_wheel_file = install_new_ort_wheel(ort_master_path)
