@@ -21,9 +21,6 @@ winml_experimental::LearningModelBuilder LearningModelInputs::AddInput(winml::IL
   auto model = builder_.as<winml_experimentalp::LearningModelBuilder>()->UseModel();
   auto descriptor_provider = input.as<_winml::IDescriptorInfoProvider>();
   auto input_name = _winml::Strings::UTF8FromHString(input.Name());
-
-
-
   winrt::com_ptr<_winml::IValue> default_value_ivalue;
 
   if (default_value) {

@@ -800,23 +800,25 @@ static void DynamicMatmul() {
 
   auto model =
       LearningModelBuilder::Create()
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input1", L"The input1 matrix", TensorKind::Float, a_shape))
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input2", L"The input2 matrix", TensorKind::Float, b_shape))
+          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", L"The input1 matrix", TensorKind::Float, a_shape))
+          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputB", L"The input2 matrix", TensorKind::Float, b_shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, {a_shape[0], b_shape[1]}))
           .Operators().Add(Operator(L"MatMul", L"matmul0")
-                        .SetInput(L"A", L"Input1")
-                        .SetInput(L"B", L"Input2")
+                        .SetInput(L"A", L"InputA")
+                        .SetInput(L"B", L"InputB")
                         .SetOutput(L"Y", L"Output"))
           .CreateModel();
 
   LearningModelSession session(model);
   LearningModelBinding binding(session);
 
-  // Bind input
+  // Bind A
   auto a_matrix = std::vector<float>(a_shape[0] * a_shape[1], 1);
-  binding.Bind(L"Input1", TensorFloat::CreateFromArray(a_shape, a_matrix));
+  binding.Bind(L"InputA", TensorFloat::CreateFromArray(a_shape, a_matrix));
+
+  // Bind B
   auto b_matrix = std::vector<float>(b_shape[0] * b_shape[1], 1);
-  binding.Bind(L"Input2", TensorFloat::CreateFromArray(b_shape, b_matrix));
+  binding.Bind(L"InputB", TensorFloat::CreateFromArray(b_shape, b_matrix));
 
   // Evaluate
   auto start = std::chrono::high_resolution_clock::now();
@@ -841,10 +843,10 @@ static void ConstantMatmul() {
 
   auto model =
       LearningModelBuilder::Create()
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input1", L"The input1 matrix", TensorKind::Float, a_shape))
+          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", L"The input1 matrix", TensorKind::Float, a_shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, {a_shape[0], a_shape[1]}))
           .Operators().Add(Operator(L"MatMul", L"matmul0")
-                   .SetInput(L"A", L"Input1")
+                   .SetInput(L"A", L"InputA")
                    .SetConstant(L"B", TensorFloat::CreateFromArray({b_shape[0], b_shape[1]}, std::vector<float>(b_shape[0] * b_shape[1], 1)))
                    .SetOutput(L"Y", L"Output"))
           .CreateModel();
@@ -854,7 +856,7 @@ static void ConstantMatmul() {
 
   // Bind input
   auto a_matrix = std::vector<float>(a_shape[0] * a_shape[1], 1);
-  binding.Bind(L"Input1", TensorFloat::CreateFromArray(a_shape, a_matrix));
+  binding.Bind(L"InputA", TensorFloat::CreateFromArray(a_shape, a_matrix));
 
   // Evaluate
   auto start = std::chrono::high_resolution_clock::now();
