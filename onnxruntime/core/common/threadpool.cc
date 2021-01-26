@@ -137,7 +137,7 @@ private:
       num_shards = MAX_SHARDS;
     }
     if (num_shards > d_of_p) {
-      num_shards = d_of_p;
+      num_shards = static_cast<unsigned>(d_of_p);
     }
     return num_shards;
   }
