@@ -54,7 +54,6 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     String Domain { get; };
   }
 
-  [threading(both)]
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
   runtimeclass LearningModelOperatorSet {
