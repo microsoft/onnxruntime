@@ -582,7 +582,7 @@ static auto MakeThreeTones(int64_t signal_size, int64_t sample_rate) {
 }
 
 
-static void STFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int64_t hop_size, bool is_onesided = false) {
+static void STFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int64_t hop_size, int64_t sample_rate, bool is_onesided = false) {
   printf("\nTest STFT\n");
   using namespace winml_experimental;
   using Operator = winml_experimental::LearningModelOperator;
@@ -625,12 +625,14 @@ static void STFT(int64_t batch_size, int64_t signal_size, int64_t dft_size, int6
   LearningModelSession session(model);
   LearningModelBinding binding(session);
 
-  printf("\nBind\n\n");
-  // Populate binding
-  auto signal = MakeMiddleC<float>(signal_size, 8192);
+  // Create signal binding
+  auto signal = MakeMiddleC<float>(signal_size, sample_rate);
   for (int64_t i = 0; i < dft_size + 128; i++) {
     printf("%f\n", signal[i]);
   }
+
+  // Bind
+  printf("\nBind\n\n");
   binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromArray(input_shape, signal));
 
   // Evaluate
@@ -926,11 +928,11 @@ static void TestModelBuilding() {
   int64_t n_mel_bins = 1024;
 
   // stft
-  STFT(batch_size, signal_size, dft_size, hop_size);
+  STFT(batch_size, signal_size, dft_size, hop_size, sample_rate, true);
+  STFT(batch_size, signal_size, dft_size, hop_size, sample_rate, false);
 
   // mel spectrogram
   MelSpectrogramOnThreeToneSignal(batch_size, signal_size, dft_size, window_size, hop_size, n_mel_bins, sample_rate);
-
 }
 
 static void SetIntraOpNumThreads() {
