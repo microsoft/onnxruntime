@@ -321,8 +321,8 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
   WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeRGB8 || tensorDesc.sizes[1] == 3, "Target tensor description expects kImageTensorChannelTypeRGB8, but has %lld channels specified instead of 3.", tensorDesc.sizes[1]);
   WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeBGR8 || tensorDesc.sizes[1] == 3, "Target tensor description expects kImageTensorChannelTypeBGR8, but has %lld channels specified instead of 3.", tensorDesc.sizes[1]);
   WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeGRAY8 || tensorDesc.sizes[1] == 1, "Target tensor description expects kImageTensorChannelTypeGRAY8, but has %lld channels specified instead of 1.", tensorDesc.sizes[1]);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[2] == inputDesc.Height, "Target tensor height (%lld) does not match input height (%d).", tensorDesc.sizes[2], inputDesc.Height);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[3] == (UINT)inputDesc.Width, "Target tensor width (%lld) does not match input width (%d).", tensorDesc.sizes[3], (UINT)inputDesc.Width);
+  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[2] == inputDesc.Height, "Target tensor height (%lld) does not match input height (%lu).", tensorDesc.sizes[2], inputDesc.Height);
+  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[3] == (UINT)inputDesc.Width, "Target tensor width (%lld) does not match input width (%lu).", tensorDesc.sizes[3], (UINT)inputDesc.Width);
 
   UINT uiTensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? sizeof(FLOAT) : sizeof(uint16_t);
 
@@ -658,8 +658,8 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
           tensorDesc.channelType == kImageTensorChannelTypeRGB8,
       "Target tensor description expects kImageTensorChannelTypeGRAY8, kImageTensorChannelTypeBGR8, or kImageTensorChannelTypeRGB8 but has %d was specified.",
       tensorDesc.channelType);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[2] == (UINT)inputBounds.Height, "Target tensor height (%lld) does not match input height (%d).", tensorDesc.sizes[2], (UINT)inputBounds.Height);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[3] == (UINT)inputBounds.Width, "Target tensor width (%lld) does not match input width (%d).", tensorDesc.sizes[3], (UINT)inputBounds.Width);
+  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[2] == (UINT)inputBounds.Height, "Target tensor height (%lld) does not match input height (%lu).", tensorDesc.sizes[2], inputBounds.Height);
+  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[3] == (UINT)inputBounds.Width, "Target tensor width (%lld) does not match input width (%lu).", tensorDesc.sizes[3], inputBounds.Width);
 
   // get the byte buffer out of a softwarebitmap
   BYTE* pData = nullptr;
