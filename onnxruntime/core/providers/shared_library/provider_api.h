@@ -21,6 +21,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
+#include "core/common/path_string.h"
 
 namespace onnxruntime {
 namespace logging {
@@ -73,6 +74,7 @@ struct Function;
 struct Graph;
 struct GraphViewer;
 struct Model;
+struct Path;
 struct Node;
 struct NodeArg;
 struct NodeAttributes;
