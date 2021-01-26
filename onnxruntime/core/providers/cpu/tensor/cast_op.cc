@@ -308,10 +308,10 @@ Status Cast::Compute(OpKernelContext* context) const {
 }
 
 const std::vector<MLDataType> castSrcTypeConstraints =
-    mp_apply<BuildKernelDefConstraintsFunctor, ImplementedSrcTypes>{}();
+    BuildKernelDefConstraintsFromTypeListFunctor<ImplementedSrcTypes>{}();
 
 const std::vector<MLDataType> castDstTypeConstraints =
-    mp_apply<BuildKernelDefConstraintsFunctor, ImplementedDstTypes>{}();
+    BuildKernelDefConstraintsFromTypeListFunctor<ImplementedDstTypes>{}();
 
 }  // namespace
 

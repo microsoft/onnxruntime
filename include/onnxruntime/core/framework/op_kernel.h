@@ -5,6 +5,8 @@
 
 #include <functional>
 
+#include "boost/mp11.hpp"
+
 #include "core/common/exceptions.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
@@ -487,5 +489,9 @@ struct BuildKernelDefConstraintsFunctor {
     return BuildKernelDefConstraints<Types...>();
   }
 };
+
+template <typename L>
+using BuildKernelDefConstraintsFromTypeListFunctor =
+    boost::mp11::mp_apply<BuildKernelDefConstraintsFunctor, L>;
 
 }  // namespace onnxruntime
