@@ -190,7 +190,7 @@ IEngineFactory : IUnknown {
   (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
 
   STDMETHOD(CreateEngineBuilder)
-  (IEngineBuilder * *engine_builder) PURE;
+  (_Outptr_ IEngineBuilder * *engine_builder) PURE;
 
   STDMETHOD(EnableDebugOutput)
   (bool is_enabled) PURE;
