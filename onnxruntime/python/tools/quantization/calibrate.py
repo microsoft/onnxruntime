@@ -10,8 +10,9 @@ import os
 import numpy as np
 import onnx
 import onnxruntime
-from onnx import helper, TensorProto
+from onnx import helper, TensorProto, ModelProto
 from onnx import onnx_pb as onnx_proto
+from six import string_types
 
 from .quant_utils import QuantType
 from .registry import QLinearOpsRegistry
@@ -30,28 +31,33 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
         """generate the input data dict for ONNXinferenceSession run"""
         raise NotImplementedError
 
+
 class ONNXCalibrater:
-    def __init__(self, model_path, data_reader: CalibrationDataReader, calibrate_op_types, black_nodes, white_nodes,
+    def __init__(self, model, data_reader: CalibrationDataReader, calibrate_op_types, black_nodes, white_nodes,
                  augmented_model_path):
         '''
-        :param model_path: ONNX model to calibrate
+        :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param data_reader: user implemented object to read in and preprocess calibration dataset
                             based on CalibrationDataReader Interface
         :param op_types: operator types to be calibrated and quantized, default = 'Conv,MatMul'
         :param black_nodes: operator names that should not be quantized, default = ''
         :param white_nodes: operator names that force to be quantized, default = ''
         :param augmented_model_path: save augmented_model to this path
-
         '''
-        self.model_path = model_path
+        if isinstance(model, string_types):
+            self.model = onnx.load(model)
+        elif isinstance(model, ModelProto):
+            self.model = model
+        else:
+            raise ValueError('model should be either model path or onnx.ModelProto.')
+
         self.data_reader = data_reader
         self.calibrate_op_types = calibrate_op_types
         self.black_nodes = black_nodes
         self.white_nodes = white_nodes
         self.augmented_model_path = augmented_model_path
         self.input_name_to_nodes = {}
-        self.calibration_cache = {} # save temporary calibration table
-
+        self.calibration_cache = {}  # save temporary calibration table
 
     def set_data_reader(self, data_reader):
         self.data_reader = data_reader
@@ -59,14 +65,14 @@ class ONNXCalibrater:
     def get_calibration_cache(self):
         return self.calibration_cache
 
-    def augment_graph(self, augment_all_ops=False):
+    def augment_graph(self):
         '''
         Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
         model and ensures their outputs are stored as part of the graph output
         :return: augmented ONNX model
         '''
-
-        model = onnx.load(self.model_path)
+        model = onnx_proto.ModelProto()
+        model.CopyFrom(self.model)
         model = onnx.shape_inference.infer_shapes(model)
         value_infos = {vi.name: vi for vi in model.graph.value_info}
         value_infos.update({ot.name: ot for ot in model.graph.output})
@@ -77,11 +83,8 @@ class ONNXCalibrater:
         tensors_to_calibrate = set()
 
         for node in model.graph.node:
-            if augment_all_ops:
-                should_be_calibrate = True
-            else:
-                should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
-                                       (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
+            should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
+                                       (node.name not in self.black_nodes)) or (node.name in self.white_nodes) or ((not self.calibrate_op_types) and (node.name not in self.black_nodes))
             if should_be_calibrate:
                 for tensor_name in itertools.chain(node.input, node.output):
                     if tensor_name in value_infos.keys():
@@ -89,13 +92,13 @@ class ONNXCalibrater:
                         if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT and (
                                 tensor_name not in model.graph.initializer):
                             tensors_to_calibrate.add(tensor_name)
-        
+
         # If augmenting all ops, it's possible that some nodes' input value are 0.
         # Can't reduce on dim with value of 0 if 'keepdims' is false, therefore set keepdims to 1.
-        if augment_all_ops:
-            keepdims_value = 1
-        else:
+        if self.calibrate_op_types:
             keepdims_value = 0
+        else:
+            keepdims_value = 1
 
         for tensor in tensors_to_calibrate:
             # Adding ReduceMin nodes
@@ -122,29 +125,32 @@ class ONNXCalibrater:
         return model
 
     #Using augmented outputs to generate inputs for quantization
-    def get_intermediate_outputs(self, calib_mode='naive', providers=None):
+    def get_intermediate_outputs(self, calib_mode='naive', providers=None, ort_graph_optimization_enable=True):
         ''' 
-            Gather intermediate model outputs after running inference
-            parameter calib_mode: type 'naive' gives (ReduceMin, ReduceMax) pairs
-                                for each augmented node across test data sets, where
-                                the first element is a minimum of all ReduceMin values
-                                and the second element is a maximum of all ReduceMax
-                                values;
-            :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
+        Gather intermediate model outputs after running inference
+        parameter calib_mode: type 'naive' gives (ReduceMin, ReduceMax) pairs
+                              for each augmented node across test data sets, where
+                              the first element is a minimum of all ReduceMin values
+                              and the second element is a maximum of all ReduceMax
+                              values;
+        parameter providers: Onnxruntime execution providers
+        parameter ort_graph_optimization_enable: Enable all OnnxRuntime graph optimizations, default = True
+        :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
         '''
 
         #conduct inference session and get intermediate outputs
-        if providers:
+        if ort_graph_optimization_enable:
+            session = onnxruntime.InferenceSession(self.augmented_model_path, None) 
+        else:            
             sess_options = onnxruntime.SessionOptions()
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL #ORT_ENABLE_BASIC
-            session = onnxruntime.InferenceSession(self.augmented_model_path, sess_options=sess_options, providers=providers)
-        else:
-            session = onnxruntime.InferenceSession(self.augmented_model_path, None)
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL  #ORT_ENABLE_BASIC
+            session = onnxruntime.InferenceSession(self.augmented_model_path,
+                                                   sess_options=sess_options,
+                                                   providers=providers)
 
         #number of outputs in original model
-        model = onnx.load(self.model_path)
-        num_model_outputs = len(model.graph.output)
-        model_original_outputs = set(output.name for output in model.graph.output)
+        num_model_outputs = len(self.model.graph.output)
+        model_original_outputs = set(output.name for output in self.model.graph.output)
 
         intermediate_outputs = []
 
@@ -154,12 +160,10 @@ class ONNXCalibrater:
                 break
             intermediate_outputs.append(session.run(None, inputs))
 
-
         node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
         output_dicts_list = [
             dict(zip(node_output_names, intermediate_output)) for intermediate_output in intermediate_outputs
         ]
-
 
         merged_dict = {}
         for d in output_dicts_list:
@@ -172,14 +176,13 @@ class ONNXCalibrater:
         # Characterizing distribution of a node's values across test data sets
         clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i not in model_original_outputs)
 
-
         if calib_mode == 'naive':
 
             pairs = []
             for i in range(0, len(added_node_output_names), 2):
                 min_value = 0
                 max_value = 0
-                min_value_array = min(clean_merged_dict[added_node_output_names[i]]) 
+                min_value_array = min(clean_merged_dict[added_node_output_names[i]])
                 max_value_array = max(clean_merged_dict[added_node_output_names[i + 1]])
                 if type(min_value_array) == int or min_value_array.size > 0:
                     min_value = float(min_value_array)
@@ -192,7 +195,6 @@ class ONNXCalibrater:
             raise ValueError('Unknown value for calib_mode. Currently only naive mode is supported.')
 
         final_dict = dict(zip(node_names, pairs))
-
 
         # merge new calibration data with previous calibration data
         if len(self.calibration_cache) > 0:
@@ -230,12 +232,14 @@ class ONNXCalibrater:
         # reduce the output range which in turn helps to improve accuracy
         if next_node:
             if next_node.op_type == 'Clip':
-                clip_min = next_node.attribute[0].f
-                clip_max = next_node.attribute[1].f
-                if rmin < clip_min:
-                    rmin = clip_min
-                if rmax > clip_max:
-                    rmax = clip_max
+                # attribute min and max:
+                if (2 == len(next_node.attribute)):
+                    for att_idx in [0, 1]:
+                        if next_node.attribute[att_idx].name == 'min':
+                            rmin = max(rmin, next_node.attribute[att_idx].f)
+                        elif next_node.attribute[att_idx].name == 'max':
+                            rmax = min(rmax, next_node.attribute[att_idx].f)
+
             elif next_node.op_type == 'Relu':
                 if rmin < 0:
                     rmin = 0
@@ -274,9 +278,8 @@ class ONNXCalibrater:
                 'quantization thresholds is required to calculate quantization params (zero point and scale)')
 
         quantization_params = {}
-        model = onnx.load(self.model_path)
 
-        self._get_input_name_to_nodes(model)
+        self._get_input_name_to_nodes(self.model)
 
         for tensor_name in quantization_thresholds.keys():
             child = None
@@ -290,20 +293,22 @@ class ONNXCalibrater:
 
         return quantization_params
 
-def get_calibrator(model_path,
+
+def get_calibrator(model,
                    data_reader: CalibrationDataReader,
                    op_types=['Conv', 'MatMul'],
                    black_nodes=[],
                    white_nodes=[],
                    augmented_model_path='augmented_model.onnx'):
 
-    calibrator = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
+    calibrator = ONNXCalibrater(model, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
 
     return calibrator
 
-def calculate_calibration_data(model_path,
+
+def calculate_calibration_data(model,
                                calibrator=None,
-                               calibration_data_reader: CalibrationDataReader=None,
+                               calibration_data_reader: CalibrationDataReader = None,
                                op_types_to_quantize=[],
                                activation_type=QuantType.QUInt8,
                                nodes_to_quantize=[],
@@ -316,11 +321,15 @@ def calculate_calibration_data(model_path,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    print("model path: %s" % model_path)
     print("augmented model path: %s" % augmented_model_path)
 
     if not calibrator:
-        calibrator = get_calibrator(model_path, calibration_data_reader, op_types_to_quantize, nodes_to_quantize, nodes_to_exclude, augmented_model_path=augmented_model_path)
+        calibrator = get_calibrator(model,
+                                    calibration_data_reader,
+                                    op_types_to_quantize,
+                                    nodes_to_exclude,                                    
+                                    nodes_to_quantize,
+                                    augmented_model_path=augmented_model_path)
 
     if not os.path.exists(augmented_model_path):
         augmented_model = calibrator.augment_graph(augment_all_ops=True)
@@ -328,42 +337,59 @@ def calculate_calibration_data(model_path,
 
     calibrator.get_intermediate_outputs(providers=["CUDAExecutionProvider"])
 
-def generate_calibration_table(calibrator, model_path, augmented_model_path, remove_previous_flag, data_reader, calibration_dataset=None, stride=5000, batch_size=20):
+
+def generate_calibration_table(calibrator,
+                               model,
+                               augmented_model_path,
+                               remove_previous_flag,
+                               data_reader,
+                               calibration_dataset=None,
+                               stride=5000,
+                               batch_size=20):
 
     if remove_previous_flag and os.path.exists(augmented_model_path):
         os.remove(augmented_model_path)
         print("remove previously generated %s and start to generate a new one." % (augmented_model_path))
 
     if not calibrator:
-        calibrator = get_calibrator(model_path, data_reader, augmented_model_path=augmented_model_path)
-    calculate_calibration_data(model_path, calibrator, augmented_model_path=augmented_model_path)
+        calibrator = get_calibrator(model, data_reader, augmented_model_path=augmented_model_path)
+    calculate_calibration_data(model, calibrator, augmented_model_path=augmented_model_path)
 
     return calibrator.get_calibration_cache()
 
-def calibrate(model_path,
+
+def calibrate(model,
               data_reader: CalibrationDataReader,
               op_types=['Conv', 'MatMul'],
               black_nodes=[],
               white_nodes=[],
-              augmented_model_path='augmented_model.onnx'):
+              augmented_model_path='augmented_model.onnx',
+              providers=["CPUExecutionProvider"],
+              ort_graph_optimization_enable=True,
+              quantization_params_calculation_enable=True):
     '''
-        Given an onnx model, augment and run the augmented model on calibration data set, aggregate and calculate the quantization parameters.
-    :param model_path: ONNX model to calibrate
+    Given an onnx model, augment and run the augmented model on calibration data set, aggregate and calculate the quantization parameters.
+    :param model: ONNX model to calibrate. It can be a ModelProto or a model path
     :param data_reader: user implemented object to read in and preprocess calibration dataset based on CalibrationDataReader interface
-    :param op_types: operator types to be calibrated and quantized, default = 'Conv,MatMul'
+    :param op_types: operator types to be calibrated and quantized, default = 'Conv,MatMul'. Empty means to quantize all FP32 tensors (except black_nodes)
     :param black_nodes: operator names that should not be quantized, default = ''
     :param white_nodes: operator names that force to be quantized, default = ''
     :param augmented_model_path: save augmented_model to this path
+    :param providers: execution providers to run calibration
+    :param ort_graph_optimization_enable: enable all OnnxRuntime graph optimizations, default = True
+    :param quantization_params_calculation_enable: enable quantization parameter calculation, default = True 
     '''
     #1. initialize a calibrater
-    calibrater = ONNXCalibrater(model_path, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
+    calibrater = ONNXCalibrater(model, data_reader, op_types, black_nodes, white_nodes, augmented_model_path)
     #2. augment
     augmented_model = calibrater.augment_graph()
     onnx.save(augmented_model, augmented_model_path)
     #3. generate quantization thresholds
-    dict_for_quantization = calibrater.get_intermediate_outputs()
+    dict_for_quantization = calibrater.get_intermediate_outputs(providers=providers, ort_graph_optimization_enable=ort_graph_optimization_enable)
     #4. generate quantization parameters dict
-    quantization_params_dict = calibrater.calculate_quantization_params(dict_for_quantization)
-
+    quantization_params_dict = {}    
+    if quantization_params_calculation_enable:
+        quantization_params_dict = calibrater.calculate_quantization_params(dict_for_quantization)
     print("Calibrated,quantized parameters calculated and returned.")
-    return quantization_params_dict
+
+    return quantization_params_dict if quantization_params_calculation_enable else dict_for_quantization

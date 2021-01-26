@@ -33,11 +33,11 @@ namespace contrib {
 namespace cuda {
 
 // constants for approximating the normal cdf
-constexpr float A = 0.5;
+constexpr float A = 0.5f;
 
-constexpr float B = 0.7978845608028654;  // sqrt(2.0/M_PI)
+constexpr float B = 0.7978845608028654f;  // sqrt(2.0/M_PI)
 
-constexpr float C = 0.035677408136300125;  // 0.044715 * sqrt(2.0/M_PI)
+constexpr float C = 0.035677408136300125f;  // 0.044715 * sqrt(2.0/M_PI)
 
 template <typename T, unsigned TPB>
 __global__ void FastGeluKernel(const T a, const T b, const T c, int input_length, int bias_length, const T* input, const T* bias, T* output) {
@@ -45,7 +45,7 @@ __global__ void FastGeluKernel(const T a, const T b, const T c, int input_length
 
   if (idx < input_length) {
     const T x = input[idx];
-    const T in = (bias == nullptr) ? x : (x + bias[idx % bias_length]);
+    const T in = (bias == nullptr) ? x : (T)(x + bias[idx % bias_length]);
     const T cdf = a + a * _Tanh(in * (c * in * in + b));
     output[idx] = in * cdf;
   }
@@ -96,6 +96,44 @@ bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int i
 
   return CUDA_CALL(cudaPeekAtLastError());
 }
+
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+template <unsigned TPB>
+__global__ void FastGeluKernel2(const nv_bfloat162 a, const nv_bfloat162 b, const nv_bfloat162 c,
+                                int input_length, int bias_length,
+                                const nv_bfloat162* input, const nv_bfloat162* bias, nv_bfloat162* output) {
+  const int idx = blockIdx.x * TPB + threadIdx.x;
+
+  if (idx < input_length) {
+    const nv_bfloat162 x = input[idx];
+    const nv_bfloat162 in = (bias == nullptr) ? x : (x + bias[idx % bias_length]);
+    const nv_bfloat162 cdf = a + a * _Tanh(in * (c * in * in + b));
+    output[idx] = in * cdf;
+  }
+}
+
+template <>
+bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length, const nv_bfloat16* input, const nv_bfloat16* bias, nv_bfloat16* output) {
+  constexpr int blockSize = 256;
+
+  if (0 == (bias_length & 1) && prop.major >= 7) {
+    const int n = input_length / 2;
+    const int gridSize = (n + blockSize - 1) / blockSize;
+    const nv_bfloat162 A2 = __floats2bfloat162_rn(A, A);
+    const nv_bfloat162 B2 = __floats2bfloat162_rn(B, B);
+    const nv_bfloat162 C2 = __floats2bfloat162_rn(C, C);
+    const nv_bfloat162* input2 = reinterpret_cast<const nv_bfloat162*>(input);
+    const nv_bfloat162* bias2 = reinterpret_cast<const nv_bfloat162*>(bias);
+    nv_bfloat162* output2 = reinterpret_cast<nv_bfloat162*>(output);
+    FastGeluKernel2<blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
+  } else {
+    const int gridSize = (input_length + blockSize - 1) / blockSize;
+    FastGeluKernel<nv_bfloat16, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+  }
+
+  return CUDA_CALL(cudaPeekAtLastError());
+}
+#endif
 
 }  // namespace cuda
 }  // namespace contrib

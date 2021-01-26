@@ -17,8 +17,6 @@ Abstract:
 
 #include "mlasi.h"
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-
 //
 // Define the parameters to execute segments of a QGEMM operation on worker
 // threads.
@@ -139,21 +137,11 @@ Return Value:
     }
 
     //
-    // Flip the sign bit of the zero point offset of matrix B if the kernel uses
-    // signed types and the matrix B data is unsigned.
+    // Fixup the sign bit of the zero point offset of matrix B if the data is
+    // the opposite format of the kernel implementation.
     //
 
-#if defined(MLAS_SSE2_INTRINSICS)
-    if (std::is_signed<typename KernelType::OffsetBType>::value) {
-        if (!WorkBlock->BIsSigned) {
-            offb = typename KernelType::OffsetBType(offb ^ 0x80);
-        }
-    }
-#elif defined(MLAS_NEON_INTRINSICS)
-    if (WorkBlock->BIsSigned) {
-        offb = typename KernelType::OffsetBType(offb ^ 0x80);
-    }
-#endif
+    offb = KernelType::FixupZeroPointB(offb, WorkBlock->BIsSigned);
 
     //
     // Step through each slice of matrix B along the K dimension.
@@ -294,21 +282,11 @@ Return Value:
     int32_t offb = typename KernelType::OffsetBType(WorkBlock->offb);
 
     //
-    // Flip the sign bit of the zero point offset of matrix B if the kernel uses
-    // signed types and the matrix B data is unsigned.
+    // Flip the sign bit of the zero point offset of matrix B if the data is
+    // the opposite format of the kernel implementation.
     //
 
-#if defined(MLAS_SSE2_INTRINSICS)
-    if (std::is_signed<typename KernelType::OffsetBType>::value) {
-        if (!WorkBlock->BIsSigned) {
-            offb = typename KernelType::OffsetBType(offb ^ 0x80);
-        }
-    }
-#elif defined(MLAS_NEON_INTRINSICS)
-    if (WorkBlock->BIsSigned) {
-        offb = typename KernelType::OffsetBType(offb ^ 0x80);
-    }
-#endif
+    offb = KernelType::FixupZeroPointB(offb, WorkBlock->BIsSigned);
 
     //
     // Extract the pointer to the column sum buffer from the packed matrix.
@@ -417,7 +395,7 @@ Return Value:
     }
 }
 
-#ifdef MLAS_SSE2_INTRINSICS
+#if defined(MLAS_SSE2_INTRINSICS)
 
 void
 MlasGemmU8X8CopyPackASse(
@@ -492,8 +470,8 @@ Return Value:
 
             _mm_storeu_si128((__m128i*)&D[0], Words);
 
-            D += 8;
             a += 8;
+            D += 8;
             k -= 8;
         }
 
@@ -971,6 +949,21 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
 
     MLAS_FORCEINLINE
     static
+    int32_t
+    FixupZeroPointB(
+        int32_t offb,
+        bool BIsSigned
+        )
+    {
+        if (!BIsSigned) {
+            offb = OffsetBType(offb ^ 0x80);
+        }
+
+        return offb;
+    }
+
+    MLAS_FORCEINLINE
+    static
     void
     CopyPackA(
         PackedAType* D,
@@ -1040,7 +1033,7 @@ MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>(
 
 #endif
 
-#ifdef MLAS_TARGET_AMD64
+#if defined(MLAS_TARGET_AMD64)
 
 //
 // Stores a vector to transpose a 4x4 byte vector using vpshufb.
@@ -1130,6 +1123,21 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
         }
 
         return false;
+    }
+
+    MLAS_FORCEINLINE
+    static
+    int32_t
+    FixupZeroPointB(
+        int32_t offb,
+        bool BIsSigned
+        )
+    {
+        if (!BIsSigned) {
+            offb = OffsetBType(offb ^ 0x80);
+        }
+
+        return offb;
     }
 
     MLAS_FORCEINLINE
@@ -1238,6 +1246,19 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
 
     MLAS_FORCEINLINE
     static
+    int32_t
+    FixupZeroPointB(
+        int32_t offb,
+        bool BIsSigned
+        )
+    {
+        MLAS_UNREFERENCED_PARAMETER(BIsSigned);
+
+        return offb;
+    }
+
+    MLAS_FORCEINLINE
+    static
     void
     CopyPackA(
         PackedAType* D,
@@ -1310,10 +1331,12 @@ MlasGemmU8X8PackedOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>(
 
 #endif
 
-#ifdef MLAS_NEON_INTRINSICS
+#if defined(MLAS_NEON64_INTRINSICS) || (defined(MLAS_NEON32_INTRINSICS) && !defined(_MSC_VER))
 
 //
 // Define the prototypes of the NEON routines written in assembly.
+//
+// N.B. The kernel has not been ported to build with the Windows ARM32 toolset.
 //
 
 extern "C"
@@ -1834,6 +1857,21 @@ struct MLAS_GEMM_U8X8_KERNEL_NEON
 
     MLAS_FORCEINLINE
     static
+    int32_t
+    FixupZeroPointB(
+        int32_t offb,
+        bool BIsSigned
+        )
+    {
+        if (BIsSigned) {
+            offb = OffsetBType(offb ^ 0x80);
+        }
+
+        return offb;
+    }
+
+    MLAS_FORCEINLINE
+    static
     void
     CopyPackA(
         PackedAType* D,
@@ -1890,14 +1928,200 @@ constexpr size_t MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
 constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::Strides;
 constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides;
 
-template
-void
-MLASCALL
-MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
-    );
-
 #endif
+
+struct MLAS_GEMM_U8X8_KERNEL_DEFAULT
+{
+    typedef uint8_t PackedAType;
+    typedef uint8_t PackedBType;
+    typedef uint8_t OffsetBType;
+
+    static constexpr size_t PackedK = 4;
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{16, 128, 128};
+    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{16, 128, 128};
+
+    MLAS_FORCEINLINE
+    static
+    bool
+    TryGemvKernel(
+        const uint8_t* A,
+        const uint8_t* B,
+        size_t ldb,
+        int32_t* C,
+        size_t CountK,
+        size_t CountN,
+        bool BIsSigned
+        )
+    {
+        MLAS_UNREFERENCED_PARAMETER(A);
+        MLAS_UNREFERENCED_PARAMETER(B);
+        MLAS_UNREFERENCED_PARAMETER(ldb);
+        MLAS_UNREFERENCED_PARAMETER(C);
+        MLAS_UNREFERENCED_PARAMETER(CountK);
+        MLAS_UNREFERENCED_PARAMETER(CountN);
+        MLAS_UNREFERENCED_PARAMETER(BIsSigned);
+
+        return false;
+    }
+
+    MLAS_FORCEINLINE
+    static
+    int32_t
+    FixupZeroPointB(
+        int32_t offb,
+        bool BIsSigned
+        )
+    {
+        if (BIsSigned) {
+            offb = OffsetBType(offb ^ 0x80);
+        }
+
+        return offb;
+    }
+
+    static
+    void
+    CopyPackA(
+        PackedAType* D,
+        const uint8_t* A,
+        size_t lda,
+        size_t CountM,
+        size_t CountK,
+        int32_t* RowSumBuffer
+        )
+    {
+        const size_t AlignedCountK =
+            (CountK + MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1) & ~(MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1);
+
+        //
+        // Process a single row of matrix A in a loop.
+        //
+
+        while (CountM-- > 0) {
+
+            int32_t RowSum = 0;
+
+            for (size_t k = 0; k < CountK; k++) {
+
+                uint8_t a0 = A[k];
+                D[k] = a0;
+
+                RowSum += a0;
+            }
+
+            for (size_t k = CountK; k < AlignedCountK; k++) {
+                D[k] = 0;
+            }
+
+            *RowSumBuffer++ = RowSum;
+
+            A += lda;
+            D += AlignedCountK;
+        }
+    }
+
+    static
+    void
+    CopyPackB(
+        PackedBType* D,
+        const uint8_t* B,
+        size_t ldb,
+        size_t CountN,
+        size_t CountK,
+        int32_t* ColumnSumBuffer,
+        bool BIsSigned
+        )
+    {
+        const size_t AlignedCountK =
+            (CountK + MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1) & ~(MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1);
+        const uint8_t BitFlipValue = (BIsSigned ? 0x80 : 0);
+
+        //
+        // Process a single column of matrix B in a loop.
+        //
+
+        while (CountN-- > 0) {
+
+            const uint8_t* b = B;
+            int32_t ColumnSum = 0;
+
+            //
+            // Transpose the data from matrix B to the packed buffer.
+            //
+
+            for (size_t k = 0; k < CountK; k++) {
+
+                uint8_t b0 = b[0] ^ BitFlipValue;
+                D[k] = b0;
+
+                ColumnSum += b0;
+
+                b += ldb;
+            }
+
+            for (size_t k = CountK; k < AlignedCountK; k++) {
+                D[k] = 0;
+            }
+
+            *ColumnSumBuffer++ = ColumnSum;
+
+            B += 1;
+            D += AlignedCountK;
+        }
+    }
+
+    static
+    size_t
+    GemmKernel(
+        const PackedAType* A,
+        const PackedBType* B,
+        int32_t* C,
+        size_t PackedCountK,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        const int32_t* RowSumBuffer,
+        const int32_t* ColumnSumBuffer,
+        int32_t DepthValue,
+        bool ZeroMode
+        )
+    {
+        MLAS_UNREFERENCED_PARAMETER(CountM);
+        MLAS_UNREFERENCED_PARAMETER(ldc);
+
+        //
+        // Process a single column of matrix B in a loop.
+        //
+
+        while (CountN-- > 0) {
+
+            int32_t Accumulator = RowSumBuffer[0] + ColumnSumBuffer[0] + DepthValue;
+            ColumnSumBuffer += 1;
+
+            const PackedAType* a = A;
+
+            for (size_t k = 0; k < PackedCountK; k++) {
+
+                Accumulator += a[0] * B[0];
+                Accumulator += a[1] * B[1];
+                Accumulator += a[2] * B[2];
+                Accumulator += a[3] * B[3];
+
+                a += 4;
+                B += 4;
+            }
+
+            if (!ZeroMode) {
+                Accumulator += C[0];
+            }
+
+            C[0] = Accumulator;
+            C += 1;
+        }
+
+        return 1;
+    }
+};
 
 void
 MlasGemmU8X8Threaded(
@@ -1971,14 +2195,14 @@ Return Value:
     GemmU8X8Operation(&WorkBlock);
 #elif defined(MLAS_SSE2_INTRINSICS)
     MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>(&WorkBlock);
-#elif defined(MLAS_NEON_INTRINSICS)
+#elif defined(MLAS_NEON64_INTRINSICS) || (defined(MLAS_NEON32_INTRINSICS) && !defined(_MSC_VER))
     if (WorkBlock.BIsPacked) {
         MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>(&WorkBlock);
     } else {
         MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_NEON>(&WorkBlock);
     }
 #else
-#error Unsupported architecture.
+    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(&WorkBlock);
 #endif
 }
 
@@ -2156,8 +2380,6 @@ Return Value:
 
     MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
 }
-
-#endif // MLAS_SUPPORTS_GEMM_U8X8
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
 

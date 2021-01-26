@@ -66,10 +66,10 @@ public:
      // threads is provided via the thread pool
      _shards[shard]._next.store(shard * iterations_per_shard,
                                 ::std::memory_order_relaxed);
-     _shards[shard]._end = (shard+1) * iterations_per_shard;
-   }
 
-   _shards[_num_shards - 1]._end = num_iterations;
+     bool is_last_shard = (shard == _num_shards-1);
+     _shards[shard]._end = is_last_shard ? num_iterations : ((shard+1) * iterations_per_shard);
+   }
  }
 
  // Allocate each thread to a home shard, from which it starts

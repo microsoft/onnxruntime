@@ -178,6 +178,7 @@ static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
                                 const std::string& input1,
                                 const std::string& input2,
+                                bool add_activation,
                                 int32_t fuse_code,
                                 const std::string& output,
                                 bool output_is_nhwc,
@@ -187,6 +188,7 @@ static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
                                 const std::string& input1,
                                 const std::string& input2,
+                                bool add_activation,
                                 int32_t fuse_code,
                                 const std::string& output,
                                 bool output_is_nhwc,
@@ -199,7 +201,11 @@ static Status AddBinaryOperator(int32_t op_type,
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
-  ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
+
+  if (add_activation) {
+    ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
+  }
+
   ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output],
                                         output_scale, output_zero_point);
@@ -291,7 +297,8 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor, tensor_byte_size));
+          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                    unpacked_tensor, tensor_byte_size));
       src = unpacked_tensor.get();
       break;
     }
@@ -371,7 +378,8 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor, tensor_byte_size));
+          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                    unpacked_tensor, tensor_byte_size));
       src = unpacked_tensor.get();
       break;
     }
@@ -498,7 +506,8 @@ static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const 
   size_t tensor_byte_size;
   const auto& zero_point_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
   ORT_RETURN_IF_ERROR(
-      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, unpacked_tensor, tensor_byte_size));
+      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                unpacked_tensor, tensor_byte_size));
   zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
   return Status::OK();
 }
@@ -749,6 +758,7 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
           "Mul",
           "Div",
           "QLinearAdd",
+          "Pow",
       });
 }
 
@@ -757,16 +767,20 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto input_defs(node.InputDefs());
 
   int32_t op_code;
+  bool add_activation = true;
   bool op_is_qlinear = op_type == "QLinearAdd";
-  if (op_type == "Add" || op_is_qlinear)
+  if (op_type == "Add" || op_is_qlinear) {
     op_code = ANEURALNETWORKS_ADD;
-  else if (op_type == "Sub")
+  } else if (op_type == "Sub") {
     op_code = ANEURALNETWORKS_SUB;
-  else if (op_type == "Mul")
+  } else if (op_type == "Mul") {
     op_code = ANEURALNETWORKS_MUL;
-  else if (op_type == "Div")
+  } else if (op_type == "Div") {
     op_code = ANEURALNETWORKS_DIV;
-  else {
+  } else if (op_type == "Pow") {
+    add_activation = false;  // ANEURALNETWORKS_POW does not have activation
+    op_code = ANEURALNETWORKS_POW;
+  } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
   }
 
@@ -802,9 +816,14 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
   }
 
-  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+  if (add_activation) {
+    fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+  }
+
   return AddBinaryOperator(op_code, model_builder,
-                           input1, input2, fuse_code,
+                           input1, input2,
+                           add_activation, fuse_code,
                            output, output_is_nhwc, y_scale, y_zero_point);
 }
 
@@ -1113,7 +1132,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_MUL,
                                         model_builder,
                                         input, tensor_a_name,
-                                        ANEURALNETWORKS_FUSED_NONE,
+                                        true /* add_activation */, ANEURALNETWORKS_FUSED_NONE,
                                         tensor_imm_product_name,
                                         output_is_nhwc));
 
@@ -1122,7 +1141,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_ADD,
                                         model_builder,
                                         tensor_imm_product_name, tensor_b_name,
-                                        fuse_code,
+                                        true /* add_activation */, fuse_code,
                                         output,
                                         output_is_nhwc));
 
@@ -2408,6 +2427,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Div", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Pow", BinaryOpBuilder);
   }
 
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
