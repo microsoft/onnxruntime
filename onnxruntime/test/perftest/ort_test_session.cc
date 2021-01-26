@@ -101,7 +101,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #ifdef USE_ROCM
     OrtROCMProviderOptions rocm_options{
         0,
-        static_cast<OrtMIOpenConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
+        0,
         std::numeric_limits<size_t>::max(),
         0};
     session_options.AppendExecutionProvider_ROCM(rocm_options);
