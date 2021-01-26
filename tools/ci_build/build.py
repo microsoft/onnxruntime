@@ -1980,7 +1980,7 @@ def main():
             install_python_deps(args.numpy_version)
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
-        if args.cuda_version is None:
+        if args.use_cuda and args.cuda_version is None:
             if is_windows():
                 # cuda_version is used while generating version_info.py on Windows.
                 raise BuildError("cuda_version must be specified on Windows.")
