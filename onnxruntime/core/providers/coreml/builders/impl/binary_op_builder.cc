@@ -14,7 +14,8 @@ namespace coreml {
 class BinaryOpBuilder : public BaseOpBuilder {
  private:
   int GetMinSupportedOpSet(const Node& node) const override;
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 };
 
 int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
@@ -22,7 +23,8 @@ int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
   return 7;
 }
 
-Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                                              const logging::Logger& /* logger */) const {
   const auto& op_type(node.OpType());
   const auto input_defs(node.InputDefs());
 

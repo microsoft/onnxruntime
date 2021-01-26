@@ -15,8 +15,9 @@
 namespace onnxruntime {
 namespace coreml {
 
-ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
-    : graph_viewer_(graph_viewer) {
+ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger)
+    : graph_viewer_(graph_viewer),
+      logger_(logger) {
 }
 
 Status ModelBuilder::Initialize() {
@@ -170,7 +171,7 @@ Status ModelBuilder::AddOperations() {
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     if (const auto* op_builder = GetOpBuilder(*node)) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node));
+      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node, logger_));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");
@@ -190,7 +191,7 @@ Status ModelBuilder::RegisterModelOutputs() {
 
 Status ModelBuilder::Compile(std::unique_ptr<Model>& model, const std::string& path) {
   ORT_RETURN_IF_ERROR(SaveCoreMLModel(path));
-  model.reset(new Model(path));
+  model.reset(new Model(path, logger_));
   model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
   return model->LoadModel();

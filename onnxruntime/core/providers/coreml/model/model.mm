@@ -20,9 +20,11 @@
 @interface OnnxTensorFeatureProvider : NSObject <MLFeatureProvider> {
   const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>* inputs_;
   NSSet* featureNames_;
+  const onnxruntime::logging::Logger* logger_;
 }
 
-- (instancetype)initWithInputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)inputs;
+- (instancetype)initWithInputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)inputs
+                        logger:(const onnxruntime::logging::Logger*)logger;
 - (MLFeatureValue*)featureValueForName:(NSString*)featureName API_AVAILABLE_OS_VERSIONS;
 - (NSSet<NSString*>*)featureNames;
 
@@ -35,9 +37,11 @@
 @interface CoreMLExecution : NSObject {
   NSString* coreml_model_path_;
   NSString* compiled_model_path_;
+  const onnxruntime::logging::Logger* logger_;
 }
 
-- (instancetype)initWithPath:(const std::string&)path;
+- (instancetype)initWithPath:(const std::string&)path
+                      logger:(const onnxruntime::logging::Logger&)logger;
 - (void)cleanup;
 - (void)dealloc;
 - (onnxruntime::common::Status)loadModel API_AVAILABLE_OS_VERSIONS;
@@ -52,9 +56,12 @@
 
 @implementation OnnxTensorFeatureProvider
 
-- (instancetype)initWithInputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)inputs {
-  self = [super init];
-  inputs_ = &inputs;
+- (instancetype)initWithInputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)inputs
+                        logger:(const onnxruntime::logging::Logger*)logger {
+  if (self = [super init]) {
+    inputs_ = &inputs;
+    logger_ = logger;
+  }
   return self;
 }
 
@@ -92,8 +99,8 @@
 
     MLMultiArrayDataType data_type = MLMultiArrayDataTypeFloat32;
     if (input.tensor_info.data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      LOGS_DEFAULT(ERROR) << "Input data type is not float, actual type: "
-                          << input.tensor_info.data_type;
+      LOGS(*logger_, ERROR) << "Input data type is not float, actual type: "
+                            << input.tensor_info.data_type;
       return nil;
     }
 
@@ -105,8 +112,8 @@
                                                           deallocator:(^(void* /* bytes */){
                                                                       })error:&error];
     if (error != nil) {
-      LOGS_DEFAULT(ERROR) << "Failed to create MLMultiArray for feature: " << [featureName UTF8String]
-                          << ", error: " << [[error localizedDescription] UTF8String];
+      LOGS(*logger_, ERROR) << "Failed to create MLMultiArray for feature: " << [featureName UTF8String]
+                            << ", error: " << [[error localizedDescription] UTF8String];
       return nil;
     }
 
@@ -121,9 +128,12 @@
 
 @implementation CoreMLExecution
 
-- (instancetype)initWithPath:(const std::string&)path {
-  self = [super init];
-  coreml_model_path_ = [NSString stringWithUTF8String:path.c_str()];
+- (instancetype)initWithPath:(const std::string&)path
+                      logger:(const onnxruntime::logging::Logger&)logger {
+  if (self = [super init]) {
+    coreml_model_path_ = [NSString stringWithUTF8String:path.c_str()];
+    logger_ = &logger;
+  }
   return self;
 }
 
@@ -132,8 +142,8 @@
   if (compiled_model_path_ != nil) {
     [[NSFileManager defaultManager] removeItemAtPath:compiled_model_path_ error:&error];
     if (error != nil) {
-      LOGS_DEFAULT(ERROR) << "Failed cleaning up the compiled model: " << [compiled_model_path_ UTF8String]
-                          << ", error message: " << [[error localizedDescription] UTF8String];
+      LOGS(*logger_, ERROR) << "Failed cleaning up the compiled model: " << [compiled_model_path_ UTF8String]
+                            << ", error message: " << [[error localizedDescription] UTF8String];
     }
     compiled_model_path_ = nil;
   }
@@ -142,8 +152,8 @@
     error = nil;
     [[NSFileManager defaultManager] removeItemAtPath:coreml_model_path_ error:&error];
     if (error != nil) {
-      LOGS_DEFAULT(ERROR) << "Failed cleaning up the coreml model: " << [coreml_model_path_ UTF8String]
-                          << ", error message: " << [[error localizedDescription] UTF8String];
+      LOGS(*logger_, ERROR) << "Failed cleaning up the coreml model: " << [coreml_model_path_ UTF8String]
+                            << ", error message: " << [[error localizedDescription] UTF8String];
     }
     coreml_model_path_ = nil;
   }
@@ -184,7 +194,8 @@
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model is not loaded");
   }
 
-  OnnxTensorFeatureProvider* input_feature = [[OnnxTensorFeatureProvider alloc] initWithInputs:inputs];
+  OnnxTensorFeatureProvider* input_feature = [[OnnxTensorFeatureProvider alloc] initWithInputs:inputs
+                                                                                        logger:logger_];
 
   if (input_feature == nil) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "inputFeature is not initialized");
@@ -251,7 +262,7 @@ namespace coreml {
 // This class will bridge Model (c++) with CoreMLExecution (objective c++)
 class Execution {
  public:
-  Execution(const std::string& path);
+  Execution(const std::string& path, const logging::Logger& logger);
   ~Execution(){};
 
   Status LoadModel();
@@ -263,8 +274,8 @@ class Execution {
   CoreMLExecution* execution_;
 };
 
-Execution::Execution(const std::string& path) {
-  execution_ = [[CoreMLExecution alloc] initWithPath:path];
+Execution::Execution(const std::string& path, const logging::Logger& logger) {
+  execution_ = [[CoreMLExecution alloc] initWithPath:path logger:logger];
 }
 
 Status Execution::LoadModel() {
@@ -292,8 +303,8 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+ ");
 }
 
-Model::Model(const std::string& path)
-    : execution_(onnxruntime::make_unique<Execution>(path)) {
+Model::Model(const std::string& path, const logging::Logger& logger)
+    : execution_(onnxruntime::make_unique<Execution>(path, logger)) {
 }
 
 Model::~Model() {}

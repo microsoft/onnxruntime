@@ -65,7 +65,8 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   connected nodes that can be handled are grouped together.
   */
 
-  const auto node_groups = coreml::GetSupportedNodes(graph_viewer);
+  const auto& logger = *GetLogger();
+  const auto node_groups = coreml::GetSupportedNodes(graph_viewer, logger);
 
   if (node_groups.empty()) {
     return result;
@@ -75,7 +76,6 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   std::unordered_set<const NodeArg*> graph_outputs(graph_output_list.cbegin(), graph_output_list.cend());
 
   size_t num_of_supported_nodes = 0;
-  auto& logger = *GetLogger();
   for (const auto& group : node_groups) {
     if (group.empty())
       continue;
@@ -169,7 +169,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    coreml::ModelBuilder builder(graph_viewer);
+    coreml::ModelBuilder builder(graph_viewer, *GetLogger());
     std::unique_ptr<coreml::Model> coreml_model;
     const std::string coreml_model_file_path = coreml::util::GetTemporaryFilePath();
     ORT_RETURN_IF_ERROR(builder.Compile(coreml_model, coreml_model_file_path));
