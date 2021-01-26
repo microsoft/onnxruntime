@@ -277,7 +277,7 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
                            ort_api);
 
   std::vector<const char*> input_names(input_count);
-  for (int i = 0; i < input_count; i++) {
+  for (size_t i = 0; i < input_count; i++) {
     const char* name;
     RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetInputName(op_type, op_domain, i, &name),
                             ort_api);
@@ -290,7 +290,7 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   }
 
   std::vector<const char*> output_names(output_count);
-  for (int i = 0; i < output_count; i++) {
+  for (size_t i = 0; i < output_count; i++) {
     const char* name;
     RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetOutputName(op_type, op_domain, i, &name),
                              ort_api);
@@ -301,7 +301,7 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   }
 
   std::vector<OrtValue*> attributes;
-  for (int i = 0; i < num_attributes; i++) {
+  for (size_t i = 0; i < num_attributes; i++) {
     attributes.push_back(static_cast<OnnxruntimeValue*>(*(attribute_values + i))->UseOrtValue());
   }
 

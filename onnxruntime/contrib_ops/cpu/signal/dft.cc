@@ -208,7 +208,7 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, size_t batch_idx,
 
   // Scale the output if inverse
   if (inverse) {
-    for (int i = 0; i < number_of_samples; i++) {
+    for (size_t i = 0; i < number_of_samples; i++) {
       std::complex<T>& val = *(Y_data + i);
       val /= static_cast<T>(number_of_samples);
     }
@@ -243,12 +243,12 @@ static Status dft_naive(size_t batch_idx, const Tensor* X, Tensor* Y, const Tens
 
   auto angular_velocity = compute_angular_velocity<T>(number_of_samples, inverse);
 
-  for (int i = 0; i < dft_output_size; i++) {
+  for (size_t i = 0; i < dft_output_size; i++) {
     std::complex<T>& out = *(Y_data + i);
     out.real(0);
     out.imag(0);
 
-    for (int j = 0; j < number_of_samples; j++) {  // vectorize over this loop
+    for (size_t j = 0; j < number_of_samples; j++) {  // vectorize over this loop
       auto exponential = std::complex<T>(cos(i * j * angular_velocity), sin(i * j * angular_velocity));
       auto window_element = window_data ? * (window_data + j) : 1;
       auto element = *(X_data + j) * window_element;

@@ -66,7 +66,7 @@ void RegisterSignalSchemas() {
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        size_t ndim = 1;
+        int64_t ndim = 1;
 
         bool is_onesided = true;
         auto attr_proto = ctx.getAttribute("onesided");
@@ -80,10 +80,10 @@ void RegisterSignalSchemas() {
 
           if (is_onesided) {
             auto n_fft = input_shape.dim(1).dim_value();
-            result_shape.mutable_dim(1)->set_dim_value(static_cast<int64_t>((n_fft >> 1) + 1));
+            result_shape.mutable_dim(1)->set_dim_value((n_fft >> 1) + 1);
           }
 
-          auto dim_size = input_shape.dim_size();
+          auto dim_size = static_cast<int64_t>(input_shape.dim_size());
           if (dim_size == ndim + 1) {                  // real input
             result_shape.add_dim()->set_dim_value(2);  // output is same shape, but with extra dim for 2 values (real/imaginary)
           } else if (dim_size == ndim + 2) {           // complex input, do nothing
@@ -116,7 +116,7 @@ void RegisterSignalSchemas() {
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        size_t ndim = 1;
+        int64_t ndim = 1;
         auto attr_proto = ctx.getAttribute("signal_ndim");
         if (attr_proto && attr_proto->has_i()) {
           ndim = static_cast<size_t>(attr_proto->i());
@@ -125,7 +125,7 @@ void RegisterSignalSchemas() {
         auto& input_shape = getInputShape(ctx, 0);
         ONNX_NAMESPACE::TensorShapeProto result_shape = input_shape;
 
-        auto dim_size = input_shape.dim_size();
+        auto dim_size = static_cast<int64_t>(input_shape.dim_size());
         if (dim_size == ndim + 1) {                  // real input
           result_shape.add_dim()->set_dim_value(2);  // output is same shape, but with extra dim for 2 values (real/imaginary)
         } else if (dim_size == ndim + 2) {           // complex input, do nothing

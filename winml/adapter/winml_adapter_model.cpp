@@ -611,7 +611,7 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
   auto schema = GetSchema(op_type, op_domain);
   auto all_attributes = schema->attributes();
 
-  for (int i = 0; i < num_attributes; i++) {
+  for (size_t i = 0; i < num_attributes; i++) {
     auto tensor = attribute_values[i]->GetMutable<onnxruntime::Tensor>();
       
     auto attr = node.add_attribute();
