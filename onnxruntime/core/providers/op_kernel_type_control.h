@@ -149,9 +149,9 @@ struct EnabledOpKernelArgTypes {
 /**
  * Specifies an allowed set of types globally (applicable to any Op kernel argument).
  * This can optionally be specified to further limit the enabled types.
- * 
+ *
  * Note: This should be called from the onnxruntime::op_kernel_type_control namespace.
- * 
+ *
  * @param ... The types.
  */
 #define ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES(...)             \
@@ -181,6 +181,8 @@ struct EnabledOpKernelArgTypes {
  * @param ArgIndex Index of the given Op kernel argument.
  */
 #define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(Op, ArgDirection, ArgIndex) \
-  boost::mp11::mp_rename<                                                \
+  ::boost::mp11::mp_rename<                                              \
       ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Op, ArgDirection, ArgIndex),   \
       std::tuple>
+
+#include "core/providers/op_kernel_type_control_overrides.inc"
