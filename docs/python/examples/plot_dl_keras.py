@@ -26,7 +26,6 @@ if not os.path.exists('dense121.onnx'):
 
     from keras2onnx import convert_keras
     onx = convert_keras(model, 'dense121.onnx')
-    onx.ir_version = 6
     with open("dense121.onnx", "wb") as f:
         f.write(onx.SerializeToString())
 

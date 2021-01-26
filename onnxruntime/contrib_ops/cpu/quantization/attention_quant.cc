@@ -240,7 +240,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
           continue;
         }
 #endif
-        QGemm(sequence_length,                                    // M      = S
+        MlasGemm(sequence_length,                                    // M      = S
               head_size_,                                         // N      = H
               hidden_size,                                        // K      = NH
               input_data + input_offset,                          // A

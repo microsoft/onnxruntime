@@ -233,14 +233,14 @@ Status SessionState::GetInitializedTensors(
           "Failed to get OrtValue index from name: ", status.ErrorMessage());
       continue;
     }
-    if (initialized_tensors_.find(idx) != initialized_tensors_.end()){
+    if (initialized_tensors_.find(idx) != initialized_tensors_.end()) {
       result.emplace(weight_name, initialized_tensors_.at(idx));
     } else {
       ORT_RETURN_IF_NOT(
           allow_missing_weights,
           "Failed to get initializer with name: ", weight_name, " and index:", idx);
       continue;
-    }    
+    }
   }
   retrieved_weights = std::move(result);
   return Status::OK();
@@ -389,6 +389,7 @@ void TryCalculateSizeFromResolvedShape(int ml_value_idx, std::unordered_map<int,
 
 }  // namespace
 
+// If this function fails NO memory planning will take place, hence lets ONLY FAIL and stop training where warranted, example SIZE overflow.
 Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                                const std::vector<int>& feed_mlvalue_idxs,
                                                MemoryPatternGroup* output,
@@ -425,12 +426,17 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       auto* arg = node->OutputDefs()[i];
       size_t is_resolved = 0;
       std::vector<int64_t> resolved_shape;
-      ORT_RETURN_IF_ERROR(TryResolveShape(arg, map, is_resolved, resolved_shape));
 
-      // Store all valid resolved shapes. They will be queried in, for example,
-      // Recv operator to bypass the dependency of output shapes on inputs.
-      if (is_resolved != 0) {
-        resolved_shapes[ml_value_idx] = resolved_shape;
+      // Tensors whose shape cannot be resolved statically will be allocated at runtime.
+      if (TryResolveShape(arg, map, is_resolved, resolved_shape).IsOK()) {
+        // Store all valid resolved shapes. They will be queried in, for example,
+        // Recv operator to bypass the dependency of output shapes on inputs.
+        if (is_resolved != 0) {
+          resolved_shapes[ml_value_idx] = resolved_shape;
+        }
+      } else {
+        LOGS(logger_, INFO) << "[Static memory planning] Could not resolve shape for tensor with ML index "
+                            << ml_value_idx << ", will allocate dynamically.";
       }
     }
   }
@@ -453,7 +459,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute, node name is : " + node_name);
       }
 
-      if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(size, ml_data_type->Size(), &size)) {
+      if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(size, ml_data_type->Size(), &size)) {
         return Status(ONNXRUNTIME, FAIL, "Size overflow");
       }
 
@@ -489,7 +495,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
           ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
         size_t aligned_size = 0;
-        if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(size, ml_data_type->Size(), &aligned_size)) {
+        if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(size, ml_data_type->Size(), &aligned_size)) {
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
 
@@ -990,9 +996,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
+  //Record the allocation plan
 
   // Uncomment the below to dump the allocation plan to std::cout
   // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::GenerateTensorMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
+#endif
 
   std::unique_ptr<ITensorAllocator> tensor_allocator(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
@@ -1009,6 +1019,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             return AddInitializedTensor(idx, value, &d, constant);
           },
           logger_, data_transfer_mgr_, *p_seq_exec_plan_.get(), session_options));
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  //Record Weight allocation info on device
+  MemoryInfo::RecordInitializerAllocInfo(GetInitializedTensors());
+#endif
 
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.

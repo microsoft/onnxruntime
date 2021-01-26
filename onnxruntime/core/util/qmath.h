@@ -3,29 +3,11 @@
 
 #pragma once
 
-#include "core/platform/threadpool.h"
 #include "core/mlas/inc/mlas.h"
 
-#include <cfenv>
 #include <cmath>
 
 namespace onnxruntime {
-
-void QGemm(
-    int M,
-    int N,
-    int K,
-    const uint8_t* A,
-    int lda,
-    const uint8_t a_offset,
-    const uint8_t* B,
-    int ldb,
-    const uint8_t b_offset,
-    bool b_signed,
-    int32_t* C,
-    int ldc,
-    concurrency::ThreadPool* thread_pool,
-    const MLAS_QGEMM_OUTPUT_PROCESSOR* output_processor = nullptr);
 
 inline float RoundHalfToEven(float input) {
   if (!std::isfinite(input)) {

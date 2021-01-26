@@ -39,7 +39,7 @@ The following table lists all the available configuratoin optoins and the Key-Va
 | device_type | string | CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32, Any valid Hetero combination, Any valid Multi-Device combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
 | device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvinotoolkit.org/latest/classInferenceEngine_1_1Core.html#acb212aa879e1234f51b845d2befae41c). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
 | enable_vpu_fast_compile | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices. During initialization of the VPU device with compiled model, Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format. This in-turn speeds up model initialization time. However, enabling this option may slowdown inference due to some of the optimizations not being fully applied, so caution is to be exercised while enabling this option. |
-| num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. |
+| num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. This option when set actually makes those number of free InferRequests made available in the pool so that each thread has a separate InferRequest available thus enabling Multi-threading during inference. Note: This option is not to set the num_of_threads for inferencing, it is to just set number of free InferRequests that should be made available. |
 
 Valid Hetero or Multi-Device combination's:
 HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
@@ -103,8 +103,8 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Acos | Yes | No | No |
 | Acosh | Yes | No | No |
 | Add | Yes | Yes | Yes |
-| ArgMax | Yes | No | No |
-| ArgMin | Yes | No | No |
+| ArgMax | Yes | Yes | Yes |
+| ArgMin | Yes | No | Yes |
 | Asin | Yes | Yes | No |
 | Asinh | Yes | Yes | No |
 | Atan | Yes | Yes | No |
@@ -112,6 +112,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | AveragePool | Yes | Yes | Yes |
 | BatchNormalization | Yes | Yes | Yes |
 | Cast | Yes | Yes | Yes |
+| Ceil | No | Yes | No |
 | Clip | Yes | Yes | Yes |
 | Concat | Yes | Yes | Yes |
 | Constant | Yes | Yes | Yes |
@@ -131,6 +132,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Flatten | Yes | Yes | Yes |
 | Floor | Yes | Yes | Yes |
 | Gather | Yes | Yes | Yes |
+| GatherND | No | No | Yes |
 | Gemm | Yes | Yes | Yes |
 | GlobalAveragePool | Yes | Yes | Yes |
 | GlobalLpPool | Yes | Yes | No |
@@ -150,12 +152,13 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Neg | Yes | Yes | Yes |
 | NonMaxSuppression | No | No | Yes |
 | NonZero | Yes | No | Yes |
-| Not | Yes | Yes | No |
+| Not | Yes | Yes | Yes |
 | OneHot | Yes | Yes | Yes |
 | Pad | Yes | Yes | Yes |
 | Pow | Yes | Yes | Yes |
 | PRelu | Yes | Yes | Yes |
 | Reciprocal | Yes | Yes | Yes |
+| Range | No | No | Yes |
 | ReduceLogSum | Yes | No | Yes |
 | ReduceMax | Yes | Yes | Yes |
 | ReduceMean | Yes | Yes | Yes |
@@ -168,6 +171,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Resize | Yes | No | Yes |
 | RoiAlign | No | No | Yes |
 | Scatter | No | No | Yes |
+| ScatterElements | No | No | Yes |
 | Selu | Yes | Yes | No |
 | Shape | Yes | Yes | Yes |
 | Sigmoid | Yes | Yes | Yes |
@@ -188,6 +192,8 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | TopK | Yes | Yes | Yes |
 | Transpose | Yes | Yes | Yes |
 | Unsqueeze | Yes | Yes | Yes |
+| Upsample | Yes | No | No |
+| Where | No | No | Yes |
 
 ## Topology Support
 
@@ -244,6 +250,10 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | udnie | Yes | No | No | No* |
 
 *FPGA only runs in HETERO mode wherein the layers that are not supported on FPGA fall back to OpenVINO CPU.
+
+## Inferencing on FP16 Models
+FP16 models can be inferenced on a VPU with device_type = "MYRIAD_FP16" and on GPU with
+device_type = "GPU_FP16"
 
 ## CSharp API
 

@@ -65,6 +65,7 @@ struct ModelMetadata {
   std::string graph_name;
   std::string domain;
   std::string description;
+  std::string graph_description;
   int64_t version = 0;
   std::unordered_map<std::string, std::string> custom_metadata_map;
 };
@@ -183,6 +184,7 @@ class InferenceSession {
     */
   common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) ORT_MUST_USE_RESULT;
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
   /**
     * Add custom ops. This API is not thread safe.
     */
@@ -198,8 +200,6 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) ORT_MUST_USE_RESULT;
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
   /**
     * Load an ONNX or ORT format model.
@@ -581,11 +581,11 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
+#endif
 
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
-#endif
 
   ModelMetadata model_metadata_;
   std::unordered_set<std::string> required_inputs_;

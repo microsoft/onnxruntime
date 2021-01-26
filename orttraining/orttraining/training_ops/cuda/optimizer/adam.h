@@ -3,7 +3,7 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -22,6 +22,7 @@ void AdamOptimizerImpl(
     const T4 beta,
     const T4 lambda,
     const T4 epsilon,
+    const T4 max_norm,
     const bool do_bias_correction,
     const int64_t weight_decay_mode,
     T4* moment_1_out,
@@ -39,10 +40,12 @@ class AdamOptimizer final : public CudaKernel {
     info.GetAttrOrDefault("beta", &beta_, 0.999f);
     info.GetAttrOrDefault("lambda", &lambda_, 0.0f);
     info.GetAttrOrDefault("epsilon", &epsilon_, 1e-8f);
+    info.GetAttrOrDefault("max_norm_clip", &max_norm_clip_, 1.0f);
 
     int64_t tmp_flag = static_cast<int64_t>(0);
     ORT_ENFORCE(info.GetAttr<int64_t>("do_bias_correction", &tmp_flag).IsOK(), "Missing/Invalid do_bias_correction");
     ORT_ENFORCE(tmp_flag == 0 || tmp_flag == 1, "do_bias_correction must be either 0 or 1.");
+    ORT_ENFORCE(max_norm_clip_ != 0, "max_norm_clip must NOT be 0.");
     do_bias_correction_ = tmp_flag != 0 ? true : false;
     info.GetAttrOrDefault("weight_decay_mode", &weight_decay_mode_, static_cast<int64_t>(0));
   }
@@ -54,6 +57,7 @@ class AdamOptimizer final : public CudaKernel {
   float beta_;
   float lambda_;
   float epsilon_;
+  float max_norm_clip_;
   bool do_bias_correction_;
   int64_t weight_decay_mode_;
 };

@@ -11,30 +11,30 @@ namespace onnxruntime {
 namespace rocm {
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP)           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                        \
-      AdamOptimizer,                                                                                    \
-      kMSDomain,                                                                                        \
-      1,                                                                                                \
-      T1##_##T2##_##T3##_##T4##_##T_GRAD##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                      \
-      kRocmExecutionProvider,                                                                           \
-      KernelDefBuilder()                                                                                \
-          .Alias(1, 0)                             /* Update step count in-place */                     \
-          .Alias(2, 3)                             /* Update weights in-place */                        \
-          .Alias(3, 4)                             /* Update gradients in-place */                      \
-          .Alias(4, 1)                             /* Update moment-1 in-place */                       \
-          .Alias(5, 2)                             /* Update moment-2 in-place */                       \
-          .Alias(6, 5)                             /* Update mixed_precision weights in-place */        \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)  /* Keep step count in CPU */                         \
-          .InputMemoryType<OrtMemTypeCPUInput>(9)  /* Keep do_update in CPU */                          \
-          .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep step count in CPU */                        \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                      \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                      \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                      \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                                      \
-          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>())                              \
-          .TypeConstraint("T_MIXED_PRECISION_FP", DataTypeImpl::GetTensorType<T_MIXED_PRECISION_FP>())  \
-          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()),                   \
+#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP)          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                       \
+      AdamOptimizer,                                                                                   \
+      kMSDomain,                                                                                       \
+      1,                                                                                               \
+      T1##_##T2##_##T3##_##T4##_##T_GRAD##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                     \
+      kRocmExecutionProvider,                                                                          \
+      KernelDefBuilder()                                                                               \
+          .Alias(1, 0)                              /* Update step count in-place */                   \
+          .Alias(2, 3)                              /* Update weights in-place */                      \
+          .Alias(3, 4)                              /* Update gradients in-place */                    \
+          .Alias(4, 1)                              /* Update moment-1 in-place */                     \
+          .Alias(5, 2)                              /* Update moment-2 in-place */                     \
+          .Alias(6, 5)                              /* Update mixed_precision weights in-place */      \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)   /* Keep step count in CPU */                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(9)   /* Keep do_update in CPU */                        \
+          .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep step count in CPU */                       \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                     \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                     \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                     \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                                     \
+          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>())                             \
+          .TypeConstraint("T_MIXED_PRECISION_FP", DataTypeImpl::GetTensorType<T_MIXED_PRECISION_FP>()) \
+          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()),                  \
       AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>);
 
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float, float, MLFloat16)
@@ -94,7 +94,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>:
 
   const T2* S_in = S.template Data<T2>();
   T2* S_out = NS.template MutableData<T2>();
-  
+
   const HipT_GRAD_NORM* G_norm = nullptr;
   if (gradient_norm_tensor != nullptr) {
     G_norm = reinterpret_cast<const HipT_GRAD_NORM*>(gradient_norm_tensor->template Data<T_GRAD_NORM>());
@@ -136,6 +136,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>:
       ToHipType<T4>::FromFloat(beta_),
       ToHipType<T4>::FromFloat(lambda_),
       ToHipType<T4>::FromFloat(epsilon_),
+      ToHipType<T4>::FromFloat(max_norm_clip_),
       do_bias_correction_,
       weight_decay_mode_,
       reinterpret_cast<HipT4*>(NM1.template MutableData<T4>()),

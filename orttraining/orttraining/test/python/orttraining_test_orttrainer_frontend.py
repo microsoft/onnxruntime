@@ -5,6 +5,7 @@ from numpy.testing import assert_allclose
 import onnx
 import os
 import pytest
+import tempfile
 import torch
 import torch.nn.functional as F
 
@@ -17,41 +18,6 @@ from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, Tra
                                       model_desc_validation as md_val,\
                                       orttrainer_options as orttrainer_options
 import _test_commons,_test_helpers
-
-
-###############################################################################
-# Helper functions ############################################################
-###############################################################################
-
-
-def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False):
-    # Loads external Pytorch TransformerModel into utils
-    pytorch_transformer_path = os.path.join('samples', 'python', 'pytorch_transformer')
-    pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
-    pt_model = _utils.import_module_from_file(pt_model_path)
-    ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')
-    ort_utils = _utils.import_module_from_file(ort_utils_path)
-    utils_path = os.path.join(pytorch_transformer_path, 'utils.py')
-    utils = _utils.import_module_from_file(utils_path)
-
-    # Modeling
-    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2).to(device)
-    my_loss = ort_utils.my_loss
-    if legacy_api:
-        if dynamic_axes:
-            model_desc = ort_utils.legacy_transformer_model_description_dynamic_axes()
-        else:
-            model_desc = ort_utils.legacy_transformer_model_description()
-    else:
-        if dynamic_axes:
-            model_desc = ort_utils.transformer_model_description_dynamic_axes()
-        else:
-            model_desc = ort_utils.transformer_model_description()
-
-
-    # Preparing data
-    train_data, val_data, test_data = utils.prepare_data(device, 20, 20)
-    return model, model_desc, my_loss, utils.get_batch, train_data, val_data, test_data
 
 
 ###############################################################################
@@ -83,11 +49,23 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'world_rank': 0,
             'world_size': 1,
             'local_rank': 0,
+            'data_parallel_size': 1,
+            'horizontal_parallel_size': 1,
+            'pipeline_parallel' : {
+                'pipeline_parallel_size': 1,
+                'num_pipeline_micro_batches':1,
+                'pipeline_cut_info_string': '',
+                'sliced_schema' : {},
+                'sliced_axes' : {},
+                'sliced_tensor_names': []
+            },
             'allreduce_post_accumulation': False,
+            'data_parallel_size': 1,
+            'horizontal_parallel_size':1,
             'deepspeed_zero_optimization': {
                 'stage' : 0,
             },
-            'enable_adasum': False
+            'enable_adasum': False,
         },
         'lr_scheduler': None,
         'mixed_precision': {
@@ -108,7 +86,12 @@ def testORTTrainerOptionsDefaultValues(test_input):
         },
         'debug': {
             'deterministic_compute': False,
-            'check_model_export': False
+            'check_model_export': False,
+            'graph_save_paths' : {
+                'model_after_graph_transforms_path': '',
+                'model_with_gradient_graph_path': '',
+                'model_with_training_graph_path': ''                            
+            }
         },
         '_internal_use': {
             'enable_internal_postprocess': True,
@@ -445,6 +428,7 @@ def testOptimizerConfigAdam():
     assert_allclose(0.0, cfg.lambda_coef, rtol=rtol,
                     err_msg="lambda_coef mismatch")
     assert_allclose(1e-8, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
+    assert_allclose(1.0, cfg.max_norm_clip, rtol=rtol, err_msg="max_norm_clip mismatch")
     assert cfg.do_bias_correction == True, "lambda_coef mismatch"
     assert cfg.weight_decay_mode == optim.AdamConfig.DecayMode.BEFORE_WEIGHT_UPDATE, "weight_decay_mode mismatch"
 
@@ -462,6 +446,7 @@ def testOptimizerConfigLamb():
     assert cfg.ratio_min == float('-inf'), "ratio_min mismatch"
     assert cfg.ratio_max == float('inf'), "ratio_max mismatch"
     assert_allclose(1e-6, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
+    assert_allclose(1.0, cfg.max_norm_clip, rtol=rtol, err_msg="max_norm_clip mismatch")
     assert cfg.do_bias_correction == False, "do_bias_correction mismatch"
 
 
@@ -572,7 +557,7 @@ def testInstantiateORTTrainer(step_fn, lr_scheduler, expected_lr_values, device)
         opts.update({'lr_scheduler' : lr_scheduler(total_steps=total_steps, warmup=0.5)})
     opts = orttrainer.ORTTrainerOptions(opts)
     optim_config = optim.LambConfig(lr=initial_lr)
-    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _test_commons._load_pytorch_transformer_model(device)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
 
     # Run a train or evaluation step
@@ -668,7 +653,7 @@ def testORTDeterministicCompute(seed, device):
     # Setup for the first ORTTRainer run
     torch.manual_seed(seed)
     set_seed(seed)
-    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     first_trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
     data, targets = batcher_fn(train_data, 0)
     _ = first_trainer.train_step(data, targets)
@@ -677,7 +662,7 @@ def testORTDeterministicCompute(seed, device):
     # Setup for the second ORTTRainer run
     torch.manual_seed(seed)
     set_seed(seed)
-    model, _, _, _, _, _, _ = _load_pytorch_transformer_model(device)
+    model, _, _, _, _, _, _ = _test_commons._load_pytorch_transformer_model(device)
     second_trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
     _ = second_trainer.train_step(data, targets)
     assert second_trainer._onnx_model is not None
@@ -706,7 +691,7 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches)
                                                 'enabled' : True,
                                                 'loss_scaler' : loss_scaler},
                                             'debug' : {'deterministic_compute' : True}})
-    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
 
@@ -772,7 +757,7 @@ def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers
                                                 'number_recompute_layers': number_layers
                                             },
                                             'debug' : {'deterministic_compute' : True}})
-    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, val_data, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
 
@@ -808,7 +793,7 @@ def testORTTrainerGradientAccumulation(seed, device, gradient_accumulation_steps
     options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
                                             'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
                                             'debug' : {'deterministic_compute' : True}})
-    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
 
@@ -834,7 +819,7 @@ def testORTTrainerDynamicShape(dynamic_axes):
     # Setup ORTTrainer
     options = orttrainer.ORTTrainerOptions({})
     model, model_desc, my_loss, batcher_fn,\
-        train_data, _, _ = _load_pytorch_transformer_model(device, dynamic_axes=dynamic_axes)
+        train_data, _, _ = _test_commons._load_pytorch_transformer_model(device, dynamic_axes=dynamic_axes)
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
 
@@ -862,7 +847,7 @@ def testORTTrainerInternalUseContribOps(enable_onnx_contrib_ops):
     # Setup ORTTrainer
     options = orttrainer.ORTTrainerOptions({"_internal_use": {"enable_onnx_contrib_ops": enable_onnx_contrib_ops}})
     model, model_desc, my_loss, batcher_fn,\
-        train_data, _, _ = _load_pytorch_transformer_model(device)
+        train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
 
@@ -890,7 +875,7 @@ def testORTTrainerFrozenWeights(model_params):
     # Setup ORTTrainer WITHOUT frozen weights
     options = orttrainer.ORTTrainerOptions({})
     model, model_desc, my_loss, batcher_fn,\
-        train_data, _, _ = _load_pytorch_transformer_model(device)
+        train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
     for i in range(total_steps):
@@ -905,7 +890,7 @@ def testORTTrainerFrozenWeights(model_params):
 
     # Setup ORTTrainer WITH frozen weights
     options = orttrainer.ORTTrainerOptions({'utils' : {'frozen_weights' : model_params}})
-    model, _, _, _, _, _, _ = _load_pytorch_transformer_model(device)
+    model, _, _, _, _, _, _ = _test_commons._load_pytorch_transformer_model(device)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
     for i in range(total_steps):
         data, targets = batcher_fn(train_data, i)
@@ -964,31 +949,29 @@ def testORTTrainerStateDictWrapModelLossFn(loss_scaler, optimizer_config, gradie
     trainer = orttrainer.ORTTrainer(pt_model, model_desc, optimizer_config, loss_fn=loss_fn, options=opts)
 
     # Check state_dict keys before train. Must be empty
-    state_dict = checkpoint.experimental_state_dict(trainer)
+    state_dict = trainer.state_dict()
     assert state_dict == {}
 
     # Train once and check initial state
     trainer.train_step(x=data1, label=label1)
-    state_dict = checkpoint.experimental_state_dict(trainer)
-    assert all([weight in state_dict.keys() for weight in ['linear.bias', 'linear.weight']])
+    state_dict = trainer.state_dict()
+    assert all([weight in state_dict['model']['full_precision'].keys() for weight in ['linear.bias', 'linear.weight']])
 
     # Initialize training session 2 from state of Training 1
     torch.manual_seed(seed)
     set_seed(seed)
     trainer2 = orttrainer.ORTTrainer(pt_model, model_desc, optimizer_config, loss_fn=loss_fn, options=opts)
-    checkpoint.experimental_load_state_dict(trainer2, state_dict)
+    trainer2.load_state_dict(state_dict)
 
     # Verify state was loaded properly
-    for k,v in state_dict.items():
-        assert_allclose(v, trainer2._state_dict[k])
+    _test_commons.assert_all_states_close_ort(state_dict, trainer2._load_state_dict.args[0])
 
     # Perform a second step in both training session 1 and 2 and verify they match
     trainer.train_step(x=data2, label=label2)
-    state_dict = checkpoint.experimental_state_dict(trainer)
+    state_dict = trainer.state_dict()
     trainer2.train_step(x=data2, label=label2)
-    state_dict2 = checkpoint.experimental_state_dict(trainer2)
-    for k,v in state_dict.items():
-        assert_allclose(v, state_dict2[k])
+    state_dict2 = trainer2.state_dict()
+    _test_commons.assert_all_states_close_ort(state_dict, state_dict2)
 
 
 def testORTTrainerNonPickableModel():
@@ -1057,7 +1040,7 @@ def testORTTrainerLegacyAndExperimentalWeightsCheck(seed, device):
             'deterministic_compute': True
         },
     })
-    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
     # Training loop
     for i in range(total_steps):
@@ -1067,7 +1050,7 @@ def testORTTrainerLegacyAndExperimentalWeightsCheck(seed, device):
     # Setup for the legacy ORTTrainer run
     torch.manual_seed(seed)
     set_seed(seed)
-    model, (model_desc, lr_desc), _, _, _, _, _ = _load_pytorch_transformer_model(device, legacy_api=True)
+    model, (model_desc, lr_desc), _, _, _, _, _ = _test_commons._load_pytorch_transformer_model(device, legacy_api=True)
     legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer", None, lr_desc,
                                        device, _use_deterministic_compute=True)
     # Training loop
@@ -1095,7 +1078,7 @@ def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
                                                 'enabled' : True,
                                                 'loss_scaler' : loss_scaler},
                                             'debug' : {'deterministic_compute' : True,}})
-    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
     # Training loop
@@ -1110,7 +1093,7 @@ def testORTTrainerLegacyAndExperimentalPrecisionLossScaler(seed, device):
     # Setup legacy API
     torch.manual_seed(seed)
     set_seed(seed)
-    model, (model_desc, lr_desc), _, _, _, _, _ = _load_pytorch_transformer_model(device, legacy_api=True)
+    model, (model_desc, lr_desc), _, _, _, _, _ = _test_commons._load_pytorch_transformer_model(device, legacy_api=True)
     loss_scaler = Legacy_LossScaler('ort_test_input_loss_scalar', True)
     legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer",
                                        None, lr_desc, device=device,
@@ -1148,7 +1131,7 @@ def testORTTrainerLegacyAndExperimentalGradientAccumulation(seed, device, gradie
     options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
                                             'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
                                             'debug' : {'deterministic_compute' : True}})
-    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
     # Training loop
@@ -1161,7 +1144,7 @@ def testORTTrainerLegacyAndExperimentalGradientAccumulation(seed, device, gradie
     # Setup legacy API
     torch.manual_seed(seed)
     set_seed(seed)
-    model, (model_desc, lr_desc), _, _, _, _, _ = _load_pytorch_transformer_model(device, legacy_api=True)
+    model, (model_desc, lr_desc), _, _, _, _, _ = _test_commons._load_pytorch_transformer_model(device, legacy_api=True)
     legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer",
                                        None, lr_desc, device=device,
                                        _use_deterministic_compute=True,
@@ -1216,7 +1199,7 @@ def testORTTrainerLegacyAndExperimentalLRScheduler(seed, device, optimizer_confi
     options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
                                             'debug' : {'deterministic_compute' : True},
                                             'lr_scheduler' : lr_scheduler})
-    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optimizer_config(lr=lr)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
     # Training loop
@@ -1248,7 +1231,7 @@ def testORTTrainerLegacyAndExperimentalLRScheduler(seed, device, optimizer_confi
     else:
         raise RuntimeError("Invalid get_lr_this_step")
 
-    model, (model_desc, lr_desc), _, _, _, _, _ = _load_pytorch_transformer_model(device, legacy_api=True)
+    model, (model_desc, lr_desc), _, _, _, _, _ = _test_commons._load_pytorch_transformer_model(device, legacy_api=True)
     legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, legacy_optimizer_config,
                                        None, lr_desc, device=device,
                                        _use_deterministic_compute=True,
@@ -1364,7 +1347,7 @@ def testORTTrainerRunSymbolicShapeInfer():
     set_seed(seed)
     options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
                                             'debug' : {'deterministic_compute' : True}})
-    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
     # Training loop
@@ -1377,7 +1360,7 @@ def testORTTrainerRunSymbolicShapeInfer():
     # Setup with symbolic shape inference
     torch.manual_seed(seed)
     set_seed(seed)
-    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _load_pytorch_transformer_model(device)
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
     optim_config = optim.LambConfig(lr=0.001)
     options.utils.run_symbolic_shape_infer = True
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
@@ -1391,7 +1374,7 @@ def testORTTrainerRunSymbolicShapeInfer():
     # Setup with symbolic shape inference in legacy API
     torch.manual_seed(seed)
     set_seed(seed)
-    model, (model_desc, lr_desc), _, _, _, _, _ = _load_pytorch_transformer_model(device, legacy_api=True)
+    model, (model_desc, lr_desc), _, _, _, _, _ = _test_commons._load_pytorch_transformer_model(device, legacy_api=True)
     legacy_trainer = Legacy_ORTTrainer(model, my_loss, model_desc, "LambOptimizer",
                                        None, lr_desc, device=device,
                                        run_symbolic_shape_infer=True,
@@ -1406,3 +1389,152 @@ def testORTTrainerRunSymbolicShapeInfer():
     # Compare losses
     _test_helpers.assert_model_outputs(new_loss, expected_loss)
     _test_helpers.assert_model_outputs(legacy_loss, expected_loss)
+
+@pytest.mark.parametrize("test_input", [
+    ({
+      'distributed': {'enable_adasum': True},
+    })
+])
+def testORTTrainerOptionsEnabledAdasumFlag(test_input):
+    ''' Test the enabled_adasum flag values when set enabled'''
+
+    actual_values = orttrainer_options.ORTTrainerOptions(test_input)
+    assert actual_values.distributed.enable_adasum == True
+
+@pytest.mark.parametrize("test_input", [
+    ({
+      'distributed': {'enable_adasum': False},
+    })
+])
+def testORTTrainerOptionsDisabledAdasumFlag(test_input):
+    ''' Test the enabled_adasum flag values when set disabled'''
+
+    actual_values = orttrainer_options.ORTTrainerOptions(test_input)
+    assert actual_values.distributed.enable_adasum == False
+
+def testORTTrainerUnusedInput():
+    class UnusedInputModel(torch.nn.Module):
+        def __init__(self):
+            super(UnusedInputModel, self).__init__()
+        def forward(self, x, y):
+            return torch.mean(x)
+
+    model = UnusedInputModel()
+    model_desc = {'inputs': [('x', [1]), ('y', [1])], 'outputs': [('loss', [], True)]}
+    optim_config = optim.LambConfig(lr=0.001)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config)
+
+    # Run just one step to make sure there are no iobinding errors for the unused input.
+    try:
+        trainer.train_step(torch.FloatTensor([1.0]), torch.FloatTensor([1.0]))
+    except RuntimeError:
+        pytest.fail("RuntimeError doing train_step with an unused input.")
+
+@pytest.mark.parametrize("debug_files", [
+    ({'model_after_graph_transforms_path': 'transformed.onnx',
+      'model_with_gradient_graph_path': 'transformed_grad.onnx',
+      'model_with_training_graph_path': 'training.onnx'
+    }),
+    ({'model_after_graph_transforms_path': 'transformed.onnx',
+      'model_with_training_graph_path': ''
+    }),
+    ])
+def testTrainingGraphExport(debug_files):
+    device = 'cuda'
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        debug_paths = {}
+        for k,v in debug_files.items():
+            debug_paths[k] = os.path.join(tempdir, v)
+        opts =  orttrainer.ORTTrainerOptions(
+            {
+                "device": {"id": device},
+                "debug": {"graph_save_paths": debug_paths}
+            }
+        )
+        optim_config = optim.AdamConfig()
+        trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+        data, targets = batcher_fn(train_data, 0)
+        trainer.train_step(data, targets)
+        for k,v in debug_files.items():
+            path = debug_paths[k]
+            if len(v) > 0:
+                assert os.path.isfile(path)
+                saved_graph = onnx.load(path).graph
+                if k == 'model_with_training_graph_path':
+                    assert any("AdamOptimizer" in n.op_type for n in saved_graph.node)
+                elif k == 'model_with_gradient_graph_path':
+                    assert any("Grad" in n.name for n in saved_graph.node)
+                elif k == 'model_after_graph_transforms_path':
+                    assert any("LayerNormalization" in n.op_type for n in saved_graph.node)
+                # remove saved file
+                os.remove(path)
+            else:
+                assert not os.path.isfile(path)
+
+@pytest.mark.parametrize("seed,device,max_norm_clip,gradient_accumulation_steps,total_steps,expected_loss", [
+    (0, 'cuda', 1.0, 1, 12, [10.536802, 9.95102, 9.495312, 9.067217, 8.735067, 8.447508,\
+        8.179443, 7.903837, 7.655049, 7.409669, 7.135822, 6.931838]),
+    (0, 'cuda', 0.1, 1, 12, [10.536802, 9.951735, 9.496659, 9.069328, 8.7381115, 8.4513855,\
+        8.184143, 7.9093056, 7.661127, 7.4162436, 7.142842, 6.9388437]),
+    (42, 'cuda', 1.0, 1, 12, [10.645588, 10.0333, 9.52253, 9.108369, 8.766306, 8.497426,\
+        8.199408, 7.958235, 7.659668, 7.459833, 7.170661, 6.9139776]),
+    (42, 'cuda', 0.1, 1, 12, [10.645588, 10.03406, 9.524019, 9.110594, 8.769308, 8.501322,\
+        8.204281, 7.963957, 7.6660814, 7.46682, 7.1780496, 6.92159]),
+])
+def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps,total_steps, expected_loss):
+    rtol = 1e-5
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # Setup ORTTrainer
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
+                                            'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
+                                            'debug' : {'deterministic_compute' : True}})
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
+    optim_config = optim.AdamConfig(lr=0.001, max_norm_clip=max_norm_clip)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    actual_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = trainer.train_step(data, targets)
+        actual_loss.append(loss.cpu())
+
+    # Compare legacy vs experimental APIs
+    _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=rtol)
+
+@pytest.mark.parametrize("seed,device,max_norm_clip, gradient_accumulation_steps,total_steps,expected_loss", [
+    (0, 'cuda', 1.0, 1, 12, [10.536802, 10.409792, 10.354762, 10.253063, 10.213676, 10.113361,\
+        10.066136, 9.977713, 9.924597, 9.858974, 9.796471, 9.794921]),
+    (0, 'cuda', 0.1, 1, 12, [10.536802, 10.3714695, 10.276415, 10.13743, 10.063246, 9.93144,\
+        9.854875, 9.739198, 9.661381, 9.570321, 9.482681, 9.457669]),
+    (42, 'cuda', 1.0, 1, 12, [10.645588, 10.51151, 10.438802, 10.356055, 10.291667, 10.232069,\
+        10.168237, 10.074414, 9.990586, 9.9324, 9.891901, 9.788895]),
+    (42, 'cuda', 0.1, 1, 12, [10.645588, 10.473022, 10.359108, 10.238948, 10.141735, 10.049339,\
+        9.953887, 9.832249, 9.722989, 9.640278, 9.572205, 9.448381]),
+])
+def testORTTrainerLambMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps, total_steps, expected_loss):
+    rtol = 1e-3
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # Setup ORTTrainer
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
+                                            'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
+                                            'debug' : {'deterministic_compute' : True}})
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001, max_norm_clip=max_norm_clip)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    actual_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = trainer.train_step(data, targets)
+        actual_loss.append(loss.cpu())
+
+    # Compare legacy vs experimental APIs
+    _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=rtol)

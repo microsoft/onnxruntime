@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "core/framework/tensor.h"
 #include "core/graph/basic_types.h"
+#include "core/providers/rocm/rocm_common.h"
 
 namespace onnxruntime {
 class GPUDataTransfer;

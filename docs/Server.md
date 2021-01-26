@@ -1,4 +1,7 @@
 ## Build ONNX Runtime Server on Linux
+
+**Deprecation Note: This feature is deprecated and no longer supported.**
+
 Read more about ONNX Runtime Server [here](./ONNX_Runtime_Server_Usage.md).
 
 ### Prerequisites

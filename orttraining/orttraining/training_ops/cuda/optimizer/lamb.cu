@@ -31,16 +31,16 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
     T3& m2_new) {
   // Actual gradient. The scale is a product of loss' scale and
   // global gradient norm (if the norm > 1).
-  const T3 g_scaled = T3(T1(g) / g_scale);
+  const T3 g_unscaled = T3(T1(g) / g_scale);
 
   // A constant in Lamb's equation.
   const T3 one = T3(1.0f);
 
   // Update exponentially-averaged historical gradient
-  const T3 m1_new_tmp = alpha * m1 + (one - alpha) * g_scaled;
+  const T3 m1_new_tmp = alpha * m1 + (one - alpha) * g_unscaled;
 
   // Update exponentially-averaged historical squared gradient
-  const T3 m2_new_tmp = beta * m2 + (one - beta) * g_scaled * g_scaled;
+  const T3 m2_new_tmp = beta * m2 + (one - beta) * g_unscaled * g_unscaled;
 
   // Compute unbiased 1st-order momentom.
   // The value alpha_correction is usually (1-alpha^t),
@@ -80,6 +80,7 @@ __global__ void _LambComputeDirectionImpl(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T1 max_norm,
     T3 alpha_correction,
     T3 beta_correction,
     T2* update_direction,
@@ -88,7 +89,7 @@ __global__ void _LambComputeDirectionImpl(
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
-  const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm);
+  const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm, max_norm);
 
   _LambComputeDirectionRule(
       scale,
@@ -119,6 +120,7 @@ void LambComputeDirection(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T1 max_norm,
     T3 alpha_correction,
     T3 beta_correction,
     T2* update_direction,
@@ -139,6 +141,7 @@ void LambComputeDirection(
       beta,
       lambda,
       epsilon,
+      max_norm,
       alpha_correction,
       beta_correction,
       update_direction,
@@ -159,6 +162,7 @@ void LambComputeDirection(
       T3 beta,                                                      \
       T1 lambda,                                                    \
       T3 epsilon,                                                   \
+      T1 max_norm,                                                   \
       T3 alpha_correction,                                          \
       T3 beta_correction,                                           \
       T2* weights_out,                                              \
@@ -172,6 +176,13 @@ SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, half)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, float)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, half)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
+
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, nv_bfloat16, nv_bfloat16, nv_bfloat16)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, nv_bfloat16, nv_bfloat16, float)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, nv_bfloat16, float, nv_bfloat16)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, nv_bfloat16, float, float)
+#endif
 
 template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 __device__ __forceinline__ void _LambUpdateRule(
@@ -292,6 +303,13 @@ INSTANTIATE_LAMB_UPDATE(double, double, double, half)
 INSTANTIATE_LAMB_UPDATE(half, float, half, half)
 INSTANTIATE_LAMB_UPDATE(float, float, half, half)
 
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_LAMB_UPDATE(float, float, float, nv_bfloat16)
+INSTANTIATE_LAMB_UPDATE(double, double, double, nv_bfloat16)
+INSTANTIATE_LAMB_UPDATE(nv_bfloat16, float, nv_bfloat16, nv_bfloat16)
+INSTANTIATE_LAMB_UPDATE(float, float, nv_bfloat16, nv_bfloat16)
+#endif
+
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 __global__ void LambMultiTensorComputeDirectionImpl(
     ChunkGroup<6> chunk_group,
@@ -301,6 +319,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
     const T3 alpha,
     const T3 beta,
     const T3 epsilon,
+    const T1 max_norm,
     const T3 alpha_correction,
     const T3 beta_correction) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
@@ -313,7 +332,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
   const T3* m2 = reinterpret_cast<const T3*>(chunk_group.tensor_ptrs[3][group_index]) + chunk_start;
   T3* m1_new = reinterpret_cast<T3*>(chunk_group.tensor_ptrs[4][group_index]) + chunk_start;
   T3* m2_new = reinterpret_cast<T3*>(chunk_group.tensor_ptrs[5][group_index]) + chunk_start;
-  const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm);
+  const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm, max_norm);
 
 #pragma unroll
   for (int i = threadIdx.x; i < chunk_size && i + chunk_start < tensor_size; i += blockDim.x) {
@@ -344,6 +363,7 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
     const T3 alpha,
     const T3 beta,
     const T3 epsilon,
+    const T1 max_norm,
     const T3 alpha_correction,
     const T3 beta_correction) {
   const int thread_count = ChunkGroup<6>::thread_count_per_block;
@@ -357,6 +377,7 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
       alpha,
       beta,
       epsilon,
+      max_norm,
       alpha_correction,
       beta_correction);
 }
@@ -370,6 +391,7 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
       const T3 alpha,                                                                        \
       const T3 beta,                                                                         \
       const T3 epsilon,                                                                      \
+      const T1 max_norm,                                                                     \
       const T3 alpha_correction,                                                             \
       const T3 beta_correction);
 
@@ -379,6 +401,13 @@ INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, half)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, float)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, half)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
+
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, nv_bfloat16, nv_bfloat16, nv_bfloat16)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, nv_bfloat16, nv_bfloat16, float)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, nv_bfloat16, float, nv_bfloat16)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, nv_bfloat16, float, float)
+#endif
 
 template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 __global__ void LambMultiTensorUpdateImpl(
@@ -441,6 +470,13 @@ INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half, half)
+
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float, nv_bfloat16)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double, nv_bfloat16)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(nv_bfloat16, float, nv_bfloat16, nv_bfloat16)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, nv_bfloat16, nv_bfloat16)
+#endif
 
 // w_buffer[i], d_buffer[i] is used to store the squared sum of all elements processed by the i-th block.
 // sync_range_and_lock is used for a well ordered reduction over blocks spanning the same tensor
@@ -612,6 +648,12 @@ INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(double, double, double, double, 
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, half, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(half, half, half, half, float)
+
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, nv_bfloat16, float, nv_bfloat16, float)
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, nv_bfloat16, float, float, float)
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16, float)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

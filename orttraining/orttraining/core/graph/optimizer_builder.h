@@ -14,6 +14,10 @@
 namespace onnxruntime {
 namespace training {
 
+const std::vector<std::string> MOMENTS_PREFIXES({"Moment_1", "Moment_2"});
+const std::string LAMB_STEP_TENSOR_NAME = "Step";
+const std::string ADAM_UC_PREFIX = "Update_Count";
+
 template <class T>
 ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
@@ -45,10 +49,10 @@ Status IsMatchingTypeAndShape(
     const int32_t element_type,
     const std::vector<int64_t>& expected_shape);
 
-  /**
+/**
    * The configuration for optimizer builder.
    */
-struct OptimizerBuilderConfig{
+struct OptimizerBuilderConfig {
   //The ArgDefs of the weights to optimize.
   std::vector<ArgDef> weight_argdefs;
 
@@ -66,11 +70,11 @@ struct OptimizerBuilderConfig{
   // The per weight optimizer configuration.
   std::vector<OptimizerNodeConfig> opt_configs;
 
-  // (Optional) The flag to force gradient clipping. If planning	
-  // to use the default behavior of each sub-class, should not be set.	
+  // (Optional) The flag to force gradient clipping. If planning
+  // to use the default behavior of each sub-class, should not be set.
   optional<bool> enable_grad_clipping;
 
-  // The initial state for optimizer params	
+  // The initial state for optimizer params
   // shared by all weights.
   NameMLValMap shared_optimizer_states{};
 };
@@ -91,10 +95,12 @@ class OptimizerBuilder {
    * @param config The input config for optimizer builder
    * @param[out] graph_defs The GraphDefs corresponding to the graph (possibly
    *             a subgraph) that the component is to be added to.
-   * @param[out] new_external_initializers Any initializers that should be
+   * @param[out] new_initializers Any initializers that should be
    *             placed in the parent graph, if there is one.
    *             Other initializers are treated as local to the current
-   *             (sub)graph.
+   *             (sub)graph. 
+   * @param[out] weight_to_opt_mapping Mapping between weight to 
+   *             their new optimizer states in new_initializers.
    * @param[out] output_weight_argdefs The output weight ArgDef. All optimizers
                  should have this output.
    * @param[out] output_gradient_argdefs The output gradient ArgDef. All optimizers
@@ -105,7 +111,8 @@ class OptimizerBuilder {
   virtual Status Build(
       const OptimizerBuilderConfig& config,
       GraphAugmenter::GraphDefs& graph_defs,
-      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
+      std::vector<TensorProto>& new_initializers,
+      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) const = 0;
 

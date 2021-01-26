@@ -10,6 +10,7 @@ Status SGDOptimizerBuilder::Build(
     const OptimizerBuilderConfig& config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<TensorProto>& /* new_external_initializers */,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& /* weight_to_opt_mapping */,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
   const auto& weight_argdefs = config.weight_argdefs;

@@ -11,8 +11,9 @@ namespace cuda {
 
 static const int NONZERO_THREADS_PER_BLOCK = GridDim::maxThreadsPerBlock;
 
+//TODO:check overflow
 int NonZeroCalcBlockCount(int64_t x_size) {
-  return CeilDiv(x_size, NONZERO_THREADS_PER_BLOCK);
+  return static_cast<int>(CeilDiv(x_size, NONZERO_THREADS_PER_BLOCK));
 }
 
 cudaError_t NonZeroCalcPrefixSumTempStorageBytes(

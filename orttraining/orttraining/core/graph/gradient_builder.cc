@@ -708,18 +708,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
               {SrcNodeAttributes()})};
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetTrainableDropoutGradient) {
-  std::vector<ArgDef> inputs{GO(0), O(1)};
-  for (int i = 1; i < GetSrcNodeInputSize(); i++) {
-    inputs.push_back(I(i));
-  }
-  return std::vector<NodeDef>{
-      NodeDef(OpDef{"TrainableDropoutGrad", kMSDomain, 1},
-              inputs,
-              {GI(0)},
-              {SrcNodeAttributes()})};
-}
-
 IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
   std::vector<ArgDef> outputs;
   for (int i = 0; i < 3; i++) {
@@ -1504,6 +1492,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetClipGradient) {
   }
 
   return output;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Sign", {I(0)}, {IA("Sign_Input")}),
+      NodeDef("Mul", {GO(0), IA("Sign_Input")}, {GI(0)})
+  };
 }
 
 }  // namespace training
