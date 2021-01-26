@@ -5,6 +5,8 @@
 #include <iomanip>
 #include <sstream>
 
+#include "boost/mp11.hpp"
+
 #include "gsl/gsl"
 
 #include "core/common/common.h"
@@ -21,8 +23,6 @@
 #if defined(_M_AMD64)
 #include "core/mlas/inc/mlas.h"
 #endif
-
-#include <boost/mp11.hpp>
 
 using namespace ONNX_NAMESPACE;
 using namespace boost::mp11;
