@@ -164,8 +164,6 @@ struct EnabledOpKernelArgTypes {
 /**
  * TypeList type with the enabled types for a given Op kernel argument.
  *
- * Note: At the call site, the onnxruntime::op_kernel_type_control namespace should be visible.
- *
  * @param Op The Op name.
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
@@ -177,8 +175,6 @@ struct EnabledOpKernelArgTypes {
 
 /**
  * std::tuple type with the enabled types for a given Op kernel argument.
- *
- * Note: At the call site, the onnxruntime::op_kernel_type_control namespace should be visible.
  *
  * @param Op The Op name.
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.

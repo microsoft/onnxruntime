@@ -48,7 +48,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
     MLFloat16, BFloat16,
     std::string);
 
-#define LIMIT_TYPES
+// #define LIMIT_TYPES
 // #define LIMIT_TYPES_NO_STRING_OR_FLOAT16
 #if defined(LIMIT_TYPES)
 ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(
@@ -73,9 +73,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(
     uint8_t, uint16_t, uint32_t, uint64_t,
     int8_t, int16_t, int32_t, int64_t);
 #endif
-
-// TODO doesn't work with a single enabled type
-//ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES(float);
 }  // namespace op_kernel_type_control
 
 namespace {
@@ -282,7 +279,7 @@ template <typename TSrc>
 struct SrcDispatcher {
   void operator()(int32_t to, const Tensor& src, Tensor& dst, const TensorShape& shape) {
     using DstTypes = mp_remove_if_q<ImplementedDstTypes, mp_bind_front<std::is_same, TSrc>>;
-    mp_apply<utils::MLTypeCallDispatcher2, DstTypes> dispatcher{to};
+    utils::MLTypeCallDispatcherFromTypeList<DstTypes> dispatcher{to};
     dispatcher.InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(src, dst, shape);
   }
 };
@@ -304,7 +301,7 @@ Status Cast::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  mp_apply<utils::MLTypeCallDispatcher2, ImplementedSrcTypes> dispatcher{from};
+  utils::MLTypeCallDispatcherFromTypeList<ImplementedSrcTypes> dispatcher{from};
   dispatcher.Invoke<SrcDispatcher>(to_, *X, *Y, shape);
 
   return Status::OK();
