@@ -1007,6 +1007,8 @@ struct GraphViewer {
 
 struct Path {
   PathString ToPathString() const noexcept { return g_host->Path__ToPathString(this); }
+
+  PROVIDER_DISALLOW_ALL(Path)
 };
 
 #endif
