@@ -778,17 +778,8 @@ static void MelSpectrogramOnThreeToneSignal(
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
   printf("\nSpectrogram evaluate took: %f\n", evaluate_duration_in_microseconds.count());
 
-  // Check the output video frame object by saving output image to disk
-  std::wstring out_name = L"mel_spectrogram.jpg";
-  winrt::Windows::Storage::StorageFolder folder = winrt::Windows::Storage::StorageFolder::GetFolderFromPathAsync(L"e:\\").get();
-  winrt::Windows::Storage::StorageFile file = folder.CreateFileAsync(out_name, winrt::Windows::Storage::CreationCollisionOption::ReplaceExisting).get();
-  winrt::Windows::Storage::Streams::IRandomAccessStream write_stream = file.OpenAsync(winrt::Windows::Storage::FileAccessMode::ReadWrite).get();
-  winrt::Windows::Graphics::Imaging::BitmapEncoder encoder = winrt::Windows::Graphics::Imaging::BitmapEncoder::CreateAsync(winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(), write_stream).get();
-  encoder.SetSoftwareBitmap(output_image.SoftwareBitmap());
-  encoder.FlushAsync().get();
-
   // Save the model
-  builder.Save(L"e:\\spectrogram.onnx");
+  builder.Save(L"spectrogram.onnx");
 }
 
 static void DynamicMatmul() {

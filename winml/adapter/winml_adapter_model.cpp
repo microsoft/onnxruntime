@@ -243,7 +243,6 @@ ORT_API_STATUS_IMPL(winmla::CloneModel, const OrtModel* in, OrtModel** out) {
 
 ORT_API_STATUS_IMPL(winmla::SaveModel, const OrtModel* in, const wchar_t* const file_name, size_t len) {
   API_IMPL_BEGIN
-
   int fd;
   std::wstring file_path = file_name;
   Status status = onnxruntime::Env::Default().FileOpenWr(file_path, fd);
