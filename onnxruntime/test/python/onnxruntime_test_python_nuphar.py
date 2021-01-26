@@ -336,15 +336,17 @@ def make_providers(nuphar_settings):
 class TestNuphar(unittest.TestCase):
 
     def test_bidaf(self):
-        # download BiDAF model
         cwd = os.getcwd()
 
-        # verify accuracy of quantized model
-        bidaf_dir = '/data/models/opset9/test_bidaf'
+        bidaf_dir_src = '/data/models/opset9/test_bidaf'
+        bidaf_dir = os.path.join(cwd, 'bidaf')
+        shutil.copytree(bidaf_dir_src, bidaf_dir)
+
+        bidaf_dir = os.path.join(cwd, 'bidaf')
         bidaf_model = os.path.join(bidaf_dir, 'model.onnx')
-        bidaf_scan_model = os.path.join(cwd, 'bidaf_scan.onnx')
-        bidaf_opt_scan_model = os.path.join(cwd, 'bidaf_opt_scan.onnx')
-        bidaf_int8_scan_only_model = os.path.join(cwd, 'bidaf_int8_scan_only.onnx')
+        bidaf_scan_model = os.path.join(bidaf_dir, 'bidaf_scan.onnx')
+        bidaf_opt_scan_model = os.path.join(bidaf_dir, 'bidaf_opt_scan.onnx')
+        bidaf_int8_scan_only_model = os.path.join(bidaf_dir, 'bidaf_int8_scan_only.onnx')
         subprocess.run([
             sys.executable, '-m', 'onnxruntime.nuphar.model_editor', '--input', bidaf_model, '--output',
             bidaf_scan_model, '--mode', 'to_scan'
@@ -367,7 +369,7 @@ class TestNuphar(unittest.TestCase):
         # run onnx_test_runner to verify results
         # use -M to disable memory pattern
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-c', '1', '-j', '1', bidaf_dir, cwd], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-c', '1', '-j', '1', '-n', 'bidaf', cwd], check=True, cwd=cwd)
 
         # test AOT on the quantized model
         if os.name not in ['nt', 'posix']:
@@ -413,12 +415,14 @@ class TestNuphar(unittest.TestCase):
             sess.run([], feed)
 
     def test_bert_squad(self):
-        # download BERT_squad model
         cwd = os.getcwd()
 
         # run symbolic shape inference on this model
         # set int_max to 1,000,000 to simplify symbol computes for things like min(1000000, seq_len) -> seq_len
-        bert_squad_dir = '/data/models/opset10/BERT_Squad'
+        bert_squad_dir_src = '/data/models/opset10/BERT_Squad'
+        bert_squad_dir = os.path.join(cwd, 'BERT_Squad')
+        shutil.copytree(bert_squad_dir_src, bert_squad_dir)
+
         bert_squad_model = os.path.join(bert_squad_dir, 'bertsquad10.onnx')
         subprocess.run([
             sys.executable, '-m', 'onnxruntime.tools.symbolic_shape_infer', '--input', bert_squad_model, '--output',
@@ -429,7 +433,7 @@ class TestNuphar(unittest.TestCase):
 
         # run onnx_test_runner to verify results
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', bert_squad_dir, cwd], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'download_sample_10', cwd], check=True, cwd=cwd)
 
         # run onnxruntime_perf_test, note that nuphar currently is not integrated with ORT thread pool, so set -x 1 to avoid thread confliction with OpenMP
         onnxruntime_perf_test = os.path.join(cwd, 'onnxruntime_perf_test')
