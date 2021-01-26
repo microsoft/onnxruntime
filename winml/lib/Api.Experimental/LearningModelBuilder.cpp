@@ -1,6 +1,7 @@
 ﻿#include "pch.h"
 #include "LearningModelBuilder.h"
 #include "LearningModel.h"
+#include "TensorFeatureDescriptor.h"
 #include "LearningModelSession.h"
 #include "LearningModelInputs.h"
 #include "LearningModelOutputs.h"
@@ -54,6 +55,14 @@ void LearningModelBuilder::Save(const winrt::hstring& file_name) {
 
 winml_experimental::LearningModelBuilder LearningModelBuilder::Create() {
   return winrt::make<LearningModelBuilder>();
+}
+
+winml::TensorFeatureDescriptor LearningModelBuilder::CreateTensorFeatureDescriptor(
+    hstring const& name,
+    hstring const& description,
+    winml::TensorKind const& kind,
+    array_view<int64_t const> shape) {
+  return winrt::make<winmlp::TensorFeatureDescriptor>(name, description, kind, shape);
 }
 
 _winml::IModel* LearningModelBuilder::UseModel() {

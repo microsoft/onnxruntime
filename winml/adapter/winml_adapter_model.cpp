@@ -257,7 +257,7 @@ ORT_API_STATUS_IMPL(winmla::SaveModel, const OrtModel* in, const wchar_t* const 
   if (!success) {
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Failed to serialize model!");
   }
-
+  output.Close();
   return nullptr;
   API_IMPL_END
 }
@@ -556,10 +556,6 @@ ORT_API_STATUS_IMPL(winmla::ModelAddConstantInput, _In_ OrtModel* model, _In_ co
   }
 
   input.set_data_type(ONNXTensorElementDataTypeToTensorProto_DataType(info->data->type));
-  
-  void* data;
-  OrtApis::GetTensorMutableData(value, &data);
-
   auto tensor = value->GetMutable<onnxruntime::Tensor>();
   input.set_raw_data(tensor->DataRaw(), tensor->SizeInBytes());
 
@@ -586,6 +582,16 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOutput, _In_ OrtModel* model, _In_ const cha
   API_IMPL_END
 }
 
+static const onnx::OpSchema* GetSchema(const char* const op_type, const char* const op_domain) {
+  std::string domain = onnx::ONNX_DOMAIN;
+  if (op_domain) {
+    domain = op_domain;
+  }
+
+  auto registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
+  return registry->GetSchema(op_type, 12, domain);
+}
+
 ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
                     _In_ OrtModel* model,
                     _In_ const char* const op_type,
@@ -601,6 +607,67 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
   node.set_op_type(op_type);
   node.set_name(op_name);
   node.set_domain(op_domain);
+
+  auto schema = GetSchema(op_type, op_domain);
+  auto all_attributes = schema->attributes();
+
+  for (int i = 0; i < num_attributes; i++) {
+    auto tensor = attribute_values[i]->GetMutable<onnxruntime::Tensor>();
+      
+    auto attr = node.add_attribute();
+    attr->set_name(attribute_names[i]);
+    auto& schema_attribute_definition = all_attributes.at(attribute_names[i]);
+    attr->set_type(schema_attribute_definition.type);
+
+    switch (schema_attribute_definition.type) {
+      case onnx::AttributeProto_AttributeType_INT: {
+        if (tensor->Shape().Size() != 1) {
+          return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Expected a single int64 value!");
+        }
+        auto raw_data = tensor->DataRaw();
+        attr->set_i(*reinterpret_cast<const int64_t*>(raw_data));
+        break;
+      }
+      case onnx::AttributeProto_AttributeType_FLOAT: {
+        if (tensor->Shape().Size() != 1) {
+          return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Expected a single float value!");
+        }
+        auto raw_data = tensor->DataRaw();
+        attr->set_f(*reinterpret_cast<const float*>(raw_data));
+        break;
+      }
+      case onnx::AttributeProto_AttributeType_INTS: {
+        if (tensor->Shape().Size() != 1) {
+          return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Expected a single int64 value!");
+        }
+        auto raw_data = tensor->DataRaw();
+        for (int j = 0; j < tensor->Shape().Size(); j++) {
+          attr->add_ints(*(reinterpret_cast<const int64_t*>(raw_data)+j));
+        }
+        break;
+      }
+      case onnx::AttributeProto_AttributeType_FLOATS: {
+        if (tensor->SizeInBytes() != sizeof(float)) {
+          return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Expected a single float value!");
+        }
+        auto raw_data = tensor->DataRaw();
+        for (int j = 0; j < tensor->Shape().Size(); j++) {
+          attr->add_floats(*(reinterpret_cast<const float*>(raw_data) + j));
+        }
+        break;
+      }
+      case onnx::AttributeProto_AttributeType_TENSOR: {
+        auto tensor_proto = attr->add_tensors();
+        auto prim_type = tensor->DataType()->AsPrimitiveDataType();
+        if (prim_type == nullptr) {
+          return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Undefined tensor type!");
+        }
+        tensor_proto->set_data_type(prim_type->GetDataType());
+        tensor_proto->set_raw_data(tensor->DataRaw(), tensor->SizeInBytes());
+        break;
+      }
+    }
+  }
 
   for (size_t i = 0; i < num_inputs; i++) {
     auto name = input_names[i];
@@ -656,16 +723,6 @@ ORT_API_STATUS_IMPL(winmla::CreateMapTypeInfo, _Out_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
   return nullptr;
   API_IMPL_END
-}
-
-static const onnx::OpSchema* GetSchema(const char* const op_type, const char* const op_domain) {
-  std::string domain = onnx::ONNX_DOMAIN;
-  if (op_domain) {
-    domain = op_domain;
-  }
-
-  auto registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-  return registry->GetSchema(op_type, 12, domain);
 }
 
 ORT_API_STATUS_IMPL(winmla::OperatorGetNumInputs, _In_ const char* const op_type, _In_ const char* const op_domain, _Out_ size_t* num_inputs) {

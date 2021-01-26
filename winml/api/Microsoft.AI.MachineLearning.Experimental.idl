@@ -20,8 +20,9 @@ import "Windows.AI.MachineLearning.idl";
 #define ROOT_NS Microsoft
 #endif
 
-
 namespace ROOT_NS.AI.MachineLearning.Experimental {
+  runtimeclass LearningModelBuilder;
+
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
   runtimeclass LearningModelSessionOptionsExperimental {
@@ -35,22 +36,6 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     LearningModelSessionExperimental(ROOT_NS.AI.MachineLearning.LearningModelSession session);
     LearningModelSessionOptionsExperimental Options { get; };
   }
-
-  [threading(both)]
-  [marshaling_behavior(agile)]
-  [dualapipartition(1)]
-  runtimeclass Gemm {
-    static String InputA();
-    static String InputB();
-    static String AttributeBlah();
-    static String OptionalInputA();
-    static String OptionalInputB();
-    static String OptionalAttributeBias();
-    static String OutputY();
-  }
-
-
-  runtimeclass LearningModelBuilder;
 
   [threading(both)]
   [marshaling_behavior(agile)]
@@ -106,6 +91,10 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
 
     //! Create a builder.
     static LearningModelBuilder Create();
+
+    //! Creates a TensorFeatureDescriptor.. this should be a constructor on the TFD
+    //TensorFeatureDescriptor(String name, String description, TensorKind kind, Int64[] shape);
+    static ROOT_NS.AI.MachineLearning.TensorFeatureDescriptor CreateTensorFeatureDescriptor(String name, String description, ROOT_NS.AI.MachineLearning.TensorKind kind, Int64[] shape);
 
     ROOT_NS.AI.MachineLearning.LearningModel CreateModel();
 

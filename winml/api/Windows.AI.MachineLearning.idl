@@ -383,12 +383,6 @@ namespace ROOT_NS.AI.MachineLearning
         TensorKind TensorKind{ get; };
         //! Returns the count and size of each dimension.
         Windows.Foundation.Collections.IVectorView<Int64> Shape{ get; };
-
-        [contract(MachineLearningContract, 4)]
-        {
-          //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
-          TensorFeatureDescriptor(String name, String description, TensorKind kind, Int64[] shape);
-        }
     }
 
     //! \class ImageFeatureDescriptor

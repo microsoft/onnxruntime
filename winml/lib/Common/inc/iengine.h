@@ -101,7 +101,8 @@ IModel : IUnknown {
   STDMETHOD(AddOperator)
   (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,
    _In_ const char* const* op_input_names, _In_ const char* const* actual_input_names, size_t num_inputs,
-   _In_ const char* const* op_output_names, _In_ const char* const* actual_output_names, size_t num_outputs) PURE;
+   _In_ const char* const* op_output_names, _In_ const char* const* actual_output_names, size_t num_outputs,
+   _In_ const char* const* op_attribute_names, _In_ IValue** constant_value, size_t num_attributes) PURE;
 
   STDMETHOD(AddModelInput)
   (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* default_value) PURE;

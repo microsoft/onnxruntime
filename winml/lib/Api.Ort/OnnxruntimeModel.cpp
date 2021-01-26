@@ -262,9 +262,10 @@ HRESULT GetValue(const char* key, const char* const* keys, const char* const* va
 }
 
 STDMETHODIMP OnnruntimeModel::AddOperator(
-    const char* const op_type, const char* const op_name, const char* const op_domain,
-    const char* const* op_input_names, const char* const* actual_input_names, size_t num_inputs,
-    const char* const* op_output_names, const char* const* actual_output_names, size_t num_outputs) {
+    _In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,
+    _In_ const char* const* op_input_names, _In_ const char* const* actual_input_names, size_t num_inputs,
+    _In_ const char* const* op_output_names, _In_ const char* const* actual_output_names, size_t num_outputs,
+    _In_ const char* const* op_attribute_names, _In_ IValue** attribute_values, size_t num_attributes) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   size_t input_count;
@@ -302,8 +303,13 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
     }
   }
 
+  std::vector<OrtValue*> attributes;
+  for (int i = 0; i < num_attributes; i++) {
+    attributes.push_back(static_cast<OnnxruntimeValue*>(*(attribute_values + i))->UseOrtValue());
+  }
+
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddOperator(
-    ort_model_.get(), op_type, op_name, op_domain, input_names.data(), input_count, output_names.data(), output_count, nullptr, nullptr, 0),
+    ort_model_.get(), op_type, op_name, op_domain, input_names.data(), input_count, output_names.data(), output_count, op_attribute_names, attributes.data(), num_attributes),
                           engine_factory_->UseOrtApi());
   return S_OK;
 }

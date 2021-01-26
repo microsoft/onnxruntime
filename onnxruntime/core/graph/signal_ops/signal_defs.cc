@@ -49,7 +49,7 @@ void RegisterSignalSchemas() {
             "The output tensor will return the first floor(n_fft/2) + 1 values from the DFT."
             "Values can be 0 or 1.",
             AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            static_cast<int64_t>(1))
+            static_cast<int64_t>(0))
       .Input(0,
           "input",
           "For complex input, the following shape is expected: [batch_idx][n_fft][2]" 
@@ -80,7 +80,7 @@ void RegisterSignalSchemas() {
 
           if (is_onesided) {
             auto n_fft = input_shape.dim(1).dim_value();
-            result_shape.mutable_dim(1)->set_dim_value(static_cast<int64_t>(std::floor(n_fft / 2.f) + 1));
+            result_shape.mutable_dim(1)->set_dim_value(static_cast<int64_t>((n_fft >> 1) + 1));
           }
 
           auto dim_size = input_shape.dim_size();

@@ -15,6 +15,7 @@ LearningModelOperator::LearningModelOperator(hstring const& type, hstring const&
   constant_input_mapping_ = winrt::single_threaded_map<winrt::hstring, wf::IInspectable>();
   input_mapping_ = winrt::single_threaded_map<winrt::hstring, winrt::hstring>();
   output_mapping_ = winrt::single_threaded_map<winrt::hstring, winrt::hstring>();
+  attribute_values_ = winrt::single_threaded_map<winrt::hstring, wf::IInspectable>();
 
   if (name_.empty()) {
     std::wostringstream name_stream;
@@ -48,37 +49,8 @@ winml_experimental::LearningModelOperator LearningModelOperator::SetOutput(
   return *this;
 }
 
-winml_experimental::LearningModelOperator LearningModelOperator::SetAttribute(hstring const& /*name*/, Windows::Foundation::IInspectable const& /*value*/) {
-  // TODO Validate against allowed operator attribute NAMES. The types are not deduced.
- // attributes_[name] = inspectable;
-
-  /*
-    auto featureValue = _winml::CreateFeatureValueFromInspectable(WinML::BindingType::kInput, inspectable, found_it->second);
-    // Validate that the feature value is compatible with the descriptor
-    _winml::VerifyFeatureValueCompatibleWithDescriptor(featureValue, found_it->second);
-    
-    auto spLotusValueProvider = featureValue.as<_winml::ILotusValueProviderPrivate>();
-
-    ////////
-    //////// TODO: Need to create a fake IEngine that is not backed by a cpu session but no model in order to generate the appropriate values here.
-    ////////
-
-    // Create the Binding Context to pass to the feature value
-    _winml::BindingContext context{
-        _winml::BindingType::kInput,
-        nullptr,
-        found_it->second,
-        nullptr,
-        {}  // SubresourceId is set by callee
-    };
-
-    // Get the bound tensor
-    winrt::com_ptr<_winml::IValue> value;
-    spLotusValueProvider->GetValue(context, value.put());
-
-    attribute_values_[name] = value;
-
-    */
+winml_experimental::LearningModelOperator LearningModelOperator::SetAttribute(hstring const& name, Windows::Foundation::IInspectable const& value) {
+  attribute_values_.Insert(name, value);
   return *this;
 }
 
@@ -106,7 +78,7 @@ wfc::IMap<winrt::hstring, winrt::hstring> LearningModelOperator::OutputMapping()
   return output_mapping_;
 }
 
-std::unordered_map<std::string, winrt::com_ptr<_winml::IValue>> LearningModelOperator::AttributeMap() {
+wfc::IMap<winrt::hstring, wf::IInspectable> LearningModelOperator::AttributeMap() {
   return attribute_values_;
 }
 

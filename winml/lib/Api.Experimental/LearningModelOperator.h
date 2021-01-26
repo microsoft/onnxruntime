@@ -25,7 +25,7 @@ struct LearningModelOperator : LearningModelOperatorT<LearningModelOperator>
     wfc::IMap<winrt::hstring, winrt::hstring> InputMapping();
     wfc::IMap<winrt::hstring, wf::IInspectable> ConstantInputMapping();
     wfc::IMap<winrt::hstring, winrt::hstring> OutputMapping();
-    std::unordered_map<std::string, winrt::com_ptr<_winml::IValue>> AttributeMap();
+    wfc::IMap<winrt::hstring, wf::IInspectable> AttributeMap();
 
 private:
     winrt::hstring name_;
@@ -36,7 +36,7 @@ private:
     wfc::IMap<winrt::hstring, winrt::hstring> input_mapping_;
     wfc::IMap<winrt::hstring, winrt::hstring> output_mapping_;
 
-    std::unordered_map<std::string, winrt::com_ptr<_winml::IValue>> attribute_values_;
+    wfc::IMap<winrt::hstring, wf::IInspectable> attribute_values_;
 };
 
 } // namespace WINML_EXPERIMENTALP

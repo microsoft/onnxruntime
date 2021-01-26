@@ -74,11 +74,3 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
   bool has_unsupported_image_metadata_;
 };
 }  // WINMLP
-
-
-namespace WINML::factory_implementation
-{
-    struct TensorFeatureDescriptor : TensorFeatureDescriptorT<TensorFeatureDescriptor, implementation::TensorFeatureDescriptor>
-    {
-    };
-}  // namespace WINML::factory_implementation

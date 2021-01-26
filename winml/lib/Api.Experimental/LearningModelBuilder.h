@@ -18,6 +18,12 @@ struct LearningModelBuilder : LearningModelBuilderT<LearningModelBuilder> {
 
   static winml_experimental::LearningModelBuilder Create();
 
+  static winml::TensorFeatureDescriptor CreateTensorFeatureDescriptor(
+      hstring const& name,
+      hstring const& description,
+      winml::TensorKind const& kind,
+      array_view<int64_t const> shape);
+
   _winml::IModel* UseModel();
   
   winml::LearningModelSession InertSession() {
