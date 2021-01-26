@@ -145,11 +145,6 @@ if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
 fi
 
-if [[ $BUILD_EXTR_PAR = *--enable_training_pipeline_e2e_tests* ]]; then
-    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_ort:/bert_ort \
-                                                --volume /bert_data:/bert_data"
-fi
-
 $DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true
 $DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \

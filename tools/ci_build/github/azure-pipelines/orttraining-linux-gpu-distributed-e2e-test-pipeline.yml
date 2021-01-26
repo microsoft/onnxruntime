@@ -21,7 +21,6 @@ jobs:
           --enable_training \
           --update --build \
           --build_wheel \
-          --enable_training_pipeline_e2e_tests \
           " \
         -m
       DisplayName: 'Build'
