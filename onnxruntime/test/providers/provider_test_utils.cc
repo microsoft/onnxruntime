@@ -815,35 +815,7 @@ void OpTester::Run(
 
       for (auto& entry : *execution_providers) {
         provider_types += entry->Type() + ":";
-
-        std::unique_ptr<IExecutionProvider> execution_provider;
-        if (entry->Type() == onnxruntime::kCpuExecutionProvider)
-          execution_provider = DefaultCpuExecutionProvider();
-        else if (entry->Type() == onnxruntime::kCudaExecutionProvider)
-          execution_provider = DefaultCudaExecutionProvider();
-        else if (entry->Type() == onnxruntime::kDnnlExecutionProvider)
-          execution_provider = DefaultDnnlExecutionProvider();
-        else if (entry->Type() == onnxruntime::kOpenVINOExecutionProvider)
-          execution_provider = DefaultOpenVINOExecutionProvider();
-        else if (entry->Type() == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
-        else if (entry->Type() == onnxruntime::kTensorrtExecutionProvider)
-          execution_provider = DefaultTensorrtExecutionProvider();
-        else if (entry->Type() == onnxruntime::kNnapiExecutionProvider)
-          execution_provider = DefaultNnapiExecutionProvider();
-        else if (entry->Type() == onnxruntime::kRknpuExecutionProvider)
-          execution_provider = DefaultRknpuExecutionProvider();
-        else if (entry->Type() == onnxruntime::kAclExecutionProvider)
-          execution_provider = DefaultAclExecutionProvider();
-        else if (entry->Type() == onnxruntime::kArmNNExecutionProvider)
-          execution_provider = DefaultArmNNExecutionProvider();
-        else if (entry->Type() == onnxruntime::kRocmExecutionProvider)
-          execution_provider = DefaultRocmExecutionProvider();
-        // skip if execution provider is disabled
-        if (execution_provider == nullptr)
-          continue;
-
-        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(entry)));
       }
 
       fetches_ = ExecuteModel<InferenceSession>(
