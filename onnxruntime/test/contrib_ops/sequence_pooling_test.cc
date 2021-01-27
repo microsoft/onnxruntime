@@ -32,16 +32,16 @@ static void SequencePoolingTest(
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   if (HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
-    OpTester tester("SequencePooling", 1, onnxruntime::kMSDomain);
+    OpTester tester_1("SequencePooling", 1, onnxruntime::kMSDomain);
 
-    tester.AddInput<MLFloat16>("batch_input_tensor", {batch_size, sequence_length_for_split, hidden_size}, ToFloat16(batch_input));
-    tester.AddInput<int64_t>("batch_sentence_lengthes", {batch_size, num_sequence}, batch_sequence_lengths);
-    tester.AddOutput<MLFloat16>("output", {batch_size, num_sequence, hidden_size}, ToFloat16(output));
-    tester.AddOutput<MLFloat16>("masks", {batch_size, num_sequence}, ToFloat16(masks));
+    tester_1.AddInput<MLFloat16>("batch_input_tensor", {batch_size, sequence_length_for_split, hidden_size}, ToFloat16(batch_input));
+    tester_1.AddInput<int64_t>("batch_sentence_lengthes", {batch_size, num_sequence}, batch_sequence_lengths);
+    tester_1.AddOutput<MLFloat16>("output", {batch_size, num_sequence, hidden_size}, ToFloat16(output));
+    tester_1.AddOutput<MLFloat16>("masks", {batch_size, num_sequence}, ToFloat16(masks));
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    tester_1.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 
