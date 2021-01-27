@@ -21,7 +21,16 @@ struct LearningModelSessionAPITestsApi {
   VoidTest OverrideNamedDimension;
   VoidTest CloseSession;
   VoidTest SetIntraOpNumThreads;
-  VoidTest TestModelBuilding;
+  VoidTest ModelBuilding_Gemm;
+  VoidTest ModelBuilding_DynamicMatmul;
+  VoidTest ModelBuilding_ConstantMatmul;
+  VoidTest ModelBuilding_DiscreteFourierTransform;
+  VoidTest ModelBuilding_DiscreteFourierTransformInverseIdentity;
+  VoidTest ModelBuilding_HannWindow;
+  VoidTest ModelBuilding_HammingWindow;
+  VoidTest ModelBuilding_BlackmanWindow;
+  VoidTest ModelBuilding_STFT;
+  VoidTest ModelBuilding_MelSpectrogramOnThreeToneSignal;
 };
 const LearningModelSessionAPITestsApi& getapi();
 
@@ -44,5 +53,14 @@ WINML_TEST(LearningModelSessionAPITests, AdapterIdAndDevice)
 WINML_TEST(LearningModelSessionAPITests, OverrideNamedDimension)
 WINML_TEST(LearningModelSessionAPITests, CloseSession)
 WINML_TEST(LearningModelSessionAPITests, SetIntraOpNumThreads)
-WINML_TEST(LearningModelSessionAPITests, TestModelBuilding)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_Gemm)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_DynamicMatmul)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_ConstantMatmul)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_DiscreteFourierTransform)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_DiscreteFourierTransformInverseIdentity)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_HannWindow)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_HammingWindow)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_BlackmanWindow)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_STFT)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_MelSpectrogramOnThreeToneSignal)
 WINML_TEST_CLASS_END()

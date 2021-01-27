@@ -19,6 +19,12 @@ using namespace winrt;
 using namespace winml;
 using namespace wfc;
 
+// experimental
+using namespace winml_experimental;
+using Operator = winml_experimental::LearningModelOperator;
+
+static const wchar_t MS_DOMAIN[] = L"com.microsoft";
+
 using wf::IPropertyValue;
 
 #define INT64(x) static_cast<int64_t>(x)
@@ -418,16 +424,12 @@ static void CloseSession()
 }
 
 static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind) {
-  printf("\n%ls\n", window_operator_name);
-  using namespace winml_experimental;
-  using Operator = winml_experimental::LearningModelOperator;
-
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> output_shape = {32};
   auto double_data_type = TensorInt64Bit::CreateFromArray({}, {11});
 
   auto window_operator =
-    Operator(window_operator_name, L"window0", L"com.microsoft")
+    Operator(window_operator_name, L"window0", MS_DOMAIN)
       .SetInput(L"size", L"Input")
       .SetOutput(L"output", L"Output");
 
@@ -451,64 +453,25 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
     auto result = session.Evaluate(binding, L"");
 
     // Check results
+    printf("Output\n");
     if (kind == TensorKind::Float) {
       auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
       auto y_ivv = y_tensor.GetAsVectorView();
       for (int i = 0; i < output_shape[0]; i++) {
-        printf("%f\n", y_ivv.GetAt(i));
+        printf("%f, ", y_ivv.GetAt(i));
       }
     }
     if (kind == TensorKind::Double) {
       auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorDouble>();
       auto y_ivv = y_tensor.GetAsVectorView();
       for (int i = 0; i < output_shape[0]; i++) {
-        printf("%f\n", y_ivv.GetAt(i));
+        printf("%f, ", y_ivv.GetAt(i));
       }
     }
-}
-
-static void DiscreteFourierTransformInverseIdentity() {
-  printf("\nDiscrete Fourier Transform + Inverse = Identity\n");
-  using namespace winml_experimental;
-  using Operator = winml_experimental::LearningModelOperator;
-
-  std::vector<int64_t> shape = {1, 5};
-  std::vector<int64_t> output_shape = {1, shape[1], 2};
-
-  auto model =
-      LearningModelBuilder::Create()
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
-          .Operators().Add(Operator(L"DFT", L"dft0", L"com.microsoft")
-                             .SetInput(L"input", L"Input")
-                             .SetOutput(L"output", L"dft0_output"))
-          .Operators().Add(Operator(L"IDFT", L"idft0", L"com.microsoft")
-                             .SetInput(L"input", L"dft0_output")
-                             .SetOutput(L"output", L"Output"))
-          .CreateModel();
-
-  LearningModelSession session(model);
-  LearningModelBinding binding(session);
-
-  // Populate binding
-  binding.Bind(L"Input", TensorFloat::CreateFromArray(shape, {1, 2, 3, 4, 5}));
-
-  // Evaluate
-  auto result = session.Evaluate(binding, L"");
-
-  // Check results
-  auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
-  auto y_ivv = y_tensor.GetAsVectorView();
-  for (int i = 0; i < output_shape[0] * output_shape[1] * 2; i += 2) {
-    printf("%f + %fi\n", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
-  }
+    printf("\n");
 }
 
 static void DiscreteFourierTransform(bool is_onesided = false) {
-  printf("\nDFT\n");
-  using namespace winml_experimental;
-  using Operator = winml_experimental::LearningModelOperator;
-
   std::vector<int64_t> shape = {1, 5};
   std::vector<int64_t> output_shape = {1, 5, 2};
   output_shape[1] = is_onesided ? (1 + (shape[1] >> 1)) : shape[1];
@@ -517,7 +480,7 @@ static void DiscreteFourierTransform(bool is_onesided = false) {
       LearningModelBuilder::Create()
         .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
         .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
-        .Operators().Add(Operator(L"DFT", L"dft0", L"com.microsoft")
+        .Operators().Add(Operator(L"DFT", L"dft0", MS_DOMAIN)
           .SetInput(L"input", L"Input")
           .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {is_onesided}))
           .SetOutput(L"output", L"Output"))
@@ -533,11 +496,13 @@ static void DiscreteFourierTransform(bool is_onesided = false) {
   auto result = session.Evaluate(binding, L"");
 
   // Check results
+  printf("Output\n");
   auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
   auto y_ivv = y_tensor.GetAsVectorView();
   for (int i = 0; i < output_shape[0] * output_shape[1] * 2; i += 2) {
-    printf("%f + %fi\n", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
+    printf("(%f + %fi), ", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
   }
+  printf("\n");
 }
 
 template <typename T>
@@ -587,22 +552,16 @@ static auto MakeThreeTones(size_t signal_size, size_t sample_rate) {
 
 static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
     size_t hop_size, size_t sample_rate, bool is_onesided = false) {
-  printf("\nTest STFT\n");
-  using namespace winml_experimental;
-  using Operator = winml_experimental::LearningModelOperator;
-
-  static const wchar_t MS_DOMAIN[] = L"com.microsoft";
-
   auto n_dfts = static_cast<size_t>(ceil((signal_size - dft_size) / hop_size));
   auto input_shape = std::vector<int64_t>{1, INT64(signal_size)};
   auto output_shape =
     std::vector<int64_t>{
       INT64(batch_size),
       INT64(n_dfts),
-      is_onesided ? ((input_shape[1] >> 1) + 1) : input_shape[1],
+      is_onesided ? ((INT64(dft_size) >> 1) + 1) : INT64(dft_size),
       2
     };
-  auto dft_length = TensorInt64Bit::CreateFromArray({}, {output_shape[1]});
+  auto dft_length = TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)});
   
   auto model =
       LearningModelBuilder::Create()
@@ -619,6 +578,7 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
               .SetConstant(L"size", dft_length)
               .SetOutput(L"output", L"Output.HannWindow"))
           .Operators().Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
+              .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {INT64(is_onesided)}))
               .SetInput(L"signal", L"Input.TimeSignal")
               .SetInput(L"window", L"Output.HannWindow")
               .SetConstant(L"frame_length", dft_length)
@@ -631,129 +591,109 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
 
   // Create signal binding
   auto signal = MakeMiddleC<float>(signal_size, sample_rate);
+  printf("\n");
+  printf("Input.TimeSignal:\n");
   for (size_t i = 0; i < dft_size; i++) {
-    printf("%f\n", signal[i]);
+    printf("%f, ", signal[i]);
   }
 
   // Bind
-  printf("\nBind\n\n");
   binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromArray(input_shape, signal));
 
   // Evaluate
   auto result = session.Evaluate(binding, L"");
 
-  printf("\nHann Window Output\n\n");
+  printf("\n");
+  printf("Output.HannWindow\n");
   auto window_tensor = result.Outputs().Lookup(L"Output.HannWindow").as<TensorFloat>();
   auto window_ivv = window_tensor.GetAsVectorView();
   for (uint32_t i = 0; i < window_ivv.Size(); i++) {
-    printf("%f \n", window_ivv.GetAt(i));
+    printf("%f, ", window_ivv.GetAt(i));
   }
-
-  printf("\nSTFT Output\n\n");
+  printf("\n");
+  printf("Output.STFT\n");
   // Check results
   auto y_tensor = result.Outputs().Lookup(L"Output.STFT").as<TensorFloat>();
   auto y_ivv = y_tensor.GetAsVectorView();
   auto size = y_ivv.Size();
-  if (size == n_dfts * output_shape[2] * 2) {
-    for (size_t dft_idx = 0; dft_idx < n_dfts; dft_idx++) {
-      for (size_t i = 0; INT64(i) < output_shape[2]; i++) {
-        auto real_idx = static_cast<uint32_t>((i * 2) + (2 * dft_idx * output_shape[2]));
-        printf("%d , %f , %f\n", static_cast<uint32_t>(i), y_ivv.GetAt(real_idx), y_ivv.GetAt(real_idx + 1));
-      }
+  WINML_EXPECT_EQUAL(size, n_dfts * output_shape[2] * 2);
+  for (size_t dft_idx = 0; dft_idx < n_dfts; dft_idx++) {
+    for (size_t i = 0; INT64(i) < output_shape[2]; i++) {
+      auto real_idx = static_cast<uint32_t>((i * 2) + (2 * dft_idx * output_shape[2]));
+      printf("(%d, %f , %fi), ", static_cast<uint32_t>(i), y_ivv.GetAt(real_idx), y_ivv.GetAt(real_idx + 1));
     }
   }
+  
+  printf("\n");
  }
 
 static void MelSpectrogramOnThreeToneSignal(
-    size_t batch_size,
-    size_t signal_size,
-    size_t window_size,
-    size_t dft_size,
-    size_t hop_size,
-    size_t n_mel_bins,
-    size_t sampling_rate) {
-  printf("\nTest Three Tone (C1, C2, C4) Spectrogram\n");
-
-  using namespace winml_experimental;
-  using Operator = winml_experimental::LearningModelOperator;
-
-  static const wchar_t MS_DOMAIN[] = L"com.microsoft";
-
+    size_t batch_size, size_t signal_size, size_t window_size, size_t dft_size,
+    size_t hop_size, size_t n_mel_bins, size_t sampling_rate) {
   auto n_dfts = static_cast<size_t>(ceil((signal_size - dft_size) / hop_size));
   auto onesided_dft_size = (dft_size >> 1) + 1;
   std::vector<int64_t> signal_shape = {INT64(batch_size), INT64(signal_size)};
   std::vector<int64_t> mel_spectrogram_shape = {INT64(batch_size), 1, INT64(n_dfts), INT64(n_mel_bins)};
 
   auto builder =
-      LearningModelBuilder::Create()
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, signal_shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
-          .Operators()
-          .Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
-            .SetConstant(L"size", TensorInt64Bit::CreateFromArray({}, {INT64(window_size)}))
-            .SetOutput(L"output", L"hann_window"))
-          .Operators()
-          .Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
-            .SetInput(L"signal", L"Input.TimeSignal")
-            .SetInput(L"window", L"hann_window")
-            .SetConstant(L"frame_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
-            .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {INT64(hop_size)}))
-            .SetOutput(L"output", L"stft_output"))
-          .Operators()
-          .Add(Operator(L"Slice", L"real_slice")
-            .SetInput(L"data", L"stft_output")
-            .SetConstant(L"starts", TensorInt32Bit::CreateFromArray({4}, {0, 0, 0, 0}))
-            .SetConstant(L"ends",   TensorInt32Bit::CreateFromArray({4}, {INT_MAX, INT_MAX, INT_MAX, 1}))
-            .SetOutput(L"output", L"reals"))
-          .Operators()
-          .Add(Operator(L"Slice", L"complex_slice")
-            .SetInput(L"data", L"stft_output")
-            .SetConstant(L"starts", TensorInt32Bit::CreateFromArray({4}, {0, 0, 0, 1}))
-            .SetConstant(L"ends", TensorInt32Bit::CreateFromArray({4}, {INT_MAX, INT_MAX, INT_MAX, 2}))
-            .SetOutput(L"output", L"imaginaries"))
-          .Operators()
-          .Add(Operator(L"Mul", L"real_squared")
-            .SetInput(L"A", L"reals")
-            .SetInput(L"B", L"reals")
-            .SetOutput(L"C", L"reals_squared"))
-          .Operators()
-          .Add(Operator(L"Mul", L"complex_squared")
-            .SetInput(L"A", L"imaginaries")
-            .SetInput(L"B", L"imaginaries")
-            .SetOutput(L"C", L"imaginaries_squared"))
-          .Operators()
-          .Add(Operator(L"Add", L"add0")
-            .SetInput(L"A", L"reals_squared")
-            .SetInput(L"B", L"imaginaries_squared")
-            .SetOutput(L"C", L"magnitude_squared"))
-          .Operators()
-          .Add(Operator(L"Div", L"div0")
-            .SetInput(L"A", L"magnitude_squared")
-            .SetConstant(L"B", TensorFloat::CreateFromArray({}, {static_cast<float>(dft_size)}))
-            .SetOutput(L"C", L"power_frames"))
-          .Operators()
-          .Add(Operator(L"MelWeightMatrix", L"melweightmatrix0", MS_DOMAIN)
-            .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(n_mel_bins)}))
-            .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
-            .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(sampling_rate)}))
-            .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
-            .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {sampling_rate / 2.f}))
-            .SetOutput(L"output", L"mel_weight_matrix"))
-          .Operators()
-          .Add(Operator(L"Reshape", L"reshape0")
-            .SetInput(L"data", L"power_frames")
-            .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({2}, {INT64(batch_size * n_dfts), INT64(onesided_dft_size)}))
-            .SetOutput(L"reshaped", L"reshaped_output"))
-          .Operators()
-          .Add(Operator(L"MatMul", L"matmul0")
-            .SetInput(L"A", L"reshaped_output")
-            .SetInput(L"B", L"mel_weight_matrix")
-            .SetOutput(L"Y", L"mel_spectrogram"))
-          .Operators()
-          .Add(Operator(L"Reshape", L"reshape1")
-            .SetInput(L"data", L"mel_spectrogram")
-            .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, mel_spectrogram_shape))
-            .SetOutput(L"reshaped", L"Output.MelSpectrogram"));
+    LearningModelBuilder::Create()
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, signal_shape))
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
+      .Operators().Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
+        .SetConstant(L"size", TensorInt64Bit::CreateFromArray({}, {INT64(window_size)}))
+        .SetOutput(L"output", L"hann_window"))
+      .Operators().Add(Operator(L"STFT", L"stft0", MS_DOMAIN)
+        .SetInput(L"signal", L"Input.TimeSignal")
+        .SetInput(L"window", L"hann_window")
+        .SetConstant(L"frame_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
+        .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {INT64(hop_size)}))
+        .SetOutput(L"output", L"stft_output"))
+      .Operators().Add(Operator(L"Slice", L"real_slice")
+        .SetInput(L"data", L"stft_output")
+        .SetConstant(L"starts", TensorInt32Bit::CreateFromArray({4}, {0, 0, 0, 0}))
+        .SetConstant(L"ends",   TensorInt32Bit::CreateFromArray({4}, {INT_MAX, INT_MAX, INT_MAX, 1}))
+        .SetOutput(L"output", L"reals"))
+      .Operators().Add(Operator(L"Slice", L"complex_slice")
+        .SetInput(L"data", L"stft_output")
+        .SetConstant(L"starts", TensorInt32Bit::CreateFromArray({4}, {0, 0, 0, 1}))
+        .SetConstant(L"ends", TensorInt32Bit::CreateFromArray({4}, {INT_MAX, INT_MAX, INT_MAX, 2}))
+        .SetOutput(L"output", L"imaginaries"))
+      .Operators().Add(Operator(L"Mul", L"real_squared")
+        .SetInput(L"A", L"reals")
+        .SetInput(L"B", L"reals")
+        .SetOutput(L"C", L"reals_squared"))
+      .Operators().Add(Operator(L"Mul", L"complex_squared")
+        .SetInput(L"A", L"imaginaries")
+        .SetInput(L"B", L"imaginaries")
+        .SetOutput(L"C", L"imaginaries_squared"))
+      .Operators().Add(Operator(L"Add", L"add0")
+        .SetInput(L"A", L"reals_squared")
+        .SetInput(L"B", L"imaginaries_squared")
+        .SetOutput(L"C", L"magnitude_squared"))
+      .Operators().Add(Operator(L"Div", L"div0")
+        .SetInput(L"A", L"magnitude_squared")
+        .SetConstant(L"B", TensorFloat::CreateFromArray({}, {static_cast<float>(dft_size)}))
+        .SetOutput(L"C", L"power_frames"))
+      .Operators().Add(Operator(L"MelWeightMatrix", L"melweightmatrix0", MS_DOMAIN)
+        .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(n_mel_bins)}))
+        .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
+        .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(sampling_rate)}))
+        .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
+        .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {sampling_rate / 2.f}))
+        .SetOutput(L"output", L"mel_weight_matrix"))
+      .Operators().Add(Operator(L"Reshape", L"reshape0")
+        .SetInput(L"data", L"power_frames")
+        .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({2}, {INT64(batch_size * n_dfts), INT64(onesided_dft_size)}))
+        .SetOutput(L"reshaped", L"reshaped_output"))
+      .Operators().Add(Operator(L"MatMul", L"matmul0")
+        .SetInput(L"A", L"reshaped_output")
+        .SetInput(L"B", L"mel_weight_matrix")
+        .SetOutput(L"Y", L"mel_spectrogram"))
+      .Operators().Add(Operator(L"Reshape", L"reshape1")
+        .SetInput(L"data", L"mel_spectrogram")
+        .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, mel_spectrogram_shape))
+        .SetOutput(L"reshaped", L"Output.MelSpectrogram"));
+
   auto model = builder.CreateModel();
 
   LearningModelSession session(model);
@@ -776,20 +716,51 @@ static void MelSpectrogramOnThreeToneSignal(
   auto result = session.Evaluate(binding, L"");
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
-  printf("\nSpectrogram evaluate took: %f\n", evaluate_duration_in_microseconds.count());
+  printf("Evaluate Took: %f\n", evaluate_duration_in_microseconds.count());
+
+  // Check the output video frame object by saving output image to disk
+  std::wstring out_name = L"mel_spectrogram.jpg";
+
+  // Save the output
+  std::wstring modulePath = FileHelpers::GetModulePath();
+  winrt::Windows::Storage::StorageFolder folder = winrt::Windows::Storage::StorageFolder::GetFolderFromPathAsync(modulePath).get();
+  winrt::Windows::Storage::StorageFile file = folder.CreateFileAsync(out_name, winrt::Windows::Storage::CreationCollisionOption::ReplaceExisting).get();
+  winrt::Windows::Storage::Streams::IRandomAccessStream write_stream = file.OpenAsync(winrt::Windows::Storage::FileAccessMode::ReadWrite).get();
+  winrt::Windows::Graphics::Imaging::BitmapEncoder encoder = winrt::Windows::Graphics::Imaging::BitmapEncoder::CreateAsync(winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(), write_stream).get();
+  encoder.SetSoftwareBitmap(output_image.SoftwareBitmap());
+  encoder.FlushAsync().get();
 
   // Save the model
   builder.Save(L"spectrogram.onnx");
+  printf("\n");
 }
 
-static void DynamicMatmul() {
-  printf("\nTest Dynamic MatMul\n");
 
-  using namespace winml_experimental;
-  using Operator = winml_experimental::LearningModelOperator;
+static void ModelBuilding_Gemm()
+{
+  std::vector<int64_t> shape = {3, 3};
+  std::vector<float> x =
+  {
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1
+  };
+  auto model =
+    LearningModelBuilder::Create()
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"input_a", L"the a input", TensorKind::Float, shape))
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"input_b", L"the b input", TensorKind::Float, shape))
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"input_c", L"the c input", TensorKind::Float, shape))
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"output_y", L"the y output", TensorKind::Float, shape))
+      .Operators().Add(Operator(L"Gemm", L"gemm0")
+        .SetInput(L"A", L"intput_a")
+        .SetInput(L"B", L"intput_b")
+        .SetInput(L"C", L"intput_c")
+        .SetOutput(L"Y", L"output_y"))
+      .CreateModel();
+}
 
-  static const wchar_t MS_DOMAIN[] = L"com.microsoft";
-
+static void ModelBuilding_DynamicMatmul()
+{
   std::vector<int64_t> a_shape = {318, 129};
   std::vector<int64_t> b_shape = {129, 1024};
 
@@ -822,29 +793,23 @@ static void DynamicMatmul() {
 
   // Print duration
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
-  printf("\nDynamic MatMul Evaluate Took: %f\n", evaluate_duration_in_microseconds.count());
+  printf("Evaluate Took: %f\n", evaluate_duration_in_microseconds.count());
 }
 
-static void ConstantMatmul() {
-  printf("\nTest Constant MatMul\n");
-
-  using namespace winml_experimental;
-  using Operator = winml_experimental::LearningModelOperator;
-
-  static const wchar_t MS_DOMAIN[] = L"com.microsoft";
-
+static void ModelBuilding_ConstantMatmul()
+{
   std::vector<int64_t> a_shape = {318, 129};
   std::vector<int64_t> b_shape = {129, 1024};
 
   auto model =
-      LearningModelBuilder::Create()
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", L"The input1 matrix", TensorKind::Float, a_shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, {a_shape[0], b_shape[1]}))
-          .Operators().Add(Operator(L"MatMul", L"matmul0")
-                   .SetInput(L"A", L"InputA")
-                   .SetConstant(L"B", TensorFloat::CreateFromArray(b_shape, std::vector<float>(SIZET(b_shape[0] * b_shape[1]), 1)))
-                   .SetOutput(L"Y", L"Output"))
-          .CreateModel();
+    LearningModelBuilder::Create()
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", L"The input1 matrix", TensorKind::Float, a_shape))
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, {a_shape[0], b_shape[1]}))
+      .Operators().Add(Operator(L"MatMul", L"matmul0")
+        .SetInput(L"A", L"InputA")
+        .SetConstant(L"B", TensorFloat::CreateFromArray(b_shape, std::vector<float>(SIZET(b_shape[0] * b_shape[1]), 1)))
+        .SetOutput(L"Y", L"Output"))
+      .CreateModel();
 
   LearningModelSession session(model);
   LearningModelBinding binding(session);
@@ -858,63 +823,85 @@ static void ConstantMatmul() {
   auto result = session.Evaluate(binding, L"");
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
-  printf("\nConstant Matmul Evaluate Took: %f\n", evaluate_duration_in_microseconds.count());
+  printf("Evaluate Took: %f\n", evaluate_duration_in_microseconds.count());
 }
 
-static void Gemm() {
-  printf("\nTest Gemm\n");
-  using namespace winml_experimental;
-  using Operator = winml_experimental::LearningModelOperator;
+static void ModelBuilding_DiscreteFourierTransform()
+{
+  DiscreteFourierTransform(false /*onesided*/);
+  DiscreteFourierTransform(true /*onesided*/);
+}
 
-  // TODO: OPERATOR IDL SHOULD CONTAIN IMPLEMENTED OPERATOR TYPES AND BE GENERATED BY THE BUILD
-  // TODO: FREE DIMENSIONS ARE NOT IMPLEMENTED
-  // TODO: ATTRIBUTES ARE NOT IMPLEMENTED, IE - operator.SetAttribute(L"att", attribute))
-  // TODO: CONSTANT INPUTS ARE NOT IMPLEMENTED, IE - builder.Inputs().AddConstant(L"c", constant_y)
-  // TODO: SHOULD LEARNINGMODELBUILDER::CREATE ACCEPT OPSET VERSION MAP?
-  // TODO: MAPFEATUREDESCRIPTOR AND SEQUENCEFEATUREDESCRIPTOR CONSTRUCTORS AND ABI METHODS ARE NOT IMPLEMENTED
-  //
-  // GEMM C INPUT SHOULD BE OPTIONAL BUT IT REQUIRED BY ONNX AS THE IMPLEMENTATION IS NO UP TO DATE
+static void ModelBuilding_DiscreteFourierTransformInverseIdentity()
+{
+  std::vector<int64_t> shape = {1, 5};
+  std::vector<int64_t> output_shape = {1, shape[1], 2};
 
-  std::vector<int64_t> shape = {3, 3};
-  std::vector<float> x =
-  {
-    1, 0, 0,
-    0, 1, 0,
-    0, 0, 1
-  };
   auto model =
-    LearningModelBuilder::Create()
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"a", L"the a input", TensorKind::Float, shape))
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"b", L"the b input", TensorKind::Float, shape))
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"c", L"the c input", TensorKind::Float, shape))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"y", L"the y output", TensorKind::Float, shape))
-      .Operators().Add(Operator(L"Gemm", L"gemm0", L"").SetInput(L"A", L"a").SetInput(L"B", L"b").SetInput(L"C", L"c").SetOutput(L"Y", L"y"))
-      .CreateModel();
+      LearningModelBuilder::Create()
+          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
+          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
+          .Operators().Add(Operator(L"DFT", L"dft0", MS_DOMAIN)
+                             .SetInput(L"input", L"Input")
+                             .SetOutput(L"output", L"dft0_output"))
+          .Operators().Add(Operator(L"IDFT", L"idft0", MS_DOMAIN)
+                             .SetInput(L"input", L"dft0_output")
+                             .SetOutput(L"output", L"Output"))
+          .CreateModel();
+
+  LearningModelSession session(model);
+  LearningModelBinding binding(session);
+
+  // Populate binding
+  binding.Bind(L"Input", TensorFloat::CreateFromArray(shape, {1, 2, 3, 4, 5}));
+
+  // Evaluate
+  auto result = session.Evaluate(binding, L"");
+
+  // Check results
+  printf("Output\n");
+  auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
+  auto y_ivv = y_tensor.GetAsVectorView();
+  for (int i = 0; i < output_shape[0] * output_shape[1] * 2; i += 2) {
+    printf("(%f + %fi), ", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
+  }
+  printf("\n");
 }
 
-static void TestModelBuilding() {
-  // basic operator tests
-  Gemm();
-  DynamicMatmul();
-  ConstantMatmul();
-
-  // onesided = false
-  DiscreteFourierTransform(false);
-  DiscreteFourierTransformInverseIdentity();
-
-  // not onesided = true
-  DiscreteFourierTransform(true);
-
-  // window functions
+static void ModelBuilding_HannWindow()
+{
   WindowFunction(L"HannWindow", TensorKind::Float);
   WindowFunction(L"HannWindow", TensorKind::Double);
-  
+}
+
+static void ModelBuilding_HammingWindow()
+{
   WindowFunction(L"HammingWindow", TensorKind::Float);
   WindowFunction(L"HammingWindow", TensorKind::Double);
-  
+}
+
+static void ModelBuilding_BlackmanWindow()
+{
   WindowFunction(L"BlackmanWindow", TensorKind::Float);
   WindowFunction(L"BlackmanWindow", TensorKind::Double);
+}
 
+static void ModelBuilding_STFT()
+{
+  size_t batch_size = 1;
+  size_t sample_rate = 8192;
+  float signal_duration_in_seconds = 5.f;
+  size_t signal_size = static_cast<size_t>(sample_rate * signal_duration_in_seconds);
+  size_t dft_size = 256;
+  size_t hop_size = 128;
+
+  // stft
+  STFT(batch_size, signal_size, dft_size, hop_size, sample_rate, true);
+  STFT(batch_size, signal_size, dft_size, hop_size, sample_rate, false);
+}
+
+static void ModelBuilding_MelSpectrogramOnThreeToneSignal()
+{
   size_t batch_size = 1;
   size_t sample_rate = 8192;
   float signal_duration_in_seconds = 5.f;
@@ -924,11 +911,6 @@ static void TestModelBuilding() {
   size_t window_size = 256;
   size_t n_mel_bins = 1024;
 
-  // stft
-  STFT(batch_size, signal_size, dft_size, hop_size, sample_rate, true);
-  STFT(batch_size, signal_size, dft_size, hop_size, sample_rate, false);
-
-  // mel spectrogram
   MelSpectrogramOnThreeToneSignal(batch_size, signal_size, dft_size, window_size, hop_size, n_mel_bins, sample_rate);
 }
 
@@ -985,7 +967,16 @@ const LearningModelSessionAPITestsApi& getapi() {
     NamedDimensionOverride,
     CloseSession,
     SetIntraOpNumThreads,
-    TestModelBuilding
+    ModelBuilding_Gemm,
+    ModelBuilding_DynamicMatmul,
+    ModelBuilding_ConstantMatmul,
+    ModelBuilding_DiscreteFourierTransform,
+    ModelBuilding_DiscreteFourierTransformInverseIdentity,
+    ModelBuilding_HannWindow,
+    ModelBuilding_HammingWindow,
+    ModelBuilding_BlackmanWindow,
+    ModelBuilding_STFT,
+    ModelBuilding_MelSpectrogramOnThreeToneSignal,
   };
 
   if (SkipGpuTests()) {
