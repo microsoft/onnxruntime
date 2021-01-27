@@ -115,6 +115,7 @@ Return Value:
         auto ByteVector1 = _mm512_cvtepi32_epi8(IntegerVector1);
         auto ByteVector2 = _mm512_cvtepi32_epi8(IntegerVector2);
         auto ByteVector3 = _mm512_cvtepi32_epi8(IntegerVector3);
+
         _mm_storeu_si128((__m128i*)Output, ByteVector0);
         _mm_storeu_si128((__m128i*)(Output+16), ByteVector1);
         _mm_storeu_si128((__m128i*)(Output+32), ByteVector2);
@@ -142,7 +143,16 @@ Return Value:
         N -= 16;
     }
 
-    MlasQuantizeLinearKernel(Input, Output, N, Scale, ZeroPoint);
+    __mmask16 mask = _cvtu32_mask16((uint32_t(1) << N) - uint32_t(1));
+    auto FloatVector = _mm512_mask_loadu_ps(_mm512_set1_ps(0.0f), mask, Input);
+    FloatVector = _mm512_div_ps(FloatVector, ScaleVector);
+    FloatVector = _mm512_max_ps(FloatVector, MinimumValueVector);
+    FloatVector = _mm512_min_ps(FloatVector, MaximumValueVector);
+
+    auto IntegerVector = _mm512_cvtps_epi32(FloatVector);
+    IntegerVector = _mm512_add_epi32(IntegerVector, ZeroPointVector);
+
+    _mm512_mask_cvtepi32_storeu_epi8((void*)Output, mask, IntegerVector);
 }
 
 void

@@ -141,7 +141,7 @@ Return Value:
     this->QLinearAddS8Kernel = MlasQLinearAddS8Kernel;
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
-    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernal;
+    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;

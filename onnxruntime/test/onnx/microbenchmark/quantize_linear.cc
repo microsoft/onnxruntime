@@ -6,19 +6,19 @@
 
 using namespace onnxruntime;
 
-static void BM_QuantizeLinearSSE2(benchmark::State& state) {
+static void BM_QuantizeLinearBase(benchmark::State& state) {
   const size_t batch_size = static_cast<size_t>(state.range(0));
   uint8_t* output = (uint8_t*)aligned_alloc(sizeof(uint8_t) * batch_size, 64);
   float* data = GenerateArrayWithRandomValue<float>(batch_size, -1, 1);
 
   for (auto _ : state) {
-    MlasQuantizeLinearU8Kernal(data, output, batch_size, 2.f / 512.f, 1);
+    MlasQuantizeLinearU8Kernel(data, output, batch_size, 2.f / 512.f, 1);
   }
   aligned_free(data);
   aligned_free(output);
 }
 
-BENCHMARK(BM_QuantizeLinearSSE2)
+BENCHMARK(BM_QuantizeLinearBase)
     ->UseRealTime()
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
@@ -32,6 +32,7 @@ BENCHMARK(BM_QuantizeLinearSSE2)
     ->Arg(40000)
     ->Arg(98304)
     ->Arg(1572864);
+
 
 static void BM_QuantizeLinearAVX512(benchmark::State& state) {
   const size_t batch_size = static_cast<size_t>(state.range(0));

@@ -247,7 +247,7 @@ MlasQuantizeLinearS8Kernel(
 
 void
 MLASCALL
-MlasQuantizeLinearU8Kernal(
+MlasQuantizeLinearU8Kernel(
     const float* Input,
     uint8_t* Output,
     size_t N,
@@ -291,7 +291,7 @@ MlasQuantizeLinear<uint8_t>(
 #if defined(MLAS_TARGET_AMD64)
     MlasPlatform.QuantizeLinearU8Kernel(
 #else
-    MlasQuantizeLinearU8Kernal(
+    MlasQuantizeLinearU8Kernel(
 #endif
         Input, Output, N, Scale, ZeroPoint);
 }
