@@ -345,6 +345,9 @@ class MLTypeCallDispatcherRet {
   }
 };
 
+// Version of MLTypeCallDispatcher that takes supported types as class-level template parameters.
+// This enables easier use with type list representations of the supported types.
+// The invocation-related template parameters like Fn move to the individual Invoke() methods.
 // TODO consolidate this with the other MLTypeCallDispatcher classes
 // can add additional methods to cover their usages, but need to update call sites
 template <typename... Types>

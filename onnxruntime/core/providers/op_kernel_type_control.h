@@ -55,7 +55,8 @@ struct GlobalAllowed {};
 }  // namespace tags
 
 // holds specified Op kernel argument types
-// if types are defined, the data member 'value' should contain them in a type list
+// if types are defined, the data member 'type' should contain them in a type list
+// otherwise, if no types are defined (distinct from an empty list of types), there should be no data member 'type'
 // see the tags in onnxruntime::op_kernel_type_control::tags for intended uses
 template <typename Tag>
 struct OpKernelArgTypes {};
