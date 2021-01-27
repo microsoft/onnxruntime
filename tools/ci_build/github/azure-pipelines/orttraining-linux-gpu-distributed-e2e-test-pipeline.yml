@@ -42,6 +42,21 @@ jobs:
         --gpus all \
         --shm-size=1024m \
         --rm \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        onnxruntime_e2e_test_image \
+          /build/RelWithDebInfo/launch_test.py \
+            --cmd_line_with_args "python orttraining_distributed_tests.py" \
+            --cwd /build/RelWithDebInfo \
+    displayName: 'Run orttraining_distributed_tests.py'
+    condition: succeededOrFailed()
+    timeoutInMinutes: 120
+
+  - script: |
+      docker run \
+        --gpus all \
+        --shm-size=1024m \
+        --rm \
         --volume $(Build.BinariesDirectory):/build \
         --volume /bert_data:/bert_data \
         onnxruntime_e2e_test_image \
@@ -298,21 +313,6 @@ jobs:
     displayName: 'Run orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 30
-
-  - script: |
-      docker run \
-        --gpus all \
-        --shm-size=1024m \
-        --rm \
-        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-        --volume $(Build.BinariesDirectory):/build \
-        onnxruntime_e2e_test_image \
-          /build/RelWithDebInfo/launch_test.py \
-            --cmd_line_with_args "python orttraining_distributed_tests.py" \
-            --cwd /build/RelWithDebInfo \
-    displayName: 'Run orttraining_distributed_tests.py'
-    condition: succeededOrFailed()
-    timeoutInMinutes: 120
   
   - template: templates/component-governance-component-detection-steps.yml
     parameters:
