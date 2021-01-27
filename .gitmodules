@@ -59,6 +59,9 @@
 [submodule "cmake/external/optional-lite"]
 	path = cmake/external/optional-lite
 	url = https://github.com/martinmoene/optional-lite.git
+[submodule "cmake/external/coremltools"]
+	path = cmake/external/coremltools
+	url = https://github.com/apple/coremltools.git
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
