@@ -125,7 +125,7 @@ def parse_args():
                         )
 
     parser.add_argument('--enable_type_reduction', action='store_true',
-                        help='Add operator specific type information to the configuration file to potentiall reduce '
+                        help='Add operator specific type information to the configuration file to potentially reduce '
                              'the types supported by individual operator implementations.')
 
     parser.add_argument('model_path', help='Provide path to directory containing ONNX model/s to convert. '

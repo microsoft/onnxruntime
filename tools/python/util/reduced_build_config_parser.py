@@ -19,7 +19,7 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
     e.g. `ai.onnx;11;Add,Cast,Clip,...
 
     If the configuration file is generated from ORT format models it may optionally contain JSON for per-operator
-    type reduction. TThe required types are generally listed per input and/or output of the operator.
+    type reduction. The required types are generally listed per input and/or output of the operator.
     The type information is in a map, with 'inputs' and 'outputs' keys. The value for 'inputs' or 'outputs' is a map
     between the index number of the input/output and the required list of types.
 
