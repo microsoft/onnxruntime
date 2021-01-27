@@ -50,7 +50,9 @@ class TestOpQuatizerPad(unittest.TestCase):
 
         graph = helper.make_graph([pad_node], 'TestOpQuantizerPad_test_model',
                                   [input_tensor], [output_tensor], initializer=initializers)
-        model = helper.make_model(graph)
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = onnx.IR_VERSION
+
         onnx.save(model, output_model_path)
 
     def construct_model_conv_pad(self, output_model_path, conv_input_shape, conv_weight_shape,
@@ -88,7 +90,8 @@ class TestOpQuatizerPad(unittest.TestCase):
 
         graph = helper.make_graph([conv_node, identity_node, pad_node], 'TestOpQuantizerPad_test_model',
                                   [input_tensor], [identity_out, output_tensor], initializer=initializers)
-        model = helper.make_model(graph)
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = onnx.IR_VERSION
         onnx.save(model, output_model_path)
 
     def quantize_mode(self, model_fp32_path, model_i8_path, data_reader=None):
