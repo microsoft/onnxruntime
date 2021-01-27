@@ -55,37 +55,6 @@ MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const int16_t MlasOpmask16BitTableAvx512[
     0x00FF, 0x01FF, 0x03FF, 0x07FF, 0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF,
 };
 
-//
-// Reads the processor extended control register to determine platform
-// capabilities.
-//
-
-#if !defined(_XCR_XFEATURE_ENABLED_MASK)
-#define _XCR_XFEATURE_ENABLED_MASK 0
-#endif
-
-inline
-uint64_t
-MlasReadExtendedControlRegister(
-    unsigned int ext_ctrl_reg
-    )
-{
-#if defined(_WIN32)
-    return _xgetbv(ext_ctrl_reg);
-#else
-    uint32_t eax, edx;
-
-    __asm__
-    (
-        "xgetbv"
-        : "=a" (eax), "=d" (edx)
-        : "c" (ext_ctrl_reg)
-    );
-
-    return ((uint64_t)edx << 32) | eax;
-#endif
-}
-
 #endif
 
 MLAS_PLATFORM::MLAS_PLATFORM(

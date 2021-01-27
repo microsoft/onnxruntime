@@ -287,15 +287,9 @@ else()
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelAvx512F.S
       )
-      check_cxx_source_compiles("
-        #include <immintrin.h>
-        int main() {
-          __m512 zeros = _mm512_set1_ps(0.f);
-          (void)zeros;
-          return 0;
-        }"
-        COMPILES_AVX512F_INTRINSICS
-      )
+
+      include(onnxruntime_avx512_checker.cmake)
+
       if(COMPILES_AVX512F_INTRINSICS)
         set(mlas_platform_srcs_avx512f
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx512/quantize_avx512f.cpp
@@ -312,14 +306,6 @@ else()
       if(HAS_AVX512CORE)
         set(CMAKE_REQUIRED_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
       endif()
-      check_cxx_source_compiles("
-        int main() {
-          asm(\"vpmaddwd %zmm0,%zmm0,%zmm0\"); // AVX512BW feature
-          asm(\"vandnps %xmm31,%xmm31,%xmm31\"); // AVX512DQ/AVX512VL feature
-          return 0;
-        }"
-        COMPILES_AVX512CORE
-      )
 
       if(COMPILES_AVX512CORE)
         set(mlas_platform_srcs_avx512core

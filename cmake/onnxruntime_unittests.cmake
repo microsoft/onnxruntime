@@ -741,7 +741,7 @@ install(TARGETS onnx_test_runner
 
 if(onnxruntime_BUILD_BENCHMARKS)
   SET(BENCHMARK_DIR ${TEST_SRC_DIR}/onnx/microbenchmark)
-  add_executable(onnxruntime_benchmark
+  SET(benchmark_srcs
     ${BENCHMARK_DIR}/main.cc
     ${BENCHMARK_DIR}/modeltest.cc
     ${BENCHMARK_DIR}/pooling.cc
@@ -752,7 +752,16 @@ if(onnxruntime_BUILD_BENCHMARKS)
     ${BENCHMARK_DIR}/gelu.cc
     ${BENCHMARK_DIR}/activation.cc
     ${BENCHMARK_DIR}/reduceminmax.cc
-    ${BENCHMARK_DIR}/quantize_linear.cc)
+  )
+
+  include(onnxruntime_avx512_checker.cmake)
+  if(COMPILES_AVX512F_INTRINSICS)
+    SET(benchmark_srcs
+      ${benchmark_srcs}
+      ${BENCHMARK_DIR}/quantize_linear.cc
+    )
+  endif()
+  add_executable(onnxruntime_benchmark ${benchmark_srcs})
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
   if(WIN32)
     target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
