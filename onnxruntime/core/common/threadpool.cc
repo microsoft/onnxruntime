@@ -463,36 +463,39 @@ using Fn = ::std::function<void(::std::ptrdiff_t, ::std::ptrdiff_t)>;
 using SimpleFn = ::std::function<void(::std::ptrdiff_t)>;
 using JobFn = ::std::function<void()>;
 
-struct Job {
+struct alignas(8) Job {
   JobFn fn_;
   ::std::atomic<::std::ptrdiff_t>& progress_;
   operator bool() const { return &progress_ != &empty; }
 };
 
 struct Jobs {
-  ::std::deque<Job> jobs_;
-  mutable ::std::mutex mutex_;
+  int size_ = 0;
+  ::std::list<Job> jobs_;
+  mutable OrtMutex mutex_;
   void pushBack(const Job& job) {
-    ::std::lock_guard<::std::mutex> guard(mutex_);
+    ::std::lock_guard<OrtMutex> guard(mutex_);
     jobs_.push_back(job);
+    size_++;
+  }
+  void pushBack(Job&& job) {
+    ::std::lock_guard<OrtMutex> guard(mutex_);
+    jobs_.push_back(job);
+    size_++;
   }
   Job popFront() {
-    ::std::lock_guard<::std::mutex> guard(mutex_);
+    ::std::lock_guard<OrtMutex> guard(mutex_);
     if (jobs_.empty()) {
       return {Idel, empty};
     } else {
-      Job job = jobs_.front();
+      Job job = std::move(jobs_.front());
       jobs_.pop_front();
+      size_--;
       return job;
     }
   }
-  size_t size() const {
-    ::std::lock_guard<::std::mutex> guard(mutex_);
-    return jobs_.size();
-  }
   bool hasJob() const {
-    ::std::lock_guard<::std::mutex> guard(mutex_);
-    return !jobs_.empty();
+    return size_ > 0;
   }
 };
 
@@ -500,10 +503,10 @@ struct ThreadPoolImpl {
 
   explicit ThreadPoolImpl(int num_threads, bool denormal_as_zero) {
     for (int i = 0; i < num_threads - 1; i++) {
-      threads_.push_back(::std::thread([denormal_as_zero, this]() {
+      threads_.emplace_back(::std::thread([denormal_as_zero, this]() {
         SetDenormalAsZero(denormal_as_zero);
         while (alive_ || jobs_.hasJob()) {
-          auto job = jobs_.popFront();
+          Job job = std::move(jobs_.popFront());
           if (job) {
             job.fn_();
             if (&(job.progress_) != &non_empty) job.progress_++;
@@ -531,7 +534,7 @@ struct ThreadPoolImpl {
     } else {
       JobFn jobFn = std::move(fn);
       Job job{jobFn, non_empty};
-      jobs_.pushBack(job);
+      jobs_.pushBack(std::move(job));
     }
   }
   void ParallelFor(::std::ptrdiff_t laps, const Fn& fn) {
@@ -548,7 +551,7 @@ struct ThreadPoolImpl {
       }
       fn(branches * block, laps);
       while (progress.load() < branches) {
-        ::std::this_thread::yield();
+        onnxruntime::concurrency::SpinPause();
       }
     } else {
       fn(0, laps);
@@ -573,7 +576,7 @@ struct ThreadPoolImpl {
         fn(i);
       }
       while (progress.load() < branches) {
-        ::std::this_thread::yield();
+        onnxruntime::concurrency::SpinPause();
       }
     } else {
       for (::std::ptrdiff_t i = 0; i < laps; i++) {
