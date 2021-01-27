@@ -4,7 +4,6 @@
 #pragma once
 
 #ifndef PROVIDER_BRIDGE_PROVIDER
-#include <map>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -32,7 +31,7 @@ namespace onnxruntime {
 /**
    Logical device representation.
 */
-using AllocatorMap = std::map<int, AllocatorPtr>;
+using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
 using MemoryInfoSet = std::set<OrtMemoryInfo>;
 
 // if we are export the fused function to dll, the function will still in the same binary as onnxruntime
@@ -168,6 +167,8 @@ class IExecutionProvider {
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
+  // TODO: temparary sulotion, need to unify the interface in EP and AllocatorManager
+  void TryInsertAllocator(AllocatorPtr allocator);
 
   // creation of a fused node is not supported in a minimal build, so any EP enabled in that scenario must support
   // compilation via GraphViewer instances.

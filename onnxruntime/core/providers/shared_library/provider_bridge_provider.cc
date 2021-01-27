@@ -45,8 +45,8 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
 }
 
-void AllocatorManager__InertAllocator(AllocatorManager* p, AllocatorPtr allocator) {
-  return g_host->AllocatorManager__InertAllocator(p, allocator);
+void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) {
+  return g_host->AllocatorManager__InsertAllocator(p, allocator);
 }
 
 AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type) {
@@ -120,6 +120,10 @@ AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   g_host->IExecutionProvider__InsertAllocator(this, allocator);
+}
+
+void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
+  g_host->IExecutionProvider__TryInsertAllocator(this, allocator);
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,

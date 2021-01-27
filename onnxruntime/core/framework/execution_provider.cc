@@ -56,23 +56,34 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
   auto ite = mem_info_set_.find(info);
-  if (ite != mem_info_set_.end()) {
-    const int key = MakeKey(info.id, info.mem_type);
-    allocators_[key] = allocator;
+  if (ite == mem_info_set_.end()) {
+    ORT_THROW("Allocator with same OrtMemoryInfo not found, nothing to replace!");
   }
+
+  const int key = MakeKey(info.id, info.mem_type);
+  allocators_[key] = allocator;
 }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
   auto ite = mem_info_set_.find(info);
   if (ite != mem_info_set_.end()) {
-    LOGS_DEFAULT(WARNING) << "duplicated allocator: " << info.ToString();
-    return;
+    ORT_THROW("duplicated allocator");
   }
   const int key = MakeKey(info.id, info.mem_type);
   allocators_.insert({key, allocator});
   mem_info_set_.insert(ite, info);
   allocator_list_.push_back(allocator);
+}
+
+void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
+  const OrtMemoryInfo& info = allocator->Info();
+  auto ite = mem_info_set_.find(info);
+  if (ite != mem_info_set_.end()) {
+    LOGS_DEFAULT(WARNING) << "duplicated allocator: " << info.ToString();
+    return;
+  }
+  InsertAllocator(allocator);
 }
 
 void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> ) {

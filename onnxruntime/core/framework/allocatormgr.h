@@ -6,16 +6,17 @@
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/session/onnxruntime_c_api.h"
-#include <map>
+#include <unordered_map>
 
 namespace onnxruntime {
 
 using AllocatorFactory = std::function<std::unique_ptr<IAllocator>(OrtDevice::DeviceId)>;
 
-using AllocatorMap = std::map<int, AllocatorPtr>;
+using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
+// TODO: update OrtMemoryInfo, use unordered_set instead
 using MemoryInfoSet = std::set<OrtMemoryInfo>;
 
-const int CPU_ALLOCATOR_DEVICE_ID = 0;
+const int DEFAULT_CPU_ALLOCATOR_DEVICE_ID = 0;
 
 struct AllocatorCreationInfo {
   AllocatorCreationInfo(AllocatorFactory device_alloc_factory0,

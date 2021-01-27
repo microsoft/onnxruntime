@@ -66,18 +66,19 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
 void AllocatorManager::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
   auto ite = mem_info_set_.find(info);
-  if (ite != mem_info_set_.end()) {
-    const int key = MakeKey(info.id, info.mem_type);
-    allocators_[key] = allocator;
+  if (ite == mem_info_set_.end()) {
+    ORT_THROW("Allocator with same OrtMemoryInfo not found, nothing to replace!");
   }
+
+  const int key = MakeKey(info.id, info.mem_type);
+  allocators_[key] = allocator;
 }
 
 void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
   auto ite = mem_info_set_.find(info);
   if (ite != mem_info_set_.end()) {
-    LOGS_DEFAULT(WARNING) << "duplicated allocator: " << info.ToString();
-    return;
+    ORT_THROW("duplicated allocator");
   }
   const int key = MakeKey(info.id, info.mem_type);
   allocators_.insert({key, allocator});
@@ -86,9 +87,6 @@ void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
 }
 
 AllocatorPtr AllocatorManager::GetAllocator(int id, OrtMemType mem_type) const {
-  if (allocators_.empty()) {
-    return nullptr;
-  }
   auto iter = allocators_.find(MakeKey(id, mem_type));
   if (iter != allocators_.end()) {
     return iter->second;

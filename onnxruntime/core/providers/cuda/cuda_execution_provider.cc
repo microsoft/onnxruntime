@@ -110,7 +110,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
-  auto cpu_alloc = GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  auto cpu_alloc = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
   {
     std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
     auto it = deferred_release_cpu_ptr_.begin();
@@ -1976,26 +1976,26 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
     cuda_alloc = CreateAllocator(default_memory_info);
     allocator_manager->InsertAllocator(cuda_alloc);
   }
-  InsertAllocator(cuda_alloc);
+  TryInsertAllocator(cuda_alloc);
 
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto cuda_pinned_alloc = allocator_manager->GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
+  auto cuda_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
   if (nullptr == cuda_pinned_alloc) {
     AllocatorCreationInfo pinned_memory_info(
         [](OrtDevice::DeviceId device_id) {
           return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
         },
-        CPU_ALLOCATOR_DEVICE_ID);
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
     cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
     allocator_manager->InsertAllocator(cuda_pinned_alloc);
   }
-  InsertAllocator(cuda_pinned_alloc);
+  TryInsertAllocator(cuda_pinned_alloc);
 
   // OrtMemTypeCPUInput -- CUDA op place the input on CPU and will not be accessed by CUDA kernel, no sync issue
-  auto cuda_cpu_alloc = allocator_manager->GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
+  auto cuda_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
   if (nullptr == cuda_cpu_alloc) {
     // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
     // This will be refactored/removed when allocator and execution provider are decoupled.
@@ -2007,12 +2007,12 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
               OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
                             OrtMemTypeCPUInput));
         },
-        CPU_ALLOCATOR_DEVICE_ID);
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
     cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
     allocator_manager->InsertAllocator(cuda_cpu_alloc);
   }
-  InsertAllocator(cuda_cpu_alloc);
+  TryInsertAllocator(cuda_cpu_alloc);
 }
 
 }  // namespace onnxruntime
