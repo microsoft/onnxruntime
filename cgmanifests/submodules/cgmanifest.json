@@ -122,6 +122,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "523d5e03d86c26267ee6bdf17dd20f6ce6bdadd7",
+          "repositoryUrl": "https://github.com/apple/coremltools.git"
+        },
+        "comments": "git submodule at cmake/external/coremltools"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
           "repositoryUrl": "https://github.com/NVlabs/cub.git"
         },
