@@ -17,14 +17,27 @@ class TypeUsageProcessor(ABC):
     Abstract base class for processors which implement operator specific logic to determine the type or types required.
     '''
     def __init__(self, domain: str, optype: str):
+        self._domain = domain
+        self._optype = optype
         self._name = _create_op_key(domain, optype)
 
     def name(self):
         return self._name
 
     def cpp_name(self):
-        'Return a string that can be used as a unique name in a C++ #define.'
-        return self._name.upper().replace('.', '_').replace(':', '_')
+        'Return a string that can be used as a unique name for the operator in the C++ code'
+
+        # for now, just use the op type. this isn't guaranteed to be unique across domains, but currently none clash.
+        # if in the future there is a clash, create a custom processor for the op in one of the domains and return
+        # a different string there.
+        #
+        # Note that due to the way the value is used in the ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES macro
+        # it can't contain ':' or '.' characters.
+        #
+        # e.g. if we had say ai.onnx:Gemm and com.intel.ai:Gemm, and for some reason we needed to track types
+        # separately for each, we could create a TypeUsageProcessor based class for com.intel.ai:Gemm, and override
+        # cpp_name in it to return something like 'intel_Gemm'.
+        return self._optype
 
     @abstractmethod
     def process_node(self, node: fbs.Node, value_name_to_typeinfo: dict):
@@ -40,10 +53,10 @@ class TypeUsageProcessor(ABC):
         raise RuntimeError('Did not expect processor for {} to have typed registrations.'.format(self._name))
 
     @abstractmethod
-    def get_cpp_defines(self):
+    def get_cpp_entry(self):
         '''
-        Get the C++ #defines for this operator's required types
-        :return: List with any applicable #defines. One line per entry.
+        Get the C++ code that specifies this operator's required types.
+        :return: List with any applicable C++ code for this operator's required types. One line per entry.
         '''
         pass
 
@@ -117,21 +130,20 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
 
         return type_in_registration in self._input_types[0]
 
-    def get_cpp_defines(self):
-        # TODO: This is placeholder example output. It needs to be updated to generate the required output
-        # TODO: once the type reduction infrastructure is finalized.
-        defines = []
+    def get_cpp_entry(self):
+        entries = []
+        cpp_name = self.cpp_name()
         for i in sorted(self._input_types.keys()):
             if self._input_types[i]:
-                defines.append('#define {}_INPUT{}_TYPES std::tuple<{}>'
-                               .format(self.cpp_name(), i, ','.join(sorted(self._input_types[i]))))
+                entries.append('ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, Input, {}, {});'
+                               .format(cpp_name, i, ', '.join(sorted(self._input_types[i]))))
 
         for o in sorted(self._output_types.keys()):
             if self._output_types[o]:
-                defines.append('#define {}_OUTPUT{}_TYPES std::tuple<{}>'
-                               .format(self.cpp_name(), o, ','.join(sorted(self._output_types[o]))))
+                entries.append('ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, Output, {}, {});'
+                               .format(cpp_name, o, ', '.join(sorted(self._output_types[o]))))
 
-        return defines
+        return entries
 
     def to_config_entry(self):
         # convert the sets of types to lists so they can easily written out using the json model
@@ -190,7 +202,7 @@ class OneHotProcessor(TypeUsageProcessor):
         # when adding values in process_node
         return type_in_registration in self._triples
 
-    def get_cpp_defines(self):
+    def get_cpp_entry(self):
         # exclusion is via commenting out the registration entry, so don't need to write any #defines
         # to disable type support for the OneHot operator
         return None
@@ -334,16 +346,16 @@ class OperatorTypeUsageManager:
 
         return needed
 
-    def get_cpp_defines(self):
+    def get_cpp_entries(self):
         '''
-        Get the C++ #defines that define the lists of types to enable for the operators we have type info for.
-        :return: List of strings with one #define per entry
+        Get the C++ code that define the lists of types to enable for the operators we have type info for.
+        :return: List of strings. One line of C++ code per entry.
         '''
-        defines = []
+        entries = []
         for key in sorted(self._operator_processors.keys()):
-            defines.extend(self._operator_processors[key].get_cpp_defines())
+            entries.extend(self._operator_processors[key].get_cpp_entry())
 
-        return defines
+        return entries
 
     def get_config_entry(self, domain: str, optype: str):
         '''
@@ -373,9 +385,8 @@ class OperatorTypeUsageManager:
 
     def debug_dump(self):
 
-        print('#defines that will be created:')
-        for key in sorted(self._operator_processors.keys()):
-            [print(define) for define in self._operator_processors[key].get_cpp_defines()]
+        print('C++ code that will be emitted:')
+        [print(cpp_line) for cpp_line in self.get_cpp_entries()]
 
         print('Config file type information that will be returned by get_config_entry:')
         for key in sorted(self._operator_processors.keys()):

@@ -80,7 +80,8 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
 
                     # the json string starts with '{', so if that is found (next_open_brace != -1)
                     # before the next comma (which would be the start of the next operator if there is no type info
-                    # for the current operator), we have type info to parse
+                    # for the current operator), we have type info to parse.
+                    # See the parse_config docstring above for examples of what the line looks like.
                     if 0 < next_open_brace < next_comma:
                         operator = operators_str[cur:next_open_brace].strip()
                         operators.add(operator)

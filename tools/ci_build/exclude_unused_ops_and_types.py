@@ -103,18 +103,45 @@ def _exclude_unused_ops_and_types_in_registrations(required_operators,
 
 def _generate_cpp_defines(ort_root: str, op_type_usage_manager: OperatorTypeUsageManager):
 
-    defines = op_type_usage_manager.get_cpp_defines() if op_type_usage_manager else None
-    if not defines:
+    # get the C++ code to insert
+    cpp_lines = op_type_usage_manager.get_cpp_entries() if op_type_usage_manager else None
+    if not cpp_lines:
         return
 
-    # open header file to write
-    type_reduction_header_path = os.path.join(ort_root, 'onnxruntime', 'core', 'framework', 'type_reductions.h')
-    with open(type_reduction_header_path, 'w') as output:
-        output.write('// Copyright (c) Microsoft Corporation. All rights reserved.\n')
-        output.write('// Licensed under the MIT License.\n\n')
-        output.write('#pragma once\n\n')
+    target = os.path.join(ort_root, 'onnxruntime', 'core', 'providers', 'op_kernel_type_control_overrides.inc')
+    if not os.path.exists(target) or not os.path.isfile(target):
+        log.warning('Could not find {}. Skipping generation of C++ code to reduce the types supported by operators.'
+                    .format(target))
+        return
 
-        [output.write('{}\n'.format(define)) for define in defines]
+    # copy existing content to use as input
+    src = target + '.tmp'
+    shutil.copyfile(target, src)
+
+    # find the insertion block and replace any existing content in it
+    inserted = False
+    with open(src, 'r') as input, open(target, 'w') as output:
+        inside_insertion_block = False
+        for line in input.readlines():
+            if '@@insertion_point_begin(allowed_types)@@' in line:
+                inside_insertion_block = True
+                output.write(line)
+                [output.write('{}\n'.format(code_line)) for code_line in cpp_lines]
+                inserted = True
+                continue
+            elif inside_insertion_block:
+                if '@@insertion_point_end(allowed_types)@@' in line:
+                    inside_insertion_block = False
+                else:
+                    # we ignore any old lines within the insertion block
+                    continue
+
+            output.write(line)
+
+    os.remove(src)
+
+    if not inserted:
+        raise RuntimeError('Insertion point was not found in {}'.format(target))
 
     # future: how/where will we write global type limitations?
     # should they come from the ops file or be separate? probably separate - may want to reduce types without
