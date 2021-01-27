@@ -5,6 +5,7 @@ from numpy.testing import assert_allclose
 import onnx
 import os
 import pytest
+import tempfile
 import torch
 import torch.nn.functional as F
 
@@ -48,11 +49,23 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'world_rank': 0,
             'world_size': 1,
             'local_rank': 0,
+            'data_parallel_size': 1,
+            'horizontal_parallel_size': 1,
+            'pipeline_parallel' : {
+                'pipeline_parallel_size': 1,
+                'num_pipeline_micro_batches':1,
+                'pipeline_cut_info_string': '',
+                'sliced_schema' : {},
+                'sliced_axes' : {},
+                'sliced_tensor_names': []
+            },
             'allreduce_post_accumulation': False,
+            'data_parallel_size': 1,
+            'horizontal_parallel_size':1,
             'deepspeed_zero_optimization': {
                 'stage' : 0,
             },
-            'enable_adasum': False
+            'enable_adasum': False,
         },
         'lr_scheduler': None,
         'mixed_precision': {
@@ -73,7 +86,13 @@ def testORTTrainerOptionsDefaultValues(test_input):
         },
         'debug': {
             'deterministic_compute': False,
-            'check_model_export': False
+            'check_model_export': False,
+            'graph_save_paths' : {
+                'model_after_graph_transforms_path': '',
+                'model_with_gradient_graph_path': '',
+                'model_with_training_graph_path': '',
+                'model_with_training_graph_after_optimization_path': ''
+            }
         },
         '_internal_use': {
             'enable_internal_postprocess': True,
@@ -410,6 +429,7 @@ def testOptimizerConfigAdam():
     assert_allclose(0.0, cfg.lambda_coef, rtol=rtol,
                     err_msg="lambda_coef mismatch")
     assert_allclose(1e-8, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
+    assert_allclose(1.0, cfg.max_norm_clip, rtol=rtol, err_msg="max_norm_clip mismatch")
     assert cfg.do_bias_correction == True, "lambda_coef mismatch"
     assert cfg.weight_decay_mode == optim.AdamConfig.DecayMode.BEFORE_WEIGHT_UPDATE, "weight_decay_mode mismatch"
 
@@ -427,6 +447,7 @@ def testOptimizerConfigLamb():
     assert cfg.ratio_min == float('-inf'), "ratio_min mismatch"
     assert cfg.ratio_max == float('inf'), "ratio_max mismatch"
     assert_allclose(1e-6, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
+    assert_allclose(1.0, cfg.max_norm_clip, rtol=rtol, err_msg="max_norm_clip mismatch")
     assert cfg.do_bias_correction == False, "do_bias_correction mismatch"
 
 
@@ -1409,3 +1430,115 @@ def testORTTrainerUnusedInput():
         trainer.train_step(torch.FloatTensor([1.0]), torch.FloatTensor([1.0]))
     except RuntimeError:
         pytest.fail("RuntimeError doing train_step with an unused input.")
+
+@pytest.mark.parametrize("debug_files", [
+    {'model_after_graph_transforms_path': 'transformed.onnx',
+      'model_with_gradient_graph_path': 'transformed_grad.onnx',
+      'model_with_training_graph_path': 'training.onnx',
+      'model_with_training_graph_after_optimization_path': 'training_optimized.onnx'
+    },
+    {'model_after_graph_transforms_path': 'transformed.onnx',
+      'model_with_training_graph_path': ''
+    },
+    ])
+def testTrainingGraphExport(debug_files):
+    device = 'cuda'
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        debug_paths = {}
+        for k,v in debug_files.items():
+            debug_paths[k] = os.path.join(tempdir, v)
+        opts =  orttrainer.ORTTrainerOptions(
+            {
+                "device": {"id": device},
+                "debug": {"graph_save_paths": debug_paths}
+            }
+        )
+        optim_config = optim.AdamConfig()
+        trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=opts)
+        data, targets = batcher_fn(train_data, 0)
+        trainer.train_step(data, targets)
+        for k,v in debug_files.items():
+            path = debug_paths[k]
+            if len(v) > 0:
+                assert os.path.isfile(path)
+                saved_graph = onnx.load(path).graph
+                if k == 'model_with_training_graph_path':
+                    assert any("AdamOptimizer" in n.op_type for n in saved_graph.node)
+                elif k == 'model_with_gradient_graph_path':
+                    assert any("Grad" in n.name for n in saved_graph.node)
+                elif k == 'model_after_graph_transforms_path':
+                    assert any("LayerNormalization" in n.op_type for n in saved_graph.node)
+                elif k == 'model_with_training_graph_after_optimization_path':
+                    assert any("FusedMatMul" in n.op_type for n in saved_graph.node)
+                # remove saved file
+                os.remove(path)
+            else:
+                assert not os.path.isfile(path)
+
+@pytest.mark.parametrize("seed,device,max_norm_clip,gradient_accumulation_steps,total_steps,expected_loss", [
+    (0, 'cuda', 1.0, 1, 12, [10.536802, 9.95102, 9.495312, 9.067217, 8.735067, 8.447508,\
+        8.179443, 7.903837, 7.655049, 7.409669, 7.135822, 6.931838]),
+    (0, 'cuda', 0.1, 1, 12, [10.536802, 9.951735, 9.496659, 9.069328, 8.7381115, 8.4513855,\
+        8.184143, 7.9093056, 7.661127, 7.4162436, 7.142842, 6.9388437]),
+    (42, 'cuda', 1.0, 1, 12, [10.645588, 10.0333, 9.52253, 9.108369, 8.766306, 8.497426,\
+        8.199408, 7.958235, 7.659668, 7.459833, 7.170661, 6.9139776]),
+    (42, 'cuda', 0.1, 1, 12, [10.645588, 10.03406, 9.524019, 9.110594, 8.769308, 8.501322,\
+        8.204281, 7.963957, 7.6660814, 7.46682, 7.1780496, 6.92159]),
+])
+def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps,total_steps, expected_loss):
+    rtol = 1e-5
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # Setup ORTTrainer
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
+                                            'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
+                                            'debug' : {'deterministic_compute' : True}})
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
+    optim_config = optim.AdamConfig(lr=0.001, max_norm_clip=max_norm_clip)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    actual_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = trainer.train_step(data, targets)
+        actual_loss.append(loss.cpu())
+
+    # Compare legacy vs experimental APIs
+    _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=rtol)
+
+@pytest.mark.parametrize("seed,device,max_norm_clip, gradient_accumulation_steps,total_steps,expected_loss", [
+    (0, 'cuda', 1.0, 1, 12, [10.536802, 10.409792, 10.354762, 10.253063, 10.213676, 10.113361,\
+        10.066136, 9.977713, 9.924597, 9.858974, 9.796471, 9.794921]),
+    (0, 'cuda', 0.1, 1, 12, [10.536802, 10.3714695, 10.276415, 10.13743, 10.063246, 9.93144,\
+        9.854875, 9.739198, 9.661381, 9.570321, 9.482681, 9.457669]),
+    (42, 'cuda', 1.0, 1, 12, [10.645588, 10.51151, 10.438802, 10.356055, 10.291667, 10.232069,\
+        10.168237, 10.074414, 9.990586, 9.9324, 9.891901, 9.788895]),
+    (42, 'cuda', 0.1, 1, 12, [10.645588, 10.473022, 10.359108, 10.238948, 10.141735, 10.049339,\
+        9.953887, 9.832249, 9.722989, 9.640278, 9.572205, 9.448381]),
+])
+def testORTTrainerLambMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps, total_steps, expected_loss):
+    rtol = 1e-3
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # Setup ORTTrainer
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
+                                            'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
+                                            'debug' : {'deterministic_compute' : True}})
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001, max_norm_clip=max_norm_clip)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    actual_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = trainer.train_step(data, targets)
+        actual_loss.append(loss.cpu())
+
+    # Compare legacy vs experimental APIs
+    _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=rtol)

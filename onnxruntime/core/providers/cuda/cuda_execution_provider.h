@@ -18,8 +18,6 @@
 
 namespace onnxruntime {
 
-const int CPU_ALLOCATOR_DEVICE_ID = 0;
-
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
@@ -71,11 +69,13 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
-  int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo; }
+  int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
   }
+
+  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
 
  private:
   CUDAExecutionProviderInfo info_;
@@ -122,6 +122,13 @@ class CUDAExecutionProvider : public IExecutionProvider {
           constant_ones_half_ = cuda::CreateConstantOnes<half>();
         }
         return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+        } else if (std::is_same<T, nv_bfloat16>::value) {
+        if (!constant_ones_bfloat16_) {
+          constant_ones_bfloat16_ = cuda::CreateConstantOnes<nv_bfloat16>();
+        }
+        return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(count));
+#endif
       } else {
         return nullptr;
       }
@@ -143,6 +150,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+    std::unique_ptr<cuda::IConstantBuffer<nv_bfloat16>> constant_ones_bfloat16_;
+#endif
 
     AllocatorPtr allocator_;
   };

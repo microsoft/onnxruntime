@@ -242,6 +242,16 @@ def state_dict_trainer_options_world_size_key():
 
     return 'world_size'
 
+def state_dict_trainer_options_data_parallel_size_key():
+    """Returns the trainer options data_parallel_size key name in the state dictionary"""
+
+    return 'data_parallel_size'
+
+def state_dict_trainer_options_horizontal_parallel_size_key():
+    """Returns the trainer options horizontal_parallel_size key name in the state dictionary"""
+
+    return 'horizontal_parallel_size'
+
 def state_dict_trainer_options_optimizer_name_key():
     """Returns the trainer options optimizer_name key name in the state dictionary"""
 

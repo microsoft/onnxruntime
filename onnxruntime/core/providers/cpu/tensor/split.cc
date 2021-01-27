@@ -19,6 +19,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
                                           DataTypeImpl::GetTensorType<int64_t>(),
+                                          DataTypeImpl::GetTensorType<uint8_t>(),
                                           DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
@@ -32,6 +33,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
                                           DataTypeImpl::GetTensorType<int64_t>(),
+                                          DataTypeImpl::GetTensorType<uint8_t>(),
                                           DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
@@ -44,6 +46,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
                                           DataTypeImpl::GetTensorType<int64_t>(),
+                                          DataTypeImpl::GetTensorType<uint8_t>(),
                                           DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
@@ -97,6 +100,8 @@ Status Split::Compute(OpKernelContext* context) const {
     status = ComputeImpl<int32_t>(*context, input);
   else if (input.IsDataType<int64_t>())
     status = ComputeImpl<int64_t>(*context, input);
+  else if (input.IsDataType<uint8_t>())
+    status = ComputeImpl<uint8_t>(*context, input);
   else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context, input);
   else
