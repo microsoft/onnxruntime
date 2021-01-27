@@ -56,12 +56,10 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
   auto ite = mem_info_set_.find(info);
-  if (ite == mem_info_set_.end()) {
-    ORT_THROW("Allocator with same OrtMemoryInfo not found, nothing to replace!");
+  if (ite != mem_info_set_.end()) {
+    const int key = MakeKey(info.id, info.mem_type);
+    allocators_[key] = allocator;
   }
-
-  const int key = MakeKey(info.id, info.mem_type);
-  allocators_[key] = allocator;
 }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
