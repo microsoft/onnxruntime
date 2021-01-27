@@ -137,7 +137,6 @@ void VideoFrameToTensorConverter::VideoFrameToSoftwareTensor(
 
   UINT32 tensorHeight = static_cast<UINT32>(tensorDesc.sizes[2]);
   UINT32 tensorWidth = static_cast<UINT32>(tensorDesc.sizes[3]);
-  pOutputCPUTensor = nullptr;
   if (spInputSurface || _winmli::NeedsVideoFrameConversion(inputVideoFrame, {}, inputBounds, tensorWidth, tensorHeight)) {
     if (converted_video_frame_ == nullptr ||
         _winmli::NeedsVideoFrameConversion(converted_video_frame_, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight)) {
