@@ -22,7 +22,6 @@ using DataType = const std::string*;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
-
 // These types don't directly map to internal types
 struct Provider_KernelCreateInfo;
 struct Provider_OpKernel_Base;
@@ -436,6 +435,7 @@ struct ProviderHost {
   virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger) = 0;
 
   virtual const std::string& GraphViewer__Name(const GraphViewer* p) noexcept = 0;
+  virtual const Path& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
 
   virtual const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) = 0;
   virtual const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) = 0;
@@ -455,6 +455,9 @@ struct ProviderHost {
 
   virtual const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) = 0;
   virtual const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept = 0;
+
+  // Path
+  virtual PathString Path__ToPathString(const Path* p) noexcept = 0;
 
   // Provider_OpKernel_Base
   virtual const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) = 0;
@@ -974,6 +977,7 @@ struct GraphViewer {
   std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
 
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
+  const Path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
 
   const Node* GetNode(NodeIndex node_index) const { return g_host->GraphViewer__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->GraphViewer__GetNodeArg(this, name); }
@@ -1000,6 +1004,13 @@ struct GraphViewer {
   GraphViewer(const GraphViewer&) = delete;
   void operator=(const GraphViewer&) = delete;
 };
+
+struct Path {
+  PathString ToPathString() const noexcept { return g_host->Path__ToPathString(this); }
+
+  PROVIDER_DISALLOW_ALL(Path)
+};
+
 #endif
 
 struct Provider_OpKernel_Base {
