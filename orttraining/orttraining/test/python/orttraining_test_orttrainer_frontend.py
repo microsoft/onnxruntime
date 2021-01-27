@@ -90,7 +90,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'graph_save_paths' : {
                 'model_after_graph_transforms_path': '',
                 'model_with_gradient_graph_path': '',
-                'model_with_training_graph_path': ''                            
+                'model_with_training_graph_path': '',
+                'model_with_training_graph_after_optimization_path': ''
             }
         },
         '_internal_use': {
@@ -1431,13 +1432,14 @@ def testORTTrainerUnusedInput():
         pytest.fail("RuntimeError doing train_step with an unused input.")
 
 @pytest.mark.parametrize("debug_files", [
-    ({'model_after_graph_transforms_path': 'transformed.onnx',
+    {'model_after_graph_transforms_path': 'transformed.onnx',
       'model_with_gradient_graph_path': 'transformed_grad.onnx',
-      'model_with_training_graph_path': 'training.onnx'
-    }),
-    ({'model_after_graph_transforms_path': 'transformed.onnx',
+      'model_with_training_graph_path': 'training.onnx',
+      'model_with_training_graph_after_optimization_path': 'training_optimized.onnx'
+    },
+    {'model_after_graph_transforms_path': 'transformed.onnx',
       'model_with_training_graph_path': ''
-    }),
+    },
     ])
 def testTrainingGraphExport(debug_files):
     device = 'cuda'
@@ -1468,6 +1470,8 @@ def testTrainingGraphExport(debug_files):
                     assert any("Grad" in n.name for n in saved_graph.node)
                 elif k == 'model_after_graph_transforms_path':
                     assert any("LayerNormalization" in n.op_type for n in saved_graph.node)
+                elif k == 'model_with_training_graph_after_optimization_path':
+                    assert any("FusedMatMul" in n.op_type for n in saved_graph.node)
                 # remove saved file
                 os.remove(path)
             else:
