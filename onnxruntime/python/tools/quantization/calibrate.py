@@ -139,14 +139,14 @@ class ONNXCalibrater:
         '''
 
         #conduct inference session and get intermediate outputs
+        sess_options = onnxruntime.SessionOptions()
         if ort_graph_optimization_enable:
-            session = onnxruntime.InferenceSession(self.augmented_model_path, None) 
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
         else:            
-            sess_options = onnxruntime.SessionOptions()
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL  #ORT_ENABLE_BASIC
-            session = onnxruntime.InferenceSession(self.augmented_model_path,
-                                                   sess_options=sess_options,
-                                                   providers=providers)
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        session = onnxruntime.InferenceSession(self.augmented_model_path,
+                                               sess_options=sess_options,
+                                               providers=providers)
 
         #number of outputs in original model
         num_model_outputs = len(self.model.graph.output)
