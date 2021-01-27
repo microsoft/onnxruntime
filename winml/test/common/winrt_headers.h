@@ -35,9 +35,13 @@
 #include CREATE_CPPWINRT_COMPONENT_HEADER()
 #include CREATE_CPPWINRT_EXPERIMENTAL_COMPONENT_HEADER()
 
+#ifndef BUILD_INBOX
+
 // WinML Native Headers
 #include CREATE_NATIVE_HEADER()
 #include CREATE_NATIVE_INTERNAL_HEADER()
+
+#endif
 
 namespace winml = winrt::WINML_ROOT_NS::AI::MachineLearning;
 namespace wf = winrt::Windows::Foundation;
