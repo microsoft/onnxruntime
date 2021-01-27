@@ -142,7 +142,7 @@ struct EnabledOpKernelArgTypes {
 #define ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(Op, ArgDirection, ArgIndex, ...)           \
   class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(Op);                              \
   template <>                                                                                \
-  struct ::onnxruntime::op_kernel_type_control::OpKernelArgTypes<                            \
+  struct OpKernelArgTypes<                                                                   \
       ::onnxruntime::op_kernel_type_control::tags::Supported<                                \
           ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(Op, ArgDirection, ArgIndex)>> { \
     using type = ::onnxruntime::TypeList<__VA_ARGS__>;                                       \
@@ -162,7 +162,7 @@ struct EnabledOpKernelArgTypes {
 #define ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(Op, ArgDirection, ArgIndex, ...)             \
   class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(Op);                              \
   template <>                                                                                \
-  struct ::onnxruntime::op_kernel_type_control::OpKernelArgTypes<                            \
+  struct OpKernelArgTypes<                                                                   \
       ::onnxruntime::op_kernel_type_control::tags::Allowed<                                  \
           ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(Op, ArgDirection, ArgIndex)>> { \
     using type = ::onnxruntime::TypeList<__VA_ARGS__>;                                       \
@@ -178,7 +178,7 @@ struct EnabledOpKernelArgTypes {
  */
 #define ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES(...)             \
   template <>                                                       \
-  struct ::onnxruntime::op_kernel_type_control::OpKernelArgTypes<   \
+  struct OpKernelArgTypes<                                          \
       ::onnxruntime::op_kernel_type_control::tags::GlobalAllowed> { \
     using type = ::onnxruntime::TypeList<__VA_ARGS__>;              \
   };
