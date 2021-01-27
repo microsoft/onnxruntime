@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <iostream>
 #include <memory>
 
 #include "core/platform/threadpool.h"
@@ -130,12 +130,13 @@ private:
   alignas(CACHE_LINE_BYTES) LoopCounterShard _shards[MAX_SHARDS];
   const uint64_t _block_size;
   const unsigned _num_shards;
-};
+}; //LoopCounter
 
 #ifdef _MSC_VER
 #pragma warning(pop) /* Padding added in LoopCounterShard, LoopCounter */
 #endif
 
+/*
 ThreadPool::ThreadPool(Env* env,
                        const ThreadOptions& thread_options,
                        const NAME_CHAR_TYPE* name,
@@ -446,7 +447,242 @@ void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t tota
     tp->ParallelFor(total, cost_per_unit, fn);
 #endif
   }
+*/
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#include <vector>
+#include <thread>
+#include <deque>
+#include <mutex>
+#include <atomic>
+#include <algorithm>
 
+void Idel() { return; }
+::std::atomic<::std::ptrdiff_t> empty{0};
+::std::atomic<::std::ptrdiff_t> non_empty{1};
+using Fn = ::std::function<void(::std::ptrdiff_t, ::std::ptrdiff_t)>;
+using SimpleFn = ::std::function<void(::std::ptrdiff_t)>;
+using JobFn = ::std::function<void()>;
+
+struct Job {
+  JobFn fn_;
+  ::std::atomic<::std::ptrdiff_t>& progress_;
+  operator bool() const { return &progress_ != &empty; }
+};
+
+struct Jobs {
+  ::std::deque<Job> jobs_;
+  mutable ::std::mutex mutex_;
+  void pushBack(const Job& job) {
+    ::std::lock_guard<::std::mutex> guard(mutex_);
+    jobs_.push_back(job);
+  }
+  Job popFront() {
+    ::std::lock_guard<::std::mutex> guard(mutex_);
+    if (jobs_.empty()) {
+      return {Idel, empty};
+    } else {
+      Job job = jobs_.front();
+      jobs_.pop_front();
+      return job;
+    }
+  }
+  size_t size() const {
+    ::std::lock_guard<::std::mutex> guard(mutex_);
+    return jobs_.size();
+  }
+  bool hasJob() const {
+    ::std::lock_guard<::std::mutex> guard(mutex_);
+    return !jobs_.empty();
+  }
+};
+
+struct ThreadPoolImpl {
+
+  explicit ThreadPoolImpl(int num_threads, bool denormal_as_zero) {
+    for (int i = 0; i < num_threads - 1; i++) {
+      threads_.push_back(::std::thread([denormal_as_zero, this]() {
+        SetDenormalAsZero(denormal_as_zero);
+        while (alive_ || jobs_.hasJob()) {
+          auto job = jobs_.popFront();
+          if (job) {
+            job.fn_();
+            if (&(job.progress_) != &non_empty) job.progress_++;
+          } else {
+            std::this_thread::yield();
+          }
+        }  // while
+      }));
+    }
+  }
+
+  ThreadPoolImpl() = delete;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolImpl);
+
+  ~ThreadPoolImpl() {
+    alive_ = false;
+    for (auto& t : threads_) {
+      t.join();
+    }
+  }
+  void Schedule(::std::function<void()> fn) {
+    if (threads_.empty() || ::std::this_thread::get_id() != main_thread_id_) {
+      fn();
+    } else {
+      JobFn jobFn = std::move(fn);
+      Job job{jobFn, non_empty};
+      jobs_.pushBack(job);
+    }
+  }
+  void ParallelFor(::std::ptrdiff_t laps, const Fn& fn) {
+    auto size = static_cast<ptrdiff_t>(threads_.size() + 1);
+    auto block = laps / size + ((laps % size) == 0 ? 0 : 1);
+    auto splits = laps / block + ((laps % block) == 0 ? 0 : 1);
+    if (splits > 1 && ::std::this_thread::get_id() == main_thread_id_) {
+      ::std::atomic<::std::ptrdiff_t> progress{0};
+      auto branches = splits - 1;
+      for (::std::ptrdiff_t i = 0; i < branches; i++) {
+        auto begin = block * i;
+        auto end = block * i + block;
+        jobs_.pushBack({[fn, begin, end](){fn(begin, end);}, progress});
+      }
+      fn(branches * block, laps);
+      while (progress.load() < branches) {
+        ::std::this_thread::yield();
+      }
+    } else {
+      fn(0, laps);
+    }
+  }
+  void SimpleParallelFor(::std::ptrdiff_t laps, const SimpleFn& fn) {
+    auto size = static_cast<ptrdiff_t>(threads_.size() + 1);
+    auto block = laps / size + ((laps % size) == 0 ? 0 : 1);
+    auto splits = laps / block + ((laps % block) == 0 ? 0 : 1);
+    if (splits > 1 && ::std::this_thread::get_id() == main_thread_id_) {
+      ::std::atomic<::std::ptrdiff_t> progress{0};
+      auto branches = splits - 1;
+      for (::std::ptrdiff_t i = 0; i < branches; i++) {
+        auto begin = block * i;
+        auto end = block * i + block;
+        jobs_.pushBack({[fn, begin, end]() {
+                          for (auto i = begin; i < end; i++) {
+                            fn(i);
+                          } }, progress});
+      }
+      for (::std::ptrdiff_t i = branches * block; i < laps; i++) {
+        fn(i);
+      }
+      while (progress.load() < branches) {
+        ::std::this_thread::yield();
+      }
+    } else {
+      for (::std::ptrdiff_t i = 0; i < laps; i++) {
+        fn(i);
+      }
+    }
+  }
+  ::std::vector<::std::thread> threads_;
+  ::std::thread::id main_thread_id_ = ::std::this_thread::get_id();
+  bool alive_ = true;
+  Jobs jobs_;
+};
+
+ThreadPool::ThreadPool(Env*,
+                       const ThreadOptions& to,
+                       const NAME_CHAR_TYPE*,
+                       int num_threads,
+                       bool) {
+  threadPoolImpl_ = new ThreadPoolImpl(num_threads, to.set_denormal_as_zero);
+}
+
+ThreadPool::ThreadPool(int num_threads) {
+  threadPoolImpl_ = new ThreadPoolImpl(num_threads, false);
+}
+
+ThreadPool::~ThreadPool() {
+  if (threadPoolImpl_) {
+    delete threadPoolImpl_;
+    threadPoolImpl_ = nullptr;
+  }
+}
+
+void ThreadPool::Schedule(ThreadPool* tp, ::std::function<void()> fn) {
+  if (tp) {
+    tp->Schedule(fn);
+  } else {
+    fn();
+  }
+}
+
+void ThreadPool::TryParallelFor(ThreadPool* tp, ::std::ptrdiff_t total, double cost, const Fn& fn) {
+  if (0 == total) {
+    return;
+  }
+  if (tp) {
+    tp->ParallelFor(total, cost, fn);
+  } else {
+    fn(0, total);
+  }
+}
+
+void ThreadPool::TryParallelFor(ThreadPool* tp, ::std::ptrdiff_t total, const TensorOpCost& cost, const Fn& fn) {
+  if (0 == total) {
+    return;
+  }
+  if (tp) {
+    tp->ParallelFor(total, cost, fn);
+  } else {
+    fn(0, total);
+  }
+}
+
+void ThreadPool::TrySimpleParallelFor(ThreadPool* tp, ::std::ptrdiff_t total, const SimpleFn& fn) {
+  if (0 == total) {
+    return;
+  }
+  if (tp) {
+    tp->SimpleParallelFor(total, fn);
+  } else {
+    for (::std::ptrdiff_t i = 0; i < total; i++) {
+      fn(i);
+    }
+  }
+}
+
+ThreadPool::WorkInfo ThreadPool::PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
+  const std::ptrdiff_t work_per_batch = total_work / num_batches;
+  const std::ptrdiff_t work_per_batch_extra = total_work % num_batches;
+  WorkInfo info;
+  if (batch_idx < work_per_batch_extra) {
+    info.start = (work_per_batch + 1) * batch_idx;
+    info.end = info.start + work_per_batch + 1;
+  } else {
+    info.start = work_per_batch * batch_idx + work_per_batch_extra;
+    info.end = info.start + work_per_batch;
+  }
+  return info;
+}
+
+bool ThreadPool::ShouldParallelize(const ThreadPool* tp) {
+  return DegreeOfParallelism(tp) > 1;
+}
+
+int ThreadPool::DegreeOfParallelism(const ThreadPool* tp) {
+  return (tp ? static_cast<int>(tp->threadPoolImpl_->threads_.size()) : 0) + 1;
+}
+
+void ThreadPool::Schedule(::std::function<void()> fn) {
+  threadPoolImpl_->Schedule(std::move(fn));
+}
+void ThreadPool::ParallelFor(::std::ptrdiff_t total, double, const Fn& fn) {
+  threadPoolImpl_->ParallelFor(total, fn);
+}
+void ThreadPool::ParallelFor(::std::ptrdiff_t total, const TensorOpCost&, const Fn& fn) {
+  threadPoolImpl_->ParallelFor(total, fn);
+}
+void ThreadPool::SimpleParallelFor(::std::ptrdiff_t total, const SimpleFn& fn) {
+  threadPoolImpl_->SimpleParallelFor(total, fn);
+}
 
 }  // namespace concurrency
 }  // namespace onnxruntime

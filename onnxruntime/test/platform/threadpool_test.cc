@@ -92,11 +92,11 @@ void TestConcurrentParallelFor(const std::string& name, int num_threads, int num
       // For a range of scenarios, run some tests via the thread pool, and one directly
       for (int c = 0; c < num_concurrent - 1; c++) {
         ThreadPool::Schedule(tp, [&, c]() {
-            ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
-                IncrementElement(*td[c], i);
-              });
-            b.Notify();
+          ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+            IncrementElement(*td[c], i);
           });
+          b.Notify();
+        });
       }
 
       ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
@@ -142,6 +142,7 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
         }
       });
     });
+    std::cout << "ctr: " << ctr.load() << std::endl;
     ASSERT_TRUE(ctr == num_tasks*2);
   }
 }
@@ -191,6 +192,7 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
 }  // namespace
 
 namespace onnxruntime {
+/*
 TEST(ThreadPoolTest, TestParallelFor_0_Thread_NoTask) {
   TestParallelFor("TestParallelFor_0_Thread_NoTask", 0, 0);
 }
@@ -254,7 +256,7 @@ TEST(ThreadPoolTest, TestConcurrentParallelFor_1Thread_1Conc_8Tasks) {
 TEST(ThreadPoolTest, TestConcurrentParallelFor_1Thread_1Conc_1MTasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_1Thread_1Conc_1MTasks", 1, 1, 1000000);
 }
-
+*/
 TEST(ThreadPoolTest, TestConcurrentParallelFor_1Thread_4Conc_0Tasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_1Thread_4Conc_0Tasks", 1, 4, 0);
 }
@@ -381,6 +383,7 @@ TEST(ThreadPoolTest, TestMultiLoopSections_4Thread_100Loop) {
   TestMultiLoopSections("TestMultiLoopSections_4Thread_100Loop", 4, 100);
 }
 
+/*
 #ifdef _WIN32
 TEST(ThreadPoolTest, TestStackSize) {
   ThreadOptions to;
@@ -409,5 +412,6 @@ TEST(ThreadPoolTest, TestStackSize) {
     ASSERT_EQ(high_limit - low_limit, to.stack_size);
 }
 #endif
+*/
 
 }  // namespace onnxruntime
