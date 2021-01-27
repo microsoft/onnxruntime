@@ -55,9 +55,10 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
 
     const Node* node = graph_->GetProducerNode(name);
     if (!node) {
-      ORT_THROW(name, " couldn't find the producer node.");
+      LOGS(logger_, WARNING) << name << " couldn't find the producer node." << std::endl;
+    } else {
+      y_nodes_.insert(node);
     }
-    y_nodes_.insert(node);
   }
 
   reachable_nodes_ = ReverseBFS(y_nodes_);

@@ -250,7 +250,6 @@ def test_model_without_parameters(device):
     model = Net().to(device)
     model = ORTModule(model).to(device)
     _ = model(torch.tensor(1.))
-    assert model._use_pytorch_forward == True
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_model_without_trainable_parameters(device):
@@ -264,8 +263,6 @@ def test_model_without_trainable_parameters(device):
     input = torch.randn(batch_size, in_features, device=device)
     target = torch.empty(batch_size, dtype=torch.long, device=device).random_(nb_classes)
     _ = model(input)
-    assert model._use_pytorch_forward == True
-
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_custom_model_without_trainable_parameters(device):
@@ -276,8 +273,9 @@ def test_custom_model_without_trainable_parameters(device):
     model = Net()
     model = ORTModule(model).to(device)
     model.to(device)
-    _ = model(torch.tensor(1.).to(device))
-    assert model._use_pytorch_forward == True
+    with pytest.raises(RuntimeError) as e:
+        _ = model(torch.tensor(1.).to(device))
+    assert 'There was an error while exporting the PyTorch model to ONNX' in str(e.value)
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_model_with_unused_trainable_parameters(device):
@@ -294,7 +292,6 @@ def test_model_with_unused_trainable_parameters(device):
     model = Net(784, 500, 10)
     model = ORTModule(model).to(device)
     model(torch.tensor(1.).to(device))
-    assert model._use_pytorch_forward == True
 
 def test_model_with_multiple_devices_cpu_cuda():
     class MultipleDeviceModel(torch.nn.Module):
@@ -311,7 +308,7 @@ def test_model_with_multiple_devices_cpu_cuda():
     model = MultipleDeviceModel()
     with pytest.raises(RuntimeError) as e:
         model = ORTModule(model)
-        assert e.value == 'ORTModule supports a single device per model for now'
+    assert str(e.value) == 'ORTModule supports a single device per model for now'
 
 def test_model_with_multiple_devices_to_to():
     class MultipleDeviceModel(torch.nn.Module):
@@ -328,7 +325,7 @@ def test_model_with_multiple_devices_to_to():
     model = MultipleDeviceModel()
     with pytest.raises(RuntimeError) as e:
         model = ORTModule(model)
-        assert e.value == 'ORTModule supports a single device per model for now'
+    assert str(e.value) == 'ORTModule supports a single device per model for now'
 
 def test_model_with_multiple_devices_to_cpu():
     class MultipleDeviceModel(torch.nn.Module):
@@ -345,7 +342,7 @@ def test_model_with_multiple_devices_to_cpu():
     model = MultipleDeviceModel()
     with pytest.raises(RuntimeError) as e:
         model = ORTModule(model)
-        assert e.value == 'ORTModule supports a single device per model for now'
+    assert str(e.value) == 'ORTModule supports a single device per model for now'
 
 def test_model_with_multiple_devices_to_cuda():
     class MultipleDeviceModel(torch.nn.Module):
@@ -362,7 +359,7 @@ def test_model_with_multiple_devices_to_cuda():
     model = MultipleDeviceModel()
     with pytest.raises(RuntimeError) as e:
         model = ORTModule(model)
-        assert e.value == 'ORTModule supports a single device per model for now'
+    assert str(e.value) == 'ORTModule supports a single device per model for now'
 
 @pytest.mark.parametrize("device", ['cuda', 'cuda:0', 'cuda:1', 'cuda:2'])
 def test_model_with_different_cuda_devices(device):
