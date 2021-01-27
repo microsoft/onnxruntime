@@ -20,7 +20,7 @@ if platform.system() == "Windows":
             raise ImportError(f"CUDA Toolkit {version_info.cuda_version} not installed on the machine.")
         cuda_bin_dir = os.path.join(os.environ[cuda_env_variable], "bin")
         if not os.path.isfile(os.path.join(cuda_bin_dir, f"cudnn64_{version_info.cudnn_version}.dll")):
-            raise ImportError("cuDNN {version_info.cudnn_version} not installed on the machine.")
+            raise ImportError(f"cuDNN {version_info.cudnn_version} not installed on the machine.")
 
         if sys.version_info >= (3, 8):
             # Python 3.8 (and later) doesn't search system PATH when loading DLLs, so the CUDA location needs to be
