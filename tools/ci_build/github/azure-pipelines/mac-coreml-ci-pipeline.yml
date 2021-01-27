@@ -1,0 +1,5 @@
+jobs:
+- template: templates/mac-ci.yml
+  parameters:
+    DoNugetPack: 'false'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Debug --use_coreml'

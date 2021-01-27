@@ -15,9 +15,10 @@
 namespace onnxruntime {
 namespace coreml {
 
-ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger)
+ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger, uint32_t coreml_flags)
     : graph_viewer_(graph_viewer),
-      logger_(logger) {
+      logger_(logger),
+      coreml_flags_(coreml_flags) {
 }
 
 Status ModelBuilder::Initialize() {
@@ -191,7 +192,7 @@ Status ModelBuilder::RegisterModelOutputs() {
 
 Status ModelBuilder::Compile(std::unique_ptr<Model>& model, const std::string& path) {
   ORT_RETURN_IF_ERROR(SaveCoreMLModel(path));
-  model.reset(new Model(path, logger_));
+  model.reset(new Model(path, logger_, coreml_flags_));
   model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
   return model->LoadModel();

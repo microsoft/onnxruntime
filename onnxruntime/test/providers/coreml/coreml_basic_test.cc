@@ -3,6 +3,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/providers/coreml/coreml_execution_provider.h"
+#include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
@@ -65,13 +66,18 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestCoreMLExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+
+  // We want to run UT on CPU only to get output value without losing precision
+  uint32_t coreml_flags = 0;
+  coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
+
+  CreateMLValue<float>(TestCoreMLExecutionProvider(coreml_flags)->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestCoreMLExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestCoreMLExecutionProvider(coreml_flags)->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestCoreMLExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestCoreMLExecutionProvider(coreml_flags)->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -79,7 +85,7 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   feeds.insert(std::make_pair("Z", ml_value_z));
 
   RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.FunctionTest",
-                            onnxruntime::make_unique<CoreMLExecutionProvider>(),
+                            onnxruntime::make_unique<CoreMLExecutionProvider>(coreml_flags),
                             feeds);
 }
 

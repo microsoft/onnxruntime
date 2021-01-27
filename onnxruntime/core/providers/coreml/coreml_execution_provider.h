@@ -13,7 +13,7 @@ class Model;
 
 class CoreMLExecutionProvider : public IExecutionProvider {
  public:
-  CoreMLExecutionProvider();
+  CoreMLExecutionProvider(uint32_t coreml_flags);
   virtual ~CoreMLExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -27,6 +27,10 @@ class CoreMLExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 #endif
+
+  // The bit flags which define bool options for COREML EP, bits are defined as
+  // COREMLFlags in include/onnxruntime/core/providers/coreml/coreml_provider_factory.h
+  const uint32_t coreml_flags_;
 
  private:
   // <fused_node_name, <coreml_model_file_path, compiled_coreml_model>>

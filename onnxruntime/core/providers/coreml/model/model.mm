@@ -9,6 +9,7 @@
 #include "core/common/logging/logging.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/coreml_provider_factory.h"
 #include "host_utils.h"
 #include "model.h"
 
@@ -38,10 +39,12 @@
   NSString* coreml_model_path_;
   NSString* compiled_model_path_;
   const onnxruntime::logging::Logger* logger_;
+  uint32_t coreml_flags_;
 }
 
 - (instancetype)initWithPath:(const std::string&)path
-                      logger:(const onnxruntime::logging::Logger&)logger;
+                      logger:(const onnxruntime::logging::Logger&)logger
+                coreml_flags:(uint32_t)coreml_flags;
 - (void)cleanup;
 - (void)dealloc;
 - (onnxruntime::common::Status)loadModel API_AVAILABLE_OS_VERSIONS;
@@ -129,10 +132,12 @@
 @implementation CoreMLExecution
 
 - (instancetype)initWithPath:(const std::string&)path
-                      logger:(const onnxruntime::logging::Logger&)logger {
+                      logger:(const onnxruntime::logging::Logger&)logger
+                coreml_flags:(uint32_t)coreml_flags {
   if (self = [super init]) {
     coreml_model_path_ = [NSString stringWithUTF8String:path.c_str()];
     logger_ = &logger;
+    coreml_flags_ = coreml_flags;
   }
   return self;
 }
@@ -202,8 +207,7 @@
   }
 
   MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
-  // TODO add options
-  // options.usesCPUOnly = YES;
+  options.usesCPUOnly = coreml_flags_ & COREML_FLAG_USE_CPU_ONLY;
   NSError* error = nil;
   id<MLFeatureProvider> output_feature = [_model predictionFromFeatures:input_feature
                                                                 options:options
@@ -262,7 +266,7 @@ namespace coreml {
 // This class will bridge Model (c++) with CoreMLExecution (objective c++)
 class Execution {
  public:
-  Execution(const std::string& path, const logging::Logger& logger);
+  Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags);
   ~Execution(){};
 
   Status LoadModel();
@@ -274,8 +278,10 @@ class Execution {
   CoreMLExecution* execution_;
 };
 
-Execution::Execution(const std::string& path, const logging::Logger& logger) {
-  execution_ = [[CoreMLExecution alloc] initWithPath:path logger:logger];
+Execution::Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags) {
+  execution_ = [[CoreMLExecution alloc] initWithPath:path
+                                              logger:logger
+                                        coreml_flags:coreml_flags];
 }
 
 Status Execution::LoadModel() {
@@ -303,8 +309,8 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+ ");
 }
 
-Model::Model(const std::string& path, const logging::Logger& logger)
-    : execution_(onnxruntime::make_unique<Execution>(path, logger)) {
+Model::Model(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)
+    : execution_(onnxruntime::make_unique<Execution>(path, logger, coreml_flags)) {
 }
 
 Model::~Model() {}
