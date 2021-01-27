@@ -15,7 +15,7 @@ from onnx import onnx_pb as onnx_proto
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
-from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, type_to_name
+from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, type_to_name, quantize_nparray
 from .quant_utils import QuantType, onnx_domain, __producer__, __version__
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
@@ -48,11 +48,11 @@ def quantize_data(data, quantize_range, qType):
         scale = (float(max_range) * 2) / quantize_range if max_range > 0 else 1
         zero_point = 0
         # signed byte type
-        quantized_data = (np.asarray(data) / scale).round().astype('b')
+        quantized_data = quantize_nparray(QuantType.QInt8, np.asarray(data), scale, zero_point)
     elif qType == onnx_proto.TensorProto.UINT8:
         scale = (float(rmax) - rmin) / quantize_range if rmin != rmax else 1
         zero_point = round((0 - rmin) / scale)  # round to nearest integer
-        quantized_data = ((np.asarray(data) / scale).round() + zero_point).astype('B')  # unsigned byte type
+        quantized_data = quantize_nparray(QuantType.QUInt8, np.asarray(data), scale, zero_point)
     else:
         raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
 

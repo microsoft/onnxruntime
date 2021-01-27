@@ -1,7 +1,7 @@
 import onnx
 import numpy as np
 from .base_operator import QuantOperatorBase
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, quantize_nparray
 
 
 class QPad(QuantOperatorBase):
@@ -33,14 +33,14 @@ class QPad(QuantOperatorBase):
                     return
 
                 padding_constant_initializer = self.quantizer.model.get_initializer(node.input[2])
-                if (padding_constant_initializer is not None) and (zp_tensor is not None) and (scale_tensor is not None):
+                if padding_constant_initializer is not None:
                     zp_array = onnx.numpy_helper.to_array(zp_tensor)
                     zp_value = zp_array.item() if zp_array.ndim == 0 else zp_array[0]
                     scale_array = onnx.numpy_helper.to_array(scale_tensor)
                     scale_value = scale_array.item() if scale_array.ndim == 0 else scale_array[0]
                     padding_constant_array = onnx.numpy_helper.to_array(padding_constant_initializer)
-                    quantized_padding_constant_array = (
-                        (padding_constant_array.astype(np.float32) / scale_value).round() + zp_value).astype(np.uint8)
+                    quantized_padding_constant_array = quantize_nparray(
+                        quantized_input_value.qType, padding_constant_array, scale_value, zp_value)
                     quantized_padding_constant_name = node.input[2] + "_quantized"
                     quantized_padding_constant_initializer = onnx.numpy_helper.from_array(
                         quantized_padding_constant_array, quantized_padding_constant_name)
