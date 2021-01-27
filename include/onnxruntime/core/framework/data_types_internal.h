@@ -364,11 +364,11 @@ class MLTypeCallDispatcher2 {
   void Invoke(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
 
-    std::array<int, sizeof...(Types)>{
-        helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
+    static_cast<void>(std::array<int, sizeof...(Types)>{
+        helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...});
 
     // avoid "unused parameter" warning for the case where Types is empty
-    std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...};
+    static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});
 
     ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
   }
@@ -377,13 +377,13 @@ class MLTypeCallDispatcher2 {
   void InvokeWithLeadingTemplateArgs(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
 
-    std::array<int, sizeof...(Types)>{
+    static_cast<void>(std::array<int, sizeof...(Types)>{
         helper.template Invoke<Types>(
             boost::mp11::mp_apply<Fn, boost::mp11::mp_push_back<LeadingTemplateArgTypeList, Types>>(),
-            std::forward<Args>(args)...)...};
+            std::forward<Args>(args)...)...});
 
     // avoid "unused parameter" warning for the case where Types is empty
-    std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...};
+    static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});
 
     ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
   }

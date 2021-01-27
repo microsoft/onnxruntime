@@ -254,7 +254,7 @@ struct SrcDispatcher {
   void operator()(int32_t to, const Tensor& src, Tensor& dst, const TensorShape& shape) {
     using DstTypes = mp_remove_if_q<EnabledDstTypes, mp_bind_front<std::is_same, TSrc>>;
     utils::MLTypeCallDispatcherFromTypeList<DstTypes> dispatcher{to};
-    dispatcher.InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(src, dst, shape);
+    dispatcher.template InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(src, dst, shape);
   }
 };
 
