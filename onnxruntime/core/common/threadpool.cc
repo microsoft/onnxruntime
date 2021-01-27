@@ -51,7 +51,7 @@ static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop count
 class alignas(CACHE_LINE_BYTES) LoopCounter {
 public:
  LoopCounter(uint64_t num_iterations,
-	     uint64_t d_of_p,
+             uint64_t d_of_p,
              uint64_t block_size = 1) : _block_size(block_size),
                                         _num_shards(GetNumShards(num_iterations,
                                                                  d_of_p,
