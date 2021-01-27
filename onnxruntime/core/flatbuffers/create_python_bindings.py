@@ -51,15 +51,11 @@ def main():
 
     # cd to script dir as everything we do is relative to that location
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    orig_dir = os.curdir
     os.chdir(script_dir)
 
     update_namespace()
     generate_schema(args.flatc)
     create_init_py()
-
-    # return to the starting directory
-    os.chdir(orig_dir)
 
 
 if __name__ == '__main__':

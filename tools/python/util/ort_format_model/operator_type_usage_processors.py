@@ -224,15 +224,23 @@ def _create_operator_type_usage_processors():
         operator_processors[processor.name()] = processor
 
     # Starting with ops from:
-    #   - the Office production models
+    #   - Priority 1P models
     #   - Mobilenet + SSD Mobilenet + MobileBert
     #   - some known large kernels
-    # Excludes ops where type reduction is meaningless e.g. current implementation only supports one type or is small
+    #
+    # Ops we are ignoring currently so as not to produce meaningless output:
+    # Implementation is not type specific:
+    #    If, Loop, Reshape, Scan, Shape, Squeeze, Unsqueeze
+    # Only one type supported in the ORT implementation:
+    #   FusedConv, FusedGemm, FusedMatMul, TransposeMatMul
+    #
     default_processor_onnx_ops = ['Add', 'AveragePool', 'BatchNormalization', 'Clip', 'Concat', 'Conv',
                                   'DequantizeLinear', 'Div', 'Equal', 'Exp', 'Expand', 'Flatten',
                                   'Gemm', 'Greater', 'Less', 'MatMul', 'Max', 'Min', 'Mul',
-                                  'NonMaxSuppression', 'NonZero', 'Pad', 'QLinearConv', 'Relu', 'Resize',
+                                  'NonMaxSuppression', 'NonZero', 'Pad', 'QLinearConv', 'Range', 'Relu', 'Resize',
                                   'Sigmoid', 'Slice', 'Softmax', 'Split', 'Sub', 'Tile', 'TopK', 'Transpose']
+
+    internal_ops = ['QLinearAdd', 'QLinearMul']
 
     # TODO - review and add ML ops as needed
     # ML Op notes.
@@ -244,9 +252,6 @@ def _create_operator_type_usage_processors():
     #  TreeEnsembleClassifier: Templatized on input type and also switch on output type
     #  ZipMap: Switch on output type (derived from attributes)
     default_processor_onnxml_ops = []
-
-    # FusedConv, FusedGemm and TransposeMatMul are float only so can be ignored
-    internal_ops = ['QLinearAdd', 'QLinearMul']
 
     [add(DefaultTypeUsageProcessor('ai.onnx', op)) for op in default_processor_onnx_ops]
     [add(DefaultTypeUsageProcessor('ai.onnx.ml', op)) for op in default_processor_onnxml_ops]
@@ -265,7 +270,7 @@ def _create_operator_type_usage_processors():
     add(DefaultTypeUsageProcessor('ai.onnx', 'Pow', inputs=[0, 1]))
 
     # Random generator ops produce new data so we track the output type
-    onnx_random_ops = ['RandomNormal', 'RandomNoarmalLike', 'RandomUniform', 'RandomUniformLike', 'Multinomial']
+    onnx_random_ops = ['RandomNormal', 'RandomNormalLike', 'RandomUniform', 'RandomUniformLike', 'Multinomial']
     [add(DefaultTypeUsageProcessor('ai.onnx', op, inputs=[], outputs=[0])) for op in onnx_random_ops]
 
     # we only support 'float' as input for QuantizeLinear so just track the output type
