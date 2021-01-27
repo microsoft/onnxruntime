@@ -22,28 +22,36 @@ namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
-static bool IsCurrentModuleInSystem32() {
-  std::string current_module_path;
-  current_module_path.reserve(MAX_PATH);
-  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path.data(), MAX_PATH);
-  FAIL_FAST_IF(size_module_path == 0);
-
+static std::string System32Path() {
   std::string system32_path;
   system32_path.reserve(MAX_PATH);
   auto size_system32_path = GetSystemDirectoryA(system32_path.data(), MAX_PATH);
   FAIL_FAST_IF(size_system32_path == 0);
+  return system32_path;
+}
 
-  return _strnicmp(system32_path.c_str(), current_module_path.c_str(), size_system32_path) == 0;
+static bool IsCurrentModuleInPath(const std::string& path) {
+  std::string current_module_path;
+  current_module_path.reserve(MAX_PATH);
+  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path.data(), MAX_PATH);
+  FAIL_FAST_IF(size_module_path == 0);
+  return _strnicmp(path.c_str(), current_module_path.c_str(), path.size()) == 0;
 }
 
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
+  std::string directml_dll = "directml.dll";
   DWORD flags = 0; 
 #ifdef BUILD_INBOX 
-  flags |= IsCurrentModuleInSystem32() ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0;
+  auto system32_path = System32Path();
+  if (IsCurrentModuleInPath(system32_path))
+  {
+    flags |= LOAD_LIBRARY_SEARCH_SYSTEM32;
+    directml_dll = system32_path + "\\" + directml_dll;
+  }
 #endif
 
   // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
-  wil::unique_hmodule dmlDll(LoadLibraryExA("DirectML.dll", nullptr, flags));
+  wil::unique_hmodule dmlDll(LoadLibraryExA(directml_dll.c_str(), nullptr, flags));
   THROW_LAST_ERROR_IF(!dmlDll);
 
   auto dmlCreateDevice1Fn = reinterpret_cast<decltype(&DMLCreateDevice1)>(

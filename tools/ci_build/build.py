@@ -340,6 +340,8 @@ def parse_arguments():
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.")
     parser.add_argument(
+        "--use_coreml", action='store_true', help="Build with CoreML support.")
+    parser.add_argument(
         "--use_nnapi", action='store_true', help="Build with NNAPI support.")
     parser.add_argument(
         "--nnapi_min_api", type=int,
@@ -817,6 +819,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_verstr = subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2]
         if args.use_xcode and LooseVersion(cmake_verstr) >= LooseVersion('3.19.0'):
             cmake_args += ["-T", "buildsystem=1"]
+        if args.apple_deploy_target:
+            cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
+
+    if args.use_coreml:
+        if not is_macOS():
+            raise BuildError("Build CoreML EP requires macOS")
+        cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
     if args.ios:
         if is_macOS():
