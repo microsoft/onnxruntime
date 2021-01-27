@@ -16,9 +16,10 @@ log = get_logger("op_registration_utils")
 
 def map_ort_constant_to_domain(ort_constant_name: str):
     '''
-    Map a string domain value to the internal ONNX Runtime constant for that domain.
-    :param domain: Domain string to map.
-    :return:
+    Map the name of the internal ONNX Runtime constant used in operator kernel registrations to the domain name
+    used in ONNX models and configuration files.
+    :param ort_constant_name: ONNX Runtime constant name for the domain from a kernel registration entry.
+    :return: String with public domain name.
     '''
 
     # constants are defined in <ORT root>/include/onnxruntime/core/graph/constants.h

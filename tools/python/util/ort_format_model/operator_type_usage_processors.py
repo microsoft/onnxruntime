@@ -12,32 +12,33 @@ def _create_op_key(domain: str, optype: str):
     return '{}:{}'.format(domain, optype)
 
 
+def _ort_constant_for_domain(domain: str):
+    '''
+    Map a string domain value to the internal ONNX Runtime constant for that domain.
+    :param domain: Domain string to map.
+    :return: Internal ONNX Runtime constant
+    '''
+
+    # constants are defined in <ORT root>/include/onnxruntime/core/graph/constants.h
+    # This list is limited to just the domains we have processors for
+    constant_to_domain_map = {'ai.onnx': 'kOnnxDomain',
+                              'ai.onnx.ml': 'kMLDomain',
+                              'com.microsoft': 'kMSDomain'}
+
+    if domain not in constant_to_domain_map:
+        raise ValueError('Domain {} not found in map to ONNX Runtime constant. Please update map.'.format(domain))
+
+    return constant_to_domain_map[domain]
+
+
 class TypeUsageProcessor(ABC):
     '''
     Abstract base class for processors which implement operator specific logic to determine the type or types required.
     '''
     def __init__(self, domain: str, optype: str):
-        self._domain = domain
-        self._optype = optype
-        self._name = _create_op_key(domain, optype)
-
-    def name(self):
-        return self._name
-
-    def cpp_name(self):
-        'Return a string that can be used as a unique name for the operator in the C++ code'
-
-        # for now, just use the op type. this isn't guaranteed to be unique across domains, but currently none clash.
-        # if in the future there is a clash, create a custom processor for the op in one of the domains and return
-        # a different string there.
-        #
-        # Note that due to the way the value is used in the ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES macro
-        # it can't contain ':' or '.' characters.
-        #
-        # e.g. if we had say ai.onnx:Gemm and com.intel.ai:Gemm, and for some reason we needed to track types
-        # separately for each, we could create a TypeUsageProcessor based class for com.intel.ai:Gemm, and override
-        # cpp_name in it to return something like 'intel_Gemm'.
-        return self._optype
+        self.domain = domain
+        self.optype = optype
+        self.name = _create_op_key(domain, optype)
 
     @abstractmethod
     def process_node(self, node: fbs.Node, value_name_to_typeinfo: dict):
@@ -50,7 +51,7 @@ class TypeUsageProcessor(ABC):
         :return: True is required. False if not.
         '''
         # Not all operators have typed registrations, so this is optionally implemented by derived classes
-        raise RuntimeError('Did not expect processor for {} to have typed registrations.'.format(self._name))
+        raise RuntimeError('Did not expect processor for {} to have typed registrations.'.format(self.name))
 
     @abstractmethod
     def get_cpp_entry(self):
@@ -109,7 +110,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         for i in self._input_types.keys():
             if i >= node.InputsLength():
                 raise RuntimeError('Node has {} inputs. Tracker for {} incorrectly configured as it requires {}.'
-                                   .format(node.InputsLength(), self.name(), i))
+                                   .format(node.InputsLength(), self.name, i))
 
             type_str = value_name_to_typestr(node.Inputs(i), value_name_to_typeinfo)
             self._input_types[i].add(type_str)
@@ -117,7 +118,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         for o in self._output_types.keys():
             if o >= node.OutputsLength():
                 raise RuntimeError('Node has {} outputs. Tracker for {} incorrectly configured as it requires {}.'
-                                   .format(node.OutputsLength(), self.name(), o))
+                                   .format(node.OutputsLength(), self.name, o))
 
             type_str = value_name_to_typestr(node.Outputs(o), value_name_to_typeinfo)
             self._output_types[o].add(type_str)
@@ -132,16 +133,16 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
 
     def get_cpp_entry(self):
         entries = []
-        cpp_name = self.cpp_name()
+        domain = _ort_constant_for_domain(self.domain)
         for i in sorted(self._input_types.keys()):
             if self._input_types[i]:
-                entries.append('ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, Input, {}, {});'
-                               .format(cpp_name, i, ', '.join(sorted(self._input_types[i]))))
+                entries.append('ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, {}, Input, {}, {});'
+                               .format(domain, self.optype, i, ', '.join(sorted(self._input_types[i]))))
 
         for o in sorted(self._output_types.keys()):
             if self._output_types[o]:
-                entries.append('ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, Output, {}, {});'
-                               .format(cpp_name, o, ', '.join(sorted(self._output_types[o]))))
+                entries.append('ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, {}, Output, {}, {});'
+                               .format(domain, self.optype, o, ', '.join(sorted(self._output_types[o]))))
 
         return entries
 
@@ -230,10 +231,10 @@ def _create_operator_type_usage_processors():
     operator_processors = {}
 
     def add(processor):
-        if processor.name() in operator_processors:
-            raise RuntimeError('Duplicate processor for ' + processor.name())
+        if processor.name in operator_processors:
+            raise RuntimeError('Duplicate processor for ' + processor.name)
 
-        operator_processors[processor.name()] = processor
+        operator_processors[processor.name] = processor
 
     # Starting with ops from:
     #   - Priority 1P models
