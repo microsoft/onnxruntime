@@ -31,7 +31,7 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
-    Cast, Input, 0,
+    kOnnxDomain, Cast, Input, 0,
     bool,
     float, double,
     uint8_t, uint16_t, uint32_t, uint64_t,
@@ -40,7 +40,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
     std::string);
 
 ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
-    Cast, Output, 0,
+    kOnnxDomain, Cast, Output, 0,
     bool,
     float, double,
     uint8_t, uint16_t, uint32_t, uint64_t,
@@ -51,8 +51,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
 
 namespace {
 
-using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Cast, Input, 0);
-using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Cast, Output, 0);
+using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kOnnxDomain, Cast, Input, 0);
+using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kOnnxDomain, Cast, Output, 0);
 
 using IndirectCastTypes = TypeList<MLFloat16, BFloat16>;
 

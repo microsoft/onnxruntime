@@ -8,8 +8,8 @@ namespace op_kernel_type_control {
 
 // Examples:
 // Specify allowed types per Op kernel arg:
-//   ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(Cast, Input, 0, float, int64_t);
-//   ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(Cast, Output, 0, float, int64_t);
+//   ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Cast, Input, 0, float, int64_t);
+//   ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Cast, Output, 0, float, int64_t);
 // Specify allowed types globally:
 //   ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES(float, double, int32_t)
 

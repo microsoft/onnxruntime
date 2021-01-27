@@ -114,16 +114,16 @@ struct EnabledOpKernelArgTypes {
 
 // INTERNAL
 // the class name of a tag type identifying an Op kernel for the purposes of type control
-#define ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpKernel) \
-  OpKernelTypeControlFor##OpKernel##Tag
+#define ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpDomain, OpName) \
+  TypeControl_##OpDomain##_##OpName##_Tag
 
 // INTERNAL
 // a tag type identifying an Op kernel argument
-#define ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpKernel, ArgDirection, ArgIndex) \
-  ::onnxruntime::op_kernel_type_control::tags::OpKernelArg<                                  \
-      ::onnxruntime::op_kernel_type_control::                                                \
-          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpKernel),                      \
-      ::onnxruntime::op_kernel_type_control::OpKernelArgDirection::ArgDirection,             \
+#define ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpDomain, OpName, ArgDirection, ArgIndex) \
+  ::onnxruntime::op_kernel_type_control::tags::OpKernelArg<                                          \
+      ::onnxruntime::op_kernel_type_control::                                                        \
+          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpDomain, OpName),                      \
+      ::onnxruntime::op_kernel_type_control::OpKernelArgDirection::ArgDirection,                     \
       ArgIndex>
 
 // public macros
@@ -134,18 +134,19 @@ struct EnabledOpKernelArgTypes {
  *
  * Note: This should be called from the onnxruntime::op_kernel_type_control namespace.
  *
- * @param Op The Op name.
+ * @param OpDomain The Op domain.
+ * @param OpName The Op name.
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  * @param ... The types.
  */
-#define ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(Op, ArgDirection, ArgIndex, ...)           \
-  class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(Op);                              \
-  template <>                                                                                \
-  struct OpKernelArgTypes<                                                                   \
-      ::onnxruntime::op_kernel_type_control::tags::Supported<                                \
-          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(Op, ArgDirection, ArgIndex)>> { \
-    using types = ::onnxruntime::TypeList<__VA_ARGS__>;                                       \
+#define ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(OpDomain, OpName, ArgDirection, ArgIndex, ...)           \
+  class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpDomain, OpName);                              \
+  template <>                                                                                              \
+  struct OpKernelArgTypes<                                                                                 \
+      ::onnxruntime::op_kernel_type_control::tags::Supported<                                              \
+          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpDomain, OpName, ArgDirection, ArgIndex)>> { \
+    using types = ::onnxruntime::TypeList<__VA_ARGS__>;                                                    \
   };
 
 /**
@@ -154,18 +155,19 @@ struct EnabledOpKernelArgTypes {
  *
  * Note: This should be called from the onnxruntime::op_kernel_type_control namespace.
  *
- * @param Op The Op name.
+ * @param OpDomain The Op domain.
+ * @param OpName The Op name.
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  * @param ... The types.
  */
-#define ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(Op, ArgDirection, ArgIndex, ...)             \
-  class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(Op);                              \
-  template <>                                                                                \
-  struct OpKernelArgTypes<                                                                   \
-      ::onnxruntime::op_kernel_type_control::tags::Allowed<                                  \
-          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(Op, ArgDirection, ArgIndex)>> { \
-    using types = ::onnxruntime::TypeList<__VA_ARGS__>;                                       \
+#define ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(OpDomain, OpName, ArgDirection, ArgIndex, ...)             \
+  class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpDomain, OpName);                              \
+  template <>                                                                                              \
+  struct OpKernelArgTypes<                                                                                 \
+      ::onnxruntime::op_kernel_type_control::tags::Allowed<                                                \
+          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpDomain, OpName, ArgDirection, ArgIndex)>> { \
+    using types = ::onnxruntime::TypeList<__VA_ARGS__>;                                                    \
   };
 
 /**
@@ -180,31 +182,33 @@ struct EnabledOpKernelArgTypes {
   template <>                                                       \
   struct OpKernelArgTypes<                                          \
       ::onnxruntime::op_kernel_type_control::tags::GlobalAllowed> { \
-    using types = ::onnxruntime::TypeList<__VA_ARGS__>;              \
+    using types = ::onnxruntime::TypeList<__VA_ARGS__>;             \
   };
 
 /**
  * TypeList type with the enabled types for a given Op kernel argument.
  *
- * @param Op The Op name.
+ * @param OpDomain The Op domain.
+ * @param OpName The Op name.
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  */
-#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Op, ArgDirection, ArgIndex) \
-  ::onnxruntime::op_kernel_type_control::EnabledOpKernelArgTypes<       \
-      ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(               \
-          Op, ArgDirection, ArgIndex)>::types
+#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(OpDomain, OpName, ArgDirection, ArgIndex) \
+  ::onnxruntime::op_kernel_type_control::EnabledOpKernelArgTypes<                     \
+      ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(                             \
+          OpDomain, OpName, ArgDirection, ArgIndex)>::types
 
 /**
  * std::tuple type with the enabled types for a given Op kernel argument.
  *
- * @param Op The Op name.
+ * @param OpDomain The Op domain.
+ * @param OpName The Op name.
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  */
-#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(Op, ArgDirection, ArgIndex) \
-  ::boost::mp11::mp_rename<                                              \
-      ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(Op, ArgDirection, ArgIndex),   \
+#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(OpDomain, OpName, ArgDirection, ArgIndex) \
+  ::boost::mp11::mp_rename<                                                            \
+      ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(OpDomain, OpName, ArgDirection, ArgIndex),   \
       std::tuple>
 
 #include "core/providers/op_kernel_type_control_overrides.inc"

@@ -31,24 +31,24 @@ struct TypeSetEqual {
 
 // specify supported and allowed
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(TestOpA, Input, 0, int32_t, int64_t, float, double);
-ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(TestOpA, Input, 0, float, int64_t, char);
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(TestDomain, TestOpA, Input, 0, int32_t, int64_t, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(TestDomain, TestOpA, Input, 0, float, int64_t, char);
 }  // namespace op_kernel_type_control
 
 static_assert(
     test::TypeSetEqual<
-        ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(TestOpA, Input, 0),
+        ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(TestDomain, TestOpA, Input, 0),
         TypeList<float, int64_t>>::value,
     "Unexpected enabled types for TestOpA.");
 
 // specify supported
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(TestOpB, Output, 1, int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(TestDomain, TestOpB, Output, 1, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 static_assert(
     test::TypeSetEqual<
-        ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(TestOpB, Output, 1),
+        ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(TestDomain, TestOpB, Output, 1),
         TypeList<int32_t, int64_t>>::value,
     "Unexpected enabled types for TestOpB.");
 
