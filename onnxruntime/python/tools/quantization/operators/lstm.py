@@ -99,5 +99,8 @@ class LSTMQuant(QuantOperatorBase):
 
         quant_lstm_name = "" if node.name == "" else node.name + "_quant"
         quant_lstm_node = onnx.helper.make_node("DynamicQuantizeLSTM", inputs, node.output, quant_lstm_name, **kwargs)
+        self.quantizer.new_nodes.append(quant_lstm_node)
 
-        self.quantizer.new_nodes += [quant_lstm_node]
+        dequantize_node = self.quantizer._dequantize_value(node.input[0])
+        if dequantize_node is not None:
+            self.quantizer.new_nodes.append(dequantize_node)
