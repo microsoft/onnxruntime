@@ -9,7 +9,7 @@ import onnxruntime as onnxrt
 from helper import get_name
 import os
 from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
-from onnxruntime.nuphar.model_tools import validate_with_ort
+from onnxruntime.nuphar.model_tools import validate_with_ort, run_shape_inference
 import shutil
 import sys
 import subprocess
@@ -339,11 +339,13 @@ class TestNuphar(unittest.TestCase):
         cwd = os.getcwd()
 
         bidaf_dir_src = '/build/models/opset9/test_bidaf'
+
         bidaf_dir = os.path.join(cwd, 'bidaf')
         shutil.copytree(bidaf_dir_src, bidaf_dir)
 
         bidaf_dir = os.path.join(cwd, 'bidaf')
         bidaf_model = os.path.join(bidaf_dir, 'model.onnx')
+        run_shape_inference(bidaf_model, bidaf_model)
         bidaf_scan_model = os.path.join(bidaf_dir, 'bidaf_scan.onnx')
         bidaf_opt_scan_model = os.path.join(bidaf_dir, 'bidaf_opt_scan.onnx')
         bidaf_int8_scan_only_model = os.path.join(bidaf_dir, 'bidaf_int8_scan_only.onnx')
@@ -433,7 +435,7 @@ class TestNuphar(unittest.TestCase):
 
         # run onnx_test_runner to verify results
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'download_sample_10', cwd], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'BERT_Squad', cwd], check=True, cwd=cwd)
 
         # run onnxruntime_perf_test, note that nuphar currently is not integrated with ORT thread pool, so set -x 1 to avoid thread confliction with OpenMP
         onnxruntime_perf_test = os.path.join(cwd, 'onnxruntime_perf_test')
