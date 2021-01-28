@@ -274,9 +274,7 @@ class ORTModule(torch.nn.Module):
             self._input_names_require_grad = input_names_require_grad
             self._initialize_module_gradient_graph_builder()
 
-        new_input_shape = [list(input.size()) for input in inputs if input is not None]
-        if self._current_input_shape is None or self._current_input_shape != new_input_shape:
-            self._current_input_shape = new_input_shape
+        if self._onnx_gradient is None:
             self._build_training_graph()
             self._create_training_session()
         # TODO: disabled for now, since it caused a bug in NVBert fp32 run
