@@ -104,10 +104,11 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
 
   GetMonotonicTimeCounter(&start_time);
   assert(input_names.size() == input_values.size());
-
+  std::wcout << test_case_.GetModelUrl() << " start" << std::endl;
   Ort::ThrowOnError(Ort::GetApi().Run(session_, nullptr, input_names.data(), input_values.data(),
                                       input_values.size(), output_names_raw_ptr.data(),
                                       output_count, reinterpret_cast<OrtValue**>(output_values.data())));
+  std::wcout << test_case_.GetModelUrl() << " end" << std::endl;
   GetMonotonicTimeCounter(&end_time);
   AccumulateTimeSpec(&spent_time_, &start_time, &end_time);
 
