@@ -88,6 +88,28 @@ def _ort_output_to_torch_tensor(ort_output):
     tensor = from_dlpack(ort_output.to_dlpack())
     return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
+def _extract_input_information(module, *inputs, **kwargs):
+    '''Returns the all input names, dynamic_axes information and input names that require gradient'''
+
+    # Ignore optional *inputs explicitly specified as None
+    sig = signature(module.forward)
+    all_input_names = sig.parameters.keys()
+    input_names = []
+    dynamic_axes = {}
+    input_names_require_grad = []
+    for input_idx, name in enumerate(all_input_names):
+        if input_idx < len(inputs) and inputs[input_idx] is not None:
+            if inputs[input_idx].requires_grad:
+                # input_names_require_grad holds all input tensors that have requires_grad
+                input_names_require_grad.append(name)
+
+            input_names.append(name)
+            dynamic_axes[name] = {}
+            for dim_idx in range(len(inputs[input_idx].shape)):
+                dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
+
+    return input_names, dynamic_axes, input_names_require_grad
+
 class ORTModule(torch.nn.Module):
 
     def __init__(self, module):
@@ -106,6 +128,7 @@ class ORTModule(torch.nn.Module):
         # Related to training graph split/shape inference
         self._current_input_shape = None
         self._module_gradient_graph_builder = None
+        self._input_names_require_grad = None
 
         # Forward pass
         self._onnx_forward = None
@@ -124,10 +147,7 @@ class ORTModule(torch.nn.Module):
         self._save_onnx = False
         self._save_onnx_prefix = ''
 
-    def _build_training_graph(self, *inputs, **kwargs):
-        self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
-        if self._save_onnx:
-            onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
+    def _initialize_module_gradient_graph_builder(self):
 
         # TODO: PyTorch exporter bug: changes the initializer order
         initializer_names = [p[0] for p in self._original_module.named_parameters()]
@@ -135,9 +155,18 @@ class ORTModule(torch.nn.Module):
         # Build full training graph and split in forward/backward
         grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
         grad_builder_config.initializer_names_to_train = initializer_names
-        grad_builder_config.input_names_require_grad = []
+        grad_builder_config.input_names_require_grad = self._input_names_require_grad
         self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
         self._module_gradient_graph_builder.initialize(self._onnx_training.SerializeToString(), grad_builder_config)
+
+    def _build_training_graph(self, *inputs, **kwargs):
+        input_names, dynamic_axes, self._input_names_require_grad = \
+                _extract_input_information(self._original_module, *inputs, **kwargs)
+        self._onnx_training = self._get_forward_graph(input_names, dynamic_axes, *inputs, **kwargs)
+        if self._save_onnx:
+            onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
+
+        self._initialize_module_gradient_graph_builder()
 
     def _create_training_session(self):
         providers = None
@@ -231,6 +260,13 @@ class ORTModule(torch.nn.Module):
         if not self._onnx_training:
             self._build_training_graph(*inputs, **kwargs)
 
+        _, _, input_names_require_grad = _extract_input_information(self._original_module, *inputs, **kwargs)
+        # If inputs requiring gradient change from one call to forward to the next, the module_gradient_graph_builder
+        # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
+        if input_names_require_grad != self._input_names_require_grad:
+            self._input_names_require_grad = input_names_require_grad
+            self._initialize_module_gradient_graph_builder()
+
         new_input_shape = [list(input.size()) for input in inputs if input is not None]
         if self._current_input_shape is None or self._current_input_shape != new_input_shape:
             self._current_input_shape = new_input_shape
@@ -302,9 +338,19 @@ class ORTModule(torch.nn.Module):
                 backward_outputs = self._backward_io_binding.get_outputs()
 
                 # Return input and initializer gradients
-                results = [torch.tensor([1])] * len(self._onnx_graphs_info.user_input_names)
-                results += [_ort_output_to_torch_tensor(backward_output) \
-                    for backward_output in backward_outputs[:len(self._onnx_graphs_info.initializer_grad_names_to_train)]]
+                num_initializers = len(self._onnx_graphs_info.initializer_grad_names_to_train)
+                results = []
+                for input_name in self._onnx_graphs_info.user_input_names:
+                    try:
+                        # Append to the results the backward output for each input that required grad
+                        results.append(_ort_output_to_torch_tensor(
+                            backward_outputs[num_initializers + self._input_names_require_grad.index(input_name)]))
+                    except ValueError:
+                        # Append None to results for each input that did not require grad
+                        results.append(None)
+                # Append backward ouput for all trained initializers
+                results += [_ort_output_to_torch_tensor(backward_output)
+                            for backward_output in backward_outputs[:num_initializers]]
                 return tuple(results)
 
         proc_inputs = [data for data in inputs if data is not None]
@@ -390,8 +436,7 @@ class ORTModule(torch.nn.Module):
 
         return result
 
-    @staticmethod
-    def _get_forward_graph(module, *inputs, **kwargs):
+    def _get_forward_graph(self, input_names, dynamic_axes, *inputs, **kwargs):
         '''Exports PyTorch `module` to ONNX with training flag, using `*inputs` as input
 
         TODO: How to support dynamic axes? Dimensions are determined by samples
@@ -401,27 +446,20 @@ class ORTModule(torch.nn.Module):
         f = io.BytesIO()
 
         # Deepcopy inputs, since input values may change after model run.
-        sample_inputs_copy = copy.deepcopy(inputs)
-
-        # Ignore optional *inputs explicitly specified as None
-        sig = signature(module.forward)
-        all_input_names = sig.parameters.keys()
-        input_names = []
-        dynamic_axes = {}
-        for input_idx, name in enumerate(all_input_names):
-            if input_idx < len(inputs) and inputs[input_idx] is not None:
-                input_names.append(name)
-                dynamic_axes[name] = {}
-                for dim_idx in range(len(inputs[input_idx].shape)):
-                    dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
+        # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
+        # Therefore, deepcopy only the data component of the input tensors for export.
+        sample_inputs_copy = []
+        for model_input in inputs:
+            sample_inputs_copy.append(model_input.data if isinstance(model_input, torch.Tensor) else model_input)
+        sample_inputs_copy = copy.deepcopy(tuple(sample_inputs_copy))
 
         # TODO: Support contrib OPs support? user model has no hint
         # from onnxruntime.training import register_custom_ops_pytorch_exporter
         # register_custom_ops_pytorch_exporter.register_custom_op()
 
         # Export torch.nn.Module to ONNX
-        torch.onnx.export(module,
-                          tuple(sample_inputs_copy),
+        torch.onnx.export(self._original_module,
+                          sample_inputs_copy,
                           f,
                           input_names=input_names,
                           opset_version=ONNX_OPSET_VERSION,
