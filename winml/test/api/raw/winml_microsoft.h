@@ -175,8 +175,7 @@ inline HRESULT GetActivationFactory(
     auto library = LoadLibraryExW(MachineLearningDll, nullptr, 0);
     if (library == nullptr)
     {
-      auto hr = HRESULT_FROM_WIN32(GetLastError());
-      return hr;
+      return HRESULT_FROM_WIN32(GetLastError());
     }
 
     using DllGetActivationFactory = HRESULT __stdcall(HSTRING, void** factory);
