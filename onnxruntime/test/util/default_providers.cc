@@ -10,6 +10,9 @@
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
+#ifdef USE_COREML
+#include "core/providers/coreml/coreml_provider_factory.h"
+#endif
 #include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
@@ -26,7 +29,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t);
 
 // EP for internal testing
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_InternalTesting(
@@ -136,7 +139,10 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
 #if defined(USE_COREML)
-  return CreateExecutionProviderFactory_CoreML()->CreateProvider();
+  // We want to run UT on CPU only to get output value without losing precision
+  uint32_t coreml_flags = 0;
+  coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
+  return CreateExecutionProviderFactory_CoreML(coreml_flags)->CreateProvider();
 #else
   return nullptr;
 #endif
