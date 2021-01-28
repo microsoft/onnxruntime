@@ -77,10 +77,12 @@ class ONNXCalibrater:
         value_infos = {vi.name: vi for vi in model.graph.value_info}
         value_infos.update({ot.name: ot for ot in model.graph.output})
         value_infos.update({it.name: it for it in model.graph.input})
+        initializer = set(init.name for init in model.graph.initializer)
 
         added_nodes = []
         added_outputs = []
         tensors_to_calibrate = set()
+        tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
 
         for node in model.graph.node:
             should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
@@ -89,8 +91,7 @@ class ONNXCalibrater:
                 for tensor_name in itertools.chain(node.input, node.output):
                     if tensor_name in value_infos.keys():
                         vi = value_infos[tensor_name]
-                        if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT and (
-                                tensor_name not in model.graph.initializer):
+                        if vi.type.HasField('tensor_type') and (vi.type.tensor_type.elem_type in tensor_type_to_calibrate) and (tensor_name not in initializer):
                             tensors_to_calibrate.add(tensor_name)
 
         # If augmenting all ops, it's possible that some nodes' input value are 0.
@@ -332,7 +333,7 @@ def calculate_calibration_data(model,
                                     augmented_model_path=augmented_model_path)
 
     if not os.path.exists(augmented_model_path):
-        augmented_model = calibrator.augment_graph(augment_all_ops=True)
+        augmented_model = calibrator.augment_graph()
         onnx.save(augmented_model, augmented_model_path)
 
     calibrator.get_intermediate_outputs(providers=["CUDAExecutionProvider"], ort_graph_optimization_enable=False)
