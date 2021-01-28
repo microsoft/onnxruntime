@@ -662,10 +662,6 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
-if(onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(re2)
-endif()
-
 set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
 add_library(safeint_interface INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
@@ -675,6 +671,11 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
   add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
 endif()
 
+add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
+
+if(onnxruntime_PREFER_SYSTEM_LIB)
+  find_package(re2)
+endif()
 if(NOT TARGET re2::re2)
   add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
   set_target_properties(re2 PROPERTIES FOLDER "External/re2")

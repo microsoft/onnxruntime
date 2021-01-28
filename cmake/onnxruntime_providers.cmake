@@ -53,6 +53,7 @@ file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
+  "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
 )
 
 if(onnxruntime_USE_NUPHAR)

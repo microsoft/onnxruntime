@@ -397,6 +397,7 @@ target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/p
 target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
+target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 
 # Properties
 set_target_properties(winml_lib_image
@@ -512,6 +513,7 @@ target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/gsl
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
+target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 
 # Properties
 set_target_properties(winml_lib_api
@@ -594,6 +596,7 @@ target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
+target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 
 # Properties
 set_target_properties(winml_lib_api_experimental
@@ -748,6 +751,7 @@ target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/eigen)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
+target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 
 # Properties
 set_target_properties(winml_dll

@@ -3,12 +3,16 @@
 
 #pragma once
 
-#include <assert.h>
-#include <stdint.h>
+#include <array>
+#include <cassert>
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "boost/mp11.hpp"
+
 #include "core/common/common.h"
+#include "core/common/type_list.h"
 #include "core/framework/data_types.h"
 #include "core/graph/onnx_protobuf.h"
 
@@ -341,24 +345,53 @@ class MLTypeCallDispatcherRet {
   }
 };
 
-// Version of the MLTypeDispatcher that has an input type which is passed through ('carried')
-// as the first type parameter in the call to Fn when dispatching.
-template <typename TCarried, template <typename, typename> class Fn, typename... Types>
-class MLTypeCallDispatcherWithCarriedType {
+// Version of MLTypeCallDispatcher that takes supported types as class-level template parameters.
+// This enables easier use with type list representations of the supported types.
+// The invocation-related template parameters like Fn move to the individual Invoke() methods.
+// TODO consolidate this with the other MLTypeCallDispatcher classes
+// can add additional methods to cover their usages, but need to update call sites
+template <typename... Types>
+class MLTypeCallDispatcher2 {
+  static_assert(boost::mp11::mp_is_set<TypeList<Types...>>::value,
+                "MLTypeCallDispatcher requires a set of unique types.");
+
   int32_t dt_type_;
 
  public:
-  explicit MLTypeCallDispatcherWithCarriedType(int32_t dt_type) noexcept : dt_type_(dt_type) {}
+  explicit MLTypeCallDispatcher2(int32_t dt_type) noexcept : dt_type_(dt_type) {}
 
-  template <typename... Args>
+  template <template <typename> class Fn, typename... Args>
   void Invoke(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
-    int results[] = {0, helper.template Invoke<Types>(Fn<TCarried, Types>(), std::forward<Args>(args)...)...};
-    ORT_UNUSED_PARAMETER(results);
-    ORT_ENFORCE(helper.called_ < 2, "Check for duplicate types in MLTypeCallDispatcher");
+
+    static_cast<void>(std::array<int, sizeof...(Types)>{
+        helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...});
+
+    // avoid "unused parameter" warning for the case where Types is empty
+    static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});
+
+    ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
+  }
+
+  template <template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
+  void InvokeWithLeadingTemplateArgs(Args&&... args) const {
+    mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
+
+    static_cast<void>(std::array<int, sizeof...(Types)>{
+        helper.template Invoke<Types>(
+            boost::mp11::mp_apply<Fn, boost::mp11::mp_push_back<LeadingTemplateArgTypeList, Types>>(),
+            std::forward<Args>(args)...)...});
+
+    // avoid "unused parameter" warning for the case where Types is empty
+    static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});
+
     ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
   }
 };
+
+// the type MLTypeCallDispatcher2<T...> given a type list L<T...>
+template <typename L>
+using MLTypeCallDispatcherFromTypeList = boost::mp11::mp_apply<MLTypeCallDispatcher2, L>;
 
 namespace data_types_internal {
 
