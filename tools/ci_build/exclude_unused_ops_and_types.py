@@ -101,8 +101,12 @@ def _exclude_unused_ops_and_types_in_registrations(required_operators,
                 sys.exit(-1)
 
 
-def _generate_cpp_defines(ort_root: str, op_type_usage_manager: OperatorTypeUsageManager):
-
+def _generate_required_types_cpp_code(ort_root: str, op_type_usage_manager: OperatorTypeUsageManager):
+    '''
+    Generate and insert the C++ code to specify per operator type requirements.
+    :param ort_root: Root of the ONNX Runtime repository
+    :param op_type_usage_manager: OperatorTypeUsageManager that contains the required type info
+    '''
     # get the C++ code to insert
     cpp_lines = op_type_usage_manager.get_cpp_entries() if op_type_usage_manager else None
     if not cpp_lines:
@@ -143,10 +147,10 @@ def _generate_cpp_defines(ort_root: str, op_type_usage_manager: OperatorTypeUsag
     if not inserted:
         raise RuntimeError('Insertion point was not found in {}'.format(target))
 
-    # future: how/where will we write global type limitations?
-    # should they come from the ops file or be separate? probably separate - may want to reduce types without
-    # reducing operators. this can probably be handled by build.py as we should either use a set of global types
-    # OR a set of per-operator types but not both.
+    # future: how will any global type limitations be provided by the user 
+    # and added to op_kernel_type_control_overrides.inc?
+    # should they come from a reduced build configuration file, be specified on a build command-line,
+    # or manually added to op_kernel_type_control_overrides.inc?
 
 
 def exclude_unused_ops_and_types(config_path, enable_type_reduction=False, use_cuda=True):
@@ -156,7 +160,7 @@ def exclude_unused_ops_and_types(config_path, enable_type_reduction=False, use_c
 
     _exclude_unused_ops_and_types_in_registrations(required_ops, op_type_usage_manager, registration_files)
 
-    _generate_cpp_defines(ort_root, op_type_usage_manager)
+    _generate_required_types_cpp_code(ort_root, op_type_usage_manager)
 
 
 if __name__ == "__main__":
