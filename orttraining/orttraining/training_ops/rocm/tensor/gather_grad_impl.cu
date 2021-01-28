@@ -20,7 +20,7 @@ __global__ void _Iota(
   output[idx] = input[idx];
 }
 
-template <typename T, typename Tin>
+template <typename T, typename Tin, int NumElementsPerThread>
 __global__ void _GatherGradImpl(
     const Tin* input,
     const Tin* indices,
@@ -32,19 +32,18 @@ __global__ void _GatherGradImpl(
     int64_t stride) {
   int idx = blockIdx.x * 4 + threadIdx.y;
 
-  const int SZ = 4;
   if (idx < numel && (idx == 0 || input[idx] != input[idx - 1])) {
     do {
       for (int itr = 0; itr < param_itrs; ++itr) {
-        const int start_feature = threadIdx.x + blockIdx.y * blockDim.x * SZ;
+        const int start_feature = threadIdx.x + blockIdx.y * blockDim.x * NumElementsPerThread;
         const int weight_row = itr * input_numel + ((int)input[idx]) * stride;  //the offset of the input
         const int grad_row = (itr * numel + ((int)indices[idx])) * stride;      //the offset of the gradient
 
-        float gradient[SZ];
-        float weight[SZ];
+        float gradient[NumElementsPerThread];
+        float weight[NumElementsPerThread];
 
 #pragma unroll
-        for (int ii = 0; ii < SZ; ii++) {
+        for (int ii = 0; ii < NumElementsPerThread; ii++) {
           int feature_dim = start_feature + ii * GPU_WARP_SIZE;
           if (feature_dim < stride) {
             gradient[ii] = static_cast<float>(grad_output[grad_row + feature_dim]);
@@ -53,12 +52,12 @@ __global__ void _GatherGradImpl(
         }
 
 #pragma unroll
-        for (int ii = 0; ii < SZ; ii++) {
+        for (int ii = 0; ii < NumElementsPerThread; ii++) {
           weight[ii] += gradient[ii];
         }
 
 #pragma unroll
-        for (int ii = 0; ii < SZ; ii++) {
+        for (int ii = 0; ii < NumElementsPerThread; ii++) {
           int feature_dim = start_feature + ii * GPU_WARP_SIZE;
           if (feature_dim < stride) {
             grad_weight[weight_row + feature_dim] = static_cast<T>(weight[ii]);
@@ -70,53 +69,52 @@ __global__ void _GatherGradImpl(
   }
 }
 
-template <typename T, typename Tin>
-__global__ void _GatherGradImpl_new(
+// Special optimization for the case which the gather is on axis=0
+template <typename T, typename Tin, int NumElementsPerThread>
+__global__ void _GatherAxis0GradImpl(
     const Tin* input,
     const Tin* indices,
     const T* grad_output,
     T* grad_weight,
     int64_t numel,
     int64_t input_numel,
-    //int64_t param_itrs,  // = 1
     int64_t stride)
 {
   int idx = blockIdx.x * 4 + threadIdx.y;
 
-  const int SZ = 4;
   if (idx < numel && (idx == 0 || input[idx] != input[idx - 1])) {
-    const int start_feature = threadIdx.x + blockIdx.y * blockDim.x * SZ;
+    const int start_feature = threadIdx.x + blockIdx.y * blockDim.x * NumElementsPerThread;
     const int weight_row = ((int)input[idx]) * stride;  //the offset of the input
 
-    float weight[SZ];
-    for (int ii = 0; ii < SZ; ii++) {
+    float weight[NumElementsPerThread];
+    for (int ii = 0; ii < NumElementsPerThread; ii++) {
       int feature_dim = start_feature + ii * GPU_WARP_SIZE/4;
       if (feature_dim < stride)
         weight[ii] = static_cast<float>(grad_weight[weight_row + feature_dim]);
-    }        
+    }
 
     do {
         const int grad_row = ((int)indices[idx]) * stride;      //the offset of the gradient
-        float gradient[SZ];
+        float gradient[NumElementsPerThread];
 
 #pragma unroll
-        for (int ii = 0; ii < SZ; ii++) {
+        for (int ii = 0; ii < NumElementsPerThread; ii++) {
           int feature_dim = start_feature + ii * GPU_WARP_SIZE/4;
           if (feature_dim < stride) {
             gradient[ii] = static_cast<float>(grad_output[grad_row + feature_dim]);
-            weight[ii] += gradient[ii]; 
-          }           
+            weight[ii] += gradient[ii];
+          }
         }
         idx++;
     } while (idx < numel && input[idx] == input[idx - 1]);
     
 #pragma unroll
-    for (int ii = 0; ii < SZ; ii++) {
+    for (int ii = 0; ii < NumElementsPerThread; ii++) {
       int feature_dim = start_feature + ii * GPU_WARP_SIZE/4;
       if (feature_dim < stride)
         grad_weight[weight_row + feature_dim] = static_cast<T>(weight[ii]);
-    }    
-  }  
+    }
+  }
 }
 
 template <typename T, typename Tin>
@@ -161,24 +159,20 @@ void GatherGradImpl(
       original_indices.get(), original_indices_sorted.get(),
       num_indices));
 
+  dim3 block(GPU_WARP_SIZE, 4);
+  dim3 grid(CeilDiv(num_indices, 4), CeilDiv(stride, GridDim::maxElementsPerThread * GPU_WARP_SIZE));
   if (param_itrs == 1)
   {
-    dim3 block(GPU_WARP_SIZE/4, 4);
-    dim3 grid(CeilDiv(num_indices, 4), CeilDiv(stride, 128)*2);  
-
-    hipLaunchKernelGGL(_GatherGradImpl_new, dim3(grid), dim3(block), 0, 0, 
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherAxis0GradImpl<T, Tin, GridDim::maxElementsPerThread>), dim3(grid), dim3(block), 0, 0,
       indices_data_sorted.get(),
       original_indices_sorted.get(),
       grad_data,
       output_data,
       num_indices,
       num_inputs,
-      //param_itrs,
       stride); 
   } else {
-    dim3 block(GPU_WARP_SIZE, 4);
-    dim3 grid(CeilDiv(num_indices, 4), CeilDiv(stride, 128));
-    hipLaunchKernelGGL(_GatherGradImpl, dim3(grid), dim3(block), 0, 0, 
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherGradImpl<T, Tin, GridDim::maxElementsPerThread>), dim3(grid), dim3(block), 0, 0,
         indices_data_sorted.get(),
         original_indices_sorted.get(),
         grad_data,
