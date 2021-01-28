@@ -751,15 +751,13 @@ if(onnxruntime_BUILD_BENCHMARKS)
     ${BENCHMARK_DIR}/eigen.cc
     ${BENCHMARK_DIR}/gelu.cc
     ${BENCHMARK_DIR}/activation.cc
-    ${BENCHMARK_DIR}/reduceminmax.cc
-  )
+    ${BENCHMARK_DIR}/reduceminmax.cc)
 
   include(onnxruntime_avx512_checker.cmake)
   if(COMPILES_AVX512F_INTRINSICS)
     SET(benchmark_srcs
       ${benchmark_srcs}
-      ${BENCHMARK_DIR}/quantize_linear.cc
-    )
+      ${BENCHMARK_DIR}/quantize_linear.cc)
   endif()
   add_executable(onnxruntime_benchmark ${benchmark_srcs})
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)

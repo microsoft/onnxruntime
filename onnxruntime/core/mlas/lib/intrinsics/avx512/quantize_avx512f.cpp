@@ -18,19 +18,7 @@ Abstract:
 
 --*/
 
-#include "../mlasi.h"
-
-template<typename OutputType>
-extern
-void
-MLASCALL
-MlasQuantizeLinearKernel(
-    const float* Input,
-    OutputType* Output,
-    size_t N,
-    float Scale,
-    OutputType ZeroPoint
-    );
+#include "mlasi.h"
 
 //
 // QuantizeLinear implementation using AVX512 intrinsics.
