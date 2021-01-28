@@ -161,6 +161,11 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
     if (node->OpType() == "Conv") {
       dnnl_node.weight_name = node->InputDefs()[1]->Name();
     }
+#ifdef ENABLE_TRAINING
+    if (node->OpType() == "ConvGrad") {
+      dnnl_node.weight_name = node->InputDefs()[2]->Name();
+    }
+#endif  //ENABLE_TRAINING
     for (size_t i = 0; i < node_inputs.size(); i++) {
       auto iter = output_to_source_node_map.find(node_inputs[i]->Name());
       if (iter != output_to_source_node_map.end())

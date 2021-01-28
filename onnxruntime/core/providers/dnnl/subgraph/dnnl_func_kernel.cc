@@ -70,17 +70,13 @@ class SubgraphPrimitive : public PrimitiveBase {
  private:
   void CreateKernels(const SubgraphParams& params) {
     for (const auto& dnnl_node : params.subgraph->dnnl_nodes) {
-#ifdef ENABLE_TRAINING
-      if (dnnl_node.node_index == 0)
-        params.provider->fwd_conv_stack.clear();
-#endif  // ENABLE_TRAINING
       if (dnnl_node.name == "Conv") {
         std::ostringstream os;
         os << "Conv-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlConv<T>> kernel;
         kernel = std::make_shared<DnnlConv<T>>(dnnl_node, params.provider, *params.attributes, os.str());
 #ifdef ENABLE_TRAINING
-        params.provider->fwd_conv_stack.push_back(kernel);
+        params.provider->SetForwardConvKernel(dnnl_node.weight_name, kernel);
 #endif  // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -214,9 +210,8 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::shared_ptr<DnnlConvGrad<T>> kernel;
         kernel = std::make_shared<DnnlConvGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
 
-        auto fwd_kernel = params.provider->fwd_conv_stack.back();
+        auto fwd_kernel = params.provider->GetForwardConvKernel(dnnl_node.weight_name);
         kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlConv<T>>(fwd_kernel));
-        params.provider->fwd_conv_stack.pop_back();
 
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);

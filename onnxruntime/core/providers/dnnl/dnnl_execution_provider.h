@@ -6,7 +6,6 @@
 #include <memory>
 #include <map>
 #include <list>
-#include <vector>
 #include <memory.h>
 
 #include "core/platform/ort_mutex.h"
@@ -91,15 +90,26 @@ class DNNLExecutionProvider : public IExecutionProvider {
   // Note if the a DnnlKernel already exists this will replace the existing kernel with the
   // new kernel. This was done so the latest kernel is always placed in the map.
   void SetForwardKernel(onnxruntime::NodeIndex key, std::shared_ptr<ort_dnnl::DnnlKernel> kernel) {
+    std::lock_guard<OrtMutex> lock(mutex_);
     fwd_kernel_map_[key] = kernel;
   }
 
   // Fetch the kernel using the NodeIndex
   std::shared_ptr<ort_dnnl::DnnlKernel> GetForwardKernel(onnxruntime::NodeIndex key) {
+    std::lock_guard<OrtMutex> lock(mutex_);
     return fwd_kernel_map_.at(key);
   }
 
-  std::vector<std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_conv_stack;
+  void SetForwardConvKernel(std::string key, std::shared_ptr<ort_dnnl::DnnlKernel> kernel) {
+    std::lock_guard<OrtMutex> lock(mutex_);
+    fwd_conv_kernel_map_[key] = kernel;
+  }
+
+  // Fetch the kernel using the NodeIndex
+  std::shared_ptr<ort_dnnl::DnnlKernel> GetForwardConvKernel(std::string key) {
+    std::lock_guard<OrtMutex> lock(mutex_);
+    return fwd_conv_kernel_map_.at(key);
+  }
 #endif  // ENABLE_TRAINING
  private:
   // dnnl weights(filer data) memory blocks from first iteration
@@ -120,6 +130,13 @@ class DNNLExecutionProvider : public IExecutionProvider {
   // to obtain the forward primitive description but it may be need for other items like
   // accessing workspace memory.
   std::map<onnxruntime::NodeIndex, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_kernel_map_;
+
+  // map used to hold and lookup forward DnnlKernels for the Convolution/Convolution Grad
+  // operators. Convolution does not have an edge directly connecting an output from
+  // the forward operator to an input of the backward gradient node. so the fwd_kernel_map_
+  // can not be used, the name of the weight that is an input to both Conv and
+  // ConvGrad is use instead.
+  std::map<std::string, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_conv_kernel_map_;
 #endif  // ENABLE_TRAINING
   // SUBGRAPH
  private:

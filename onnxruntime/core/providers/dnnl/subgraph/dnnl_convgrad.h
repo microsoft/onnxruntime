@@ -192,18 +192,15 @@ class DnnlConvGrad : public DnnlKernel {
         dnnl::memory::desc({w_dims}, DnnnType<T>(), ort_source_format_));
 
     // Verify that the inputs to the ConvGrad operator match the passed in forward Conv operator
-    // The Convolution forward operator is passed in from a stack durring the creation of the subgraph.
-    // There is an assumption that the ConvGrad nodes will be visited in the reverse order from the
-    // corresponding Conv Nodes. Unfortantly this is not guaranteed.
-    // It is possible that the push/pop order on the stack may endup incorrect.
+    // The Convolution forward operator is passed in from a map that uses the weight name as the key
+    // We make the assumption that the name of each weight is unique. This checks that the dimentions
+    // of the ConvGrad input tensors match the the tensors from Conv operator.
     // This checks the following:
     //   - the output tensor dimensions from Conv match the dy_dims input of ConvGrad
     //   - the input tensor dimensions from Conv match the x_dims input of ConvGrad
     //   - the input weight tensor dimensions to Conv and ConvGrad match
-    // If any of these don't match then the stack did not assign the correct forward operator to this
-    // ConvGrad operator and the model will not be able to be trained using DNNL.
-    // See: dnnl_func_kernel.cc search for `fwd_conv_stack`.
-    // TODO: find a non-stack method to map the forward conv operator to the backward conv.
+    // If any of these don't match then the forward operator is incorrect.
+    // If the unique name assumption is always true then the following check can be removed.
     dnnl::memory::desc conv_fwd_dst_desc_ = conv_fwd_->GetPrimitiveDesc()->dst_desc();
     dnnl::memory::desc conv_fwd_src_desc_ = conv_fwd_->GetPrimitiveDesc()->src_desc();
     dnnl::memory::desc conv_fwd_weights_desc_ = conv_fwd_->GetPrimitiveDesc()->weights_desc();
