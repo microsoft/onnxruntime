@@ -46,24 +46,24 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
 }
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_LAMB_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP)                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                        \
-      LambOptimizer,                                                                                    \
-      kMSDomain,                                                                                        \
-      1,                                                                                                \
-      T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                                 \
-      kRocmExecutionProvider,                                                                           \
-      KernelDefBuilder()                                                                                \
-          .Alias(GenerateLambExtraAliasMapping())                                                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(0)  /* Keep do_update in CPU */                          \
-          .InputMemoryType<OrtMemTypeCPUInput>(4)  /* Keep iteration_count in CPU */                    \
-          .OutputMemoryType<OrtMemTypeCPUOutput>(0)  /* Keep iteration_count in CPU */                  \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                      \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                      \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                      \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                                      \
-          .TypeConstraint("T_MIXED_PRECISION_FP", DataTypeImpl::GetTensorType<T_MIXED_PRECISION_FP>())  \
-          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()),                   \
+#define REGISTER_LAMB_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP)                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                       \
+      LambOptimizer,                                                                                   \
+      kMSDomain,                                                                                       \
+      1,                                                                                               \
+      T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                                \
+      kRocmExecutionProvider,                                                                          \
+      KernelDefBuilder()                                                                               \
+          .Alias(GenerateLambExtraAliasMapping())                                                      \
+          .InputMemoryType<OrtMemTypeCPUInput>(0)   /* Keep do_update in CPU */                        \
+          .InputMemoryType<OrtMemTypeCPUInput>(4)   /* Keep iteration_count in CPU */                  \
+          .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep iteration_count in CPU */                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                     \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                     \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                     \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                                     \
+          .TypeConstraint("T_MIXED_PRECISION_FP", DataTypeImpl::GetTensorType<T_MIXED_PRECISION_FP>()) \
+          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()),                  \
       LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>);
 
 REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, MLFloat16, MLFloat16)
@@ -112,7 +112,6 @@ Status copy_inputs_to_outputs(
     const int group_count,
     const int input_group_size,
     const int output_group_size) {
-
   const Tensor* step_tensor = ctx->Input<Tensor>(4);
   if (step_tensor) {
     const int64_t* step_data = step_tensor->template Data<int64_t>();
@@ -179,6 +178,7 @@ Status launch_lamb_compute_direction(
     const std::vector<float>& betas,
     const std::vector<float>& lambdas,
     const std::vector<float>& epsilons,
+    const std::vector<float>& max_norms,
     const int64_t do_bias_correction) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
@@ -199,15 +199,13 @@ Status launch_lamb_compute_direction(
   const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
-  std::map<std::tuple<float, float, float, float>, std::vector<std::vector<void*>>> buckets;
-  std::map<std::tuple<float, float, float, float>, std::vector<int>> tensor_sizes_in_buckets;
+  std::map<std::tuple<float, float, float, float, float>, std::vector<std::vector<void*>>> buckets;
+  std::map<std::tuple<float, float, float, float, float>, std::vector<int>> tensor_sizes_in_buckets;
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       // For the first iteration (indexed by 0), the update count should be 2.
-      const float alpha_correction = do_bias_correction ?
-        onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
-      const float beta_correction = do_bias_correction ?
-        onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
+      const float alpha_correction = do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
+      const float beta_correction = do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
 
       LambComputeDirection(
           p_ws[i],
@@ -220,6 +218,7 @@ Status launch_lamb_compute_direction(
           HipT4(betas[i]),
           HipT2(lambdas[i]),
           HipT4(epsilons[i]),
+          HipT2(max_norms[i]),
           HipT4(alpha_correction),
           HipT4(beta_correction),
           p_ds[i],
@@ -232,10 +231,10 @@ Status launch_lamb_compute_direction(
       ptrs[1] = const_cast<HipT3*>(p_gs[i]);   // gradient (reused to store update direction)
       ptrs[2] = const_cast<HipT4*>(p_m1s[i]);  // 1st momentum
       ptrs[3] = const_cast<HipT4*>(p_m2s[i]);  // 2nd momentum
-      ptrs[4] = p_m1_news[i];                   // new 1st momentum
-      ptrs[5] = p_m2_news[i];                   // new 2nd momentum
+      ptrs[4] = p_m1_news[i];                  // new 1st momentum
+      ptrs[5] = p_m2_news[i];                  // new 2nd momentum
 
-      auto key = std::make_tuple(alphas[i], betas[i], lambdas[i], epsilons[i]);
+      auto key = std::make_tuple(alphas[i], betas[i], lambdas[i], epsilons[i], max_norms[i]);
       buckets[key].push_back(ptrs);
       tensor_sizes_in_buckets[key].push_back(tensor_sizes[i]);
     }
@@ -243,24 +242,24 @@ Status launch_lamb_compute_direction(
 
   for (auto& pair : buckets) {
     const auto key = pair.first;
-    float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f;
-    std::tie(alpha, beta, lambda, epsilon) = key;
+    float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f, max_norm = 0.f;
+    std::tie(alpha, beta, lambda, epsilon, max_norm) = key;
 
     // For the first iteration (indexed by 0), the update count should be 1.
     const float alpha_correction =
-      do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
+        do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
     const float beta_correction =
-      do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
+        do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
 
     typedef LambMultiTensorComputeDirectionFunctor<HipT2, HipT3, HipT4, HipT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;
 
-    launch_multi_tensor_functor<tensor_count_per_group, LambStage1, const HipT2*, const HipT_GRAD_NORM*, float, float, float, float>(
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage1>(
         2048 * 32,
         tensor_sizes_in_buckets[key],
         buckets[key],
         lamb_stage1,
-        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, alpha_correction, beta_correction);
+        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, HipT2(max_norm), alpha_correction, beta_correction);
   }
 
   return Status::OK();
@@ -268,13 +267,15 @@ Status launch_lamb_compute_direction(
 
 template <typename HipTNorm, typename HipTIn1, typename HipTIn2>
 Status launch_lamb_reduction(
+    const RocmKernel& kernel,
     const int group_count,
     std::vector<int>& tensor_sizes,
     std::vector<HipTNorm*>& p_w_norms,
     std::vector<HipTNorm*>& p_d_norms,
     std::vector<const HipTIn1*>& p_ws,
     std::vector<HipTIn2*>& p_ds,
-    HipTNorm* reduction_buffer) {
+    HipTNorm* reduction_buffer,
+    size_t reduction_buffer_size) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
   ORT_ENFORCE(group_count == static_cast<int>(p_w_norms.size()));
@@ -306,8 +307,8 @@ Status launch_lamb_reduction(
       std::vector<void*> ptrs(tensor_count_per_group);
       ptrs[0] = const_cast<HipTIn1*>(p_ws[i]);  // weight tensor
       ptrs[1] = const_cast<HipTIn2*>(p_ds[i]);  // update direction
-      ptrs[2] = p_w_norms[i];                    // weight tensor's norm
-      ptrs[3] = p_d_norms[i];                    // update direction's norm
+      ptrs[2] = p_w_norms[i];                   // weight tensor's norm
+      ptrs[3] = p_d_norms[i];                   // update direction's norm
 
       buckets.push_back(ptrs);
       tensor_sizes_in_buckets.push_back(tensor_sizes[i]);
@@ -330,7 +331,10 @@ Status launch_lamb_reduction(
         2048 * 32,
         tensor_sizes_in_buckets,
         buckets,
-        reducer);
+        reducer,
+        kernel,
+        reinterpret_cast<void*>(reduction_buffer),
+        reduction_buffer_size);
   }
 
   return Status::OK();
@@ -383,13 +387,13 @@ Status launch_lamb_update(
           tensor_sizes[i]);
     } else {
       std::vector<void*> ptrs(tensor_count_per_group);
-      ptrs[0] = p_w_norms[i];                  // weight tensor's norm
-      ptrs[1] = p_d_norms[i];                  // direction's norm
+      ptrs[0] = p_w_norms[i];                 // weight tensor's norm
+      ptrs[1] = p_d_norms[i];                 // direction's norm
       ptrs[2] = const_cast<HipT2*>(p_ws[i]);  // weight tensor
-      ptrs[3] = p_ds[i];                       // direction
-      ptrs[4] = p_w_news[i];                   // new weight tensor
-      ptrs[5] = p_g_news[i];                   // new gradient tensor
-      ptrs[6] = p_w_mixed_precision_news[i];   // new half-precision weight tensor
+      ptrs[3] = p_ds[i];                      // direction
+      ptrs[4] = p_w_news[i];                  // new weight tensor
+      ptrs[5] = p_g_news[i];                  // new gradient tensor
+      ptrs[6] = p_w_mixed_precision_news[i];  // new half-precision weight tensor
       buckets.push_back(ptrs);
       tensor_sizes_in_bucket.push_back(tensor_sizes[i]);
     }
@@ -406,12 +410,12 @@ Status launch_lamb_update(
   // Only launch multi-tensor function if we have at least one tensor in the buckets.
   if (tensor_sizes_in_bucket.size() > 0 && buckets.size() > 0) {
     typedef LambMultiTensorUpdateFunctor<
-      HipT1, HipT2, HipT3, HipT_MIXED_PRECISION_FP> LambStage2;
+        HipT1, HipT2, HipT3, HipT_MIXED_PRECISION_FP>
+        LambStage2;
     LambStage2 lamb_stage2;
 
     launch_multi_tensor_functor<
-      tensor_count_per_group, LambStage2,
-      const HipT1*, const float, const float>(
+        tensor_count_per_group, LambStage2>(
         2048 * 32,
         tensor_sizes_in_bucket,
         buckets,
@@ -478,6 +482,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   ORT_ENFORCE(beta_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(lambda_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(epsilon_.size() >= static_cast<size_t>(group_count));
+  ORT_ENFORCE(max_norm_clip_.size() >= static_cast<size_t>(group_count));
 
   // If gradient norm is not finite, we copy inputs to outputs directly.
   if (ctx->Input<Tensor>(0)) {
@@ -539,10 +544,20 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     max_tensor_size = std::max(max_tensor_size, static_cast<int>(w.Shape().Size()));
   }
 
-  // Allocate a buffer in byte for reduction API calls.
-  const auto buffer_size = static_cast<size_t>(
-      compute_reduction_buffer_size(
-          static_cast<int>(sizeof(T2)), max_tensor_size));
+  const size_t buffer_size = [&]() {
+    // Allocate a buffer in byte for reduction API calls.
+    size_t rbs = static_cast<size_t>(
+        compute_reduction_buffer_size(
+            static_cast<int>(sizeof(T2)), max_tensor_size));
+
+    // Enlarge reduction buffer to accomodate multi-tensor reduction kernel as well
+    const int tensor_group_size = 4;  // w, d, w_norm, d_norm
+    const int max_blocks = ChunkGroup<tensor_group_size>::max_block_count;
+    const size_t multitensor_block_reduce_buffer_size = 2 * max_blocks * sizeof(HipT2);
+    rbs = std::max(rbs, multitensor_block_reduce_buffer_size);
+
+    return rbs;
+  }();
 
   // Allocate reduction buffer whose size is buffer_size bytes.
   IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(buffer_size);
@@ -626,7 +641,6 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     p_w_mixed_precision_news[group_index] = w_mixed_precision_new != nullptr ? reinterpret_cast<HipT_MIXED_PRECISION_FP*>(w_mixed_precision_new->template MutableData<T_MIXED_PRECISION_FP>()) : nullptr;
   }
 
-
   launch_lamb_compute_direction(
       step_data ? *step_data : 0,
       group_count,
@@ -636,17 +650,19 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       p_ws, p_gs, p_m1s, p_m2s,
       p_ds,
       p_m1_news, p_m2_news,
-      alpha_, beta_, lambda_, epsilon_,
+      alpha_, beta_, lambda_, epsilon_, max_norm_clip_,
       do_bias_correction_);
 
   launch_lamb_reduction(
+      *this,
       group_count,
       tensor_sizes,
       p_w_norms,
       p_d_norms,
       p_ws,
       p_ds,
-      reduction_data);
+      reduction_data,
+      buffer_size);
 
   launch_lamb_update(
       group_count,

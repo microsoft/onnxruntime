@@ -148,6 +148,9 @@ bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement);
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
+/** Removes output edges from the specific output_idx for the given Node of the Graph. */
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx);
+
 /** Replaces the input to nodes that are downstream from 'node', which was being provided by an output of 'node',
     with an output from a different node. Moves the output edges from 'node' for 'output_idx' to the replacement node.
 @param replacement The node providing the replacement output.

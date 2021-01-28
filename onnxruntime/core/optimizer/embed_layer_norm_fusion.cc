@@ -7,6 +7,7 @@
 #include "core/optimizer/utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "float.h"
+#include "core/common/safeint.h"
 
 #define DEBUG_LOG(x) LOGS(logger, VERBOSE) << x
 
@@ -427,8 +428,8 @@ static bool MatchPositionEmbeddingSubgraph(
 template <typename T>
 bool CheckEmbeddingData(const T* data, int64_t batch_size, int64_t element_count) {
   // check that all batches has same data.
-  size_t data_length = batch_size * element_count;
-  for (size_t i = element_count; i < data_length; i++) {
+  size_t data_length = SafeInt<size_t>(batch_size) * element_count;
+  for (size_t i = gsl::narrow<size_t>(element_count); i < data_length; i++) {
     if (data[i] != data[i % element_count]) {
       return false;
     }
@@ -463,14 +464,14 @@ static NodeArg* ExtractEmbedding(Graph& graph,
       return nullptr;
     }
 
-    initializer.set_raw_data(data, element_count * sizeof(float));
+    initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* data = old_initializer.data<MLFloat16>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
 
-    initializer.set_raw_data(data, element_count * sizeof(MLFloat16));
+    initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   NodeArg& node_arg = graph_utils::AddInitializer(graph, initializer);

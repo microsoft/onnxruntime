@@ -110,6 +110,37 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
 #endif
 }
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
+                                       cublasOperation_t transa,
+                                       cublasOperation_t transb,
+                                       int m, int n, int k,
+                                       const nv_bfloat16* alpha,
+                                       const nv_bfloat16* A, int lda,
+                                       const nv_bfloat16* B, int ldb,
+                                       const nv_bfloat16* beta,
+                                       nv_bfloat16* C, int ldc,
+                                       const cudaDeviceProp& prop) {
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_DEFAULT_MATH);
+
+  float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
+  float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
+
+  // accumulating in FP32
+  return cublasGemmEx(handle,
+                      transa,
+                      transb,
+                      m, n, k,
+                      &h_a,
+                      A, CUDA_R_16BF, lda,
+                      B, CUDA_R_16BF, ldb,
+                      &h_b,
+                      C, CUDA_R_16BF, ldc,
+                      CUBLAS_COMPUTE_32F,
+                      CUBLAS_GEMM_DEFAULT);
+}
+#endif
+
 // batched gemm
 inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               cublasOperation_t transa,
@@ -208,6 +239,38 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                             batch_count);
 #endif
 }
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
+                                              cublasOperation_t transa,
+                                              cublasOperation_t transb,
+                                              int m, int n, int k,
+                                              const nv_bfloat16* alpha,
+                                              const nv_bfloat16* Aarray[], int lda,
+                                              const nv_bfloat16* Barray[], int ldb,
+                                              const nv_bfloat16* beta,
+                                              nv_bfloat16* Carray[], int ldc,
+                                              int batch_count,
+                                              const cudaDeviceProp& prop) {
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TENSOR_OP_MATH);
+  float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
+  float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
+
+  // accumulating in FP32
+  return cublasGemmBatchedEx(handle,
+                             transa,
+                             transb,
+                             m, n, k,
+                             &h_a,
+                             (const void**)Aarray, CUDA_R_16BF, lda,
+                             (const void**)Barray, CUDA_R_16BF, ldb,
+                             &h_b,
+                             (void**)Carray, CUDA_R_16BF, ldc,
+                             batch_count,
+                             CUDA_R_32F,
+                             CUBLAS_GEMM_DEFAULT);
+}
+#endif
 
 // strided batched gemm
 inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
@@ -319,17 +382,39 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
 #endif
 }
 
-// axpy
-inline cublasStatus_t cublasAxpyHelper(cublasHandle_t handle, int n, const float* alpha, const float* x, int incx, float* y, int incy) {
-  return cublasSaxpy(handle, n, alpha, x, incx, y, incy);
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
+                                                     cublasOperation_t transa,
+                                                     cublasOperation_t transb,
+                                                     int m, int n, int k,
+                                                     const nv_bfloat16* alpha,
+                                                     const nv_bfloat16* A, int lda,
+                                                     long long int strideA,
+                                                     const nv_bfloat16* B, int ldb,
+                                                     long long int strideB,
+                                                     const nv_bfloat16* beta,
+                                                     nv_bfloat16* C, int ldc,
+                                                     long long int strideC,
+                                                     int batch_count,
+                                                     const cudaDeviceProp& prop) {
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TENSOR_OP_MATH);
+  float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
+  float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
+  // accumulating in FP32
+  return cublasGemmStridedBatchedEx(handle,
+                                    transa,
+                                    transb,
+                                    m, n, k,
+                                    &h_a,
+                                    A, CUDA_R_16BF, lda, strideA,
+                                    B, CUDA_R_16BF, ldb, strideB,
+                                    &h_b,
+                                    C, CUDA_R_16BF, ldc, strideC,
+                                    batch_count,
+                                    CUDA_R_32F,
+                                    CUBLAS_GEMM_DEFAULT);
 }
-inline cublasStatus_t cublasAxpyHelper(cublasHandle_t handle, int n, const double* alpha, const double* x, int incx, double* y, int incy) {
-  return cublasDaxpy(handle, n, alpha, x, incx, y, incy);
-}
-inline cublasStatus_t cublasAxpyHelper(cublasHandle_t handle, int n, const half* alpha, const half* x, int incx, half* y, int incy) {
-  float tmp_alpha = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
-  return cublasAxpyEx(handle, n, (void*)&tmp_alpha, CUDA_R_32F, (void*)x, CUDA_R_16F, incx, (void*)y, CUDA_R_16F, incy, CUDA_R_32F);
-}
+#endif
 
 // transpose using geam
 inline cublasStatus_t cublasTransposeHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb, float* C, int ldc) {
@@ -340,165 +425,6 @@ inline cublasStatus_t cublasTransposeHelper(cublasHandle_t handle, cublasOperati
 }
 cublasStatus_t cublasTransposeHelper(cublasHandle_t, cublasOperation_t, cublasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
 
-// asum
-inline cublasStatus_t cublasAsumHelper(cublasHandle_t handle, int n, const float* x, int incx, float* result) {
-  return cublasSasum(handle, n, x, incx, result);
-}
-inline cublasStatus_t cublasAsumHelper(cublasHandle_t handle, int n, const double* x, int incx, double* result) {
-  return cublasDasum(handle, n, x, incx, result);
-}
-inline cublasStatus_t cublasAsumHelper(cublasHandle_t, int n, const half* x, int incx, half* result) {
-  // pass in cudnn handle/descriptor to remove overhead?
-  cudnnHandle_t cudnnHandle;
-  cudnnTensorDescriptor_t srcTensorDesc, dstTensorDesc;
-  cudnnReduceTensorDescriptor_t reduceTensorDesc;
-
-  cudnnCreate(&cudnnHandle);
-  cudnnCreateTensorDescriptor(&srcTensorDesc);
-  cudnnCreateTensorDescriptor(&dstTensorDesc);
-  cudnnCreateReduceTensorDescriptor(&reduceTensorDesc);
-
-  cudnnSetTensor4dDescriptorEx(srcTensorDesc, CUDNN_DATA_HALF, 1, 1, 1, n, 1, 1, 1, incx);
-  cudnnSetTensor4dDescriptorEx(dstTensorDesc, CUDNN_DATA_HALF, 1, 1, 1, 1, 1, 1, 1, 1);
-  cudnnSetReduceTensorDescriptor(reduceTensorDesc,
-                                 CUDNN_REDUCE_TENSOR_NORM1,
-                                 CUDNN_DATA_FLOAT,
-                                 CUDNN_NOT_PROPAGATE_NAN,
-                                 CUDNN_REDUCE_TENSOR_NO_INDICES,
-                                 CUDNN_32BIT_INDICES);
-
-  void* workspace = NULL;
-  size_t workspaceSizeInBytes = 0;
-  cudnnGetReductionWorkspaceSize(cudnnHandle, reduceTensorDesc, srcTensorDesc, dstTensorDesc, &workspaceSizeInBytes);
-  if (workspaceSizeInBytes > 0) cudaMalloc(&workspace, workspaceSizeInBytes);
-
-  float alpha = 1.0f;
-  float beta = 0.0f;
-
-  void* d_res;
-  cudaMalloc(&d_res, sizeof(half));
-
-  cudnnReduceTensor(cudnnHandle,
-                    reduceTensorDesc,
-                    NULL,
-                    0,
-                    workspace,
-                    workspaceSizeInBytes,
-                    &alpha,
-                    srcTensorDesc,
-                    (void*)x,
-                    &beta,
-                    dstTensorDesc,
-                    d_res);
-
-  cudaMemcpy((void*)result, d_res, sizeof(half), cudaMemcpyDeviceToHost);
-
-  cudnnDestroyReduceTensorDescriptor(reduceTensorDesc);
-  cudnnDestroyTensorDescriptor(srcTensorDesc);
-  cudnnDestroyTensorDescriptor(dstTensorDesc);
-  cudnnDestroy(cudnnHandle);
-  cudaFree(d_res);
-  cudaFree(workspace);
-
-  return (cublasStatus_t)0;
-}
-
-// amax
-inline cublasStatus_t cublasAmaxHelper(cublasHandle_t handle, int n, const float* x, int incx, int* result) {
-  return cublasIsamax(handle, n, x, incx, result);
-}
-inline cublasStatus_t cublasAmaxHelper(cublasHandle_t handle, int n, const double* x, int incx, int* result) {
-  return cublasIdamax(handle, n, x, incx, result);
-}
-inline cublasStatus_t cublasAmaxHelper(cublasHandle_t, int n, const half* x, int incx, int* result) {
-  unsigned int h_result_uint = 0;
-  // pass in cudnn handle/descriptor to remove overhead?
-  cudnnHandle_t cudnnHandle;
-  cudnnTensorDescriptor_t srcTensorDesc, dstTensorDesc;
-  cudnnReduceTensorDescriptor_t reduceTensorDesc;
-
-  cudnnCreate(&cudnnHandle);
-  cudnnCreateTensorDescriptor(&srcTensorDesc);
-  cudnnCreateTensorDescriptor(&dstTensorDesc);
-  cudnnCreateReduceTensorDescriptor(&reduceTensorDesc);
-
-  cudnnSetTensor4dDescriptorEx(srcTensorDesc, CUDNN_DATA_HALF, 1, 1, 1, n, 1, 1, 1, incx);
-  cudnnSetTensor4dDescriptorEx(dstTensorDesc, CUDNN_DATA_HALF, 1, 1, 1, 1, 1, 1, 1, 1);
-  cudnnSetReduceTensorDescriptor(reduceTensorDesc,
-                                 CUDNN_REDUCE_TENSOR_AMAX,
-                                 CUDNN_DATA_FLOAT,
-                                 CUDNN_NOT_PROPAGATE_NAN,
-                                 CUDNN_REDUCE_TENSOR_FLATTENED_INDICES,
-                                 CUDNN_32BIT_INDICES);
-
-  void* workspace = NULL;
-  size_t workspaceSizeInBytes = 0;
-  cudnnGetReductionWorkspaceSize(cudnnHandle, reduceTensorDesc, srcTensorDesc, dstTensorDesc, &workspaceSizeInBytes);
-  if (workspaceSizeInBytes > 0) cudaMalloc(&workspace, workspaceSizeInBytes);
-
-  float alpha = 1.0f;
-  float beta = 0.0f;
-  void* d_max;
-  cudaMalloc(&d_max, sizeof(half));
-  void* d_result_uint;
-  cudaMalloc(&d_result_uint, sizeof(unsigned int));
-
-  cudnnReduceTensor(cudnnHandle,
-                    reduceTensorDesc,
-                    d_result_uint,
-                    sizeof(unsigned int),
-                    workspace,
-                    workspaceSizeInBytes,
-                    &alpha,
-                    srcTensorDesc,
-                    (void*)x,
-                    &beta,
-                    dstTensorDesc,
-                    d_max);
-
-  cudaMemcpy(&h_result_uint, d_result_uint, sizeof(unsigned int), cudaMemcpyDeviceToHost);
-
-  cudnnDestroyReduceTensorDescriptor(reduceTensorDesc);
-  cudnnDestroyTensorDescriptor(srcTensorDesc);
-  cudnnDestroyTensorDescriptor(dstTensorDesc);
-  cudnnDestroy(cudnnHandle);
-  cudaFree(workspace);
-  cudaFree(d_max);
-  cudaFree(d_result_uint);
-
-  *result = (int)h_result_uint;
-  return (cublasStatus_t)0;
-}
-
-// scal
-inline cublasStatus_t cublasScalHelper(cublasHandle_t handle, int n, const float* alpha, float* x, int incx) {
-  return cublasSscal(handle, n, alpha, x, incx);
-}
-inline cublasStatus_t cublasScalHelper(cublasHandle_t handle, int n, const double* alpha, double* x, int incx) {
-  return cublasDscal(handle, n, alpha, x, incx);
-}
-inline cublasStatus_t cublasScalHelper(cublasHandle_t handle, int n, const half* alpha, half* x, int incx) {
-  float tmp_alpha = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(alpha));
-  return cublasScalEx(handle, n, (void*)&tmp_alpha, CUDA_R_32F, (void*)x, CUDA_R_16F, incx, CUDA_R_32F);
-}
-inline cublasStatus_t cublasScalHelper(cublasHandle_t, int, const char*, char*, int) {
-  ORT_NOT_IMPLEMENTED("Unsupported template argument(char) in cublas_scal");
-}
-inline cublasStatus_t cublasScalHelper(cublasHandle_t, int, const short*, short*, int) {
-  ORT_NOT_IMPLEMENTED("Unsupported template argument(short) in cublas_scal");
-}
-
-// dot
-inline cublasStatus_t cublasDotHelper(cublasHandle_t handle, int n, const float* x, int incx, const float* y, int incy, float* result) {
-  return cublasSdot(handle, n, x, incx, y, incy, result);
-}
-inline cublasStatus_t cublasDotHelper(cublasHandle_t handle, int n, const double* x, int incx, const double* y, int incy, double* result) {
-  return cublasDdot(handle, n, x, incx, y, incy, result);
-}
-inline cublasStatus_t cublasDotHelper(cublasHandle_t handle, int n, const half* x, int incx, const half* y, int incy, half* result) {
-  return cublasDotEx(handle, n, (void*)x, CUDA_R_16F, incx, (void*)y, CUDA_R_16F, incy, (void*)result, CUDA_R_16F, CUDA_R_32F);
-}
-
 // copy
 inline cublasStatus_t cublasCopyHelper(cublasHandle_t handle, int n, const float* x, int incx, float* y, int incy) {
   return cublasScopy(handle, n, x, incx, y, incy);
@@ -507,36 +433,10 @@ inline cublasStatus_t cublasCopyHelper(cublasHandle_t handle, int n, const doubl
   return cublasDcopy(handle, n, x, incx, y, incy);
 }
 cublasStatus_t cublasCopyHelper(cublasHandle_t handle, int n, const half* x, int incx, half* y, int incy);
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+cublasStatus_t cublasCopyHelper(cublasHandle_t handle, int n, const nv_bfloat16* x, int incx, nv_bfloat16* y, int incy);
+#endif
 
-// curand
-inline curandStatus_t curandGenerateUniformHelper(curandGenerator_t generator, float* outputPtr, size_t num) {
-  return curandGenerateUniform(generator, outputPtr, num);
-}
-inline curandStatus_t curandGenerateUniformHelper(curandGenerator_t generator, double* outputPtr, size_t num) {
-  return curandGenerateUniformDouble(generator, outputPtr, num);
-}
-curandStatus_t curandGenerateUniformHelper(curandGenerator_t, half* outputPtr, size_t num);
 
-inline curandStatus_t curandGenerateUniformHelper(curandGenerator_t, char*, size_t) {
-  ORT_NOT_IMPLEMENTED("Unsupported template argument(char) in GPUSparseMatrix");
-}
 
-inline curandStatus_t curandGenerateUniformHelper(curandGenerator_t, short*, size_t) {
-  ORT_NOT_IMPLEMENTED("Unsupported template argument(short) in GPUSparseMatrix");
-}
 
-inline curandStatus_t curandGenerateNormalHelper(curandGenerator_t generator, float* outputPtr, size_t n, float mean, float stddev) {
-  return curandGenerateNormal(generator, outputPtr, n, mean, stddev);
-}
-inline curandStatus_t curandGenerateNormalHelper(curandGenerator_t generator, double* outputPtr, size_t n, double mean, double stddev) {
-  return curandGenerateNormalDouble(generator, outputPtr, n, mean, stddev);
-}
-curandStatus_t curandGenerateNormalHelper(curandGenerator_t, half* outputPtr, size_t n, half mean, half stddev);
-
-inline curandStatus_t curandGenerateNormalHelper(curandGenerator_t, char*, size_t, char, char) {
-  ORT_NOT_IMPLEMENTED("Unsupported template argument(char) in GPUSparseMatrix");
-}
-
-inline curandStatus_t curandGenerateNormalHelper(curandGenerator_t, short*, size_t, short, short) {
-  ORT_NOT_IMPLEMENTED("Unsupported template argument(short) in GPUSparseMatrix");
-}

@@ -97,8 +97,18 @@ static void PadInnermostAxis(T* output, T* input, ptrdiff_t input_delta, size_t 
 // For constant padding, there is no input, just a size to write the constant to
 template <typename T>
 static void PadAxisConstant(T* output, T constant, size_t size) {
-  for (size_t i = 0; i < size; i++)
-    *output++ = constant;
+  if (size == 1) {
+    *output = constant;
+  } else if (size == 2) {
+    *output = constant;
+    *(output + 1) = constant;
+  } else {
+    // This would be faster with SSE instructions.
+    // That would mean to have an implementation for each type (uint8, uint32, uint64).
+    T* end = output + size;
+    for (; output != end;)
+      *output++ = constant;
+  }
 }
 
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) {
@@ -167,7 +177,7 @@ static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std:
 
   // Find all inner most dimensions that can be flattened.
   do {
-    inner_size *= input_dims[inner_axis];
+    inner_size *= static_cast<size_t>(input_dims[inner_axis]);
 
     if (inner_axis == 0)
       break;

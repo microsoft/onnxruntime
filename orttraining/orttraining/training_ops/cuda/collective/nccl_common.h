@@ -3,15 +3,19 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "orttraining/core/framework/distributed_run_context.h"
+
+#if defined(ORT_USE_NCCL)
 #include <nccl.h>
+#endif
 
 namespace onnxruntime {
 namespace cuda {
 
+#if defined(ORT_USE_NCCL)
 #define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
-
+#endif
 class NcclContext final {
  public:
   NcclContext();
@@ -28,8 +32,12 @@ class NcclContext final {
   }
 
  private:
+  ncclComm_t global_group_comm_;
   ncclComm_t data_group_comm_;
+  ncclComm_t node_local_comm_;
+  ncclComm_t cross_node_comm_;
   ncclComm_t horizontal_group_comm_;
+
 };
 
 // -----------------------------------------------------------------------

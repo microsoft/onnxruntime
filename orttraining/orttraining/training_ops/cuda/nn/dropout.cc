@@ -3,25 +3,22 @@
 
 #include "core/framework/random_seed.h"
 #include "orttraining/training_ops/cuda/nn/dropout.h"
-#include "core/providers/cuda/nn/dropout.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
-// opset-12.
-ONNX_OPERATOR_KERNEL_EX(
-    TrainableDropout,
-    kOnnxDomain,
-    9,
-    kCudaExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
-        .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
-        .InputMemoryType<OrtMemTypeCPUInput>(1),
-    Dropout<true>);
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#define ALL_IEEE_FLOAT_TENSOR_TYPES {DataTypeImpl::GetTensorType<float>(),      \
+                                     DataTypeImpl::GetTensorType<double>(),     \
+                                     DataTypeImpl::GetTensorType<MLFloat16>(),  \
+                                     DataTypeImpl::GetTensorType<BFloat16>()}
+#define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double, BFloat16
+#else
+#define ALL_IEEE_FLOAT_TENSOR_TYPES DataTypeImpl::AllIEEEFloatTensorTypes()
+#define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double
+#endif
 
 #define REGISTER_GRADIENT_KERNEL(OpName)                                 \
   ONNX_OPERATOR_KERNEL_EX(                                               \
@@ -30,17 +27,13 @@ ONNX_OPERATOR_KERNEL_EX(
       1,                                                                 \
       kCudaExecutionProvider,                                            \
       KernelDefBuilder()                                                 \
-          .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())  \
-          .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes()) \
+          .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)              \
+          .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)             \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())     \
           .InputMemoryType<OrtMemTypeCPUInput>(2),                       \
       DropoutGrad);
 
 REGISTER_GRADIENT_KERNEL(DropoutGrad)
-
-// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
-// opset-12.
-REGISTER_GRADIENT_KERNEL(TrainableDropoutGrad)
 
 template <typename T>
 struct DropoutGradComputeImpl {
@@ -57,6 +50,15 @@ struct DropoutGradComputeImpl {
   }
 };
 
+// REVIEW(codemzs): Common out this structure because it is also used in Dropout forward op.
+template <typename T>
+struct GetRatioDataImpl {
+  void operator()(const Tensor* ratio, float& ratio_data) const {
+    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
+  }
+};
+
 Status DropoutGrad::ComputeInternal(OpKernelContext* context) const {
   auto dY = context->Input<Tensor>(0);
   const TensorShape& shape = dY->Shape();
@@ -70,13 +72,13 @@ Status DropoutGrad::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(2);
   if (ratio) {
-    utils::MLTypeCallDispatcher<GetRatioDataImpl, float, MLFloat16, double> t_disp(ratio->GetElementType());
+    utils::MLTypeCallDispatcher<GetRatioDataImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
     t_disp.Invoke(ratio, ratio_data);
   }
 
   auto dX = context->Output(0, shape);
 
-  utils::MLTypeCallDispatcher<DropoutGradComputeImpl, float, MLFloat16, double> t_disp(dY->GetElementType());
+  utils::MLTypeCallDispatcher<DropoutGradComputeImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(dY->GetElementType());
   t_disp.Invoke(N, *dY, mask_data, ratio_data, *dX);
 
   return Status::OK();
@@ -88,8 +90,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
-        .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
+        .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)
+        .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
         .InputMemoryType<OrtMemTypeCPUInput>(3)
         .InputMemoryType<OrtMemTypeCPUInput>(4),
@@ -161,13 +163,13 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(3);
   if (ratio) {
-    utils::MLTypeCallDispatcher<GetRatioDataImpl, float, MLFloat16, double> t_disp(ratio->GetElementType());
+    utils::MLTypeCallDispatcher<GetRatioDataImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
     t_disp.Invoke(ratio, ratio_data);
   }
 
   //Check for inference mode.
   const Tensor* training_mode = context->Input<Tensor>(4);
-  bool is_training_mode = (training_mode != nullptr) && training_mode->Data<bool>();
+  bool is_training_mode = (training_mode != nullptr) && *(training_mode->Data<bool>());
   if (!is_training_mode) {
     ratio_data = 0.0f;
   }
@@ -182,7 +184,7 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   const fast_divmod fdm_dim(gsl::narrow_cast<int>(dim));
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
-  utils::MLTypeCallDispatcherRet<Status, BiasDropoutComputeImpl, float, MLFloat16, double> t_disp(X->GetElementType());
+  utils::MLTypeCallDispatcherRet<Status, BiasDropoutComputeImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(X->GetElementType());
   return t_disp.Invoke(GetDeviceProp(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data);
 }
 

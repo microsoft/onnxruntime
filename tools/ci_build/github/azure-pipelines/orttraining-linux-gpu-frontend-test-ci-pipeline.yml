@@ -38,6 +38,7 @@ jobs:
         --enable_training_python_frontend_e2e_tests
         --enable_training_pipeline_e2e_tests
         "
+        -m
       DisplayName: 'Build and run frontend tests'
 
   - template: templates/clean-agent-build-directory-step.yml

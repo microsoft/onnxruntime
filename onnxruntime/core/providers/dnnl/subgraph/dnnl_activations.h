@@ -14,7 +14,7 @@ class DnnlRelu : public DnnlKernel {
  public:
   DnnlRelu(const DnnlNode& node,
            DNNLExecutionProvider* provider,
-           const Provider_NodeAttributes& attributes,
+           const NodeAttributes& attributes,
            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ORT_UNUSED_PARAMETER(attributes);
     ORT_UNUSED_PARAMETER(attributes_prefix);
@@ -86,7 +86,7 @@ class DnnlRelu : public DnnlKernel {
           dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
       if (!gpu_available_) {
         src_mem_ = parents_[0].get()->primitive_dst_mem_;
-      } else { // gpu_available_
+      } else {  // gpu_available_
         src_mem_gpu_ = parents_[0].get()->primitive_dst_mem_;
       }
       x_shape = parents_[0].get()->primitive_dst_shape_;
@@ -123,7 +123,7 @@ class DnnlRelu : public DnnlKernel {
         // use this as input to next node.
         primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_fwd_pd_.get()->dst_desc(), cpu_engine));
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_fwd_pd_.get()->dst_desc(), gpu_engine));
     }
 
@@ -134,7 +134,7 @@ class DnnlRelu : public DnnlKernel {
       net.push_back(*relu_fwd_);
       net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
                           {DNNL_ARG_DST, *primitive_dst_mem_}});
-    } else { // gpu_available_
+    } else {  // gpu_available_
       net.push_back(*relu_fwd_);
       net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
                           {DNNL_ARG_DST, *primitive_dst_mem_}});
@@ -174,7 +174,7 @@ class DnnlRelu : public DnnlKernel {
         } else {
           primitive_dst_mem_->set_data_handle(dst_data);
         }
-      } else { // gpu_available_
+      } else {  // gpu_available_
         reorder_dst_mem_to_->set_data_handle(dst_data);
       }
     }

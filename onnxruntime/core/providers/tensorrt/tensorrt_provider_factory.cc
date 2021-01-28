@@ -12,28 +12,28 @@ namespace onnxruntime {
 
 void Shutdown_DeleteRegistry();
 
-struct TensorrtProviderFactory : Provider_IExecutionProviderFactory {
+struct TensorrtProviderFactory : IExecutionProviderFactory {
   TensorrtProviderFactory(int device_id) : device_id_(device_id) {}
   ~TensorrtProviderFactory() override {}
 
-  std::unique_ptr<Provider_IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   int device_id_;
 };
 
-std::unique_ptr<Provider_IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
   TensorrtExecutionProviderInfo info;
   info.device_id = device_id_;
   return onnxruntime::make_unique<TensorrtExecutionProvider>(info);
 }
 
-std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
   return std::make_shared<onnxruntime::TensorrtProviderFactory>(device_id);
 }
 
 struct Tensorrt_Provider : Provider {
-  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     //TODO: This is apparently a bug. The consructor parameter is create-arena-flag, not the device-id
     // Will be fixed by PR #2850
     return std::make_shared<TensorrtProviderFactory>(device_id);

@@ -134,26 +134,37 @@ __device__ void reduce_all(
   // Total number of threads in a grid row with 2-D blocks.
   const int num_threads_in_grid_row = num_blocks_in_grid_row * num_threads_in_block;
 
+  const auto write_result = [&output, &num_elements](const TOut result) {
+    // Compilation time if-else branch controlled by template argument can be
+    // optimized out, so there will be no branch in real computation phase.
+    if (DivideResultBySize) {
+      output[0] = TFinalOp()(result / TOut(num_elements));
+    } else {
+      output[0] = TFinalOp()(result);
+    }
+  };
+
   // Thread-level reduction (storage change: global memory -> register).
   // One thread reduces MAX_NUM_ELEMENTS_PER_THREAD elements to a thread register
   // in one iteration.
   TBuf value = 0;
   for (int id = tid_in_grid_row; id < num_elements; id += MAX_NUM_ELEMENTS_PER_THREAD * num_threads_in_grid_row) {
-    TBuf v[MAX_NUM_ELEMENTS_PER_THREAD];
+    TIn v[MAX_NUM_ELEMENTS_PER_THREAD];
 
 #pragma unroll
     for (int i = 0; i < MAX_NUM_ELEMENTS_PER_THREAD; i++) {
       const int offset = id + i * num_threads_in_grid_row;
       if (offset < num_elements) {
-        v[i] = TOp()(TBuf(input[offset]));
-      } else {
-        v[i] = TBuf(0);
+        v[i] = input[offset];
       }
     }
 
 #pragma unroll
     for (int i = 0; i < MAX_NUM_ELEMENTS_PER_THREAD; i++) {
-      value += v[i];
+      const int offset = id + i * num_threads_in_grid_row;
+      if (offset < num_elements) {
+        value += TOp()(TBuf(v[i]));
+      }
     }
   }
 
@@ -177,13 +188,7 @@ __device__ void reduce_all(
   // 2. two warps and each of them has only 2 threads.
   if (num_warps_in_block == 1) {
     if (tid_in_grid_row == 0) {
-      // Compilation time if-else branch controlled by template argument can be
-      // optimized out, so there will be no branch in real computation phase.
-      if (DivideResultBySize) {
-        output[0] = TFinalOp()(TOut(value) / TOut(num_elements));
-      } else {
-        output[0] = TFinalOp()(TOut(value));
-      }
+      write_result(value);
     }
     return;
   }
@@ -212,13 +217,7 @@ __device__ void reduce_all(
   // Return early if only one block is used for reduction.
   if (num_blocks_in_grid_row == 1) {
     if (tid_in_grid_row == 0) {
-      // Compilation time if-else branch controlled by template argument can be
-      // optimized out, so there will be no branch in real computation phase.
-      if (DivideResultBySize) {
-        output[0] = TFinalOp()(TOut(shared_memory[0]) / TOut(num_elements));
-      } else {
-        output[0] = TFinalOp()(TOut(shared_memory[0]));
-      }
+      write_result(shared_memory[0]);
     }
     return;
   }
@@ -256,13 +255,7 @@ __device__ void reduce_all(
 
     // The first thread in the last block assigns the final output.
     if (tid_in_block == 0) {
-      // Compilation time if-else branch controlled by template argument can be
-      // optimized out, so there will be no branch in real computation phase.
-      if (DivideResultBySize) {
-        output[0] = TFinalOp()(TOut(block_reductions_buffer[0]) / TOut(num_elements));
-      } else {
-        output[0] = TFinalOp()(TOut(block_reductions_buffer[0]));
-      }
+      write_result(block_reductions_buffer[0]);
     }
   }
 }
@@ -360,6 +353,9 @@ INSTANTIATE_REDUCE_SUM(double, double);
 INSTANTIATE_REDUCE_SQUARE_SUM(half, float);
 INSTANTIATE_REDUCE_SQUARE_SUM(float, float);
 INSTANTIATE_REDUCE_SQUARE_SUM(double, double);
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_REDUCE_SQUARE_SUM(nv_bfloat16, float);
+#endif
 #undef INSTANTIATE_REDUCE_SQUARE_SUM
 
 #define INSTANTIATE_REDUCE_L2_NORM(TIn, TOut) \
@@ -472,6 +468,9 @@ Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool res
 INSTANTIATE_REDUCE_MATRIX_ROWS(half);
 INSTANTIATE_REDUCE_MATRIX_ROWS(float);
 INSTANTIATE_REDUCE_MATRIX_ROWS(double);
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_REDUCE_MATRIX_ROWS(nv_bfloat16);
+#endif
 #undef INSTANTIATE_REDUCE_MATRIX_ROWS
 
 template <typename TIn, typename TOut>
@@ -485,6 +484,9 @@ Status reduce_matrix_columns(const TIn* input, TOut* output, int m, int n, void*
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(half);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(float);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_REDUCE_MATRIX_COLUMNS(nv_bfloat16);
+#endif
 #undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
 
 }  // namespace cuda

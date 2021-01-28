@@ -11,14 +11,14 @@ in *ONNX Runtime*.
 
 OrtValue
 =========
-*ONNX Runtime* works with native Python data structures which are mapped into ONNX ONNX data formats :
+*ONNX Runtime* works with native Python data structures which are mapped into ONNX data formats :
 Numpy arrays (tensors), dictionaries (maps), and a list of Numpy arrays (sequences).
 The data backing these are on CPU.
 
 *ONNX Runtime* supports a custom data structure that supports all ONNX data formats that allows users
 to place the data backing these on a device, for example, on a CUDA supported device. This allows for
 interesting *IOBinding* scenarios (discussed below). In addition, *ONNX Runtime* supports directly
-working with *OrtValue*(s) while inferencing a model if provided as part of the input feed.
+working with *OrtValue* (s) while inferencing a model if provided as part of the input feed.
 
 Below is an example showing creation of an *OrtValue* from a Numpy array while placing its backing memory
 on a CUDA device:
@@ -99,7 +99,7 @@ The input data and output data are both on a device, users directly use the inpu
 Scenario 4:
 
 Users can request *ONNX Runtime* to allocate an output on a device. This is particularly useful for dynamic shaped outputs.
-Users can use the `get_outputs()` API to get the *OrtValue*(s) corresponding to the allocated output(s).
+Users can use the *get_outputs()* API to get access to the *OrtValue* (s) corresponding to the allocated output(s).
 Users can thus consume the *ONNX Runtime* allocated memory for the output as an *OrtValue*.
 
 .. code-block:: python
@@ -118,7 +118,7 @@ Users can thus consume the *ONNX Runtime* allocated memory for the output as an 
 
 Scenario 5:
 
-Users can bind *OrtValue*(s) directly.
+Users can bind *OrtValue* (s) directly.
 
 .. code-block:: python
 

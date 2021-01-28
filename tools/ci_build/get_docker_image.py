@@ -51,8 +51,9 @@ def parse_args():
         "content.")
 
     parser.add_argument(
-        "--container-registry", required=True,
-        help="The Azure container registry name.")
+        "--container-registry",
+        help="The Azure container registry name. "
+        "If not provided, no container registry will be used.")
     parser.add_argument(
         "--repository", required=True, help="The image repository name.")
 
@@ -125,26 +126,36 @@ def container_registry_has_image(full_image_name, docker_path):
     proc = run(
         docker_path, "manifest", "inspect", "--insecure", full_image_name,
         env=env, check=False, quiet=True)
-    return proc.returncode == 0
+    image_found = proc.returncode == 0
+    log.debug("Image {} in registry".format("found" if image_found else "not found"))
+    return image_found
 
 
 def main():
     args = parse_args()
 
+    log.debug("Dockerfile: {}, context: {}, docker build args: '{}'".format(
+        args.dockerfile, args.context, args.docker_build_args))
+
+    use_container_registry = args.container_registry is not None
+
+    if not use_container_registry:
+        log.info("No container registry will be used")
+
     tag = generate_tag(args.dockerfile, args.context, args.docker_build_args)
 
-    full_image_name = "{}.azurecr.io/{}:{}".format(
-        args.container_registry, args.repository, tag)
+    full_image_name = \
+        "{}.azurecr.io/{}:{}".format(args.container_registry, args.repository, tag) \
+        if use_container_registry else \
+        "{}:{}".format(args.repository, tag)
 
     log.info("Image: {}".format(full_image_name))
 
-    if container_registry_has_image(full_image_name, args.docker_path):
-        log.info("Image found, pulling...")
-
+    if use_container_registry and container_registry_has_image(full_image_name, args.docker_path):
+        log.info("Pulling image...")
         run(args.docker_path, "pull", full_image_name)
     else:
-        log.info("Image not found, building and pushing...")
-
+        log.info("Building image...")
         run(args.docker_path, "build",
             "--pull",
             *shlex.split(args.docker_build_args),
@@ -153,7 +164,14 @@ def main():
             "--file", args.dockerfile,
             args.context)
 
-        run(args.docker_path, "push", full_image_name)
+        if use_container_registry:
+            # avoid pushing if an identically tagged image has been pushed since the last check
+            # there is still a race condition, but this reduces the chance of a redundant push
+            if not container_registry_has_image(full_image_name, args.docker_path):
+                log.info("Pushing image...")
+                run(args.docker_path, "push", full_image_name)
+            else:
+                log.info("Image now found, skipping push")
 
     # tag so we can refer to the image by repository name
     run(args.docker_path, "tag", full_image_name, args.repository)

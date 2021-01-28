@@ -77,19 +77,19 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    QGemm(static_cast<int>(helper.M()),
-          static_cast<int>(helper.N()),
-          static_cast<int>(helper.K()),
-          a->template Data<uint8_t>() + helper.LeftOffsets()[i],
-          static_cast<int>(helper.K()),
-          *a_offset->template Data<uint8_t>(),
-          static_cast<const uint8_t*>(b->DataRaw()) + helper.RightOffsets()[i],
-          static_cast<int>(helper.N()),
-          *static_cast<const uint8_t*>(b_offset->DataRaw()),
-          b->IsDataType<int8_t>(),
-          gemm_output,
-          static_cast<int>(helper.N()),
-          ctx->GetOperatorThreadPool());
+    MlasGemm(static_cast<size_t>(helper.M()),
+             static_cast<size_t>(helper.N()),
+             static_cast<size_t>(helper.K()),
+             a->template Data<uint8_t>() + helper.LeftOffsets()[i],
+             static_cast<size_t>(helper.K()),
+             *a_offset->template Data<uint8_t>(),
+             static_cast<const uint8_t*>(b->DataRaw()) + helper.RightOffsets()[i],
+             static_cast<size_t>(helper.N()),
+             *static_cast<const uint8_t*>(b_offset->DataRaw()),
+             b->IsDataType<int8_t>(),
+             gemm_output,
+             static_cast<size_t>(helper.N()),
+             ctx->GetOperatorThreadPool());
 
     MlasRequantizeOutput(gemm_output,
                          y->template MutableData<uint8_t>() + helper.OutputOffsets()[i],

@@ -48,6 +48,9 @@ using namespace Windows::Graphics::DirectX::Direct3D11;
 
 static void ScenarioCppWinrtTestsClassSetup() {
   winrt::init_apartment();
+#ifdef BUILD_INBOX
+  winrt_activation_handler = WINRT_RoGetActivationFactory;
+#endif
 }
 
 static void Sample1() {

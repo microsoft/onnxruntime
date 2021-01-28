@@ -230,6 +230,7 @@ packages = [
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
     'onnxruntime.transformers',
+    'onnxruntime.transformers.longformer',
 ]
 
 if '--enable_training' in sys.argv:
@@ -323,17 +324,20 @@ with open(requirements_path) as f:
 setup(
     name=package_name,
     version=version_number,
-    description='ONNX Runtime Python bindings',
+    description='ONNX Runtime is a runtime accelerator for Machine Learning models',
     long_description=long_description,
     author='Microsoft Corporation',
-    author_email='onnx@microsoft.com',
+    author_email='onnxruntime@microsoft.com',
     cmdclass=cmd_classes,
     license="MIT License",
     packages=packages,
     ext_modules=ext_modules,
     package_data=package_data,
+    url="https://onnxruntime.ai",
+    download_url='https://github.com/microsoft/onnxruntime/tags',
     data_files=data_files,
     install_requires=install_requires,
+    keywords='onnx machine learning',
     entry_points= {
         'console_scripts': [
             'onnxruntime_test = onnxruntime.tools.onnxruntime_test:main',
@@ -341,15 +345,20 @@ setup(
     },
     classifiers=[
         'Development Status :: 5 - Production/Stable',
-        'Environment :: Console',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Operating System :: POSIX :: Linux',
         'Operating System :: Microsoft :: Windows',
         'Operating System :: MacOS',
+        'Topic :: Scientific/Engineering',
+        'Topic :: Scientific/Engineering :: Mathematics',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Software Development',
+        'Topic :: Software Development :: Libraries',
+        'Topic :: Software Development :: Libraries :: Python Modules',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3 :: Only',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7'],
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8'],
     )

@@ -22,6 +22,7 @@ __global__ void _AdamOptimizer_mode0(
     const T4 beta,
     const T4 lambda,
     const T4 epsilon,
+    const T4 max_norm,
     const T4 alpha_correction,
     const T4 beta_correction,
     T4* moment_1_out,
@@ -31,7 +32,7 @@ __global__ void _AdamOptimizer_mode0(
     T_MIXED_PRECISION_FP* mixed_precision_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm);
+  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm, max_norm);
 
   // Gradient scaling/clipping.
   const T4 g = T4(grads[id]) / actual_scale;
@@ -83,6 +84,7 @@ __global__ void _AdamOptimizer_mode1(
     const T4 beta,
     const T4 lambda,
     const T4 epsilon,
+    const T4 max_norm,
     const T4 alpha_correction,
     const T4 beta_correction,
     T4* moment_1_out,
@@ -92,7 +94,7 @@ __global__ void _AdamOptimizer_mode1(
     T_MIXED_PRECISION_FP* mixed_precision_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm);
+  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm, max_norm);
 
   // Gradient scaling/clipping.
   const T4 g = T4(grads[id]) / actual_scale;
@@ -149,6 +151,7 @@ void AdamOptimizerImpl(
     const T4 beta,
     const T4 lambda,
     const T4 epsilon,
+    const T4 max_norm,
     const bool do_bias_correction,
     const int64_t weight_decay_mode,
     T4* moment_1_out,
@@ -185,8 +188,10 @@ void AdamOptimizerImpl(
       beta,
       lambda,
       epsilon,
+      max_norm,
       alpha_correction,
       beta_correction,
+
       moment_1_out,
       moment_2_out,
       weights_out,
@@ -207,6 +212,7 @@ void AdamOptimizerImpl(
       beta,
       lambda,
       epsilon,
+      max_norm,
       alpha_correction,
       beta_correction,
       moment_1_out,
@@ -236,6 +242,7 @@ void AdamOptimizerImpl(
       const T4 beta,                                                                              \
       const T4 lambda,                                                                            \
       const T4 epsilon,                                                                           \
+      const T4 max_norm,                                                                          \
       const bool do_bias_correction,                                                              \
       const int64_t weight_decay_mode,                                                            \
       T4* moment_1_out,                                                                           \
@@ -254,6 +261,18 @@ SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, half, half)
 SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, float, half)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half, half)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float, half)
+
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(nv_bfloat16, int64_t, float, nv_bfloat16, float, float, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, nv_bfloat16, float, float, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, nv_bfloat16, nv_bfloat16, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, nv_bfloat16, float, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(nv_bfloat16, int64_t, float, nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(nv_bfloat16, int64_t, float, nv_bfloat16, nv_bfloat16, float, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, nv_bfloat16, nv_bfloat16, float, nv_bfloat16)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

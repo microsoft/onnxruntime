@@ -343,7 +343,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "bc8ce45b35ade9b8f08d88d4d9fdfd12b4f6f310",
+               "commitHash": "56195b3a67d988fa9c6eafdc459d92f0909f4782",
                "repositoryUrl": "https://github.com/pypa/manylinux"
             },
             "comments": "For building our CI build docker image"
@@ -363,20 +363,20 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "9cf6752276e6fcfd0c23fdb064ad27f448aaaf75",
+               "commitHash": "1e5d33e9b9b8631b36f061103a30208b206fd03a",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.9.0"
+            "comments": "Python 3.9.1"
          }
       },
       {
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "db455296be5f792b8c12b7cd7f3962b52e4f44ee",
+               "commitHash": "6503f05dd59e26a9986bdea097b3da9b3546f45b",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.8.6"
+            "comments": "Python 3.8.7"
          }
       },
       {

@@ -14,18 +14,23 @@ namespace cuda {
 template <typename Tin, typename Tout>
 __global__ void ScalarSqrtKernel(Tin* input, Tout* output) {
   *output = (Tout)_Sqrt(*input);
-};
+}
 
 template <typename Tin, typename Tout>
 void ScalarSqrt(Tin* input, Tout* output) {
   ScalarSqrtKernel<<<1, 1, 0>>>(input, output);
-};
+}
 
 template void ScalarSqrt(float* input, float* output);
 template void ScalarSqrt(half* input, half* output);
 template void ScalarSqrt(float* input, half* output);
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+template void ScalarSqrt(nv_bfloat16* input, nv_bfloat16* output);
+template void ScalarSqrt(float* input, nv_bfloat16* output);
+#endif
 
 template <typename TIn, typename TOut, typename TBuf, typename TInOp, typename TOutOp>
+__launch_bounds__(ChunkGroup<1>::thread_count_per_block)
 __global__ void MultiTensorReduceKernel(ChunkGroup<1> chunk_group, TOut* output) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
@@ -48,7 +53,7 @@ __global__ void MultiTensorReduceKernel(ChunkGroup<1> chunk_group, TOut* output)
     }
   }
 
-  // Thread count in a block must be a multiple of GPU_WARP_SIZE.
+// Thread count in a block must be a multiple of GPU_WARP_SIZE.
 #pragma unroll
   for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
     w_sum += WARP_SHFL_DOWN(w_sum, stride);
@@ -79,7 +84,7 @@ __global__ void MultiTensorReduceKernel(ChunkGroup<1> chunk_group, TOut* output)
   if (threadIdx.x == 0) {
     atomic_add(w_norm, TOutOp()(TOut(shared_memory[0])));
   }
-};
+}
 
 template <typename TIn, typename TOut, typename TBuf, typename TInOp, typename TOutOp>
 void MultiTensorReduce(ChunkGroup<1> chunk_group, TOut* output) {
@@ -109,6 +114,11 @@ INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(float, float)
 INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(half, float)
 INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(float, half)
 INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(half, half)
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(nv_bfloat16, float)
+INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(float, nv_bfloat16)
+INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(nv_bfloat16, nv_bfloat16)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

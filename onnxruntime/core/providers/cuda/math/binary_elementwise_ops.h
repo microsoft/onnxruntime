@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 #include "core/providers/cpu/tensor/utils.h"
 

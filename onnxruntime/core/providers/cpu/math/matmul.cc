@@ -126,7 +126,6 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-#if !defined(USE_MKLML_FOR_BLAS)
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
   is_packed = false;
 
@@ -136,7 +135,6 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_pack
   }
   return Status::OK();
 }
-#endif
 
 Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
@@ -164,7 +162,6 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
   size_t max_len = helper.OutputOffsets().size();
   for (size_t i = 0; i < max_len; i++) {
-#if !defined(USE_MKLML_FOR_BLAS)
     if (packed_b_) {
       MlasGemm(
           trans_a ? CblasTrans : CblasNoTrans,
@@ -181,7 +178,6 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
           thread_pool);
       continue;
     }
-#endif
     math::Gemm<float, concurrency::ThreadPool>(
         trans_a ? CblasTrans : CblasNoTrans,
         trans_b ? CblasTrans : CblasNoTrans,

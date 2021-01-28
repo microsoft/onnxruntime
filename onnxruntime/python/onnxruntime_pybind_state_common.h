@@ -11,9 +11,6 @@
 namespace onnxruntime {
 namespace python {
 
-using namespace onnxruntime;
-using namespace onnxruntime::logging;
-
 #if !defined(ORT_MINIMAL_BUILD)
 struct CustomOpLibrary {
   CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so);
@@ -131,6 +128,9 @@ Environment& GetEnv();
 void InitializeSession(InferenceSession* sess,
                        const std::vector<std::string>& provider_types = {},
                        const ProviderOptionsVector& provider_options = {});
+
+// Checks if PyErrOccured, fetches status and throws.
+void ThrowIfPyErrOccured();
 
 }  // namespace python
 }  // namespace onnxruntime

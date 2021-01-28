@@ -4,7 +4,7 @@
 #pragma once
 #include "core/common/optional.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
-#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/rocm_kernel.h"
 #include "core/providers/rocm/reduction/reduction_functions.h"
 
 namespace onnxruntime {

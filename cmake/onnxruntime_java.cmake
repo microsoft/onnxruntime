@@ -137,7 +137,7 @@ else()
   # We don't do distribution for Android
   # Set for completeness
   set(JAVA_PLAT "android")
- endif()
+endif()
 
 # Similar to Nuget schema
 set(JAVA_OS_ARCH ${JAVA_PLAT}-${JNI_ARCH})

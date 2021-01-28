@@ -127,8 +127,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     const Node& next_node = (*next_node_itr);
-    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Dropout", {12, 13}, kOnnxDomain) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "TrainableDropout", {9}, kOnnxDomain)) ||
+    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Dropout", {12, 13}, kOnnxDomain)) ||
         next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
@@ -150,21 +149,8 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     // populate training_mode
-    bool is_trainable_dropout = (dropout_node.OpType() == "TrainableDropout");
-    if (is_trainable_dropout) {
-      // Create training_mode initializer
-      ONNX_NAMESPACE::TensorProto training_mode_initializer;
-      training_mode_initializer.set_name(graph.GenerateNodeArgName("training_mode"));
-      training_mode_initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
-      const bool data = true;
-      training_mode_initializer.set_raw_data(&data, sizeof(bool));
-
-      NodeArg& training_mode_node_arg = graph_utils::AddInitializer(graph, training_mode_initializer);
-      dropout_input.push_back(&training_mode_node_arg);
-    } else {
-      if (dropout_node.InputDefs().size() > 2) {
-        dropout_input.push_back(dropout_node.MutableInputDefs()[2]);
-      }
+    if (dropout_node.InputDefs().size() > 2) {
+      dropout_input.push_back(dropout_node.MutableInputDefs()[2]);
     }
 
     const std::string op_type = "BiasDropout";

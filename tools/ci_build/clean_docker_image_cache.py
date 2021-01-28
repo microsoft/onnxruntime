@@ -31,9 +31,11 @@ def parse_args():
         "This assumes a fairly specific setup - an Azure container registry "
         "and a storage account that receives "
         "ContainerRegistryRepositoryEvents logs from that registry. "
-        "The logs are searched to see whether an image was used (pushed or "
-        "pulled) recently enough in order to determine whether the image "
-        "should be kept or cleaned up.")
+        "The logs are searched in order to determine whether images should be "
+        "retained or removed. "
+        "For an image to be retained, it must have been accessed at least N "
+        "times (specified by --cache-min-access-count) over the past K days "
+        "(specified by --cache-history-days).")
 
     parser.add_argument(
         "--container-registry", required=True,
@@ -50,12 +52,16 @@ def parse_args():
         help="The log path pattern in the storage account container.")
 
     parser.add_argument(
-        "--cache-lifetime-days", type=int, default=7,
-        help="How long an image can be cached without being used, in days.")
+        "--cache-history-days", type=int, default=7,
+        help="The length of the cache history in days.")
+
+    parser.add_argument(
+        "--cache-min-access-count", type=int, default=1,
+        help="The minimum access count over the cache history.")
 
     parser.add_argument(
         "--dry-run", action="store_true",
-        help="Do a dry-run and don't actually clean anything up.")
+        help="Do a dry-run and do not remove any images.")
 
     parser.add_argument(
         "--az-path", default="az", help="Path to the az client.")
@@ -106,19 +112,23 @@ def parse_timestamp(timestamp_str):
 def parse_log_line(line, min_datetime):
     entry = json.loads(line)
 
-    for field_name, expected_value in [
+    def check_time(value):
+        timestamp = parse_timestamp(value)
+        return timestamp is not None and timestamp >= min_datetime
+
+    for field_name, expected_value_or_checker in [
             ("category", "ContainerRegistryRepositoryEvents"),
+            ("operationName", lambda value: value in ["Pull", "Push"]),
             ("resultType", "HttpStatusCode"),
-            ("resultDescription", "200")]:
-        if entry.get(field_name) != expected_value:
-            return None
-
-    timestamp = parse_timestamp(entry.get("time", ""))
-    if timestamp is None or timestamp < min_datetime:
-        return None
-
-    if entry.get("operationName") not in ["Pull", "Push"]:
-        return None
+            ("resultDescription", lambda value: value in ["200", "201"]),
+            ("time", check_time)]:
+        value = entry.get(field_name, "")
+        if callable(expected_value_or_checker):
+            if not expected_value_or_checker(value):
+                return None
+        else:
+            if value != expected_value_or_checker:
+                return None
 
     props = entry.get("properties", {})
     repo, digest = props.get("repository"), props.get("digest")
@@ -129,8 +139,8 @@ def parse_log_line(line, min_datetime):
     return ImageInfo(repo, digest)
 
 
-def get_valid_images_from_logs(log_paths, min_datetime):
-    valid_images = set()  # set of ImageInfo
+def get_valid_images_from_logs(log_paths, min_datetime, min_access_count):
+    image_counts = dict()  # dict of {ImageInfo -> count}
 
     for log_path in log_paths:
         log.debug("Processing log file: {}".format(log_path))
@@ -138,9 +148,9 @@ def get_valid_images_from_logs(log_paths, min_datetime):
             for line in log_file:
                 image_info = parse_log_line(line, min_datetime)
                 if image_info is not None:
-                    valid_images.add(image_info)
+                    image_counts[image_info] = image_counts.get(image_info, 0) + 1
 
-    return valid_images
+    return {image for image, count in image_counts.items() if count >= min_access_count}
 
 
 def get_registry_images(container_registry, az_path):
@@ -171,6 +181,22 @@ def clean_images(container_registry, image_names, az_path):
            parse_output=False)
 
 
+# Note:
+# the log download and parsing could be replaced by a log analytics query
+"""
+let cache_history = 7d;
+let cache_min_access_count = 1;
+ContainerRegistryRepositoryEvents
+| where TimeGenerated >= ago(cache_history)
+| where OperationName in ("Pull", "Push")
+| where ResultDescription in ("200", "201")
+| summarize AccessCount = count() by Repository, Digest
+| where AccessCount >= cache_min_access_count
+| project Repository, Digest
+"""
+# need to figure out how run the query the programmatically though
+
+
 def main():
     args = parse_args()
 
@@ -184,12 +210,13 @@ def main():
             tmp_dir,
             args.az_path)
 
-        cache_lifetime = datetime.timedelta(days=args.cache_lifetime_days)
+        cache_history = datetime.timedelta(days=args.cache_history_days)
 
         min_timestamp = \
-            datetime.datetime.now(tz=datetime.timezone.utc) - cache_lifetime
+            datetime.datetime.now(tz=datetime.timezone.utc) - cache_history
 
-        valid_images = get_valid_images_from_logs(log_paths, min_timestamp)
+        valid_images = get_valid_images_from_logs(
+            log_paths, min_timestamp, args.cache_min_access_count)
 
     all_images = get_registry_images(args.container_registry, args.az_path)
 
