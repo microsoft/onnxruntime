@@ -210,6 +210,9 @@ std::string GetEnvironmentVar(const std::string& var_name);
 
 inline AutoPadType StringToAutoPadType(const std::string& str) { return g_host->StringToAutoPadType(str); }
 
+void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator);
+AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type);
+
 namespace logging {
 
 struct Category {

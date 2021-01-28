@@ -374,15 +374,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
-  AllocatorCreationInfo default_memory_info(
-      [](int id) { return CreateCUDAAllocator(id, onnxruntime::TRT); }, device_id_);
-  allocator_ = CreateAllocator(default_memory_info);
-  InsertAllocator(allocator_);
-
-  AllocatorCreationInfo pinned_allocator_info(
-      [](int) { return CreateCUDAPinnedAllocator(0, onnxruntime::TRT_PINNED); }, device_id_);
-  InsertAllocator(CreateAllocator(pinned_allocator_info));
-
   // Get environment variables
   const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
   if (!max_partition_iterations_env.empty()) {
@@ -455,6 +446,29 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
   } else {
     return IExecutionProvider::GetAllocator(id, mem_type);
   }
+}
+
+void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+  allocator_ = AllocatorManager__GetAllocator(allocator_manager.get(), device_id_, OrtMemTypeDefault);
+  if (nullptr == allocator_) {
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+    allocator_ = CreateAllocator(default_memory_info);
+    AllocatorManager__InsertAllocator(allocator_manager.get(), allocator_);
+  }
+  TryInsertAllocator(allocator_);
+
+  auto cuda_pinned_alloc = AllocatorManager__GetAllocator(allocator_manager.get(), DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
+  if (nullptr == cuda_pinned_alloc) {
+    AllocatorCreationInfo pinned_allocator_info(
+        [](OrtDevice::DeviceId device_id) {
+          return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+    cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
+    AllocatorManager__InsertAllocator(allocator_manager.get(), cuda_pinned_alloc);
+  }
+  TryInsertAllocator(cuda_pinned_alloc);
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
