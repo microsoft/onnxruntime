@@ -12,9 +12,8 @@
 namespace onnxruntime {
 namespace test {
 
-namespace {
 template <typename A, typename B>
-struct TypeSetEqual {
+struct TypeSetsEqual {
  private:
   static_assert(boost::mp11::mp_is_set<A>::value && boost::mp11::mp_is_set<B>::value,
                 "A and B must both be sets.");
@@ -25,31 +24,48 @@ struct TypeSetEqual {
       (boost::mp11::mp_size<A>::value == boost::mp11::mp_size<B>::value) &&
       (boost::mp11::mp_size<ABIntersection>::value == boost::mp11::mp_size<A>::value);
 };
-}  // namespace
+
+// test types to match op_kernel_type_control::TypesHolder
+template <typename... T>
+struct TestTypesHolder {
+    using types = TypeList<T...>;
+};
+
+struct TestTypesHolderUnspecified {
+};
+
+// supported + allowed for Op
+static_assert(
+    TypeSetsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TypeList<
+                TestTypesHolder<float, int64_t, char>,
+                TestTypesHolderUnspecified>>::types,
+        TypeList<int64_t, float>>::value,
+    "unexpected enabled types: supported + allowed + unspecified allowed");
+
+// supported + allowed for Op + allowed globally
+static_assert(
+    TypeSetsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TypeList<
+                TestTypesHolder<float, int64_t, char>,
+                TestTypesHolder<int64_t>>>::types,
+        TypeList<int64_t>>::value,
+    "unexpected enabled types: supported + allowed + allowed");
+
+// supported
+static_assert(
+    TypeSetsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TypeList<
+                TestTypesHolderUnspecified,
+                TestTypesHolderUnspecified>>::types,
+        TypeList<int32_t, int64_t, float, double>>::value,
+    "unexpected enabled types: supported + unspecified allowed + unspecified allowed");
 
 }  // namespace test
-
-// specify supported and allowed
-namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(TestDomain, TestOpA, Input, 0, int32_t, int64_t, float, double);
-ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(TestDomain, TestOpA, Input, 0, float, int64_t, char);
-}  // namespace op_kernel_type_control
-
-static_assert(
-    test::TypeSetEqual<
-        ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(TestDomain, TestOpA, Input, 0),
-        TypeList<float, int64_t>>::value,
-    "Unexpected enabled types for TestOpA.");
-
-// specify supported
-namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(TestDomain, TestOpB, Output, 1, int32_t, int64_t);
-}  // namespace op_kernel_type_control
-
-static_assert(
-    test::TypeSetEqual<
-        ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(TestDomain, TestOpB, Output, 1),
-        TypeList<int32_t, int64_t>>::value,
-    "Unexpected enabled types for TestOpB.");
-
 }  // namespace onnxruntime
