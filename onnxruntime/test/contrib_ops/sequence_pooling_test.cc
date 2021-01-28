@@ -28,7 +28,6 @@ static void SequencePoolingTest(
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  execution_providers.push_back(DefaultCudaExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   if (HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
