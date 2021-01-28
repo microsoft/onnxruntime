@@ -23,6 +23,10 @@ def _extract_ops_from_onnx_graph(graph, operators, domain_opset_map):
         for attr in operator.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:  # process subgraph
                 _extract_ops_from_onnx_graph(attr.g, operators, domain_opset_map)
+            elif attr.type == onnx.AttributeProto.GRAPHS:
+                # Currently no ONNX operators use GRAPHS.
+                # Fail noisily if we encounter this so we can implement support
+                raise RuntimeError('Unexpected attribute proto of GRAPHS')
 
 
 def _process_onnx_model(model_path, required_ops):
