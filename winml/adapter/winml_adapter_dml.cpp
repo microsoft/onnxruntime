@@ -23,11 +23,9 @@ namespace winmla = Windows::AI::MachineLearning::Adapter;
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 static std::string System32Path() {
-  std::string system32_path;
-  system32_path.reserve(MAX_PATH);
-  auto size_system32_path = GetSystemDirectoryA(system32_path.data(), MAX_PATH);
-  FAIL_FAST_IF(size_system32_path == 0);
-  return system32_path;
+  char path[MAX_PATH];
+  FAIL_FAST_IF(0 == GetSystemDirectoryA(path, _countof(path)));
+  return std::string(path);
 }
 
 static bool IsCurrentModuleInPath(const std::string& path) {
