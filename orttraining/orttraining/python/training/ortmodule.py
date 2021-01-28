@@ -97,7 +97,7 @@ class ORTModule(torch.nn.Module):
         self._export_again = False
         # TODO: This is incorrect when different layers may be in different devices
         self._device = next(module.parameters()).device
-        self._require_export = False
+        self._device_changed = False
 
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
@@ -124,11 +124,59 @@ class ORTModule(torch.nn.Module):
         self._save_onnx = False
         self._save_onnx_prefix = ''
 
+    def _build_training_graph(self, *inputs, **kwargs):
+        self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
+        if self._save_onnx:
+            onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
+
+        # TODO: PyTorch exporter bug: changes the initializer order
+        initializer_names = [p[0] for p in self._original_module.named_parameters()]
+
+        # Build full training graph and split in forward/backward
+        grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
+        grad_builder_config.initializer_names_to_train = initializer_names
+        grad_builder_config.input_names_require_grad = []
+        self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
+        self._module_gradient_graph_builder.initialize(self._onnx_training.SerializeToString(), grad_builder_config)
+
+    def _create_training_session(self):
+        providers = None
+        provider_options = None
+        if self._device.type == 'cuda':
+            # Configure the InferenceSessions to use the specific GPU on which the model is placed.
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            provider_options = [{"device_id": str(self._device.index)}]
+        elif self._device.type == 'cpu':
+            providers = ["CPUExecutionProvider"]
+            provider_options = [{}]
+
+        self._forward_session = onnxruntime.InferenceSession(
+            self._onnx_forward.SerializeToString(), providers=providers, provider_options=provider_options)
+        self._backward_session = onnxruntime.InferenceSession(
+            self._onnx_backward.SerializeToString(), providers=providers, provider_options=provider_options)
+
+        # IO binding
+        # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
+        self._forward_io_binding = self._forward_session.io_binding()
+        self._backward_io_binding = self._backward_session.io_binding()
+
+    def _split_training_graph(self, *inputs, **kwargs):
+        # Perform shape inference and re-split forward/backward graph for batches with different shapes
+        self._module_gradient_graph_builder.build_and_split(self._current_input_shape)
+        self._onnx_forward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_forward_model())
+        self._onnx_backward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_backward_model())
+        self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
+        self._create_training_session()
+
+        if self._save_onnx:
+            onnx.save(self._onnx_forward, self._save_onnx_prefix + '_forward.onnx')
+            onnx.save(self._onnx_backward, self._save_onnx_prefix + '_backward.onnx')
+
     def cpu(self: T) -> T:
         '''Thin layer to capture device for ORTModule IO bindings'''
 
         if self._device.type != 'cpu':
-            self._require_export = True
+            self._device_changed = True
             self._device = torch.device('cpu')
 
         return super(ORTModule, self).cpu()
@@ -138,10 +186,10 @@ class ORTModule(torch.nn.Module):
 
         if device is None:
             if _get_device_str(self._device) != _get_default_device_str('cuda'):
-                self._require_export = True
+                self._device_changed = True
                 self._device = torch.device(_get_default_device_str('cuda'))
         elif _get_device_str(self._device) != _get_device_str(device):
-            self._require_export = True
+            self._device_changed = True
             self._device = torch.device(_get_device_str(device))
 
         return super(ORTModule, self).cuda(device)
@@ -167,7 +215,7 @@ class ORTModule(torch.nn.Module):
         if device:
             device_str = _get_device_str(device)
             if _get_device_str(self._device) != device_str:
-                self._require_export = True
+                self._device_changed = True
                 self._device = torch.device(device_str)
         return super(ORTModule, self).to(*args, **kwargs)
 
@@ -178,55 +226,18 @@ class ORTModule(torch.nn.Module):
         Next, a full training graph is splitted in forward and backward graph which are used
         to instantiate ONNX Runtime InferenceSession`s
         '''
-        if not self._onnx_forward or self._require_export:
-            self._require_export = False
-            self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
 
-            # TODO: PyTorch exporter bug: changes the initializer order
-            initializer_names = [p[0] for p in self._original_module.named_parameters()]
+        # Exporting module to ONNX for the first time
+        if not self._onnx_training:
+            self._build_training_graph(*inputs, **kwargs)
 
-            # Build full training graph and split in forward/backward
-            grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
-            grad_builder_config.initializer_names_to_train = initializer_names
-            grad_builder_config.input_names_require_grad = []
-            self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
-            self._module_gradient_graph_builder.initialize(self._onnx_training.SerializeToString(), grad_builder_config)
-
-            if self._save_onnx:
-                onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
-
-        # Perform shape inference and re-split forward/backward graph for bacthes with different shapes
         new_input_shape = [list(input.size()) for input in inputs if input is not None]
         if self._current_input_shape is None or self._current_input_shape != new_input_shape:
             self._current_input_shape = new_input_shape
-            self._module_gradient_graph_builder.build_and_split(self._current_input_shape)
-            self._onnx_forward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_forward_model())
-            self._onnx_backward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_backward_model())
-            self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
-
-            providers = None
-            provider_options = None
-            if self._device.type == 'cuda':
-                # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-                provider_options = [{"device_id": str(self._device.index)}]
-            elif self._device.type == 'cpu':
-                providers = ["CPUExecutionProvider"]
-                provider_options = [{}]
-
-            self._forward_session = onnxruntime.InferenceSession(
-                self._onnx_forward.SerializeToString(), providers=providers, provider_options=provider_options)
-            self._backward_session = onnxruntime.InferenceSession(
-                self._onnx_backward.SerializeToString(), providers=providers, provider_options=provider_options)
-
-            # IO binding
-            # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
-            self._forward_io_binding = self._forward_session.io_binding()
-            self._backward_io_binding = self._backward_session.io_binding()
-
-            if self._save_onnx:
-                onnx.save(self._onnx_forward, self._save_onnx_prefix + '_forward.onnx')
-                onnx.save(self._onnx_backward, self._save_onnx_prefix + '_backward.onnx')
+            self._split_training_graph(*inputs, **kwargs)
+        elif self._device_changed:
+            self._create_training_session()
+            self._device_changed = False
 
         # Use a custom torch.autograd.Function to associate self.backward_graph as the
         # gradient implementation for self.forward_graph.
@@ -378,7 +389,6 @@ class ORTModule(torch.nn.Module):
             inputs_pos += 1
 
         return result
-
 
     @staticmethod
     def _get_forward_graph(module, *inputs, **kwargs):
