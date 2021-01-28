@@ -1,5 +1,14 @@
 #!/bin/bash
 
+while getopts d:o:m: parameter
+do case "${parameter}"
+in 
+d) PERF_DIR=${OPTARG};;
+o) OPTION=${OPTARG};;
+m) MOUNT_PATH=${OPTARG};;
+esac
+done 
+
 # metadata
 FAIL_MODEL_FILE=".fail_model_map"
 LATENCY_FILE=".latency_map"
@@ -24,43 +33,44 @@ download_files() {
     wget --no-check-certificate -c $FLOAT_16_LINK 
 }
 
-update_files() {
+setup() {
+    cd $PERF_DIR
     cleanup_files
     download_files
 }
 
 # many models 
-if [ "$1" == "many-models" ]
+if [ $OPTION == "many-models" ]
 then
-    update_files
-    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m /usr/share/mount/many-models -o result/"$1" 
-    #python3 benchmark_wrapper.py -r validate -m /home/hcsuser/mount/many-models -o result/"$1"
-    #python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m /home/hcsuser/mount/many-models -o result/"$1"
+    setup
+    python3 benchmark_wrapper.py -r validate -m "$3" -o result/"$2"
+    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m "$3" -o result/"$2"
 fi
 
 # ONNX model zoo
-if [ "$1" == "onnx-zoo-models" ]
+if [ $OPTION == "onnx-zoo-models" ]
 then
+    echo "in onnx-zoo-models"
     MODEL_LIST="model.json"
-    update_files
-    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/"$1"
-    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/"$1"
+    setup
+    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/$OPTION
+    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/$OPTION
 fi
 
 # 1P models 
-if [ "$1" == "partner-models" ]
+if [ "$2" == "partner-models" ]
 then
     MODEL_LIST="partner_model_list.json"
-    update_files
-    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/"$1"
-    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/"$1"
+    setup
+    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/"$2"
+    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/"$2"
 fi
 
 # Test models 
-if [ "$1" == "selected-models" ]
+if [ "$2" == "selected-models" ]
 then
     MODEL_LIST="selected_models.json"
-    update_files
-    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/"$1"
-    python3 benchmark_wrapper.py -r benchmark -i random -t 1 -m $MODEL_LIST -o result/"$1"
+    setup
+    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/"$2"
+    python3 benchmark_wrapper.py -r benchmark -i random -t 1 -m $MODEL_LIST -o result/"$2"
 fi
