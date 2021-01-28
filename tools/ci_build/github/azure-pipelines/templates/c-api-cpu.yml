@@ -86,7 +86,9 @@ jobs:
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - template: clean-agent-build-directory-step.yml
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
 - job: MacOS_C_API_Packaging_CPU_x64
   workspace:
@@ -145,7 +147,9 @@ jobs:
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - template: clean-agent-build-directory-step.yml
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
 - job: Windows_Packaging_CPU
   workspace:
@@ -430,10 +434,12 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
       artifact: 'onnxruntime-java'
 
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-  - template: clean-agent-build-directory-step.yml
 
 - job: NuGet_Packaging
   workspace:
@@ -713,10 +719,12 @@ jobs:
       packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
       publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
 
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-  - template: clean-agent-build-directory-step.yml
 
 - job: Final_Jar_Testing_Windows
   workspace:
@@ -750,10 +758,12 @@ jobs:
         java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-  - template: clean-agent-build-directory-step.yml
 
 - job: Final_Jar_Testing_Linux
   workspace:
@@ -792,10 +802,12 @@ jobs:
         java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-  - template: clean-agent-build-directory-step.yml
 
 - job: Final_Jar_Testing_MacOs
   workspace:
@@ -835,7 +847,9 @@ jobs:
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-  - template: clean-agent-build-directory-step.yml
