@@ -416,15 +416,24 @@ jobs:
       showWarnings: true
       workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
-  - task: PublishPipelineArtifact@1
-    inputs:
-      targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-      artifact: 'onnxruntime-java'
-      publishLocation: 'pipeline'
 
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
+
+  - task: CopyFiles@2
+    displayName: 'Copy Files to: a'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+      artifact: 'onnxruntime-java'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+  - template: clean-agent-build-directory-step.yml
 
 - job: NuGet_Packaging
   workspace:
@@ -707,12 +716,16 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
+  - template: clean-agent-build-directory-step.yml
 
 - job: Final_Jar_Testing_Windows
   workspace:
     clean: all
   pool: 'Win-CPU-2019'
   timeoutInMinutes: 60
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
   dependsOn:
     Jar_Packaging
   steps:
@@ -737,10 +750,18 @@ jobs:
         java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+  - template: clean-agent-build-directory-step.yml
+
 - job: Final_Jar_Testing_Linux
   workspace:
     clean: all
   pool: 'Linux-CPU'
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
   timeoutInMinutes: 60
   dependsOn:
     Jar_Packaging
@@ -771,11 +792,19 @@ jobs:
         java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+  - template: clean-agent-build-directory-step.yml
+
 - job: Final_Jar_Testing_MacOs
   workspace:
     clean: all
   pool: 
     vmImage: 'macOS-10.14'
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
   timeoutInMinutes: 60
   dependsOn:
     Jar_Packaging
@@ -805,3 +834,8 @@ jobs:
           DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+  - template: clean-agent-build-directory-step.yml
