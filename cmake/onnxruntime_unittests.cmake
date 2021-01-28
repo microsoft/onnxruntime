@@ -809,8 +809,9 @@ if (WIN32)
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils onnxruntime_common re2::re2
+  set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils onnxruntime_common 
           onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime onnxruntime_flatbuffers
+          ${onnxruntime_EXTERNAL_LIBRARIES}
           ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)

@@ -779,16 +779,20 @@ if (onnxruntime_USE_ARMNN)
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
 
-    link_libraries(arm_compute arm_compute_core arm_compute_graph)
+    # link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
   if (NOT ${onnxruntime_ARMNN_LIBS} STREQUAL "")
+    add_library(armnn SHARED IMPORTED)
+    set_target_properties(armnn PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ARMNN_LIBS}/libarmnn.so")
 
-    find_library(ARMNN_LIBRARY NAMES armnn
-                     PATHS ${onnxruntime_ARMNN_LIBS}
-                     NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+    #find_library(ARMNN_LIBRARY NAMES armnn
+    #             PATHS ${onnxruntime_ARMNN_LIBS}    
+    #             NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH REQUIRED)
 
-    link_libraries(armnn)
+    # link_libraries(armnn)
   endif()
 
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
