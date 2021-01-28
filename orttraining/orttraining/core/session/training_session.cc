@@ -492,8 +492,6 @@ Status TrainingSession::ConfigureForTraining(
       config.weight_names_to_train, 
       filtered_config_weight_names_to_train));
 
-    // TODO(jufranc): why can't I use FilterUnusedWeights? There seems to be
-    // too many versions of `weights to train`. Can we improve this?
     std::unordered_set<std::string> weights_to_keep;
     for (auto& name : weight_names_to_train) {
       auto nodes = model_->MainGraph().GetConsumerNodes(name);

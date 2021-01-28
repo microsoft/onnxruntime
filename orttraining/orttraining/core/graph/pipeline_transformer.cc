@@ -931,6 +931,14 @@ common::Status AddPassthroughInitializer(Graph& graph,
     assert(current_node_arg);
     current_node_arg = &CreateNodeArg(graph, *current_node_arg);
 
+    const auto* old_shape = initializer->Shape();
+    if (old_shape != nullptr) {
+      current_node_arg->SetShape(*old_shape);
+    }
+    // Add value info for this newly added receive_output, for shape propagation
+    // when training this partition.
+    graph.AddValueInfo(current_node_arg);
+
     // process recv node in cut i
     Node* receive_node = recv_nodes.at(i + 1).first;
     ORT_ENFORCE(receive_node, "Receive in stage ", (i + 1), " not found.");
@@ -1039,7 +1047,7 @@ common::Status HandleSharedInitializer(Graph& graph,
       std::vector<Node*> consumer_nodes = graph.GetMutableConsumerNodes(input->Name());
       std::vector<Node*> visited_consumer_nodes;
       for (auto consumer_node : consumer_nodes) {
-        if (visited_nodes.count(consumer_node) != 0) {
+        if (visited_nodes.count(consumer_node) != 0 && !IsBackward(*consumer_node)) {
           visited_consumer_nodes.push_back(consumer_node);
         }
       }
@@ -1067,10 +1075,18 @@ common::Status HandleSharedInitializer(Graph& graph,
   return Status::OK();
 }
 
+struct NodeArgComparator {
+  bool operator()(const NodeArg* lhs, const NodeArg* rhs) const {
+    return lhs->Name().compare(rhs->Name());
+  }
+};
+
+using NodeArgSet = std::set<const NodeArg*, NodeArgComparator>;
+
 // Returns all the pointers to NodeArg in the graph, before applying any
 // partition transformation.
-std::set<const NodeArg*> GetAllNodeArgs(const Graph& graph) {
-  std::set<const NodeArg*> initial_node_args;
+NodeArgSet GetAllNodeArgs(const Graph& graph) {
+  NodeArgSet initial_node_args;
   const auto& all_nodes = graph.Nodes();
   for (const auto& node : all_nodes) {
     const auto& node_outputs = node.OutputDefs();
@@ -1140,7 +1156,7 @@ common::Status AddMetaTensors(const int current_stage, const int next_stage,
 // and as outputs of the receive operator (recv_output_args) of the next stage.
 // Note that the received tensor will be a replica, i.e., stored in tensor_replicas.
 void SendProducedTensors(ONNX_NAMESPACE::AttributeProto& element_types,
-                         const std::set<const NodeArg*>& tensors_sent_in_forward,
+                         NodeArgSet& tensors_sent_in_forward,
                          std::vector<NodeArg*>& send_input_args,
                          std::vector<NodeArg*>& recv_output_args,
                          const std::map<const NodeArg*, std::vector<NodeArg*>>& tensor_replicas,
@@ -1189,6 +1205,10 @@ void SendForwardedTensors(ONNX_NAMESPACE::AttributeProto& element_types,
       continue;
     }
 
+    if (next_stage < std::min(start, end) || next_stage > std::max(start, end)) {
+      continue;
+    }
+
     if (start == end) {
       continue;  // Nothing else to do.
     }
@@ -1196,8 +1216,10 @@ void SendForwardedTensors(ONNX_NAMESPACE::AttributeProto& element_types,
     NodeArg* replica = tensor_replicas.at(tensor).at(current_stage);
     NodeArg* next_replica = tensor_replicas.at(tensor).at(next_stage);
 
-    ORT_ENFORCE(replica != nullptr && next_replica != nullptr,
-                "Couldn't find replicas of tensor " + tensor->Name());
+    ORT_ENFORCE(replica != nullptr, "Couldn't find replica of tensor ",
+                tensor->Name(), " in current stage ", current_stage, " ", next_stage);
+    ORT_ENFORCE(next_replica != nullptr, "Couldn't find replicas of tensor ",
+                tensor->Name(), " in next stage ", current_stage, " ", next_stage);
     if (!std::count(send_input_args.begin(), send_input_args.end(), replica)) {
       send_input_args.push_back(replica);
       recv_output_args.push_back(next_replica);
@@ -1288,13 +1310,18 @@ void CreateTensorReplica(Graph& graph,
 // meaning that pipeline stage 0 is only allowed to send messages to stage 1,
 // stage 1 to stage 2, and so on. Once we allow partition after AD, or more
 // general forms of partition, this vector will contain other pairs of stages.
-// TODO(jufranc): update documentation.
 //   - send_nodes: a container for the Send nodes we add to the graph. E.g,
-// send_nodes[i] represents the sending of tensors from stage i to stage i+1 and
-// belongs to the partition i.
-//   - receive_nodes: a container for the Recv nodes we add to the graph. E.g.,
-// receive_nodes[i] represents the receiving of tensors from stage i in stage
-// i+1 and belongs to the partition i+1.
+// send_nodes[i] contains a pair of Sends, where the first element represents
+// the sending of tensors from stage i to stage i+1 during execution of forward
+// computation, and the second element the sending of tensors from stage i to
+// stage i-1 during the execution of backward computation. Both nodes belong to
+// the partition i.
+//   - receive_nodes: a container for the Receives nodes we add to the graph.
+// E.g, receive_nodes[i] contains a pair of Receives, where the first element
+// represents the receving of tensors from stage i-1 in stage i during execution
+// of forward computation, and the second element the receiving of tensors from
+// stage i to i+1 in i during the execution of backward computation. Both nodes
+// belong to the partition i.
 //   - stage_to_rank: a mapping between stage id and rank id. This is needed
 // because one stage may be composed of 2 ranks (due to horizontal parallelism).
 //
@@ -1325,12 +1352,12 @@ common::Status SplitGraphWithOperatorToStageMap(Graph& graph,
   // forward_messages stores all the tensors that will be sent by any stage,
   // during forward computation. For example, forward_messages[s] is the set of
   // all the tensors sent by stage s while executing the forward computation.
-  std::vector<std::set<const NodeArg*>> forward_messages(num_stages);
+  std::vector<NodeArgSet> forward_messages(num_stages);
   // backward_messages stores all the tensors that will be sent by any stage,
   // during backward computation. For example, backward_messages[s] is the set
   // of all the tensors sent by stage s while executing the backward computation.
   // This may be empty, if the graph is forward only.
-  std::vector<std::set<const NodeArg*>> backward_messages(num_stages);
+  std::vector<NodeArgSet> backward_messages(num_stages);
 
   // Tensors that need to be sent from one device to the other. For example,
   // forwarded_tensors[i] = {t, {stage of producer - s0, stage of the last consumer - s1}}
@@ -1590,11 +1617,11 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
                                          const int num_stages,
                                          const std::vector<int32_t>& rank_ids,
                                          const bool is_training_graph) {
-  // TODO(jufranc): in order to support more general pipeline shapes, we need to
-  // do some analysis on the graph and assignment of operators to stages, to
-  // find which messages will be sent. For now, we assume that 1) there are
-  // always tensors being copied from stage s to s+1 (for forward computation)
-  // and from s+1 to s (for backward computation).
+  // TODO: in order to support more general pipeline shapes, we need to do some
+  // analysis on the graph and assignment of operators to stages, to find which
+  // messages will be sent. For now, we assume that 1) there are always tensors
+  // being copied from stage s to s+1 (for forward computation) and from s+1 to
+  // s (for backward computation).
   std::vector<int> stage_to_rank(num_stages);
   ORT_ENFORCE(static_cast<int>(rank_ids.size()) == num_stages,
               "Expected ", num_stages, " but instead got ", rank_ids.size());
@@ -1735,7 +1762,7 @@ Status VerifyAssignment(const Graph& graph,
           // If the producer is a backward node, then the consumer will be a
           // backward node as well and assigned to an earlier stage.
           ORT_RETURN_IF_NOT(producer_stage >= consumer_stage,
-                            "Sending a tensor from stage ", producer_stage, " to ", 
+                            "Sending a tensor from stage ", producer_stage, " to ",
                             consumer_stage, " during backward phase is not possible.");
         }
       }
