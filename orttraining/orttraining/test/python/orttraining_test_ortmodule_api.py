@@ -254,3 +254,35 @@ def test_model_with_different_devices_same_session():
         model.to(device)
         x = torch.randn(N, D_in, device=device)
         y = model(x)
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_input_requires_grad_saved(device):
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device, requires_grad=True) + 1
+    model(x)
+    assert model._input_names_require_grad == ['input1']
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_input_requires_grad_backward_creates_input_grad(device):
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device, requires_grad=True)
+    assert x.grad is None
+    prediction = model(x)
+    s = prediction.sum()
+    s.backward()
+    assert x.grad is not None
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder(device):
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device, requires_grad=True)
+    model(x.data)
+    module_gradient_graph_builder = model._module_gradient_graph_builder
+    model(x)
+    assert module_gradient_graph_builder != model._module_gradient_graph_builder
