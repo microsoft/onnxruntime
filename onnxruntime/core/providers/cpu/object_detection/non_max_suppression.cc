@@ -15,7 +15,10 @@ limitations under the License.
 #include "non_max_suppression_helper.h"
 #include <queue>
 #include <utility>
-
+//TODO:fix the warnings
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#endif
 namespace onnxruntime {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -180,7 +183,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
   std::vector<SelectedIndex> selected_indices;
   std::vector<BoxInfo> selected_boxes_inside_class;
-  selected_boxes_inside_class.reserve(std::min(max_output_boxes_per_class, pc.num_boxes_));
+  selected_boxes_inside_class.reserve(std::min<size_t>(static_cast<size_t>(max_output_boxes_per_class), pc.num_boxes_));
 
   for (int64_t batch_index = 0; batch_index < pc.num_batches_; ++batch_index) {
     for (int64_t class_index = 0; class_index < pc.num_classes_; ++class_index) {

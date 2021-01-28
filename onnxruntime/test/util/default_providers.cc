@@ -26,6 +26,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML();
 
 // EP for internal testing
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_InternalTesting(
@@ -128,6 +129,14 @@ std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_ar
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
 #ifdef USE_ROCM
   return CreateExecutionProviderFactory_ROCM(ROCMExecutionProviderInfo{})->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
+#if defined(USE_COREML)
+  return CreateExecutionProviderFactory_CoreML()->CreateProvider();
 #else
   return nullptr;
 #endif

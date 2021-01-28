@@ -5,6 +5,8 @@
 
 #include <functional>
 
+#include "boost/mp11.hpp"
+
 #include "core/common/exceptions.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
@@ -497,5 +499,18 @@ template <typename T, typename... Types>
 inline std::vector<MLDataType> BuildKernelDefConstraints() {
   return {DataTypeImpl::GetTensorType<T>(), DataTypeImpl::GetTensorType<Types>()...};
 }
+
+// functor that calls BuildKernelDefConstraints()
+template <typename... Types>
+struct BuildKernelDefConstraintsFunctor {
+  std::vector<MLDataType> operator()() const {
+    return BuildKernelDefConstraints<Types...>();
+  }
+};
+
+// the type BuildKernelDefConstraintsFunctor<T...> given a type list L<T...>
+template <typename L>
+using BuildKernelDefConstraintsFunctorFromTypeList =
+    boost::mp11::mp_apply<BuildKernelDefConstraintsFunctor, L>;
 
 }  // namespace onnxruntime

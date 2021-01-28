@@ -18,8 +18,6 @@
 
 namespace onnxruntime {
 
-const int CPU_ALLOCATOR_DEVICE_ID = 0;
-
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
@@ -82,6 +80,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
   }
+
+  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
 
  private:
   CUDAExecutionProviderInfo info_;

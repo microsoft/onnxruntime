@@ -80,7 +80,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     QLinearConv);
 
-}
+}  // namespace contrib
 
 #endif
 
@@ -107,7 +107,7 @@ Status QLinearConv::PrePack(const Tensor& tensor, const PrepackParam& param, boo
   const size_t output_channels = static_cast<size_t>(shape[0]);
   const size_t group_input_channels = static_cast<size_t>(shape[1]);
   const size_t kernel_size =
-    static_cast<size_t>(std::accumulate(shape.data() + 2, shape.data() + rank, 1LL, std::multiplies<int64_t>()));
+      static_cast<size_t>(std::accumulate(shape.data() + 2, shape.data() + rank, 1LL, std::multiplies<int64_t>()));
 
   const auto* Wdata = static_cast<const uint8_t*>(tensor.DataRaw());
   W_shape_ = shape;
@@ -165,7 +165,7 @@ Status QLinearConv::PrePack(const Tensor& tensor, const PrepackParam& param, boo
 Status QLinearConv::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* W = is_W_packed_ ? nullptr : context->Input<Tensor>(3);
-  const auto& W_shape = is_W_packed_ ? W_shape_ : W->Shape();
+  const auto& W_shape = W ? W->Shape() : W_shape_;
   const bool is_W_signed = (W != nullptr) ? W->IsDataType<int8_t>() : is_W_signed_;
 
   const int64_t N = X->Shape()[0];
@@ -285,7 +285,8 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   }
 #endif
   if (use_reordered_W) {
-    if (reordered_W_buffer_) {
+    if (W == nullptr) {
+      // Weight was constant and reordered.
       reordered_W = static_cast<uint8_t*>(reordered_W_buffer_.get());
     } else {
       // Weight tensor was not constant or prepacking is disabled.
@@ -402,7 +403,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
               static_cast<int64_t>(kernel_rank),
               static_cast<uint8_t*>(col_buffer.get()) + group_id * col_buffer_size,
               X_zero_point_value);
-         }
+        }
       }
     }
 

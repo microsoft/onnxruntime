@@ -53,6 +53,7 @@ Status SetupOptimizerParams(
     const std::unordered_map<std::string, NodeArg*>& fp32_weight_names_to_mixed_precision_node_args,
     const optional<std::string>& loss_scale_input_name,
     const TrainingSession::TrainingConfiguration& config,
+    const TrainingSession::OptimizerState& init_optimizer_states,
     OptimizerGraphConfig& opt_graph_config_result,
     std::unordered_map<std::string, OptimizerNodeConfig>& opt_node_configs_result,
     std::unordered_map<std::string, std::string>& weight_name_map_after_graph_transform) {
@@ -98,12 +99,10 @@ Status SetupOptimizerParams(
       opt_node_config.mixed_precision_weight_arg = mixed_precision_weight_name_it->second;
     }
 
-    // check if initial optimizer states have been provided for weight
-    if (config.init_optimizer_states) {
-      const auto optim_state_it = config.init_optimizer_states->find(weight_name);
-      if (optim_state_it != config.init_optimizer_states->end()) {
-        opt_node_config.initial_states = optim_state_it->second;
-      }
+    // retrieve value for initial optimizer states if provided for weight
+    const auto optim_state_it = init_optimizer_states.find(original_weight_name);
+    if (optim_state_it != init_optimizer_states.end()) {
+      opt_node_config.initial_states = optim_state_it->second;
     }
 
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
@@ -130,12 +129,11 @@ Status SetupOptimizerParams(
   opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
 
   // check if shared initial optimizer states have been provided
-  if (config.init_optimizer_states) {
-    const auto optim_state_it = config.init_optimizer_states->find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
-    if (optim_state_it != config.init_optimizer_states->end()) {
-      opt_graph_config.shared_optimizer_states = std::move(optim_state_it->second);
-    }
+  const auto optim_state_it = init_optimizer_states.find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
+  if (optim_state_it != init_optimizer_states.end()) {
+    opt_graph_config.shared_optimizer_states = std::move(optim_state_it->second);
   }
+
   opt_node_configs_result = std::move(opt_node_configs);
   opt_graph_config_result = std::move(opt_graph_config);
 
@@ -420,6 +418,10 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
+  if (config.init_optimizer_states) {
+    init_optimizer_states_ = config.init_optimizer_states.value();
+  }
+
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
 
   ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config_result));
@@ -501,7 +503,7 @@ Status TrainingSession::ConfigureForTraining(
     std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
     ORT_RETURN_IF_ERROR(SetupOptimizerParams(
         weights_to_train_, fp32_weight_name_to_mixed_precision_node_arg,
-        loss_scale_input_name, config, opt_graph_config, opt_node_configs, config_result.weight_name_map_after_graph_transform));
+        loss_scale_input_name, config, init_optimizer_states_, opt_graph_config, opt_node_configs, config_result.weight_name_map_after_graph_transform));
     TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
     ORT_RETURN_IF_ERROR(BuildOptimizer(
         opt_graph_config, opt_node_configs,
@@ -796,12 +798,16 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
 
   GraphTransformerManager graph_transformation_mgr{1};
   std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register;
+  // Creating the CPU EP here to be used to get the 
+  // CPU allocator for partitioning the optimizer state by column.
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   std::unordered_set<std::string> compatible_eps = {};
   LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
   transformers_to_register.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
       training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
       horizontal_parallel_size, config_result_out.weight_name_map_after_graph_transform, weights_to_train,
-      config_result_out.weight_partition_info, compatible_eps));
+      config_result_out.weight_partition_info, init_optimizer_states_, *cpu_execution_provider, compatible_eps));
 
   // Generate and register transformers for level
   for (auto& entry : transformers_to_register) {
@@ -1082,10 +1088,13 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
   }
   // Change key from sharded_name to weight_name using partition_info
   for (const auto& weight : weight_partition_info_) {
-    const auto& it = opt_state_tensors.find(weight.second.view_name);
-    ORT_ENFORCE(it != opt_state_tensors.end(), "Cannot find weight: " + weight.second.view_name + " in weight_partition_info_");
-    opt_state_tensors[weight.first] = it->second;
-    opt_state_tensors.erase(it);
+    const auto& it = opt_state_tensors.find(weight.second.partition_name);
+    if (it == opt_state_tensors.end()) {
+      ORT_RETURN_IF_NOT(allow_missing, "Failed to get optimizer params for partition: " + weight.second.partition_name);
+    } else {
+      opt_state_tensors[weight.first] = it->second;
+      opt_state_tensors.erase(it);
+    }   
   }
   return Status::OK();
 }
@@ -1095,20 +1104,29 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   std::unordered_set<std::string> fp_tensor_names{};
   fp_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
-  // Add zero sharded weights, only needed for fp32 weights in mixed precision run
-  for (const auto& weight_sharded_pair : updated_weight_names_map_) {
-    fp_tensor_names.erase(weight_sharded_pair.first);  // remove the original name
-    fp_tensor_names.insert(weight_sharded_pair.second);
+  // Add sharded weights
+  for (const auto& weight : weight_partition_info_) {
+    if (weight.second.weight_partitioned) {
+      fp_tensor_names.erase(weight.first); // remove the original name
+      fp_tensor_names.insert(weight.second.partition_name);
+    }
   }
+
   NameMLValMap fp_weights;
   GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
-  // Change key from sharded_name to weight_name
-  for (const auto& weight_sharded_pair : updated_weight_names_map_) {
-    const auto& it = fp_weights.find(weight_sharded_pair.second);
-    ORT_ENFORCE(it != fp_weights.end(), "Cannot find weight: " + weight_sharded_pair.second + " in updated_weight_names_map_");
-    fp_weights[weight_sharded_pair.first] = it->second;
-    fp_weights.erase(it);
+  // Change key from sharded_name to weight_name using partition_info
+  for (const auto& weight : weight_partition_info_) {
+    if (weight.second.weight_partitioned) {
+      const auto& it = fp_weights.find(weight.second.partition_name);
+      if (it == fp_weights.end()) {
+        ORT_RETURN_IF_NOT(allow_missing, "Failed to get weight partition: " + weight.second.partition_name);
+      } else {
+        fp_weights[weight.first] = it->second;
+        fp_weights.erase(it);
+      }
+    }   
   }
+
   model_state_tensors["full_precision"] = fp_weights;
   if (include_mixed_precision_weights) {
     std::unordered_set<std::string> mp_tensor_names{};
@@ -1201,8 +1219,6 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
 }
 
 static const std::unordered_set<std::string> Nodes_Need_Eval_Feeds = {
-    // TODO remove this once ONNX TrainableDropout is completely deprecated.
-    "TrainableDropout",
     "Dropout",
 };
 
@@ -1217,19 +1233,7 @@ Status TrainingSession::SetEvalFeedNames() {
     auto it = Nodes_Need_Eval_Feeds.find(node.OpType());
     if (it != Nodes_Need_Eval_Feeds.cend()) {
       // The opset is < 12, add each ratio input to graph inputs for overriding.
-      // Needs to be removed when TrainableDropout is deprecated.
-      if (it->compare("TrainableDropout") == 0) {
-        auto& ratio_name = node.InputDefs()[1]->Name();
-        dropout_eval_feeds_.insert(ratio_name);
-        ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
-                    "Input: " + ratio_name + " should not have any producer node.");
-        if (def_graph_input_names.find(ratio_name) == def_graph_input_names.end()) {
-          defs.AddGraphInputs({ratio_name});
-          def_graph_input_names.insert(ratio_name);
-        }
-      }
-      // Found an opset-12 dropout node, replace initializer name.
-      else if (node.InputArgCount().size() > 2) {
+      if (node.InputArgCount().size() > 2) {
         auto& mode_input = node.MutableInputDefs()[2];
         const ONNX_NAMESPACE::TensorProto* mode_initializer = nullptr;
         if (!graph.GetInitializedTensor(training_mode_string_, mode_initializer)) {

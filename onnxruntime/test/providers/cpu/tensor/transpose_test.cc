@@ -152,9 +152,10 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<MLFloat16> expected_vals = {MLFloat16(1), MLFloat16(4),
-                                                    MLFloat16(2), MLFloat16(5),
-                                                    MLFloat16(3), MLFloat16(6)};
+  std::initializer_list<MLFloat16> expected_vals =
+      {MLFloat16{static_cast<uint16_t>(1)}, MLFloat16{static_cast<uint16_t>(4)},
+       MLFloat16{static_cast<uint16_t>(2)}, MLFloat16{static_cast<uint16_t>(5)},
+       MLFloat16{static_cast<uint16_t>(3)}, MLFloat16{static_cast<uint16_t>(6)}};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }

@@ -81,7 +81,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       }
     }
 
-    T raw_value(0);
+    T raw_value{};
     const Tensor* value_tensor = ctx->Input<Tensor>(2);
     if (nullptr != value_tensor) {
       ORT_ENFORCE(utils::IsPrimitiveDataType<T>(value_tensor->DataType()) &&

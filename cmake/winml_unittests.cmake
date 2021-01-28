@@ -16,6 +16,7 @@ set(WINML_TEST_INC_DIR
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
   ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include
+  ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated
 )
 
@@ -162,7 +163,7 @@ function (get_winml_test_model_src
       "${winml_test_src_path}/model/*.cpp")
   set(${output_winml_test_model_src} ${winml_test_model_src} PARENT_SCOPE)
   set(${winml_test_model_libs} onnx_test_data_proto onnx_test_runner_common onnxruntime_common onnxruntime_mlas
-    onnxruntime_graph onnxruntime_test_utils onnxruntime_framework onnxruntime_flatbuffers PARENT_SCOPE)
+    onnxruntime_graph onnxruntime_test_utils onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers PARENT_SCOPE)
 endfunction()
 
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS
