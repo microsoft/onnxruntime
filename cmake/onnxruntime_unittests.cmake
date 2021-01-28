@@ -19,9 +19,9 @@ function(AddTest)
   list(REMOVE_DUPLICATES _UT_SOURCES)
 
   if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-    add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
+    onnxruntime_add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
   else()
-    add_executable(${_UT_TARGET} ${_UT_SOURCES})
+    onnxruntime_add_executable(${_UT_TARGET} ${_UT_SOURCES})
   endif()
 
   if (_UT_DEPENDS)
@@ -726,7 +726,7 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   list(APPEND onnx_test_libs onnxruntime_language_interop onnxruntime_pyop)
 endif()
 
-add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
+onnxruntime_add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
 if(MSVC)
   target_compile_options(onnx_test_runner PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -749,7 +749,7 @@ install(TARGETS onnx_test_runner
 
 if(onnxruntime_BUILD_BENCHMARKS)
   SET(BENCHMARK_DIR ${TEST_SRC_DIR}/onnx/microbenchmark)
-  add_executable(onnxruntime_benchmark
+  onnxruntime_add_executable(onnxruntime_benchmark
     ${BENCHMARK_DIR}/main.cc
     ${BENCHMARK_DIR}/modeltest.cc
     ${BENCHMARK_DIR}/pooling.cc
@@ -806,7 +806,7 @@ endif()
 file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
   ${onnxruntime_perf_test_src_patterns}
   )
-add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
+onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
 if(MSVC)
   target_compile_options(onnxruntime_perf_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -929,20 +929,20 @@ endif(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
 
 #some ETW tools
 if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
-  add_executable(generate_perf_report_from_etl ${ONNXRUNTIME_ROOT}/tool/etw/main.cc
+  onnxruntime_add_executable(generate_perf_report_from_etl ${ONNXRUNTIME_ROOT}/tool/etw/main.cc
           ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc
           ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
   target_compile_definitions(generate_perf_report_from_etl PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
   target_link_libraries(generate_perf_report_from_etl PRIVATE tdh Advapi32)
 
-  add_executable(compare_two_sessions ${ONNXRUNTIME_ROOT}/tool/etw/compare_two_sessions.cc
+  onnxruntime_add_executable(compare_two_sessions ${ONNXRUNTIME_ROOT}/tool/etw/compare_two_sessions.cc
           ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc
           ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
   target_compile_definitions(compare_two_sessions PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
   target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
 endif()
 
-add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
+onnxruntime_add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 if(MSVC)
   target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
