@@ -167,8 +167,7 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
                         data_type = numpy.longlong if 'pt' in model_source else numpy.intc
                         result = inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times,
                                                                ort_output_names, ort_outputs, output_buffers,
-                                                               output_buffer_max_sizes, batch_size, device,
-                                                               data_type)
+                                                               output_buffer_max_sizes, batch_size, device, data_type)
                     logger.info(result)
                     results.append(result)
 

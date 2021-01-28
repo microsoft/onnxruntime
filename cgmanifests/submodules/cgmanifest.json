@@ -122,6 +122,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "523d5e03d86c26267ee6bdf17dd20f6ce6bdadd7",
+          "repositoryUrl": "https://github.com/apple/coremltools.git"
+        },
+        "comments": "git submodule at cmake/external/coremltools"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
           "repositoryUrl": "https://github.com/NVlabs/cub.git"
         },
@@ -166,16 +176,6 @@
           "repositoryUrl": "https://github.com/google/flatbuffers.git"
         },
         "comments": "git submodule at cmake/external/flatbuffers"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "42c53187a56c12dc5518cc25e778e5e3e7dbaf72",
-          "repositoryUrl": "https://github.com/google/gemmlowp.git"
-        },
-        "comments": "git submodule at cmake/external/gemmlowp"
       }
     },
     {
@@ -232,7 +232,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "994c6181247d7b419b28889fc57d5817e2089419",
+          "commitHash": "174de7d086a768cba29374a56a7461eff87cfdb3",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"

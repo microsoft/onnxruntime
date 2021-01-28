@@ -54,7 +54,7 @@ Status CudaQuantizeLinear(const InT* input, OutT* output, const InT* scale, cons
       output,
       scale,
       zero_point,
-      num_of_element,
+      static_cast<int>(num_of_element),
       Round<InT>());
   return Status::OK();
 }
@@ -85,7 +85,7 @@ Status CudaDequantizeLinear(const InT* input, OutT* output, const OutT* scale, c
       output,
       scale,
       zero_point,
-      num_of_element);
+      static_cast<int>(num_of_element));
   return Status::OK();
 }
 

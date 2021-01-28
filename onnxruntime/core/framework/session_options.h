@@ -112,7 +112,7 @@ struct SessionOptions {
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
   // See onnxruntime_c_api.h for detailed documentation.
-  Status AddInitializer(const char* name, const OrtValue* val) noexcept;
+  Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val) noexcept;
 
   // Check if the given SessionOptions has a config using the given config_key.
   // Returns true if found and copies the value into config_value.

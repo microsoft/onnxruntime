@@ -21,20 +21,17 @@
         "^test_nesterov_momentum",
         "^test_pow_types_float32_uint32",
         "^test_pow_types_float32_uint64",
-        "^test_sequence_insert_at_back_cpu", // numpy_helper currently not supporting loading segments.
-        "^test_sequence_insert_at_front_cpu", // numpy_helper currently not supporting loading segments.
         "^test_gradient_of_add_and_mul",
         "^test_gradient_of_add",
         "^test_batchnorm_example_training_mode",
         "^test_batchnorm_epsilon_training_mode",
+        "^test_MaxPool2d_stride_padding_dilation_cpu", // result approximation error; need to be updated in ONNX
         "^test_maxunpool_export_with_output_shape", // result mismatch
         "^test_resize_downsample_scales_cubic_align_corners", // results mismatch with onnx tests
         "^test_resize_downsample_scales_linear_align_corners", // results mismatch with onnx tests
         "^test_adam", // NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
         "^test_adam_multiple", // NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
         "^test_training_dropout.*", // NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
-        "^test_if_seq_cpu", // ONNX backend test runner doesn't handle sequences: https://github.com/onnx/onnx/issues/3086
-        "^test_loop13_seq_cpu", // ONNX backend test runner doesn't handle sequences: https://github.com/onnx/onnx/issues/3086
         "^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu", // NOT_IMPLEMENTED : Could not find an implementation for the node Resize(13)
         "^test_resize_downsample_scales_cubic_cpu",
         "^test_resize_downsample_scales_linear_cpu",

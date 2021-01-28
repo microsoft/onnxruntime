@@ -21,6 +21,9 @@
 #ifdef USE_RKNPU
 #include "core/providers/rknpu/rknpu_execution_provider.h"
 #endif
+#ifdef USE_COREML
+#include "core/providers/coreml/coreml_execution_provider.h"
+#endif
 
 namespace onnxruntime {
 class Graph;
@@ -49,6 +52,10 @@ IExecutionProvider* TestNnapiExecutionProvider();
 
 #ifdef USE_RKNPU
 IExecutionProvider* TestRknpuExecutionProvider();
+#endif
+
+#ifdef USE_COREML
+IExecutionProvider* TestCoreMLExecutionProvider();
 #endif
 
 template <typename T>

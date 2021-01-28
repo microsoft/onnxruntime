@@ -124,7 +124,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
       [](OrtDevice::DeviceId device_id) {
         return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
       },
-      CPU_ALLOCATOR_DEVICE_ID);
+      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
   InsertAllocator(CreateAllocator(pinned_memory_info));
 
@@ -136,13 +136,13 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
             OrtMemoryInfo("HIP_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
                           OrtMemTypeCPUInput));
       },
-      CPU_ALLOCATOR_DEVICE_ID);
+      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
-  auto cpu_alloc = GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  auto cpu_alloc = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
   {
     std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
     auto it = deferred_release_cpu_ptr_.begin();

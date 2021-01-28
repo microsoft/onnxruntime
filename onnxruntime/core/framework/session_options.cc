@@ -26,7 +26,7 @@ const std::string SessionOptions::GetConfigOrDefault(const std::string& config_k
   return iter == session_configurations.cend() ? default_value : iter->second;
 }
 
-Status SessionOptions::AddConfigEntry(const char* config_key, const char* config_value) noexcept {
+Status SessionOptions::AddConfigEntry(_In_z_ const char* config_key, _In_z_ const char* config_value) noexcept {
   std::string key(config_key);
   if (key.empty() || key.length() > 128)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config key is empty or longer than maximum length 128");
@@ -47,7 +47,7 @@ Status SessionOptions::AddConfigEntry(const char* config_key, const char* config
   return Status::OK();
 }
 
-Status SessionOptions::AddInitializer(const char* name, const OrtValue* val) noexcept {
+Status SessionOptions::AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val) noexcept {
   // input validation
   if (name == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received nullptr for name.");

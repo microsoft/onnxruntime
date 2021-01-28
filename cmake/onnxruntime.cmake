@@ -111,6 +111,7 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_INTERNAL_TESTING}
     ${onnxruntime_winml}
     ${PROVIDERS_ROCM}
+    ${PROVIDERS_COREML}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

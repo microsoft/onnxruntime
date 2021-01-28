@@ -78,6 +78,7 @@ jobs:
         $Env:ONNX_ML=1
         $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
         python setup.py bdist_wheel
+        python -m pip uninstall -y onnx
         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
       displayName: 'Install ONNX'
@@ -122,6 +123,21 @@ jobs:
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
+        
+    - task: Semmle@0
+      inputs:
+        sourceCodeDirectory: '$(Build.SourcesDirectory)\java'
+        language: 'java'
+        cleanupBuildCommands: 'C:\ProgramData\chocolatey\bin\gradle.exe -Dorg.gradle.daemon=false -DUSE_CUDA=1 clean'
+        buildCommands: 'C:\ProgramData\chocolatey\bin\gradle.exe -Dorg.gradle.daemon=false -DUSE_CUDA=1 jar'
+        querySuite: 'Recommended'
+        timeout: '7200'
+        ram: '16384'
+        addProjectDirToScanningExclusionList: true
+        
+    - task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@2
+      displayName: 'Publish Security Analysis Logs'
+      continueOnError: true        
 
     - template: templates/clean-agent-build-directory-step.yml
 
