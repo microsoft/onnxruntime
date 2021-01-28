@@ -209,7 +209,7 @@ def test_model_to_device(original_device, to_argument, requires_export, device_t
         assert parameter_value.device.type == original_device
 
     model = model.to(to_argument)
-    assert model._require_export == requires_export
+    assert model._device_changed == requires_export
     assert model._device == torch.device(device_type+':'+str(device_index) if device_index is not None else device_type)
     model(x)
 
@@ -228,14 +228,29 @@ def test_model_to_device_and_back_to_original(original_device, to_device):
         assert parameter_value.device.type == original_device
 
     model = model.to(to_device)
-    assert model._require_export == True
+    assert model._device_changed == True
     assert model._device == torch.device(to_device+':0')
 
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == to_device
 
     model = model.to(original_device)
-    assert model._require_export == True
+    assert model._device_changed == True
     assert model._device == torch.device(original_device+':0')
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == original_device
+
+def test_model_with_different_devices_same_session():
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
+    model = ORTModule(model)
+
+    for i in range(5):
+        if i % 2 == 0:
+            device = 'cpu'
+        else:
+            device = 'cuda'
+
+        model.to(device)
+        x = torch.randn(N, D_in, device=device)
+        y = model(x)
