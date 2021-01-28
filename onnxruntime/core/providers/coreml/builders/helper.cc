@@ -35,20 +35,30 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const lo
   }
 }
 
-bool GraphHasSupportedInputs(const GraphViewer& graph_viewer, const logging::Logger& logger) {
-  for (const auto* node_arg : graph_viewer.GetInputs()) {
-    const auto& input_name = node_arg->Name();
-    const auto* shape_proto = node_arg->Shape();
-    if (!shape_proto) {
-      LOGS(logger, WARNING) << "Input [" << input_name << "] has no shape";
+bool IsInputSupported(const NodeArg& input, const std::string& parent_name, const logging::Logger& logger) {
+  const auto& input_name = input.Name();
+  const auto* shape_proto = input.Shape();
+  // We do not support input with no shape
+  if (!shape_proto) {
+    LOGS(logger, VERBOSE) << "Input [" << input_name << "] of [" << parent_name
+                          << "] has not shape";
+    return false;
+  }
+
+  for (const auto& dim : shape_proto->dim()) {
+    // For now we do not support dynamic shape
+    if (!dim.has_dim_value()) {
+      LOGS(logger, WARNING) << "Dynamic shape is not supported yet, for input:" << input_name;
       return false;
     }
 
-    for (const auto& dim : shape_proto->dim()) {
-      if (!dim.has_dim_value()) {
-        LOGS(logger, WARNING) << "Dynamic shape is not supported yet, for input:" << input_name;
-        return false;
-      }
+    // For some undocuemented reason, apple CoreML lib will fail loading the model if the model has
+    // dimension > 16384
+    // See this issue, https://github.com/apple/coremltools/issues/1003
+    if (dim.dim_value() > 16384) {
+      LOGS(logger, WARNING) << "CoreML does not support input dim > 16384, input:" << input_name
+                            << ", actual dim: " << dim.dim_value();
+      return false;
     }
   }
 
@@ -62,8 +72,11 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
     return supported_node_vecs;
   }
 
-  if (!GraphHasSupportedInputs(graph_viewer, logger))
-    return supported_node_vecs;
+  for (const auto* input : graph_viewer.GetInputs()) {
+    if (!IsInputSupported(*input, "graph", logger)) {
+      return supported_node_vecs;
+    }
+  }
 
   std::vector<size_t> supported_node_vec;
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();

@@ -4,6 +4,7 @@
 #include <core/providers/common.h>
 
 #include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/builders/helper.h"
 
 #include "base_op_builder.h"
@@ -12,16 +13,17 @@ namespace onnxruntime {
 namespace coreml {
 
 class BinaryOpBuilder : public BaseOpBuilder {
+  // Add operator related
  private:
-  int GetMinSupportedOpSet(const Node& node) const override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+
+  // Operator support related
+ private:
+  int GetMinSupportedOpSet(const Node& node) const override;
 };
 
-int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // Add/Sub/Mul/Div opset 6- has broadcast attributes we do not support now
-  return 7;
-}
+// Add operator related
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& /* logger */) const {
@@ -46,8 +48,16 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   return Status::OK();
 }
 
-std::unique_ptr<IOpBuilder> CreateBinaryOpBuilder() {
-  return onnxruntime::make_unique<BinaryOpBuilder>();
+// Operator support related
+
+int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
+  // Add/Sub/Mul/Div opset 6- has broadcast attributes we do not support now
+  return 7;
+}
+
+void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(onnxruntime::make_unique<BinaryOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
 }  // namespace coreml
