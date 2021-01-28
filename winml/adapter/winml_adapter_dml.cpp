@@ -29,11 +29,10 @@ static std::string System32Path() {
 }
 
 static bool IsCurrentModuleInPath(const std::string& path) {
-  std::string current_module_path;
-  current_module_path.reserve(MAX_PATH);
-  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path.data(), MAX_PATH);
+  char current_module_path[MAX_PATH];
+  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path, _countof(current_module_path));
   FAIL_FAST_IF(size_module_path == 0);
-  return _strnicmp(path.c_str(), current_module_path.c_str(), path.size()) == 0;
+  return _strnicmp(path.c_str(), current_module_path, size_module_path) == 0;
 }
 
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
