@@ -122,7 +122,7 @@ class ONNXCalibrater:
         return model
 
     #Using augmented outputs to generate inputs for quantization
-    def get_intermediate_outputs(self, calib_mode='naive', providers=None):
+    def get_intermediate_outputs(self, calib_mode='naive', providers=None, ort_graph_optimization_enable=True):
         ''' 
             Gather intermediate model outputs after running inference
             parameter calib_mode: type 'naive' gives (ReduceMin, ReduceMax) pairs
@@ -134,12 +134,12 @@ class ONNXCalibrater:
         '''
 
         #conduct inference session and get intermediate outputs
-        if providers:
+        if ort_graph_optimization_enable:
+            session = onnxruntime.InferenceSession(self.augmented_model_path, None)
+        else:
             sess_options = onnxruntime.SessionOptions()
             sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL #ORT_ENABLE_BASIC
             session = onnxruntime.InferenceSession(self.augmented_model_path, sess_options=sess_options, providers=providers)
-        else:
-            session = onnxruntime.InferenceSession(self.augmented_model_path, None)
 
         #number of outputs in original model
         model = onnx.load(self.model_path)
@@ -326,7 +326,7 @@ def calculate_calibration_data(model_path,
         augmented_model = calibrator.augment_graph(augment_all_ops=True)
         onnx.save(augmented_model, augmented_model_path)
 
-    calibrator.get_intermediate_outputs(providers=["CUDAExecutionProvider"])
+    calibrator.get_intermediate_outputs(providers=["CUDAExecutionProvider"], ort_graph_optimization_enable=False)
 
 def generate_calibration_table(calibrator, model_path, augmented_model_path, remove_previous_flag, data_reader, calibration_dataset=None, stride=5000, batch_size=20):
 
