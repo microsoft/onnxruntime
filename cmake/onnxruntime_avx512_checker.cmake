@@ -15,3 +15,12 @@ check_cxx_source_compiles("
   }"
   COMPILES_AVX512F_INTRINSICS
 )
+
+check_cxx_source_compiles("
+  int main() {
+    asm(\"vpmaddwd %zmm0,%zmm0,%zmm0\"); // AVX512BW feature
+    asm(\"vandnps %xmm31,%xmm31,%xmm31\"); // AVX512DQ/AVX512VL feature
+    return 0;
+  }"
+  COMPILES_AVX512CORE
+)

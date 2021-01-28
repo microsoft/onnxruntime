@@ -271,13 +271,8 @@ else()
     else()
       set(CMAKE_REQUIRED_FLAGS "")
     endif()
-    check_cxx_source_compiles("
-      int main() {
-        asm(\"vpxord %zmm0,%zmm0,%zmm0\");
-        return 0;
-      }"
-      COMPILES_AVX512F
-    )
+
+    include(onnxruntime_avx512_checker.cmake)
 
     if(COMPILES_AVX512F AND NOT onnxruntime_MINIMAL_BUILD)
       set(mlas_platform_srcs_avx512f
@@ -287,8 +282,6 @@ else()
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelAvx512F.S
       )
-
-      include(onnxruntime_avx512_checker.cmake)
 
       if(COMPILES_AVX512F_INTRINSICS)
         set(mlas_platform_srcs_avx512f
