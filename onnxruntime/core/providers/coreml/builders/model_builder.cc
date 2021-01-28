@@ -203,9 +203,11 @@ Status ModelBuilder::SaveCoreMLModel(const std::string& path) {
   std::ofstream stream(path, std::ofstream::out | std::ofstream::binary);
   ORT_RETURN_IF_NOT(coreml_model_->SerializeToOstream(&stream), "Save the CoreML model failed");
 
-  // Delete, debug only
-  std::ofstream temp_stream("/Users/gwang/temp/aaa.mlmodel", std::ofstream::out | std::ofstream::binary);
-  ORT_RETURN_IF_NOT(coreml_model_->SerializeToOstream(&temp_stream), "Save the CoreML model failed");
+  // TODO, Delete, debug only
+  if (const char* path = std::getenv("ORT_COREML_EP_CONVERTED_MODEL_PATH")) {
+    std::ofstream temp_stream(path, std::ofstream::out | std::ofstream::binary);
+    ORT_RETURN_IF_NOT(coreml_model_->SerializeToOstream(&temp_stream), "Save the CoreML model failed");
+  }
 
   return Status::OK();
 }
