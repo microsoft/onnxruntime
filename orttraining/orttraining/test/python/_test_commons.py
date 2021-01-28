@@ -21,7 +21,7 @@ def _single_run(execution_file, scenario, checkopint_dir = None):
 
 def _distributed_run(execution_file, scenario, checkopint_dir = None):
     ngpus = torch.cuda.device_count()
-    cmd = ['mpirun', '-n', str(ngpus), '-x', 'NCCL_DEBUG=INFO', '--tag-output', sys.executable, execution_file]
+    cmd = ['mpirun', '-n', str(ngpus), '--tag-output', sys.executable, execution_file]
     if scenario:
         cmd += ['--scenario', scenario]
     if checkopint_dir:
