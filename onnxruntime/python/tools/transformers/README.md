@@ -38,7 +38,7 @@ The tool will also verify whether the ONNX model and corresponding PyTorch model
 
 ### Longformer Model conversion
 
-Requirement: a Linux OS (For example Ubuntu 18.04 or 20.04). First, we can create an example of python environment:
+Requirement: Linux OS (For example Ubuntu 18.04 or 20.04) and a python environment like the following:
 ```
 conda create -n longformer python=3.6
 conda activate longformer
@@ -51,7 +51,7 @@ python setup.py install
 ```
 It will generate file like "build/lib.linux-x86_64-3.6/longformer_attention.cpython-36m-x86_64-linux-gnu.so" under the directory.
 
-Finally, use [cnovert_longformer_to_onnx.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/longformer/cnovert_longformer_to_onnx.py) to convert to ONNX model like the following:
+Finally, use [convert_longformer_to_onnx](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/longformer/convert_longformer_to_onnx.py) to convert to ONNX model like the following:
 ```
 python convert_longformer_to_onnx.py -m longformer-base-4096
 ```
