@@ -16,35 +16,30 @@ static bool debug_output_ = false;
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
-static std::string System32Path() {
+static std::string CurrentModulePath() {
   char path[MAX_PATH];
-  FAIL_FAST_IF(0 == GetSystemDirectoryA(path, _countof(path)));
-  return std::string(path);
-}
+  FAIL_FAST_IF(0 == GetModuleFileNameA((HINSTANCE)&__ImageBase, path, _countof(path)));
 
-static bool IsCurrentModuleInPath(const std::string& path) {
-  char current_module_path[MAX_PATH];
-  FAIL_FAST_IF(0 == GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path, _countof(current_module_path)));
-  return _strnicmp(path.c_str(), current_module_path, path.size()) == 0;
+  char absolute_path[MAX_PATH];
+  char* name;
+  FAIL_FAST_IF(0 == GetFullPathNameA(path, _countof(path), absolute_path, &name));
+
+  auto idx = std::distance(absolute_path, name);
+  auto out_path = std::string(absolute_path);
+  out_path.resize(idx);
+
+  return out_path;
 }
 
 static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
 #if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
+  // Store + Redist (note that this is never built into the inbox dll)
   auto out_module = LoadPackagedLibrary(L"onnxruntime.dll", 0);
 #else
-  std::string onnxruntime_dll = "onnxruntime.dll";
-  DWORD flags = 0;
-#ifdef BUILD_INBOX
-  auto system32_path = System32Path();
-  if (IsCurrentModuleInPath(system32_path))
-  {
-    flags |= LOAD_LIBRARY_SEARCH_SYSTEM32;
-    onnxruntime_dll = system32_path + "\\" + onnxruntime_dll;
-  }
+  auto onnxruntime_dll = CurrentModulePath() + "\\onnxruntime.dll"; 
+  auto out_module = LoadLibraryExA(onnxruntime_dll.c_str(), nullptr, 0);
 #endif
 
-  auto out_module = LoadLibraryExA(onnxruntime_dll.c_str(), nullptr, flags);
-#endif
   if (out_module == nullptr) {
     return HRESULT_FROM_WIN32(GetLastError());
   }
