@@ -147,7 +147,7 @@ def _generate_required_types_cpp_code(ort_root: str, op_type_usage_manager: Oper
     if not inserted:
         raise RuntimeError('Insertion point was not found in {}'.format(target))
 
-    # future: how will any global type limitations be provided by the user 
+    # future: how will any global type limitations be provided by the user
     # and added to op_kernel_type_control_overrides.inc?
     # should they come from a reduced build configuration file, be specified on a build command-line,
     # or manually added to op_kernel_type_control_overrides.inc?
