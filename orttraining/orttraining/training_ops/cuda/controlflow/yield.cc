@@ -10,7 +10,10 @@ namespace onnxruntime {
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(Yield, kMSDomain, 1, kCudaExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()), Yield);
+                        KernelDefBuilder()
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                            .VariadicAlias(0, 0),   // TODO: this is a hack to avoid allocating output buffer
+                        Yield);
 
 Status Yield::ComputeInternal(OpKernelContext* ctx) const {
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
