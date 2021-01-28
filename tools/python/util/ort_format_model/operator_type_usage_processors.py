@@ -21,14 +21,14 @@ def _ort_constant_for_domain(domain: str):
 
     # constants are defined in <ORT root>/include/onnxruntime/core/graph/constants.h
     # This list is limited to just the domains we have processors for
-    constant_to_domain_map = {'ai.onnx': 'kOnnxDomain',
+    domain_to_constant_map = {'ai.onnx': 'kOnnxDomain',
                               'ai.onnx.ml': 'kMLDomain',
                               'com.microsoft': 'kMSDomain'}
 
-    if domain not in constant_to_domain_map:
+    if domain not in domain_to_constant_map:
         raise ValueError('Domain {} not found in map to ONNX Runtime constant. Please update map.'.format(domain))
 
-    return constant_to_domain_map[domain]
+    return domain_to_constant_map[domain]
 
 
 class TypeUsageProcessor(ABC):
