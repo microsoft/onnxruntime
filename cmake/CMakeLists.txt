@@ -990,7 +990,7 @@ if (WIN32)
     # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
     if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors
-      #list(APPEND ORT_WARNING_FLAGS "/WX")
+      list(APPEND ORT_WARNING_FLAGS "/WX")
       foreach(type EXE STATIC SHARED)
         set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /WX")
       endforeach()
