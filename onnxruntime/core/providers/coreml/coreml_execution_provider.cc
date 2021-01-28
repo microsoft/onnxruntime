@@ -17,8 +17,9 @@ namespace onnxruntime {
 
 constexpr const char* COREML = "CoreML";
 
-CoreMLExecutionProvider::CoreMLExecutionProvider()
-    : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider, true} {
+CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
+    : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider, true},
+      coreml_flags_(coreml_flags) {
   AllocatorCreationInfo device_info(
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(COREML, OrtAllocatorType::OrtDeviceAllocator));
@@ -44,7 +45,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   // We do not run CoreML EP on subgraph, instead we cover this in the control flow nodes
   // TODO investigate whether we want to support subgraph using CoreML EP
-  if (graph_viewer.IsSubgraph()) {
+  if (graph_viewer.IsSubgraph() && !(coreml_flags_ & COREML_FLAG_ENABLE_ON_SUBGRAPH)) {
     return result;
   }
 
@@ -169,7 +170,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    coreml::ModelBuilder builder(graph_viewer, *GetLogger());
+    coreml::ModelBuilder builder(graph_viewer, *GetLogger(), coreml_flags_);
     std::unique_ptr<coreml::Model> coreml_model;
     const std::string coreml_model_file_path = coreml::util::GetTemporaryFilePath();
     ORT_RETURN_IF_ERROR(builder.Compile(coreml_model, coreml_model_file_path));

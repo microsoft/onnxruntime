@@ -17,7 +17,7 @@ struct OnnxTensorInfo;
 
 class ModelBuilder {
  public:
-  ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger);
+  ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger, uint32_t coreml_flags);
   ~ModelBuilder() = default;
 
   Status Compile(std::unique_ptr<Model>& model, const std::string& path) ORT_MUST_USE_RESULT;
@@ -37,6 +37,7 @@ class ModelBuilder {
  private:
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
+  uint32_t coreml_flags_;
 
   std::unique_ptr<CoreML::Specification::Model> coreml_model_;
   std::unordered_set<std::string> scalar_outputs_;
