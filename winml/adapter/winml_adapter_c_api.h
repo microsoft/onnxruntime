@@ -60,7 +60,7 @@ struct WinmlAdapterApi {
 	 * This exists because existing methods on the c-abi to create the environment only support a custom logger.
 	 * Since WinML hooks the profiler events, we expose the profiler and an associated profiling function.
     */
-  OrtStatus*(ORT_API_CALL* EnvConfigureCustomLoggerAndProfiler)(_In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* EnvConfigureCustomLoggerAndProfiler)(_In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out)NO_EXCEPTION;
 
   // OrtModel methods
 

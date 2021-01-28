@@ -47,7 +47,7 @@ class WinmlAdapterLoggingWrapper : public LoggingWrapper {
 
 ORT_API_STATUS_IMPL(winmla::EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function,
                     _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
-                    _In_ const char* logid) {
+                    _In_ const char* logid, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
   std::string name = logid;
   std::unique_ptr<onnxruntime::logging::ISink> logger = onnxruntime::make_unique<WinmlAdapterLoggingWrapper>(logging_function, profiling_function, logger_param);

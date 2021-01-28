@@ -204,7 +204,8 @@ void Profiling() {
       profile_callback,
       nullptr,
       OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE,
-      "Default"),
+      "Default",
+      &ort_env),
     ort_api);
 
   const auto session_options = CreateUniqueOrtSessionOptions();
