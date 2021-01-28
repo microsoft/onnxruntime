@@ -38,9 +38,9 @@ static void SequencePoolingTest(
     tester_1.AddOutput<MLFloat16>("output", {batch_size, num_sequence, hidden_size}, ToFloat16(output));
     tester_1.AddOutput<MLFloat16>("masks", {batch_size, num_sequence}, ToFloat16(masks));
 
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-    tester_1.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers_1;
+    execution_providers_1.push_back(DefaultCudaExecutionProvider());
+    tester_1.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers_1);
   }
 }
 
