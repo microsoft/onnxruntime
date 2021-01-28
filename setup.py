@@ -163,8 +163,6 @@ if platform.system() == 'Linux':
   libs.extend(['libonnxruntime_providers_dnnl.so'])
   libs.extend(['libonnxruntime_providers_tensorrt.so'])
   libs.extend(['libonnxruntime_providers_openvino.so'])
-  # OpenVINO libs
-  libs.extend(['libovep_ngraph.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   if nightly_build:
