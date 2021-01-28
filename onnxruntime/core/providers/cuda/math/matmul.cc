@@ -84,6 +84,7 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
 #ifdef USE_CUSPARSELT
 
 struct Sparse2x4WeightDescriptor {
+  int input_idx_;
   cusparseLtMatDescriptor_t mat_desc_;
 };
 
@@ -92,21 +93,29 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
   is_packed = false;
   // We only pack Matrix B just like CPU version
   // only if it is 2:4 pruned and only if A100 available
-  if (param.input_idx == 1 && param.Is2x4Format() && IsAmpereAvaiable()) {
-    if (!tensor.IsDataType<T>()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Wrong type for the initializer");
+  if (IsAmpereAvaiable()) {
+    if (param.input_idx == 1 && param.Is2x4Format()) {
+      if (!tensor.IsDataType<T>()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Wrong type for the initializer");
+      }
+
+      constexpr size_t data_type_size = sizeof(T);
+      constexpr auto cuda_type = ToCudaTypeEnum<T>::type;
+
+      const auto& shape = tensor.Shape();
+      if (!shape.NumDimensions() != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Can only handle 2 dim matrices");
+      }
+
+      const cusparseLtHandle_t* handle = CusparseLightHandle();
+      std::unique_ptr<Sparse2x4WeightDescriptor> desc = onnxruntime::make_unique<Sparse2x4WeightDescriptor>();
+      desc->input_idx_ = param.input_idx;
+      CUSPARSELT_RETURN_IF_ERROR(cusparseLtStructuredDescriptorInit(handle, &mat_B->mat_desc_, shape[0], shape[1],
+                                                                    shape.at(0), data_type_size, cuda_type,
+                                                                    CUSPARSE_ORDER_ROW, CUSPARSELT_SPARSITY_50_PERCENT));
+
+      is_packed = true;
     }
-    const auto& shape = tensor.Shape();
-    if (!shape.NumDimensions() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expecting a 2 dim matrix as a weight");
-    }
-    const cusparseLtHandle_t* handle = CusparseLightHandle();
-    std::unique_ptr<Sparse2x4WeightDescriptor> mat_B;
-    cudaDataType
-    cusparseLtStructuredDescriptorInit(handle, &mat_B->mat_desc_, shape.at(0), shape.at(1),
-                                       shape.at(0), sizeof(T), type, CUSPARSE_ORDER_ROW,
-                                       CUSPARSELT_SPARSITY_50_PERCENT);
-    // is_packed = GemmPackBFp32(Info(), tensor, trans_b_attr_, packed_b_, b_shape_);
   }
   return Status::OK();
 }
