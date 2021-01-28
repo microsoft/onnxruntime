@@ -192,7 +192,7 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
 }  // namespace
 
 namespace onnxruntime {
-/*
+
 TEST(ThreadPoolTest, TestParallelFor_0_Thread_NoTask) {
   TestParallelFor("TestParallelFor_0_Thread_NoTask", 0, 0);
 }
@@ -256,7 +256,7 @@ TEST(ThreadPoolTest, TestConcurrentParallelFor_1Thread_1Conc_8Tasks) {
 TEST(ThreadPoolTest, TestConcurrentParallelFor_1Thread_1Conc_1MTasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_1Thread_1Conc_1MTasks", 1, 1, 1000000);
 }
-*/
+
 TEST(ThreadPoolTest, TestConcurrentParallelFor_1Thread_4Conc_0Tasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_1Thread_4Conc_0Tasks", 1, 4, 0);
 }

@@ -473,25 +473,40 @@ struct Jobs {
   int size_ = 0;
   ::std::list<Job> jobs_;
   mutable OrtMutex mutex_;
-  void pushBack(const Job& job) {
+  void push(const Job& job) {
     ::std::lock_guard<OrtMutex> guard(mutex_);
-    jobs_.push_back(job);
+    if (size_ & 0x1) {
+      jobs_.push_back(job);
+    } else {
+      jobs_.push_front(job);
+    }
     size_++;
   }
-  void pushBack(Job&& job) {
+  void push(Job&& job) {
     ::std::lock_guard<OrtMutex> guard(mutex_);
-    jobs_.push_back(job);
+    if (size_ & 0x1) {
+      jobs_.push_back(job);
+    } else {
+      jobs_.push_front(job);
+    }
     size_++;
   }
-  Job popFront() {
+  Job pop() {
     ::std::lock_guard<OrtMutex> guard(mutex_);
     if (jobs_.empty()) {
       return {Idel, empty};
     } else {
-      Job job = std::move(jobs_.front());
-      jobs_.pop_front();
-      size_--;
-      return job;
+      if (size_ & 0x1) {
+        Job job = std::move(jobs_.front());
+        jobs_.pop_front();
+        size_--;
+        return job;
+      } else {
+        Job job = std::move(jobs_.back());
+        jobs_.pop_back();
+        size_--;
+        return job;
+      }
     }
   }
   bool hasJob() const {
@@ -506,7 +521,7 @@ struct ThreadPoolImpl {
       threads_.emplace_back(::std::thread([denormal_as_zero, this]() {
         SetDenormalAsZero(denormal_as_zero);
         while (alive_ || jobs_.hasJob()) {
-          Job job = std::move(jobs_.popFront());
+          Job job = std::move(jobs_.pop());
           if (job) {
             job.fn_();
             if (&(job.progress_) != &non_empty) job.progress_++;
@@ -534,7 +549,7 @@ struct ThreadPoolImpl {
     } else {
       JobFn jobFn = std::move(fn);
       Job job{jobFn, non_empty};
-      jobs_.pushBack(std::move(job));
+      jobs_.push(std::move(job));
     }
   }
   void ParallelFor(::std::ptrdiff_t laps, const Fn& fn) {
@@ -547,7 +562,7 @@ struct ThreadPoolImpl {
       for (::std::ptrdiff_t i = 0; i < branches; i++) {
         auto begin = block * i;
         auto end = block * i + block;
-        jobs_.pushBack({[fn, begin, end](){fn(begin, end);}, progress});
+        jobs_.push({[fn, begin, end](){fn(begin, end);}, progress});
       }
       fn(branches * block, laps);
       while (progress.load() < branches) {
@@ -567,7 +582,7 @@ struct ThreadPoolImpl {
       for (::std::ptrdiff_t i = 0; i < branches; i++) {
         auto begin = block * i;
         auto end = block * i + block;
-        jobs_.pushBack({[fn, begin, end]() {
+        jobs_.push({[fn, begin, end]() {
                           for (auto i = begin; i < end; i++) {
                             fn(i);
                           } }, progress});
