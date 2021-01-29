@@ -28,23 +28,23 @@ class AsyncExecutionProvider : public IExecutionProvider {
   Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
           std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  AsyncExecutionStream& GetAsyncStream(uint32_t i) const {
-    ORT_ENFORCE(i < streams_.size());
+ private:
+  AsyncExecutionStream& GetAsyncStream(int64_t i) const {
+    ORT_ENFORCE(gsl::narrow<size_t>(i) < streams_.size());
     return *streams_[i];
   }
 
-  AsyncExecutionEvent& GetAsyncEvent(uint32_t i) const {
-    ORT_ENFORCE(i < events_.size());
+  AsyncExecutionEvent& GetAsyncEvent(int64_t i) const {
+    ORT_ENFORCE(gsl::narrow<size_t>(i) < events_.size());
     return *events_[i];
   }
 
- private:
   std::vector<std::unique_ptr<AsyncExecutionStream>> streams_;
   std::vector<std::unique_ptr<AsyncExecutionEvent>> events_;
 
   enum {
     NumStreams = 3,
-    NumEvents = 10
+    NumEvents = 10,
   };
 
  public:
@@ -57,7 +57,7 @@ class AsyncExecutionProvider : public IExecutionProvider {
 
   enum : int64_t {
     EmptyStream = -1,
-    EmptyEvent = -1
+    EmptyEvent = -1,
   };
 };
 

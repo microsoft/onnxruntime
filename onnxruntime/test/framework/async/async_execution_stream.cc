@@ -37,7 +37,7 @@ void AsyncExecutionStream::ThreadProc() {
   while (!stop_) {
     std::unique_lock<std::mutex> lock(mutex_);
     kick_off_.wait(lock, [this] { return !tasks_.empty() || stop_; });
-    while (!tasks_.empty()) {
+    while (!tasks_.empty() && !stop_) {
       auto func = tasks_.front();
       tasks_.pop_front();
       bool empty = tasks_.empty();
