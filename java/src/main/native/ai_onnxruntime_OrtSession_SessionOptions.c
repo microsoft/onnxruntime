@@ -23,6 +23,8 @@
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "onnxruntime/core/providers/migraphx/migraphx_provider_factory.h"
 #include "onnxruntime/core/providers/acl/acl_provider_factory.h"
+#include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
+#include "onnxruntime/core/providers/rocm/rocm_provider_factory.h"
 #ifdef USE_DIRECTML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
 #endif
@@ -500,5 +502,39 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addACL
   #else
     (void)apiHandle;(void)handle;(void)useArena; // Parameters used when ACL is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ACL support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addCoreML
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCoreML
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint coreMLFlags) {
+    (void)jobj;
+  #ifdef USE_CORE_ML
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CoreML((OrtSessionOptions*) handle, (uint32_t) coreMLFlags));
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id, size_t hip_mem_limit);
+  #else
+    (void)apiHandle;(void)handle;(void)coreMLFlags; // Parameters used when CoreML is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with CoreML support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addROCM
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROCM
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID, jlong memLimit) {
+    (void)jobj;
+  #ifdef USE_ROCM
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ROCM((OrtSessionOptions*) handle, deviceID, (size_t) memLimit));
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id, size_t hip_mem_limit);
+  #else
+    (void)apiHandle;(void)handle;(void)deviceID;(void)memLimit; // Parameters used when ROCM is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ROCM support.");
   #endif
 }
