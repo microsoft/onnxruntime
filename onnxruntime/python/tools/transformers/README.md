@@ -224,9 +224,9 @@ profiler.py can be used to run profiling on a transformer model. It can help fig
 Examples commands:
 
 ```console
-python -m onnxruntime.transformers.profiler --model bert.onnx --batch_size 1 --sequence_length 128 --samples 1000 --dummy_inputs bert --thread_num 8 --kernel_time_only
-python -m onnxruntime.transformers.profiler --model bert.onnx --batch_size 1 --sequence_length 128 --samples 1000 --dummy_inputs gpt2 --use_gpu
-python -m onnxruntime.transformers.profiler --model longformer.onnx --batch_size 1 --sequence_length 4096 --global_length 8 --samples 1000 --thread_num 8 --dummy_inputs longformer --use_gpu
+python -m onnxruntime.transformers.profiler --model bert.onnx --batch_size 8 --sequence_length 128 --samples 1000 --dummy_inputs bert --thread_num 8 --kernel_time_only
+python -m onnxruntime.transformers.profiler --model gpt2.onnx --batch_size 1 --sequence_length 1 --past_sequence_length 128 --samples 1000 --dummy_inputs gpt2 --use_gpu
+python -m onnxruntime.transformers.profiler --model longformer.onnx --batch_size 1 --sequence_length 4096 --global_length 8 --samples 1000 --dummy_inputs longformer --use_gpu
 ```
 
 Result file like onnxruntime_profile__<date_time>.json will be output to current directory. Summary of nodes, top expensive nodes and results grouped by operator type will be printed to console.
