@@ -140,7 +140,7 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateModel)
   (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) override;
   STDMETHOD(CreateEmptyModel)
-  (_Outptr_ IModel** out) override;
+  (_In_ int64_t opset, _Outptr_ IModel** out) override;
   STDMETHOD(CreateEngineBuilder)
   (IEngineBuilder** engine_builder) override;
   STDMETHOD(EnableDebugOutput)

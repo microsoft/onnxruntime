@@ -161,10 +161,10 @@ static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<ONNX_NAMESP
   return S_OK;
 }
 
-OrtStatus* OrtModel::CreateEmptyModel(OrtModel** model) {
+OrtStatus* OrtModel::CreateEmptyModel(int64_t opset, OrtModel** model) {
   auto model_proto = std::unique_ptr<ONNX_NAMESPACE::ModelProto>(new ONNX_NAMESPACE::ModelProto());
   auto opsetimportproto = model_proto->add_opset_import();
-  opsetimportproto->set_version(11);
+  opsetimportproto->set_version(opset);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   return OrtModel::CreateOrtModelFromProto(std::move(model_proto), model);
 }
@@ -463,9 +463,9 @@ ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, const OrtModel* model) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::CreateModel, OrtModel** out) {
+ORT_API_STATUS_IMPL(winmla::CreateModel, int64_t opset, OrtModel** out) {
   API_IMPL_BEGIN
-  return OrtModel::CreateEmptyModel(out);
+  return OrtModel::CreateEmptyModel(opset, out);
   API_IMPL_END
 }
 
@@ -581,20 +581,21 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOutput, _In_ OrtModel* model, _In_ const cha
   API_IMPL_END
 }
 
-static const onnx::OpSchema* GetSchema(const char* const op_type, const char* const op_domain) {
+static const onnx::OpSchema* GetSchema(const char* const op_type, int64_t opset, const char* const op_domain) {
   std::string domain = onnx::ONNX_DOMAIN;
   if (op_domain) {
     domain = op_domain;
   }
 
   auto registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-  return registry->GetSchema(op_type, 12, domain);
+  return registry->GetSchema(op_type, static_cast<int>(opset), domain);
 }
 
 ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
                     _In_ OrtModel* model,
                     _In_ const char* const op_type,
                     _In_ const char* const op_name,
+                    _In_ int64_t opset, 
                     _In_ const char* const op_domain,
                     _In_ const char* const* input_names, _In_ size_t num_inputs,
                     _In_ const char* const* output_names, _In_ size_t num_outputs,
@@ -607,7 +608,7 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
   node.set_name(op_name);
   node.set_domain(op_domain);
 
-  auto schema = GetSchema(op_type, op_domain);
+  auto schema = GetSchema(op_type, opset, op_domain);
   auto all_attributes = schema->attributes();
 
   for (size_t i = 0; i < num_attributes; i++) {
@@ -636,9 +637,6 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
         break;
       }
       case onnx::AttributeProto_AttributeType_INTS: {
-        if (tensor->Shape().Size() != 1) {
-          return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Expected a single int64 value!");
-        }
         auto raw_data = tensor->DataRaw();
         for (int j = 0; j < tensor->Shape().Size(); j++) {
           attr->add_ints(*(reinterpret_cast<const int64_t*>(raw_data)+j));
@@ -646,9 +644,6 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
         break;
       }
       case onnx::AttributeProto_AttributeType_FLOATS: {
-        if (tensor->SizeInBytes() != sizeof(float)) {
-          return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Expected a single float value!");
-        }
         auto raw_data = tensor->DataRaw();
         for (int j = 0; j < tensor->Shape().Size(); j++) {
           attr->add_floats(*(reinterpret_cast<const float*>(raw_data) + j));
@@ -690,6 +685,28 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(winmla::ModelGetOpsetVersion,
+    _In_ OrtModel* model,
+    _In_ const char* const domain,
+    _Out_ int32_t* version) {
+  API_IMPL_BEGIN
+  auto model_proto = model->UseModelProto();
+
+  *version = -1;
+  auto size = static_cast<size_t>(model_proto->opset_import_size());
+  for (int i = 0; i < size; i++) {
+    auto& current_opset = model_proto->opset_import(i);
+    auto& current_domain = current_opset.domain();
+    if (_strnicmp(domain, current_domain.c_str(), current_domain.size()) == 0) {
+      *version = static_cast<int32_t>(current_opset.version());
+      break;
+    }
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void, winmla::ReleaseModel, OrtModel* ptr) {
   delete ptr;
 }
@@ -724,33 +741,33 @@ ORT_API_STATUS_IMPL(winmla::CreateMapTypeInfo, _Out_ OrtTypeInfo** type_info) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::OperatorGetNumInputs, _In_ const char* const op_type, _In_ const char* const op_domain, _Out_ size_t* num_inputs) {
+ORT_API_STATUS_IMPL(winmla::OperatorGetNumInputs, _In_ const char* const op_type, _In_ int64_t opset, _In_ const char* const op_domain, _Out_ size_t* num_inputs) {
   API_IMPL_BEGIN
-  auto schema = GetSchema(op_type, op_domain);
+  auto schema = GetSchema(op_type, opset, op_domain);
   *num_inputs = schema->inputs().size();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::OperatorGetInputName, _In_ const char* const op_type, _In_ const char* const op_domain, _In_ size_t index, _Out_ const char** const name) {
+ORT_API_STATUS_IMPL(winmla::OperatorGetInputName, _In_ const char* const op_type, _In_ int64_t opset, _In_ const char* const op_domain, _In_ size_t index, _Out_ const char** const name) {
   API_IMPL_BEGIN
-  auto schema = GetSchema(op_type, op_domain);
+  auto schema = GetSchema(op_type, opset, op_domain);
   *name = schema->inputs().at(index).GetName().c_str();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::OperatorGetNumOutputs, _In_ const char* const op_type, _In_ const char* const op_domain, _Out_ size_t* num_outputs) {
+ORT_API_STATUS_IMPL(winmla::OperatorGetNumOutputs, _In_ const char* const op_type, _In_ int64_t opset, _In_ const char* const op_domain, _Out_ size_t* num_outputs) {
   API_IMPL_BEGIN
-  auto schema = GetSchema(op_type, op_domain);
+  auto schema = GetSchema(op_type, opset, op_domain);
   *num_outputs = schema->outputs().size();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::OperatorGetOutputName, _In_ const char* const op_type, _In_ const char* const op_domain, _In_ size_t index, _Out_ const char** const name) {
+ORT_API_STATUS_IMPL(winmla::OperatorGetOutputName, _In_ const char* const op_type, _In_ int64_t opset, _In_ const char* const op_domain, _In_ size_t index, _Out_ const char** const name) {
   API_IMPL_BEGIN
-  auto schema = GetSchema(op_type, op_domain);
+  auto schema = GetSchema(op_type, opset, op_domain);
   *name = schema->outputs().at(index).GetName().c_str();
   return nullptr;
   API_IMPL_END

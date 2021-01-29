@@ -115,7 +115,6 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_facto
 
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelGetVersion(ort_model, &version_),
                           engine_factory->UseOrtApi());
-
   return S_OK;
 }
 
@@ -269,17 +268,21 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   auto ort_api = engine_factory_->UseOrtApi();
 
+  int32_t onnx_opset_version;
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelGetOpsetVersion(ort_model_.get(), op_domain, &onnx_opset_version),
+                          ort_api);
   size_t input_count;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetNumInputs(op_type, op_domain, &input_count),
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetNumInputs(op_type, onnx_opset_version, op_domain, &input_count),
                            ort_api);
+
   size_t output_count;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetNumOutputs(op_type, op_domain, & output_count),
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetNumOutputs(op_type, onnx_opset_version, op_domain, &output_count),
                            ort_api);
 
   std::vector<const char*> input_names(input_count);
   for (size_t i = 0; i < input_count; i++) {
     const char* name;
-    RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetInputName(op_type, op_domain, i, &name),
+    RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetInputName(op_type, onnx_opset_version, op_domain, i, &name),
                             ort_api);
 
     const char* actual_name;
@@ -292,7 +295,7 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   std::vector<const char*> output_names(output_count);
   for (size_t i = 0; i < output_count; i++) {
     const char* name;
-    RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetOutputName(op_type, op_domain, i, &name),
+    RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OperatorGetOutputName(op_type, onnx_opset_version, op_domain, i, &name),
                              ort_api);
     const char* actual_name = nullptr;
     if (S_OK == GetValue(name, op_output_names, actual_output_names, num_outputs, &actual_name)) {
@@ -306,7 +309,7 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   }
 
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddOperator(
-    ort_model_.get(), op_type, op_name, op_domain, input_names.data(), input_count, output_names.data(), output_count, op_attribute_names, attributes.data(), num_attributes),
+    ort_model_.get(), op_type, op_name, onnx_opset_version, op_domain, input_names.data(), input_count, output_names.data(), output_count, op_attribute_names, attributes.data(), num_attributes),
                           engine_factory_->UseOrtApi());
   return S_OK;
 }

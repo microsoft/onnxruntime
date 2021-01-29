@@ -227,7 +227,7 @@ IEngineFactory : IUnknown {
   (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
 
   STDMETHOD(CreateEmptyModel)
-  (_Outptr_ IModel * *out) PURE;
+  (_In_ int64_t opset, _Outptr_ IModel * *out) PURE;
 
   STDMETHOD(CreateEngineBuilder)
   (IEngineBuilder * *engine_builder) PURE;

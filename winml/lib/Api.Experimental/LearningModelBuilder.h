@@ -7,7 +7,7 @@
 namespace WINML_EXPERIMENTALP {
 
 struct LearningModelBuilder : LearningModelBuilderT<LearningModelBuilder> {
-  LearningModelBuilder();
+  LearningModelBuilder(int64_t opset);
   LearningModelBuilder(LearningModelBuilder& builder);
 
   winml_experimental::LearningModelInputs Inputs();
@@ -16,7 +16,7 @@ struct LearningModelBuilder : LearningModelBuilderT<LearningModelBuilder> {
   winml::LearningModel CreateModel();
   void Save(const winrt::hstring& file_name);
 
-  static winml_experimental::LearningModelBuilder Create();
+  static winml_experimental::LearningModelBuilder Create(int32_t opset);
 
   static winml::TensorFeatureDescriptor CreateTensorFeatureDescriptor(
       hstring const& name,

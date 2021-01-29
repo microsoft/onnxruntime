@@ -89,7 +89,7 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     LearningModelOperatorSet Operators { get; };
 
     //! Create a builder.
-    static LearningModelBuilder Create();
+    static LearningModelBuilder Create(Int32 opset);
 
     //! Creates a TensorFeatureDescriptor.. this should be a constructor on the TFD
     //TensorFeatureDescriptor(String name, String description, TensorKind kind, Int64[] shape);

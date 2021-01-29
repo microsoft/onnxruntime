@@ -438,7 +438,7 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
   }
     
   auto model = 
-      LearningModelBuilder::Create()
+      LearningModelBuilder::Create(13)
               .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Int64, scalar_shape))
               .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", kind, output_shape))
               .Operators().Add(window_operator)
@@ -477,7 +477,7 @@ static void DiscreteFourierTransform(bool is_onesided = false) {
   output_shape[1] = is_onesided ? (1 + (shape[1] >> 1)) : shape[1];
    
   auto model =
-      LearningModelBuilder::Create()
+      LearningModelBuilder::Create(13)
         .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
         .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
         .Operators().Add(Operator(L"DFT", L"dft0", MS_DOMAIN)
@@ -564,7 +564,7 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
   auto dft_length = TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)});
   
   auto model =
-      LearningModelBuilder::Create()
+      LearningModelBuilder::Create(13)
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
               L"Input.TimeSignal", L"The input time domain signal",
               TensorKind::Float, input_shape))
@@ -636,7 +636,7 @@ static void MelSpectrogramOnThreeToneSignal(
   std::vector<int64_t> mel_spectrogram_shape = {INT64(batch_size), 1, INT64(n_dfts), INT64(n_mel_bins)};
 
   auto builder =
-    LearningModelBuilder::Create()
+    LearningModelBuilder::Create(11)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, signal_shape))
       .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
       .Operators().Add(Operator(L"HannWindow", L"hann0", MS_DOMAIN)
@@ -648,28 +648,11 @@ static void MelSpectrogramOnThreeToneSignal(
         .SetConstant(L"frame_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
         .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {INT64(hop_size)}))
         .SetOutput(L"output", L"stft_output"))
-      .Operators().Add(Operator(L"Slice", L"real_slice")
+      .Operators().Add(Operator(L"ReduceSumSquare", L"reduce_sum_square0")
         .SetInput(L"data", L"stft_output")
-        .SetConstant(L"starts", TensorInt32Bit::CreateFromArray({4}, {0, 0, 0, 0}))
-        .SetConstant(L"ends",   TensorInt32Bit::CreateFromArray({4}, {INT_MAX, INT_MAX, INT_MAX, 1}))
-        .SetOutput(L"output", L"reals"))
-      .Operators().Add(Operator(L"Slice", L"complex_slice")
-        .SetInput(L"data", L"stft_output")
-        .SetConstant(L"starts", TensorInt32Bit::CreateFromArray({4}, {0, 0, 0, 1}))
-        .SetConstant(L"ends", TensorInt32Bit::CreateFromArray({4}, {INT_MAX, INT_MAX, INT_MAX, 2}))
-        .SetOutput(L"output", L"imaginaries"))
-      .Operators().Add(Operator(L"Mul", L"real_squared")
-        .SetInput(L"A", L"reals")
-        .SetInput(L"B", L"reals")
-        .SetOutput(L"C", L"reals_squared"))
-      .Operators().Add(Operator(L"Mul", L"complex_squared")
-        .SetInput(L"A", L"imaginaries")
-        .SetInput(L"B", L"imaginaries")
-        .SetOutput(L"C", L"imaginaries_squared"))
-      .Operators().Add(Operator(L"Add", L"add0")
-        .SetInput(L"A", L"reals_squared")
-        .SetInput(L"B", L"imaginaries_squared")
-        .SetOutput(L"C", L"magnitude_squared"))
+        .SetAttribute(L"axes", TensorInt64Bit::CreateFromArray({1}, {3}))
+        .SetAttribute(L"keepdims", TensorInt64Bit::CreateFromArray({}, {0}))
+        .SetOutput(L"reduced", L"magnitude_squared"))
       .Operators().Add(Operator(L"Div", L"div0")
         .SetInput(L"A", L"magnitude_squared")
         .SetConstant(L"B", TensorFloat::CreateFromArray({}, {static_cast<float>(dft_size)}))
@@ -735,9 +718,37 @@ static void MelSpectrogramOnThreeToneSignal(
   printf("\n");
 }
 
+static void StandardDeviationNormalization() {
+  
+  int64_t height = 256;
+  int64_t width = 256;
+  int64_t channels = 3;
+  std::vector<int64_t> shape = {1, height, width, channels};  
+  LearningModelBuilder::Create(13)
+    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, shape))
+    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", L"The mean.", TensorKind::Float, {channels}))
+    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"StdDevs", L"The stddev.", TensorKind::Float, {channels}))
+    .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, shape))
+    .Operators().Add(Operator(L"Sub", L"Sub0")
+                       .SetInput(L"A", L"Input")
+                       .SetInput(L"B", L"Means")
+                       .SetOutput(L"C", L"Sub0Output"))
+    .Operators().Add(Operator(L"Div", L"Div0")
+                       .SetInput(L"A", L"Sub0Output")
+                       .SetInput(L"B", L"StdDevs")
+                       .SetOutput(L"C", L"Div0Output"))
+    .Operators().Add(Operator(L"Transpose", L"Transpose1")
+                       .SetInput(L"data", L"Div0Output")
+                       .SetAttribute(L"perm", TensorInt64Bit::CreateFromArray({4}, {0,3,1,2}))
+                       .SetOutput(L"transposed", L"Output"))
+    .Save(L"StandardDeviationNormalization.onnx");
+  //.CreateModel();
+}
 
 static void ModelBuilding_Gemm()
 {
+  StandardDeviationNormalization();
+
   std::vector<int64_t> shape = {3, 3};
   std::vector<float> x =
   {
@@ -746,7 +757,7 @@ static void ModelBuilding_Gemm()
     0, 0, 1
   };
   auto model =
-    LearningModelBuilder::Create()
+    LearningModelBuilder::Create(13)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"input_a", L"the a input", TensorKind::Float, shape))
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"input_b", L"the b input", TensorKind::Float, shape))
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"input_c", L"the c input", TensorKind::Float, shape))
@@ -765,7 +776,7 @@ static void ModelBuilding_DynamicMatmul()
   std::vector<int64_t> b_shape = {129, 1024};
 
   auto model =
-      LearningModelBuilder::Create()
+      LearningModelBuilder::Create(13)
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", L"The input1 matrix", TensorKind::Float, a_shape))
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputB", L"The input2 matrix", TensorKind::Float, b_shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, {a_shape[0], b_shape[1]}))
@@ -802,7 +813,7 @@ static void ModelBuilding_ConstantMatmul()
   std::vector<int64_t> b_shape = {129, 1024};
 
   auto model =
-    LearningModelBuilder::Create()
+    LearningModelBuilder::Create(13)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", L"The input1 matrix", TensorKind::Float, a_shape))
       .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, {a_shape[0], b_shape[1]}))
       .Operators().Add(Operator(L"MatMul", L"matmul0")
@@ -838,7 +849,7 @@ static void ModelBuilding_DiscreteFourierTransformInverseIdentity()
   std::vector<int64_t> output_shape = {1, shape[1], 2};
 
   auto model =
-      LearningModelBuilder::Create()
+      LearningModelBuilder::Create(13)
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
           .Operators().Add(Operator(L"DFT", L"dft0", MS_DOMAIN)

@@ -85,7 +85,7 @@ ORT_API_STATUS(SessionGetInputRequiredDeviceId, _In_ OrtSession* session, _In_ c
 ORT_API_STATUS(CreateTensorTypeInfo, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type, _Out_ OrtTypeInfo** type_info);
 ORT_API_STATUS(CreateSequenceTypeInfo, _Out_ OrtTypeInfo** type_info);
 ORT_API_STATUS(CreateMapTypeInfo, _Out_ OrtTypeInfo** type_info);
-ORT_API_STATUS(CreateModel, _Outptr_ OrtModel** out);
+ORT_API_STATUS(CreateModel, _In_ int64_t opset, _Outptr_ OrtModel** out);
 ORT_API_STATUS(ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info);
 ORT_API_STATUS(ModelAddConstantInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value);
 ORT_API_STATUS(ModelAddOutput, _In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info);
@@ -93,29 +93,36 @@ ORT_API_STATUS(ModelAddOperator,
     _In_ OrtModel* model,
     _In_ const char* const op_type,
     _In_ const char* const op_name,
+    _In_ int64_t opset,
     _In_ const char* const op_domain,
     _In_ const char* const* input_names, _In_ size_t num_inputs,
     _In_ const char* const* output_names, _In_ size_t num_outputs,
     _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes);
 
+ORT_API_STATUS(ModelGetOpsetVersion, _In_ OrtModel* model, _In_ const char* const domain, _Out_ int32_t* version);
+
 ORT_API_STATUS(OperatorGetNumInputs,
       _In_ const char* const op_type,
+      _In_ int64_t opset,
       _In_ const char* const op_domain, 
       _Out_ size_t* num_inputs);
 
 ORT_API_STATUS(OperatorGetInputName,
       _In_ const char* const op_type,
+      _In_ int64_t opset,
       _In_ const char* const op_domain,
       _In_ size_t index,
       _Out_ const char** const name);
 
 ORT_API_STATUS(OperatorGetNumOutputs,
                _In_ const char* const op_type,
+               _In_ int64_t opset,
                _In_ const char* const op_domain,
                _Out_ size_t* num_inputs);
 
 ORT_API_STATUS(OperatorGetOutputName,
                _In_ const char* const op_type,
+               _In_ int64_t opset,
                _In_ const char* const op_domain,
                _In_ size_t index,
                _Out_ const char** const name);

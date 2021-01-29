@@ -10,9 +10,9 @@
 
 namespace WINML_EXPERIMENTALP {
 
-LearningModelBuilder::LearningModelBuilder() : inputs_(nullptr), outputs_(nullptr), operators_(nullptr), inert_session_(nullptr) {
+LearningModelBuilder::LearningModelBuilder(int64_t opset) : inputs_(nullptr), outputs_(nullptr), operators_(nullptr), inert_session_(nullptr) {
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
-  WINML_THROW_IF_FAILED(engine_factory_->CreateEmptyModel(model_.put()));
+  WINML_THROW_IF_FAILED(engine_factory_->CreateEmptyModel(opset, model_.put()));
   inputs_ = winrt::make<winml_experimentalp::LearningModelInputs>(*this);
   outputs_ = winrt::make<winml_experimentalp::LearningModelOutputs>(*this);
   operators_ = winrt::make<winml_experimentalp::LearningModelOperatorSet>(*this);
@@ -53,8 +53,8 @@ void LearningModelBuilder::Save(const winrt::hstring& file_name) {
   model_->SaveModel(file_name.c_str(), file_name.size());
 }
 
-winml_experimental::LearningModelBuilder LearningModelBuilder::Create() {
-  return winrt::make<LearningModelBuilder>();
+winml_experimental::LearningModelBuilder LearningModelBuilder::Create(int32_t opset) {
+  return winrt::make<LearningModelBuilder>(static_cast<int64_t>(opset));
 }
 
 winml::TensorFeatureDescriptor LearningModelBuilder::CreateTensorFeatureDescriptor(

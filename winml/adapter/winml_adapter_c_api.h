@@ -436,7 +436,7 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* CreateSequenceTypeInfo)(_Out_ OrtTypeInfo** type_info)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* CreateMapTypeInfo)(_Out_ OrtTypeInfo** type_info)NO_EXCEPTION;
 
-  OrtStatus*(ORT_API_CALL* CreateModel)(_Outptr_ OrtModel** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateModel)(_In_ int64_t opset, _Outptr_ OrtModel** out)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* ModelAddInput)(_In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* ModelAddConstantInput)(_In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* ModelAddOutput)(_In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info)NO_EXCEPTION;
@@ -444,18 +444,23 @@ struct WinmlAdapterApi {
       _In_ OrtModel* model,
       _In_ const char* const op_type,
       _In_ const char* const op_name,
+      _In_ int64_t opset,
       _In_ const char* const op_domain,
       _In_ const char* const* input_names, _In_ size_t num_inputs,
       _In_ const char* const* output_names, _In_ size_t num_outputs,
       _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes)NO_EXCEPTION;
 
+  OrtStatus*(ORT_API_CALL* ModelGetOpsetVersion)(_In_ OrtModel* model, _In_ const char* const domain, _Out_ int32_t* version)NO_EXCEPTION;
+
   OrtStatus*(ORT_API_CALL* OperatorGetNumInputs)(
       _In_ const char* const op_type,
+      _In_ int64_t opset,
       _In_ const char* const op_domain, 
       _Out_ size_t* num_inputs)NO_EXCEPTION;
 
   OrtStatus*(ORT_API_CALL* OperatorGetInputName)(
       _In_ const char* const op_type,
+      _In_ int64_t opset,
       _In_ const char* const op_domain,
       _In_ size_t index,
       _Out_ const char** const name
@@ -463,11 +468,13 @@ struct WinmlAdapterApi {
 
   OrtStatus*(ORT_API_CALL* OperatorGetNumOutputs)(
       _In_ const char* const op_type,
+      _In_ int64_t opset,
       _In_ const char* const op_domain,
       _Out_ size_t* num_inputs)NO_EXCEPTION;
 
   OrtStatus*(ORT_API_CALL* OperatorGetOutputName)(
       _In_ const char* const op_type,
+      _In_ int64_t opset,
       _In_ const char* const op_domain,
       _In_ size_t index,
       _Out_ const char** const name)NO_EXCEPTION;
