@@ -34,9 +34,9 @@ __global__ void NonZeroCountEachBlockKernel(const InputT* x, int64_t x_size, int
   __shared__ typename BlockReduceT::TempStorage temp_storage;
 
   int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
-  const cub::CastOp<bool> cast_to_bool;
+  // const cub::CastOp<bool> cast_to_bool; not supported on amd hipcub
   int nz = 0;
-  if (index < x_size && cast_to_bool(x[index])) ++nz;
+  if (index < x_size && bool(x[index])) ++nz;
   int count = BlockReduceT(temp_storage).Sum(nz);
 
   if (threadIdx.x == 0) {
@@ -52,15 +52,15 @@ __global__ void NonZeroOutputPositionsKernel(
   __shared__ typename BlockScanT::TempStorage temp_storage;
 
   int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
-  const cub::CastOp<bool> cast_to_bool;
+  // const cub::CastOp<bool> cast_to_bool; not supported on amd hipcub
   int nz = 0;
-  if (index < x_size && cast_to_bool(x[index])) ++nz;
+  if (index < x_size && bool(x[index])) ++nz;
   int pos_in_block = 0;
   BlockScanT(temp_storage).InclusiveSum(nz, pos_in_block);
 
   int result_position = ((blockIdx.x == 0) ? 0 : prefix_counts[blockIdx.x - 1]) + pos_in_block - nz;
 
-  if (index < x_size && cast_to_bool(x[index])) {
+  if (index < x_size && bool(x[index])) {
     int remain = (int)index, dim = 0;
     for (int axis = 0, rp = result_position; axis < x_rank; ++axis, rp += nonzero_elements) {
       x_strides[axis].divmod(remain, dim, remain);
