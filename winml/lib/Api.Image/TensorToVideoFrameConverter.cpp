@@ -597,10 +597,10 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
 }
 
 void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
-    ID3D12Resource* input_tensor,
-    size_t buffer_size_in_bytes,
-    _winml::D3DDeviceCache& device_cache,
-    const std::vector<wss::IBuffer>& buffers) {
+    _In_ ID3D12Resource* input_tensor,
+    _In_ size_t buffer_size_in_bytes,
+    _In_ _winml::D3DDeviceCache& device_cache,
+    _Inout_ const std::vector<wss::IBuffer>& buffers) {
   assert(input_tensor != nullptr);
 
   // TODO: Make an allocator for readback heaps
