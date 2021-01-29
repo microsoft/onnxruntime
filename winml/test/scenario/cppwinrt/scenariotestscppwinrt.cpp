@@ -817,6 +817,7 @@ static void Scenario22ImageBindingAsCPUTensor() {
   uint32_t height = softwareBitmap.PixelHeight();
   uint32_t width = softwareBitmap.PixelWidth();
   for (UINT32 i = 0; i < size - 2; i += 4) {
+    // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
     UINT32 pixelInd = i / 4;
     pCPUTensor[pixelInd] = (float)pData[i];
     pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
@@ -888,6 +889,7 @@ static void Scenario22ImageBindingAsGPUTensor() {
   uint32_t height = softwareBitmap.PixelHeight();
   uint32_t width = softwareBitmap.PixelWidth();
   for (UINT32 i = 0; i < size - 2; i += 4) {
+    // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
     UINT32 pixelInd = i / 4;
     pCPUTensor[pixelInd] = (FLOAT)pData[i];
     pCPUTensor[(height * width) + pixelInd] = (FLOAT)pData[i + 1];
@@ -1495,6 +1497,7 @@ static void BindMultipleCPUBuffersAsInputs(LearningModelDeviceKind kind) {
   blue_byteaccess->GetBuffer(reinterpret_cast<BYTE**>(&blue_data), &frame_size);
 
   for (UINT32 i = 0; i < size - 2 && i / 4 < frame_size; i += 4) {
+    // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
     UINT32 pixelInd = i / 4;
     red_data[pixelInd] = (float)data[i];
     green_data[pixelInd] = (float)data[i + 1];

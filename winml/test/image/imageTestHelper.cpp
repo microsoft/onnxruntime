@@ -52,6 +52,7 @@ namespace ImageTestHelper {
         com_ptr<ITensorNative> itn = tf.as<ITensorNative>();
         itn->GetBuffer(reinterpret_cast<BYTE**>(&pCPUTensor), &uCapacity);
         if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat)) {
+            // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
             for (UINT32 i = 0; i < size - 2; i += 4) {
                 UINT32 pixelInd = i / 4;
                 pCPUTensor[pixelInd] = (float)pData[i];
@@ -98,6 +99,7 @@ namespace ImageTestHelper {
         uint32_t height = softwareBitmap.PixelHeight();
         uint32_t width = softwareBitmap.PixelWidth();
         if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat)) {
+            // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
             for (UINT32 i = 0; i < size - 2; i += 4) {
                 UINT32 pixelInd = i / 4;
                 pCPUTensor[pixelInd] = (float)pData[i];
