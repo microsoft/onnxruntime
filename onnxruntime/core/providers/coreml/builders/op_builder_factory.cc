@@ -25,6 +25,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateActivationOpBuilder("Relu", op_registrations);
   }
 
+  {  // Transpose
+    CreateTransposeOpBuilder("Transpose", op_registrations);
+  }
+
   return op_registrations;
 }
 

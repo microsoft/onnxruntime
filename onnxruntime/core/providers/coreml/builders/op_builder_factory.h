@@ -19,6 +19,7 @@ struct OpBuilderRegistrations {
 const std::unordered_map<std::string, const IOpBuilder*>& GetOpBuilders();
 
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 

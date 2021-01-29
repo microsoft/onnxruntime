@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <core/common/status.h>
+
 namespace onnxruntime {
 
 class GraphViewer;
@@ -13,6 +15,8 @@ class Logger;
 }
 
 namespace coreml {
+
+common::Status GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape);
 
 // TODO, move this to shared_library
 bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logger);
