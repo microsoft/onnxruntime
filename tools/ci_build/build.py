@@ -770,9 +770,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                            "ON" if args.use_openvino.startswith("HETERO") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
                        "-Donnxruntime_USE_OPENVINO_MULTI=" + (
-                           "ON" if args.use_openvino.startswith("MULTI") else "OFF"),
-                       "-Donnxruntime_USE_OPENVINO_BINARY=" + (
-                           "ON" if args.use_openvino else "OFF")]
+                           "ON" if args.use_openvino.startswith("MULTI") else "OFF")]
 
     # TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
