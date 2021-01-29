@@ -66,11 +66,14 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
 }
 
 bool BaseOpBuilder::HasSupportedInputs(const Node& node, const logging::Logger& logger) const {
-  // We do not support unknown(null) input shape
+  std::string node_name = "Node [";
+  node_name += node.Name();
+  node_name += "] type [";
+  node_name += node.OpType();
+  node_name += "]";
+
   for (const auto* input : node.InputDefs()) {
-    if (!input->Shape()) {
-      LOGS(logger, VERBOSE) << "Node [" << node.Name() << "] type [" << node.OpType()
-                            << "] Input [" << input->Name() << "] has no shape";
+    if (!IsInputSupported(*input, node_name, logger)) {
       return false;
     }
   }

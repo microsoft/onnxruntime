@@ -56,7 +56,7 @@ class Model {
 
   OrtMutex mutex_;
 
-  Model(const std::string& path, const logging::Logger& logger);
+  Model(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags);
   onnxruntime::common::Status LoadModel();
 
   void SetInputOutputInfo(std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info) {

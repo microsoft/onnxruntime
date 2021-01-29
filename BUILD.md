@@ -339,7 +339,7 @@ Note that DNNL is built as a [shared provider library](#Execution-Provider-Share
 
 To build for Intel GPU, replace dnnl_opencl_root with the path of the Intel SDK for OpenCL Applications.
 
-##### Windows 
+##### Windows
 
 `.\build.bat --use_dnnl --dnnl_gpu_runtime ocl --dnnl_opencl_root "c:\program files (x86)\intelswtools\sw_dev_tools\opencl\sdk"`
 
@@ -360,7 +360,7 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
    Follow [documentation](https://docs.openvinotoolkit.org/2021.2/index.html) for detailed instructions.
 
-  *2021.2 is the recommended OpenVINO version. [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is minimal OpenVINO version requirement.*
+  *2021.2 is the recommended OpenVINO version. [OpenVINO 2020.3](https://docs.openvinotoolkit.org/2020.3/index.html) is minimal OpenVINO version requirement.*
   *The minimum ubuntu version to support 2021.2 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:

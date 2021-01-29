@@ -22,36 +22,25 @@ namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
-static std::string System32Path() {
-  std::string system32_path;
-  system32_path.reserve(MAX_PATH);
-  auto size_system32_path = GetSystemDirectoryA(system32_path.data(), MAX_PATH);
-  FAIL_FAST_IF(size_system32_path == 0);
-  return system32_path;
-}
+static std::string CurrentModulePath() {
+  char path[MAX_PATH];
+  FAIL_FAST_IF(0 == GetModuleFileNameA((HINSTANCE)&__ImageBase, path, _countof(path)));
 
-static bool IsCurrentModuleInPath(const std::string& path) {
-  std::string current_module_path;
-  current_module_path.reserve(MAX_PATH);
-  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path.data(), MAX_PATH);
-  FAIL_FAST_IF(size_module_path == 0);
-  return _strnicmp(path.c_str(), current_module_path.c_str(), path.size()) == 0;
+  char absolute_path[MAX_PATH];
+  char* name;
+  FAIL_FAST_IF(0 == GetFullPathNameA(path, _countof(path), absolute_path, &name));
+
+  auto idx = std::distance(absolute_path, name);
+  auto out_path = std::string(absolute_path);
+  out_path.resize(idx);
+
+  return out_path;
 }
 
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
-  std::string directml_dll = "directml.dll";
-  DWORD flags = 0; 
-#ifdef BUILD_INBOX 
-  auto system32_path = System32Path();
-  if (IsCurrentModuleInPath(system32_path))
-  {
-    flags |= LOAD_LIBRARY_SEARCH_SYSTEM32;
-    directml_dll = system32_path + "\\" + directml_dll;
-  }
-#endif
-
   // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
-  wil::unique_hmodule dmlDll(LoadLibraryExA(directml_dll.c_str(), nullptr, flags));
+  auto directml_dll = CurrentModulePath() + "\\directml.dll";
+  wil::unique_hmodule dmlDll(LoadLibraryExA(directml_dll.c_str(), nullptr, 0));
   THROW_LAST_ERROR_IF(!dmlDll);
 
   auto dmlCreateDevice1Fn = reinterpret_cast<decltype(&DMLCreateDevice1)>(
@@ -86,7 +75,7 @@ void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* f
 #endif  // USE_DML
 
 ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
-                    ID3D12Device* d3d_device, ID3D12CommandQueue* queue, bool metacommands_enabled) {
+                    _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* queue, bool metacommands_enabled) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   auto dml_device = CreateDmlDevice(d3d_device);
