@@ -195,6 +195,8 @@ ORT_API_STATUS_IMPL(winmla::CreateCustomRegistry, _Out_ IMLOperatorRegistry** re
 #ifdef USE_DML
   auto impl = wil::MakeOrThrow<winmla::AbiCustomRegistryImpl>();
   *registry = impl.Detach();
+#else
+  *registry = nullptr;
 #endif  // USE_DML
   return nullptr;
   API_IMPL_END
