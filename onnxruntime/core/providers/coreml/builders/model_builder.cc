@@ -8,6 +8,7 @@
 #include "helper.h"
 #include "op_builder_factory.h"
 
+#include "core/providers/common.h"
 #include "core/providers/coreml/model/model.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
