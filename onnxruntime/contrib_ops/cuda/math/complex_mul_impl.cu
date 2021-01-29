@@ -127,6 +127,19 @@ void ComplexMul_Impl(
         output_rank_or_simple_broadcast,
         *lhs_padded_strides,
         lhs_data,
+        nullptr,
+        rhs_data,
+        *fdm_output_strides,
+        output_data,
+        N,
+        lhs_size,
+        rhs_size,
+        is_conj);
+else if (rhs_padded_strides && rhs_padded_strides->Size())
+    _ElementWiseWithStrideTwo<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        output_rank_or_simple_broadcast,
+        nullptr,
+        lhs_data,
         *rhs_padded_strides,
         rhs_data,
         *fdm_output_strides,
@@ -136,11 +149,11 @@ void ComplexMul_Impl(
         rhs_size,
         is_conj);
   else
-    _ElementWiseWithStrideTwo<T, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ElementWiseWithStrideTwo<T, false, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         output_rank_or_simple_broadcast,
-        *lhs_padded_strides,
+        nullptr,
         lhs_data,
-        *rhs_padded_strides,
+        nullptr,
         rhs_data,
         *fdm_output_strides,
         output_data,
