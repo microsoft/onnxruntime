@@ -824,8 +824,7 @@ endif()
 if (onnxruntime_BUILD_SHARED_LIB)
   set(onnxruntime_perf_test_libs 
           onnx_test_runner_common onnxruntime_test_utils onnxruntime_common 
-          onnxruntime onnxruntime_flatbuffers 
-          onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} 
+          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto 
           ${onnxruntime_EXTERNAL_LIBRARIES}
           ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)
