@@ -126,7 +126,7 @@ class RandomValueGenerator {
 
 template <class T>
 inline std::vector<T> FillZeros(const std::vector<int64_t>& dims) {
-  std::vector<T> val(detail::SizeFromDims(dims), T(0));
+  std::vector<T> val(detail::SizeFromDims(dims), T{});
   return val;
 }
 

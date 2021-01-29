@@ -235,10 +235,10 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
   for (int64_t i = rank - 1; i >= 0; --i) {
     int64_t input_axis = permutations[i];
     if (is_suffix && (input_axis == i)) {
-      suffix_blocksize *= input_dims[input_axis];
+      suffix_blocksize *= static_cast<size_t>(input_dims[input_axis]);
     } else {
       is_suffix = false;
-      prefix_blocksize *= input_dims[input_axis];
+      prefix_blocksize *= static_cast<size_t>(input_dims[input_axis]);
       ++num_axes_in_prefix;
     }
   }

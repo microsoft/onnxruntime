@@ -243,9 +243,13 @@ class ORTTrainerOptions(object):
                                 'model_with_training_graph_path': {
                                     'type': 'string',
                                     'default': ''
-                                }
+                                },
+                                'model_with_training_graph_after_optimization_path': {
+                                    'type': 'string',
+                                    'default': ''
+                                },
                             }
-                        }                        
+                        },
                     }
                 },
                 '_internal_use' : {
@@ -290,7 +294,7 @@ class ORTTrainerOptions(object):
         distributed (dict):
             distributed training options.
         distributed.world_rank (int, default is 0):
-            rank ID used for data parallelism
+            rank ID used for data/horizontal parallelism
         distributed.world_size (int, default is 1):
             number of ranks participating in parallelism
         distributed.data_parallel_size (int, default is 1):
@@ -365,6 +369,8 @@ class ORTTrainerOptions(object):
         debug.graph_save_paths.model_with_training_graph_path (str, default is "")
             path to export the training ONNX graph with forward, gradient and optimizer nodes.
             No output when it is empty.
+        debug.graph_save_paths.model_with_training_graph_after_optimization_path (str, default is "")
+            outputs the optimized training graph to the path if nonempty.
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
@@ -677,7 +683,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             },
             'graph_save_paths' : {
                 'type' : 'dict',
-               'default_setter': lambda _: {},
+                'default_setter': lambda _: {},
                 'required': False,
                 'schema': {
                     'model_after_graph_transforms_path': {
@@ -691,7 +697,11 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     'model_with_training_graph_path': {
                         'type': 'string',
                         'default': ''
-                    }
+                    },
+                    'model_with_training_graph_after_optimization_path': {
+                        'type': 'string',
+                        'default': ''
+                    },
                 }
             },
         }

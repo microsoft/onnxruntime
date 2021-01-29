@@ -34,5 +34,6 @@ constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
 constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
+constexpr const char* kCoreMLExecutionProvider = "CoreMLExecutionProvider";
 
 }  // namespace onnxruntime

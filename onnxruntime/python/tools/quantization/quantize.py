@@ -48,7 +48,7 @@ def load_model(model_path: Path, optimize=True):
         onnx_model.replace_gemm_with_matmul()
         return onnx_model.model
 
-    return onnx.load(Path)
+    return onnx.load(Path(model_path))
 
 
 def quantize(model,

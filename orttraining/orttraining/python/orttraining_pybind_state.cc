@@ -201,8 +201,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // an allreduce_post_accumulation option and remove the use_nccl option.
     opt.use_nccl = parameters.allreduce_post_accumulation;
     opt.deepspeed_zero = onnxruntime::training::ZeROConfig(parameters.deepspeed_zero_stage);
-    // TODO: The norm clipping value is 1.0f which is the default used in most frameworks.
-    // Need to have another option to support more values in the future.
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
     // TODO reduction types
@@ -276,9 +274,9 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
 
 std::unordered_map<std::string, std::unordered_map<std::string, py::object>> ConvertORTTensorMapToNumpy(std::unordered_map<std::string, NameMLValMap> c_tensor_state, const DataTransferManager& data_transfer_manager) {
   std::unordered_map<std::string, std::unordered_map<std::string, py::object>> py_tensor_state;
-  for (const auto& layer1_item: c_tensor_state) {
+  for (const auto& layer1_item : c_tensor_state) {
     py_tensor_state[layer1_item.first] = {};
-    for (const auto& layer2_item: layer1_item.second) {
+    for (const auto& layer2_item : layer1_item.second) {
       assert(layer2_item.second.IsTensor());
       py::object obj;
       const Tensor& rtensor = layer2_item.second.Get<Tensor>();

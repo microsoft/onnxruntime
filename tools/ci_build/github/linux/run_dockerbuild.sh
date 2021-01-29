@@ -131,8 +131,6 @@ fi
 
 if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ] || [ $BUILD_DEVICE = "arm" ]; then
     RUNTIME=
-elif [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
-    RUNTIME="--gpus all --shm-size=1024m"
 else
     RUNTIME="--gpus all"
 fi
@@ -145,16 +143,6 @@ DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
                       --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
-fi
-
-if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
-    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_data/hf_data:/bert_data/hf_data"
-    # DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER -u0"
-fi
-
-if [[ $BUILD_EXTR_PAR = *--enable_training_pipeline_e2e_tests* ]]; then
-    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_ort:/bert_ort \
-                                                --volume /bert_data:/bert_data"
 fi
 
 $DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true
