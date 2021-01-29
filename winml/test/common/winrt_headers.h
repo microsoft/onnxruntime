@@ -33,15 +33,14 @@
 #define CREATE_NATIVE_INTERNAL_HEADER() XSTRINGIFY(NATIVE_INTERNAL_HEADER(WINML_ROOT_NS))
 
 #include CREATE_CPPWINRT_COMPONENT_HEADER()
-#include CREATE_CPPWINRT_EXPERIMENTAL_COMPONENT_HEADER()
 
 #ifndef BUILD_INBOX
+#include CREATE_CPPWINRT_EXPERIMENTAL_COMPONENT_HEADER()
+#endif
 
 // WinML Native Headers
 #include CREATE_NATIVE_HEADER()
 #include CREATE_NATIVE_INTERNAL_HEADER()
-
-#endif
 
 namespace winml = winrt::WINML_ROOT_NS::AI::MachineLearning;
 namespace wf = winrt::Windows::Foundation;

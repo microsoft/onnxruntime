@@ -1,5 +1,6 @@
 cerberus
 codecov
+flatbuffers
 jinja2
 numpy
 onnx

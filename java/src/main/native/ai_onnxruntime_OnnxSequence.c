@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2021, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -28,6 +28,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getStringKeys
     jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, keys);
 
     api->ReleaseValue(keys);
+    api->ReleaseValue(element);
 
     return output;
 }
@@ -80,6 +81,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getStringValues
     jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, values);
 
     api->ReleaseValue(values);
+    api->ReleaseValue(element);
 
     return output;
 }
