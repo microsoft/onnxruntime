@@ -128,9 +128,8 @@ Status ModuleGradientGraphBuilder::BuildAndSplit(const std::vector<std::vector<i
                  config_.input_names_require_grad.begin(), config_.input_names_require_grad.end(),
                  std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   auto add_transformers = [&](TransformerLevel level) {
-    std::unordered_map<std::string, std::string> updated_weight_names{};
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, x_node_arg_names, graph_transformer_config, *cpu_execution_provider, updated_weight_names, {});
+        level, x_node_arg_names, graph_transformer_config, *cpu_execution_provider);
     for (auto& entry : transformers_to_register) {
       graph_transformation_mgr.Register(std::move(entry), level);
     }

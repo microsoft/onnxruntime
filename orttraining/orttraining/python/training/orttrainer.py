@@ -14,6 +14,30 @@ from .model_desc_validation import _ORTTrainerModelDesc
 
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
+def monkey_patch_pytorch():
+    warnings.warn('ORTTrainer: Remove this monkey patch when https://github.com/pytorch/pytorch/pull/51396 is merged')
+
+    def ort_prim_ConstantChunk(g, self, chunks, dim):
+        input_shape = g.op("Shape", self)
+        axis = g.op("Constant", value_t=torch.tensor([dim], dtype=torch.long))
+        input_shape_dim = g.op("Gather", input_shape, axis, axis_i=0)
+        start = g.op("Constant", value_t=torch.tensor([0], dtype=torch.long))
+        chunk_size = g.op("Constant", value_t=torch.tensor([chunks], dtype=torch.long))
+        chunk_size_minus_1 = g.op("Constant", value_t=torch.tensor([chunks - 1], dtype=torch.long))
+        input_shape_dim_shift = g.op("Add", input_shape_dim, chunk_size_minus_1)
+        chunk_dim = g.op("Div", input_shape_dim_shift, chunk_size)
+        res = []
+        for i in range(chunks):
+            index = g.op("Constant", value_t=torch.tensor([i + 1], dtype=torch.long))
+            end = g.op("Mul", chunk_dim, index)
+            res.append(g.op("Slice", self, start, end, axis))
+            start = end
+        return res
+
+    import torch.onnx.symbolic_opset11
+    torch.onnx.symbolic_opset11.prim_ConstantChunk = ort_prim_ConstantChunk
+
+
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
 
@@ -122,6 +146,11 @@ class ORTTrainer(object):
     """
 
     def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
+
+        # DO NOT MERGE THIS ON MASTER
+        # TODO: Remove after https://github.com/pytorch/pytorch/pull/51396 is merged
+        monkey_patch_pytorch()
+
         # Basic validation
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
@@ -621,8 +650,6 @@ class ORTTrainer(object):
 
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
-        ort_parameters.model_with_loss_function_path = self.options.debug.model_with_loss_function_path
-        ort_parameters.model_with_training_graph_path = self.options.debug.model_with_training_graph_path
         ort_parameters.loss_output_name = loss_name
         ort_parameters.use_mixed_precision = self.options.mixed_precision.enabled
         ort_parameters.world_rank = self.options.distributed.world_rank
@@ -631,7 +658,7 @@ class ORTTrainer(object):
         ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
         ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_optimization.stage
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
-        ort_parameters.set_gradients_as_graph_outputs = True
+        ort_parameters.set_gradients_as_graph_outputs = False
         ort_parameters.use_invertible_layernorm_grad = self.options.utils.invertible_layer_norm_gradient
         ort_parameters.training_optimizer_name = self.optim_config.name
         ort_parameters.lr_params_feed_name = self.model_desc.learning_rate.name
@@ -651,8 +678,8 @@ class ORTTrainer(object):
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
-        if (self.options.graph_transformer.attn_dropout_recompute or 
-            self.options.graph_transformer.gelu_recompute or 
+        if (self.options.graph_transformer.attn_dropout_recompute or
+            self.options.graph_transformer.gelu_recompute or
             self.options.graph_transformer.transformer_layer_recompute):
             session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
 

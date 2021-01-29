@@ -132,7 +132,7 @@ class ORTTrainerOptions(object):
                         'transformer_layer_recompute': {
                             'type': 'boolean',
                             'default': False
-                        }, 
+                        },
                         'number_recompute_layers': {
                             'type': 'integer',
                             'min': 0,
@@ -176,13 +176,28 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : False
                         },
-                        'model_with_loss_function_path': {
-                            'type': 'string',
-                            'default': ''
-                        },
-                        'model_with_training_graph_path': {
-                            'type': 'string',
-                            'default': ''
+                        'graph_save_paths' : {
+                            'type' : 'dict',
+                            'default': {},
+                            'required': False,
+                            'schema': {
+                                'model_after_graph_transforms_path': {
+                                    'type': 'string',
+                                    'default': ''
+                                },
+                                'model_with_gradient_graph_path':{
+                                    'type': 'string',
+                                    'default': ''
+                                },
+                                'model_with_training_graph_path': {
+                                    'type': 'string',
+                                    'default': ''
+                                },
+                                'model_with_training_graph_after_optimization_path': {
+                                    'type': 'string',
+                                    'default': ''
+                                },
+                            },
                         },
                     }
                 },
@@ -281,10 +296,18 @@ class ORTTrainerOptions(object):
         debug.check_model_export (bool, default is False)
             compares PyTorch model outputs with ONNX model outputs in inference before the first
             train step to ensure successful model export
-        debug.model_with_loss_function_path (str, default is '')
-            path to dump an ONNX file with model and loss function
-        debug.model_with_training_graph_path (str, default is '')
-            path to dump an ONNX file with full training graph
+        debug.graph_save_paths (dict):
+            paths used for dumping ONNX graphs for debugging purposes
+        debug.graph_save_paths.model_after_graph_transforms_path (str, default is "")
+            path to export the ONNX graph after training-related graph transforms have been applied.
+            No output when it is empty.
+        debug.graph_save_paths.model_with_gradient_graph_path (str, default is "")
+            path to export the ONNX graph with the gradient graph added. No output when it is empty.
+        debug.graph_save_paths.model_with_training_graph_path (str, default is "")
+            path to export the training ONNX graph with forward, gradient and optimizer nodes.
+            No output when it is empty.
+        debug.graph_save_paths.model_with_training_graph_after_optimization_path (str, default is "")
+            outputs the optimized training graph to the path if nonempty.
         _internal_use (dict):
             internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
@@ -542,15 +565,30 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': False
             },
-            'model_with_loss_function_path': {
-                'type': 'string',
-                'default': ''
+            'graph_save_paths' : {
+                'type' : 'dict',
+                'default_setter': lambda _: {},
+                'required': False,
+                'schema': {
+                    'model_after_graph_transforms_path': {
+                        'type': 'string',
+                        'default': ''
+                    },
+                    'model_with_gradient_graph_path':{
+                        'type': 'string',
+                        'default': ''
+                    },
+                    'model_with_training_graph_path': {
+                        'type': 'string',
+                        'default': ''
+                    },
+                    'model_with_training_graph_after_optimization_path': {
+                        'type': 'string',
+                        'default': ''
+                    },
+                },
             },
-            'model_with_training_graph_path': {
-                'type': 'string',
-                'default': ''
-            },
-        }
+        },
     },
     '_internal_use': {
         'type': 'dict',
