@@ -591,11 +591,13 @@ See more information on the ArmNN Execution Provider [here](./docs/execution_pro
 source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
 alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
 ```
+
 * See [Build ARM](#ARM) below for information on building for ARM devices
 
 #### Build Instructions
 ```
 ./build.sh --use_armnn
+
 ```
 The Relu operator is set by default to use the CPU execution provider for better performance. To use the ArmNN implementation build with --armnn_relu flag
 ```
@@ -606,9 +608,10 @@ The Batch Normalization operator is set by default to use the CPU execution prov
 ./build.sh --use_armnn --armnn_bn
 ```
 
-To use a library outside the normal environment you can set a custom path by using --armnn_home and --armnn_libs tags that defines the path to the ArmNN home directory and the build directory respectively.
+To use a library outside the normal environment you can set a custom path by providing the --armnn_home and --armnn_libs parameters to define the path to the ArmNN home directory and build directory respectively. 
+The ARM Compute Library home directory and build directory must also be available, and can be specified if needed using --acl_home and --acl_libs respectively.
 ```
-./build.sh --use_armnn --armnn_home /path/to/ComputeLibrary --armnn_libs /path/to/build
+./build.sh --use_armnn --armnn_home /path/to/armnn --armnn_libs /path/to/armnn/build  --acl_home /path/to/ComputeLibrary --armnn_libs /path/to/acl/build
 ```
 
 ---
