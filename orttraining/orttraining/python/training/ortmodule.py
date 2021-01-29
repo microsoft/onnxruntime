@@ -174,7 +174,7 @@ class ORTModule(torch.nn.Module):
         if self._device.type == 'cuda':
             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            provider_options = [{"device_id": str(self._device.index)}]
+            provider_options = [{"device_id": str(self._device.index)}, {}]
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
