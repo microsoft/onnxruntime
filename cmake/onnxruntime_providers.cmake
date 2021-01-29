@@ -307,7 +307,7 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL OR onnxruntime_USE_OPENVINO)
-  file(GLOB_RECURSE onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
+  file(GLOB onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/*.cc"
   )
@@ -667,8 +667,8 @@ if (onnxruntime_USE_COREML)
   # These are shared utils,
   # TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
   file(GLOB_RECURSE onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
   )
 
   file(GLOB
@@ -747,8 +747,8 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   # These are shared utils,
   # TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
   file(GLOB_RECURSE onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
   )
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Android")

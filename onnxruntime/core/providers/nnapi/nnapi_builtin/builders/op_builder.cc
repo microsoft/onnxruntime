@@ -7,7 +7,7 @@
 #include <core/providers/common.h>
 #include <onnx/onnx_pb.h>
 
-#include "core/providers/shared/utils.h"
+#include "core/providers/shared/utils/utils.h"
 #include "helper.h"
 #include "model_builder.h"
 #include "op_builder.h"
