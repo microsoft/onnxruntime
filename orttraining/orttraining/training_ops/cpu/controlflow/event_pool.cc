@@ -23,11 +23,11 @@ bool OrtEventPool::QueryEvent(int64_t id) const {
   return pool_[id].signaled.load();
 }
 
-void OrtEventPool::ResetAndWaitEvent(int64_t id) {
+void OrtEventPool::WaitAndResetEvent(int64_t id) {
   CheckRange(id);
   std::unique_lock<std::mutex> lock(pool_[id].mutex);
-  pool_[id].signaled.store(false);
   pool_[id].cv.wait(lock, [this, id] { return pool_[id].signaled.load(); });
+  pool_[id].signaled.store(false);
 };
 
 void OrtEventPool::WaitEvent(int64_t id) const {
