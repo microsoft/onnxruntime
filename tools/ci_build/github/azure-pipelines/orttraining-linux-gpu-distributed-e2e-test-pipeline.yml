@@ -1,9 +1,9 @@
 trigger: none
 
 jobs:
-- job: Orttraining_Linux_GPU_Training_E2E_Test_Nightly
+- job: Orttraining_Linux_GPU_Distributed_E2E_Test
 
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
   pool: 'Linux-Multi-GPU-V100-E2E3'
 
   steps:
@@ -21,8 +21,6 @@ jobs:
           --enable_training \
           --update --build \
           --build_wheel \
-          --enable_training_python_frontend_e2e_tests \
-          --enable_training_pipeline_e2e_tests \
           " \
         -m
       DisplayName: 'Build'
@@ -38,6 +36,21 @@ jobs:
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh $(orttrainingtestdata-storage-key)
     displayName: 'Map test data'
     condition: succeededOrFailed() # ensure all tests are run
+
+  - script: |
+      docker run \
+        --gpus all \
+        --shm-size=1024m \
+        --rm \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        onnxruntime_e2e_test_image \
+          /build/RelWithDebInfo/launch_test.py \
+            --cmd_line_with_args "python orttraining_distributed_tests.py" \
+            --cwd /build/RelWithDebInfo \
+    displayName: 'Run orttraining_distributed_tests.py'
+    condition: succeededOrFailed()
+    timeoutInMinutes: 120
 
   - script: |
       docker run \
@@ -300,7 +313,7 @@ jobs:
     displayName: 'Run orttraining_run_bert_pretrain.py ORTBertPretrainTest.test_pretrain_convergence'
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 30
-
+  
   - template: templates/component-governance-component-detection-steps.yml
     parameters:
       condition: 'succeeded'
