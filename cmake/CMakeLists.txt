@@ -732,7 +732,6 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
   endif()
 
   if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-
     add_library(arm_compute SHARED IMPORTED)
     set_target_properties(arm_compute PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -747,11 +746,9 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-
-    link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_core arm_compute_graph)
 
 endif()
 
@@ -765,7 +762,6 @@ if (onnxruntime_USE_ARMNN)
   endif()
 
   if (NOT onnxruntime_USE_ACL AND NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-
     add_library(arm_compute SHARED IMPORTED)
     set_target_properties(arm_compute PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -780,7 +776,6 @@ if (onnxruntime_USE_ARMNN)
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-
     # link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
@@ -789,15 +784,9 @@ if (onnxruntime_USE_ARMNN)
     set_target_properties(armnn PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ARMNN_LIBS}/libarmnn.so")
-
-    #find_library(ARMNN_LIBRARY NAMES armnn
-    #             PATHS ${onnxruntime_ARMNN_LIBS}    
-    #             NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH REQUIRED)
-
-    # link_libraries(armnn)
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn arm_compute arm_compute_core arm_compute_graph)
 endif()
 
 if (onnxruntime_USE_DNNL)
