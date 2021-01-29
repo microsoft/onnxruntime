@@ -98,7 +98,7 @@ MlasConvDepthwiseKernel(
 
             for (size_t k = 0; k < KernelSize; k++) {
 
-                uint8x8_t InputVector = vld1_u8(&Input[k][ChannelKernelOffset]);
+                uint8x8_t InputVector = vld1_u8(&Input[k][ChannelOffset]);
                 uint8x8_t FilterVector = vld1_u8(reinterpret_cast<const uint8_t*>(&Filter[ChannelKernelOffset]));
 
                 int16x8_t InputVector16 = vreinterpretq_s16_u16(vsubl_u8(InputVector, InputZeroPointVector));
