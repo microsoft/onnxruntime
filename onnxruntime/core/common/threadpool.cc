@@ -475,6 +475,28 @@ struct Jobs {
   mutable OrtMutex mutex_;
   void push(const Job& job) {
     ::std::lock_guard<OrtMutex> guard(mutex_);
+    jobs_.push_back(job);
+    size_++;
+  }
+  void push(Job&& job) {
+    ::std::lock_guard<OrtMutex> guard(mutex_);
+    jobs_.push_back(job);
+    size_++;
+  }
+  Job pop() {
+    ::std::lock_guard<OrtMutex> guard(mutex_);
+    if (jobs_.empty()) {
+      return {Idel, empty};
+    } else {
+      Job job = std::move(jobs_.front());
+      jobs_.pop_front();
+      size_--;
+      return job;
+    }
+  }
+  /*
+  void push(const Job& job) {
+    ::std::lock_guard<OrtMutex> guard(mutex_);
     if (size_ & 0x1) {
       jobs_.push_back(job);
     } else {
@@ -508,7 +530,7 @@ struct Jobs {
         return job;
       }
     }
-  }
+  }*/
   bool hasJob() const {
     return size_ > 0;
   }
