@@ -1697,10 +1697,6 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions
   bg_thread_ = std::thread([&]() {
     common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                            &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
-
-    // Do I need to signal main thread for the completion???
-    const int64_t main_thread_event_id = 0;
-    onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
   });
 
   // wait for event from yeild op
@@ -1720,11 +1716,7 @@ common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtVa
   const int64_t background_thread_event_id = 1;
   onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(background_thread_event_id);
 
-  // Do I need to wait for event from end of background thread??
-  const int64_t main_thread_event_id = 0;
-  onnxruntime::contrib::OrtEventPool::GetInstance().WaitAndResetEvent(main_thread_event_id);
-
-  // wait still bg_thread is completed
+  // wait for bg_thread to complete
   if (bg_thread_.joinable()) {
     bg_thread_.join();
   }
