@@ -5,6 +5,7 @@
 
 #include "NoisyReluCpu.h"
 #include "ReluCpu.h"
+#include <winnt.h>
 
 struct CustomOperatorProvider :
     winrt::implements<
@@ -26,9 +27,8 @@ struct CustomOperatorProvider :
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_PC_APP)
         m_library = LoadPackagedLibrary(winml_dll_name.c_str(), 0 /*Reserved*/);
 #endif
-        if (!m_library) {
-          __fastfail(0);
-        }
+        WINML_EXPECT_TRUE(m_library != 0);
+
         using create_registry_delegate = HRESULT WINAPI (_COM_Outptr_ IMLOperatorRegistry** registry);
         auto create_registry = reinterpret_cast<create_registry_delegate*>(GetProcAddress(m_library, "MLCreateOperatorRegistry"));
         if (FAILED(create_registry(m_registry.put())))
