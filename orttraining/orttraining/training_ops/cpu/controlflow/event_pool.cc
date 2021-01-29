@@ -30,6 +30,12 @@ void OrtEventPool::WaitAndResetEvent(int64_t id) {
   pool_[id].signaled.store(false);
 };
 
+void OrtEventPool::ResetEvent(int64_t id) {
+  CheckRange(id);
+  std::unique_lock<std::mutex> lock(pool_[id].mutex);
+  pool_[id].signaled.store(false);
+};
+
 void OrtEventPool::WaitEvent(int64_t id) const {
   CheckRange(id);
   std::unique_lock<std::mutex> lock(pool_[id].mutex);

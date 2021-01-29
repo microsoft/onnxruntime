@@ -12,7 +12,7 @@ namespace cuda {
 ONNX_OPERATOR_KERNEL_EX(Yield, kMSDomain, 1, kCudaExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-                            .VariadicAlias(0, 0),   // TODO: this is a hack to avoid allocating output buffer
+                            .VariadicAlias(0, 0),  // TODO: this is a hack to avoid allocating output buffer
                         Yield);
 
 Status Yield::ComputeInternal(OpKernelContext* ctx) const {
@@ -21,12 +21,15 @@ Status Yield::ComputeInternal(OpKernelContext* ctx) const {
     onnxruntime::contrib::OrtMessageQueue::GetInstance().Push(*ctx_internal->GetInputMLValue(i_in));
   }
 
+  // Reset background event before returning to main thread
+  const int64_t background_thread_event_id = 1;
+  onnxruntime::contrib::OrtEventPool::GetInstance().ResetEvent(background_thread_event_id);
+
   // single event for InferenceSession::RunInBackgroundAndWaitForYield() that FW graph is done
   const int64_t main_thread_event_id = 0;
   onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
 
   // wait for event from InferenceSession::ContinueRunInBackground() to continue the BW graph
-  const int64_t background_thread_event_id = 1;
   onnxruntime::contrib::OrtEventPool::GetInstance().WaitAndResetEvent(background_thread_event_id);
 
   // Get output grad from somewhere and prepare Op outputs.
