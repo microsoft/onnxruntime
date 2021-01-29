@@ -1131,7 +1131,9 @@ if (onnxruntime_USE_CUDA)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
 
+  # CUDA_HOME and CUDNN_HOME may differ, so need to add both to the link directories
   if (WIN32)
+    link_directories(${onnxruntime_CUDA_HOME}/lib/x64)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
     # delayload causes crash on exit, so disable for now
@@ -1144,8 +1146,10 @@ if (onnxruntime_USE_CUDA)
     #endforeach(cuda_dll_path)
 
   else()
+    link_directories(${onnxruntime_CUDA_HOME}/lib64)
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
   endif()
+  
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
