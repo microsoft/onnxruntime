@@ -457,14 +457,15 @@ class ORTModule(torch.nn.Module):
         # from onnxruntime.training import register_custom_ops_pytorch_exporter
         # register_custom_ops_pytorch_exporter.register_custom_op()
 
-        # Export torch.nn.Module to ONNX
-        torch.onnx.export(self._original_module,
-                          sample_inputs_copy,
-                          f,
-                          input_names=input_names,
-                          opset_version=ONNX_OPSET_VERSION,
-                          do_constant_folding=False,
-                          training=torch.onnx.TrainingMode.TRAINING,
-                          dynamic_axes=dynamic_axes)
+        with torch.no_grad():
+            # Export torch.nn.Module to ONNX
+            torch.onnx.export(self._original_module,
+                              sample_inputs_copy,
+                              f,
+                              input_names=input_names,
+                              opset_version=ONNX_OPSET_VERSION,
+                              do_constant_folding=False,
+                              training=torch.onnx.TrainingMode.TRAINING,
+                              dynamic_axes=dynamic_axes)
 
         return onnx.load_model_from_string(f.getvalue())
