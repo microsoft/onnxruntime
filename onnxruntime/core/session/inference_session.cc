@@ -1694,19 +1694,34 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs) {
+  const int64_t main_thread_event_id = 0;
+  onnxruntime::contrib::OrtEventPool::GetInstance().ResetEvent(0);
+
   bg_thread_promise_ = std::promise<Status>();
   bg_thread_future_ = bg_thread_promise_.get_future();
-
   bg_thread_ = std::thread([&](std::promise<common::Status> result_promise) {
     common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                            &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
+
     result_promise.set_value(s);
+
+    // signal main thread for background thread completion
+    const int64_t main_thread_event_id = 0;
+    onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
   },
                            std::move(bg_thread_promise_));
 
-  // wait for event from yeild op
-  const int64_t main_thread_event_id = 0;
+  // Wait for events from
+  // 1. Yield op, if the bg thread sucessfully reached Yield's signal point
+  // 2. The end of bg thread, if it hit execptions and returned earlier
   onnxruntime::contrib::OrtEventPool::GetInstance().WaitAndResetEvent(main_thread_event_id);
+
+  // background thread has completed without hitting Yield Op
+  if (bg_thread_future_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+    Status bg_thread_status = bg_thread_future_.get();
+    bg_thread_.join();
+    return bg_thread_status;
+  }
 
   onnxruntime::contrib::OrtMessageQueue::GetInstance().PopAll(user_outputs);
   return Status::OK();
