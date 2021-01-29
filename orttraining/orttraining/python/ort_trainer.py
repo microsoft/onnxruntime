@@ -602,9 +602,9 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
 
 
     del model.graph.initializer[:]
-    # print("before sleep ", psutil.virtual_memory())
-    # import time
-    # time.sleep(30) # wait for GC
+    print("before sleep ", psutil.virtual_memory())
+    import time
+    time.sleep(30) # wait for GC
     print("before start session", psutil.virtual_memory())
 
     sessionOptions = ort.SessionOptions()
