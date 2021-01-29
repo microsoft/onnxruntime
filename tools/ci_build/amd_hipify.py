@@ -62,7 +62,8 @@ contrib_ops_excluded_files = [
                     'conv_transpose_with_dynamic_pads.h',
                     'cuda_contrib_kernels.cc',
                     'cuda_contrib_kernels.h',
-                    'inverse.cc'
+                    'inverse.cc',
+                    'fused_conv.cc'
 ]
 
 provider_excluded_files = [
