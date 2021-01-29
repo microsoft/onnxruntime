@@ -1705,7 +1705,7 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions
 
   // wait for event from yeild op
   const int64_t main_thread_event_id = 0;
-  onnxruntime::contrib::OrtEventPool::GetInstance().ResetAndWaitEvent(main_thread_event_id);
+  onnxruntime::contrib::OrtEventPool::GetInstance().WaitAndResetEvent(main_thread_event_id);
 
   onnxruntime::contrib::OrtMessageQueue::GetInstance().PopAll(user_outputs);
   return Status::OK();
@@ -1722,7 +1722,7 @@ common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtVa
 
   // Do I need to wait for event from end of background thread??
   const int64_t main_thread_event_id = 0;
-  onnxruntime::contrib::OrtEventPool::GetInstance().ResetAndWaitEvent(main_thread_event_id);
+  onnxruntime::contrib::OrtEventPool::GetInstance().WaitAndResetEvent(main_thread_event_id);
 
   // wait still bg_thread is completed
   if (bg_thread_.joinable()) {

@@ -27,7 +27,7 @@ Status Yield::ComputeInternal(OpKernelContext* ctx) const {
 
   // wait for event from InferenceSession::ContinueRunInBackground() to continue the BW graph
   const int64_t background_thread_event_id = 1;
-  onnxruntime::contrib::OrtEventPool::GetInstance().ResetAndWaitEvent(background_thread_event_id);
+  onnxruntime::contrib::OrtEventPool::GetInstance().WaitAndResetEvent(background_thread_event_id);
 
   // Get output grad from somewhere and prepare Op outputs.
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
