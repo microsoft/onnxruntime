@@ -25,7 +25,29 @@ class CudaKernel : public OpKernel {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
+    cudaDeviceSynchronize();
     auto s = ComputeInternal(p_op_kernel_context);
+    cudaDeviceSynchronize();
+
+    const int output_count = p_op_kernel_context->OutputCount();
+    for (int i = 0; i < output_count; ++i) {
+      auto* tensor = p_op_kernel_context->Output<Tensor>(i);
+      if (tensor->IsDataType<MLFloat16>()) {
+        int64_t count = tensor->Shape().Size();
+        const auto* data = tensor->template Data<MLFloat16>();
+        MLFloat16* cpu_data = new MLFloat16[count];
+        cudaMemcpy(reinterpret_cast<void*>(cpu_data), data, count * 2, cudaMemcpyDeviceToHost);
+        for (int64_t j = 0; j < count; ++j) {
+          float val = math::halfToFloat(cpu_data[j].val);
+          if (std::numeric_limits<float>::infinity() == val) {
+            delete[] cpu_data;
+            ORT_THROW("Found inf:", p_op_kernel_context->GetNodeName());
+          }
+        }
+        delete[] cpu_data;
+      }
+    }
+
     // use this to precisely locate the node where CUDA failure comes from
     //  if (cudaSuccess != cudaDeviceSynchronize())
     //    __debugbreak();
@@ -40,7 +62,8 @@ class CudaKernel : public OpKernel {
     return s;
   }
 
-  virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
+  virtual Status
+  ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
   template <typename T>
   inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
@@ -145,7 +168,7 @@ class CudaKernel : public OpKernel {
 
  private:
   CUDAExecutionProvider* provider_;
-};
+};  // namespace cuda
 
 }  // namespace cuda
 }  // namespace onnxruntime
