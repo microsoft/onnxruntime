@@ -140,6 +140,8 @@ Return Value:
     this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
     this->QLinearAddS8Kernel = MlasQLinearAddS8Kernel;
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
+    this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernel<int8_t>;
+    this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t>;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
@@ -220,8 +222,10 @@ Return Value:
                 this->ErfKernelRoutine = MlasErfKernelFma3;
                 this->QLinearAddS8Kernel = MlasQLinearAddS8KernelAvx2;
                 this->QLinearAddU8Kernel = MlasQLinearAddU8KernelAvx2;
+                this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t>;
+                this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernelAvx2<uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
-                
+
                 //
                 // Check if the processor supports AVXVNNI features.
                 //
@@ -229,7 +233,7 @@ Return Value:
                 unsigned Cpuid7_1[4];
 #if defined(_WIN32)
                 __cpuidex((int*)Cpuid7_1, 7, 1);
-#else  
+#else
                 __cpuid_count(7, 1, Cpuid7_1[0], Cpuid7_1[1], Cpuid7_1[2], Cpuid7_1[3]);
 #endif
 
