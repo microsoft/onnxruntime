@@ -213,7 +213,7 @@ std::unique_ptr<ONNX_NAMESPACE::ModelProto> OrtModel::DetachModelProto() {
   return std::move(model_proto_);
 }
 
-ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, const char* model_path, size_t size, OrtModel** out) {
+ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, _In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out) {
   API_IMPL_BEGIN
   if (auto status = OrtModel::CreateOrtModelFromPath(model_path, size, out)) {
     return status;
@@ -222,7 +222,7 @@ ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, const char* model_path, size_t 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::CreateModelFromData, void* data, size_t size, OrtModel** out) {
+ORT_API_STATUS_IMPL(winmla::CreateModelFromData, _In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out) {
   API_IMPL_BEGIN
   if (auto status = OrtModel::CreateOrtModelFromData(data, size, out)) {
     return status;
@@ -231,7 +231,7 @@ ORT_API_STATUS_IMPL(winmla::CreateModelFromData, void* data, size_t size, OrtMod
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::CloneModel, const OrtModel* in, OrtModel** out) {
+ORT_API_STATUS_IMPL(winmla::CloneModel, _In_ const OrtModel* in, _Outptr_ OrtModel** out) {
   API_IMPL_BEGIN
   auto model_proto_copy = std::make_unique<ONNX_NAMESPACE::ModelProto>(*in->UseModelProto());
   if (auto status = OrtModel::CreateOrtModelFromProto(std::move(model_proto_copy), out)) {
@@ -261,7 +261,7 @@ ORT_API_STATUS_IMPL(winmla::SaveModel, const OrtModel* in, const wchar_t* const 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetAuthor, const OrtModel* model, const char** const author, size_t* len) {
+ORT_API_STATUS_IMPL(winmla::ModelGetAuthor, _In_ const OrtModel* model, _Out_ const char** const author, _Out_ size_t* len) {
   API_IMPL_BEGIN
   *author = model->UseModelInfo()->author_.c_str();
   *len = model->UseModelInfo()->author_.size();
@@ -269,7 +269,7 @@ ORT_API_STATUS_IMPL(winmla::ModelGetAuthor, const OrtModel* model, const char** 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetName, const OrtModel* model, const char** const name, size_t* len) {
+ORT_API_STATUS_IMPL(winmla::ModelGetName, _In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len) {
   API_IMPL_BEGIN
   *name = model->UseModelInfo()->name_.c_str();
   *len = model->UseModelInfo()->name_.size();
@@ -277,7 +277,7 @@ ORT_API_STATUS_IMPL(winmla::ModelGetName, const OrtModel* model, const char** co
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetDomain, const OrtModel* model, const char** const domain, size_t* len) {
+ORT_API_STATUS_IMPL(winmla::ModelGetDomain, _In_ const OrtModel* model, _Out_ const char** const domain, _Out_ size_t* len) {
   API_IMPL_BEGIN
   *domain = model->UseModelInfo()->domain_.c_str();
   *len = model->UseModelInfo()->domain_.size();
@@ -285,7 +285,7 @@ ORT_API_STATUS_IMPL(winmla::ModelGetDomain, const OrtModel* model, const char** 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetDescription, const OrtModel* model, const char** const description, size_t* len) {
+ORT_API_STATUS_IMPL(winmla::ModelGetDescription, _In_ const OrtModel* model, _Out_ const char** const description, _Out_ size_t* len) {
   API_IMPL_BEGIN
   *description = model->UseModelInfo()->description_.c_str();
   *len = model->UseModelInfo()->description_.size();
@@ -293,22 +293,22 @@ ORT_API_STATUS_IMPL(winmla::ModelGetDescription, const OrtModel* model, const ch
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetVersion, const OrtModel* model, int64_t* version) {
+ORT_API_STATUS_IMPL(winmla::ModelGetVersion, _In_ const OrtModel* model, _Out_ int64_t* version) {
   API_IMPL_BEGIN
   *version = model->UseModelInfo()->version_;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetMetadataCount, const OrtModel* model, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetMetadataCount, _In_ const OrtModel* model, _Out_ size_t* count) {
   API_IMPL_BEGIN
   *count = model->UseModelInfo()->model_metadata_.size();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetMetadata, const OrtModel* model, size_t count, const char** const key,
-                    size_t* key_len, const char** const value, size_t* value_len) {
+ORT_API_STATUS_IMPL(winmla::ModelGetMetadata, _In_ const OrtModel* model, _In_ size_t count, _Out_ const char** const key,
+                    _Out_ size_t* key_len, _Out_ const char** const value, _Out_ size_t* value_len) {
   API_IMPL_BEGIN
   *key = model->UseModelInfo()->model_metadata_[count].first.c_str();
   *key_len = model->UseModelInfo()->model_metadata_[count].first.size();
@@ -318,22 +318,22 @@ ORT_API_STATUS_IMPL(winmla::ModelGetMetadata, const OrtModel* model, size_t coun
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetInputCount, const OrtModel* model, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetInputCount, _In_ const OrtModel* model, _Out_ size_t* count) {
   API_IMPL_BEGIN
   *count = model->UseModelInfo()->input_features_.size();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetOutputCount, const OrtModel* model, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetOutputCount, _In_ const OrtModel* model, _Out_ size_t* count) {
   API_IMPL_BEGIN
   *count = model->UseModelInfo()->output_features_.size();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetInputName, const OrtModel* model, size_t index,
-                    const char** input_name, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetInputName, _In_ const OrtModel* model, _In_ size_t index,
+                    _Out_ const char** input_name, _Out_ size_t* count) {
   API_IMPL_BEGIN
   *input_name = model->UseModelInfo()->input_features_[index]->name().c_str();
   *count = model->UseModelInfo()->input_features_[index]->name().size();
@@ -341,8 +341,8 @@ ORT_API_STATUS_IMPL(winmla::ModelGetInputName, const OrtModel* model, size_t ind
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetOutputName, const OrtModel* model, size_t index,
-                    const char** output_name, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetOutputName, _In_ const OrtModel* model, _In_ size_t index,
+                    _Out_ const char** output_name, _Out_ size_t* count) {
   API_IMPL_BEGIN
   *output_name = model->UseModelInfo()->output_features_[index]->name().c_str();
   *count = model->UseModelInfo()->output_features_[index]->name().size();
@@ -350,8 +350,8 @@ ORT_API_STATUS_IMPL(winmla::ModelGetOutputName, const OrtModel* model, size_t in
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetInputDescription, const OrtModel* model, size_t index,
-                    const char** input_description, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetInputDescription, _In_ const OrtModel* model, _In_ size_t index,
+                    _Out_ const char** input_description, _Out_ size_t* count) {
   API_IMPL_BEGIN
   *input_description = model->UseModelInfo()->input_features_[index]->doc_string().c_str();
   *count = model->UseModelInfo()->input_features_[index]->doc_string().size();
@@ -359,8 +359,8 @@ ORT_API_STATUS_IMPL(winmla::ModelGetInputDescription, const OrtModel* model, siz
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetOutputDescription, const OrtModel* model, size_t index,
-                    const char** output_description, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetOutputDescription, _In_ const OrtModel* model, _In_ size_t index,
+                    _Out_ const char** output_description, _Out_ size_t* count) {
   API_IMPL_BEGIN
   *output_description = model->UseModelInfo()->output_features_[index]->doc_string().c_str();
   *count = model->UseModelInfo()->output_features_[index]->doc_string().size();
@@ -368,7 +368,7 @@ ORT_API_STATUS_IMPL(winmla::ModelGetOutputDescription, const OrtModel* model, si
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetInputTypeInfo, const OrtModel* model, size_t index, OrtTypeInfo** type_info) {
+ORT_API_STATUS_IMPL(winmla::ModelGetInputTypeInfo, _In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
   if (auto status = OrtTypeInfo::FromTypeProto(&model->UseModelInfo()->input_features_[index]->type(), type_info)) {
     return status;
@@ -377,7 +377,7 @@ ORT_API_STATUS_IMPL(winmla::ModelGetInputTypeInfo, const OrtModel* model, size_t
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetOutputTypeInfo, const OrtModel* model, size_t index, OrtTypeInfo** type_info) {
+ORT_API_STATUS_IMPL(winmla::ModelGetOutputTypeInfo, _In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
   if (auto status = OrtTypeInfo::FromTypeProto(&model->UseModelInfo()->output_features_[index]->type(), type_info)) {
     return status;
@@ -386,7 +386,7 @@ ORT_API_STATUS_IMPL(winmla::ModelGetOutputTypeInfo, const OrtModel* model, size_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, const OrtModel* model) {
+ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, _In_ const OrtModel* model) {
   API_IMPL_BEGIN
   auto model_info = model->UseModelInfo();
   auto model_proto = model->UseModelProto();

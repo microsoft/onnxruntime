@@ -111,7 +111,7 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   (IInspectable* sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
 
   STDMETHOD(GetSequenceOfTensorValues)
-  (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) override;
+  (_In_  _winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) override;
 
   STDMETHOD(GetNumberOfIntraOpThreads)
   (uint32_t* num_threads) override;
@@ -142,7 +142,7 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateEmptyModel)
   (_In_ int64_t opset, _Outptr_ IModel** out) override;
   STDMETHOD(CreateEngineBuilder)
-  (IEngineBuilder** engine_builder) override;
+  (_Outptr_ IEngineBuilder** engine_builder) override;
   STDMETHOD(EnableDebugOutput)
   (bool is_enabled) override;
   STDMETHOD(CreateCustomRegistry)

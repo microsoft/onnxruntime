@@ -241,7 +241,7 @@ wgdx::DirectXPixelFormat _winmli::GetDirectXPixelFormatFromDXGIFormat(DXGI_FORMA
   WINML_THROW_HR(E_INVALIDARG);
 }
 
-DXGI_FORMAT _winmli::GetDXGIFormatFromDirectXPixelFormat(wgdx::DirectXPixelFormat directXPixelFormat) {
+DXGI_FORMAT _winmli::GetDXGIFormatFromDirectXPixelFormat(_In_ wgdx::DirectXPixelFormat directXPixelFormat) {
   switch (directXPixelFormat) {
     case wgdx::DirectXPixelFormat::B8G8R8A8UIntNormalized:
       return DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -256,7 +256,7 @@ DXGI_FORMAT _winmli::GetDXGIFormatFromDirectXPixelFormat(wgdx::DirectXPixelForma
   WINML_THROW_HR(E_INVALIDARG);
 }
 
-wgdx::DirectXPixelFormat _winmli::GetDirectXPixelFormatFromChannelType(_winml::ImageTensorChannelType channelType) {
+wgdx::DirectXPixelFormat _winmli::GetDirectXPixelFormatFromChannelType(_In_ _winml::ImageTensorChannelType channelType) {
   switch (channelType) {
     case _winml::kImageTensorChannelTypeBGR8:
       return wgdx::DirectXPixelFormat::B8G8R8A8UIntNormalized;

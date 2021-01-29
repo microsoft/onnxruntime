@@ -20,6 +20,7 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/session_options.h"
+#include "core/framework/allocatormgr.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -384,6 +385,10 @@ class InferenceSession {
     */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
 
+  std::shared_ptr<onnxruntime::AllocatorManager> GetAllocatorManager() {
+    return allocator_manager_;
+  }
+
   /**
     *Get InferenceSession logger.
     */
@@ -649,6 +654,8 @@ class InferenceSession {
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
   std::vector<uint8_t> ort_format_model_bytes_;
+  
+  std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };
 
 struct SessionIOBinding {

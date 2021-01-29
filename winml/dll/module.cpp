@@ -6,6 +6,9 @@
 #include <Hstring.h>
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
+
+#ifndef BUILD_INBOX
+
 #include "LearningModelBuilder.h"
 #include "LearningModelOperator.h"
 #include "LearningModelSessionOptionsExperimental.h"
@@ -13,6 +16,8 @@
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
+
+#endif
 
 using namespace winmlp;
 
@@ -70,6 +75,7 @@ extern "C" HRESULT WINAPI MLCreateOperatorRegistry(_COM_Outptr_ IMLOperatorRegis
 }
 CATCH_RETURN();
 
+__control_entrypoint(DllExport)
 STDAPI DllCanUnloadNow() {
   // This dll should not be freed by
   // CoFreeUnusedLibraries since there can be outstanding COM object
@@ -91,6 +97,7 @@ STDAPI DllCanUnloadNow() {
   return S_FALSE;
 }
 
+#ifndef BUILD_INBOX
 STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexcept {
   try {
     *factory = nullptr;
@@ -127,15 +134,16 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
     return winrt::to_hresult();
   }
 }
+#endif
 
 STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
-  UINT32 length;
-  auto class_id = WindowsGetStringRawBuffer(classId, &length); 
-  wchar_t prefix[] = L"Microsoft.AI.MachineLearning.Experimental";
-  auto size = _countof(prefix) - 1;
-  if (_wcsnicmp(class_id, prefix, size) == 0) {
+  auto ret = WINRT_GetActivationFactory(classId, factory);
+
+#ifndef BUILD_INBOX
+  if (ret != 0) {
     return DllGetExperimentalActivationFactory(classId, factory);
-  } else {
-    return WINRT_GetActivationFactory(classId, factory);
   }
+#endif
+
+  return ret;
 }

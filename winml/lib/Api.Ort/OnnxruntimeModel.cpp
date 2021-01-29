@@ -47,7 +47,7 @@ HRESULT CreateFeatureDescriptors(
   return S_OK;
 }
 
-HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OrtModel* ort_model) {
+HRESULT ModelInfo::RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine_factory, _In_ OrtModel* ort_model) {
   RETURN_HR_IF_NULL(E_INVALIDARG, ort_model);
 
   const auto winml_adapter_api = engine_factory->UseWinmlAdapterApi();
