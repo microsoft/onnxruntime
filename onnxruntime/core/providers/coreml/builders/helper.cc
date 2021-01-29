@@ -6,6 +6,7 @@
 #include "helper.h"
 #include <core/graph/graph_viewer.h>
 
+#include "core/providers/common.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "op_builder_factory.h"
 

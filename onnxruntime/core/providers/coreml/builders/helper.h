@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include <cstdint>
-#include <functional>
-
 namespace onnxruntime {
 
 class GraphViewer;
@@ -16,18 +13,6 @@ class Logger;
 }
 
 namespace coreml {
-
-// TODO, move this to shared_library
-template <template <typename> class Container, typename T>
-T Product(const Container<T>& c) {
-  return static_cast<T>(accumulate(c.cbegin(), c.cend(), 1, std::multiplies<T>()));
-}
-
-// TODO, move this to shared_library
-template <class Map, class Key>
-inline bool Contains(const Map& map, const Key& key) {
-  return map.find(key) != map.end();
-}
 
 // TODO, move this to shared_library
 bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logger);

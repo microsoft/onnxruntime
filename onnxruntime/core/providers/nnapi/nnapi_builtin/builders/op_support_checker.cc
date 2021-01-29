@@ -6,6 +6,8 @@
 
 #include <core/graph/graph.h>
 
+#include "core/providers/common.h"
+#include "core/providers/shared/utils.h"
 #include "helper.h"
 #include "op_support_checker.h"
 

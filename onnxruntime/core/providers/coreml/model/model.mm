@@ -8,6 +8,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "host_utils.h"
