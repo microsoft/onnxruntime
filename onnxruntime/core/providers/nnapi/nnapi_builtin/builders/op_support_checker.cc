@@ -1029,7 +1029,7 @@ class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
-    return 27;
+    return 29;
   }
 };
 
@@ -1070,7 +1070,7 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
-    return 29;
+    return 27;
   }
   bool HasSupportedInputsImpl(const Node& node) const override;
 };
