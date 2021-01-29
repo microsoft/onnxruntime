@@ -74,6 +74,7 @@ extern "C" HRESULT WINAPI MLCreateOperatorRegistry(_COM_Outptr_ IMLOperatorRegis
 }
 CATCH_RETURN();
 
+__control_entrypoint(DllExport)
 STDAPI DllCanUnloadNow() {
   // This dll should not be freed by
   // CoFreeUnusedLibraries since there can be outstanding COM object
