@@ -85,6 +85,9 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
 
 struct Sparse2x4WeightDescriptor {
   int input_idx_;
+  TensorShape shape_;
+  int64_t K_;
+  int64_t N_;
   cusparseLtMatDescriptor_t mat_desc_;
 };
 
@@ -93,26 +96,39 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
   is_packed = false;
   // We only pack Matrix B just like CPU version
   // only if it is 2:4 pruned and only if A100 available
+  // However, we will feed this to cuSparseLT as the first argument.
+  // cuSparseLt only handles 2 -D matrices
   if (IsAmpereAvaiable()) {
     if (param.input_idx == 1 && param.Is2x4Format()) {
       if (!tensor.IsDataType<T>()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Wrong type for the initializer");
       }
 
-      constexpr size_t data_type_size = sizeof(T);
-      constexpr auto cuda_type = ToCudaTypeEnum<T>::type;
-
+      std::unique_ptr<Sparse2x4WeightDescriptor> mat_B = onnxruntime::make_unique<Sparse2x4WeightDescriptor>();
+      mat_B->input_idx_ = param.input_idx;
       const auto& shape = tensor.Shape();
-      if (!shape.NumDimensions() != 2) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Can only handle 2 dim matrices");
+      mat_B->shape_ = shape; // Save the original shape for later computation broadcasting
+
+      const size_t num_dims = shape.NumDimensions();
+      int64_t K, N;
+      if (num_dims > 2) {
+        // We need to flatten it for cuSparseLT.
+        K = shape.SizeToDimension(num_dims - 1);
+        N = shape[num_dims - 1];
+      } else if (num_dims == 1) {
+        K = shape[0];
+        N = 1;
       }
 
+      constexpr size_t data_type_size = sizeof(T);
+      constexpr auto cuda_type = ToCudaTypeEnum<T>::type;
       const cusparseLtHandle_t* handle = CusparseLightHandle();
-      std::unique_ptr<Sparse2x4WeightDescriptor> desc = onnxruntime::make_unique<Sparse2x4WeightDescriptor>();
-      desc->input_idx_ = param.input_idx;
-      CUSPARSELT_RETURN_IF_ERROR(cusparseLtStructuredDescriptorInit(handle, &mat_B->mat_desc_, shape[0], shape[1],
-                                                                    shape.at(0), data_type_size, cuda_type,
-                                                                    CUSPARSE_ORDER_ROW, CUSPARSELT_SPARSITY_50_PERCENT));
+      // We say it is a column order and feed this as matrix A
+      CUSPARSELT_RETURN_IF_ERROR(cusparseLtStructuredDescriptorInit(handle, &mat_B->mat_desc_, K, N,
+                                                                    K, data_type_size, cuda_type,
+                                                                    CUSPARSE_ORDER_COL, CUSPARSELT_SPARSITY_50_PERCENT));
+      mat_B->K_ = K;
+      mat_B->N_ = N;
 
       is_packed = true;
     }
