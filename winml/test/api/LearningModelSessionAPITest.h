@@ -22,6 +22,7 @@ struct LearningModelSessionAPITestsApi {
   VoidTest CloseSession;
   VoidTest SetIntraOpNumThreads;
   VoidTest ModelBuilding_Gemm;
+  VoidTest ModelBuilding_StandardDeviationNormalization;
   VoidTest ModelBuilding_DynamicMatmul;
   VoidTest ModelBuilding_ConstantMatmul;
   VoidTest ModelBuilding_DiscreteFourierTransform;
@@ -54,6 +55,7 @@ WINML_TEST(LearningModelSessionAPITests, OverrideNamedDimension)
 WINML_TEST(LearningModelSessionAPITests, CloseSession)
 WINML_TEST(LearningModelSessionAPITests, SetIntraOpNumThreads)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_Gemm)
+WINML_TEST(LearningModelSessionAPITests, ModelBuilding_StandardDeviationNormalization)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_DynamicMatmul)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_ConstantMatmul)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_DiscreteFourierTransform)
