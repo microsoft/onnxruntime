@@ -20,6 +20,10 @@ Abstract:
 
 #include "mlasi.h"
 
+#ifndef _MM_K0_REG16
+#define _MM_K0_REG16 0xffff
+#endif
+
 //
 // QuantizeLinear implementation using AVX512 intrinsics.
 //
@@ -99,15 +103,10 @@ Return Value:
         IntegerVector2 = _mm512_add_epi32(IntegerVector2, ZeroPointVector);
         IntegerVector3 = _mm512_add_epi32(IntegerVector3, ZeroPointVector);
 
-        auto ByteVector0 = _mm512_cvtepi32_epi8(IntegerVector0);
-        auto ByteVector1 = _mm512_cvtepi32_epi8(IntegerVector1);
-        auto ByteVector2 = _mm512_cvtepi32_epi8(IntegerVector2);
-        auto ByteVector3 = _mm512_cvtepi32_epi8(IntegerVector3);
-
-        _mm_storeu_si128((__m128i*)Output, ByteVector0);
-        _mm_storeu_si128((__m128i*)(Output+16), ByteVector1);
-        _mm_storeu_si128((__m128i*)(Output+32), ByteVector2);
-        _mm_storeu_si128((__m128i*)(Output+48), ByteVector3);
+        _mm512_mask_cvtepi32_storeu_epi8((void*)Output, _MM_K0_REG16, IntegerVector0);
+        _mm512_mask_cvtepi32_storeu_epi8((void*)(Output + 16), _MM_K0_REG16, IntegerVector1);
+        _mm512_mask_cvtepi32_storeu_epi8((void*)(Output + 32), _MM_K0_REG16, IntegerVector2);
+        _mm512_mask_cvtepi32_storeu_epi8((void*)(Output + 48), _MM_K0_REG16, IntegerVector3);
 
         Input += 64;
         Output += 64;
@@ -123,8 +122,7 @@ Return Value:
         auto IntegerVector = _mm512_cvtps_epi32(FloatVector);
         IntegerVector = _mm512_add_epi32(IntegerVector, ZeroPointVector);
 
-        auto ByteVector = _mm512_cvtepi32_epi8(IntegerVector);
-        _mm_storeu_si128((__m128i*)Output, ByteVector);
+        _mm512_mask_cvtepi32_storeu_epi8((void*)Output, _MM_K0_REG16, IntegerVector);
 
         Input += 16;
         Output += 16;
