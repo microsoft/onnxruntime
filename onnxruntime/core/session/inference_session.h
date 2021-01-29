@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <thread>
+#include <future>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -660,6 +661,8 @@ class InferenceSession {
 
   // background thread for RunInBackgroundAndWaitForYield
   std::thread bg_thread_;
+  std::promise<Status> bg_thread_promise_;
+  std::future<Status> bg_thread_future_;
 };
 
 struct SessionIOBinding {

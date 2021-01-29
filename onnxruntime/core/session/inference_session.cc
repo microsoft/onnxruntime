@@ -1694,10 +1694,15 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs) {
-  bg_thread_ = std::thread([&]() {
+  bg_thread_promise_ = std::promise<Status>();
+  bg_thread_future_ = bg_thread_promise_.get_future();
+
+  bg_thread_ = std::thread([&](std::promise<common::Status> result_promise) {
     common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                            &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
-  });
+    result_promise.set_value(s);
+  },
+                           std::move(bg_thread_promise_));
 
   // wait for event from yeild op
   const int64_t main_thread_event_id = 0;
@@ -1716,12 +1721,13 @@ common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtVa
   const int64_t background_thread_event_id = 1;
   onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(background_thread_event_id);
 
+  Status bg_thread_status = bg_thread_future_.get();
   // wait for bg_thread to complete
   if (bg_thread_.joinable()) {
     bg_thread_.join();
   }
 
-  return Status::OK();
+  return bg_thread_status;
 }
 
 template <typename T>
