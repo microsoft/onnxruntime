@@ -2091,7 +2091,7 @@ static constexpr OrtApi ort_api_1_to_7 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 7)
+  if (version >= 1 && version <= ORT_API_VERSION)
     return &ort_api_1_to_7;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
