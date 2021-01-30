@@ -1474,10 +1474,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   include(onnxruntime_unittests.cmake)
 endif()
 
-#if (onnxruntime_ENABLE_TRAINING_OPS)
-#  include(onnxruntime_training_ops.cmake)
-#endif()
-
 if (onnxruntime_ENABLE_TRAINING)
   include(onnxruntime_training.cmake)
   if (onnxruntime_ENABLE_TRAINING_E2E_TESTS)
