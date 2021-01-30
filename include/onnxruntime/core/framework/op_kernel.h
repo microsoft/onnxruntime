@@ -53,19 +53,20 @@ class OpKernel {
 
   enum class SparseFlags : uint32_t {
     kNothing = 0,
-    kTreatAs2x4 = 0x1,   // 2:4 dense format
-    kSymbolicDim = 0x2 // Symbolic shapes present
+    kTreatAs2x4 = 0x1   // 2:4 dense format
+//    kSymbolicDim = 0x2 // Symbolic shapes present
   };
 
   struct PrepackParam {
     int input_idx = 0;           // Input index
     uint32_t sparse_flags = 0;   // Sparse initializer annotations
+    const std::string& name;
     bool Is2x4Format() const noexcept{
       return (sparse_flags & static_cast<uint32_t>(SparseFlags::kTreatAs2x4)) != 0;
     }
-    bool HasSymbolicDim() const noexcept {
-      return (sparse_flags & static_cast<uint32_t>(SparseFlags::kSymbolicDim)) != 0;
-    }
+    //bool HasSymbolicDim() const noexcept {
+    //  return (sparse_flags & static_cast<uint32_t>(SparseFlags::kSymbolicDim)) != 0;
+    //}
   };
 
   // Override this function to PrePack initialized constant tensor to the format as needed.

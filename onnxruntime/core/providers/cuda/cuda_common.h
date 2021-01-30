@@ -64,6 +64,12 @@ struct ToCudaTypeEnum<double> {
 };
 
 template <>
+struct ToCudaTypeEnum<float> {
+  static constexpr cudaDataType type = CUDA_R_32F;
+  static constexpr cusparseComputeType at_least_precision = CUSPARSE_COMPUTE_16F;
+};
+
+template <>
 struct ToCudaTypeEnum<MLFloat16> {
   static constexpr cudaDataType type = CUDA_R_16U;
   static constexpr cusparseComputeType at_least_precision = CUSPARSE_COMPUTE_16F;

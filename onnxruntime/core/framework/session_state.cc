@@ -258,20 +258,6 @@ void SessionState::CleanInitializedTensorsFromGraph() {
   graph_.CleanAllInitializedTensors();
 }
 
-bool CheckForSymbolicDim(const ONNX_NAMESPACE::TypeProto* type_proto, uint32_t flags) {
-  bool result = false;
-  const auto& tensor_shape = type_proto->tensor_type().shape();
-  for (int i = 0; i < tensor_shape.dim_size(); ++i) {
-    const auto& dim = tensor_shape.dim(i);
-    if (dim.value_case() == ONNX_NAMESPACE::Dim::ValueCase::kDimParam) {
-      flags |= static_cast<uint32_t>(OpKernel::SparseFlags::kSymbolicDim);
-      result = true;
-      break;
-    }
-  }
-  return result;
-}
-
 Status SessionState::PrepackConstantInitializedTensors(const SessionOptions& session_options,
                                                        std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
   // XXX: This is only needed for A100 related code.
@@ -283,19 +269,6 @@ Status SessionState::PrepackConstantInitializedTensors(const SessionOptions& ses
   for (auto& node : GetGraphViewer().Nodes()) {
     auto kernel = GetMutableKernel(node.Index());
     int input_idx = 0;
-    uint32_t flags = sparse_flags;
-    // Let' check if symbolic shapes are present and pass this to PrePack()
-    for (auto& input_def : node.InputDefs()) {
-      if (input_def->Exists()) {
-        // Check if this is a tensor and has symbolic dims in the shape.
-        const auto* type_proto = input_def->TypeAsProto();
-        if (type_proto != nullptr &&
-            type_proto->value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kTensorType &&
-            CheckForSymbolicDim(type_proto, flags)) {
-          break;
-        }
-      }
-    }
     for (auto& input_def : node.InputDefs()) {
       if (input_def->Exists()) {
         const std::string& input_name = input_def->Name();
@@ -307,9 +280,10 @@ Status SessionState::PrepackConstantInitializedTensors(const SessionOptions& ses
           if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
             std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
             if (constant_initialized_tensors.count(ort_value_idx)) {
+              OpKernel::PrepackParam pre_param{input_idx, sparse_flags, input_name};
               bool is_packed = false;
               const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
-              ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, {input_idx, flags}, is_packed));
+              ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, pre_param, is_packed));
               if (is_packed && constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
                 // release the constant initialized tensor
                 st->initialized_tensors_.erase(ort_value_idx);

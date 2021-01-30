@@ -29,9 +29,6 @@ class MatMul final : public CudaKernel {
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;
-  struct Sparse2x4WeightDescriptor;
-  std::unique_ptr<Sparse2x4WeightDescriptor> sparse_desc_A_;
-  std::unique_ptr<Sparse2x4WeightDescriptor> sparse_desc_B_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime
