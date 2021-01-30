@@ -131,7 +131,7 @@ Return Value:
 
     if (N > 0) {
         __mmask16 mask = uint16_t((uint32_t(1) << N) - uint32_t(1));
-        auto FloatVector = _mm512_mask_loadu_ps(_mm512_set1_ps(0.0f), mask, Input);
+        auto FloatVector = _mm512_maskz_loadu_ps(mask, Input);
         FloatVector = _mm512_div_ps(FloatVector, ScaleVector);
         FloatVector = _mm512_max_ps(FloatVector, MinimumValueVector);
         FloatVector = _mm512_min_ps(FloatVector, MaximumValueVector);
