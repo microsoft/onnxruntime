@@ -344,12 +344,13 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
   ORT_ENFORCE(n >= 0);
   Eigen::TensorOpCost cost{c.bytes_loaded, c.bytes_stored, c.compute_cycles};
   auto d_of_p = DegreeOfParallelism(this);
+  /*
   // Compute small problems directly in the caller thread.
   if ((!ShouldParallelizeLoop(n)) ||
       CostModel::numThreads(static_cast<double>(n), cost, d_of_p) == 1) {
     f(0, n);
     return;
-  }
+  }*/
 
   ptrdiff_t block = CalculateParallelForBlock(n, cost, nullptr, d_of_p);
   ParallelForFixedBlockSizeScheduling(n, block, f);
