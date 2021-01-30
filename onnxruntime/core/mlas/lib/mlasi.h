@@ -1743,39 +1743,3 @@ MlasReadTimeStampCounter(void)
 #endif
 #endif
 }
-
-
-#ifdef MLAS_TARGET_AMD64_IX86
-
-//
-// Reads the processor extended control register to determine platform
-// capabilities.
-//
-
-#if !defined(_XCR_XFEATURE_ENABLED_MASK)
-#define _XCR_XFEATURE_ENABLED_MASK 0
-#endif
-
-inline
-uint64_t
-MlasReadExtendedControlRegister(
-    unsigned int ext_ctrl_reg
-)
-{
-#if defined(_WIN32)
-    return _xgetbv(ext_ctrl_reg);
-#else
-    uint32_t eax, edx;
-
-    __asm__
-    (
-        "xgetbv"
-        : "=a" (eax), "=d" (edx)
-        : "c" (ext_ctrl_reg)
-    );
-
-    return ((uint64_t)edx << 32) | eax;
-#endif
-}
-
-#endif
