@@ -76,7 +76,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   } else {
     auto* padding_type = coreml_conv->mutable_valid();
-    if (AutoPadType::NOTSET == auto_pad_type) {
+    if (AutoPadType::NOTSET == auto_pad_type && onnx_pads != std::vector<int64_t>{0, 0, 0, 0}) {
       // NOTSET is adding the explicit padding to the ValidPadding.paddingAmounts
       auto* heightBorder = padding_type->mutable_paddingamounts()->add_borderamounts();
       heightBorder->set_startedgesize(onnx_pads[0]);
