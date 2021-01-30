@@ -86,11 +86,25 @@ static void AsyncEventRecord(AsyncExecutionEvent& event, AsyncExecutionStream& s
 }
 
 AsyncExecutionProvider::AsyncExecutionProvider() : IExecutionProvider{kAsyncExecutionProvider} {
+  // the default allocator, note we could use arena allocator if needed
   AllocatorCreationInfo device_info{
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Async", OrtAllocatorType::OrtDeviceAllocator));
       }};
-  InsertAllocator(device_info.device_alloc_factory(0));
+  InsertAllocator(device_info.device_alloc_factory(/*device_id*/ 0));
+
+  // some more allocators, for async streams, note we could use arena allocator if needed
+  // using a separate allocator would simplify synchronization,
+  // at the cost of bigger memory footprint since the memory between allocators are not shared
+  // we may replace per-stream allocator with BFC arena with stream tracking,
+  // similar to RAPIDS Memory Management
+  // note that custom MemType is not supported by IExecutionProvider::GetAllocator
+  // so EP needs to override the GetAllocator, and manage the allocator outside of registry
+  for (int64_t i = 1; i < MemType_MaxPlusOne; ++i) {
+    custom_allocators_[i - 1] = onnxruntime::make_unique<CPUAllocator>(
+        OrtMemoryInfo("AsyncCustom", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(),
+                      /*device_id*/ 0, /*mem_type*/ (OrtMemType)i));
+  }
 
   for (uint32_t i = 0; i < NumStreams; ++i) {
     streams_.push_back(onnxruntime::make_unique<AsyncExecutionStream>(std::to_string(i)));
@@ -98,6 +112,14 @@ AsyncExecutionProvider::AsyncExecutionProvider() : IExecutionProvider{kAsyncExec
   for (uint32_t i = 0; i < NumEvents; ++i) {
     events_.push_back(onnxruntime::make_unique<AsyncExecutionEvent>());
   }
+}
+
+AllocatorPtr AsyncExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+  if (mem_type <= 0) {
+    return IExecutionProvider::GetAllocator(id, mem_type);
+  }
+  ORT_ENFORCE(gsl::narrow<int64_t>(mem_type) < MemType_MaxPlusOne);
+  return custom_allocators_[mem_type - 1];  // custom MemType is 1-based, while the array is 0-based
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -132,14 +154,16 @@ AsyncExecutionProvider::GetCapability(const GraphViewer& graph,
 
     if (op_type == "Add") {
       // runs in stream 0
-      // sync stream 0 to dispatcher to make sure input data is valid while kernels running
       // record event 0 after kernel compute done in stream 0
       SetAsyncInfo(meta_def.get(), /*stream*/ 0, /*wait_events*/ {}, /*record_event*/ 0);
+      // specify output to be MemType_Stream2
+      SetIntsAttr(meta_def.get(), KernelDefBuilder::NodeAttr_OutputMemType, {MemType_Stream2});
     } else if (op_type == "Mul") {
       // runs in stream 1
-      // sync stream 1 to dispatcher to make sure input data is valid while kernels running
       // record event 1 after kernel compute done in stream 1
       SetAsyncInfo(meta_def.get(), /*stream*/ 1, /*wait_events*/ {}, /*record_event*/ 1);
+      // specify output to be MemType_Stream2
+      SetIntsAttr(meta_def.get(), KernelDefBuilder::NodeAttr_OutputMemType, {MemType_Stream2});
     } else if (op_type == "Sub") {
       // runs in stream 2
       // wait for event 0 and 1
@@ -163,9 +187,9 @@ AsyncExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
 
     // Create state function
     info.create_state_func =
-        [&, node](ComputeContext* ctx, FunctionState* state) {
+        [&, node](ComputeContext* /*ctx*/, FunctionState* state) {
           std::unique_ptr<AsyncKernel> s =
-              onnxruntime::make_unique<AsyncKernel>(*node, *ctx);
+              onnxruntime::make_unique<AsyncKernel>(*node);
 
           *state = s.release();
           return 0;

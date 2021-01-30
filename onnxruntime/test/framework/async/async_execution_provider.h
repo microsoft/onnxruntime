@@ -20,6 +20,8 @@ class AsyncExecutionProvider : public IExecutionProvider {
  public:
   explicit AsyncExecutionProvider();
 
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
+
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
@@ -46,6 +48,13 @@ class AsyncExecutionProvider : public IExecutionProvider {
     NumStreams = 3,
     NumEvents = 10,
   };
+
+  enum : int64_t {
+    // note that custom MemType > 0
+    MemType_Stream2 = 1,
+    MemType_MaxPlusOne
+  };
+  AllocatorPtr custom_allocators_[MemType_MaxPlusOne - 1];
 
  public:
   static const std::string FusedNodeDomain;

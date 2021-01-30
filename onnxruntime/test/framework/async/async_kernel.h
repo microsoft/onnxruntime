@@ -23,8 +23,7 @@ struct AsyncExecConfig {
 class AsyncKernel {
  public:
   explicit AsyncKernel(
-      const Node& fused_node,
-      const ComputeContext& ctx);
+      const Node& fused_node);
 
   // note: AsyncKernel runs shape inference and output allocation in dispatcher thread
   // then queues up AsyncTask to EP's stream and return
@@ -35,9 +34,6 @@ class AsyncKernel {
   }
 
  private:
-  // the compute context from IExecutionProvider::Compile interface
-  ComputeContext ctx_;
-
   // async compute function and args
   std::function<void()> func_;
   struct FuncArgs {

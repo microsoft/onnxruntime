@@ -331,6 +331,11 @@ class KernelDefBuilder {
     return std::move(kernel_def_);
   }
 
+  // special node attribute name for fused node to specify input/output MemType
+  // the attribute would be an array of ints
+  static const std::string NodeAttr_InputMemType;
+  static const std::string NodeAttr_OutputMemType;
+
  private:
   // we own the KernelDef until Build() is called.
   std::unique_ptr<KernelDef> kernel_def_;

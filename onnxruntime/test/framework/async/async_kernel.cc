@@ -9,9 +9,7 @@
 namespace onnxruntime {
 
 AsyncKernel::AsyncKernel(
-    const Node& fused_node,
-    const ComputeContext& ctx)
-    : ctx_(ctx) {
+    const Node& fused_node) {
   const auto* func_body = fused_node.GetFunctionBody();
   ORT_ENFORCE(func_body != nullptr);
   const Graph& subgraph = func_body->Body();
