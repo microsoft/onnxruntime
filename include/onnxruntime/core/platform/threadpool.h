@@ -380,8 +380,20 @@ class ThreadPool {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
+  struct LastStatus {
+    int engaged_threads_ = 0;
+  };
+
+  const LastStatus& GetLastStatus() const { return last_status_; }
+
+  void ResetLastStatus() const {
+    last_status_.engaged_threads_ = 0;
+  }
+
  private:
   friend class LoopCounter;
+
+  mutable LastStatus last_status_;
 
   // Returns the number of threads created in the pool.  This may be different from the
   // value returned by DegreeOfParallelism to code using the pool.

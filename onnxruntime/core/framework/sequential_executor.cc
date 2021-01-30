@@ -294,6 +294,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
                                input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
+
+      if (session_state.GetThreadPool()) {
+        session_state.GetThreadPool()->ResetLastStatus();
+      }
     }
 
     Status compute_status;
@@ -369,6 +373,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"activation_size", std::to_string(input_activation_sizes)},
                                                          {"parameter_size", std::to_string(input_parameter_sizes)},
                                                          {"output_size", std::to_string(total_output_sizes)},
+                                                         {"engaged_threads", std::to_string(session_state.GetThreadPool() ? session_state.GetThreadPool()->GetLastStatus().engaged_threads_ : -1)},
                                                      });
 
       sync_time_begin = session_state.Profiler().StartTime();
