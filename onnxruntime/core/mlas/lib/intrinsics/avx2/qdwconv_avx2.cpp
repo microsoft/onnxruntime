@@ -63,7 +63,7 @@ MlasConvDepthwiseKernelAvx2(
                 // N.B. The original SSE2 implementation used PMULLW/PMULHW in
                 // order to emulate the SSE 4.1 PMULLD instruction, however this
                 // implementation ends up being faster for some CPUs than
-                // extending to 32-bits and use PMULLD.
+                // extending to 32-bits and using PMULLD.
                 __m256i MultiplyLowWords = _mm256_mullo_epi16(InputVector, FilterVector);
                 __m256i MultiplyHighWords = _mm256_mulhi_epi16(InputVector, FilterVector);
                 __m256i Multiply0 = _mm256_unpacklo_epi16(MultiplyLowWords, MultiplyHighWords);
@@ -77,7 +77,7 @@ MlasConvDepthwiseKernelAvx2(
             // N.B. The above interleaving of the intermediate results leaves
             // the accumulators in a swizzled layout, because the interleaving
             // is per 128-bit half of the __m256i register. Reorder the results
-            // now to get the expected linear layout.
+            // now to get the expected sequential order.
             __m256i Reorder0 = _mm256_permute2x128_si256(Accumulator0, Accumulator1, 0x20);
             __m256i Reorder1 = _mm256_permute2x128_si256(Accumulator0, Accumulator1, 0x31);
 
