@@ -5,7 +5,7 @@ do case "${parameter}"
 in 
 d) PERF_DIR=${OPTARG};;
 o) OPTION=${OPTARG};;
-m) MOUNT_PATH=${OPTARG};;
+m) MANY_PATH=${OPTARG};;
 esac
 done 
 
@@ -43,8 +43,8 @@ setup() {
 if [ $OPTION == "many-models" ]
 then
     setup
-    python3 benchmark_wrapper.py -r validate -m "$3" -o result/"$2"
-    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m "$3" -o result/"$2"
+    python3 benchmark_wrapper.py -r validate -m $MANY_PATH -o result/$OPTION
+    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MANY_PATH -o result/$OPTION
 fi
 
 # ONNX model zoo
@@ -58,19 +58,19 @@ then
 fi
 
 # 1P models 
-if [ "$2" == "partner-models" ]
+if [ $OPTION == "partner-models" ]
 then
     MODEL_LIST="partner_model_list.json"
     setup
-    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/"$2"
-    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/"$2"
+    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/$OPTION
+    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/$OPTION
 fi
 
 # Test models 
-if [ "$2" == "selected-models" ]
+if [ $OPTION == "selected-models" ]
 then
     MODEL_LIST="selected_models.json"
     setup
-    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/"$2"
-    python3 benchmark_wrapper.py -r benchmark -i random -t 1 -m $MODEL_LIST -o result/"$2"
+    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/$OPTION
+    python3 benchmark_wrapper.py -r benchmark -i random -t 1 -m $MODEL_LIST -o result/$OPTION
 fi
