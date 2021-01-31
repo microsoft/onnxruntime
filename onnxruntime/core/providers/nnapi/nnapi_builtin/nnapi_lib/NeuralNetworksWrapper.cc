@@ -99,7 +99,8 @@ size_t OperandType::GetElementByteSize() const {
 }
 
 size_t OperandType::GetOperandBlobByteSize() const {
-  return Product(dimensions) * GetElementByteSize();
+  size_t num_elements = std::accumulate(dimensions.begin(), dimensions.end(), 1, std::multiplies<size_t>());
+  return num_elements * GetElementByteSize();
 }
 
 void OperandType::SetDimensions(const std::vector<uint32_t>& d) {

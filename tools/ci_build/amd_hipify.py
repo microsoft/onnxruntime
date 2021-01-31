@@ -62,7 +62,8 @@ contrib_ops_excluded_files = [
                     'conv_transpose_with_dynamic_pads.h',
                     'cuda_contrib_kernels.cc',
                     'cuda_contrib_kernels.h',
-                    'inverse.cc'
+                    'inverse.cc',
+                    'fused_conv.cc'
 ]
 
 provider_excluded_files = [
@@ -165,10 +166,6 @@ provider_excluded_files = [
                 'tensor/gather_elements_impl.cu',
                 'tensor/gather_elements_impl.h',
                 'tensor/gather_nd_impl.cu',
-                'tensor/nonzero_impl.cu',
-                'tensor/nonzero_impl.h',
-                'tensor/nonzero_op.cc',
-                'tensor/nonzero_op.h',
                 'tensor/pad.cc',
                 'tensor/pad.h',
                 'tensor/pad_impl.cu',

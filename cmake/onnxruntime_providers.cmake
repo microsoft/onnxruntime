@@ -307,7 +307,7 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL OR onnxruntime_USE_OPENVINO)
-  file(GLOB_RECURSE onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
+  file(GLOB onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/*.cc"
   )
@@ -643,6 +643,13 @@ if (onnxruntime_USE_COREML)
     IMPORT_DIRS ${COREML_PROTO_ROOT}
     TARGET onnxruntime_coreml_proto)
 
+  # These are shared utils,
+  # TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
+  file(GLOB_RECURSE onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
+  )
+
   file(GLOB
     onnxruntime_providers_coreml_cc_srcs_top CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/*.h"
@@ -670,10 +677,16 @@ if (onnxruntime_USE_COREML)
     COMPILE_FLAGS "${CMAKE_OBJC_FLAGS} -Xclang -x -Xclang objective-c++ -fobjc-arc"
   )
 
-  set(onnxruntime_providers_coreml_cc_srcs ${onnxruntime_providers_coreml_cc_srcs_top} ${onnxruntime_providers_coreml_cc_srcs_nested})
+  set(onnxruntime_providers_coreml_cc_srcs
+    ${onnxruntime_providers_coreml_cc_srcs_top}
+    ${onnxruntime_providers_coreml_cc_srcs_nested}
+    ${onnxruntime_providers_shared_utils_cc_srcs}
+  )
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_coreml_cc_srcs})
   add_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers onnxruntime_coreml_proto)
+  onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
   target_link_libraries(onnxruntime_providers_coreml PRIVATE onnxruntime_coreml_proto "-framework Foundation" "-framework CoreML")
   add_dependencies(onnxruntime_providers_coreml onnx onnxruntime_coreml_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_coreml PROPERTIES CXX_STANDARD_REQUIRED ON)
@@ -710,6 +723,13 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
   )
 
+  # These are shared utils,
+  # TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
+  file(GLOB_RECURSE onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
+  )
+
   if(CMAKE_SYSTEM_NAME STREQUAL "Android")
     file(GLOB_RECURSE
       onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
@@ -729,7 +749,12 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     )
   endif()
 
-  set(onnxruntime_providers_nnapi_cc_srcs ${onnxruntime_providers_nnapi_cc_srcs_top} ${onnxruntime_providers_nnapi_cc_srcs_nested})
+  set(onnxruntime_providers_nnapi_cc_srcs
+    ${onnxruntime_providers_nnapi_cc_srcs_top}
+    ${onnxruntime_providers_nnapi_cc_srcs_nested}
+    ${onnxruntime_providers_shared_utils_cc_srcs}
+  )
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
   add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers)
@@ -900,7 +925,7 @@ if (onnxruntime_USE_ARMNN)
   onnxruntime_add_include_to_target(onnxruntime_providers_armnn onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
   add_dependencies(onnxruntime_providers_armnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_armnn PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_armnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ARMNN_HOME} ${onnxruntime_ARMNN_HOME}/include)
+  target_include_directories(onnxruntime_providers_armnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ARMNN_HOME} ${onnxruntime_ARMNN_HOME}/include ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/armnn  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_armnn PROPERTIES LINKER_LANGUAGE CXX)
 endif()
