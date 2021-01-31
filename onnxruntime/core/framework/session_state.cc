@@ -48,9 +48,9 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
     result = entry->second(location.id, location.mem_type);
   }
 
-  // provider may overrided GetAllocator
-  // this looks a bit hacky, should refactor provider allocator registry
-  if (result == nullptr) {
+  // provider may override GetAllocator for custom MemType (> 0), so search again in EPs
+  // this looks a bit hacky, should refactor provider allocator registry later
+  if (result == nullptr && location.mem_type > 0) {
     for (const auto& provider : execution_providers_) {
       result = provider->GetAllocator(location.id, location.mem_type);
       if (result != nullptr) {
