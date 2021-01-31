@@ -3,6 +3,7 @@
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 
@@ -67,8 +68,17 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   coreml_conv->set_isdeconvolution(false);
 
-  // Padding
-  const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
+  // Add Padding
+  // Usually using autopadding is more efficient than using explicit padding
+  // Try to see if we can map explicit padding to auto padding
+  std::vector<int64_t> input_shape;
+  ORT_RETURN_IF_ERROR(GetShape(*input_defs[0], input_shape));
+  AutoPadType auto_pad_type;
+  ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3],
+                                    onnx_pads, strides, dilations,
+                                    StringToAutoPadType(helper.Get("auto_pad", "NOTSET")),
+                                    auto_pad_type));
+
   if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
     auto* padding_type = coreml_conv->mutable_same();
     if (AutoPadType::SAME_LOWER == auto_pad_type) {  // default is SAME_UPPER
