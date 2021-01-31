@@ -740,11 +740,11 @@ TEST(QLinearConvTest, Conv1D_U8S8_Depthwise) {
   for (int64_t channels : std::initializer_list<int64_t>{7, 8, 9, 16, 25, 64}) {
     QLinearConvOpTester<uint8_t, int8_t> test;
     test.GenerateRandomInput({1, channels, 25}, .03f, 12);
-    test.GenerateRandomWeights({channels, 1, 3}, .10f, 0);
+    test.GenerateRandomWeights({channels, 1, 3}, .10f, 2);
     test.GenerateRandomBias();
     test.SetPads({1, 1});
     test.SetGroups(channels);
-    test.SetOutputScaleAndZeroPoint(.76f, 88);
+    test.SetOutputScaleAndZeroPoint(.21f, 88);
     test.Run();
   }
 }
