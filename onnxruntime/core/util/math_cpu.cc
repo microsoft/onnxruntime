@@ -549,54 +549,46 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
     int64_t output_count,
     T const** data_indirection,
     const T* padding_ptr) {
-  // Special case 1D/2D transforms.
-  if (rank <= 2) {
-    int64_t stride_h;
-    int64_t stride_w;
-    int64_t kernel_h;
-    int64_t kernel_w;
-    int64_t dilation_h;
-    int64_t dilation_w;
-    int64_t pad_t;
-    int64_t pad_l;
-    int64_t input_h;
-    int64_t input_w;
-    int64_t output_w = output_shape[rank - 1];
+  if (rank == 1) {
+    int64_t stride_w = stride[0];
+    int64_t kernel_w = kernel_shape[0];
+    int64_t dilation_w = dilation[0];
+    int64_t pad_l = pad[0];
+    int64_t input_w = input_shape[0];
 
-    if (rank == 2) {
-      stride_h = stride[0];
-      stride_w = stride[1];
-      kernel_h = kernel_shape[0];
-      kernel_w = kernel_shape[1];
-      dilation_h = dilation[0];
-      dilation_w = dilation[1];
-      pad_t = pad[0];
-      pad_l = pad[1];
-      input_h = input_shape[0];
-      input_w = input_shape[1];
-    } else {
-      stride_h = 1;
-      stride_w = stride[0];
-      kernel_h = 1;
-      kernel_w = kernel_shape[0];
-      dilation_h = 1;
-      dilation_w = dilation[0];
-      pad_t = 0;
-      pad_l = pad[0];
-      input_h = 1;
-      input_w = input_shape[0];
-    }
-
-    int64_t mh = output_start / output_w;
-    int64_t mw = output_start % output_w;
+    int64_t ow = output_start * stride_w;
 
     while (output_count--) {
-      int64_t oh = mh * stride_h;
-      int64_t ow = mw * stride_w;
+      int64_t iw = ow - pad_l;
+      for (int64_t kw = 0; kw < kernel_w; kw++) {
+        const T* data_ptr = data_im + iw * input_channels;
+        data_indirection[kw] = is_a_ge_zero_and_a_lt_b(iw, input_w) ? data_ptr : padding_ptr;
+        iw += dilation_w;
+      }
+      data_indirection += kernel_w;
+      ow += stride_w;
+    }
 
+  } else if (rank == 2) {
+    int64_t stride_h = stride[0];
+    int64_t stride_w = stride[1];
+    int64_t kernel_h = kernel_shape[0];
+    int64_t kernel_w = kernel_shape[1];
+    int64_t dilation_h = dilation[0];
+    int64_t dilation_w = dilation[1];
+    int64_t pad_t = pad[0];
+    int64_t pad_l = pad[1];
+    int64_t input_h = input_shape[0];
+    int64_t input_w = input_shape[1];
+    int64_t output_w = output_shape[1];
+
+    int64_t oh = (output_start / output_w) * stride_h;
+    int64_t ow = (output_start % output_w) * stride_w;
+    int64_t ow_end = output_w * stride_w;
+
+    while (output_count--) {
       for (int64_t kh = 0; kh < kernel_h; kh++) {
         int64_t ih = kh * dilation_h + oh - pad_t;
-
         if (is_a_ge_zero_and_a_lt_b(ih, input_h)) {
           int64_t ihw = ih * input_w;
           int64_t iw = ow - pad_l;
@@ -610,45 +602,44 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
         }
         data_indirection += kernel_w;
       }
-
-      if (++mw == output_w) {
-        ++mh;
-        mw = 0;
+      ow += stride_w;
+      if (ow == ow_end) {
+        oh += stride_h;
+        ow = 0;
       }
     }
 
-    return;
-  }
+  } else {
+    // iterate dimensions on output image shape (without Batch and Channel)
+    std::vector<int64_t> d_output(rank, 0);
+    // inner iterate dimensions on kernel shape (without output channel and input channel)
+    std::vector<int64_t> d_kernel(rank, 0);
 
-  // iterate dimensions on output image shape (without Batch and Channel)
-  std::vector<int64_t> d_output(rank, 0);
-  // inner iterate dimensions on kernel shape (without output channel and input channel)
-  std::vector<int64_t> d_kernel(rank, 0);
+    // Skip ahead to the starting output index.
+    for (ptrdiff_t d_i = rank - 1; d_i >= 0; --d_i) {
+      d_output[d_i] = output_start % output_shape[d_i];
+      output_start /= output_shape[d_i];
+    }
 
-  // Skip ahead to the starting output index.
-  for (ptrdiff_t d_i = rank - 1; d_i >= 0; --d_i) {
-    d_output[d_i] = output_start % output_shape[d_i];
-    output_start /= output_shape[d_i];
-  }
-
-  while (output_count--) {
-    // Loop over spatial axes in reverse order to choose an index on kernel dimensions
-    do {
-      // Loop over spatial axes in forward order to compute the indices in the image
-      // and the inner col, and whether the index lies in the padding.
-      int64_t index_im = 0;
-      bool is_padding = false;
-      for (ptrdiff_t d_i = 0; d_i < rank; ++d_i) {
-        int64_t d_input = d_output[d_i] * stride[d_i] - pad[d_i] + d_kernel[d_i] * dilation[d_i];
-        is_padding |= !is_a_ge_zero_and_a_lt_b(d_input, input_shape[d_i]);
-        index_im *= input_shape[d_i];
-        index_im += d_input;
-      }
-      const T* data_ptr = data_im + index_im * input_channels;
-      *data_indirection++ = is_padding ? padding_ptr : data_ptr;
-    } while (NextPosition(rank, kernel_shape, d_kernel.data()));
-    // Loop over spatial axes along the output image shape
-    NextPosition(rank, output_shape, d_output.data());
+    while (output_count--) {
+      // Loop over spatial axes in reverse order to choose an index on kernel dimensions
+      do {
+        // Loop over spatial axes in forward order to compute the indices in the image
+        // and the inner col, and whether the index lies in the padding.
+        int64_t index_im = 0;
+        bool is_padding = false;
+        for (ptrdiff_t d_i = 0; d_i < rank; ++d_i) {
+          int64_t d_input = d_output[d_i] * stride[d_i] - pad[d_i] + d_kernel[d_i] * dilation[d_i];
+          is_padding |= !is_a_ge_zero_and_a_lt_b(d_input, input_shape[d_i]);
+          index_im *= input_shape[d_i];
+          index_im += d_input;
+        }
+        const T* data_ptr = data_im + index_im * input_channels;
+        *data_indirection++ = is_padding ? padding_ptr : data_ptr;
+      } while (NextPosition(rank, kernel_shape, d_kernel.data()));
+      // Loop over spatial axes along the output image shape
+      NextPosition(rank, output_shape, d_output.data());
+    }
   }
 }
 
