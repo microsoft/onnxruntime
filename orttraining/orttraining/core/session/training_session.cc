@@ -265,9 +265,11 @@ Status TrainingSession::ConfigureForTraining(
                                              mixed_precision_config,
                                              fp32_weight_name_to_mixed_precision_node_arg));
   }
-
+  // Save(PathString("/workspace/transfer/model_fw.onnx"), SaveOption::NO_RELOAD);
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.gradient_graph_config, *session_logger_));
+
+  // Save(PathString("/workspace/transfer/model_grad.onnx"), SaveOption::NO_RELOAD);
 
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
@@ -1000,6 +1002,14 @@ std::unordered_set<std::string> TrainingSession::GetStateTensorNames() const {
   std::unordered_set<std::string> checkpointed_tensor_names{};
   checkpointed_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
+
+  for (auto& node : model_->MainGraph().Nodes()) {
+    if (node.OpType().compare("BatchNormalization") == 0) {
+      checkpointed_tensor_names.insert(node.InputDefs()[3]->Name());
+      checkpointed_tensor_names.insert(node.InputDefs()[4]->Name());
+    }
+  }
+
   checkpointed_tensor_names.insert(
       opt_state_initializer_names_.begin(), opt_state_initializer_names_.end());
   checkpointed_tensor_names.insert(
