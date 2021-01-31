@@ -762,7 +762,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSigmoidGradient) {
-  auto const_one = OneConstantNode(OElemType(0));
+  // auto const_one = OneConstantNode(OElemType(0));
+  auto const_one = ConstantScalarNode(1.0f, "SigmoidOneConstant", OElemType(0));
   return std::vector<NodeDef>{
       const_one,
       NodeDef("Sub",
@@ -1296,7 +1297,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
     ArgDef x_shape = IA("Shape_" + X.name);
     return GetBiasGeluGradNodes(true, dY, X, B, dX, dB, b_axes, b_shape, x_shape, NodeName());
   }
-  
+
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{
         NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},
@@ -1483,6 +1484,83 @@ IMPLEMENT_GRADIENT_BUILDER(GetTopKGradient) {
               {GO(0), IA("x_shape"), O(1)},
               {GI(0)},
               {MakeAttribute("axis", axis)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
+  const auto num_src_node_inputs = GetSrcNodeInputSize();
+  if (num_src_node_inputs == 1) {
+    if (IsGradientRequiredForSrcNodeInput(0)) {
+      return std::vector<NodeDef>{
+          NodeDef("Identity",
+                  {GO(0)},
+                  {GI(0)})};
+    }
+    return std::vector<NodeDef>{};
+  }
+  std::vector<NodeDef> result;
+  std::vector<Dimension> y_shape;
+  const ArgDef y = O(0);
+  bool get_shapes_ok = GetShape(y, y_shape).IsOK();
+  for (int i = 0; get_shapes_ok && i < num_src_node_inputs; i++) {
+    std::vector<Dimension> x_shape;
+    if (!GetShape(I(i), x_shape).IsOK()) {
+      get_shapes_ok = false;
+    }
+  }
+  if (get_shapes_ok) {
+    for (int i = 0; i < num_src_node_inputs; i++) {
+      if (IsGradientRequiredForSrcNodeInput(i)) {
+        const ArgDef x = I(i);
+        std::string cmp_i = "Cmp_" + std::to_string(i);
+        std::string cmp_cast_i = "Cmp_Cast_" + std::to_string(i);
+        std::string pre_reduce_grad_i = "PreReduceGrad_" + std::to_string(i);
+        result.push_back(NodeDef("Equal", {x, y}, {IA(cmp_i)}));
+        result.push_back(NodeDef("Cast",
+                                {IA(cmp_i)},
+                                {IA(cmp_cast_i)},
+                                {MakeAttribute("to", int64_t(IElemType(0)))}));
+        result.push_back(NodeDef("Mul",
+                                {IA(cmp_cast_i), GO(0)},
+                                {IA(pre_reduce_grad_i, OType(0))}));
+        std::vector<Dimension> x_shape;
+        std::vector<int64_t> x_axes;
+        GetShape(x, x_shape);
+        ComputeBroadcastBackwardAxes(x_shape, y_shape, &x_axes, nullptr, NodeName());
+        if (x_axes.size() > 0) {
+          HandleBroadcasting(IA(pre_reduce_grad_i, OType(0)), x, GI(i), x_axes, result);
+        } else {
+          result.push_back(
+              NodeDef("Identity",
+                      {IA(pre_reduce_grad_i, OType(0))},
+                      {GI(i)}));
+        }
+      }
+    }
+  } else {
+    // GetShape failed, build shape-independent gradient graph
+    for (int i = 0; i < num_src_node_inputs; i++) {
+      if (IsGradientRequiredForSrcNodeInput(i)) {
+        const ArgDef x = I(i);
+        std::string cmp_i = "Cmp_" + std::to_string(i);
+        std::string cmp_cast_i = "Cmp_Cast_" + std::to_string(i);
+        std::string pre_reduce_grad_i = "PreReduceGrad_" + std::to_string(i);
+        result.push_back(NodeDef("Equal", {x, y}, {IA(cmp_i)}));
+        result.push_back(NodeDef("Cast",
+                                {IA(cmp_i)},
+                                {IA(cmp_cast_i)},
+                                {MakeAttribute("to", int64_t(IElemType(0)))}));
+        result.push_back(NodeDef("Mul",
+                                {IA(cmp_cast_i), GO(0)},
+                                {IA(pre_reduce_grad_i)}));
+        ArgDef x_axes = IA("ReduceAxes_" + x.name);
+        ArgDef x_shape = IA("Shape_" + x.name);
+        ArgDef y_shape = IA("Shape_" + y.name + std::to_string(i));
+        ComputeBroadcastBackwardAxesDynamic(x, y, x_shape, y_shape, &x_axes, nullptr, result);
+        HandleBroadcastingDynamic(IA(pre_reduce_grad_i), x, x_shape, GI(i), x_axes, result);
+      }
+    }
+  }
+  return result;
 }
 
 }  // namespace training

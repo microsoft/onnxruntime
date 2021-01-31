@@ -68,6 +68,7 @@ DECLARE_GRADIENT_BUILDER(GetExpandGradient)
 DECLARE_GRADIENT_BUILDER(GetExpGradient)
 DECLARE_GRADIENT_BUILDER(GetFlattenGradient)
 DECLARE_GRADIENT_BUILDER(GetTopKGradient)
+DECLARE_GRADIENT_BUILDER(GetMinMaxGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

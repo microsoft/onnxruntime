@@ -71,7 +71,8 @@ static const std::string loss_scale_input = "loss_scale";
 static const std::unordered_set<std::string> loss_subgraph_entry_nodes = {
     "SparseSoftmaxCrossEntropy",
     "SoftmaxCrossEntropyLoss",
-    "SoftmaxCrossEntropy"};
+    "SoftmaxCrossEntropy",
+    "Sigmoid"};
 
 static bool IsLossSubgraphEntryNode(const Node* node) {
   return loss_subgraph_entry_nodes.find(node->OpType()) != loss_subgraph_entry_nodes.cend();
@@ -390,7 +391,7 @@ Status TransformConstants(Graph& graph,
 // as SparseSoftmaxCrossEntropy where FP32 precision is required.
 // Converts fp16/bf16 tensor --> Op --> fp16/bf16 tensor to
 // fp16/bf16 tensor --> Cast --> fp32 tensor --> Op --> fp32 tensor --> Cast --> fp16/bf16 tensor
-Status TransformStage2(Graph& graph, 
+Status TransformStage2(Graph& graph,
                        ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type,
                        const std::unordered_map<Node*, std::vector<int>>& loss_subgraph_fp32_node_args = {}) {
   // This pass does not require topological sort order: okay to visit nodes in any order.

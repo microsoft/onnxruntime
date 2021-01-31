@@ -99,6 +99,8 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Exp", GetExpGradient);
   REGISTER_GRADIENT_BUILDER("Flatten", GetFlattenGradient);
   REGISTER_GRADIENT_BUILDER("TopK", GetTopKGradient);
+  REGISTER_GRADIENT_BUILDER("Max", GetMinMaxGradient);
+  REGISTER_GRADIENT_BUILDER("Min", GetMinMaxGradient);
 };
 
 }  // namespace training
