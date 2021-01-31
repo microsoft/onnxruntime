@@ -381,13 +381,13 @@ class ThreadPool {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
   struct LastStatus {
-    int engaged_threads_ = 0;
+    int engaged_threads_ = 1;
   };
 
   const LastStatus& GetLastStatus() const { return last_status_; }
 
   void ResetLastStatus() const {
-    last_status_.engaged_threads_ = 0;
+    last_status_.engaged_threads_ = 1;
   }
 
  private:

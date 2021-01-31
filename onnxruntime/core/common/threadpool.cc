@@ -199,7 +199,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
 }
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
-  last_status_.engaged_threads_ = this->NumThreads() + 1;
+  last_status_.engaged_threads_ = std::min(this->NumThreads() + 1, (int)total);
   ParallelForFixedBlockSizeScheduling(total, 1, [&](std::ptrdiff_t first, std::ptrdiff_t last) {
     for (std::ptrdiff_t idx = first; idx < last; idx++) {
       fn(idx);
@@ -351,8 +351,9 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
     f(0, n);
     return;
   }
-  last_status_.engaged_threads_ = d_of_p;
+  
   ptrdiff_t block = CalculateParallelForBlock(n, cost, nullptr, d_of_p);
+  last_status_.engaged_threads_ = (int)(n/block) + ((n%block)?1:0);
   ParallelForFixedBlockSizeScheduling(n, block, f);
 }
 
