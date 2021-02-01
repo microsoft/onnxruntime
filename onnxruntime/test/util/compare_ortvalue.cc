@@ -129,7 +129,9 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
   const size_t size1 = static_cast<size_t>(780);
   const MLFloat16* expected_output = expected_value.template Data<MLFloat16>();
   const MLFloat16* real_output = outvalue.template Data<MLFloat16>();
+  size_t total_diffs = 0;
   double max_diff = 0.0;
+  double min_diff = 0.0;
   for (size_t di = 0; di != size1; ++di) {
     float expected = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(expected_output[di].val));
     float real = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(real_output[di].val));
@@ -140,12 +142,14 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
       //std::ostringstream oss;
       //oss << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol;
       max_diff = std::max(max_diff, diff);
+      min_diff = std::min(min_diff, diff);
+      ++total_diffs;
       //return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
     }
   }
   if (max_diff > 0.0) {
     std::ostringstream oss;
-    oss << "max diff: " << max_diff;
+    oss << "max diff: " << max_diff << " min diff: " << min_diff << " Total diffs: " << total_diffs;
     return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
   }
 
