@@ -603,7 +603,7 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
     // cudnnReduceTensor has issue if input and output has same size, which will happen if the axis to be reduced has dim value of 1.
     // the output is zeros of the output size
     if (input_count == output_count) {
-      CUDA_RETURN_IF_ERROR(cudaMemset(output.template MutableData<int64_t>(), static_cast<int64_t>(0), output_count * sizeof(int64_t)));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.template MutableData<int64_t>(), static_cast<int64_t>(0), output_count * sizeof(int64_t)));
     } else {
       if (temp_X) {
         auto temp_output = cuda_ep.GetScratchBuffer<float>(output_count);
