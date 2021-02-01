@@ -68,7 +68,7 @@ inline
 uint64_t
 MlasReadExtendedControlRegister(
     unsigned int ext_ctrl_reg
-    )
+)
 {
 #if defined(_WIN32)
     return _xgetbv(ext_ctrl_reg);
@@ -140,6 +140,8 @@ Return Value:
     this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
     this->QLinearAddS8Kernel = MlasQLinearAddS8Kernel;
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
+    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
+    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
@@ -263,6 +265,11 @@ Return Value:
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
                     this->NchwcBlockSize = 16;
                     this->PreferredBufferAlignment = 64;
+
+#if !defined(MLAS_AVX512F_INTRINSICS_UNSUPPORTED)
+                    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
+                    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
+#endif
 
                     //
                     // Check if the processor supports AVX512 core features
