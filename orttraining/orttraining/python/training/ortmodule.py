@@ -89,7 +89,7 @@ def _ort_output_to_torch_tensor(ort_output):
 class ORTModule(torch.nn.Module):
 
     def __init__(self, module):
-        assert isinstance(module, torch.nn.Module), "'module' mst be a torch.nn.Module"
+        assert isinstance(module, torch.nn.Module), "'module' must be a torch.nn.Module"
         super(ORTModule, self).__init__()
 
         self._export_again = False
@@ -252,11 +252,7 @@ class ORTModule(torch.nn.Module):
 
                 TODO: **kwargs are not supported
 
-                Model outputs are returned to the user
-                The following tensors are stashed (in order) for backward pass
-                    * (Partial) user input
-                    * (Partial) Initializers
-                    * Intermediate tensors
+                Module outputs are returned to the user
                 '''
 
                 # Use IO binding
@@ -269,13 +265,7 @@ class ORTModule(torch.nn.Module):
 
             @staticmethod
             def backward(ctx, *grad_output):
-                '''Performs backward pass based on grad wrt output and internal state
-
-                Internal state is composed of:
-                    * Tensor stashed (in a particular order) during forward:
-                        * (partial) user input, (partial) initializers and intermediate tensors
-
-                TODO: Input gradient is hard-coded to torch.tensor([1.])
+                '''Performs backward pass based on grad wrt module output
                 '''
 
                 # Use IO binding
@@ -290,7 +280,10 @@ class ORTModule(torch.nn.Module):
                 backward_outputs = self._gradient_io_binding.get_outputs()
 
                 # Return input and initializer gradients
+                # TODO: Input gradient is hard-coded to torch.tensor([1])
                 results = [torch.tensor([1])] * len(self._onnx_graphs_info.user_input_names)
+                
+                # Append gradients of initializer to results
                 results += [_ort_output_to_torch_tensor(backward_output) \
                     for backward_output in backward_outputs[:len(self._onnx_graphs_info.initializer_grad_names_to_train)]]
                 return tuple(results)
