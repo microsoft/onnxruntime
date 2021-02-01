@@ -144,6 +144,8 @@ class ThreadPool {
 #else
   using NAME_CHAR_TYPE = char;
 #endif
+  static void ResetLastStatistics();
+  static std::string GetLastStatistics();
   // Constructs a pool for running with with "degree_of_parallelism" threads with
   // specified "name". env->StartThread() is used to create individual threads
   // with the given ThreadOptions. If "low_latency_hint" is true the thread pool

@@ -130,6 +130,70 @@
 namespace onnxruntime {
 namespace concurrency {
 
+#include <thread>
+class PerCallStatistic {
+ public:
+  struct Statistics {
+    onnxruntime::TimePoint last_landmarks_;
+    ::std::list<::std::string> durations;
+    void Reset() {
+      durations.clear();
+    }
+    void Record(bool diff_with_last, const ::std::string& comment) {
+      auto now = ::std::chrono::high_resolution_clock::now();
+      if (diff_with_last) {
+        durations.push_back(comment + ::std::to_string(TimeDiffMicroSeconds(last_landmarks_, now)));
+      }
+      last_landmarks_ = now;
+    }
+  };
+  ~PerCallStatistic() = default;
+
+ private:
+  static PerCallStatistic& Instance() {
+    static PerCallStatistic s_perCallStatistic;
+    return s_perCallStatistic;
+  }
+  PerCallStatistic() = default;
+  std::mutex mutex_;
+  ::std::unordered_map<::std::thread::id, Statistics> records_;
+
+ public:
+  static void Reset() {
+    auto& instance = Instance();
+    auto key = ::std::this_thread::get_id();
+    std::unique_lock<std::mutex> lock(instance.mutex_);
+    auto iter = instance.records_.find(key);
+    if (iter == instance.records_.end()) {
+      instance.records_[key] = std::move(Statistics());
+    } else {
+      iter->second.Reset();
+    }
+  }
+  static void Record(bool diff_with_last, const std::string& comment = "") {
+    auto& instance = Instance();
+    auto key = ::std::this_thread::get_id();
+    std::unique_lock<std::mutex> lock(instance.mutex_);
+    auto iter = instance.records_.find(key);
+    if (iter != instance.records_.end()) {
+      iter->second.Record(diff_with_last, comment);
+    }
+  }
+  static std::string GetStatistic() {
+    ::std::stringstream ss;
+    auto& instance = Instance();
+    auto key = ::std::this_thread::get_id();
+    std::unique_lock<std::mutex> lock(instance.mutex_);
+    auto iter = instance.records_.find(key);
+    if (iter != instance.records_.end()) {
+      for (const auto& durations : iter->second.durations) {
+        ss << durations << ", ";
+      }
+    }
+    return ::std::move(ss.str());
+  }
+};  // class PerCallStatistic
+
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;
 
@@ -926,6 +990,7 @@ void SummonWorkers(PerThread &pt,
 void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
                           unsigned n) override {
+  PerCallStatistic::Record(false);
   PerThread* pt = GetPerThread();
   assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
   assert((n > 1) && "Trivial parallel section; should be avoided by caller");
@@ -955,14 +1020,17 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
   };
   SummonWorkers(*pt, ps, n, worker_fn);
 
+  PerCallStatistic::Record(true, "RunInParallelSection preproc: ");
   // Run work in the main thread
   loop.fn(0);
+  PerCallStatistic::Record(true, "RunInParallelSection run: ");
 
   // Wait for workers to exit the loop
   ps.current_loop = 0;
   while (ps.workers_in_loop) {
     onnxruntime::concurrency::SpinPause();
   }
+  PerCallStatistic::Record(true, "RunInParallelSection postproc: ");
 }
 
 // Run a single parallel loop _without_ a parallel section.  This is a
@@ -970,6 +1038,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // handing off multiple loops to the pool of workers.
 
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
+  PerCallStatistic::Record(false);
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
@@ -980,14 +1049,16 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   // fn directly without needing to receive it via ps.current_loop.
   SummonWorkers(*pt, ps, n, fn);
 
+  PerCallStatistic::Record(true, "preproc: ");
   // Run work in the main thread
   fn(0);
-
+  PerCallStatistic::Record(true, "run: ");
   // Wait for workers to exit the parallel section and hence to have
   // completed the loop (i.e., ps.tasks_finished matches the number of
   // tasks that have been created less the number successfully
   // revoked).
   EndParallelSectionInternal(*pt, ps);
+  PerCallStatistic::Record(true, "postproc: ");
 }
 
 void Cancel() override {

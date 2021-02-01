@@ -286,4 +286,35 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
+/*
+#include <unordered_map>
+#include <mutex>
+#include <list>
+#include <ctime>
+
+class PerCallStatistic {
+ public:
+  struct Statistics {
+    onnxruntime::TimePoint last_landmarks_;
+    ::std::list<::std::string> durations;
+    void Reset();
+    void Record(bool diff_with_last, const ::std::string& comment);
+  };
+  ~PerCallStatistic() = default;
+
+ private:
+  static PerCallStatistic& Instance() {
+    PerCallStatistic s_perCallStatistic;
+    return s_perCallStatistic;
+  }
+  PerCallStatistic() = default;
+  std::mutex mutex_;
+  ::std::unordered_map<size_t, Statistics> records_;
+
+ public:
+  static void Reset();
+  static void Record(bool diff_with_last, const ::std::string& comment = "");
+  static ::std::string GetStatistic();
+};  // class PerCallStatistic
+*/
 }  // namespace onnxruntime

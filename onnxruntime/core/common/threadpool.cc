@@ -175,6 +175,14 @@ ThreadPool::ThreadPool(Env* env,
 
 ThreadPool::~ThreadPool() = default;
 
+void ThreadPool::ResetLastStatistics() {
+  PerCallStatistic::Reset();
+}
+
+std::string ThreadPool::GetLastStatistics() {
+  return std::move(PerCallStatistic::GetStatistic());
+}
+
 // Base case for parallel loops, running iterations 0..total, divided into blocks
 // of block_size iterations, and calling into a function that takes a start..end
 // range of indices to run.
