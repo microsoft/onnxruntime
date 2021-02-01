@@ -51,6 +51,7 @@ def main():
         "--gradient_accumulation_steps", "16",
         "--max_predictions_per_seq=20",
         "--use_mixed_precision",
+        "--use_deterministic_compute",
         "--allreduce_in_fp16",
         "--lambda", "0",
         "--use_nccl",
