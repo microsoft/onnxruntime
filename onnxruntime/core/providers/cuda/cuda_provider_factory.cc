@@ -19,12 +19,16 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
                       size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                       ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
                       OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                      bool do_copy_in_default_stream = true)
+                      bool do_copy_in_default_stream = true,
+                      void* external_alloc = nullptr,
+                      void* external_free = nullptr)
       : device_id_(device_id),
         cuda_mem_limit_(cuda_mem_limit),
         arena_extend_strategy_(arena_extend_strategy),
         cudnn_conv_algo_search_(cudnn_conv_algo_search),
-        do_copy_in_default_stream_(do_copy_in_default_stream) {}
+        do_copy_in_default_stream_(do_copy_in_default_stream),
+        external_alloc_(external_alloc),
+        external_free_(external_free) {}
   ~CUDAProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
@@ -35,6 +39,8 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
   ArenaExtendStrategy arena_extend_strategy_;
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search_;
   bool do_copy_in_default_stream_;
+  void* external_alloc_;
+  void* external_free_;
 };
 
 std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
@@ -44,6 +50,8 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   info.arena_extend_strategy = arena_extend_strategy_;
   info.cudnn_conv_algo = cudnn_conv_algo_search_;
   info.do_copy_in_default_stream = do_copy_in_default_stream_;
+  info.external_alloc = external_alloc_;
+  info.external_free = external_free_;
   return onnxruntime::make_unique<CUDAExecutionProvider>(info);
 }
 
@@ -51,8 +59,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
                                                                                OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-                                                                               bool do_copy_in_default_stream = true) {
-  return std::make_shared<onnxruntime::CUDAProviderFactory>(device_id, cuda_mem_limit, arena_extend_strategy, cudnn_conv_algo_search, do_copy_in_default_stream);
+                                                                               bool do_copy_in_default_stream = true,
+                                                                               void* external_alloc = nullptr,
+                                                                               void* external_free = nullptr) {
+  return std::make_shared<onnxruntime::CUDAProviderFactory>(device_id, cuda_mem_limit, arena_extend_strategy, cudnn_conv_algo_search, do_copy_in_default_stream, external_alloc, external_free);
 }
 
 }  // namespace onnxruntime

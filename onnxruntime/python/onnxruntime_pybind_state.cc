@@ -145,6 +145,8 @@ bool do_copy_in_default_stream = true;
 OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+void* cuda_external_alloc;
+void* cuda_external_free;
 #endif
 
 #ifdef USE_TENSORRT
@@ -188,7 +190,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
                                                                                OrtCudnnConvAlgoSearch cudnn_conv_algo_search,
                                                                                size_t cuda_mem_limit,
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy,
-                                                                               bool do_copy_in_default_stream);
+                                                                               bool do_copy_in_default_stream,
+                                                                               void* external_alloc = nullptr,
+                                                                               void* external_free = nullptr);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(OrtDevice::DeviceId device_id,
                                                                                size_t cuda_mem_limit,
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy);
@@ -494,10 +498,24 @@ static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int 
   return true;
 }
 
+static size_t ConvertStringToSizeT(const std::string& str, const std::string& error_message) {
+  size_t size;
+  try {
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__))
+    size = std::stoull(str, nullptr, 0);
+#else
+    size = std::stoul(str, nullptr, 0);
+#endif
+  } catch (...) {
+    throw std::runtime_error(error_message);
+  }
+
+  return size;
+}
+
 static void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CUDAExecutionProviderInfo& options,
                                       std::unordered_map<std::string, std::string> options_map) {
   std::unordered_map<std::string, std::string>::iterator it;
-
   it = options_map.find("device_id");
   if (it != options_map.end()) {
     OrtDevice::DeviceId device_id;
@@ -526,17 +544,7 @@ static void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CUDAE
       throw std::runtime_error("Please provide cuda memory limitation size with positive integer.");
     }
 
-    size_t size;
-    try {
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__))
-      size = std::stoull(it->second, nullptr, 0);
-#else
-      size = std::stoul(it->second, nullptr, 0);
-#endif
-    } catch (...) {
-      throw std::runtime_error("Please provide cuda memory limitation size with positive integer and within range.");
-    }
-
+    size_t size = ConvertStringToSizeT(it->second, "Please provide cuda memory limitation size with positive integer and within range.");
     options.cuda_mem_limit = size;
     LOGS(*(sess->GetLogger()), INFO) << "cuda memory limitation is set to " << size;
   }
@@ -556,6 +564,29 @@ static void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CUDAE
     options.arena_extend_strategy = strategy;
     LOGS(*(sess->GetLogger()), INFO) << "cuda arean extend strategy is set to " << it->second;
   }
+
+  options.external_alloc = nullptr;
+  options.external_free = nullptr;
+  cuda_external_alloc = nullptr;
+  cuda_external_free = nullptr;
+  it = options_map.find("cuda_external_alloc");
+  if (it != options_map.end()) {
+    size_t address = ConvertStringToSizeT(it->second, "Please provide valid cuda device allocator alloc address.");
+    options.external_alloc = reinterpret_cast<void*>(address);
+    LOGS(*(sess->GetLogger()), INFO) << "cuda external allocator alloc set to " << options.external_alloc;
+  }
+
+  it = options_map.find("cuda_external_free");
+  if (it != options_map.end()) {
+    size_t address = ConvertStringToSizeT(it->second, "Please provide valid cuda device allocator free address.");
+    options.external_free = reinterpret_cast<void*>(address);
+    LOGS(*(sess->GetLogger()), INFO) << "cuda external allocator free set to " << options.external_free;
+  }
+
+  ORT_ENFORCE((options.external_alloc == nullptr && options.external_free == nullptr) || (options.external_alloc != nullptr && options.external_free != nullptr));
+
+  cuda_external_alloc = options.external_alloc;
+  cuda_external_free = options.external_free;
 }
 
 static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
@@ -565,19 +596,33 @@ static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 
   if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
     // Use arena-based allocator
-    AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId id) {
-          return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
-        },
-        id,
-        true,
-        {cuda_mem_limit,
-         static_cast<int>(arena_extend_strategy),
-         -1, -1});
+    if (cuda_external_alloc != nullptr && cuda_external_free != nullptr) {
+      AllocatorCreationInfo default_memory_info(
+          [](OrtDevice::DeviceId id) {
+            return onnxruntime::make_unique<CUDAExternalAllocator>(id, CUDA, cuda_external_alloc, cuda_external_free);
+          },
+          id,
+          false  //Review(codemzs): We should be using the option passed by the user.
+      );
 
-    auto allocator = CreateAllocator(default_memory_info);
+      auto allocator = CreateAllocator(default_memory_info);
 
-    id_to_allocator_map.insert({id, allocator});
+      id_to_allocator_map.insert({id, allocator});
+    } else {
+      AllocatorCreationInfo default_memory_info(
+          [](OrtDevice::DeviceId id) {
+            return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+          },
+          id,
+          true, //Review(codemzs): We should be using the option passed by the user.
+          {cuda_mem_limit,
+           static_cast<int>(arena_extend_strategy),
+           -1, -1});
+
+      auto allocator = CreateAllocator(default_memory_info);
+
+      id_to_allocator_map.insert({id, allocator});
+    }
   }
 
   return id_to_allocator_map[id];
@@ -623,7 +668,6 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         onnxruntime::CUDAExecutionProviderInfo cuda_provider_options;
@@ -634,7 +678,9 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                                                                     cuda_provider_options.cudnn_conv_algo,
                                                                     cuda_provider_options.cuda_mem_limit,
                                                                     cuda_provider_options.arena_extend_strategy,
-                                                                    cuda_provider_options.do_copy_in_default_stream));
+                                                                    cuda_provider_options.do_copy_in_default_stream,
+                                                                    cuda_provider_options.external_alloc,
+                                                                    cuda_provider_options.external_free));
       } else {
         RegisterExecutionProvider(
             sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id,

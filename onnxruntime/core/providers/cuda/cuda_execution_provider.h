@@ -26,6 +26,8 @@ struct CUDAExecutionProviderInfo {
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
   OrtCudnnConvAlgoSearch cudnn_conv_algo{OrtCudnnConvAlgoSearch::EXHAUSTIVE};
   bool do_copy_in_default_stream{true};
+  void* external_alloc{nullptr};
+  void* external_free{nullptr};
 };
 
 // Logical device representation.
@@ -89,6 +91,8 @@ private:
   ArenaExtendStrategy arena_extend_strategy_;
   int cudnn_conv_algo_;
   bool do_copy_in_default_stream_;
+  void* external_alloc_;
+  void* external_free_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
@@ -100,7 +104,7 @@ private:
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy);
+    PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy, void* external_alloc, void* external_free);
     ~PerThreadContext();
 
     cublasHandle_t CublasHandle() const {

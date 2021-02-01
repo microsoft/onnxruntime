@@ -10,6 +10,7 @@ import numpy as np
 from inspect import signature
 
 from torch.utils.dlpack import from_dlpack
+from torch.utils.cpp_extension import load_inline
 
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
@@ -24,6 +25,18 @@ __TEMP_ENABLE_METHOD_TIMING__ = False
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 T = TypeVar('T', bound='Module')
 
+torch_cuda_allocator_addresses_cpp_source = """
+#include <torch/extension.h>
+#include <c10/cuda/CUDACachingAllocator.h>
+
+size_t cuda_caching_allocator_raw_alloc_address() {
+    return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_alloc);
+}
+
+size_t cuda_caching_allocator_raw_delete_address() {
+    return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_delete);
+}
+"""
 
 def _get_device_index(device):
     if isinstance(device, str):
@@ -118,6 +131,9 @@ class ORTModule(torch.nn.Module):
         # Debug flags
         self._save_onnx = False
         self._save_onnx_prefix = ''
+
+        # CPP extension to get torch CUDA allocator's alloc and free function addresses
+        self._torch_cuda_allocator = load_inline(name='inline_extension', cpp_sources=[torch_cuda_allocator_addresses_cpp_source], functions=['cuda_caching_allocator_raw_alloc_address', 'cuda_caching_allocator_raw_delete_address'], verbose=True, with_cuda=True)
 
     def cpu(self: T) -> T:
         '''Thin layer to capture device for ORTModule IO bindings'''
@@ -218,7 +234,9 @@ class ORTModule(torch.nn.Module):
             if self._device.type == 'cuda':
                 # Configure the InferenceSessions to use the specific GPU on which the model is placed.
                 providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-                provider_options = [{"device_id": str(self._device.index)}]
+                provider_options = [{"device_id": str(self._device.index),
+                                     "cuda_external_alloc": str(self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()),
+                                     "cuda_external_free": str(self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address())}]
                 # Release CUDA cache used by PyTorch during exporter
                 torch.cuda.empty_cache()
             elif self._device.type == 'cpu':
