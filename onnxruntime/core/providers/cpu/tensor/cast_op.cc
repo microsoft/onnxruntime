@@ -147,8 +147,8 @@ struct EigenType<BFloat16> {
 template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCaster {
   void Cast(const OpKernelContext&, const Tensor& in, Tensor& out, const TensorShape& shape) const {
-    using EigenSrcType = EigenType<SrcType>::type;
-    using EigenDstType = EigenType<DstType>::type;
+    using EigenSrcType = typename EigenType<SrcType>::type;
+    using EigenDstType = typename EigenType<DstType>::type;
 
     const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
     const auto in_vector =
