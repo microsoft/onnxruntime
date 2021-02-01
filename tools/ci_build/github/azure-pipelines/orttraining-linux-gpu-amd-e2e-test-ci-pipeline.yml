@@ -47,8 +47,9 @@ jobs:
 
   - script: |-
      python orttraining/tools/ci_test/run_batch_size_test.py \
-        --binary_dir build/RelWithDebInfo \
-        --model_root training_e2e_test_data/models
+       --binary_dir build/RelWithDebInfo \
+       --model_root training_e2e_test_data/models \
+       --gpu_sku MI100
     displayName: 'Run batch size test'
     condition: succeededOrFailed() # ensure all tests are run
 
@@ -56,6 +57,7 @@ jobs:
      python orttraining/tools/ci_test/run_convergence_test.py \
        --binary_dir build/RelWithDebInfo \
        --model_root training_e2e_test_data/models \
-       --training_data_root training_e2e_test_data/data
+       --training_data_root training_e2e_test_data/data \
+       --gpu_sku MI100
     displayName: 'Run convergence test'
     condition: succeededOrFailed() # ensure all tests are run

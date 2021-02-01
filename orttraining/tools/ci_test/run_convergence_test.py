@@ -20,6 +20,8 @@ def parse_args():
                       help="Path to the training data root directory.")
   parser.add_argument("--model_root", required=True,
                       help="Path to the model root directory.")
+  parser.add_argument("--gpu_sku", default='V100', required=False,
+                      help="GPU SKU (e.g. V100, MI100).") 
   return parser.parse_args()
 
 def main():
@@ -57,10 +59,16 @@ def main():
         "--enable_grad_norm_clip=false",
     ]).check_returncode()
 
+    # reference data
+    if args.gpu_sku == 'MI100':
+        reference_csv = "bert_base.convergence.baseline.mi100.csv"
+    else:
+        reference_csv = "bert_base.convergence.baseline.csv"
+
     # verify output
     comparison_result = compare_results_files(
         expected_results_path=os.path.join(
-            SCRIPT_DIR, "results", "bert_base.convergence.baseline.csv"),
+            SCRIPT_DIR, "results", reference_csv),
         actual_results_path=convergence_test_output_path,
         field_comparisons={
             "step": Comparisons.eq(),

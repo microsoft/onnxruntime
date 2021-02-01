@@ -13,6 +13,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Runs a BERT batch size test.")
     parser.add_argument("--binary_dir", required=True, help="Path to the ORT binary directory.")
     parser.add_argument("--model_root", required=True, help="Path to the model root directory.")
+    parser.add_argument("--gpu_sku", default='V100', required=False, help="GPU model (e.g. V100, MI100).")
     return parser.parse_args()
 
 
@@ -24,6 +25,7 @@ def main():
                                                "max_batch_size", 
                                                "max_predictions_per_seq", 
                                                "additional_options"])
+
     configs = [
         Config(True, 128, 76, 20, ""),
         Config(True, 512, 11, 80, ""),
@@ -40,7 +42,7 @@ def main():
         Config(True, 512, 14, 80, "--attn_dropout_recompute"),
         Config(True, 512, 50, 80, "--transformer_layer_recompute"),
     ]
-
+ 
     # run BERT training
     for config in configs:
         print("##### testing name - {}-{} #####".format("fp16" if config.enable_mixed_precision else "fp32",
