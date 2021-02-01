@@ -47,7 +47,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImplEx(OpKernelContext* ctx, miope
   // empty axes and no-op
   if (axes.empty() && noop_with_empty_axes_) {
     auto* Y = ctx->Output(0, X->Shape());
-    HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(), hipMemcpyDeviceToDevice));
+    HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(), hipMemcpyDeviceToDevice, Stream()));
     return Status::OK();
   }
 
@@ -80,7 +80,7 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICE
   // empty axes and no-op
   if (axes.empty() && noop_with_empty_axes_) {
     auto* Y = ctx->Output(0, X->Shape());
-    HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), X->SizeInBytes(), hipMemcpyDeviceToDevice));
+    HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), X->SizeInBytes(), hipMemcpyDeviceToDevice, Stream()));
     return Status::OK();
   }
 
@@ -107,14 +107,14 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICE
   // miopenReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
   if (input_count == output_count) {
     if (Y->template MutableData<int32_t>() != X->template Data<int32_t>()) {
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), input_count * sizeof(int32_t), hipMemcpyDeviceToDevice));
+      HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), input_count * sizeof(int32_t), hipMemcpyDeviceToDevice, Stream()));
     }
     return Status::OK();
   }
 
   // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
   // Therefore zeroing out the memory is required
-  HIP_RETURN_IF_ERROR(hipMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream()));
 
   size_t indices_bytes = 0;
   size_t workspace_bytes = 0;
@@ -124,7 +124,7 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICE
 
   miopenDataType_t miopen_type_X = miopenFloat;
   IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);
-  Impl_Cast<HipT, float>(reinterpret_cast<const HipT*>(X->template Data<int32_t>()), temp_X.get(), X->Shape().Size());
+  Impl_Cast<HipT, float>(Stream(), reinterpret_cast<const HipT*>(X->template Data<int32_t>()), temp_X.get(), X->Shape().Size());
 
   ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES));
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));
@@ -150,7 +150,7 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICE
                                             output_tensor,
                                             temp_Y.get()));
 
-  Impl_Cast<float, int32_t>(temp_Y.get(), Y->template MutableData<int32_t>(), output_count);
+  Impl_Cast<float, int32_t>(Stream(), temp_Y.get(), Y->template MutableData<int32_t>(), output_count);
 
   return Status::OK();
 }
