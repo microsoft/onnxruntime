@@ -21,8 +21,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Default __ctor. Creates default RuntimeOptions
         /// </summary>
-        public RunOptions() 
-            :base(IntPtr.Zero, true)
+        public RunOptions()
+            : base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRunOptions(out handle));
         }
@@ -75,18 +75,21 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                string tag = null;
-                IntPtr tagPtr = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunTag(handle, out tagPtr));
-                tag = Marshal.PtrToStringAnsi(tagPtr); // assume ANSI string
-                // should not release the memory of the tagPtr, because it returns the c_str() of the std::string being used inside RunOptions C++ class
-                return tag;
+                return _logId;
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunTag(handle, value));
+                var logIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(value), GCHandleType.Pinned);
+                using (var pinnedlogIdName = new PinnedGCHandle(logIdPinned))
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunTag(handle, pinnedlogIdName.Pointer));
+                }
+
+                _logId = value;
             }
         }
+
+        private string _logId = "";
 
 
         /// <summary>
@@ -125,8 +128,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
-             NativeMethods.OrtReleaseRunOptions(handle);
-             handle = IntPtr.Zero;
+            NativeMethods.OrtReleaseRunOptions(handle);
+            handle = IntPtr.Zero;
             return true;
         }
 

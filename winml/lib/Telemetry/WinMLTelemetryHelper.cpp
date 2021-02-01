@@ -34,16 +34,6 @@ void WinMLTelemetryHelper::LogWinMLSuspended() {
       TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"));
 }
 
-void WinMLTelemetryHelper::LogWinMLSessionCreated() {
-  WinMLTraceLoggingWrite(
-      provider_,
-      "WinMLSessionCreated",
-      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-      TraceLoggingString("LearningModelSession successfully created.", "message"),
-      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
-}
-
 void WinMLTelemetryHelper::LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line) {
   if (!telemetry_enabled_)
     return;

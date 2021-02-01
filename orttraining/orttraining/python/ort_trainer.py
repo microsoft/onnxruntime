@@ -393,7 +393,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
                                                use_deterministic_compute=False,
                                                use_invertible_layernorm_grad=False,
-                                               enable_adasum=False):
+                                               enable_adasum=False,
+                                               optimized_model_filepath=""):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -459,6 +460,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
 
     sessionOptions = ort.SessionOptions()
     sessionOptions.use_deterministic_compute = use_deterministic_compute
+    if len(optimized_model_filepath) > 0:
+        sessionOptions.optimized_model_filepath = optimized_model_filepath
     session = ort.TrainingSession(model.SerializeToString(), ort_parameters, sessionOptions)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
@@ -548,7 +551,8 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False, enable_adasum=False):
+                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False, enable_adasum=False,
+                 optimized_model_filepath=""):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -618,6 +622,8 @@ class ORTTrainer():
                Defaults to False
             run_symbolic_shape_infer: run symbolic shape inference
                Defaults to False
+            optimized_model_filepath: path to output the optimized training graph.
+               Defaults to "" (no output).
         """
         warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
@@ -681,6 +687,7 @@ class ORTTrainer():
         self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
         self.run_symbolic_shape_infer = run_symbolic_shape_infer
         self.enable_adasum = enable_adasum
+        self.optimized_model_filepath = optimized_model_filepath
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -711,7 +718,9 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
                 use_deterministic_compute=self._use_deterministic_compute,
-                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad, enable_adasum=self.enable_adasum)
+                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad,
+                enable_adasum=self.enable_adasum,
+                optimized_model_filepath=self.optimized_model_filepath)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 

@@ -6,6 +6,8 @@
 
 #include <core/graph/graph.h>
 
+#include "core/providers/common.h"
+#include "core/providers/shared/utils/utils.h"
 #include "helper.h"
 #include "op_support_checker.h"
 
@@ -1029,7 +1031,7 @@ class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
-    return 27;
+    return 29;
   }
 };
 
@@ -1070,7 +1072,7 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
-    return 29;
+    return 27;
   }
   bool HasSupportedInputsImpl(const Node& node) const override;
 };

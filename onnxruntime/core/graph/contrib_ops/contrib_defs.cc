@@ -1272,6 +1272,12 @@ activation.)DOC")
           "",
           "T",
           OpSchema::Optional)
+      .Input(
+          3,
+          "Z",
+          "",
+          "T",
+          OpSchema::Optional)
       .Output(
           0,
           "Y",

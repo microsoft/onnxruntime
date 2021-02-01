@@ -176,7 +176,7 @@ static unsigned GetSizeFromTensorDataType(_winml::ImageTensorDataType type) {
 
 static _winml::ImageTensorDescription CreateImageTensorDescriptor(winml::TensorKind tensorKind,
                                                                   wgi::BitmapPixelFormat pixelFormat,
-                                                                  ImageNominalPixelRange pixelRange,
+                                                                  winml::LearningModelPixelRange pixelRange,
                                                                   uint32_t batchSize, uint32_t width, uint32_t height) {
   _winml::ImageTensorDescription tensorDescription = {};
   tensorDescription.dataType = GetTensorDataTypeFromTensorKind(tensorKind);
@@ -195,16 +195,13 @@ static _winml::ImageTensorDescription CreateImageTensorDescriptor(winml::TensorK
     THROW_HR(E_NOTIMPL);
   }
 
-  if (pixelRange == ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255) {
-    tensorDescription.pixelRange = _winml::ImageNominalPixelRange::kNominalRange_0_255;
-  } else if (pixelRange == ImageNominalPixelRange::ImageNominalPixelRange_Normalized_0_1) {
-    tensorDescription.pixelRange = _winml::ImageNominalPixelRange::kNormalized_0_1;
-  } else if (pixelRange == ImageNominalPixelRange::ImageNominalPixelRange_Normalized_1_1) {
-    tensorDescription.pixelRange = _winml::ImageNominalPixelRange::kNormalized_1_1;
-  } else {
+  if (pixelRange != winml::LearningModelPixelRange::ZeroTo255 && 
+      pixelRange != winml::LearningModelPixelRange::ZeroToOne &&
+      pixelRange != winml::LearningModelPixelRange::MinusOneToOne) {
     THROW_HR(E_NOTIMPL);
   }
-
+  
+  tensorDescription.pixelRange = pixelRange;
   tensorDescription.sizes[2] = height;
   tensorDescription.sizes[3] = width;
 
@@ -389,10 +386,10 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
     }
   }
 
-  // Set up ImageNominalPixelRange
-  ImageNominalPixelRange pixelRange = ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255;  //default;
+  // Set up LearningModelPixelRange
+  winml::LearningModelPixelRange pixelRange = winml::LearningModelPixelRange::ZeroTo255;  //default;
   if (spImageDescriptor) {
-    pixelRange = spImageDescriptor->GetNominalPixelRange();
+    pixelRange = spImageDescriptor->PixelRange();
   }
   
   //NCHW layout

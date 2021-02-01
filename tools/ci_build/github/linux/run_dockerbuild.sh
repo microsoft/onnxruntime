@@ -25,7 +25,7 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 c) CUDA_VER=${OPTARG};;
 # x86 or other, only for ubuntu16.04 os
 a) BUILD_ARCH=${OPTARG};;
-# openvino version tag: 2020.2 (OpenVINO EP 2.0 supports version starting 2020.2)
+# openvino version tag: 2020.3 (OpenVINO EP 2.0 supports version starting 2020.3)
 v) OPENVINO_VERSION=${OPTARG};;
 # YOCTO 4.19 + ACL 19.05, YOCTO 4.14 + ACL 19.02
 y) YOCTO_VERSION=${OPTARG};;
@@ -131,8 +131,6 @@ fi
 
 if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ] || [ $BUILD_DEVICE = "arm" ]; then
     RUNTIME=
-elif [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
-    RUNTIME="--gpus all --shm-size=1024m"
 else
     RUNTIME="--gpus all"
 fi
@@ -145,16 +143,6 @@ DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
                       --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
-fi
-
-if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
-    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_data/hf_data:/bert_data/hf_data"
-    # DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER -u0"
-fi
-
-if [[ $BUILD_EXTR_PAR = *--enable_training_pipeline_e2e_tests* ]]; then
-    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_ort:/bert_ort \
-                                                --volume /bert_data:/bert_data"
 fi
 
 $DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true
