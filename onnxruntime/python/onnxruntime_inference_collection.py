@@ -166,7 +166,7 @@ class Session:
 
     def run_forward(self, iobinding, run_options):
         """
-         Compute the forward part of the graph end with Yield Op.
+         Compute the forward subgraph until it hits the Yield Op.
          :param iobinding: the iobinding object that has graph inputs/outputs bind.
          :param run_options: See :class:`onnxruntime.RunOptions`.
         """
@@ -174,7 +174,7 @@ class Session:
 
     def run_backward(self, backward_output_grads):
         """
-         Compute the backward part of the graph starting from Yield Op.
+         Resume executing the backward subgraph starting from Yield Op.
          :param backward_output_grads: Output gradients for backward.
         """
         self._sess.run_backward([ortvalue._ortvalue for ortvalue in backward_output_grads])
