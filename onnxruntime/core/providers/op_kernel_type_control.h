@@ -44,8 +44,9 @@ template <typename OpTag, OpArgDirection ArgDirection, OpArgIndex ArgIndex>
 struct OpArg {};
 
 // a tag that indicates the supported types for a particular Op argument, identified by OpArgTag,
-//   for a kernel in a particular provider, identified by ProviderTag
-template <typename OpArgTag, typename ProviderTag>
+// for a kernel in a particular provider, identified by ProviderTag. as the types may change between opsets,
+// the opset must also be specified
+template <typename OpArgTag, typename ProviderTag, int OpSet>
 struct Supported {};
 
 // a tag that indicates the allowed types for a particular Op argument, identified by OpArgTag
@@ -151,39 +152,45 @@ struct EnabledTypes {
  * @param OpProvider The Op provider.
  * @param OpDomain The Op domain.
  * @param OpName The Op name.
+ * @param OpSet The opset that this set of supported types applies to.
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  * @param ... The types.
  */
 #define ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(                                                      \
-    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, ...)                                          \
+    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, ...)                                   \
   class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpDomain, OpName);                           \
   class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider);                           \
   template <>                                                                                           \
   struct TypesHolder<                                                                                   \
       ::onnxruntime::op_kernel_type_control::tags::Supported<                                           \
           ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpDomain, OpName, ArgDirection, ArgIndex), \
-          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider)>> {                      \
+          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider),                         \
+          OpSet>> {                                                                                     \
     using types = ::onnxruntime::TypeList<__VA_ARGS__>;                                                 \
   };
 
 /**
  * TypeList type with the enabled types for a given Op kernel argument.
+ * This is created by intersecting the supported types with any type restrictions coming from the allowed or global
+ * type lists.
  *
  * @param OpProvider The Op provider.
  * @param OpDomain The Op domain.
  * @param OpName The Op name.
+ * @param OpSet The opset to use for the supported types list.
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  */
 #define ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(                                                                      \
-    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex)                                                         \
-  ::onnxruntime::op_kernel_type_control::EnabledTypes<                                                 \
+    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)                                                  \
+  ::onnxruntime::op_kernel_type_control::EnabledTypes<                                                            \
       ::onnxruntime::op_kernel_type_control::TypesHolder<                                                         \
           ::onnxruntime::op_kernel_type_control::tags::Supported<                                                 \
               ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpDomain, OpName, ArgDirection, ArgIndex),       \
               ::onnxruntime::op_kernel_type_control::                                                             \
-                  ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider)>>,                         \
+                  ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider),                           \
+              OpSet>>,                                                                                            \
       ::onnxruntime::TypeList<                                                                                    \
           ::onnxruntime::op_kernel_type_control::TypesHolder<                                                     \
               ::onnxruntime::op_kernel_type_control::tags::Allowed<                                               \
@@ -197,11 +204,12 @@ struct EnabledTypes {
  * @param OpProvider The Op provider.
  * @param OpDomain The Op domain.
  * @param OpName The Op name.
+ * @param OpSet The opset to use for the supported types list.
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  */
 #define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(                                       \
-    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex)                           \
+    OpProvider, OpDomain, OpName, Opset, ArgDirection, ArgIndex)                    \
   ::boost::mp11::mp_rename<                                                         \
       ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(                                          \
           OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, SupportedTypeList), \

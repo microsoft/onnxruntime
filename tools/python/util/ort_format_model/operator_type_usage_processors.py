@@ -241,16 +241,17 @@ def _create_operator_type_usage_processors():
     #   - Mobilenet + SSD Mobilenet + MobileBert
     #   - some known large kernels
     #
-    # Ops we are ignoring currently so as not to produce meaningless output:
-    # Implementation is not type specific:
+    # Ops we are ignoring currently so as not to produce meaningless/unused output:
+    # - Implementation is not type specific:
     #    If, Loop, Reshape, Scan, Shape, Squeeze, Unsqueeze
-    # Only one type supported in the ORT implementation:
-    #   FusedConv, FusedGemm, FusedMatMul, TransposeMatMul
-    #
-    default_processor_onnx_ops = ['Add', 'AveragePool', 'BatchNormalization', 'Clip', 'Concat', 'Conv',
-                                  'DequantizeLinear', 'Div', 'Equal', 'Exp', 'Expand', 'Flatten',
+    # - Only one type supported in the ORT implementation:
+    #    FusedConv, FusedGemm, FusedMatMul, TransposeMatMul
+    # - Implementation does not have any significant type specific code:
+    #    Concat, Flatten, Not, QLinearConv, Reshape, Shape, Squeeze, Unsqueeze
+    default_processor_onnx_ops = ['Add', 'AveragePool', 'BatchNormalization', 'Clip', 'Conv',
+                                  'DequantizeLinear', 'Div', 'Equal', 'Exp', 'Expand',
                                   'Gemm', 'Greater', 'Less', 'MatMul', 'Max', 'Min', 'Mul',
-                                  'NonMaxSuppression', 'NonZero', 'Pad', 'QLinearConv', 'Range', 'Relu', 'Resize',
+                                  'NonMaxSuppression', 'NonZero', 'Pad', 'Range', 'Relu', 'Resize',
                                   'Sigmoid', 'Slice', 'Softmax', 'Split', 'Sub', 'Tile', 'TopK', 'Transpose']
 
     internal_ops = ['QLinearAdd', 'QLinearMul']
@@ -271,7 +272,7 @@ def _create_operator_type_usage_processors():
     [add(DefaultTypeUsageProcessor('com.microsoft', op)) for op in internal_ops]
 
     #
-    # Operators that require slightly different handling
+    # Operators that require custom handling
     #
     add(DefaultTypeUsageProcessor('ai.onnx', 'Cast', inputs=[0], outputs=[0]))  # track input0 and output0
 
@@ -282,12 +283,16 @@ def _create_operator_type_usage_processors():
     # Pow dispatches on base and exponential types
     add(DefaultTypeUsageProcessor('ai.onnx', 'Pow', inputs=[0, 1]))
 
+    # ConstantOfShape switches on size of output type
+    add(DefaultTypeUsageProcessor('ai.onnx', 'ConstantOfShape', inputs=[], outputs=[0]))
+
     # Random generator ops produce new data so we track the output type
     onnx_random_ops = ['RandomNormal', 'RandomNormalLike', 'RandomUniform', 'RandomUniformLike', 'Multinomial']
     [add(DefaultTypeUsageProcessor('ai.onnx', op, inputs=[], outputs=[0])) for op in onnx_random_ops]
 
-    # we only support 'float' as input for QuantizeLinear so just track the output type
+    # we only support 'float' as input for [Dynamic]QuantizeLinear so just track the output type
     add(DefaultTypeUsageProcessor('ai.onnx', 'QuantizeLinear', inputs=[], outputs=[0]))
+    add(DefaultTypeUsageProcessor('ai.onnx', 'DynamicQuantizeLinear', inputs=[], outputs=[0]))
 
     # OneHot concatenates type strings into a triple in the typed registration
     #   e.g. float_int64_t_int64_t
