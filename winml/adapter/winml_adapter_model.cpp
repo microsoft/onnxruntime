@@ -694,7 +694,7 @@ ORT_API_STATUS_IMPL(winmla::ModelGetOpsetVersion,
 
   *version = -1;
   auto size = static_cast<size_t>(model_proto->opset_import_size());
-  for (int i = 0; i < size; i++) {
+  for (int32_t i = 0; i < size; i++) {
     auto& current_opset = model_proto->opset_import(i);
     auto& current_domain = current_opset.domain();
     if (_strnicmp(domain, current_domain.c_str(), current_domain.size()) == 0) {
