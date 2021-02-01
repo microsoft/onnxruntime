@@ -86,6 +86,24 @@ def _ort_output_to_torch_tensor(ort_output):
     tensor = from_dlpack(ort_output.to_dlpack())
     return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
+def _load_torch_allocator_cpp_extension():
+    torch_cuda_allocator_addresses_cpp_source = """
+    #include <torch/extension.h>
+    #include <c10/cuda/CUDACachingAllocator.h>
+
+    size_t cuda_caching_allocator_raw_alloc_address() {
+        return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_alloc);
+    }
+
+    size_t cuda_caching_allocator_raw_delete_address() {
+        return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_delete);
+    }
+    """
+
+    return load_inline(name='inline_extension', cpp_sources=[torch_cuda_allocator_addresses_cpp_source],
+                        functions=['cuda_caching_allocator_raw_alloc_address', 'cuda_caching_allocator_raw_delete_address'],
+                        verbose=True, with_cuda=True)
+
 class ORTModule(torch.nn.Module):
 
     def __init__(self, module):
@@ -122,25 +140,7 @@ class ORTModule(torch.nn.Module):
         # CPP extension to get torch CUDA allocator's alloc and free function addresses
         self._use_external_cuda_allocator = True
         if self._use_external_cuda_allocator:
-            self._torch_cuda_allocator = self._load_torch_allocator_cpp_extension()
-
-    def _load_torch_allocator_cpp_extension(self):
-        torch_cuda_allocator_addresses_cpp_source = """
-        #include <torch/extension.h>
-        #include <c10/cuda/CUDACachingAllocator.h>
-
-        size_t cuda_caching_allocator_raw_alloc_address() {
-            return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_alloc);
-        }
-
-        size_t cuda_caching_allocator_raw_delete_address() {
-            return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_delete);
-        }
-        """
-
-        return load_inline(name='inline_extension', cpp_sources=[torch_cuda_allocator_addresses_cpp_source],
-                           functions=['cuda_caching_allocator_raw_alloc_address', 'cuda_caching_allocator_raw_delete_address'],
-                           verbose=True, with_cuda=True)
+            self._torch_cuda_allocator = _load_torch_allocator_cpp_extension()
 
     def cpu(self: T) -> T:
         '''Thin layer to capture device for ORTModule IO bindings'''
