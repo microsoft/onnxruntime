@@ -122,9 +122,9 @@ class ORTModule(torch.nn.Module):
         # CPP extension to get torch CUDA allocator's alloc and free function addresses
         self._use_external_cuda_allocator = True
         if self._use_external_cuda_allocator:
-            self._torch_cuda_allocator = self.load_torch_allocator_cpp_extension()
+            self._torch_cuda_allocator = self._load_torch_allocator_cpp_extension()
 
-    def load_torch_allocator_cpp_extension(self):
+    def _load_torch_allocator_cpp_extension(self):
         torch_cuda_allocator_addresses_cpp_source = """
         #include <torch/extension.h>
         #include <c10/cuda/CUDACachingAllocator.h>
