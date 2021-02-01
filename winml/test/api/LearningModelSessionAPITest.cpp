@@ -446,31 +446,31 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
               .Operators().Add(window_operator)
               .CreateModel();
 
-    LearningModelSession session(model);
-    LearningModelBinding binding(session);
+  LearningModelSession session(model);
+  LearningModelBinding binding(session);
 
-    binding.Bind(L"Input", TensorInt64Bit::CreateFromArray(scalar_shape, {256}));
+  binding.Bind(L"Input", TensorInt64Bit::CreateFromArray(scalar_shape, {32}));
 
-    // Evaluate
-    auto result = session.Evaluate(binding, L"");
+  // Evaluate
+  auto result = session.Evaluate(binding, L"");
 
-    // Check results
-    printf("Output\n");
-    if (kind == TensorKind::Float) {
-      auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
-      auto y_ivv = y_tensor.GetAsVectorView();
-      for (int i = 0; i < output_shape[0]; i++) {
-        printf("%f, ", y_ivv.GetAt(i));
-      }
+  // Check results
+  printf("Output\n");
+  if (kind == TensorKind::Float) {
+    auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
+    auto y_ivv = y_tensor.GetAsVectorView();
+    for (int i = 0; i < output_shape[0]; i++) {
+      printf("%f, ", y_ivv.GetAt(i));
     }
-    if (kind == TensorKind::Double) {
-      auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorDouble>();
-      auto y_ivv = y_tensor.GetAsVectorView();
-      for (int i = 0; i < output_shape[0]; i++) {
-        printf("%f, ", y_ivv.GetAt(i));
-      }
+  }
+  if (kind == TensorKind::Double) {
+    auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorDouble>();
+    auto y_ivv = y_tensor.GetAsVectorView();
+    for (int i = 0; i < output_shape[0]; i++) {
+      printf("%f, ", y_ivv.GetAt(i));
     }
-    printf("\n");
+  }
+  printf("\n");
 }
 
 static void DiscreteFourierTransform(bool is_onesided = false) {
@@ -627,7 +627,39 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
   }
   
   printf("\n");
- }
+}
+
+static void MelWeigthMatrix() {
+  std::vector<int64_t> output_shape = {INT64(9), INT64(8)};
+  auto builder =
+    LearningModelBuilder::Create(13)
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelWeightMatrix", L"", TensorKind::Float, output_shape))
+      .Operators().Add(Operator(L"MelWeightMatrix", L"MelWeightMatrix0", MS_DOMAIN)
+        .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
+        .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(16)}))
+        .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(8192)}))
+        .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
+        .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {8192 / 2.f}))
+        .SetOutput(L"output", L"Output.MelWeightMatrix"));
+  auto model = builder.CreateModel();
+
+  LearningModelSession session(model);
+  LearningModelBinding binding(session);
+
+  auto result = session.Evaluate(binding, L"");
+
+  printf("\n");
+  printf("Output.MelWeightMatrix\n");
+  {
+    auto y_tensor = result.Outputs().Lookup(L"Output.MelWeightMatrix").as<TensorFloat>();
+    auto y_ivv = y_tensor.GetAsVectorView();
+    for (unsigned i = 0; i < y_ivv.Size(); i++) {
+      printf("%f, ", y_ivv.GetAt(i));
+    }
+  }
+
+  printf("\n");
+}
 
 static void MelSpectrogramOnThreeToneSignal(
     size_t batch_size, size_t signal_size, size_t window_size, size_t dft_size,
@@ -720,7 +752,7 @@ static void MelSpectrogramOnThreeToneSignal(
 }
 
 static void ModelBuilding_StandardDeviationNormalization() {
-  
+#ifndef BUILD_INBOX
   int64_t height = 256;
   int64_t width = 256;
   int64_t channels = 3;
@@ -745,10 +777,13 @@ static void ModelBuilding_StandardDeviationNormalization() {
                        .SetOutput(L"transposed", L"Output"))
     .Save(L"StandardDeviationNormalization.onnx");
   //.CreateModel();
+#endif
 }
 
-static void ModelBuilding_Gemm()
-{
+static void ModelBuilding_Gemm() {
+#ifndef BUILD_INBOX
+  MelWeigthMatrix();
+
   std::vector<int64_t> shape = {3, 3};
   std::vector<float> x =
   {
@@ -768,10 +803,11 @@ static void ModelBuilding_Gemm()
         .SetInput(L"C", L"intput_c")
         .SetOutput(L"Y", L"output_y"))
       .CreateModel();
+#endif
 }
 
-static void ModelBuilding_DynamicMatmul()
-{
+static void ModelBuilding_DynamicMatmul() {
+#ifndef BUILD_INBOX
   std::vector<int64_t> a_shape = {318, 129};
   std::vector<int64_t> b_shape = {129, 1024};
 
@@ -805,10 +841,11 @@ static void ModelBuilding_DynamicMatmul()
   // Print duration
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
   printf("Evaluate Took: %f\n", evaluate_duration_in_microseconds.count());
+#endif
 }
 
-static void ModelBuilding_ConstantMatmul()
-{
+static void ModelBuilding_ConstantMatmul() {
+#ifndef BUILD_INBOX
   std::vector<int64_t> a_shape = {318, 129};
   std::vector<int64_t> b_shape = {129, 1024};
 
@@ -835,16 +872,18 @@ static void ModelBuilding_ConstantMatmul()
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
   printf("Evaluate Took: %f\n", evaluate_duration_in_microseconds.count());
+#endif
 }
 
-static void ModelBuilding_DiscreteFourierTransform()
-{
+static void ModelBuilding_DiscreteFourierTransform() {
+#ifndef BUILD_INBOX
   DiscreteFourierTransform(false /*onesided*/);
   DiscreteFourierTransform(true /*onesided*/);
+#endif
 }
 
-static void ModelBuilding_DiscreteFourierTransformInverseIdentity()
-{
+static void ModelBuilding_DiscreteFourierTransformInverseIdentity() {
+#ifndef BUILD_INBOX
   std::vector<int64_t> shape = {1, 5};
   std::vector<int64_t> output_shape = {1, shape[1], 2};
 
@@ -877,28 +916,32 @@ static void ModelBuilding_DiscreteFourierTransformInverseIdentity()
     printf("(%f + %fi), ", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
   }
   printf("\n");
+#endif
 }
 
-static void ModelBuilding_HannWindow()
-{
+static void ModelBuilding_HannWindow() {
+#ifndef BUILD_INBOX
   WindowFunction(L"HannWindow", TensorKind::Float);
   WindowFunction(L"HannWindow", TensorKind::Double);
+#endif
 }
 
-static void ModelBuilding_HammingWindow()
-{
+static void ModelBuilding_HammingWindow() {
+#ifndef BUILD_INBOX
   WindowFunction(L"HammingWindow", TensorKind::Float);
   WindowFunction(L"HammingWindow", TensorKind::Double);
+#endif
 }
 
-static void ModelBuilding_BlackmanWindow()
-{
+static void ModelBuilding_BlackmanWindow() {
+#ifndef BUILD_INBOX
   WindowFunction(L"BlackmanWindow", TensorKind::Float);
   WindowFunction(L"BlackmanWindow", TensorKind::Double);
+#endif
 }
 
-static void ModelBuilding_STFT()
-{
+static void ModelBuilding_STFT() {
+#ifndef BUILD_INBOX
   size_t batch_size = 1;
   size_t sample_rate = 8192;
   float signal_duration_in_seconds = 5.f;
@@ -909,10 +952,11 @@ static void ModelBuilding_STFT()
   // stft
   STFT(batch_size, signal_size, dft_size, hop_size, sample_rate, true);
   STFT(batch_size, signal_size, dft_size, hop_size, sample_rate, false);
+#endif
 }
 
-static void ModelBuilding_MelSpectrogramOnThreeToneSignal()
-{
+static void ModelBuilding_MelSpectrogramOnThreeToneSignal() {
+#ifndef BUILD_INBOX
   size_t batch_size = 1;
   size_t sample_rate = 8192;
   float signal_duration_in_seconds = 5.f;
@@ -923,6 +967,7 @@ static void ModelBuilding_MelSpectrogramOnThreeToneSignal()
   size_t n_mel_bins = 1024;
 
   MelSpectrogramOnThreeToneSignal(batch_size, signal_size, dft_size, window_size, hop_size, n_mel_bins, sample_rate);
+#endif
 }
 
 static void SetIntraOpNumThreads() {
