@@ -146,10 +146,6 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaDeviceSynchronize());
   CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, device_id_));
 
-  size_t free = 0;
-  size_t total = 0;
-  CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
-
   if (external_alloc_ != nullptr && external_free_ != nullptr) {
     void* alloc = external_alloc_;
     void* free = external_free_;

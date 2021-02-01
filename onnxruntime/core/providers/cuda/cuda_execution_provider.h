@@ -26,8 +26,8 @@ struct CUDAExecutionProviderInfo {
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
   OrtCudnnConvAlgoSearch cudnn_conv_algo{OrtCudnnConvAlgoSearch::EXHAUSTIVE};
   bool do_copy_in_default_stream{true};
-  void* external_alloc;
-  void* external_free;
+  void* external_alloc{nullptr};
+  void* external_free{nullptr};
 };
 
 // Logical device representation.
