@@ -190,7 +190,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
                                                                                OrtCudnnConvAlgoSearch cudnn_conv_algo_search,
                                                                                size_t cuda_mem_limit,
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy,
-                                                                               bool do_copy_in_default_stream);
+                                                                               bool do_copy_in_default_stream,
+                                                                               void* external_alloc = nullptr,
+                                                                               void* external_free = nullptr);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(OrtDevice::DeviceId device_id,
                                                                                size_t cuda_mem_limit,
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy);
@@ -514,7 +516,6 @@ static size_t ConvertStringToSizeT(const std::string& str, const std::string& er
 static void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CUDAExecutionProviderInfo& options,
                                       std::unordered_map<std::string, std::string> options_map) {
   std::unordered_map<std::string, std::string>::iterator it;
-
   it = options_map.find("device_id");
   if (it != options_map.end()) {
     OrtDevice::DeviceId device_id;
@@ -667,7 +668,6 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         onnxruntime::CUDAExecutionProviderInfo cuda_provider_options;
@@ -678,7 +678,9 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                                                                     cuda_provider_options.cudnn_conv_algo,
                                                                     cuda_provider_options.cuda_mem_limit,
                                                                     cuda_provider_options.arena_extend_strategy,
-                                                                    cuda_provider_options.do_copy_in_default_stream));
+                                                                    cuda_provider_options.do_copy_in_default_stream,
+                                                                    cuda_provider_options.external_alloc,
+                                                                    cuda_provider_options.external_free));
       } else {
         RegisterExecutionProvider(
             sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id,
