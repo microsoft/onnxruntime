@@ -1722,13 +1722,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
     for (int i = 0; i < available_count; i++) {
       out[i] = new char[MAX_LEN + 1];
 #ifdef _MSC_VER
-        strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
-        out[i][MAX_LEN] = '\0';
+      strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
+      out[i][MAX_LEN] = '\0';
 #elif defined(__APPLE__)
-        strlcpy(out[i], available_providers[i].c_str(), MAX_LEN);
+      strlcpy(out[i], available_providers[i].c_str(), MAX_LEN);
 #else
-        strncpy(out[i], available_providers[i].c_str(), MAX_LEN);
-        out[i][MAX_LEN] = '\0';
+      strncpy(out[i], available_providers[i].c_str(), MAX_LEN);
+      out[i][MAX_LEN] = '\0';
 #endif
     }
   }
@@ -2092,8 +2092,11 @@ static constexpr OrtApi ort_api_1_to_7 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 7)
+  if (version >= 1 && version <= ORT_API_VERSION)
     return &ort_api_1_to_7;
+
+  fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
+          version, ORT_API_VERSION);
 
   return nullptr;  // Unsupported version
 }

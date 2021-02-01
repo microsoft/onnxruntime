@@ -4,6 +4,7 @@
 #include <core/common/logging/logging.h>
 #include <core/common/safeint.h>
 
+#include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "helper.h"
 #include "model_builder.h"

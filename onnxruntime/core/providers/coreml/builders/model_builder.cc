@@ -8,6 +8,7 @@
 #include "helper.h"
 #include "op_builder_factory.h"
 
+#include "core/providers/common.h"
 #include "core/providers/coreml/model/model.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
@@ -15,9 +16,10 @@
 namespace onnxruntime {
 namespace coreml {
 
-ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger)
+ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger, uint32_t coreml_flags)
     : graph_viewer_(graph_viewer),
-      logger_(logger) {
+      logger_(logger),
+      coreml_flags_(coreml_flags) {
 }
 
 Status ModelBuilder::Initialize() {
@@ -191,7 +193,7 @@ Status ModelBuilder::RegisterModelOutputs() {
 
 Status ModelBuilder::Compile(std::unique_ptr<Model>& model, const std::string& path) {
   ORT_RETURN_IF_ERROR(SaveCoreMLModel(path));
-  model.reset(new Model(path, logger_));
+  model.reset(new Model(path, logger_, coreml_flags_));
   model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
   return model->LoadModel();
@@ -202,9 +204,11 @@ Status ModelBuilder::SaveCoreMLModel(const std::string& path) {
   std::ofstream stream(path, std::ofstream::out | std::ofstream::binary);
   ORT_RETURN_IF_NOT(coreml_model_->SerializeToOstream(&stream), "Save the CoreML model failed");
 
-  // Delete, debug only
-  std::ofstream temp_stream("/Users/gwang/temp/aaa.mlmodel", std::ofstream::out | std::ofstream::binary);
-  ORT_RETURN_IF_NOT(coreml_model_->SerializeToOstream(&temp_stream), "Save the CoreML model failed");
+  // TODO, Delete, debug only
+  if (const char* path = std::getenv("ORT_COREML_EP_CONVERTED_MODEL_PATH")) {
+    std::ofstream temp_stream(path, std::ofstream::out | std::ofstream::binary);
+    ORT_RETURN_IF_NOT(coreml_model_->SerializeToOstream(&temp_stream), "Save the CoreML model failed");
+  }
 
   return Status::OK();
 }

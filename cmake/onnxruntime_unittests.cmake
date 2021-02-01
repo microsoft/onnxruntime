@@ -30,14 +30,6 @@ function(AddTest)
 
   if(_UT_LIBS)
     list(REMOVE_DUPLICATES _UT_LIBS)
-    list (FIND _UT_LIBS "cudart" _index)
-    if (${_index} GREATER -1)
-      if(WIN32)
-        target_link_directories(${_UT_TARGET} PRIVATE ${onnxruntime_CUDA_HOME}/x64/lib64)
-      else()
-        target_link_directories(${_UT_TARGET} PRIVATE ${onnxruntime_CUDA_HOME}/lib64)
-      endif()
-    endif()
   endif()
 
   source_group(TREE ${REPO_ROOT} FILES ${_UT_SOURCES})
@@ -828,9 +820,11 @@ if (WIN32)
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils onnxruntime_common re2::re2
-          onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime onnxruntime_flatbuffers
-          ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+  set(onnxruntime_perf_test_libs 
+          onnx_test_runner_common onnxruntime_test_utils onnxruntime_common 
+          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto 
+          ${onnxruntime_EXTERNAL_LIBRARIES}
+          ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
   endif()

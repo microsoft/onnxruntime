@@ -65,6 +65,8 @@
         "^test_maxpool_2d_ceil",
         "^test_maxpool_2d_dilations",
         "^test_maxpool_2d_uint8",
+        "^test_maxpool_with_argmax_2d_precomputed_pads_cpu", // maxpool test will fail if built with --traning-enabled
+        "^test_maxpool_with_argmax_2d_precomputed_strides_cpu", // maxpool test will fail if built with --traning-enabled
         "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
         "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
     ],
