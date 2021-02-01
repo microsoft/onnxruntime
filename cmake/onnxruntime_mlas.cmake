@@ -79,6 +79,7 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx512/quantize_avx512f.cpp
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx512Core.asm
@@ -288,6 +289,24 @@ else()
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelAvx512F.S
       )
+
+      check_cxx_source_compiles("
+        #include <immintrin.h>
+        int main() {
+          __m512 zeros = _mm512_set1_ps(0.f);
+          (void)zeros;
+          return 0;
+        }"
+        COMPILES_AVX512F_INTRINSICS
+      )
+      if(COMPILES_AVX512F_INTRINSICS)
+        set(mlas_platform_srcs_avx512f
+          ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx512/quantize_avx512f.cpp
+          ${mlas_platform_srcs_avx512f}
+        )
+      else()
+        set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_INTRINSICS_UNSUPPORTED")
+      endif()
       if(HAS_AVX512F)
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
       endif()
