@@ -27,7 +27,11 @@ void VerifyTensorProtoFileData(const PathString& tensor_proto_path, gsl::span<co
 
   std::vector<T> actual_data{};
   actual_data.resize(expected_data.size());
-  ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, actual_data.data(), actual_data.size()));
+  if (utils::HasRawData(tensor_proto)) {
+    ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, tensor_proto.raw_data().data(), tensor_proto.raw_data().size(), actual_data.data(), actual_data.size()));
+  } else {
+    ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, nullptr, 0, actual_data.data(), actual_data.size()));
+  }
 
   ASSERT_EQ(gsl::make_span(actual_data), expected_data);
 }
