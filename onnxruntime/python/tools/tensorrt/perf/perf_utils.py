@@ -8,6 +8,11 @@ import re
 debug = False
 debug_verbose = False 
 
+def get_output(command):
+    p = subprocess.run(command, check=True, stdout=subprocess.PIPE)
+    output = p.stdout.decode("ascii").strip()
+    return output
+
 def find(regex_string): 
     import glob
     results = glob.glob(regex_string)
