@@ -10,6 +10,7 @@ import numpy as np
 from inspect import signature
 
 from torch.utils.dlpack import from_dlpack
+from torch.utils.cpp_extension import load_inline
 
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
@@ -24,6 +25,27 @@ __TEMP_ENABLE_METHOD_TIMING__ = False
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 T = TypeVar('T', bound='Module')
 
+torch_cuda_allocator_addresses_cpp_source = \'\'\'
+#include <torch/extension.h>
+#include <c10/cuda/CUDACachingAllocator.h>
+
+#include <iostream>
+
+size_t cuda_caching_allocator_raw_alloc_address() {
+    std::cout<<"\nc10::cuda::CUDACachingAllocator::raw_alloc address: " << reinterpret_cast<void*>(&c10::cuda::CUDACachingAllocator::raw_alloc) << "\n";
+    return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_alloc);
+}
+
+size_t cuda_caching_allocator_raw_delete_address() {
+    std::cout<<"\nc10::cuda::CUDACachingAllocator::raw_delete address: " << reinterpret_cast<void*>(&c10::cuda::CUDACachingAllocator::raw_delete) << "\n";
+    return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_delete);
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("raw_alloc", &cuda_caching_allocator_raw_alloc_address, "cuda_caching_allocator_raw_alloc_address");
+  m.def("raw_delete", &cuda_caching_allocator_raw_delete_address, "cuda_caching_allocator_raw_delete_address");
+}
+\'\'\'
 
 def _get_device_index(device):
     if isinstance(device, str):
@@ -147,6 +169,9 @@ class ORTModule(torch.nn.Module):
         self._save_onnx = False
         self._save_onnx_prefix = ''
 
+        # CPP extension to get torch CUDA allocator's alloc and free function addresses
+        self._torch_cuda_allocator = load_inline(name='inline_extension', cpp_sources=[torch_cuda_allocator_addresses_cpp_source], functions=['raw_alloc', 'raw_delete'], verbose=True, with_cuda=True)
+
     def _initialize_module_gradient_graph_builder(self):
 
         # TODO: PyTorch exporter bug: changes the initializer order
@@ -174,7 +199,10 @@ class ORTModule(torch.nn.Module):
         if self._device.type == 'cuda':
             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            provider_options = [{"device_id": str(self._device.index)}]
+            provider_options = [{"device_id": str(self._device.index)},
+                                {"cuda_external_alloc": str(self._torch_cuda_allocator.raw_alloc())},
+                                {"cuda_external_free": str(self._torch_cuda_allocator.raw_delete())}]
+
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
