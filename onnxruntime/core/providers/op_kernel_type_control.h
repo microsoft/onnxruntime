@@ -37,6 +37,9 @@ enum class OpArgDirection {
 
 using OpArgIndex = size_t;
 
+// constant to use for type lists that are valid across all opsets
+constexpr int kAllOpSets = -1;
+
 namespace tags {
 
 // a tag that identifies the target (Op argument) of the specified types
@@ -45,7 +48,7 @@ struct OpArg {};
 
 // a tag that indicates the supported types for a particular Op argument, identified by OpArgTag,
 // for a kernel in a particular provider, identified by ProviderTag. as the types may change between opsets,
-// the opset must also be specified
+// the opset must also be specified. if the type list is not opset specific, use kAllOpSets as the value.
 template <typename OpArgTag, typename ProviderTag, int OpSet>
 struct Supported {};
 
@@ -171,6 +174,25 @@ struct EnabledTypes {
   };
 
 /**
+ * Specifies a supported set of types for a given Op kernel argument that is valid for all opsets.
+ * This should be specified with the Op kernel implementation.
+ *
+ * Note: This should be called from the onnxruntime::op_kernel_type_control namespace.
+ *
+ * @param OpProvider The Op provider.
+ * @param OpDomain The Op domain.
+ * @param OpName The Op name.
+ * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
+ * @param ArgIndex Index of the given Op kernel argument.
+ * @param ... The types.
+ */
+#define ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(                                  \
+    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, ...)                                 \
+  ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(OpProvider, OpDomain, OpName,                      \
+                                            ::onnxruntime::op_kernel_type_control::kAllOpSets, \
+                                            ArgDirection, ArgIndex, __VA_ARGS__)
+
+/**
  * TypeList type with the enabled types for a given Op kernel argument.
  * This is created by intersecting the supported types with any type restrictions coming from the allowed or global
  * type lists.
@@ -199,6 +221,23 @@ struct EnabledTypes {
               ::onnxruntime::op_kernel_type_control::tags::GlobalAllowed>>>::types
 
 /**
+ * TypeList type with the enabled types for a given Op kernel argument that is valid for all opsets.
+ * This is created by intersecting the supported types with any type restrictions coming from the allowed or global
+ * type lists.
+ *
+ * @param OpProvider The Op provider.
+ * @param OpDomain The Op domain.
+ * @param OpName The Op name.
+ * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
+ * @param ArgIndex Index of the given Op kernel argument.
+ */
+#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(                                  \
+    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex)                                \
+  ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(OpProvider, OpDomain, OpName,                      \
+                                      ::onnxruntime::op_kernel_type_control::kAllOpSets, \
+                                      ArgDirection, ArgIndex)
+
+/**
  * std::tuple type with the enabled types for a given Op kernel argument.
  *
  * @param OpProvider The Op provider.
@@ -208,13 +247,27 @@ struct EnabledTypes {
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  */
-#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(                                       \
-    OpProvider, OpDomain, OpName, Opset, ArgDirection, ArgIndex)                    \
-  ::boost::mp11::mp_rename<                                                         \
-      ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(                                          \
-          OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, SupportedTypeList), \
+#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(                                              \
+    OpProvider, OpDomain, OpName, Opset, ArgDirection, ArgIndex)                           \
+  ::boost::mp11::mp_rename<                                                                \
+      ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(                                                 \
+          OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, SupportedTypeList), \
       std::tuple>
 
+/**
+ * std::tuple type with the enabled types for a given Op kernel argument that is valid for all opsets.
+ *
+ * @param OpProvider The Op provider.
+ * @param OpDomain The Op domain.
+ * @param OpName The Op name.
+ * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
+ * @param ArgIndex Index of the given Op kernel argument.
+ */
+#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE_ALL_OPSETS(                                  \
+    OpProvider, OpDomain, OpName, Opset, ArgDirection, ArgIndex)                          \
+  ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(OpProvider, OpDomain, OpName,                      \
+                                       ::onnxruntime::op_kernel_type_control::kAllOpSets, \
+                                       ArgDirection, ArgIndex)
 /**
  * Usage example:
  *

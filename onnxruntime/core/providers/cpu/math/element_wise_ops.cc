@@ -15,40 +15,34 @@ namespace onnxruntime {
 // Supported types for operators that have type reduction enabled
 namespace op_kernel_type_control {
 // Max
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0, float, double);
 
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0,
-    float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0,
+                                          float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
 
 // Min
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0, float, double);
-
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0,
-    float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 12,
+                                          Input, 0, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
 
 // Pow
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0, float, double);
 
 // Pow 12 and later has separate Base and Exponent types
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 0, int32_t, int64_t, float, double);
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
-    kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 1, int32_t, int64_t, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
+                                          Input, 0, int32_t, int64_t, float, double);
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 12,
+                                          Input, 1, int32_t, int64_t, float, double);
 }  // namespace op_kernel_type_control
 
 //
 // reduce the supported type lists to what's allowed in this build
 //
-using EnabledMin8Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0);
 using EnabledMax8Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0);
-
-using EnabledMin12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0);
 using EnabledMax12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0);
+
+using EnabledMin8Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0);
+using EnabledMin12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0);
 
 using EnabledPow7Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0);
 using EnabledPow12BaseTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
