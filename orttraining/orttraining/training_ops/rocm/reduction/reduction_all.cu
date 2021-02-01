@@ -18,13 +18,13 @@ __global__ void ScalarSqrtKernel(Tin* input, Tout* output) {
 }
 
 template<typename Tin, typename Tout>
-void ScalarSqrt(Tin* input, Tout* output) {
-  hipLaunchKernelGGL(ScalarSqrtKernel, dim3(1), dim3(1), 0, 0, input, output);
+void ScalarSqrt(hipStream_t stream, Tin* input, Tout* output) {
+  hipLaunchKernelGGL(ScalarSqrtKernel, dim3(1), dim3(1), 0, stream, input, output);
 }
 
-template void ScalarSqrt(float* input, float* output);
-template void ScalarSqrt(half* input, half* output);
-template void ScalarSqrt(float* input, half* output);
+template void ScalarSqrt(hipStream_t stream, float* input, float* output);
+template void ScalarSqrt(hipStream_t stream, half* input, half* output);
+template void ScalarSqrt(hipStream_t stream, float* input, half* output);
 
 template <typename TIn, typename TOut, typename TBuf, typename TInOp, typename TOutOp>
 __launch_bounds__(ChunkGroup<1>::thread_count_per_block)
@@ -84,7 +84,7 @@ __global__ void MultiTensorReduceKernel(ChunkGroup<1> chunk_group, TOut* output)
 }
 
 template <typename TIn, typename TOut, typename TBuf, typename TInOp, typename TOutOp>
-void MultiTensorReduce(ChunkGroup<1> chunk_group, TOut* output) {
+void MultiTensorReduce(hipStream_t stream, ChunkGroup<1> chunk_group, TOut* output) {
   // thread count per block.
   constexpr int thread_count = ChunkGroup<1>::thread_count_per_block;
   // shared memory's size per block.
@@ -94,17 +94,17 @@ void MultiTensorReduce(ChunkGroup<1> chunk_group, TOut* output) {
   ORT_ENFORCE(thread_count % GPU_WARP_SIZE == 0);
   ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
 
-  hipLaunchKernelGGL(HIP_KERNEL_NAME(MultiTensorReduceKernel<TIn, TOut, TBuf, TInOp, TOutOp>), dim3(chunk_group.chunk_count), dim3(thread_count), shared_memory_size, 0, chunk_group, output);
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(MultiTensorReduceKernel<TIn, TOut, TBuf, TInOp, TOutOp>), dim3(chunk_group.chunk_count), dim3(thread_count), shared_memory_size, stream, chunk_group, output);
 }
 
 template <typename TIn, typename TOut>
-void MultiTensorReduceL2<TIn, TOut>::operator()(ChunkGroup<1> chunk_group, TOut* output) {
+void MultiTensorReduceL2<TIn, TOut>::operator()(hipStream_t stream, ChunkGroup<1> chunk_group, TOut* output) {
   using TBuf = AccumulationType_t<TIn>;
-  MultiTensorReduce<TIn, TOut, TBuf, Square<TBuf, TIn>, Cast<TOut, TBuf>>(chunk_group, output);
+  MultiTensorReduce<TIn, TOut, TBuf, Square<TBuf, TIn>, Cast<TOut, TBuf>>(stream, chunk_group, output);
 }
 
 #define INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(TIn, TOut) \
-  template void MultiTensorReduceL2<TIn, TOut>::operator()(ChunkGroup<1> chunk_group, TOut* output);
+  template void MultiTensorReduceL2<TIn, TOut>::operator()(hipStream_t stream, ChunkGroup<1> chunk_group, TOut* output);
 
 INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(double, float)
 INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(float, float)

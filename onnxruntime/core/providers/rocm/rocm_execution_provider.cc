@@ -58,10 +58,14 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace rocm
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   HIP_CALL_THROW(hipSetDevice(device_id));
+  stream_ = stream;
+
   ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+  ROCBLAS_CALL_THROW(rocblas_set_stream(rocblas_handle_, stream));
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
+  MIOPEN_CALL_THROW(miopenSetStream(miopen_handle_, stream));
 
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId id) {
@@ -103,6 +107,13 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   // must wait GPU idle, otherwise hipGetDeviceProperties might fail
   HIP_CALL_THROW(hipDeviceSynchronize());
   HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, info_.device_id));
+
+  if (info.has_user_compute_stream) {
+    external_stream_ = true;
+    stream_ = static_cast<hipStream_t>(info.user_compute_stream);
+  } else {
+    HIP_CALL_THROW(hipStreamCreateWithFlags(&stream_, hipStreamNonBlocking));
+  }
 
   size_t free = 0;
   size_t total = 0;
@@ -168,6 +179,10 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
       ORT_IGNORE_RETURN_VALUE(cache->erase(this));
     }
   }
+
+  if (!external_stream_ && stream_) {
+    HIP_CALL(hipStreamDestroy(stream_));
+  }
 }
 
 ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadContext() const {
@@ -188,7 +203,7 @@ ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, info_.hip_mem_limit, info_.arena_extend_strategy);
+      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<hipStream_t>(GetComputeStream()), info_.hip_mem_limit, info_.arena_extend_strategy);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -286,7 +301,8 @@ Status ROCMExecutionProvider::OnRunStart() {
 Status ROCMExecutionProvider::OnRunEnd() {
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  HIP_RETURN_IF_ERROR(hipEventRecord(current_deferred_release_event, nullptr));
+  HIP_RETURN_IF_ERROR(hipEventRecord(current_deferred_release_event, static_cast<hipStream_t>(GetComputeStream())));
+  HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
   ReleasePerThreadContext();
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
@@ -1710,7 +1726,7 @@ static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> ROCMExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>();
+  return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>(static_cast<hipStream_t>(GetComputeStream()), info_.do_copy_in_default_stream);
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

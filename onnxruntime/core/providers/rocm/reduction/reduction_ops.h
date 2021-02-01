@@ -42,7 +42,7 @@ Status PrepareForReduce(const Tensor* X,
                         const TensorShape* input_shape_override = nullptr);
 
 template <typename T>
-Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+Status ReduceComputeCore(hipStream_t stream, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
                          const std::vector<int64_t>& axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,

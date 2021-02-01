@@ -142,6 +142,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
                               static_cast<int>(reduction_size),
                               static_cast<int>(stride), rank, axes_)) {
     reduce_matrix_rows(
+        Stream(),
         reinterpret_cast<const HipT*>(X),
         reinterpret_cast<HipT*>(Y),
         static_cast<int>(reduction_size),
@@ -277,7 +278,7 @@ Status PrepareForReduce(const Tensor* X,
 
 // `input_shape_override` is the input shape for compute purposes (if provided)
 template <typename T>
-Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+Status ReduceComputeCore(hipStream_t stream, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
                          const std::vector<int64_t>& axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
@@ -301,7 +302,7 @@ Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_red
 
   // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
   // Therefore zeroing out the memory is required
-  HIP_RETURN_IF_ERROR(hipMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes()));
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
 
   // Block of fast matrix row reduction.
   // It relies on new atomicAdd for half type, so old CUDA can't use it.
@@ -311,6 +312,7 @@ Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_red
         prepare_reduce_metadata.contiguous_axes &&
         is_matrix_row_reduction(miopen_reduce_op, static_cast<int>(reduction_size), static_cast<int>(stride), rank, axes)) {
       reduce_matrix_rows(
+          stream,
           reinterpret_cast<const HipT*>(input.template Data<T>()),
           reinterpret_cast<HipT*>(output.template MutableData<T>()),
           static_cast<int>(reduction_size),
@@ -321,7 +323,7 @@ Status ReduceComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_red
 
   if (input_count == output_count) {
     if (output.template MutableData<T>() != input.template Data<T>()) {
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.template MutableData<T>(), input.template Data<T>(), input_count * sizeof(T), hipMemcpyDeviceToDevice));
+      HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.template MutableData<T>(), input.template Data<T>(), input_count * sizeof(T), hipMemcpyDeviceToDevice, stream));
     }
     return Status::OK();
   }
@@ -342,7 +344,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, miopenR
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
 
-  return ReduceComputeCore<T>(*X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes_,
+  return ReduceComputeCore<T>(Stream(), *X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes_,
                               calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
 }
 
