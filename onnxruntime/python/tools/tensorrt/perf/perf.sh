@@ -50,7 +50,6 @@ fi
 # ONNX model zoo
 if [ $OPTION == "onnx-zoo-models" ]
 then
-    echo "in onnx-zoo-models"
     MODEL_LIST="model.json"
     setup
     python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/$OPTION

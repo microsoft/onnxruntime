@@ -1516,9 +1516,6 @@ def main():
     setup_logger(False)
     pp = pprint.PrettyPrinter(indent=4)
 
-    info = get_system_info()
-    pp.pprint(info)
-
     logger.info("\n\nStart perf run ...\n")
 
     models = {}
