@@ -19,7 +19,7 @@ namespace test {
 
 namespace {
 template <typename T>
-void VerifyTensorProtoFileData(const PathString& tensor_proto_path, gsl::span<const T> expected_data) {
+static void VerifyTensorProtoFileData(const PathString& tensor_proto_path, gsl::span<const T> expected_data) {
   std::ifstream tensor_proto_stream{tensor_proto_path};
 
   ONNX_NAMESPACE::TensorProto tensor_proto{};
