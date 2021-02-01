@@ -202,9 +202,11 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   auto output_count = output_shape.Size();
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {
+    IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
     CudaT* input_data = nullptr;
     if (calculate_sqt_) {
-      input_data = reinterpret_cast<CudaT*>(GetScratchBuffer<T>(input_count).get());
+      input_data_buffer = GetScratchBuffer<T>(input_count);
+      input_data = reinterpret_cast<CudaT*>(input_data_buffer.get());
       fast_divmod tmp_div;
       Impl_Mul<CudaT>(static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
                       reinterpret_cast<const CudaT*>(X), nullptr,
@@ -225,8 +227,10 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 
       // Exp(X-ReduceMax)
       const TensorShape rhs_shape(output_dims);
-      auto exp_result = GetScratchBuffer<T>(input_count).get();
-      auto log_sum_result = GetScratchBuffer<T>(output_count).get();
+      auto exp_result_buffer = GetScratchBuffer<T>(input_count);
+      auto exp_result = exp_result_buffer.get();
+      auto log_sum_result_buffer = GetScratchBuffer<T>(output_count);
+      auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
       ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, rhs_shape, input_shape));
       Impl_Sub<CudaT>(prepare.output_rank_or_simple_broadcast,
