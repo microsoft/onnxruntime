@@ -65,8 +65,68 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data, batch_filenames, image_size_list
 
+def yolov3_variant_preprocess_func(images_folder, height, width, start_index=0, size_limit=0):
+    '''
+    Loads a batch of images and preprocess them
+    parameter images_folder: path to folder storing images
+    parameter height: image height in pixels
+    parameter width: image width in pixels
+    parameter size_limit: number of images to load. Default is 0 which means all images are picked.
+    return: list of matrices characterizing multiple images
+    '''
 
-def yolov3_vision_preprocess_func(images_folder, height, width, start_index=0, size_limit=0):
+    # reference from here:
+    # https://github.com/jkjung-avt/tensorrt_demos/blob/3fb15c908b155d5edc1bf098c6b8c31886cd8e8d/utils/yolo.py#L60
+    def _preprocess_yolo(img, input_shape):
+        """Preprocess an image before TRT YOLO inferencing.
+        # Args
+            img: int8 numpy array of shape (img_h, img_w, 3)
+            input_shape: a tuple of (H, W)
+        # Returns
+            preprocessed img: float32 numpy array of shape (3, H, W)
+        """
+        img = cv2.resize(img, (input_shape[1], input_shape[0]))
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = img.transpose((2, 0, 1)).astype(np.float32)
+        img /= 255.0
+        return img
+
+    image_names = os.listdir(images_folder)
+    if start_index >= len(image_names):
+        return np.asanyarray([]), np.asanyarray([]), np.asanyarray([])
+    elif size_limit > 0 and len(image_names) >= size_limit:
+        end_index = start_index + size_limit
+        if end_index > len(image_names):
+            end_index = len(image_names)
+
+        batch_filenames = [image_names[i] for i in range(start_index, end_index)]
+    else:
+        batch_filenames = image_names
+
+    unconcatenated_batch_data = []
+    image_size_list = []
+
+    print(batch_filenames)
+    print("size: %s" % str(len(batch_filenames)))
+
+    for image_name in batch_filenames:
+        image_filepath = images_folder + '/' + image_name
+        model_image_size = (height, width)
+
+        img = cv2.imread(image_filepath)
+        image_data = _preprocess_yolo(img, tuple(model_image_size)) 
+        image_data = np.ascontiguousarray(image_data)
+        image_data = np.expand_dims(image_data, 0)
+        unconcatenated_batch_data.append(image_data)
+        _height, _width, _ = img.shape
+        image_size_list.append(img.shape[0:2])  # img.shape is h, w, c
+
+    batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
+    return batch_data, batch_filenames, image_size_list
+
+
+# This is for special tuned yolov3 model
+def yolov3_variant_2_preprocess_func(images_folder, height, width, start_index=0, size_limit=0):
     def letterbox(img, new_shape=(416, 416), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True):
         # Resize image to a 32-pixel-multiple rectangle https://github.com/ultralytics/yolov3/issues/232
         shape = img.shape[:2]  # current shape [height, width]

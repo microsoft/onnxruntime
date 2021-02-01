@@ -1,7 +1,7 @@
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
-#if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+#if defined OPENVINO_2020_3
 
 #include "core/providers/shared_library/provider_api.h"
 
@@ -74,6 +74,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "Less",
       "LogSoftmax",
       "LpNormalization",
+      "MatMulInteger",
       "MeanVarianceNormalization",
       "Not",
       "Or",
@@ -600,7 +601,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, std::string device, /
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
-GetCapability_2020_2(const GraphViewer& graph_viewer, const std::string device_type) {
+GetCapability_2020_3(const GraphViewer& graph_viewer, const std::string device_type) {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   if (graph_viewer.IsSubgraph()) {
@@ -717,4 +718,4 @@ GetCapability_2020_2(const GraphViewer& graph_viewer, const std::string device_t
 }  // namespace openvino_ep
 }  // namespace onnxruntime
 
-#endif  //(defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+#endif  //defined OPENVINO_2020_3

@@ -24,25 +24,25 @@ IModelInfo : IUnknown {
   (int64_t * out) PURE;
 
   STDMETHOD(GetModelMetadata)
-  (ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING> * *metadata) PURE;
+  (ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING> **metadata) PURE;
 
   STDMETHOD(GetInputFeatures)
-  (ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor> * *features) PURE;
+  (ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor> **features) PURE;
 
   STDMETHOD(GetOutputFeatures)
-  (ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor> * *features) PURE;
+  (ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor> **features) PURE;
 };
 
 MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99")
 IModel : IUnknown {
   STDMETHOD(GetModelInfo)
-  (IModelInfo * *info) PURE;
+  (IModelInfo **info) PURE;
 
   STDMETHOD(ModelEnsureNoFloat16)
   () PURE;
 
   STDMETHOD(CloneModel)
-  (IModel * *copy) PURE;
+  (IModel **copy) PURE;
 };
 
 using Resource = std::unique_ptr<void, std::function<void(void*)>>;
@@ -118,16 +118,16 @@ IEngine : IUnknown {
   (const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) PURE;
 
   STDMETHOD(CreateNullValue)
-  (_Out_ IValue * *out) PURE;
+  (_Out_ IValue **out) PURE;
 
   STDMETHOD(CreateMapValue)
-  (IInspectable * map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue * *out) PURE;
+  (IInspectable * map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue **out) PURE;
 
   STDMETHOD(CreateSequenceOfMapsValue)
-  (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue * *out) PURE;
+  (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue **out) PURE;
 
   STDMETHOD(CreateSequenceOfValuesValue)
-  (IValue ** values, size_t size, IValue * *out) PURE;
+  (IValue ** values, size_t size, IValue **out) PURE;
 
   STDMETHOD(CreateOneInputAcrossDevices)
   (const char* name, IValue* src, IValue** dest) PURE;
@@ -163,10 +163,10 @@ IEngineBuilder : IUnknown {
   (int enabled) PURE;
 
   STDMETHOD(GetD3D12Device)
-  (ID3D12Device * *device) PURE;
+  (ID3D12Device **device) PURE;
 
   STDMETHOD(GetID3D12CommandQueue)
-  (ID3D12CommandQueue * *queue) PURE;
+  (ID3D12CommandQueue **queue) PURE;
 
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override) PURE;
@@ -178,7 +178,7 @@ IEngineBuilder : IUnknown {
   (uint32_t intra_op_num_threads) PURE;
 
   STDMETHOD(CreateEngine)
-  (IEngine * *out) PURE;
+  (IEngine **out) PURE;
 };
 
 MIDL_INTERFACE("5eddd25a-70ad-46ef-a445-78fbaf792c2f")
@@ -190,13 +190,13 @@ IEngineFactory : IUnknown {
   (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
 
   STDMETHOD(CreateEngineBuilder)
-  (IEngineBuilder * *engine_builder) PURE;
+  (_Outptr_ IEngineBuilder **engine_builder) PURE;
 
   STDMETHOD(EnableDebugOutput)
   (bool is_enabled) PURE;
 
   STDMETHOD(CreateCustomRegistry)
-  (_Out_ IMLOperatorRegistry * *registry) PURE;
+  (_Out_ IMLOperatorRegistry **registry) PURE;
 };
 
 }  // namespace _winml

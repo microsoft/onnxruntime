@@ -662,10 +662,6 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
-if(onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(re2)
-endif()
-
 set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
 add_library(safeint_interface INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
@@ -675,6 +671,11 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
   add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
 endif()
 
+add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
+
+if(onnxruntime_PREFER_SYSTEM_LIB)
+  find_package(re2)
+endif()
 if(NOT TARGET re2::re2)
   add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
   set_target_properties(re2 PROPERTIES FOLDER "External/re2")
@@ -731,7 +732,6 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
   endif()
 
   if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-
     add_library(arm_compute SHARED IMPORTED)
     set_target_properties(arm_compute PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -746,11 +746,9 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-
-    link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_core arm_compute_graph)
 
 endif()
 
@@ -764,7 +762,6 @@ if (onnxruntime_USE_ARMNN)
   endif()
 
   if (NOT onnxruntime_USE_ACL AND NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-
     add_library(arm_compute SHARED IMPORTED)
     set_target_properties(arm_compute PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -779,20 +776,16 @@ if (onnxruntime_USE_ARMNN)
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-
-    link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
   if (NOT ${onnxruntime_ARMNN_LIBS} STREQUAL "")
-
-    find_library(ARMNN_LIBRARY NAMES armnn
-                     PATHS ${onnxruntime_ARMNN_LIBS}
-                     NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-
-    link_libraries(armnn)
+    add_library(armnn SHARED IMPORTED)
+    set_target_properties(armnn PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ARMNN_LIBS}/libarmnn.so")
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn arm_compute arm_compute_core arm_compute_graph)
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -1030,10 +1023,7 @@ if(onnxruntime_USE_OPENVINO)
   endif()
 
   # Check OpenVINO version for support
-  if (${VER} MATCHES "2020.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.2")
-    set(OPENVINO_VERSION "2020.2")
-    add_definitions(-DOPENVINO_2020_2=1)
-  elseif (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
+  if (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
     set(OPENVINO_VERSION "2020.3")
     add_definitions(-DOPENVINO_2020_3=1)
   elseif (${VER} MATCHES "2020.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
@@ -1138,7 +1128,9 @@ if (onnxruntime_USE_CUDA)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
 
+  # CUDA_HOME and CUDNN_HOME may differ, so need to add both to the link directories
   if (WIN32)
+    link_directories(${onnxruntime_CUDA_HOME}/lib/x64)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
     # delayload causes crash on exit, so disable for now
@@ -1151,8 +1143,10 @@ if (onnxruntime_USE_CUDA)
     #endforeach(cuda_dll_path)
 
   else()
+    link_directories(${onnxruntime_CUDA_HOME}/lib64)
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
   endif()
+  
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")

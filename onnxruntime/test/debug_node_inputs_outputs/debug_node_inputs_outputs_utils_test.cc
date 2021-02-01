@@ -19,7 +19,7 @@ namespace test {
 
 namespace {
 template <typename T>
-static void VerifyTensorProtoFileData(const PathString& tensor_proto_path, gsl::span<const T> expected_data) {
+void VerifyTensorProtoFileData(const PathString& tensor_proto_path, gsl::span<const T> expected_data) {
   std::ifstream tensor_proto_stream{tensor_proto_path};
 
   ONNX_NAMESPACE::TensorProto tensor_proto{};
@@ -27,11 +27,7 @@ static void VerifyTensorProtoFileData(const PathString& tensor_proto_path, gsl::
 
   std::vector<T> actual_data{};
   actual_data.resize(expected_data.size());
-  if (utils::HasRawData(tensor_proto)) {
-    ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, tensor_proto.raw_data().data(), tensor_proto.raw_data().size(), actual_data.data(), actual_data.size()));
-  } else {
-    ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, nullptr, 0, actual_data.data(), actual_data.size()));
-  }
+  ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, Path{}, actual_data.data(), actual_data.size()));
 
   ASSERT_EQ(gsl::make_span(actual_data), expected_data);
 }
