@@ -2,18 +2,18 @@
 #include "inc/NominalRangeConverter.h"
 
 namespace _winml {
-  NominalRangeConverter::NominalRangeConverter(ImageNominalPixelRange pixelRange) {
+  NominalRangeConverter::NominalRangeConverter(winml::LearningModelPixelRange pixelRange) {
     // For Normalization: the formula is input_range[min, max] / scale - shift
     // For DeNormalization: the formula is (input_range[min, max] + shift) * scale
-    if (pixelRange == ImageNominalPixelRange::kNominalRange_0_255) {
+    if (pixelRange == winml::LearningModelPixelRange::ZeroTo255) {
       scale = 1.f;
       shift = 0;
     }
-    else if (pixelRange == ImageNominalPixelRange::kNormalized_0_1) {
+    else if (pixelRange == winml::LearningModelPixelRange::ZeroToOne) {
       scale = 255.f;
       shift = 0;
     }
-    else if (pixelRange == ImageNominalPixelRange::kNormalized_1_1) {
+    else if (pixelRange == winml::LearningModelPixelRange::MinusOneToOne) {
       scale = (255.f / 2.f);
       shift = 1;
     }

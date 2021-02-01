@@ -1,13 +1,17 @@
-#!/usr/bin/env python3
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 
 import os
 import subprocess
+from logger import get_logger
+
+log = get_logger("amd_hipify")
 
 contrib_ops_path = 'onnxruntime/contrib_ops'
-core_ops_path = 'onnxruntime/core/providers'
+providers_path = 'onnxruntime/core/providers'
 training_ops_path = 'orttraining/orttraining/training_ops'
 
-contrib_ops_files = [
+contrib_ops_excluded_files = [
                     'bert/attention.cc',
                     'bert/attention.h',
                     'bert/attention_impl.cu',
@@ -31,10 +35,6 @@ contrib_ops_files = [
                     'math/bias_softmax.cc',
                     'math/bias_softmax.h',
                     'math/bias_softmax_impl.cu',
-                    'math/binary_elementwise_ops.cc',
-                    'math/binary_elementwise_ops.h',
-                    'math/binary_elementwise_ops_impl.cu',
-                    'math/binary_elementwise_ops_impl.h',
                     'math/complex_mul.cc',
                     'math/complex_mul.h',
                     'math/complex_mul_impl.cu',
@@ -62,10 +62,11 @@ contrib_ops_files = [
                     'conv_transpose_with_dynamic_pads.h',
                     'cuda_contrib_kernels.cc',
                     'cuda_contrib_kernels.h',
-                    'inverse.cc'
+                    'inverse.cc',
+                    'fused_conv.cc'
 ]
 
-core_ops_files = [
+provider_excluded_files = [
                 'atomic/common.cuh',
                 'controlflow/if.cc',
                 'controlflow/if.h',
@@ -73,7 +74,6 @@ core_ops_files = [
                 'controlflow/loop.h',
                 'controlflow/scan.cc',
                 'controlflow/scan.h',
-                'cu_inc/binary_elementwise_impl.cuh',
                 'cu_inc/common.cuh',
                 'generator/constant_of_shape.cc',
                 'generator/constant_of_shape.h',
@@ -85,10 +85,6 @@ core_ops_files = [
                 'math/einsum_utils/einsum_auxiliary_ops.h',
                 'math/einsum_utils/einsum_auxiliary_ops_diagonal.cu',
                 'math/einsum_utils/einsum_auxiliary_ops_diagonal.h',
-                'math/binary_elementwise_ops.cc',
-                'math/binary_elementwise_ops.h',
-                'math/binary_elementwise_ops_impl.cu',
-                'math/binary_elementwise_ops_impl.h',
                 'math/cumsum.cc',
                 'math/cumsum.h',
                 'math/cumsum_impl.cu',
@@ -101,15 +97,12 @@ core_ops_files = [
                 'math/matmul_integer.cu',
                 'math/matmul_integer.cuh',
                 'math/matmul_integer.h',
+                'math/softmax_impl.cu',
                 'math/softmax.cc',
                 'math/topk.cc',
                 'math/topk.h',
                 'math/topk_impl.cu',
                 'math/topk_impl.h',
-                'math/variadic_elementwise_ops.cc',
-                'math/variadic_elementwise_ops.h',
-                'math/variadic_elementwise_ops_impl.cu',
-                'math/variadic_elementwise_ops_impl.h',
                 'nn/batch_norm.cc',
                 'nn/batch_norm.h',
                 'nn/conv.cc',
@@ -173,10 +166,6 @@ core_ops_files = [
                 'tensor/gather_elements_impl.cu',
                 'tensor/gather_elements_impl.h',
                 'tensor/gather_nd_impl.cu',
-                'tensor/nonzero_impl.cu',
-                'tensor/nonzero_impl.h',
-                'tensor/nonzero_op.cc',
-                'tensor/nonzero_op.h',
                 'tensor/pad.cc',
                 'tensor/pad.h',
                 'tensor/pad_impl.cu',
@@ -208,8 +197,12 @@ core_ops_files = [
                 'cuda_allocator.h',
                 'cuda_call.cc',
                 'cuda_common.h',
+                'cuda_execution_provider_info.cc',
+                'cuda_execution_provider_info.h',
                 'cuda_execution_provider.cc',
                 'cuda_execution_provider.h',
+                'cuda_memory_check.cc',
+                'cuda_memory_check.h',
                 'cuda_fence.cc',
                 'cuda_fence.h',
                 'cuda_fwd.h',
@@ -227,10 +220,10 @@ core_ops_files = [
                 'symbols.txt',
 ]
 
-training_ops_files = [
-                    'activation/activations_grad.cc',
-                    'collective/horovod_kernels.cc',
-                    'collective/horovod_kernels.h',
+training_ops_excluded_files = [
+                    'activation/gelu_grad_impl_common.cuh',
+                    'collective/adasum_kernels.cc',
+                    'collective/adasum_kernels.h',
                     'collective/nccl_common.cc',
                     'collective/ready_event.cc',
                     'collective/ready_event.h',
@@ -254,6 +247,7 @@ training_ops_files = [
                     'math/scale.cc',
                     'math/scale.cu',
                     'math/scale.h',
+                    'math/softmax_grad_impl.cu',
                     'math/softmax_grad.cc',
                     'nn/batch_norm_grad.cc',
                     'nn/batch_norm_grad.h',
@@ -274,10 +268,11 @@ training_ops_files = [
 ]
 
 HIPIFY_PERL = '/opt/rocm/bin/hipify-perl'
-FINDCODE = '/opt/rocm/bin/findcode.sh'
 
 
 def hipify(src_file_path, dst_file_path):
+    log.debug('Hipifying: "{}" -> "{}"'.format(src_file_path, dst_file_path))
+
     dst_file_path = dst_file_path.replace('cuda', 'rocm')
     dir_name = os.path.dirname(dst_file_path)
     if not os.path.exists(dir_name):
@@ -353,29 +348,25 @@ def amd_hipify(config_build_dir):
     rocm_contrib_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')
     contrib_files = list_files(cuda_contrib_path, '')
     for file in contrib_files:
-        if file not in contrib_ops_files:
+        if file not in contrib_ops_excluded_files:
             src_file_path = os.path.join(cuda_contrib_path, file)
             dst_file_path = os.path.join(rocm_contrib_path, file)
             hipify(src_file_path, dst_file_path)
 
-    cuda_core_path = os.path.join(core_ops_path, 'cuda')
-    rocm_core_path = os.path.join(config_build_dir, 'amdgpu', core_ops_path, 'rocm')
-    core_files = list_files(cuda_core_path, '')
-    for file in core_files:
-        if file not in core_ops_files:
-            src_file_path = os.path.join(cuda_core_path, file)
-            dst_file_path = os.path.join(rocm_core_path, file)
+    cuda_provider_path = os.path.join(providers_path, 'cuda')
+    rocm_provider_path = os.path.join(config_build_dir, 'amdgpu', providers_path, 'rocm')
+    provider_files = list_files(cuda_provider_path, '')
+    for file in provider_files:
+        if file not in provider_excluded_files:
+            src_file_path = os.path.join(cuda_provider_path, file)
+            dst_file_path = os.path.join(rocm_provider_path, file)
             hipify(src_file_path, dst_file_path)
 
     cuda_training_path = os.path.join(training_ops_path, 'cuda')
     rocm_training_path = os.path.join(config_build_dir, 'amdgpu', training_ops_path, 'rocm')
     training_files = list_files(cuda_training_path, '')
     for file in training_files:
-        if file not in training_ops_files:
+        if file not in training_ops_excluded_files:
             src_file_path = os.path.join(cuda_training_path, file)
             dst_file_path = os.path.join(rocm_training_path, file)
             hipify(src_file_path, dst_file_path)
-
-
-if __name__ == '__main__':
-    amd_hipify()

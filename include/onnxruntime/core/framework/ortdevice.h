@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <sstream>
+
 // Struct to represent a physical device.
 struct OrtDevice {
   using DeviceType = int8_t;

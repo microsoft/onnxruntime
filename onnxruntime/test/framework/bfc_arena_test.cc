@@ -284,5 +284,19 @@ TEST(BFCArenaTest, TestReserve) {
   a.GetStats(&stats);
   EXPECT_EQ(stats.total_allocated_bytes, 1048576);
 }
+
+class BadAllocator : public IAllocator {
+ public:
+  BadAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
+
+  void* Alloc(size_t /*size*/) override { throw std::bad_alloc(); }
+  void Free(void* /*p*/) override {}
+};
+
+TEST(BFCArenaTest, TestBackoffDoesntHang) {
+  // test that if there are allocation failures the backoff logic doesn't hang. See comments in BFCArena::Extend
+  BFCArena a(std::unique_ptr<IAllocator>(new BadAllocator()), 10 * 1024 * 1024);
+  EXPECT_THROW(a.Alloc(1024), OnnxRuntimeException) << "Arena should be unable to allocate memory";
+}
 }  // namespace test
 }  // namespace onnxruntime

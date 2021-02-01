@@ -7,6 +7,7 @@
 #include <core/providers/common.h>
 #include <onnx/onnx_pb.h>
 
+#include "core/providers/shared/utils/utils.h"
 #include "helper.h"
 #include "model_builder.h"
 #include "op_builder.h"
@@ -145,10 +146,40 @@ Status GetNCHWInput(ModelBuilder& model_builder, const Node& node, size_t input_
   return Status::OK();
 }
 
+// Transpose layouts if necessary for element wise operators with 2 inputs
+// and return the layout type of output tensor
+// If both inputs have same layout, the output will have the same layout
+// Otherwise we will need transpose the nhwc input back to nchw, and output will be nchw
+Status TransposeBinaryOpInputLayout(ModelBuilder& model_builder, const Node& node,
+                                    size_t input1_idx, size_t input2_idx,
+                                    std::string& input1, std::string& input2,
+                                    bool& output_is_nhwc) ORT_MUST_USE_RESULT;
+Status TransposeBinaryOpInputLayout(ModelBuilder& model_builder, const Node& node,
+                                    size_t input1_idx, size_t input2_idx,
+                                    std::string& input1, std::string& input2,
+                                    bool& output_is_nhwc) {
+  bool input1_is_nhwc = model_builder.IsOperandNHWC(input1);
+  bool input2_is_nhwc = model_builder.IsOperandNHWC(input2);
+  output_is_nhwc = false;
+
+  if (input1_is_nhwc == input2_is_nhwc) {
+    output_is_nhwc = input1_is_nhwc;
+  } else if (input1_is_nhwc) {
+    // need transpose input1 back to nchw
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, input1_idx, input1));
+  } else {  // input2_is_nhwc
+    // need transpose input2 back to nchw
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, input2_idx, input2));
+  }
+
+  return Status::OK();
+}
+
 static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
                                 const std::string& input1,
                                 const std::string& input2,
+                                bool add_activation,
                                 int32_t fuse_code,
                                 const std::string& output,
                                 bool output_is_nhwc,
@@ -158,6 +189,7 @@ static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
                                 const std::string& input1,
                                 const std::string& input2,
+                                bool add_activation,
                                 int32_t fuse_code,
                                 const std::string& output,
                                 bool output_is_nhwc,
@@ -170,7 +202,11 @@ static Status AddBinaryOperator(int32_t op_type,
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
-  ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
+
+  if (add_activation) {
+    ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
+  }
+
   ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output],
                                         output_scale, output_zero_point);
@@ -262,7 +298,8 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor, tensor_byte_size));
+          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                    unpacked_tensor, tensor_byte_size));
       src = unpacked_tensor.get();
       break;
     }
@@ -342,7 +379,8 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor, tensor_byte_size));
+          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                    unpacked_tensor, tensor_byte_size));
       src = unpacked_tensor.get();
       break;
     }
@@ -429,6 +467,7 @@ static Status HandleAutoPad(const Shape& input_shape,
                             vector<int32_t>& onnx_pads,
                             int32_t& nnapi_padding_code,
                             bool& use_auto_pad) {
+  use_auto_pad = false;
   if (auto_pad_type != AutoPadType::NOTSET) {
     ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
                                         onnx_pads, onnx_strides, onnx_dilations,
@@ -468,7 +507,8 @@ static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const 
   size_t tensor_byte_size;
   const auto& zero_point_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
   ORT_RETURN_IF_ERROR(
-      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, unpacked_tensor, tensor_byte_size));
+      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                unpacked_tensor, tensor_byte_size));
   zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
   return Status::OK();
 }
@@ -492,6 +532,47 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint(
   ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 5, b_zero_point));
   ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 7, y_zero_point));
 
+  return Status::OK();
+}
+
+static Status GetConvOpQuantizationScaleAndZeroPoint(
+    const ModelBuilder& model_builder, const Node& node,
+    float& a_scale, float& w_scale, float& y_scale,
+    int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
+    optional<vector<float>>& w_scales) ORT_MUST_USE_RESULT;
+static Status GetConvOpQuantizationScaleAndZeroPoint(
+    const ModelBuilder& model_builder, const Node& node,
+    float& a_scale, float& w_scale, float& y_scale,
+    int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
+    optional<vector<float>>& w_scales) {
+  // Get scale and zero points
+  // We will handle per-channel weight scale and zero point later
+  ORT_RETURN_IF_ERROR(
+      GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                               a_scale, w_scale, y_scale,
+                                               a_zero_point, w_zero_point, y_zero_point));
+
+  const auto input_defs = node.InputDefs();
+  const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& weight_tensor = *initializers.at(input_defs[3]->Name());
+
+  // We are done here is this is u8u8 QLinearConv
+  if (weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8)
+    return Status::OK();
+
+  // Now we have u8s8 QlinearConv
+  // u8s8 QlinearConv always have 0 as zero point so we are not getting it here
+  // and we do not use w_scale here, so we reset them back to 0
+  w_scale = 0.0f;
+  w_zero_point = 0;
+
+  // We need to copy the 1d scales array for per-channel quantization
+  const auto& scale_tensor = *initializers.at(input_defs[4]->Name());
+  const auto* scales = GetTensorFloatData(scale_tensor);
+  size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
+  vector<float> scales_vec(scales_size, 0.0f);
+  memcpy(scales_vec.data(), scales, sizeof(float) * scales_size);
+  w_scales = onnxruntime::make_optional(std::move(scales_vec));
   return Status::OK();
 }
 
@@ -519,6 +600,35 @@ static Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
                            "Input [", input_name,
                            "] NNNAPI input zero point: ", input_operand_type.operandType.zeroPoint,
                            ", ONNX input zero point: ", zero_point);
+  }
+
+  return Status::OK();
+}
+
+static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
+                                             const std::string& input_name,
+                                             float scale,
+                                             int32_t zero_point,
+                                             const optional<vector<float>>& scales) ORT_MUST_USE_RESULT;
+static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
+                                             const std::string& input_name,
+                                             float scale,
+                                             int32_t zero_point,
+                                             const optional<vector<float>>& scales) {
+  // first verify as the weight has no per-channel quantization
+  ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input_name, scale, zero_point));
+
+  if (scales) {
+    const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
+    if (!input_operand_type.channelQuant) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input [", input_name, "] has no channelQuant");
+    }
+
+    if (input_operand_type.channelQuant.value().scales != scales.value()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input [", input_name, "] has mismatch scales between onnx and NNAPI");
+    }
   }
 
   return Status::OK();
@@ -649,6 +759,7 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
           "Mul",
           "Div",
           "QLinearAdd",
+          "Pow",
       });
 }
 
@@ -657,16 +768,20 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto input_defs(node.InputDefs());
 
   int32_t op_code;
+  bool add_activation = true;
   bool op_is_qlinear = op_type == "QLinearAdd";
-  if (op_type == "Add" || op_is_qlinear)
+  if (op_type == "Add" || op_is_qlinear) {
     op_code = ANEURALNETWORKS_ADD;
-  else if (op_type == "Sub")
+  } else if (op_type == "Sub") {
     op_code = ANEURALNETWORKS_SUB;
-  else if (op_type == "Mul")
+  } else if (op_type == "Mul") {
     op_code = ANEURALNETWORKS_MUL;
-  else if (op_type == "Div")
+  } else if (op_type == "Div") {
     op_code = ANEURALNETWORKS_DIV;
-  else {
+  } else if (op_type == "Pow") {
+    add_activation = false;  // ANEURALNETWORKS_POW does not have activation
+    op_code = ANEURALNETWORKS_POW;
+  } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
   }
 
@@ -679,19 +794,9 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   std::string input2 = input_defs[b_idx]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
 
-  bool input1_is_nhwc = model_builder.IsOperandNHWC(input1);
-  bool input2_is_nhwc = model_builder.IsOperandNHWC(input2);
   bool output_is_nhwc = false;
-
-  if (input1_is_nhwc == input2_is_nhwc) {
-    output_is_nhwc = input1_is_nhwc;
-  } else if (input1_is_nhwc) {
-    // need transpose input1 back to nchw
-    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, a_idx, input1));
-  } else {  // input2_is_nhwc
-    // need transpose input2 back to nchw
-    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, b_idx, input2));
-  }
+  ORT_RETURN_IF_ERROR(
+      TransposeBinaryOpInputLayout(model_builder, node, a_idx, b_idx, input1, input2, output_is_nhwc));
 
   float a_scale = 0.0f,
         b_scale = 0.0f,
@@ -712,9 +817,14 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
   }
 
-  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+  if (add_activation) {
+    fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+  }
+
   return AddBinaryOperator(op_code, model_builder,
-                           input1, input2, fuse_code,
+                           input1, input2,
+                           add_activation, fuse_code,
                            output, output_is_nhwc, y_scale, y_zero_point);
 }
 
@@ -1023,7 +1133,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_MUL,
                                         model_builder,
                                         input, tensor_a_name,
-                                        ANEURALNETWORKS_FUSED_NONE,
+                                        true /* add_activation */, ANEURALNETWORKS_FUSED_NONE,
                                         tensor_imm_product_name,
                                         output_is_nhwc));
 
@@ -1032,7 +1142,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_ADD,
                                         model_builder,
                                         tensor_imm_product_name, tensor_b_name,
-                                        fuse_code,
+                                        true /* add_activation */, fuse_code,
                                         output,
                                         output_is_nhwc));
 
@@ -1234,6 +1344,13 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
+  const auto& weight = input_defs[w_idx]->Name();
+  const auto& weight_tensor = *initializers.at(weight);
+  auto conv_type = GetConvType(node, model_builder.GetGraphViewer().GetAllInitializedTensors());
+  bool conv_2d = (conv_type == ConvType::Regular),
+       depthwise_conv_2d = (conv_type == ConvType::Depthwise),
+       grouped_conv_2d = (conv_type == ConvType::Grouped);
+
   float x_scale = 0.0f,
         w_scale = 0.0f,
         y_scale = 0.0f;
@@ -1241,30 +1358,15 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           w_zero_point = 0,
           y_zero_point = 0;
 
+  // this is for per-channel quantization weights
+  optional<vector<float>> w_scales;
+
   if (is_qlinear_conv) {
-    ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                                                 x_scale, w_scale, y_scale,
-                                                                 x_zero_point, w_zero_point, y_zero_point));
+    ORT_RETURN_IF_ERROR(GetConvOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                               x_scale, w_scale, y_scale,
+                                                               x_zero_point, w_zero_point, y_zero_point,
+                                                               w_scales));
   }
-
-  const auto& weight = input_defs[w_idx]->Name();
-  const auto& weight_tensor = *initializers.at(weight);
-  bool conv_2d = false,
-       depthwise_conv_2d = false,
-       grouped_conv_2d = false;
-
-  // For ONNX we only have 1 conv ops
-  // For NNAPI we have 3
-  // Input is (N, C, H, W)
-  // group == 1,                                   --> regular conv
-  // group != 1 && weight is (M, 1, kH, kW),       --> depthwise conv
-  // group != 1 && weight is (M, C/group, kH, kW), --> grouped conv
-  if (group == 1)
-    conv_2d = true;
-  else if ((weight_tensor.dims()[1] == 1))
-    depthwise_conv_2d = true;
-  else
-    grouped_conv_2d = true;
 
   Shape onnx_weight_shape;
   for (auto dim : weight_tensor.dims())
@@ -1278,12 +1380,22 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       onnx_weight_type = Type::TENSOR_QUANT8_ASYMM;
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      onnx_weight_type = Type::TENSOR_QUANT8_SYMM_PER_CHANNEL;
+      break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "The initializer of graph ", weight, " doesn't have valid type: ", weight_tensor.data_type());
   }
 
-  OperandType onnx_weight_operand_type(onnx_weight_type, onnx_weight_shape, w_scale, w_zero_point);
+  // Get weight operand type
+  // Per-channel quantized weight is handled differently
+  OperandType onnx_weight_operand_type =
+      (is_qlinear_conv && w_scales.has_value())
+          ? OperandType{onnx_weight_type, onnx_weight_shape,
+                        SymmPerChannelQuantParams{w_scales.value(),
+                                                  depthwise_conv_2d ? 3u : 0u}}  // channelDim is 3 for depthwise-conv
+          : OperandType{onnx_weight_type, onnx_weight_shape, w_scale, w_zero_point};
 
   // Pre-process weights
   if (conv_2d || grouped_conv_2d) {
@@ -1295,7 +1407,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (is_qlinear_conv) {
     // Verify if the scale and zero point matchs from onnx input/weight and nnapi input/weight
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
-    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, weight, w_scale, w_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidConvWeightQuantizedType(model_builder, weight, w_scale, w_zero_point, w_scales));
   }
 
   bool hasBias = (input_defs.size() > b_idx);
@@ -1313,14 +1425,15 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       vector<float> buffer(bias_dimen[0], 0.0f);
       OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen, x_scale * w_scale);
       ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
-    } else if (weight_type == Type::TENSOR_QUANT8_ASYMM) {
+    } else if (weight_type == Type::TENSOR_QUANT8_ASYMM || weight_type == Type::TENSOR_QUANT8_SYMM_PER_CHANNEL) {
       vector<int32_t> buffer(bias_dimen[0], 0);
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
       ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown weight type ", TypeToStr(weight_type));
     }
-  } else if (is_qlinear_conv) {  // QLinearConv's bias type need special handling
+  } else if (is_qlinear_conv) {
+    // QLinearConv's bias type need special handling to add scale for quantization input
     const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
     ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
                       "bias of QLinearConv should be int32, actual type: ", bias_tensor.data_type());
@@ -2221,7 +2334,75 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   return ReshapeOpBuilder::AddReshapeOperator(model_builder, node, input, shape);
 }
 
-#pragma endregion op_reshape
+#pragma endregion
+
+#pragma region op_minmax
+
+class MinMaxOpBuilder : public BaseOpBuilder {
+ public:
+  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+  static Status AddMinMaxOperator(ModelBuilder& model_builder, const Node& node,
+                                  const std::string& input1, const std::string& input2,
+                                  bool output_is_nhwc) ORT_MUST_USE_RESULT;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+};
+
+/* static */ void MinMaxOpBuilder::CreateSharedOpBuilder(
+    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<MinMaxOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Min",
+          "Max",
+      });
+}
+
+/* static */ Status MinMaxOpBuilder::AddMinMaxOperator(ModelBuilder& model_builder, const Node& node,
+                                                       const std::string& input1, const std::string& input2,
+                                                       bool output_is_nhwc) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  const auto& output = node.OutputDefs()[0]->Name();
+
+  const auto& op_type(node.OpType());
+  int32_t op_code;
+  if (op_type == "Min")
+    op_code = ANEURALNETWORKS_MINIMUM;
+  else if (op_type == "Max")
+    op_code = ANEURALNETWORKS_MAXIMUM;
+  else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MinMaxOpBuilder, unknown op: ", op_type);
+  }
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input1));  // input 1
+  input_indices.push_back(operand_indices.at(input2));  // input 2
+  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                 {output}, {output_operand_type}, {output_is_nhwc}));
+
+  return Status::OK();
+}
+
+Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+  const auto input_defs(node.InputDefs());
+  std::string input1 = input_defs[0]->Name();
+  std::string input2 = input_defs[1]->Name();
+  bool output_is_nhwc = false;
+  ORT_RETURN_IF_ERROR(TransposeBinaryOpInputLayout(model_builder, node,
+                                                   0 /* input1_idx */,
+                                                   1 /* input2_idx */,
+                                                   input1, input2, output_is_nhwc));
+
+  return AddMinMaxOperator(model_builder, node, input1, input2, output_is_nhwc);
+}
+
+#pragma endregion
 
 #pragma region CreateGetOpBuilders
 
@@ -2247,6 +2428,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Div", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Pow", BinaryOpBuilder);
   }
 
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
@@ -2296,6 +2478,11 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
+
+  {
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Min", MinMaxOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Max", MinMaxOpBuilder);
+  }
 
   return op_registrations;
 }

@@ -16,6 +16,7 @@
 #include "test/util/include/test_random_seed.h"
 #include "orttraining/test/gradient/gradient_checker.h"
 #include "orttraining/test/gradient/gradient_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 #include "onnx/defs/attr_proto_util.h"
 
@@ -144,14 +145,15 @@ void GenerateRandomDataWithOneHot(
   }
 }
 
-void UnaryOpGradientTest(const std::string& op_type, const std::string& domain = kOnnxDomain, const int opset_version = 9) {
+void UnaryOpGradientTest(const std::string& op_type, const std::string& domain = kOnnxDomain, const int opset_version = 9,
+                         std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr) {
   TensorShape shape({2, 3, 4});
   float max_error;
   float error_tolerance = 1e-3f;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{op_type, domain, opset_version};
 
-  gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error);
+  gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {}, true, false, execution_providers);
 
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
@@ -355,7 +357,7 @@ void RunMatMulGradTests(const OpDef& op_def) {
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
-    // 2D x 2D
+  // 2D x 2D
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}}, {{2, 3}}, &max_error,
                                           attributes, true, true);
@@ -425,6 +427,10 @@ TEST(GradientCheckerTest, SinGrad) {
 
 TEST(GradientCheckerTest, NegGrad) {
   UnaryOpGradientTest("Neg");
+}
+
+TEST(GradientCheckerTest, AbsGrad) {
+  UnaryOpGradientTest("Abs");
 }
 
 TEST(GradientCheckerTest, LogGrad) {
@@ -639,6 +645,14 @@ TEST(GradientCheckerTest, ReluGrad) {
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
 
+#ifdef USE_DNNL
+TEST(GradientCheckerTest, ReluGradDnnl) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+  UnaryOpGradientTest("Relu", kOnnxDomain, 9, &execution_providers);
+}
+#endif  // USE_DNNL
+
 #ifndef USE_CUDA
 TEST(GradientCheckerTest, CastGrad) {
   // A dummy test that cast float to float
@@ -694,17 +708,18 @@ static std::vector<std::vector<T>> GetRandomValuesForMaxPool(const std::vector<T
   return datas;
 }
 
-TEST(GradientCheckerTest, MaxPoolGrad) {
+void MaxpoolGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* execution_provider) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"MaxPool"};
   const float error_tolerance = 1e-3f;
-
   //maxpool_1d_default
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 2, 9}}, {{2, 2, 8}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{2, 2, 9}}),
-                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{2})});
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{2})},
+                                          true, false,
+                                          execution_provider);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -713,7 +728,9 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
     gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 4, 4}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{2, 3, 5, 5}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
-                                           MakeAttribute("strides", std::vector<int64_t>{1, 1})});
+                                           MakeAttribute("strides", std::vector<int64_t>{1, 1})},
+                                          true, false,
+                                          execution_provider);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -722,7 +739,9 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
     gradient_checker.ComputeGradientError(op_def, {{1, 1, 5, 5}}, {{1, 1, 7, 7}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{1, 1, 5, 5}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
-                                           MakeAttribute("pads", std::vector<int64_t>{2, 2, 2, 2})});
+                                           MakeAttribute("pads", std::vector<int64_t>{2, 2, 2, 2})},
+                                          true, false,
+                                          execution_provider);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -731,7 +750,9 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
     gradient_checker.ComputeGradientError(op_def, {{1, 1, 32, 32}}, {{1, 1, 10, 10}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{1, 1, 32, 32}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{5, 5}),
-                                           MakeAttribute("strides", std::vector<int64_t>{3, 3})});
+                                           MakeAttribute("strides", std::vector<int64_t>{3, 3})},
+                                          true, false,
+                                          execution_provider);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -739,9 +760,22 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3, 3}}, {{2, 1, 2, 2, 2}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{2, 1, 3, 3, 3}}),
-                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2})});
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2})},
+                                          true, false,
+                                          execution_provider);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
+}
+
+
+TEST(GradientCheckerTest, MaxPoolGrad) {
+  MaxpoolGradientCheckerTest(nullptr);
+
+#ifdef USE_DNNL
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+  MaxpoolGradientCheckerTest(&execution_providers);
+#endif
 }
 
 TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
@@ -763,11 +797,45 @@ TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
   }
 }
 
-TEST(GradientCheckerTest, ConvGrad) {
+void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Conv"};
   float error_tolerance = 1e-1f;
+
+  //conv dead simple
+  {
+    TensorShape x_shape({1, 1, 1, 1});
+    TensorShape w_shape({1, 1, 1, 1});
+    TensorShape b_shape({1});
+    TensorShape y_shape({1, 1, 1, 1});
+    gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                                           MakeAttribute("pads", std::vector<int64_t>{0, 0, 0, 0})},
+                                          // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                          // Check for not has_gradient need to be disabled to pass this test.
+                                          false,
+                                          false,
+                                          execution_providers);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  //conv simple
+  {
+    TensorShape x_shape({1, 1, 3, 3});
+    TensorShape w_shape({1, 1, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({1, 1, 3, 3});
+    gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                           MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
+                                          // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                          // Check for not has_gradient need to be disabled to pass this test.
+                                          false,
+                                          false,
+                                          execution_providers);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
 
   //conv
   {
@@ -780,22 +848,9 @@ TEST(GradientCheckerTest, ConvGrad) {
                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
                                           // Check for not has_gradient need to be disabled to pass this test.
-                                          false);
-    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
-  }
-
-  //conv3d
-  {
-    TensorShape x_shape({2, 1, 5, 5, 5});
-    TensorShape w_shape({1, 1, 3, 3, 3});
-    TensorShape b_shape({1});
-    TensorShape y_shape({2, 1, 5, 5, 5});
-    gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
-                                           MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1})},
-                                          // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                          // Check for not has_gradient need to be disabled to pass this test.
-                                          false);
+                                          false,
+                                          false,
+                                          execution_providers);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -811,7 +866,62 @@ TEST(GradientCheckerTest, ConvGrad) {
                                            MakeAttribute("strides", std::vector<int64_t>{2, 2})},
                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
                                           // Check for not has_gradient need to be disabled to pass this test.
-                                          false);
+                                          false,
+                                          false,
+                                          execution_providers);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  //conv_with_dilation
+  {
+    TensorShape x_shape({2, 1, 5, 5});
+    TensorShape w_shape({1, 1, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 1, 1});
+    gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                           MakeAttribute("pads", std::vector<int64_t>{0, 0, 0, 0}),
+                                           MakeAttribute("dilations", std::vector<int64_t>{2, 2})},
+                                          // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                          // Check for not has_gradient need to be disabled to pass this test.
+                                          false,
+                                          false,
+                                          execution_providers);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  //conv_with_dilation
+  {
+    TensorShape x_shape({2, 1, 7, 5});
+    TensorShape w_shape({1, 1, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 5, 3});
+    gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                           MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}),
+                                           MakeAttribute("dilations", std::vector<int64_t>{2, 2})},
+                                          // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                          // Check for not has_gradient need to be disabled to pass this test.
+                                          false,
+                                          false,
+                                          execution_providers);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  //conv3d
+  {
+    TensorShape x_shape({2, 1, 5, 5, 5});
+    TensorShape w_shape({1, 1, 3, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 5, 5, 5});
+    gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                                           MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1})},
+                                          // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                          // Check for not has_gradient need to be disabled to pass this test.
+                                          false,
+                                          false,
+                                          execution_providers);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -827,9 +937,21 @@ TEST(GradientCheckerTest, ConvGrad) {
                                            MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})},
                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
                                           // Check for not has_gradient need to be disabled to pass this test.
-                                          false);
+                                          false,
+                                          false,
+                                          execution_providers);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
+}
+
+TEST(GradientCheckerTest, ConvGrad) {
+  ConvGradientCheckerTest(nullptr);
+
+#ifdef USE_DNNL
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+  ConvGradientCheckerTest(&execution_providers);
+#endif
 }
 
 static void TestConcatOpGrad(const std::string& op_type,
@@ -2128,7 +2250,7 @@ TEST(GradientCheckerTest, GatherElementsGrad) {
                                           {MakeAttribute("axis", axis)});
     EXPECT_IS_TINY(max_error);
   }
-  
+
   {
     // GatherElementsGradWithAxisInMiddle
     TensorInfo data_info({2, 2, 2}, true);

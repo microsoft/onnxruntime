@@ -61,9 +61,9 @@ Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs
 }
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
-                    std::vector<int64_t>& directions, int64_t num_entries) {
+                    std::vector<int64_t>& directions, size_t num_entries) {
   if (info.GetAttrs<int64_t>(attr_name, directions).IsOK()) {
-    ORT_ENFORCE(num_entries < 0 || gsl::narrow_cast<int64_t>(directions.size()) == num_entries,
+    ORT_ENFORCE(directions.size() == num_entries,
                 "Number of entries in '", attr_name, "' was ", directions.size(),
                 " but expected ", num_entries);
 

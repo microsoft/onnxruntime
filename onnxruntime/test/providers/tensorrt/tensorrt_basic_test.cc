@@ -62,6 +62,15 @@ TEST(TensorrtExecutionProviderTest, EngineCachingTest) {
   std::string model_file_name = "trt_execution_provider_enginecaching_test.onnx";
   status = onnxruntime::Model::Save(model, model_file_name);
 
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderTest.EngineCachingTest";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto allocator_manager = session_object.GetAllocatorManager();
+  auto cuda_provider = TestCudaExecutionProvider();
+  cuda_provider->RegisterAllocator(allocator_manager);
+  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
   // First run with input shape {1, 3, 2}
   // TRT engine and profile will be created and cached
   // Data in profile,
@@ -71,11 +80,11 @@ TEST(TensorrtExecutionProviderTest, EngineCachingTest) {
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -90,11 +99,6 @@ TEST(TensorrtExecutionProviderTest, EngineCachingTest) {
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
-  SessionOptions so;
-  so.session_logid = "TensorrtExecutionProviderTest.EngineCachingTest";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-  InferenceSession session_object{so, GetEnvironment()};
   std::unique_ptr<IExecutionProvider> execution_provider = DefaultTensorrtExecutionProvider();
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   status = session_object.Load(model_file_name);
@@ -114,9 +118,9 @@ TEST(TensorrtExecutionProviderTest, EngineCachingTest) {
   // Y: 1, 1, 3, 2, 2, 6
   // Z: 1, 1, 3, 2, 2, 6
   dims_mul_x = {1, 1, 6};
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_y);
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
   feeds.clear();
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -169,14 +173,25 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   std::string model_file_name = "trt_execution_provider_function_test.onnx";
   status = onnxruntime::Model::Save(model, model_file_name);
 
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderTest.FunctionTest";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+
+  auto allocator_manager = session_object.GetAllocatorManager();
+  auto cuda_provider = TestCudaExecutionProvider();
+  cuda_provider->RegisterAllocator(allocator_manager);
+  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -190,13 +205,6 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
-
-  SessionOptions so;
-  so.session_logid = "TensorrtExecutionProviderTest.FunctionTest";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSession session_object{so, GetEnvironment()};
 
   std::unique_ptr<IExecutionProvider> execution_provider = DefaultTensorrtExecutionProvider();
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -277,16 +285,27 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   std::string model_file_name = "trt_execution_provider_nodeindexmapping_test.onnx";
   status = onnxruntime::Model::Save(model, model_file_name);
 
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderTest.NodeIndexMappingTest";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+
+  auto allocator_manager = session_object.GetAllocatorManager();
+  auto cuda_provider = TestCudaExecutionProvider();
+  cuda_provider->RegisterAllocator(allocator_manager);
+  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<bool> values_mul_x = {true, false, true, false, true, false};
   std::vector<int64_t> dims_mul_y = {1, 3, 2};
   std::vector<float> values_mul_y = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<bool>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<bool>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_y, values_mul_y, &ml_value_y);
+  CreateMLValue<float>(cpu_allocator, dims_mul_y, values_mul_y, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_y, values_mul_y, &ml_value_z);
+  CreateMLValue<float>(cpu_allocator, dims_mul_y, values_mul_y, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -303,13 +322,6 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   std::vector<bool> expected_values_mul_m = {true, false, true, false, true, false};
   std::vector<int64_t> expected_dims_mul_n = {1, 3, 2};
   std::vector<float> expected_values_mul_n = {0, 0, 0, 0, 0, 0};
-
-  SessionOptions so;
-  so.session_logid = "TensorrtExecutionProviderTest.NodeIndexMappingTest";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSession session_object{so, GetEnvironment()};
 
   std::unique_ptr<IExecutionProvider> execution_provider = DefaultTensorrtExecutionProvider();
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -394,12 +406,23 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   std::vector<int64_t> dims_mul_z = {1, 3, 2};
   std::vector<bool> values_mul_z = {true, false, true, false, true, false};
 
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderTest.RemoveCycleTest";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+
+  auto allocator_manager = session_object.GetAllocatorManager();
+  auto cuda_provider = TestCudaExecutionProvider();
+  cuda_provider->RegisterAllocator(allocator_manager);
+  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+
   OrtValue ml_value_x;
-  CreateMLValue<bool>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<bool>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<bool>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_y, values_mul_y, &ml_value_y);
+  CreateMLValue<bool>(cpu_allocator, dims_mul_y, values_mul_y, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<bool>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_y, values_mul_y, &ml_value_z);
+  CreateMLValue<bool>(cpu_allocator, dims_mul_y, values_mul_y, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -413,13 +436,6 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
   std::vector<bool> expected_values_mul_m = {false, false, false, false, false, true};
-
-  SessionOptions so;
-  so.session_logid = "TensorrtExecutionProviderTest.RemoveCycleTest";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSession session_object{so, GetEnvironment()};
 
   std::unique_ptr<IExecutionProvider> execution_provider = DefaultTensorrtExecutionProvider();
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());

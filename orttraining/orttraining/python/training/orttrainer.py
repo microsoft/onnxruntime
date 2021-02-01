@@ -9,7 +9,7 @@ from functools import partial
 import numpy as np
 
 import onnxruntime as ort
-from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
+from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions, _checkpoint_storage
 from .model_desc_validation import _ORTTrainerModelDesc
 
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
@@ -177,7 +177,7 @@ class ORTTrainer(object):
                 "'loss_fn' must be either 'None' or 'torch.nn.Module'"
             self._torch_model = model
             self.loss_fn = loss_fn
-            # TODO: Subject to change after checkpoint redesign
+            # TODO: Remove when experimental checkpoint functions are removed.
             self._torch_state_dict_keys = list(model.state_dict().keys())
         elif isinstance(model, onnx.ModelProto):
             assert loss_fn is None, "'loss_fn' must not be specified when 'model' is an ONNX model"
@@ -196,7 +196,6 @@ class ORTTrainer(object):
         if self.options.mixed_precision.enabled and not self.options.mixed_precision.loss_scaler:
             # TODO: Move this to model_desc_validation.py
             self.options.mixed_precision.loss_scaler = amp.loss_scaler.DynamicLossScaler()
-
         # Post processing ONNX model given as input
         if self._onnx_model:
             if self.options._internal_use.enable_internal_postprocess:
@@ -224,16 +223,8 @@ class ORTTrainer(object):
                         break
                 assert dtype is not None, f"ONNX model with unknown output type ({o_desc.name})"
 
-        # Set GPU device and memory limit
-        if 'cuda' in self.options.device.id.lower():
-            mem_limit = self.options.device.mem_limit
-            if  mem_limit > 0:
-                ort.set_cuda_mem_limit(self.options.device.mem_limit)
-            ort.set_cuda_device_id(_utils.get_device_index(self.options.device.id))
-
-        # TODO: Subject to change after checkpoint redesign
+        # TODO: Remove when experimental checkpoint functions are removed.
         self._state_dict = {}
-        self._optim_state_dict = {}
 
         self._train_step_info = TrainStepInfo(self.optim_config)
         self._training_session = None
@@ -597,7 +588,7 @@ class ORTTrainer(object):
 
         return onnx_model
 
-    def _create_ort_training_session(self, state_dict = {}):
+    def _create_ort_training_session(self, optimizer_state_dict={}):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
             if n not in [i.name for i in self._onnx_model.graph.initializer]]
@@ -648,6 +639,9 @@ class ORTTrainer(object):
                     else:
                         raise ValueError("Optimizer attributes must be either float or int.")
 
+        self.options.distributed.horizontal_parallel_size = max(self.options.distributed.horizontal_parallel_size, 1)
+        self.options.distributed.data_parallel_size = self.options.distributed.world_size // self.options.distributed.horizontal_parallel_size
+        
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
         ort_parameters.loss_output_name = loss_name
@@ -656,6 +650,7 @@ class ORTTrainer(object):
         ort_parameters.world_size = self.options.distributed.world_size
         ort_parameters.gradient_accumulation_steps = self.options.batch.gradient_accumulation_steps
         ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
+        ort_parameters.enable_adasum = self.options.distributed.enable_adasum
         ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_optimization.stage
         ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
         ort_parameters.set_gradients_as_graph_outputs = False
@@ -665,15 +660,30 @@ class ORTTrainer(object):
         ort_parameters.weights_to_train = trainable_params
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
-        if bool(self._optim_state_dict):
-            ort_parameters.set_optimizer_initial_state(self._optim_state_dict)
-        if bool(state_dict) and bool(state_dict[_utils.state_dict_optimizer_key()]):
-            ort_parameters.set_optimizer_initial_state(state_dict[_utils.state_dict_optimizer_key()])
+        if bool(optimizer_state_dict):
+            ort_parameters.set_optimizer_initial_state(optimizer_state_dict)
 
         ort_parameters.attn_dropout_recompute = self.options.graph_transformer.attn_dropout_recompute
         ort_parameters.gelu_recompute = self.options.graph_transformer.gelu_recompute
         ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
         ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
+
+        ort_parameters.data_parallel_size = self.options.distributed.data_parallel_size
+        ort_parameters.horizontal_parallel_size = self.options.distributed.horizontal_parallel_size
+        ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel.pipeline_parallel_size
+        ort_parameters.num_pipeline_micro_batches = self.options.distributed.pipeline_parallel.num_pipeline_micro_batches
+        ort_parameters.pipeline_cut_info_string = self.options.distributed.pipeline_parallel.pipeline_cut_info_string
+        # We have special handling for dictionary-typed option.
+        # sliced_schema._validated_opts is the original dictionary while sliced_schema is a _ORTTrainerOptionsInternal.
+        ort_parameters.sliced_schema = self.options.distributed.pipeline_parallel.sliced_schema._validated_opts
+        # We have special handling for dictionary-typed option.
+        # sliced_axes._validated_opts is the original dictionary while sliced_schema is a _ORTTrainerOptionsInternal.
+        ort_parameters.sliced_axes = self.options.distributed.pipeline_parallel.sliced_axes._validated_opts
+        ort_parameters.sliced_tensor_names = self.options.distributed.pipeline_parallel.sliced_tensor_names
+
+        ort_parameters.model_after_graph_transforms_path = self.options.debug.graph_save_paths.model_after_graph_transforms_path
+        ort_parameters.model_with_gradient_graph_path = self.options.debug.graph_save_paths.model_with_gradient_graph_path
+        ort_parameters.model_with_training_graph_path = self.options.debug.graph_save_paths.model_with_training_graph_path
 
         # SessionOptions
         session_options = ort.SessionOptions()
@@ -682,14 +692,36 @@ class ORTTrainer(object):
             self.options.graph_transformer.gelu_recompute or
             self.options.graph_transformer.transformer_layer_recompute):
             session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
+        if len(self.options.debug.graph_save_paths.model_with_training_graph_after_optimization_path) > 0:
+            session_options.optimized_model_filepath = self.options.debug.graph_save_paths.model_with_training_graph_after_optimization_path
 
         # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
         # for example, load_state_dict will be called before returing the function, and it calls _init_session again
         del self._training_session
+
+        # Set provider-specific options if needed
+        def get_providers():
+            providers = ort.get_available_providers()
+
+            if 'cuda' in self.options.device.id.lower():
+                cuda_ep_options = {"device_id": _utils.get_device_index(self.options.device.id)}
+                if self.options.device.mem_limit > 0:
+                    cuda_ep_options["cuda_mem_limit"] = self.options.device.mem_limit
+
+                cuda_ep_name = "CUDAExecutionProvider"
+
+                if cuda_ep_name not in providers:
+                    raise RuntimeError(
+                        "ORTTrainer options specify a CUDA device but the {} provider is unavailable.".format(
+                            cuda_ep_name))
+
+                providers[providers.index(cuda_ep_name)] = (cuda_ep_name, cuda_ep_options)
+
+            return providers
+
         # TrainingSession
-        self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),
-                                                     ort_parameters,
-                                                     session_options)
+        self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters,
+                                                     session_options, get_providers())
 
         # I/O bindings
         self._train_io_binding = self._training_session.io_binding()
@@ -716,13 +748,13 @@ class ORTTrainer(object):
             if self.options._internal_use.extra_postprocess:
                 self._onnx_model = self.options._internal_use.extra_postprocess(self._onnx_model)
 
-        state_dict = {}
+        optimizer_state_dict = {}
         if self._load_state_dict:
-            state_dict = self._load_state_dict()
+            optimizer_state_dict = self._load_state_dict()
 
-        self._init_session(state_dict)
+        self._init_session(optimizer_state_dict)
 
-    def _init_session(self, state_dict = {}):
+    def _init_session(self, optimizer_state_dict={}):
         if self._onnx_model is None:
             return
 
@@ -731,7 +763,7 @@ class ORTTrainer(object):
 
         # Create training session used by train_step
         # pass all optimizer states to the backend
-        self._create_ort_training_session(state_dict)
+        self._create_ort_training_session(optimizer_state_dict)
 
         # Update model description to update dtype when mixed precision is enabled
         # C++ backend modifies model's output dtype from float32 to float16 for mixed precision
@@ -766,7 +798,7 @@ class ORTTrainer(object):
             self._model_desc_outputs_with_gradient_accumulation = [
                 *self.model_desc.outputs, self.model_desc.gradient_accumulation]
 
-        # TODO: Subject to change after checkpoint redesign
+        # TODO: Remove when experimental checkpoint functions are removed
         if self._state_dict:
             checkpoint.experimental_load_state_dict(self, self._state_dict, self._load_state_dict_strict)
             self._state_dict_debug = self._state_dict
@@ -832,15 +864,20 @@ class ORTTrainer(object):
         else:
             iobinding = self._eval_io_binding
 
+        # Get the list of the actual session inputs because unused inputs can be removed.
+        input_nodes = self._training_session.get_inputs()
+        input_node_names = [input_node.name for input_node in input_nodes]
+
         # Bind input tensors
         for input, input_desc in zip(inputs, inputs_desc):
-            device_index = _utils.get_device_index_from_input(input)
-            iobinding.bind_input(input_desc.name,
-                                 input.device.type,
-                                 device_index,
-                                 _utils.dtype_torch_to_numpy(input.dtype),
-                                 list(input.size()),
-                                 input.data_ptr())
+            if input_desc.name in input_node_names:
+                device_index = _utils.get_device_index_from_input(input)
+                iobinding.bind_input(input_desc.name,
+                                    input.device.type,
+                                    device_index,
+                                    _utils.dtype_torch_to_numpy(input.dtype),
+                                    list(input.size()),
+                                    input.data_ptr())
 
         # Bind output tensors
         outputs_desc_resolved = self._resolve_symbolic_dimensions(inputs, inputs_desc, outputs_desc)
@@ -914,13 +951,23 @@ class ORTTrainer(object):
     def _extract_trainer_options(self, state_dict):
         """Extract relevant trainer configuration and load it into the state_dict"""
 
+        mixed_precision = _utils.state_dict_trainer_options_mixed_precision_key()
+        zero_stage = _utils.state_dict_trainer_options_zero_stage_key()
+        world_rank = _utils.state_dict_trainer_options_world_rank_key()
+        world_size = _utils.state_dict_trainer_options_world_size_key()
+        optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+        D_size = _utils.state_dict_trainer_options_data_parallel_size_key()
+        H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()
+
         state_dict[_utils.state_dict_trainer_options_key()] = {}
-        state_dict[_utils.state_dict_trainer_options_key()]['mixed_precision'] = self.options.mixed_precision.enabled
-        state_dict[_utils.state_dict_trainer_options_key()]['zero_stage'] = \
-            self.options.distributed.deepspeed_zero_optimization.stage or 0
-        state_dict[_utils.state_dict_trainer_options_key()]['world_rank'] = self.options.distributed.world_rank or 0
-        state_dict[_utils.state_dict_trainer_options_key()]['world_size'] = self.options.distributed.world_size or 1
-        state_dict[_utils.state_dict_trainer_options_key()]['optimizer_name'] = self.optim_config.name
+        state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = self.options.mixed_precision.enabled
+        state_dict[_utils.state_dict_trainer_options_key()][zero_stage] = \
+            self.options.distributed.deepspeed_zero_optimization.stage
+        state_dict[_utils.state_dict_trainer_options_key()][world_rank] = self.options.distributed.world_rank
+        state_dict[_utils.state_dict_trainer_options_key()][world_size] = self.options.distributed.world_size
+        state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = self.optim_config.name
+        state_dict[_utils.state_dict_trainer_options_key()][D_size] = self.options.distributed.data_parallel_size
+        state_dict[_utils.state_dict_trainer_options_key()][H_size] = self.options.distributed.horizontal_parallel_size
 
     def state_dict(self, pytorch_format=False):
         """Returns a dictionary with model, and optionally, optimizer states
@@ -939,7 +986,7 @@ class ORTTrainer(object):
                 type: dict,
                 schema:
                 {
-                    "fp32":
+                    "full_precision":
                     {
                         type: dict,
                         schema:
@@ -1015,6 +1062,14 @@ class ORTTrainer(object):
                     "optimizer_name":
                     {
                         type: str
+                    },
+                    "data_parallel_size":
+                    {
+                        type: int
+                    },
+                    "horizontal_parallel_size":
+                    {
+                        type: int
                     }
                 }
             },
@@ -1032,6 +1087,10 @@ class ORTTrainer(object):
                             "original_dim":
                             {
                                 type: array
+                            },
+                            "megatron_row_partition":
+                            {
+                                type: int
                             }
                         }
                     }
@@ -1066,6 +1125,8 @@ class ORTTrainer(object):
         if pytorch_format:
             if self.options.distributed.deepspeed_zero_optimization.stage > 0:
                 warnings.warn("Incomplete state_dict: ZeRO enabled", UserWarning)
+            if self.options.distributed.horizontal_parallel_size > 1:
+                warnings.warn("Incomplete state_dict: Megatron enabled", UserWarning)
             # if pytorch_format is true, return a flat dictionary with only model states
             # which is compatible with a PyTorch model
             return state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()]
@@ -1077,7 +1138,7 @@ class ORTTrainer(object):
         self._extract_trainer_options(state_dict)
 
         # add partition information in case of a distributed run
-        if self.options.distributed.deepspeed_zero_optimization.stage > 0:
+        if self.options.distributed.deepspeed_zero_optimization.stage > 0 or self.options.distributed.horizontal_parallel_size > 1:
             state_dict[_utils.state_dict_partition_info_key()] = self._training_session.get_partition_info_map()
 
         return state_dict
@@ -1110,8 +1171,29 @@ class ORTTrainer(object):
     def _load_optimizer_states(self, current_state_dict, state_dict):
         """Load the optimizer states onto the training session state dictionary"""
 
+        def _check_optimizer_mismatch(state_dict):
+            """Assert that the loaded optimizer has the same config as the current training session config"""
+
+            # the state_dict optimizer_name can be a byte string (if coming from checkpoint file)
+            # or can be a regular string (coming from user)
+            optimizer_name = \
+                state_dict[_utils.state_dict_trainer_options_key()][_utils.state_dict_trainer_options_optimizer_name_key()]
+
+            # optimizer_name can be either a regular string or a byte string.
+            # if it is a byte string, convert to regular string using decode()
+            # if it is a regular string, do nothing to it
+            try:
+                optimizer_name = optimizer_name.decode()
+            except AttributeError:
+                pass
+            assert self.optim_config.name == optimizer_name, \
+                "Optimizer mismatch: expected {}, got {}".format(self.optim_config.name, optimizer_name)
+
         if _utils.state_dict_optimizer_key() not in state_dict:
             return
+
+        # check optimizer config names are the same for current session and the sessino being loaded
+        _check_optimizer_mismatch(state_dict)
 
         # create an entry for the optimizer in the training session state dictionary
         if _utils.state_dict_optimizer_key() not in current_state_dict:
@@ -1132,7 +1214,7 @@ class ORTTrainer(object):
         # clear the callable partial
         self._load_state_dict = None
 
-        def _mismatch_keys(keys1, keys2, in_error_str):
+        def _mismatch_keys(keys1, keys2, in_error_str, allow_unexpected=False):
             """Find out the missing and the unexpected keys in two dictionaries
 
             Throws a runtime error if missing or unexpected keys are found
@@ -1145,48 +1227,48 @@ class ORTTrainer(object):
             unexpected_keys = list(keys2 - keys1)
             if len(missing_keys) > 0:
                 raise RuntimeError("Missing keys: {} in {}".format(missing_keys, in_error_str))
-            if len(unexpected_keys) > 0:
+            if len(unexpected_keys) > 0 and not allow_unexpected:
                 raise RuntimeError("Unexpected keys: {} in {}".format(unexpected_keys, in_error_str))
 
-        def _check_model_key_mismatch(current_state_dict, state_dict):
+        def _check_model_key_mismatch(current_state_dict, state_dict, allow_unexpected=False):
             """Check if there is any mismatch in the model sub state dictionary between the two state_dicts"""
 
             # check unxexpected and missing precision keys in the model state_dict compared to the training
             # session model state_dict
             _mismatch_keys(current_state_dict[_utils.state_dict_model_key()],
-                                   state_dict[_utils.state_dict_model_key()], 'state_dict[model]')
+                                   state_dict[_utils.state_dict_model_key()], 'state_dict[model]', allow_unexpected)
 
             # check for model state key mismatch
             for precision_key in current_state_dict[_utils.state_dict_model_key()]:
                 _mismatch_keys(current_state_dict[_utils.state_dict_model_key()][precision_key],
                                        state_dict[_utils.state_dict_model_key()][precision_key],
-                                       'state_dict[model][{}]'.format(precision_key))
+                                       'state_dict[model][{}]'.format(precision_key), allow_unexpected)
 
-        def _check_optimizer_key_mismatch(current_state_dict, state_dict):
+        def _check_optimizer_key_mismatch(current_state_dict, state_dict, allow_unexpected=False):
             """Check if there is any mismatch in the optimizer sub state dictionary between the two state_dicts"""
 
             # check for model state key mismatch for the optimizer state_dict
             _mismatch_keys(current_state_dict[_utils.state_dict_optimizer_key()],
                                    state_dict[_utils.state_dict_optimizer_key()],
-                                   'state_dict[optimizer]')
+                                   'state_dict[optimizer]', allow_unexpected)
 
             # check for optimizer state keys mismatch
             for model_state_key in current_state_dict[_utils.state_dict_optimizer_key()]:
                 _mismatch_keys(current_state_dict[_utils.state_dict_optimizer_key()][model_state_key],
                                        state_dict[_utils.state_dict_optimizer_key()][model_state_key],
-                                       'state_dict[optimizer][{}]'.format(model_state_key))
+                                       'state_dict[optimizer][{}]'.format(model_state_key), allow_unexpected)
 
-        def _check_key_mismatch(current_state_dict, state_dict):
+        def _check_key_mismatch(current_state_dict, state_dict, allow_unexpected=False):
             """Check if there is a mismatch in the keys (model and optimizer) in the two state_dicts"""
 
             # check presence of 'model' in the input state_dict
             if _utils.state_dict_model_key() in state_dict:
-                _check_model_key_mismatch(current_state_dict, state_dict)
+                _check_model_key_mismatch(current_state_dict, state_dict, allow_unexpected)
             else:
                 warnings.warn("Missing key: model in state_dict", UserWarning)
             # check presence of 'optimizer' in the input state_dict
             if _utils.state_dict_optimizer_key() in state_dict:
-                _check_optimizer_key_mismatch(current_state_dict, state_dict)
+                _check_optimizer_key_mismatch(current_state_dict, state_dict, allow_unexpected)
             else:
                 warnings.warn("Missing key: optimizer in state_dict", UserWarning)
 
@@ -1198,7 +1280,10 @@ class ORTTrainer(object):
         if self._training_session:
             current_state_dict = self.state_dict()
             if strict:
-                _check_key_mismatch(current_state_dict, state_dict)
+                # for Zero enabled, the current trainer might not have the complete state, and we must allow 
+                # extra keys to be present in the state dict
+                allow_unexpected = True if self.options.distributed.deepspeed_zero_optimization.stage > 0 else False
+                _check_key_mismatch(current_state_dict, state_dict, allow_unexpected)
 
         # load the model states from the input state dictionary into the onnx graph
         self._load_model_states(state_dict, strict)
@@ -1207,7 +1292,8 @@ class ORTTrainer(object):
         # dictionary
         self._load_optimizer_states(current_state_dict, state_dict)
 
-        return current_state_dict
+        return current_state_dict[_utils.state_dict_optimizer_key()] if \
+            _utils.state_dict_optimizer_key() in current_state_dict else {}
 
     def load_state_dict(self, state_dict, strict=True):
         """Loads state_dict containing model/optimizer states into ORTTrainer
@@ -1231,8 +1317,82 @@ class ORTTrainer(object):
             return
 
         # load states onto the frontend onnx graph
-        state_dict = self._load_state_dict_impl(state_dict, strict=strict)
+        optimizer_state_dict = self._load_state_dict_impl(state_dict, strict=strict)
 
         # create a new training session after loading initializer states onto the onnx graph
         # pass the populated states to the training session to populate the backend graph
-        self._init_session(state_dict)
+        self._init_session(optimizer_state_dict)
+
+    def save_checkpoint(self, path, user_dict={}, include_optimizer_states=True):
+        """Persists ORTTrainer state dictionary on disk along with user_dict.
+
+        Saves the state_dict along with the user_dict to a file specified by path.
+
+        Args:
+            path: string representation to a file path or a python file-like object.
+                if file already exists at path, an exception is raised.
+            user_dict: custom data to be saved along with the state_dict. This data will be returned
+                to the user when load_checkpoint is called.
+            include_optimizer_states: boolean flag indicating whether or not to persist the optimizer states.
+                on load_checkpoint, only model states will be loaded if include_optimizer_states==True
+        """
+
+        # extract state_dict to be saved in the checkpoint
+        state_dict = self.state_dict()
+
+        # if user_dict is provided, serialize to bytes and convert to hex string.
+        # this helps in loading the types as they are given by the user since hdf5
+        # converts to numpy types otherwise
+        if bool(user_dict):
+            state_dict[_utils.state_dict_user_dict_key()] = _checkpoint_storage.to_serialized_hex(user_dict)
+
+        # if include_optimizer_states is False, only save the model states in the checkpoint file
+        if not include_optimizer_states:
+            if _utils.state_dict_optimizer_key() in state_dict:
+                del state_dict[_utils.state_dict_optimizer_key()]
+
+        _checkpoint_storage.save(state_dict, path)
+
+    def _aggregation_required(self, loaded_trainer_options):
+        """Checks if aggregation is required for the loading the state_dict into the ORTTrainer"""
+
+        # To load states in the backend, aggregation is required for every ZeRO 
+        # or Megatron checkpoint
+        return loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0 or \
+                loaded_trainer_options[_utils.state_dict_trainer_options_horizontal_parallel_size_key()] > 1
+
+    def load_checkpoint(self, *paths, strict=True):
+        """Loads the saved checkpoint state dictionary into the ORTTrainer
+
+        Reads the saved checkpoint files specified by paths from disk and loads the state dictionary
+        onto the ORTTrainer.
+        Aggregates the checkpoint files if aggregation is required.
+
+        Args:
+            paths: one or more files represented as strings where the checkpoint is saved
+            strict: boolean flag to strictly enforce that the saved checkpoint state_dict
+                keys match the keys from ORTTrainer.state_dict
+        Returns:
+            dictionary that the user had saved when calling save_checkpoint
+        """
+        state_dict = {}
+
+        # check if aggregation is required
+        loaded_trainer_options = _checkpoint_storage.load(paths[0], key=_utils.state_dict_trainer_options_key())
+        if self._aggregation_required(loaded_trainer_options):
+            # if aggregation is required, aggregation logic must be run on the saved checkpoints
+            state_dict = checkpoint.aggregate_checkpoints(paths, pytorch_format=False)
+        else:
+            # if aggregation is not required, there must only be a single file that needs to be loaded
+            assert len(paths) == 1, "Expected number of files to load: 1, got {}".format(len(paths))
+            state_dict = _checkpoint_storage.load(paths[0])
+
+        # extract user dict from the saved checkpoint
+        user_dict = {}
+        if _utils.state_dict_user_dict_key() in state_dict:
+            user_dict = _checkpoint_storage.from_serialized_hex(state_dict[_utils.state_dict_user_dict_key()])
+            del state_dict[_utils.state_dict_user_dict_key()]
+
+        self.load_state_dict(state_dict, strict=strict)
+
+        return user_dict

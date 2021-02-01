@@ -14,7 +14,7 @@ class CpuDetensorizer {
   static HRESULT Detensorize(
       _In_ ImageTensorChannelType formatFrom,
       _In_ ImageTensorChannelType formatTo,
-      _In_ ImageNominalPixelRange pixelRange,
+      _In_ winml::LearningModelPixelRange pixelRange,
       _In_ T* pCPUTensor,
       _In_ uint32_t bufferWidth,
       _In_ uint32_t tensorHeight,
