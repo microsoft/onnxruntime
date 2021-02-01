@@ -796,7 +796,7 @@ class PlannerImpl {
     }
     return Status::OK();
   }
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#ifdef ENABLE_TRAINING
   bool AllocateInputsContiguously(const Node& node) const {
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
     if (ci.kernel_def == nullptr) {
@@ -1001,7 +1001,7 @@ Status PlannerImpl::CreatePlan() {
   AdjustInplaceLifeIntervals();
 #endif
 
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#ifdef ENABLE_TRAINING
   // Determine allocation order for weights and activations. This needs to be done after ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
 #endif

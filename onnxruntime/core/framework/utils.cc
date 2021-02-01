@@ -568,7 +568,7 @@ int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onn
   }
 }
 
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+#ifdef ENABLE_TRAINING
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context) {
   const Tensor* prev_input = context->Input<Tensor>(0);
   for (int i = 1; i < context->InputCount(); i++) {
