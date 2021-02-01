@@ -145,8 +145,6 @@ TEST(CastOpTest, ToString) {
                                                   "-0.12019656", "5", "-INF", "INF"};
   TestCastOp(gsl::make_span(float_input), gsl::make_span(string_output), shape);
 
-// TODO investigate failure on x86, where +/-INF -> "+/-65536" and NaN -> "-98304"
-#if !defined(_M_IX86)
   const std::vector<MLFloat16> float16_input =
       CastedValues<float, MLFloat16>(
           gsl::make_span(
@@ -156,7 +154,6 @@ TEST(CastOpTest, ToString) {
   const std::vector<std::string> float16_string_output = {"-INF", "INF", "0.5", "0.25",
                                                           "0", "-1", "-1.5", "NaN"};
   TestCastOp(gsl::make_span(float16_input), gsl::make_span(float16_string_output), shape);
-#endif
 
   const std::vector<std::string> int_string_data = {"0", "1", "2", "3", "4", "5", "6", "7"};
   const std::vector<int16_t> int_16_input = {0, 1, 2, 3, 4, 5, 6, 7};
