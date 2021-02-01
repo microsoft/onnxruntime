@@ -31,43 +31,31 @@ jobs:
 
   - script: |-
       python tools/ci_build/build.py \
-      --config RelWithDebInfo \
-      --enable_training \
-      --mpi_home /home/ciagent/pkg/openmpi-4.0.5 \
-      --use_rocm \
-      --rocm_home /opt/rocm \
-      --nccl_home /opt/rocm \
-      --update \
-      --build_dir ./build \
-      --build \
-      --parallel 8 \
-      --build_wheel \
-      --skip_tests
+        --config RelWithDebInfo \
+        --enable_training \
+        --mpi_home /home/ciagent/pkg/openmpi-4.0.5 \
+        --use_rocm \
+        --rocm_home /opt/rocm \
+        --nccl_home /opt/rocm \
+        --update \
+        --build_dir ./build \
+        --build \
+        --parallel 8 \
+        --build_wheel \
+        --skip_tests
     displayName: 'Build onnxruntime'
 
-#        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-#        --volume $(Build.BinariesDirectory):/build \
-#        --volume $(Build.BinariesDirectory)/training_e2e_test_data:/training_e2e_test_data:ro \
- 
   - script: |-
-     ls training_e2e_test_data/models
      python orttraining/tools/ci_test/run_batch_size_test.py \
         --binary_dir build/RelWithDebInfo \
         --model_root training_e2e_test_data/models
     displayName: 'Run batch size test'
     condition: succeededOrFailed() # ensure all tests are run
 
-#  - script: |
-#      docker run \
-#        --gpus all \
-#        --rm \
-#        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-#        --volume $(Build.BinariesDirectory):/build \
-#        --volume $(Build.BinariesDirectory)/training_e2e_test_data:/training_e2e_test_data:ro \
-#        onnxruntime_e2e_test_image \
-#          /onnxruntime_src/orttraining/tools/ci_test/run_convergence_test.py \
-#            --binary_dir /build/RelWithDebInfo \
-#            --model_root /training_e2e_test_data/models \
-#            --training_data_root /training_e2e_test_data/data
-#    displayName: 'Run convergence test'
-#    condition: succeededOrFailed() # ensure all tests are run
+  - script: |-
+     python orttraining/tools/ci_test/run_convergence_test.py \
+       --binary_dir build/RelWithDebInfo \
+       --model_root training_e2e_test_data/models \
+       --training_data_root training_e2e_test_data/data
+    displayName: 'Run convergence test'
+    condition: succeededOrFailed() # ensure all tests are run
