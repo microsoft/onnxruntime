@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace python {
 
 DLDataType get_dlpack_data_type(const OrtValue& ort_value) {
-  ORT_ENFORCE(ort_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
+  ORT_ENFORCE(ort_value.IsTensor(), "Only tensor-type OrtValues are supported");
   DLDataType dtype;
   dtype.lanes = 1;
   const Tensor& tensor = ort_value.Get<Tensor>();
@@ -103,7 +103,7 @@ void deleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg
 // This function returns a shared_ptr to memory managed DLpack tensor
 // constructed out of OrtValue.
 DLManagedTensor* ort_value_to_dlpack(const OrtValue& ort_value) {
-  ORT_ENFORCE(ort_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
+  ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
   OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
   const Tensor& tensor = ort_value.Get<Tensor>();
   ort_dlmanaged_tensor->handle = ort_value;

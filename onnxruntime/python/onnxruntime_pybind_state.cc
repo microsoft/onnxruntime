@@ -1252,7 +1252,7 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
       .def_static("ortvalue_from_data_ptr", [](std::vector<int64_t>& shape, py::object& element_type,
                                                OrtDevice& device, int64_t data_ptr) {
-        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
+        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is invalid");
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
           throw std::runtime_error("Not a valid numpy type");
@@ -1852,13 +1852,13 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })
       .def("run_forward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options) -> std::vector<OrtValue> {
-        std::vector<OrtValue> user_outputs;
-        Status status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(run_options, *io_binding.Get(), user_outputs);
+        std::vector<OrtValue> module_outputs;
+        Status status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(run_options, *io_binding.Get(), module_outputs);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }
 
-        return user_outputs;
+        return module_outputs;
       })
       .def("run_backward", [](PyInferenceSession* sess, const std::vector<OrtValue>& backward_output_grads) -> void {
         Status status = sess->GetSessionHandle()->ContinueRunInBackground(backward_output_grads);
