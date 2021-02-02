@@ -1909,6 +1909,24 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   bool output_is_nhwc = false;
   const auto node_input_size = node.InputDefs().size();
 
+  // First if the inputs are uint8, we need verify all the inputs have same scale and zero points
+  if (operand_types.at(input0).type == android::nn::wrapper::Type::TENSOR_QUANT8_ASYMM) {
+    auto scale = operand_types.at(input0).operandType.scale;
+    auto zero_point = operand_types.at(input0).operandType.zeroPoint;
+
+    // Compare scale and zp of input0 to input1~n
+    for (size_t i = 1; i < node_input_size; i++) {
+      const auto& type = operand_types.at(node.InputDefs()[i]->Name());
+      ORT_RETURN_IF_NOT(scale == type.operandType.scale,
+                        "Input[", i, "]'s scale: ", type.operandType.scale,
+                        " is different than input[0]'s scale: ", scale);
+
+      ORT_RETURN_IF_NOT(zero_point == type.operandType.zeroPoint,
+                        "Input[", i, "]'s zero_point: ", type.operandType.zeroPoint,
+                        " is different than input[0]'s zero_point: ", zero_point);
+    }
+  }
+
   // First we want to see if all the input are same layout
   for (size_t i = 0; i < node_input_size - 1; i++) {
     all_input_have_same_layout =

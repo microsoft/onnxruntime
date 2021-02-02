@@ -1310,9 +1310,7 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
-    return 28;
-  }
+  int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing
   // We only support Resize opset 11+ here
@@ -1429,6 +1427,19 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
     }
   }
   return true;
+}
+
+int32_t ResizeOpSupportChecker::GetMinSupportedSdkVer(const Node& node, const OpSupportCheckParams& /* params */) const {
+  int32_t input_type;
+
+  // This should not happen, but if it happens make sure this will require an impossible version
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return std::numeric_limits<int32_t>::max();
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8)
+    return 29;
+
+  return 28;
 }
 
 bool ResizeOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
