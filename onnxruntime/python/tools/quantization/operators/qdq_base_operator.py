@@ -12,5 +12,4 @@ class QDQOperatorBase(QuantOperatorBase):
         node = self.node
 
         for input in node.input:
-            print(input)
             self.quantizer.add_tensor_to_quantize(TensorToQuantize(input))

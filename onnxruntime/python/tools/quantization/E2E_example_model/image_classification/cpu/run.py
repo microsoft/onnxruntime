@@ -88,6 +88,10 @@ def get_args():
     parser.add_argument("--input_model", required=True, help="input model")
     parser.add_argument("--output_model", required=True, help="output model")
     parser.add_argument("--calibrate_dataset", default="./test_images", help="calibration data set")
+    parser.add_argument("--quant_format",
+                        default=QuantFormat.QOperator,
+                        type=QuantFormat.from_string,
+                        choices=list(QuantFormat))
     args = parser.parse_args()
     return args
 
@@ -98,7 +102,7 @@ def main():
     output_model_path = args.output_model
     calibration_dataset_path = args.calibrate_dataset
     dr = ResNet50DataReader(calibration_dataset_path)
-    quantize_static(input_model_path, output_model_path, dr, quant_format=QuantFormat.QDQ)
+    quantize_static(input_model_path, output_model_path, dr, quant_format=args.quant_format)
     print('Calibrated and quantized model saved.')
 
     print('benchmarking fp32 model...')

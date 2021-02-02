@@ -58,6 +58,16 @@ class QuantFormat(Enum):
     QOperator = 1
     QDQ = 2
 
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def from_string(format):
+        try:
+            return QuantFormat[format]
+        except KeyError:
+            raise ValueError()
+
 
 QUANT_TYPE_TO_NP_TYPE = {
     QuantType.QInt8: numpy.dtype('int8'),
