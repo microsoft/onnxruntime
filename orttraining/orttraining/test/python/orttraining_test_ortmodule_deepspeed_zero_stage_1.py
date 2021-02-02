@@ -146,6 +146,8 @@ def main():
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
                         help='Log level (default: WARNING)')
+    parser.add_argument('--data_dir', type=str, default='./mnist',
+                        help='Path to the mnist data directory')
 
     # DeepSpeed-related settings
     parser.add_argument('--local_rank',
@@ -168,28 +170,20 @@ def main():
         device = "cpu"
 
     ## Data loader
-    data_dir = '/mnist'
-    download = True
-    # Check if the data is already mounted/cached at dir /mnist
-    if os.path.exists(data_dir):
-        download = False
-    else:
-        # If data is not already mounted/cached, then download the data in local directory ./mnist
-        data_dir = './mnist'
 
     dist.init_process_group(backend='nccl')
     if args.local_rank == 0:
         # download only once on rank 0
-        datasets.MNIST(data_dir, download=download)
+        datasets.MNIST(args.data_dir, download=True)
     dist.barrier()
-    train_set = datasets.MNIST(data_dir, train=True,
+    train_set = datasets.MNIST(args.data_dir, train=True,
                             transform=transforms.Compose([transforms.ToTensor(),
                                                         transforms.Normalize((0.1307,), (0.3081,))]))
 
     test_loader = None
     if args.test_batch_size > 0:
         test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST(data_dir, train=False, transform=transforms.Compose([
+            datasets.MNIST(args.data_dir, train=False, transform=transforms.Compose([
                 transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args.test_batch_size, shuffle=True)
 

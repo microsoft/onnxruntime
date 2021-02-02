@@ -41,7 +41,7 @@ jobs:
         --volume /mnist:/mnist \
         onnxruntime_ortmodule_distributed_tests_image \
           /build/RelWithDebInfo/launch_test.py \
-            --cmd_line_with_args "python orttraining_ortmodule_distributed_tests.py" \
+            --cmd_line_with_args "python orttraining_ortmodule_distributed_tests.py --mnist /mnist" \
             --cwd /build/RelWithDebInfo \
     displayName: 'Run orttraining_ortmodule_distributed_tests.py'
     condition: succeededOrFailed()

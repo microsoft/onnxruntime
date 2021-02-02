@@ -34,7 +34,7 @@ function mount_data () {
         sudo rmdir $2
     fi
 
-    sudo mkdir $2
+    sudo mkdir -p $2
 
     sudo bash -c 'echo "$1 $2 cifs nofail,vers=3.0,credentials=/etc/smbcredentials/orttrainingtestdata.cred,dir_mode=0777,file_mode=0777,serverino" >> /etc/fstab' -- $1 $2
     sudo mount -t cifs $1 $2 -o vers=3.0,credentials=/etc/smbcredentials/orttrainingtestdata.cred,dir_mode=0777,file_mode=0777,serverino
