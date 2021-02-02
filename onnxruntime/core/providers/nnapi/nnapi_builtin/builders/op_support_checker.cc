@@ -1317,6 +1317,8 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing
   // We only support Resize opset 11+ here
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 11; }
+
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
@@ -1426,6 +1428,22 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       }
     }
   }
+  return true;
+}
+
+bool ResizeOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
   return true;
 }
 

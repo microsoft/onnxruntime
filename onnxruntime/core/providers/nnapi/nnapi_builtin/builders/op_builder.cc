@@ -2318,7 +2318,8 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
   }
 
-  const OperandType output_operand_type(operand_types.at(input).type, output_shape);
+  OperandType output_operand_type = operand_types.at(input);
+  output_operand_type.SetDimensions(output_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
 

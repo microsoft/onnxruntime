@@ -397,6 +397,7 @@ bool IsInternalQuantizationSupported(const Node& node, const GraphViewer& graph_
 
   // For now only these [non-qlinear]operators will handle uint8 inputs
   if (node_type != "Transpose" &&
+      node_type != "Resize" &&
       node_type != "Concat" &&
       node_type != "MaxPool") {
     return true;

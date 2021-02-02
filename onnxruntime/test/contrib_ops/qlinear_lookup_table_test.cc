@@ -89,7 +89,7 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8) {
   std::fesetround(origin_round_mode);
 }
 
-// NNAPI can only take 0 a Y_zero_point
+// NNAPI can only take 0 as Y_zero_point
 TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8_0_Y_ZP) {
   auto run_test = [](bool scales_and_zp_are_initializers) {
     OpTester test("QLinearSigmoid", 1, onnxruntime::kMSDomain);
