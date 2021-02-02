@@ -88,7 +88,7 @@ cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t, int n, cons
 cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t, int n, const nv_bfloat16* x, int incx, nv_bfloat16* y, int incy) {
   dim3 dimGrid((unsigned int)(n + COPY_BLOCK_DIM - 1) / COPY_BLOCK_DIM, 1, 1);
   dim3 dimBlock(COPY_BLOCK_DIM, 1, 1);
-  CopyVectorBFloat16<<<dimGrid, dimBlock>>>(x, incx, y, incy, n);
+  CopyVectorBFloat16<<<dimGrid, dimBlock, 0, stream>>>(x, incx, y, incy, n);
   return CUBLAS_STATUS_SUCCESS;
 }
 

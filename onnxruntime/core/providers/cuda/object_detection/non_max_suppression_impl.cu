@@ -433,7 +433,7 @@ Status NonMaxSuppressionImpl(
 
     blocksPerGrid = (int)(ceil(static_cast<float>(num_to_keep) / GridDim::maxThreadsPerBlock));
     IndexMultiSelect<int, int><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(num_to_keep, d_selected_indices, d_sorted_indices, d_output_indices);
-    NormalizeOutput<<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(num_to_keep, d_output_indices, d_normalized_output_indices, batch_index, class_index);
+    NormalizeOutput<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(num_to_keep, d_output_indices, d_normalized_output_indices, batch_index, class_index);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     selected_indices = std::move(d_normalized_output_indices_ptr);
