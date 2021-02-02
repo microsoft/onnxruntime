@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include <cstddef>
-#include <iomanip>
-#include <sstream>
 
 #include "boost/mp11.hpp"
 
@@ -53,11 +51,34 @@ using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvide
 using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0);
 
 // string cast helpers
+// Note: when C++17 is available, use <charconv> functions
+
+// use a fixed size array or fall back to a dynamically allocated one
+template <typename T, size_t InlinedSize>
+class InlinedBuffer {
+ public:
+  explicit InlinedBuffer(size_t size)
+      : size_{size},
+        buffer_{},
+        dynamic_buffer_{size > InlinedSize ? onnxruntime::make_unique<T[]>(size) : nullptr} {
+  }
+
+  T* data() { return dynamic_buffer_ ? dynamic_buffer_.get() : &buffer_[0]; }
+
+  size_t size() const { return size_; }
+
+ private:
+  const size_t size_;
+  T buffer_[InlinedSize];
+  const std::unique_ptr<T[]> dynamic_buffer_;
+};
 
 // handle floating point output separately
 template <typename SrcType>
 typename std::enable_if<std::is_floating_point<SrcType>::value, void>::type
 CastToString(const SrcType& input, std::string& output) {
+  static_assert(sizeof(SrcType) <= sizeof(double),
+                "largest supported floating point type is double");
   if (std::isnan(input)) {
     output = "NaN";
   } else if (std::isinf(input)) {
@@ -67,19 +88,27 @@ CastToString(const SrcType& input, std::string& output) {
       output = "INF";
     }
   } else {
-    // setprecision to 8 to match numpy default behavior
-    std::ostringstream convert;
-    convert << std::setprecision(8) << input;
-    output = convert.str();
+    // set precision to 8 to match numpy default behavior
+    constexpr const char* format = "%.8g";
+    const double value = static_cast<double>(input);
+
+    auto snprintf_result = std::snprintf(nullptr, 0, format, value);
+    ORT_ENFORCE(snprintf_result > 0, "Failed to determine required snprintf() buffer length.");
+
+    // buffer for string and trailing '\0'
+    InlinedBuffer<char, 32> buffer(gsl::narrow<size_t>(snprintf_result + 1));
+
+    snprintf_result = std::snprintf(buffer.data(), buffer.size(), format, value);
+    ORT_ENFORCE(snprintf_result == buffer.size() - 1, "Failed to write value with snprintf().");
+
+    output.assign(buffer.data(), buffer.size() - 1);
   }
 }
 
 template <typename SrcType>
 typename std::enable_if<!std::is_floating_point<SrcType>::value, void>::type
 CastToString(const SrcType& input, std::string& output) {
-  std::ostringstream convert;
-  convert << input;
-  output = convert.str();
+  output = std::to_string(input);
 }
 
 // overloads for MLFloat16 and BFloat16
