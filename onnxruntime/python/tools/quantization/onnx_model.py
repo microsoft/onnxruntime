@@ -202,3 +202,14 @@ class ONNXModel:
                                                                      all_tensors_to_one_file=True,
                                                                      location=Path(output_path).name + ".data")
         onnx.save_model(self.model, output_path)
+
+    @staticmethod
+    def replace_node_input(node, old_input_name, new_input_name):
+        assert isinstance(old_input_name, str) and isinstance(new_input_name, str)
+        for j in range(len(node.input)):
+            if node.input[j] == old_input_name:
+                node.input[j] = new_input_name
+
+    def replace_input_of_all_nodes(self, old_input_name, new_input_name):
+        for node in self.model.graph.node:
+            ONNXModel.replace_node_input(node, old_input_name, new_input_name)

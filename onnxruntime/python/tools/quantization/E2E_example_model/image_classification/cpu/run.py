@@ -12,7 +12,7 @@ from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
-from onnxruntime.quantization import quantize_static, calibrate, CalibrationDataReader
+from onnxruntime.quantization import quantize_static, calibrate, CalibrationDataReader, QuantFormat
 
 
 class ResNet50DataReader(CalibrationDataReader):
@@ -98,7 +98,7 @@ def main():
     output_model_path = args.output_model
     calibration_dataset_path = args.calibrate_dataset
     dr = ResNet50DataReader(calibration_dataset_path)
-    quantize_static(input_model_path, output_model_path, dr)
+    quantize_static(input_model_path, output_model_path, dr, quant_format=QuantFormat.QDQ)
     print('Calibrated and quantized model saved.')
 
     print('benchmarking fp32 model...')

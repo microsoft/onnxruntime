@@ -1,5 +1,6 @@
 from .quant_utils import QuantizationMode
 from .operators.base_operator import QuantOperatorBase
+from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.matmul import MatMulInteger, QLinearMatMul
 from .operators.attention import AttentionQuant
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
@@ -45,6 +46,8 @@ def CreateDefaultOpQuantizer(onnx_quantizer, node):
 
 
 def CreateOpQuantizer(onnx_quantizer, node):
+    if onnx_quantizer.is_qdq_format():
+        return QDQOperatorBase(onnx_quantizer, node)
     registry = IntegerOpsRegistry if onnx_quantizer.mode == QuantizationMode.IntegerOps else QLinearOpsRegistry
     if node.op_type in registry.keys():
         return registry[node.op_type](onnx_quantizer, node)

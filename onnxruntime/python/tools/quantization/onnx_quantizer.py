@@ -76,6 +76,13 @@ def _get_qrange_for_qType(qType, reduce_range=False):
 class ONNXQuantizer:
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, quantization_params,
                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
+
+        # run shape inference on the model
+        model = onnx.shape_inference.infer_shapes(model)
+        self.value_infos = {vi.name: vi for vi in model.graph.value_info}
+        self.value_infos.update({ot.name: ot for ot in model.graph.output})
+        self.value_infos.update({it.name: it for it in model.graph.input})
+
         self.model = ONNXModel(model)
         self.per_channel = per_channel  # weight-pack per channel
         self.reduce_range = reduce_range
@@ -861,3 +868,6 @@ class ONNXQuantizer:
             dequantize_node = self._dequantize_value(output.name)
             if dequantize_node is not None:
                 self.new_nodes.append(dequantize_node)
+
+    def is_qdq_format(self):
+        return False

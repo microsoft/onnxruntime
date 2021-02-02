@@ -16,14 +16,14 @@ from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
 from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
-from .quant_utils import QuantType
+from .quant_utils import QuantType, QuantFormat
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer, QLinearOpsRegistry, IntegerOpsRegistry
 
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
+from .qdq_quantizer import QDQQuantizer
 from .calibrate import CalibrationDataReader, calibrate
-
 
 def optimize_model(model_path: Path):
     '''
@@ -135,6 +135,7 @@ def quantize(model,
 def quantize_static(model_input,
                     model_output,
                     calibration_data_reader: CalibrationDataReader,
+                    quant_format=QuantFormat.QOperator,
                     op_types_to_quantize=[],
                     per_channel=False,
                     reduce_range=False,
@@ -149,6 +150,9 @@ def quantize_static(model_input,
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
     :param calibration_data_reader: a calibration data reader. It enumerates calibration data and generates inputs for the original model.
+    :param quant_format: QuantFormat{default, QDQ}.
+        Default format quantizes the model with quantized operators directly.
+        QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
     :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
     :param op_types: operators to quantize
     :param per_channel: quantize weights per channel
@@ -185,18 +189,32 @@ def quantize_static(model_input,
     quantization_params_dict = calibrate(model, calibration_data_reader, op_types_to_quantize, nodes_to_quantize,
                                          nodes_to_exclude)
 
-    quantizer = ONNXQuantizer(
-        model,
-        per_channel,
-        reduce_range,
-        mode,
-        True,  # static
-        weight_qType,
-        input_qType,
-        quantization_params_dict,
-        nodes_to_quantize,
-        nodes_to_exclude,
-        op_types_to_quantize)
+    if quant_format is QuantFormat.QOperator:
+        quantizer = ONNXQuantizer(
+            model,
+            per_channel,
+            reduce_range,
+            mode,
+            True,  # static
+            weight_qType,
+            input_qType,
+            quantization_params_dict,
+            nodes_to_quantize,
+            nodes_to_exclude,
+            op_types_to_quantize)
+    else:
+        quantizer = QDQQuantizer(
+            model,
+            per_channel,
+            reduce_range,
+            mode,
+            True,  # static
+            weight_qType,
+            input_qType,
+            quantization_params_dict,
+            nodes_to_quantize,
+            nodes_to_exclude,
+            op_types_to_quantize)
 
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)

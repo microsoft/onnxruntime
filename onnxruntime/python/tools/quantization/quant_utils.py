@@ -53,6 +53,9 @@ class QuantType(Enum):
     QInt8 = 1
     QUInt8 = 2
 
+class QuantFormat(Enum):
+    QOperator = 1
+    QDQ = 2
 
 QUANT_TYPE_TO_NP_TYPE = {
     QuantType.QInt8: numpy.dtype('int8'),
@@ -119,6 +122,19 @@ class QuantizedValue:
         self.axis = axis
         self.qType = qType
 
+class TensorToQuantize:
+    '''
+    Represents a tensor to be quantized
+    '''
+    def __init__(self,
+                 tensor_name,
+                 per_channel:bool = False,
+                 reduce_range:bool = False,
+                 axis:int = 0):
+        self.tensor_name = tensor_name
+        self.per_channel = per_channel
+        self.axis = axis
+        self.reduce_range = reduce_range
 
 def attribute_to_kwarg(attribute):
     '''
