@@ -10,6 +10,7 @@ $ deepspeed orttraining_test_ortmodule_deepspeed_zero_stage_1.py \
 """
 import argparse
 import logging
+import os
 import torch
 import time
 from torchvision import datasets, transforms
@@ -167,19 +168,28 @@ def main():
         device = "cpu"
 
     ## Data loader
+    data_dir = '/mnist'
+    download = True
+    # Check if the data is already mounted/cached at dir /mnist
+    if os.path.exists(data_dir):
+        download = False
+    else:
+        # If data is not already mounted/cached, then download the data in local directory ./mnist
+        data_dir = './mnist'
+
     dist.init_process_group(backend='nccl')
     if args.local_rank == 0:
         # download only once on rank 0
-        datasets.MNIST('./data', download=True)
+        datasets.MNIST(data_dir, download=download)
     dist.barrier()
-    train_set = datasets.MNIST('./data', train=True,
+    train_set = datasets.MNIST(data_dir, train=True,
                             transform=transforms.Compose([transforms.ToTensor(),
                                                         transforms.Normalize((0.1307,), (0.3081,))]))
 
     test_loader = None
     if args.test_batch_size > 0:
         test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('./data', train=False, transform=transforms.Compose([
+            datasets.MNIST(data_dir, train=False, transform=transforms.Compose([
                 transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args.test_batch_size, shuffle=True)
 

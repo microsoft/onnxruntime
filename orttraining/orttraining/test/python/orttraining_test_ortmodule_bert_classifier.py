@@ -208,17 +208,25 @@ def test(model, validation_dataloader, device, args):
 
 def load_dataset(args):
     # 2. Loading CoLA Dataset
-    print('Downloading dataset...')
+
+    data_dir = '/bert_data/hf_data/glue_data/CoLA/original/raw'
+    download = False
+    if not os.path.exists(data_dir):
+        download = True
+        data_dir = './cola_public/raw'
 
     # Download the file (if we haven't already)
-    url = 'https://nyu-mll.github.io/CoLA/cola_public_1.1.zip'
-    if not os.path.exists('./cola_public_1.1.zip'):
+    if not download:
+        print('Using mounted dataset')
+    elif not os.path.exists('./cola_public_1.1.zip'):
+        print('Downloading dataset...')
+        url = 'https://nyu-mll.github.io/CoLA/cola_public_1.1.zip'
         wget.download(url, './cola_public_1.1.zip')
     else:
         print('Reusing cached dataset')
 
     # Unzip it
-    if not os.path.exists('./cola_public'):
+    if download and not os.path.exists(data_dir):
         print('Extracting cached dataset')
         with zipfile.ZipFile('./cola_public_1.1.zip', 'r') as zip_ref:
             zip_ref.extractall('./')
@@ -226,7 +234,7 @@ def load_dataset(args):
         print('Reusing extracted dataset')
 
     # Load the dataset into a pandas dataframe.
-    df = pd.read_csv("./cola_public/raw/in_domain_train.tsv", delimiter='\t', header=None, names=['sentence_source', 'label', 'label_notes', 'sentence'])
+    df = pd.read_csv(os.path.join(data_dir, "in_domain_train.tsv"), delimiter='\t', header=None, names=['sentence_source', 'label', 'label_notes', 'sentence'])
 
     # Get the lists of sentences and their labels.
     sentences = df.sentence.values
