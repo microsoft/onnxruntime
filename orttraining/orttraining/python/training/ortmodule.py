@@ -44,7 +44,13 @@ def _deepcopy_model_input(*inputs, **kwargs):
     for model_input in inputs:
         sample_inputs_copy.append(model_input.data if isinstance(model_input, torch.Tensor) else model_input)
     sample_inputs_copy = copy.deepcopy(tuple(sample_inputs_copy))
-    return sample_inputs_copy
+
+    sample_kwargs_copy = {}
+    for name, model_input in kwargs.items():
+        sample_kwargs_copy[name] = model_input.data if isinstance(model_input, torch.Tensor) else model_input
+    sample_kwargs_copy = copy.deepcopy(sample_kwargs_copy)
+
+    return sample_inputs_copy, sample_kwargs_copy
 
 def _onnx_value_info_to_buffer_tensor(value_info, device):
     '''Create a torch zeroed tensor with the same shape and type of `value_info`'''
@@ -54,25 +60,30 @@ def _onnx_value_info_to_buffer_tensor(value_info, device):
     return torch.zeros(shape, device=device, dtype=dtype)
 
 def _parse_inputs_for_onnx_export(module, *inputs, **kwargs):
-    # Ignore optional *inputs explicitly specified as None
+    # Ignore optional inputs explicitly specified as None
     sig = signature(module.forward)
     all_input_names = sig.parameters.keys()
     input_names = []
     dynamic_axes = {}
     input_names_require_grad = []
     for input_idx, name in enumerate(all_input_names):
+        inp = None
         if input_idx < len(inputs) and inputs[input_idx] is not None:
-            if inputs[input_idx].requires_grad:
+            inp = inputs[input_idx]
+        elif name in kwargs and kwargs[name] is not None:
+            inp = kwargs[name]
+        if inp is not None:
+            if inp.requires_grad:
                 # input_names_require_grad holds all input tensors that have requires_grad
                 input_names_require_grad.append(name)
 
             input_names.append(name)
             dynamic_axes[name] = {}
-            for dim_idx in range(len(inputs[input_idx].shape)):
-                dynamic_axes[name].update({dim_idx : 'input{}_dim{}'.format(input_idx, dim_idx)})
+            for dim_idx in range(len(inp.shape)):
+                dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
     return input_names, dynamic_axes, input_names_require_grad
 
-def _parse_outputs_for_onnx_export(module, inputs):
+def _parse_outputs_for_onnx_export(module, inputs, kwargs):
 
     def _create_output_dim_names_from_mapping(output):
         output_names, dynamic_axes = [], {}
@@ -104,7 +115,7 @@ def _parse_outputs_for_onnx_export(module, inputs):
     sample_output_type = None
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
-        sample_inputs_copy = _deepcopy_model_input(*inputs)
+        sample_inputs_copy, sample_kwargs_copy = _deepcopy_model_input(*inputs, **kwargs)
         try:
             # Deepcopy model, in case model is stateful and changes after model run.
             model_copy = copy.deepcopy(module)
@@ -113,7 +124,7 @@ def _parse_outputs_for_onnx_export(module, inputs):
             warnings.warn("This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
                             " Compute will continue, but unexpected results may occur!")
 
-        sample_outputs = model_copy(*sample_inputs_copy)
+        sample_outputs = model_copy(*sample_inputs_copy, **sample_kwargs_copy)
         sample_output_type = type(sample_outputs)
         if isinstance(sample_outputs, torch.Tensor):
             output_names, output_dynamic_axes = _create_output_dim_names(sample_outputs, 0, False)
@@ -331,6 +342,9 @@ class ORTModule(torch.nn.Module):
             self._initialize_module_gradient_graph_builder()
 
         new_input_shape = [list(input.size()) for input in inputs if input is not None]
+        for k, v in kwargs.items():
+            if v is not None:
+                new_input_shape.append(list(v.size()))
         if self._current_input_shape is None or self._current_input_shape != new_input_shape:
             self._current_input_shape = new_input_shape
             self._build_training_graph()
@@ -348,7 +362,9 @@ class ORTModule(torch.nn.Module):
             def forward(ctx, *inputs, **kwargs):
                 '''Performs forward pass based on user input and PyTorch initializer
 
-                TODO: **kwargs are not supported
+                Autograd Function's apply() doesn't support keyword arguments,
+                so `*inputs` has all the arguments - keyword arguments converted
+                to positional by the caller.
 
                 Module outputs are returned to the user
                 '''
@@ -416,6 +432,10 @@ class ORTModule(torch.nn.Module):
         '''
         # User inputs
         result = list(inputs[:len(self._onnx_graphs_info.user_input_names)])
+        for i in range(len(self._onnx_graphs_info.user_input_names)):
+            input_name = self._onnx_graphs_info.user_input_names[i]
+            if input_name in kwargs and kwargs[input_name] is not None:
+                result.append(kwargs[input_name])
 
         # Initializers
         for param in self._original_module.named_parameters():
@@ -432,7 +452,7 @@ class ORTModule(torch.nn.Module):
 
         # Setup dynamic axes for onnx model
         input_names, dynamic_axes, self._input_names_require_grad = _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
-        output_names, output_dynamic_axes, self._original_module_output_type = _parse_outputs_for_onnx_export(self._original_module, inputs)
+        output_names, output_dynamic_axes, self._original_module_output_type = _parse_outputs_for_onnx_export(self._original_module, inputs, kwargs)
         dynamic_axes.update(output_dynamic_axes)
 
         # TODO: Support contrib OPs support? user model has no hint
@@ -445,12 +465,12 @@ class ORTModule(torch.nn.Module):
         # Deepcopy inputs, since input values may change after model run.
         # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
         # Therefore, deepcopy only the data component of the input tensors for export.
-        sample_inputs_copy = _deepcopy_model_input(*inputs, **kwargs)
+        sample_inputs_copy, sample_kwargs_copy = _deepcopy_model_input(*inputs, **kwargs)
 
         try:
             with torch.no_grad():
                 torch.onnx.export(self._original_module,
-                                sample_inputs_copy,
+                                sample_inputs_copy + (sample_kwargs_copy, ),
                                 f,
                                 input_names=input_names,
                                 output_names=output_names,
