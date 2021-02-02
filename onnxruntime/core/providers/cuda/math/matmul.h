@@ -6,6 +6,9 @@
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
+
+class MatMulComputeHelper;
+
 namespace cuda {
 template <typename T>
 class MatMul final : public CudaKernel {
@@ -24,11 +27,17 @@ class MatMul final : public CudaKernel {
  private:
 #ifdef USE_CUSPARSELT
   Status PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) override;
+  Status ComputeSparse(const MatMulComputeHelper& helper, bool transa, bool transb,
+                       const Tensor* left, const Tensor* right, Tensor* C) const;
 #endif
 
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;
+  struct SparseInfo;
+  // Argument 1 is a sparse weight coming from constant initializer
+  // if set
+  std::unique_ptr<SparseInfo> sparse_info_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime
