@@ -176,6 +176,23 @@ target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${CMAKE_CURR
 target_link_libraries(onnxruntime_training_pipeline_poc PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_pipeline_poc PROPERTIES FOLDER "ONNXRuntimeTest")
 
+# Zcode
+file(GLOB_RECURSE training_zcode_src
+    "${ORTTRAINING_SOURCE_DIR}/models/zcode/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/models/zcode/*.cc"
+)
+add_executable(onnxruntime_training_zcode ${training_zcode_src})
+if(UNIX AND NOT APPLE)
+  if (HAS_NO_MAYBE_UNINITIALIZED)
+    target_compile_options(onnxruntime_training_zcode PUBLIC "-Wno-maybe-uninitialized")
+  endif()
+endif()
+onnxruntime_add_include_to_target(onnxruntime_training_zcode onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
+target_include_directories(onnxruntime_training_zcode PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
+
+target_link_libraries(onnxruntime_training_zcode PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
+set_target_properties(onnxruntime_training_zcode PROPERTIES FOLDER "ONNXRuntimeTest")
+
 # GPT-2
 file(GLOB_RECURSE training_gpt2_src
     "${ORTTRAINING_SOURCE_DIR}/models/gpt2/*.h"

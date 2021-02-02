@@ -1,0 +1,130 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# multi-stage arguments (repeat ARG NAME below)
+ARG UCX_VERSION=1.8.0
+ARG OPENMPI_VERSION=4.0.4
+ARG CONDA_VERSION=4.7.10
+ARG NUMPY_VERSION=1.18.5
+ARG ONNX_VERSION=1.7.0
+ARG PYTORCH_VERSION=1.6.0
+
+ARG BUILD_CONFIG=RelWithDebInfo
+ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION}
+ARG COMMIT=master
+
+# cuda development image for building sources
+FROM nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04 as builder
+
+# set location for builds
+WORKDIR /stage
+
+# install curl, git, ssh (required by MPI when running ORT tests)
+RUN apt-get -y update &&\
+    apt-get -y --no-install-recommends install \
+        curl \
+        git \
+        language-pack-en \
+        openssh-client \
+        unattended-upgrades
+
+# update existing packages to minimize security vulnerabilities
+RUN unattended-upgrade
+
+RUN locale-gen en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8
+
+# install miniconda (comes with python 3.7 default)
+ARG CONDA_VERSION
+ARG CONDA_URL=https://repo.anaconda.com/miniconda/Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh
+RUN cd /stage && curl -fSsL --insecure ${CONDA_URL} -o install-conda.sh &&\
+    /bin/bash ./install-conda.sh -b -p /opt/conda &&\
+    /opt/conda/bin/conda clean -ya
+ENV PATH=/opt/conda/bin:${PATH}
+
+# install cmake, setuptools, numpy, and onnx
+ARG NUMPY_VERSION
+ARG ONNX_VERSION
+RUN conda install -y \
+        setuptools \
+        cmake \
+        numpy=${NUMPY_VERSION} &&\
+    pip install \
+        onnx=="${ONNX_VERSION}"
+
+# build ucx suite
+# note: openmpi will not select ucx without multithreading enabled
+ARG UCX_VERSION
+ARG UCX_TARNAME=ucx-$UCX_VERSION
+ARG UCX_URL=https://github.com/openucx/ucx/releases/download/v${UCX_VERSION}/${UCX_TARNAME}.tar.gz
+RUN apt-get -y update && apt-get -y --no-install-recommends install \
+        libibverbs-dev \
+        libnuma-dev &&\
+    cd /stage && curl -fSsL ${UCX_URL} | tar xzf - &&\
+    cd ${UCX_TARNAME} &&\
+    ./configure \
+	--prefix=/opt/ucx \
+        --with-cuda=/usr/local/cuda \
+        --with-verbs=/usr/lib/x86_64-linux-gnu \
+        --enable-mt &&\
+    make -j"$(nproc)" &&\
+    make install
+
+# build openmpi (use --prefix /opt/openmpi-xxx to move to runtime image)
+# note: require --enable-orterun-prefix-by-default for Azure machine learning compute
+# note: disable verbs as we use ucx middleware and don't want btl openib warnings
+ARG OPENMPI_VERSION
+ARG OPENMPI_PATH
+ARG OPENMPI_TARNAME=openmpi-${OPENMPI_VERSION}
+ARG OPENMPI_URL=https://download.open-mpi.org/release/open-mpi/v%OMPI_BASE%/${OPENMPI_TARNAME}.tar.gz
+RUN export OMPI_BASE=${OPENMPI_VERSION%.*} &&\
+    cd /stage && curl -fSsL `echo ${OPENMPI_URL} | sed s/%OMPI_BASE%/$OMPI_BASE/` | tar xzf - &&\
+    cd ${OPENMPI_TARNAME} &&\
+    ./configure \
+        --prefix=${OPENMPI_PATH} \
+        --with-ucx=/opt/ucx \
+        --without-verbs \
+        --with-cuda=/usr/local/cuda \
+        --enable-mpirun-prefix-by-default \
+        --enable-orterun-prefix-by-default \
+        --enable-mca-no-build=btl-uct &&\
+    make -j"$(nproc)" install &&\
+    ldconfig
+ENV PATH=${OPENMPI_PATH}/bin:$PATH
+ENV LD_LIBRARY_PATH=${OPENMPI_PATH}/lib:$LD_LIBRARY_PATH
+
+# install mpi4py (be sure to link existing /opt/openmpi-xxx)
+RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
+
+# install pytorch
+ARG PYTORCH_VERSION
+RUN pip install torch==${PYTORCH_VERSION}
+
+# build onnxruntime wheel with cuda and mpi support
+ARG BUILD_CONFIG
+ARG COMMIT
+RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
+    cd onnxruntime &&\
+    git checkout ${COMMIT} &&\
+    cp ThirdPartyNotices.txt /stage/ThirdPartyNotices.txt &&\
+    cp dockerfiles/LICENSE-IMAGE.txt /stage/LICENSE-IMAGE.txt &&\
+    python tools/ci_build/build.py \
+        --cmake_extra_defines \
+            ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \
+        --config ${BUILD_CONFIG} \
+        --enable_training \
+        --mpi_home ${OPENMPI_PATH} \
+        --use_cuda \
+        --cuda_home /usr/local/cuda \
+        --cudnn_home /usr/lib/x86_64-linux-gnu/ \
+        --nccl_home /usr/lib/x86_64-linux-gnu/ \
+        --update \
+        --parallel \
+        --build_dir build \
+        --build \
+        --build_wheel \
+        --skip_tests &&\
+    pip install build/${BUILD_CONFIG}/dist/*.whl
+
+# Install AzureML support and commonly used packages.
+RUN pip install azureml-defaults sentencepiece==0.1.92 transformers==2.11.0 msgpack==1.0.0 tensorboardX==1.8 tensorboard==2.3.0
