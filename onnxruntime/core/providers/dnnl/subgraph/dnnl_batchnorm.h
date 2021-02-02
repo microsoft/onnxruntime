@@ -82,11 +82,11 @@ class DnnlBatchNorm : public DnnlKernel {
  public:
   explicit DnnlBatchNorm(const DnnlNode& node,
                          DNNLExecutionProvider* provider,
-                         const Provider_NodeAttributes& attributes,
+                         const NodeAttributes& attributes,
                          const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
-  void ReadAttributes(const Provider_NodeAttributes& attributes,
+  void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "epsilon");
     if (attr != attributes.end() &&
@@ -276,7 +276,7 @@ class DnnlBatchNorm : public DnnlKernel {
       } else {
         src_mem_ = parents_[0].get()->primitive_dst_mem_;
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       if (mklnode_ptr_->parent_nodes.empty()) {
         src_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(batchnorm_fwd_pd_.get()->src_desc(), cpu_engine, nullptr));
@@ -305,7 +305,7 @@ class DnnlBatchNorm : public DnnlKernel {
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine));
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(batchnorm_fwd_pd_->dst_desc(), gpu_engine));
     }
@@ -331,7 +331,7 @@ class DnnlBatchNorm : public DnnlKernel {
                           {DNNL_ARG_VARIANCE, *var_mem_},
                           {DNNL_ARG_SCALE_SHIFT, *scale_shift_mem_},
                           {DNNL_ARG_DST, *primitive_dst_mem_}});
-    } else { // gpu_available_
+    } else {  // gpu_available_
       net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
                           {DNNL_ARG_MEAN, *mean_mem_gpu_},
                           {DNNL_ARG_VARIANCE, *var_mem_gpu_},
@@ -404,7 +404,7 @@ class DnnlBatchNorm : public DnnlKernel {
         } else {
           primitive_dst_mem_->set_data_handle(dst_data);
         }
-      } else { // gpu_available_
+      } else {  // gpu_available_
         reorder_dst_mem_to_->set_data_handle(dst_data);
       }
     }

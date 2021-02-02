@@ -23,6 +23,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value.h"
+#include "core/providers/get_execution_providers.h"
 #include "core/session/environment.h"
 #include "core/framework/callback.h"
 #include "core/framework/tensorprotoutils.h"
@@ -406,10 +407,10 @@ namespace {
 // provider either model_path, or modal_data + model_data_length.
 static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
                                                 _In_ const OrtEnv* env,
-                                                _In_ const ORTCHAR_T* model_path,
-                                                _In_ const void* model_data,
-                                                _In_ size_t model_data_length,
-                                                _Outptr_ std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+                                                _In_opt_z_ const ORTCHAR_T* model_path,
+                                                _In_opt_ const void* model_data,
+                                                size_t model_data_length,
+                                                std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
@@ -438,13 +439,11 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
         env->GetEnvironment());
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
   // Add custom domains
   Status status;
   if (options && !options->custom_op_domains_.empty()) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
   }
-#endif
 
   // Finish load
   if (load_config_from_model) {
@@ -604,8 +603,8 @@ struct OrtIoBinding {
   OrtIoBinding& operator=(const OrtIoBinding&) = delete;
 };
 
-ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
-                    const OrtIoBinding* binding_ptr) {
+ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_ const OrtRunOptions* run_options,
+                    _In_ const OrtIoBinding* binding_ptr) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
   auto status = session->Run(*run_options, *binding_ptr->binding_);
@@ -664,7 +663,7 @@ ORT_API_STATUS_IMPL(OrtApis::BindOutputToDevice, _Inout_ OrtIoBinding* binding_p
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputNames, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
-                    _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count) {
+                    _Out_ char** buffer, _Outptr_result_maybenull_ size_t** lengths, _Out_ size_t* count) {
   API_IMPL_BEGIN
   const auto& output_names = binding_ptr->binding_->GetOutputNames();
   if (output_names.empty()) {
@@ -711,7 +710,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputNames, _In_ const OrtIoBinding* bindi
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
-                    _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count) {
+                    _Outptr_result_maybenull_ OrtValue*** output, _Out_ size_t* output_count) {
   API_IMPL_BEGIN
   const auto& outputs = binding_ptr->binding_->GetOutputs();
   if (outputs.empty()) {
@@ -1025,6 +1024,16 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetDescription,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
   API_IMPL_BEGIN
   auto description = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->description;
+  *value = StrDup(description, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetGraphDescription,
+                    _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
+  API_IMPL_BEGIN
+  auto description = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->graph_description;
   *value = StrDup(description, allocator);
   return nullptr;
   API_IMPL_END
@@ -1702,41 +1711,42 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
 ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
                     _In_ int* providers_length) {
   API_IMPL_BEGIN
+  //TODO: there is no need to manually malloc/free these memory, it is insecure
+  //and inefficient. Instead, the implementation could scan the array twice,
+  //and use a single string object to hold all the names.
   const size_t MAX_LEN = 30;
-  int available_count = (int)(sizeof(providers_available) / sizeof(char*));
-  char** out = (char**)malloc(available_count * sizeof(char*));
+  const auto& available_providers = GetAvailableExecutionProviderNames();
+  const int available_count = gsl::narrow<int>(available_providers.size());
+  char** const out = new char*[available_count];
   if (out) {
     for (int i = 0; i < available_count; i++) {
-      out[i] = (char*)malloc((MAX_LEN + 1) * sizeof(char));
-      if (out[i]) {
+      out[i] = new char[MAX_LEN + 1];
 #ifdef _MSC_VER
-        strncpy_s(out[i], MAX_LEN, providers_available[i], MAX_LEN);
-        out[i][MAX_LEN] = '\0';
+      strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
+      out[i][MAX_LEN] = '\0';
 #elif defined(__APPLE__)
-        strlcpy(out[i], providers_available[i], MAX_LEN);
+      strlcpy(out[i], available_providers[i].c_str(), MAX_LEN);
 #else
-        strncpy(out[i], providers_available[i], MAX_LEN);
-        out[i][MAX_LEN] = '\0';
+      strncpy(out[i], available_providers[i].c_str(), MAX_LEN);
+      out[i][MAX_LEN] = '\0';
 #endif
-      }
     }
   }
   *providers_length = available_count;
   *out_ptr = out;
   API_IMPL_END
-  return NULL;
+  return nullptr;
 }
 
+//TODO: we don't really need the second parameter
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
                     _In_ int providers_length) {
   API_IMPL_BEGIN
   if (ptr) {
     for (int i = 0; i < providers_length; i++) {
-      if (ptr[i]) {
-        free(ptr[i]);
-      }
+      delete[] ptr[i];
     }
-    free(ptr);
+    delete[] ptr;
   }
   API_IMPL_END
   return NULL;
@@ -1795,7 +1805,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetLanguageProjection, _In_ const OrtEnv* ort_env, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Outptr_ uint64_t* out) {
+ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Out_ uint64_t* out) {
   API_IMPL_BEGIN
   const auto* session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   auto profiling_start_time = session->GetProfiling().GetStartTimeNs();
@@ -1884,7 +1894,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_6 = {
+static constexpr OrtApi ort_api_1_to_7 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2073,6 +2083,7 @@ static constexpr OrtApi ort_api_1_to_6 = {
     // End of Version 6 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 7 - In development, feel free to add/remove/rearrange here
+    &OrtApis::ModelMetadataGetGraphDescription,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
@@ -2080,8 +2091,11 @@ static constexpr OrtApi ort_api_1_to_6 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 6)
-    return &ort_api_1_to_6;
+  if (version >= 1 && version <= ORT_API_VERSION)
+    return &ort_api_1_to_7;
+
+  fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
+          version, ORT_API_VERSION);
 
   return nullptr;  // Unsupported version
 }

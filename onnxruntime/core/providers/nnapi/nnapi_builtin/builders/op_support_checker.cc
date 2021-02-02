@@ -6,6 +6,8 @@
 
 #include <core/graph/graph.h>
 
+#include "core/providers/common.h"
+#include "core/providers/shared/utils/utils.h"
 #include "helper.h"
 #include "op_support_checker.h"
 
@@ -194,6 +196,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
           "Mul",
           "Div",
           "QLinearAdd",
+          "Pow",
       });
 }
 
@@ -203,13 +206,18 @@ int32_t BinaryOpSupportChecker::GetMinSupportedSdkVer(
   if (op == "Sub" || op == "Div") {
     return 28;
   }
+
+  if (op == "Pow") {
+    return 29;
+  }
+
   return 27;
 }
 
 int BinaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
   const auto& op(node.OpType());
 
-  // Add/Sub/Mul/Div opset 6- has broadcast attributes we do not support now
+  // Add/Sub/Mul/Div/Pow opset 6- has broadcast attributes we do not support now
   if (op != "QLinearAdd")
     return 7;
 
@@ -217,18 +225,43 @@ int BinaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
 }
 
 bool BinaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
-  if (node.OpType() != "QLinearAdd")
+  bool is_qlinear_add = node.OpType() == "QLinearAdd";
+  bool is_pow = node.OpType() == "Pow";
+  if (!is_qlinear_add && !is_pow)
     return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
-  // QLinearAdd
-  if (!HasValidBinaryOpQuantizedInputs(node))
-    return false;
+  if (is_qlinear_add) {
+    // QLinearAdd
+    if (!HasValidBinaryOpQuantizedInputs(node))
+      return false;
+  }
+
+  // Pow we only support both input as fp32 now
+  if (is_pow) {
+    const auto& input1 = *node.InputDefs()[0];
+    const auto& input2 = *node.InputDefs()[1];
+
+    int32_t input_type_1;
+    if (!GetType(input1, input_type_1))
+      return false;
+
+    int32_t input_type_2;
+    if (!GetType(input2, input_type_2))
+      return false;
+
+    if (input_type_1 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT || input_type_1 != input_type_2) {
+      LOGS_DEFAULT(VERBOSE) << "Pow only supports fp32 inputs, actual input type"
+                            << ", Input type 1: " << input_type_1
+                            << ", Input type 2: " << input_type_2;
+      return false;
+    }
+  }
 
   return true;
 }
 
 bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                               const OpSupportCheckParams& /* params */) const {
+                                               const OpSupportCheckParams& params) const {
   const auto& op_type(node.OpType());
   const auto input_defs(node.InputDefs());
   bool op_is_qlinear = op_type == "QLinearAdd";
@@ -265,7 +298,7 @@ bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
 
     // All scale/zero points are initializer scalars
     // a/b/y_scale
-    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
+    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
       return false;
 
     // a/b/y_zero_point
@@ -599,7 +632,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     }
 
     // a/b/y_scale
-    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
+    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
       return false;
 
     // a/b/y_zero_point
@@ -860,7 +893,7 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
       // All scale/zero points are initializer scalars
       // a/b/y_scale
-      if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}))
+      if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
         return false;
 
       // a/b/y_zero_point
@@ -998,12 +1031,12 @@ class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
-    return 27;
+    return 29;
   }
 };
 
 bool QuantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                                       const OpSupportCheckParams& /* params */) const {
+                                                       const OpSupportCheckParams& params) const {
   const auto input_defs(node.InputDefs());
   const auto output_defs(node.OutputDefs());
 
@@ -1018,7 +1051,7 @@ bool QuantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSe
     return false;
   }
 
-  if (!HasValidQuantizationScales(initializers, node, {1}))
+  if (!HasValidQuantizationScales(initializers, node, {1}, params))
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
@@ -1039,15 +1072,15 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
-    return 29;
+    return 27;
   }
   bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                                         const OpSupportCheckParams& /* params */) const {
+                                                         const OpSupportCheckParams& params) const {
   const auto input_defs(node.InputDefs());
-  if (!HasValidQuantizationScales(initializers, node, {1}))
+  if (!HasValidQuantizationScales(initializers, node, {1}, params))
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
@@ -1295,6 +1328,49 @@ bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
 
 #pragma endregion
 
+#pragma region op_minmax
+
+class MinMaxOpSupportChecker : public BaseOpSupportChecker {
+ public:
+  static void CreateSharedOpSupportChecker(
+      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
+
+ private:
+  int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+    return 29;
+  }
+
+  // Min/Max opset 5- uses consumed_inputs attribute which is not supported for now
+  int GetMinSupportedOpSet(const Node& /* node */) const override { return 6; }
+
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const OpSupportCheckParams& params) const override;
+};
+
+/* static */ void MinMaxOpSupportChecker::CreateSharedOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  CreateSharedOpSupportCheckerImpl<MinMaxOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Min",
+          "Max",
+      });
+}
+
+bool MinMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                               const OpSupportCheckParams& /* params */) const {
+  // TODO support 2+ inputs for Min/Max op
+  if (node.InputDefs().size() != 2) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] only supports 2 inputs, "
+                          << "actual input number, " << node.InputDefs().size();
+    return false;
+  }
+
+  return true;
+}
+
+#pragma endregion
+
 #pragma region CreateGetOpSupportCheckers
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
@@ -1319,6 +1395,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Mul", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Div", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearAdd", BinaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Pow", BinaryOpSupportChecker);
   }
 
   // Relu is always supported, we use BaseOpSupportChecker as default
@@ -1373,6 +1450,10 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Resize", ResizeOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Flatten", FlattenOpSupportChecker);
 
+  {
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Min", MinMaxOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Max", MinMaxOpSupportChecker);
+  }
   return op_registrations;
 }
 

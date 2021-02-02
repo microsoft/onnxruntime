@@ -111,13 +111,13 @@ build_libtool $LIBTOOL_ROOT $LIBTOOL_HASH
 libtool --version
 
 # Install a more recent SQLite3
-curl -fsSLO $SQLITE_AUTOCONF_DOWNLOAD_URL/$SQLITE_AUTOCONF_VERSION.tar.gz
-check_sha256sum $SQLITE_AUTOCONF_VERSION.tar.gz $SQLITE_AUTOCONF_HASH
-tar xfz $SQLITE_AUTOCONF_VERSION.tar.gz
-cd $SQLITE_AUTOCONF_VERSION
+curl -fsSLO $SQLITE_AUTOCONF_DOWNLOAD_URL/$SQLITE_AUTOCONF_ROOT.tar.gz
+check_sha256sum $SQLITE_AUTOCONF_ROOT.tar.gz $SQLITE_AUTOCONF_HASH
+tar xfz $SQLITE_AUTOCONF_ROOT.tar.gz
+cd $SQLITE_AUTOCONF_ROOT
 do_standard_install
 cd ..
-rm -rf $SQLITE_AUTOCONF_VERSION*
+rm -rf $SQLITE_AUTOCONF_ROOT*
 rm /usr/local/lib/libsqlite3.a
 
 # Install a recent version of cmake3

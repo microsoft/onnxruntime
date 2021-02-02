@@ -23,9 +23,7 @@ void WinMLTelemetryHelper::LogWinMLShutDown() {
       provider_,
       "WinMLShutDown",
       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-      TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
-      TraceLoggingString(message.c_str(), "message"),
-      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+      TraceLoggingString(message.c_str(), "message"));
 }
 
 void WinMLTelemetryHelper::LogWinMLSuspended() {
@@ -33,9 +31,7 @@ void WinMLTelemetryHelper::LogWinMLSuspended() {
       provider_,
       "WinMLSuspended",
       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-      TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
-      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
-      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"));
 }
 
 void WinMLTelemetryHelper::LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line) {

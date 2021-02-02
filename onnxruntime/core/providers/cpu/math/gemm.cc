@@ -9,35 +9,66 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Gemm,
     7,
     8,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Gemm,
+    7,
+    8,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Gemm<double>);
 
 // opset 9 added support for additional types (int32, uint32, int64, uint64), however we haven't enabled those yet.
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Gemm,
     9,
     10,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Gemm,
+    9,
+    10,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Gemm<double>);
 
 // opset 11 made bias input 'C' optional
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Gemm,
     11,
     12,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Gemm,
+    11,
+    12,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Gemm<double>);
 
 // opset 13 Adds BFloat16 support but we are not supporting it yet
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Gemm,
     13,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Gemm,
+    13,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Gemm<double>);
 
 bool GemmPackBFp32(const OpKernelInfo& info,
                    const Tensor& tensor_b,

@@ -9,6 +9,7 @@
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
+#include "orttraining/core/session/training_session.h"
 #endif
 
 #include "gtest/gtest.h"
@@ -95,12 +96,8 @@ TEST(CseTests, SimpleTestTraining) {
                   .IsOK());
 
   GraphTransformerManager graph_transformation_mgr(1);
-  // need to declare variables to avoid build error after making
-  // weights_to_train and updated_weight_names as non-const
-  std::unordered_set<std::string> weights_to_train;
-  std::unordered_map<std::string, std::string> updated_weight_names;
-  auto transformers_to_register = onnxruntime::training::transformer_utils::GeneratePreTrainingTransformers(
-      TransformerLevel::Level1, weights_to_train, {}, CPUExecutionProvider(CPUExecutionProviderInfo()), updated_weight_names);
+  auto transformers_to_register = training::transformer_utils::GeneratePreTrainingTransformers(
+      TransformerLevel::Level1, {}, {}, CPUExecutionProvider(CPUExecutionProviderInfo()));
   for (auto& entry : transformers_to_register) {
     ASSERT_TRUE(
         graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1).IsOK());
@@ -225,19 +222,29 @@ TEST(CseTests, Subgraph) {
     }
   }
 
-  output_names = GetSortedNames(if_true_graph->GetOutputs());
-  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+  // Assert that we were able to obtain subgraphs pertaining to the then/else attributes in the 'If' node
+  ASSERT_NE(if_true_graph, nullptr);
+  ASSERT_NE(if_false_graph, nullptr);
 
-  auto op_count = CountOpsInGraph(*if_true_graph);
-  ASSERT_EQ(op_count["Mul"], 1);
-  ASSERT_EQ(op_count["Sum"], 3);
+  // Keep VC++ static analyzer happy
+  if (if_true_graph) {
+    output_names = GetSortedNames(if_true_graph->GetOutputs());
+    ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
 
-  output_names = GetSortedNames(if_false_graph->GetOutputs());
-  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+    auto op_count = CountOpsInGraph(*if_true_graph);
+    ASSERT_EQ(op_count["Mul"], 1);
+    ASSERT_EQ(op_count["Sum"], 3);
+  }
 
-  op_count = CountOpsInGraph(*if_false_graph);
-  ASSERT_EQ(op_count["Mul"], 3);
-  ASSERT_EQ(op_count["Sum"], 1);
+  // Keep VC++ static analyzer happy
+  if (if_false_graph) {
+    output_names = GetSortedNames(if_false_graph->GetOutputs());
+    ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+
+    auto op_count = CountOpsInGraph(*if_false_graph);
+    ASSERT_EQ(op_count["Mul"], 3);
+    ASSERT_EQ(op_count["Sum"], 1);
+  }
 }
 
 TEST(CseTests, MergedValueAndGraphOutputAreOutputsOfSameNode) {

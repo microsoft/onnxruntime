@@ -30,14 +30,6 @@ function(AddTest)
 
   if(_UT_LIBS)
     list(REMOVE_DUPLICATES _UT_LIBS)
-    list (FIND _UT_LIBS "cudart" _index)
-    if (${_index} GREATER -1)
-      if(WIN32)
-        target_link_directories(${_UT_TARGET} PRIVATE ${onnxruntime_CUDA_HOME}/x64/lib64)
-      else()
-        target_link_directories(${_UT_TARGET} PRIVATE ${onnxruntime_CUDA_HOME}/lib64)
-      endif()
-    endif()
   endif()
 
   source_group(TREE ${REPO_ROOT} FILES ${_UT_SOURCES})
@@ -322,7 +314,10 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc)
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
@@ -420,6 +415,10 @@ if(onnxruntime_USE_ROCM)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rocm)
 endif()
 
+if(onnxruntime_USE_COREML)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml onnxruntime_coreml_proto)
+endif()
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
@@ -458,6 +457,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_ROCM}
+    ${PROVIDERS_COREML}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -498,6 +498,14 @@ if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_rknpu)
 endif()
+
+if(onnxruntime_USE_COREML)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/coreml/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml onnxruntime_coreml_proto)
+endif()
+
 
 if(WIN32)
   if (onnxruntime_USE_TVM)
@@ -658,14 +666,6 @@ if (onnxruntime_USE_DNNL)
     COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
     )
 endif()
-if (onnxruntime_USE_MKLML)
-  add_custom_command(
-    TARGET ${test_data_target} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
-    $<TARGET_FILE_DIR:${test_data_target}>
-  )
-endif()
 if(WIN32)
   if (onnxruntime_USE_TVM)
     add_custom_command(
@@ -814,9 +814,11 @@ if (WIN32)
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils onnxruntime_common re2::re2
-          onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime onnxruntime_flatbuffers
-          ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+  set(onnxruntime_perf_test_libs 
+          onnx_test_runner_common onnxruntime_test_utils onnxruntime_common 
+          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto 
+          ${onnxruntime_EXTERNAL_LIBRARIES}
+          ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
   endif()

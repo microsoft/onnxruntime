@@ -67,11 +67,6 @@ struct OpSupportCheckParams;
         "ResultCode: ", GetErrorCause(ret), ", ", (note)); \
   }
 
-template <class Map, class Key>
-inline bool Contains(const Map& map, const Key& key) {
-  return map.find(key) != map.end();
-}
-
 std::string GetErrorCause(int error_code);
 
 enum class QLinearOpType : uint8_t {
@@ -87,7 +82,17 @@ enum class QLinearOpType : uint8_t {
   // QLinearReduceMean,
 };
 
+enum class ConvType : uint8_t {
+  Regular,
+  Depthwise,
+  Grouped,
+};
+
 QLinearOpType GetQLinearOpType(const onnxruntime::Node& node);
+
+// Return the type of the conv ops,
+// This function assumes the input is a 2d conv node
+ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& initializers);
 
 // This qlinear op is an operator takes 2 input and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, ...
@@ -97,7 +102,7 @@ bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type);
 bool HasValidBinaryOpQuantizedInputs(const Node& node);
 // Check if a qlinear op has valid scales for given indices
 bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const Node& node,
-                                const std::vector<size_t>& indices);
+                                const std::vector<size_t>& indices, const OpSupportCheckParams& params);
 // Check if a qlinear op has valid zero points for given indices
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
                                     const std::vector<size_t>& indices);
@@ -127,25 +132,6 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
 
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
-
-/**
- * Wrapping onnxruntime::Node for retrieving attribute values
- */
-class NodeAttrHelper {
- public:
-  NodeAttrHelper(const onnxruntime::Node& node);
-
-  float Get(const std::string& key, float def_val) const;
-  int32_t Get(const std::string& key, int32_t def_val) const;
-  std::vector<float> Get(const std::string& key, const std::vector<float>& def_val) const;
-  std::vector<int32_t> Get(const std::string& key, const std::vector<int32_t>& def_val) const;
-  std::string Get(const std::string& key, const std::string& def_val) const;
-
-  bool HasAttr(const std::string& key) const;
-
- private:
-  const onnxruntime::NodeAttributes& node_attributes_;
-};
 
 }  // namespace nnapi
 }  // namespace onnxruntime

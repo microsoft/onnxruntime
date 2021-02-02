@@ -9,7 +9,9 @@ from .operators.activation import QLinearActivation
 from .operators.binary_op import QLinearBinaryOp
 from .operators.maxpool import QMaxPool
 from .operators.gavgpool import QGlobalAveragePool
-from. operators.lstm import LSTMQuant
+from .operators.lstm import LSTMQuant
+from .operators.split import QSplit
+from .operators.pad import QPad
 
 CommonOpsRegistry = {"Gather": GatherQuant, "EmbedLayerNormalization": EmbedLayerNormalizationQuant}
 
@@ -28,10 +30,12 @@ QLinearOpsRegistry = {
     "Mul": QLinearBinaryOp,
     "Relu": QLinearActivation,
     "Clip": QLinearActivation,
-    "LeakyRelu" : QLinearActivation,
-    "Sigmoid" : QLinearActivation,
+    "LeakyRelu": QLinearActivation,
+    "Sigmoid": QLinearActivation,
     "MaxPool": QMaxPool,
     "GlobalAveragePool": QGlobalAveragePool,
+    "Split" : QSplit,
+    "Pad" : QPad,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 
