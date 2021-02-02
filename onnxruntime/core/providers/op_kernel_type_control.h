@@ -248,7 +248,7 @@ struct EnabledTypes {
  * @param ArgIndex Index of the given Op kernel argument.
  */
 #define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(                                              \
-    OpProvider, OpDomain, OpName, Opset, ArgDirection, ArgIndex)                           \
+    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)                           \
   ::boost::mp11::mp_rename<                                                                \
       ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(                                                 \
           OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, SupportedTypeList), \
@@ -264,7 +264,7 @@ struct EnabledTypes {
  * @param ArgIndex Index of the given Op kernel argument.
  */
 #define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE_ALL_OPSETS(                                  \
-    OpProvider, OpDomain, OpName, Opset, ArgDirection, ArgIndex)                          \
+    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex)                                 \
   ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(OpProvider, OpDomain, OpName,                      \
                                        ::onnxruntime::op_kernel_type_control::kAllOpSets, \
                                        ArgDirection, ArgIndex)
