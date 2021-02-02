@@ -409,7 +409,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   ORT_ENFORCE(window_size < signal_size, "Ensure that the dft size is smaller than the signal.");
 
   // Calculate the number of dfts to run
-  const auto n_dfts = static_cast<int64_t>(std::ceil((signal_size - window_size) / static_cast<float>(frame_step)));
+  const auto n_dfts = static_cast<int64_t>(std::floor((signal_size - window_size) / static_cast<float>(frame_step)) + 1);
 
   // Calculate the output spectra length (onesided will return only the unique values)
   // note: x >> 1 === std::floor(x / 2.f)

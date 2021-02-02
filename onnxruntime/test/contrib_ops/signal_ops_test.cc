@@ -93,6 +93,31 @@ TEST(MLSignalOpTest, IDFTFloat) {
   test.Run();
 }
 
+TEST(MLSignalOpTest, STFTFloat) {
+  OpTester test("STFT", 1, onnxruntime::kMSDomain);
+
+  std::vector<float> signal(64, 1);
+  test.AddInput<float>("signal", {1, 64}, signal);
+  std::vector<float> window(16, 1);
+  test.AddInput<float>("window", {16}, window);
+  test.AddInput<int64_t>("frame_length", {}, {16});
+  test.AddInput<int64_t>("frame_step", {}, {8});
+
+  std::vector<int64_t> output_shape = {1, 7, 9, 2};
+  std::vector<float> expected_output =
+  {
+    16.000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f,
+    16.000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f,
+    16.000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f,
+    16.000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f,
+    16.000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f,
+    16.000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f,
+    16.000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f
+  };
+  test.AddOutput<float>("output", output_shape, expected_output);
+  test.Run();
+}
+
 TEST(MLSignalOpTest, HannWindowFloat) {
   OpTester test("HannWindow", 1, onnxruntime::kMSDomain);
 

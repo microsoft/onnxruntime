@@ -554,7 +554,7 @@ static auto MakeThreeTones(size_t signal_size, size_t sample_rate) {
 
 static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
     size_t hop_size, size_t sample_rate, bool is_onesided = false) {
-  auto n_dfts = static_cast<size_t>(ceil((signal_size - dft_size) / hop_size));
+  auto n_dfts = static_cast<size_t>(1 + floor((signal_size - dft_size) / hop_size));
   auto input_shape = std::vector<int64_t>{1, INT64(signal_size)};
   auto output_shape =
     std::vector<int64_t>{
@@ -629,7 +629,8 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
   printf("\n");
 }
 
-static void MelWeigthMatrix() {
+static void ModelBuilding_MelWeightMatrix() {
+#ifndef BUILD_INBOX
   std::vector<int64_t> output_shape = {INT64(9), INT64(8)};
   auto builder =
     LearningModelBuilder::Create(13)
@@ -659,12 +660,13 @@ static void MelWeigthMatrix() {
   }
 
   printf("\n");
+#endif
 }
 
 static void MelSpectrogramOnThreeToneSignal(
     size_t batch_size, size_t signal_size, size_t window_size, size_t dft_size,
     size_t hop_size, size_t n_mel_bins, size_t sampling_rate) {
-  auto n_dfts = static_cast<size_t>(ceil((signal_size - dft_size) / hop_size));
+  auto n_dfts = static_cast<size_t>(1 + floor((signal_size - dft_size) / hop_size));
   auto onesided_dft_size = (dft_size >> 1) + 1;
   std::vector<int64_t> signal_shape = {INT64(batch_size), INT64(signal_size)};
   std::vector<int64_t> mel_spectrogram_shape = {INT64(batch_size), 1, INT64(n_dfts), INT64(n_mel_bins)};
@@ -782,8 +784,6 @@ static void ModelBuilding_StandardDeviationNormalization() {
 
 static void ModelBuilding_Gemm() {
 #ifndef BUILD_INBOX
-  MelWeigthMatrix();
-
   std::vector<int64_t> shape = {3, 3};
   std::vector<float> x =
   {
@@ -1034,6 +1034,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     ModelBuilding_BlackmanWindow,
     ModelBuilding_STFT,
     ModelBuilding_MelSpectrogramOnThreeToneSignal,
+    ModelBuilding_MelWeightMatrix,
   };
 
   if (SkipGpuTests()) {
