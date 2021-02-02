@@ -101,7 +101,8 @@ common::Status SaveInitializedTensors(
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
-  ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
+  const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+  ORT_ENFORCE(initialized_tensor_set.empty() || ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
 
   // Determine if an intializer was supplied by the user for the purpose of sharing and if it requires a cross-device
   // copy. In case a cross-device copy is required, sharing cannot be accomplished since we allocate our own buffer
@@ -133,7 +134,6 @@ common::Status SaveInitializedTensors(
   };
 
   //1. first plan the memory
-  const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
   std::unordered_map<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
   std::set<int> user_supplied_initializer_ids;  // set containing the ort value ids of all user supplied initializers
   for (const auto& entry : initialized_tensor_set) {

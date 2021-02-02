@@ -5,11 +5,13 @@
 import torch
 from transformers import AutoConfig, BertForSequenceClassification
 import pytest
+import warnings
 from unittest.mock import patch
 
 import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training import _utils, ORTModule
 import _test_helpers
+
 
 # PyTorch model definitions for tests
 
@@ -441,3 +443,142 @@ def test_dynamic_axes_config_BertForSequenceClassification(device = 'cuda'):
     output = model(x, y, None, None, None, None, z)
     assert output is not None
     assert _test_helpers.is_dynamic_axes(model)
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_model_without_parameters(device):
+    class Net(torch.nn.Module):
+        def forward(self, x):
+            return x
+
+    model = Net().to(device)
+    model = ORTModule(model).to(device)
+    _ = model(torch.tensor(1.))
+
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_model_without_trainable_parameters(device):
+
+    model = torch.nn.ReLU()
+    model = ORTModule(model).to(device)
+
+    batch_size = 5
+    nb_classes = 2
+    in_features = 10
+    input = torch.randn(batch_size, in_features, device=device)
+    target = torch.empty(batch_size, dtype=torch.long, device=device).random_(nb_classes)
+    _ = model(input)
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_custom_model_without_trainable_parameters(device):
+    class Net(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.ReLU()
+
+        def forward(self, x):
+            return self.fc1(x)
+
+    model = Net()
+    model = ORTModule(model).to(device)
+    model.to(device)
+    _ = model(torch.tensor(1.).to(device))
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_model_with_unused_trainable_parameters(device):
+    class Net(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(Net, self).__init__()
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1):
+            return input1
+
+    model = Net(784, 500, 10)
+    model = ORTModule(model).to(device)
+    model(torch.tensor(1.).to(device))
+
+def test_model_with_multiple_devices_cpu_cuda():
+    class MultipleDeviceModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10).cpu()
+            self.fc2 = torch.nn.Linear(10, 10).cuda()
+
+        def forward(self, x):
+            x = self.fc1(x)
+            x = self.fc2(x)
+            return x
+
+    model = MultipleDeviceModel()
+    with pytest.raises(RuntimeError) as e:
+        model = ORTModule(model)
+    assert str(e.value) == 'ORTModule supports a single device per model for now'
+
+def test_model_with_multiple_devices_to_to():
+    class MultipleDeviceModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10).to('cpu')
+            self.fc2 = torch.nn.Linear(10, 10).to('cuda')
+
+        def forward(self, x):
+            x = self.fc1(x)
+            x = self.fc2(x)
+            return x
+
+    model = MultipleDeviceModel()
+    with pytest.raises(RuntimeError) as e:
+        model = ORTModule(model)
+    assert str(e.value) == 'ORTModule supports a single device per model for now'
+
+def test_model_with_multiple_devices_to_cpu():
+    class MultipleDeviceModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10).to('cuda')
+            self.fc2 = torch.nn.Linear(10, 10).cpu()
+
+        def forward(self, x):
+            x = self.fc1(x)
+            x = self.fc2(x)
+            return x
+
+    model = MultipleDeviceModel()
+    with pytest.raises(RuntimeError) as e:
+        model = ORTModule(model)
+    assert str(e.value) == 'ORTModule supports a single device per model for now'
+
+def test_model_with_multiple_devices_to_cuda():
+    class MultipleDeviceModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10).to('cpu')
+            self.fc2 = torch.nn.Linear(10, 10).cuda()
+
+        def forward(self, x):
+            x = self.fc1(x)
+            x = self.fc2(x)
+            return x
+
+    model = MultipleDeviceModel()
+    with pytest.raises(RuntimeError) as e:
+        model = ORTModule(model)
+    assert str(e.value) == 'ORTModule supports a single device per model for now'
+
+@pytest.mark.parametrize("device", ['cuda', 'cuda:0', 'cuda:1', 'cuda:2'])
+def test_model_with_different_cuda_devices(device):
+
+    # Trick to run this test in single GPU machines
+    device_id = _utils.get_device_index(device)
+    if device_id >= torch.cuda.device_count():
+        warnings.warn('Skipping test_model_with_different_cuda_devices(cuda:{})'.format(device_id))
+        return
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    model.to(device)
+    x = torch.randn(N, D_in, device=device)
+    model(x)

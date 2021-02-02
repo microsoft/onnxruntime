@@ -55,9 +55,13 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
 
     const Node* node = graph_->GetProducerNode(name);
     if (!node) {
-      ORT_THROW(name, " couldn't find the producer node.");
+      if (x_node_arg_names.size() > 0) {
+        // Allow graphs without nodes such as input1 -> input1
+        ORT_THROW(name, " couldn't find the producer node.");
+      }
+    } else {
+      y_nodes_.insert(node);
     }
-    y_nodes_.insert(node);
   }
 
   reachable_nodes_ = ReverseBFS(y_nodes_);
