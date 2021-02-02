@@ -9,6 +9,7 @@
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/computation_reduction.h"
+#include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -42,7 +43,6 @@
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
-#include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
@@ -52,10 +52,9 @@ namespace transformer_utils {
 
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     TransformerLevel level,
-    std::unordered_set<std::string>& weights_to_train,
+    const std::unordered_set<std::string>& weights_to_train,
     const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration& config,
     const IExecutionProvider& execution_provider,
-    std::unordered_map<std::string, std::string>& updated_weight_names,
     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
@@ -97,13 +96,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       }
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, compatible_eps, weights_to_train));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
-      auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
-      if (horizontal_parallel_size > 1) {
-        LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
-        transformers.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
-            training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
-            horizontal_parallel_size, updated_weight_names, weights_to_train, compatible_eps));
-      }
+      transformers.emplace_back(onnxruntime::make_unique<ConcatSliceElimination>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
 
       if (config.gelu_recompute) {

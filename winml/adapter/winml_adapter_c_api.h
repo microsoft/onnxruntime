@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/session/onnxruntime_c_api.h"
+#include "winrt/windows.foundation.collections.h"
 
 /**
  * All APIs exported by winml_adapter_c_api.h are part of the private interface dedicated to supporting the WinML API.
@@ -294,6 +295,14 @@ struct WinmlAdapterApi {
     * WinML uses this to determine that the correct number of threads was set correctly through OrtSessionOptions.
     */
   OrtStatus*(ORT_API_CALL* SessionGetNumberOfIntraOpThreads)(_In_ OrtSession* session, _Out_ uint32_t* num_threads)NO_EXCEPTION;
+
+      /**
+    * SessionGetNamedDimensionsOverrides
+     * This api returns the named dimension overrides that are specified for this session
+    *
+    * WinML uses this to determine that named dimension overrides were set correctly through OrtSessionOptions.
+    */
+  OrtStatus*(ORT_API_CALL* SessionGetNamedDimensionsOverrides)(_In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& overrides)NO_EXCEPTION;
 
   /**
     * DmlExecutionProviderSetDefaultRoundingMode

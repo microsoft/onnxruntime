@@ -24,6 +24,7 @@
 #include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
+#include <safeint/SafeInt.hpp>
 
 namespace onnxruntime {
 
@@ -60,7 +61,7 @@ class BatchNorm : public OpKernel {
     // calculate sample_size (per individual channel)
     size_t sample_size = 1;
     for (size_t i = 2; i < dims_vec.size(); ++i) {
-      sample_size *= dims_vec[i];
+      sample_size *= gsl::narrow<size_t>(dims_vec[i]);
     }
 
     // calculate sample_size (including all channels)

@@ -95,39 +95,14 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
-/*
- * This method should be called within the constructor,
- * so that the configuration of provider related setting can be updated 
- * and kept at IExecutionProvider level.
- */
-void ROCMExecutionProvider::UpdateProviderOptionsInfo() {
-  UnorderedMapStringToString options;
-
-  options["device_id"] = std::to_string(device_id_);
-  options["hip_mem_limit"] = std::to_string(hip_mem_limit_);
-  std::string strategy;
-  if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo) {
-    strategy = "kNextPowerOfTwo";
-  } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
-    strategy = "kSameAsRequested";
-  } else {
-    strategy = "unknown";
-  }
-  options["arena_extend_strategy"] = strategy;
-
-  IExecutionProvider::SetProviderOptions(options);
-}
-
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
-      device_id_(info.device_id),
-      hip_mem_limit_(info.hip_mem_limit),
-      arena_extend_strategy_(info.arena_extend_strategy) {
-  HIP_CALL_THROW(hipSetDevice(device_id_));
+      info_{info} {
+  HIP_CALL_THROW(hipSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise hipGetDeviceProperties might fail
   HIP_CALL_THROW(hipDeviceSynchronize());
-  HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, device_id_));
+  HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, info_.device_id));
 
   size_t free = 0;
   size_t total = 0;
@@ -137,10 +112,10 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
       [](OrtDevice::DeviceId device_id) {
         return onnxruntime::make_unique<ROCMAllocator>(device_id, CUDA);
       },
-      device_id_,
+      info_.device_id,
       true,
-      {hip_mem_limit_,
-       static_cast<int>(arena_extend_strategy_),
+      {info_.hip_mem_limit,
+       static_cast<int>(info_.arena_extend_strategy),
        -1, -1});
 
   InsertAllocator(CreateAllocator(default_memory_info));
@@ -149,7 +124,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
       [](OrtDevice::DeviceId device_id) {
         return onnxruntime::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
       },
-      CPU_ALLOCATOR_DEVICE_ID);
+      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
   InsertAllocator(CreateAllocator(pinned_memory_info));
 
@@ -161,15 +136,13 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
             OrtMemoryInfo("HIP_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
                           OrtMemTypeCPUInput));
       },
-      CPU_ALLOCATOR_DEVICE_ID);
+      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
-
-  UpdateProviderOptionsInfo();
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
-  auto cpu_alloc = GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  auto cpu_alloc = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
   {
     std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
     auto it = deferred_release_cpu_ptr_.begin();
@@ -215,7 +188,7 @@ ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(device_id_, hip_mem_limit_, arena_extend_strategy_);
+      context = std::make_shared<PerThreadContext>(info_.device_id, info_.hip_mem_limit, info_.arena_extend_strategy);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
@@ -1322,11 +1295,11 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, int32_t, Where)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, int64_t, Where)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, uint8_t, Where)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 12, bool, NonZero)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 12, uint8_t, NonZero)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 12, int32_t, NonZero)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 12, int64_t, NonZero)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 12, float, NonZero)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 12, bool, NonZero)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 12, uint8_t, NonZero)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 12, int32_t, NonZero)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 12, int64_t, NonZero)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 12, float, NonZero)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 1, 9, TopK)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 8, 8, Scan)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 9, 10, Scan)>,
@@ -1454,9 +1427,9 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, float, Pad)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, double, Pad)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, MLFloat16, Pad)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, 12, bool, Equal)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, 12, int32_t, Equal)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, 12, int64_t, Equal)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, 12, bool, Equal)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, 12, int32_t, Equal)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, 12, int64_t, Equal)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, float, Round)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, double, Round)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 11, MLFloat16, Round)>,

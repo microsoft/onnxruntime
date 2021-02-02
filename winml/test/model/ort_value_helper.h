@@ -3,6 +3,8 @@
 
 namespace OrtValueHelpers {
 winml::ITensor LoadTensorFromOrtValue(Ort::Value& val);
+
+Ort::Value CreateOrtValueFromITensor(winml::ITensor winmlTensor);
 }
 
 template <ONNXTensorElementDataType T>

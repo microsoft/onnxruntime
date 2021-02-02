@@ -8,7 +8,6 @@ import numpy as np
 import os
 import shutil
 import pickle
-import binascii
 
 from onnxruntime.training import _checkpoint_storage
 
@@ -215,7 +214,7 @@ def test_checkpoint_storage_for_custom_user_dict_succeeds(checkpoint_storage_tes
         'custom_class': custom_class
     }
 
-    pickled_bytes = binascii.b2a_hex(pickle.dumps(user_dict))
+    pickled_bytes = pickle.dumps(user_dict).hex()
     to_save = {
         'a': torch.tensor(np.array([1.0, 2.0]), dtype=torch.float32),
         'user_dict': pickled_bytes
@@ -224,7 +223,11 @@ def test_checkpoint_storage_for_custom_user_dict_succeeds(checkpoint_storage_tes
 
     loaded_dict = _checkpoint_storage.load(pytest.checkpoint_path)
     assert (loaded_dict['a'] == to_save['a'].numpy()).all()
-    loaded_obj = pickle.loads(binascii.a2b_hex(loaded_dict['user_dict']))
+    try:
+        loaded_dict['user_dict'] = loaded_dict['user_dict'].decode()
+    except AttributeError:
+        pass
+    loaded_obj = pickle.loads(bytes.fromhex(loaded_dict['user_dict']))
 
     assert torch.all(loaded_obj['tensor1'].eq(user_dict['tensor1']))
     assert loaded_obj['custom_class'] == custom_class

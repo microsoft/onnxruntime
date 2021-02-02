@@ -4,9 +4,10 @@
 
 #include "core/graph/graph_viewer.h"
 #include "core/framework/compute_capability.h"
-#include "core/framework/kernel_registry_manager.h"
-#include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_registry_manager.h"
+#include "core/framework/murmurhash3.h"
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 
@@ -51,14 +52,6 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 #endif
 }
 
-common::Status IExecutionProvider::Sync() const { return Status::OK(); };
-
-common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
-
-common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
-
-common::Status IExecutionProvider::OnSessionInitializationEnd() { return Status::OK(); }
-
 // Update allocator in the provider if already present; ignore if not.
 void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
@@ -81,27 +74,112 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   allocator_list_.push_back(allocator);
 }
 
+void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
+  const OrtMemoryInfo& info = allocator->Info();
+  auto ite = mem_info_set_.find(info);
+  if (ite != mem_info_set_.end()) {
+    LOGS_DEFAULT(WARNING) << "duplicated allocator: " << info.ToString();
+    return;
+  }
+  InsertAllocator(allocator);
+}
+
+void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> ) {
+  return;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with fused Node is not implemented by " + type_);
 }
 
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::string& /*dll_path*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with fused Node and dll path is not implemented by " + type_);
 }
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED,
+                        "IExecutionProvider::Compile with FusedNodeAndGraph is not implemented by " + type_);
 }
 #endif
 
-std::shared_ptr<KernelRegistry> IExecutionProvider::GetKernelRegistry() const {
-  return nullptr;
+int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
+                                                            uint64_t& model_hash) {
+  model_hash = 0;
+
+  // find the top level graph
+  const Graph* cur_graph = &graph_viewer.GetGraph();
+  while (cur_graph->IsSubgraph()) {
+    cur_graph = cur_graph->ParentGraph();
+  }
+
+  uint32_t instance_hash[4] = {0, 0, 0, 0};
+
+  const Graph& main_graph = *cur_graph;
+
+  // hash the bytes in the Graph instance. we can't just use the address as a new Graph instance may use
+  // the same memory (unit tests prove this can occur). the raw bytes of the Graph instance should be a unique
+  // fingerprint for the instance that can use used as the key to the hash of the model path/contents.
+  MurmurHash3::x86_128(&main_graph, gsl::narrow_cast<int32_t>(sizeof(Graph)), instance_hash[0], &instance_hash);
+  uint64_t graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
+
+  // if we've already hashed this main graph instance use the cached value
+  auto entry = main_graph_hash_.find(graph_instance_hash);
+  if (entry != main_graph_hash_.cend()) {
+    model_hash = entry->second;
+  } else {
+    uint32_t hash[4] = {0, 0, 0, 0};
+
+    // prefer path the model was loaded from
+    // this may not be available if the model was loaded from a stream or in-memory bytes
+    const auto& model_path_str = main_graph.ModelPath().ToPathString();
+    if (!model_path_str.empty()) {
+      MurmurHash3::x86_128(model_path_str.data(), gsl::narrow_cast<int32_t>(model_path_str.size()), hash[0], &hash);
+    } else {
+      auto hash_str = [&hash](const std::string& str) {
+        MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+      };
+
+      // fingerprint the main graph by hashing graph inputs and the ordered outputs from each node
+      for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
+        hash_str(node_arg->Name());
+      }
+
+      // note: process nodes in order defined in model to be deterministic
+      for (const auto& node : main_graph.Nodes()) {
+        for (const auto* node_arg : node.OutputDefs()) {
+          if (node_arg->Exists()) {
+            hash_str(node_arg->Name());
+          }
+        }
+      }
+    }
+
+    model_hash = hash[0] | (uint64_t(hash[1]) << 32);
+
+    main_graph_hash_[graph_instance_hash] = model_hash;
+  }
+
+  // return the current unique id, and increment to update
+  return model_metadef_id_[model_hash]++;
+}
+
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
+  ORT_ENFORCE(metadef_id_generator_,
+              "IExecutionProvider constructor must be called with true for use_metadef_id_creator");
+
+  // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
+  // use a lock when generating an id to be paranoid
+  static OrtMutex mutex;
+  std::lock_guard<OrtMutex> lock(mutex);
+  return metadef_id_generator_->GenerateId(graph_viewer, model_hash);
 }
 
 }  // namespace onnxruntime

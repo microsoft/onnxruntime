@@ -17,8 +17,8 @@ bool CanDoTranspose4D(const cudaDeviceProp& prop,
                       const std::vector<int64_t>& input_dims,
                       const std::vector<size_t>& permutations);
 Status Transpose4DImpl(size_t element_size, const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides, const void* input_data,
-                       const TArray<int64_t>& output_strides, void* output_data, int64_t N);
+                       const TArray<int64_t>& output_strides, void* output_data, int N);
 Status TransposeImpl(size_t element_size, int32_t shape_rank, const TArray<int64_t>& input_strides,
-                     const void* input_data, const TArray<fast_divmod>& fdm_output_strides, void* output_data, int64_t N);
+                     const void* input_data, const TArray<fast_divmod>& fdm_output_strides, void* output_data, int N);
 }  // namespace cuda
 }  // namespace onnxruntime

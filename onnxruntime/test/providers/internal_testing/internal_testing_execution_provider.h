@@ -24,8 +24,5 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
 
  private:
   const std::unordered_set<std::string> ops_;
-
-  // unique counter to name each fused kernel across the entire model
-  mutable int metadef_id_{0};
 };
 }  // namespace onnxruntime

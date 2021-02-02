@@ -14,7 +14,7 @@ namespace openvino_ep {
 // Singleton class that manages all the backends
 class BackendManager {
  public:
-  BackendManager(const onnxruntime::Provider_Node* fused_node, const logging::Logger& logger);
+  BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger);
   void Compute(Ort::CustomOpApi api, OrtKernelContext* context);
   void ShutdownBackendManager();
   static GlobalContext& GetGlobalContext();
@@ -22,8 +22,8 @@ class BackendManager {
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::Provider_ModelProto> GetModelProtoFromFusedNode(
-      const onnxruntime::Provider_Node* fused_node, const logging::Logger& logger) const;
-  bool ModelHasSymbolicInputDims(const onnxruntime::Provider_Node* fused_node) const;
+      const onnxruntime::Node* fused_node, const logging::Logger& logger) const;
+  bool ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const;
   bool ModelHasBatchedInputs(const ONNX_NAMESPACE::Provider_ModelProto& model_proto) const;
 
   std::shared_ptr<ONNX_NAMESPACE::Provider_ModelProto>

@@ -36,10 +36,6 @@ const std::unordered_map<std::string, std::vector<int64_t>> WEIGHT_TO_SHAPE_MAP 
     {"B2", {32}},
     {"W3", {32, 10}},
     {"B1", {128}}};
-const std::vector<std::string> MOMENT_PREFIX = {"Moment_1", "Moment_2"};
-const std::vector<std::string> MOMENT_UC_PREFIX = {"Moment_1", "Moment_2", "Update_Count"};
-constexpr char STEP_TENSOR_NAME[] = "Step";
-constexpr char UC_PREFIX[] = "Update_Count";
 
 void GenerateOptimizerConfig(const std::string optimizer_name,
                              const bool use_mixed_precision_moments,

@@ -53,6 +53,7 @@ file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
+  "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
 )
 
 if(onnxruntime_USE_NUPHAR)
@@ -70,6 +71,10 @@ endif()
 if(onnxruntime_USE_TENSORRT)
   set(PROVIDERS_TENSORRT onnxruntime_providers_tensorrt)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES tensorrt)
+endif()
+if(onnxruntime_USE_COREML)
+  set(PROVIDERS_COREML onnxruntime_providers_coreml)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
 endif()
 if(onnxruntime_USE_NNAPI_BUILTIN)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
@@ -128,13 +133,11 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/adasum/*"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/communication/*"
   )
-
-  if (NOT onnxruntime_USE_HOROVOD)
-    list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/horovod_kernels.cc"
-    )
-  endif()
 
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
@@ -167,7 +170,7 @@ if(HAS_DEPRECATED_COPY)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/where_op.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
 endif()
 
-target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${RE2_INCLUDE_DIR})
+target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR})
 
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -176,11 +179,7 @@ if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
 
-  if (onnxruntime_USE_HOROVOD)
-    target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
-  endif()
-
-  if (onnxruntime_USE_MPI)
+  if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_INCLUDE_DIRS})
   endif()
 endif()
@@ -223,13 +222,6 @@ if (onnxruntime_USE_CUDA)
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cu"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cuh"
     )
-
-    if (NOT onnxruntime_USE_HOROVOD)
-      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/horovod_kernels.cc"
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/ready_event.cc"
-      )
-    endif()
 
     # NCCL is not support in Windows build
     if (WIN32)
@@ -278,10 +270,6 @@ if (onnxruntime_USE_CUDA)
   if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS})
 
-    if (onnxruntime_USE_HOROVOD)
-      target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
-    endif()
-
     if (onnxruntime_USE_NCCL)
       target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
     endif()
@@ -319,7 +307,7 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL OR onnxruntime_USE_OPENVINO)
-  file(GLOB_RECURSE onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
+  file(GLOB onnxruntime_providers_shared_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/*.cc"
   )
@@ -536,14 +524,6 @@ endif()
 
 if (onnxruntime_USE_OPENVINO)
 
-  if (NOT WIN32)
-    if(OPENVINO_VERSION STREQUAL "2020.2")
-      include(openvino)
-      list(APPEND OPENVINO_LIB_LIST onnxruntime_EXTERNAL_LIBRARIES ovep_ngraph)
-      list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
-    endif()
-  endif()
-
 #  include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
   file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.h"
@@ -554,75 +534,62 @@ if (onnxruntime_USE_OPENVINO)
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
 
-  if (onnxruntime_USE_OPENVINO_BINARY)
+  # Header paths
+  list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
+  list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
+  list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/include)
 
-    # Header paths
-    list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
-    list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
-    list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/include)
+  # Library paths
+  list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib)
+  list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/bin)
+  list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib)
 
-    # Library paths
-    list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib)
-    list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/bin)
-    list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib)
+  # Lib names
+  if (WIN32)
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+      list(APPEND OPENVINO_LIB_LIST inference_engined.lib inference_engine_legacyd.lib tbb.lib ${PYTHON_LIBRARIES})
+    else()
+      list(APPEND OPENVINO_LIB_LIST inference_engine.lib inference_engine_legacy.lib tbb.lib ${PYTHON_LIBRARIES})
+    endif()
+  else()
+    list(APPEND OPENVINO_LIB_LIST -linference_engine -linference_engine_legacy -ltbb ${PYTHON_LIBRARIES})
+  endif()
 
-    # Lib names
+    # Link to nGraph from OpenVINO installation
+  list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/include)
+  list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/include/ngraph/frontend)
+  list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/lib)
+  if (OPENVINO_VERSION VERSION_EQUAL "2020.4")
+    if (WIN32)
+      list(APPEND OPENVINO_LIB_LIST ngraph.lib onnx_importer.lib)
+    else()
+      list(APPEND OPENVINO_LIB_LIST -lngraph -lonnx_importer)
+    endif()
+  endif()
+
+  if (OPENVINO_VERSION VERSION_GREATER "2020.4")
     if (WIN32)
       if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        list(APPEND OPENVINO_LIB_LIST inference_engined.lib inference_engine_legacyd.lib tbb.lib ${PYTHON_LIBRARIES})
+        list(APPEND OPENVINO_LIB_LIST ngraphd.lib onnx_importerd.lib)
       else()
-        list(APPEND OPENVINO_LIB_LIST inference_engine.lib inference_engine_legacy.lib tbb.lib ${PYTHON_LIBRARIES})
+        list(APPEND OPENVINO_LIB_LIST ngraph.lib onnx_importer.lib)
       endif()
     else()
-      list(APPEND OPENVINO_LIB_LIST -linference_engine -linference_engine_legacy -ltbb ${PYTHON_LIBRARIES})
+      list(APPEND OPENVINO_LIB_LIST -lngraph -lonnx_importer)
     endif()
+  endif()
 
-    if ((OPENVINO_VERSION VERSION_GREATER_EQUAL "2020.3") OR (WIN32))
-      # Link to nGraph from OpenVINO installation
-      list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/include)
-      list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/include/ngraph/frontend)
-      list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/lib)
-      if (OPENVINO_VERSION VERSION_EQUAL "2020.4")
-        if (WIN32)
-          list(APPEND OPENVINO_LIB_LIST ngraph.lib onnx_importer.lib)
-        else()
-          list(APPEND OPENVINO_LIB_LIST -lngraph -lonnx_importer)
-        endif()
-      endif()
-      if (OPENVINO_VERSION VERSION_GREATER "2020.4")
-        if (WIN32)
-          if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-            list(APPEND OPENVINO_LIB_LIST ngraphd.lib onnx_importerd.lib)
-          else()
-            list(APPEND OPENVINO_LIB_LIST ngraph.lib onnx_importer.lib)
-          endif()
-        else()
-          list(APPEND OPENVINO_LIB_LIST -lngraph -lonnx_importer)
-        endif()
-      endif()
-      else()
-        if (WIN32)
-          list(APPEND OPENVINO_LIB_LIST ngraph.lib)
-        else()
-          list(APPEND OPENVINO_LIB_LIST -lngraph)
-        endif()
-      endif()
-    else ()
-      # Link to locally built nGraph
-      list(APPEND OPENVINO_INCLUDE_DIR_LIST ${ngraph_INCLUDE_DIRS})
-    endif()
-
-    if(WIN32)
-      if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Debug)
-      else()
-        list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
-      endif()
-    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-      list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/aarch64)
+  if(WIN32)
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+      list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Debug)
     else()
-      list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64)
+      list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
     endif()
+  elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/aarch64)
+  else()
+    list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64)
+  endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   add_library(onnxruntime_providers_openvino SHARED ${onnxruntime_providers_openvino_cc_srcs})
@@ -656,6 +623,78 @@ if (onnxruntime_USE_OPENVINO)
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
+if (onnxruntime_USE_COREML)
+  add_compile_definitions(USE_COREML=1)
+
+  # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml
+  set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/external/coremltools/mlmodel/format)
+  file(GLOB coreml_proto_srcs
+    "${COREML_PROTO_ROOT}/*.proto"
+  )
+  add_library(onnxruntime_coreml_proto ${coreml_proto_srcs})
+  target_include_directories(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}")
+  target_compile_definitions(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
+  set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
+  set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility-inlines-hidden")
+  set(_src_sub_dir "coreml/")
+  onnxruntime_protobuf_generate(
+    APPEND_PATH
+    GEN_SRC_SUB_DIR ${_src_sub_dir}
+    IMPORT_DIRS ${COREML_PROTO_ROOT}
+    TARGET onnxruntime_coreml_proto)
+
+  # These are shared utils,
+  # TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
+  file(GLOB_RECURSE onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
+  )
+
+  file(GLOB
+    onnxruntime_providers_coreml_cc_srcs_top CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/*.cc"
+  )
+
+  # Add builder source code
+  file(GLOB_RECURSE
+    onnxruntime_providers_coreml_cc_srcs_nested CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
+  )
+
+  # Add CoreML objective c++ source code
+  file(GLOB
+    onnxruntime_providers_coreml_objcc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
+  )
+
+  set_source_files_properties(
+    ${onnxruntime_providers_coreml_objcc_srcs}
+    COMPILE_FLAGS "${CMAKE_OBJC_FLAGS} -Xclang -x -Xclang objective-c++ -fobjc-arc"
+  )
+
+  set(onnxruntime_providers_coreml_cc_srcs
+    ${onnxruntime_providers_coreml_cc_srcs_top}
+    ${onnxruntime_providers_coreml_cc_srcs_nested}
+    ${onnxruntime_providers_shared_utils_cc_srcs}
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_coreml_cc_srcs})
+  add_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  target_link_libraries(onnxruntime_providers_coreml PRIVATE onnxruntime_coreml_proto "-framework Foundation" "-framework CoreML")
+  add_dependencies(onnxruntime_providers_coreml onnx onnxruntime_coreml_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_coreml PROPERTIES CXX_STANDARD_REQUIRED ON)
+  set_target_properties(onnxruntime_providers_coreml PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_coreml PRIVATE ${ONNXRUNTIME_ROOT} ${coreml_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_providers_coreml PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
 if (onnxruntime_USE_NNAPI_BUILTIN)
   if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
     message(FATAL_ERROR "NNAPI can not be used in a basic minimal build. Please build with '--minimal_build extended'")
@@ -684,6 +723,13 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
   )
 
+  # These are shared utils,
+  # TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
+  file(GLOB_RECURSE onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
+  )
+
   if(CMAKE_SYSTEM_NAME STREQUAL "Android")
     file(GLOB_RECURSE
       onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
@@ -703,7 +749,12 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     )
   endif()
 
-  set(onnxruntime_providers_nnapi_cc_srcs ${onnxruntime_providers_nnapi_cc_srcs_top} ${onnxruntime_providers_nnapi_cc_srcs_nested})
+  set(onnxruntime_providers_nnapi_cc_srcs
+    ${onnxruntime_providers_nnapi_cc_srcs_top}
+    ${onnxruntime_providers_nnapi_cc_srcs_nested}
+    ${onnxruntime_providers_shared_utils_cc_srcs}
+  )
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
   add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers)
@@ -874,7 +925,7 @@ if (onnxruntime_USE_ARMNN)
   onnxruntime_add_include_to_target(onnxruntime_providers_armnn onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
   add_dependencies(onnxruntime_providers_armnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_armnn PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_armnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ARMNN_HOME} ${onnxruntime_ARMNN_HOME}/include)
+  target_include_directories(onnxruntime_providers_armnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ARMNN_HOME} ${onnxruntime_ARMNN_HOME}/include ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/armnn  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_armnn PROPERTIES LINKER_LANGUAGE CXX)
 endif()

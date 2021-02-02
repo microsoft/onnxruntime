@@ -10,7 +10,7 @@ namespace cuda {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     TopK,
     kOnnxDomain,
-    1,9,
+    1, 9,
     kCudaExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     TopK<false>);
@@ -18,9 +18,9 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     TopK,
     kOnnxDomain,
-    10,10,
+    10, 10,
     kCudaExecutionProvider,
-    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -28,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     11,
     kCudaExecutionProvider,
-    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
 
 template <bool inputk>

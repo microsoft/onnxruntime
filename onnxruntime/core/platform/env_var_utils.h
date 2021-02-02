@@ -3,10 +3,9 @@
 
 #pragma once
 
-#include <sstream>
-
 #include "core/common/common.h"
 #include "core/common/optional.h"
+#include "core/common/parse_string.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {
@@ -20,10 +19,9 @@ optional<T> ParseEnvironmentVariable(const std::string& name) {
     return {};
   }
 
-  std::istringstream is{value_str};
   T parsed_value;
   ORT_ENFORCE(
-      is >> std::noskipws >> parsed_value && is.eof(),
+      TryParseStringWithClassicLocale(value_str, parsed_value),
       "Failed to parse environment variable - name: \"", name, "\", value: \"", value_str, "\"");
 
   return parsed_value;
