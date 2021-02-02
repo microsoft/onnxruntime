@@ -11,10 +11,26 @@
 
 #include "core/framework/data_types_internal.h"
 
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
+
+template <typename T>
+int GetMinRequiredCudaComputeCapability() {
+  return 0;
+}
+
+template <>
+int GetMinRequiredCudaComputeCapability<MLFloat16>() {
+  return 530;
+}
+
+template <>
+int GetMinRequiredCudaComputeCapability<BFloat16>() {
+  return 800;
+}
 
 template <typename SrcType,
           typename DstType>
@@ -27,7 +43,15 @@ void TestCastOp(gsl::span<const SrcType> input,
   test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<DstType>());
   test.AddInput<SrcType>("input", dimensions, input.data(), input.size());
   test.AddOutput<DstType>("output", dimensions, output.data(), output.size());
-  test.Run(expect_result, expected_failure_string, {kTensorrtExecutionProvider});
+
+  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
+  const auto min_required_cuda_compute_capability =
+      std::max(GetMinRequiredCudaComputeCapability<SrcType>(), GetMinRequiredCudaComputeCapability<DstType>());
+  if (!HasCudaEnvironment(min_required_cuda_compute_capability)) {
+    excluded_provider_types.insert(kCudaExecutionProvider);
+  }
+
+  test.Run(expect_result, expected_failure_string, excluded_provider_types);
 }
 
 template <typename T>
