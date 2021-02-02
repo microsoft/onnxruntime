@@ -1260,7 +1260,8 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                   onnx_pads, onnx_strides, kernel_shape,
                                   use_nchw,
                                   output));
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  OperandType output_operand_type = operand_types.at(input);
+  output_operand_type.SetDimensions(shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
   return Status::OK();
@@ -1934,7 +1935,8 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   const auto& output = node.OutputDefs()[0]->Name();
   ORT_RETURN_IF_ERROR(shaper.Concat(inputs, axis, output));
-  const OperandType output_operand_type(operand_types.at(input0).type, shaper[output]);
+  OperandType output_operand_type = operand_types.at(input0);
+  output_operand_type.SetDimensions(shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
   return Status::OK();

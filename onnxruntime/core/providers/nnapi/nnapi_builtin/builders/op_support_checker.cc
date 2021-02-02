@@ -321,6 +321,8 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
     return 28;
   }
+
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
@@ -333,6 +335,22 @@ bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /*
   if (input_size > 4 || input_size == 0) {
     LOGS_DEFAULT(VERBOSE) << "Transpose only supports 1-4d shape, input is "
                           << input_size << "d shape";
+    return false;
+  }
+
+  return true;
+}
+
+bool TransposeOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
     return false;
   }
 
@@ -465,6 +483,8 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& params) const override {
     return params.use_nchw ? 29 : 28;
   }
+
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 /* static */ void PoolOpSupportChecker::CreateSharedOpSupportChecker(
@@ -531,6 +551,22 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* init
     }
   } else if (op_type != "GlobalAveragePool" && op_type != "GlobalMaxPool") {
     LOGS_DEFAULT(VERBOSE) << "PoolOpBuilder, unknown op: " << op_type;
+    return false;
+  }
+
+  return true;
+}
+
+bool PoolOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
     return false;
   }
 
@@ -964,6 +1000,8 @@ class ConcatOpSupportChecker : public BaseOpSupportChecker {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
+
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
@@ -976,6 +1014,22 @@ bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* in
   if (input_size > 4 || input_size == 0) {
     LOGS_DEFAULT(VERBOSE) << "Concat only supports up to 1-4d shape, input is "
                           << input_size << "d shape";
+    return false;
+  }
+
+  return true;
+}
+
+bool ConcatOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
     return false;
   }
 

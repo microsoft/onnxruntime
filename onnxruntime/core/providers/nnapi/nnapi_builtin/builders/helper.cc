@@ -368,14 +368,54 @@ bool IsValidSupportedNodesVec(const std::vector<size_t>& supported_node_vec, con
   return true;
 }
 
+// We support some operators running using uint8 internally
+// These nodes cannot use a graph input as input since onnx graph input does not carry scale/zero point info
+bool IsInternalQuantizationSupported(const Node& node, const GraphViewer& graph_viewer,
+                                     const std::vector<size_t>& group) {
+  const auto& node_type = node.OpType();
+  if (node_type != "Transpose" &&
+      node_type != "Resize" &&
+      node_type != "Concat" &&
+      node_type != "GlobalAveragePool" &&
+      node_type != "GlobalMaxPool" &&
+      node_type != "AveragePool" &&
+      node_type != "MaxPool") {
+    return true;
+  }
+
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  // Not running using quantized input
+  if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT)
+    return true;
+
+  // Get all the node in the group (current parition)
+  const std::vector<NodeIndex>& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  std::unordered_set<NodeIndex> nodes_in_group;
+  for (const auto index : group) {
+    nodes_in_group.insert(node_indices[index]);
+  }
+
+  // The node's input(s) have to be an output of node(s) within the group
+  // If not, then this node is using graph input(s) as input(s)
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    if (!Contains(nodes_in_group, it->GetNode().Index())) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
   const auto& op_support_checkers = GetOpSupportCheckers();
-  if (Contains(op_support_checkers, node.OpType())) {
-    const auto* op_support_checker = op_support_checkers.at(node.OpType());
-    return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
-  } else {
+  if (!Contains(op_support_checkers, node.OpType()))
     return false;
-  }
+
+  const auto* op_support_checker = op_support_checkers.at(node.OpType());
+  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
 }
 
 std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
@@ -391,7 +431,9 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer.GetNode(node_indices[i]));
-    bool supported = IsNodeSupported(*node, graph_viewer, params);
+    bool supported = IsNodeSupported(*node, graph_viewer, params) &&
+                     IsInternalQuantizationSupported(*node, graph_viewer, supported_node_vec);
+
     LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node->OpType()
                           << "] index: [" << i
                           << "] name: [" << node->Name()

@@ -293,7 +293,7 @@ Status ModelBuilder::RegisterModelInputs() {
           if (!Contains(all_quantized_op_inputs, input_name)) {
             // We current do not support uint8 input if it is not a quantized input
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "The input of graph doesn't have valid type, name: ", input_name,
+                                   "The input of graph doesn't have unsupported quantized type, name: ", input_name,
                                    " type: ", type_proto->tensor_type().elem_type());
           }
 
@@ -305,7 +305,7 @@ Status ModelBuilder::RegisterModelInputs() {
         default: {
           // TODO: support other type
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "The input of graph doesn't have valid type, name: ", input_name,
+                                 "The input of graph doesn't have unsupported type, name: ", input_name,
                                  " type: ", type_proto->tensor_type().elem_type());
         }
       }
@@ -369,6 +369,7 @@ void ModelBuilder::RegisterModelShaper() {
 Status ModelBuilder::AddNewOperand(const std::string& name,
                                    const OperandType& operand_type,
                                    bool is_nhwc, uint32_t& index) {
+  LOGS_DEFAULT(VERBOSE) << "operand name: " << name;
   ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operand_type, index));
   RegisterOperand(name, index, operand_type, is_nhwc);
   return Status::OK();
@@ -535,6 +536,12 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
 int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+
+  // We do not support activation fusion for quantized operators for now
+  auto qlinear_op_type = GetQLinearOpType(node);
+  if (qlinear_op_type != QLinearOpType::Unknown)
+    return fuse_code;
+
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
