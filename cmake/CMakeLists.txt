@@ -1243,16 +1243,13 @@ if (onnxruntime_USE_DML)
   include(dml)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  add_compile_definitions(ENABLE_TRAINING_OPS)
-endif()
-
 if (onnxruntime_ENABLE_TRAINING_OPS)
   add_compile_definitions(ENABLE_TRAINING_OPS)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING_OPS)
 
   if (UNIX)
     # Find MPI
