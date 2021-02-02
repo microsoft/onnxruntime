@@ -114,7 +114,6 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   } else {
     CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
   }
-  std::cout << "cuda stream: " << stream_ << std::endl;
 
   size_t free = 0;
   size_t total = 0;

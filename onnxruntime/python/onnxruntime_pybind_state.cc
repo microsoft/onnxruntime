@@ -501,7 +501,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                                           sess->GetSessionOptions().enable_cpu_mem_arena));
     } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-      OrtTensorRTProviderOptions params;
+      OrtTensorRTProviderOptions params{0, 0, nullptr};
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params));
 #endif
     } else if (type == kMIGraphXExecutionProvider) {
