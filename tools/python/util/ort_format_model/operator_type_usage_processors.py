@@ -182,7 +182,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
                 self._output_types[int(o_str)] = set(values)
 
 
-class TypedRegistrationUsingOutput0(DefaultTypeUsageProcessor):
+class Output0TypedRegistrationProcessor(DefaultTypeUsageProcessor):
     '''
     Processor for operators where the first output type is used in a typed kernel registration.
     '''
@@ -303,8 +303,8 @@ def _create_operator_type_usage_processors():
 
     # we only support 'float' as input for [Dynamic]QuantizeLinear so just track the output type
     # as that's what is used in the typed registration
-    add(TypedRegistrationUsingOutput0('ai.onnx', 'QuantizeLinear'))
-    add(TypedRegistrationUsingOutput0('ai.onnx', 'DynamicQuantizeLinear'))
+    add(Output0TypedRegistrationProcessor('ai.onnx', 'QuantizeLinear'))
+    add(Output0TypedRegistrationProcessor('ai.onnx', 'DynamicQuantizeLinear'))
 
     # OneHot concatenates type strings into a triple in the typed registration
     #   e.g. float_int64_t_int64_t
