@@ -62,7 +62,7 @@ class DnnlConv : public DnnlKernel {
  public:
   DnnlConv(const DnnlNode& node,
            DNNLExecutionProvider* provider,
-           const Provider_NodeAttributes& attributes,
+           const NodeAttributes& attributes,
            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
@@ -258,17 +258,23 @@ class DnnlConv : public DnnlKernel {
 
     dnnl::memory::dims conv_zero_padding = {0, 0};
 
+#ifdef ENABLE_TRAINING
+    auto prop_kind = dnnl::prop_kind::forward_training;
+#else
+    auto prop_kind = dnnl::prop_kind::forward_inference;
+#endif  // ENABLE_TRAINING
+
     if (!bias_dims_mkl.empty()) {
       fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
           dnnl::convolution_forward::desc(
-              dnnl::prop_kind::forward_inference, dnnl::algorithm::convolution_direct, *src_md_,
+              prop_kind, dnnl::algorithm::convolution_direct, *src_md_,
               *filter_md_, *bias_md_, *primitive_dst_md_,
               strides_mkl, dilations_mkl, padding_left_mkl,
               padding_right_mkl));
     } else {
       fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
           dnnl::convolution_forward::desc(
-              dnnl::prop_kind::forward_inference, dnnl::algorithm::convolution_direct, *src_md_,
+              prop_kind, dnnl::algorithm::convolution_direct, *src_md_,
               *filter_md_, *primitive_dst_md_, strides_mkl,
               dilations_mkl, padding_left_mkl, padding_right_mkl));
     }
@@ -335,7 +341,7 @@ class DnnlConv : public DnnlKernel {
           src_mem_ = parents_[0].get()->primitive_dst_mem_;
         }
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       if (primitive_src_desc_ != source_desc_) {
         dnnl::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
         auto pd = dnnl::memory::desc({{src_dims}, DnnnType<T>(), ort_source_format_});
@@ -381,7 +387,7 @@ class DnnlConv : public DnnlKernel {
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(conv_fwd_pd_.get()->dst_desc(), cpu_engine));
       }
-    } else { // gpu_available_
+    } else {  // gpu_available_
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(conv_fwd_pd_.get()->dst_desc(), gpu_engine));
     }
@@ -397,7 +403,7 @@ class DnnlConv : public DnnlKernel {
                             {DNNL_ARG_WEIGHTS, *filter_mem_},
                             {DNNL_ARG_BIAS, *bias_mem_},
                             {DNNL_ARG_DST, *primitive_dst_mem_}});
-      } else { // gpu_available_
+      } else {  // gpu_available_
         bias_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(conv_fwd_pd_.get()->bias_desc(), gpu_engine));
         net.push_back(dnnl::reorder(*bias_mem_, *bias_mem_gpu_));
@@ -417,7 +423,7 @@ class DnnlConv : public DnnlKernel {
         net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
                             {DNNL_ARG_WEIGHTS, *filter_mem_},
                             {DNNL_ARG_DST, *primitive_dst_mem_}});
-      } else { // gpu_available_
+      } else {  // gpu_available_
         net.push_back(*conv_fwd_);
         net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
                             {DNNL_ARG_WEIGHTS, *filter_mem_gpu_},
@@ -475,7 +481,7 @@ class DnnlConv : public DnnlKernel {
 
           provider_->SaveAllocatedMemory(std::move(filter_reorder_buffer));
           filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
-        } else { // gpu_available_
+        } else {  // gpu_available_
           filter_dst_mem = onnxruntime::make_unique<dnnl::memory>(
               dnnl::memory(conv_fwd_pd_->weights_desc(), dnnl_engine_gpu_));
 
@@ -483,7 +489,12 @@ class DnnlConv : public DnnlKernel {
               .execute(dnnl_engine_gpu_, src, *filter_dst_mem);
         }
 
+        // Do not use cached weights if running training since weight is changed each iteration
+#ifndef ENABLE_TRAINING
         provider_->SetWeightsMemoryBuffer(mklnode_ptr_->weight_name, filter_dst_mem);
+#else
+        filter_dst_mem_ = filter_dst_mem;
+#endif  // !ENABLE_TRAINING
       }
     }
   }
@@ -502,6 +513,8 @@ class DnnlConv : public DnnlKernel {
       const OrtValue* binput_tensor = ort.KernelContext_GetInput(context, input_index + 2);
       bias_data = const_cast<T*>(ort.GetTensorData<T>(binput_tensor));
     }
+    // Do not use cached weights if running training
+#ifndef ENABLE_TRAINING
     std::shared_ptr<dnnl::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
     if (filter_dst_mem == nullptr) {
       ReorderWeights(api, context, dnnl_engine_cpu_);
@@ -510,12 +523,23 @@ class DnnlConv : public DnnlKernel {
     if (!gpu_available_) {
       filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
       filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
-    } else { // gpu_available_ 
+    } else {  // gpu_available_
 #ifdef USE_DNNL_GPU_OCL
       std::lock_guard<OrtMutex> lock(provider_->GetMutex());
       filter_mem_gpu_->set_ocl_mem_object(filter_dst_mem->get_ocl_mem_object());
-#endif
+#endif  // USE_DNNL_GPU_OCL
     }
+#else  // ENABLE_TRAINING
+    if (!gpu_available_) {
+      filter_data = static_cast<T*>(filter_dst_mem_->get_data_handle());
+      filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
+    } else if (gpu_available_) {
+#ifdef USE_DNNL_GPU_OCL
+      std::lock_guard<OrtMutex> lock(provider_->GetMutex());
+      filter_mem_gpu_->set_ocl_mem_object(filter_dst_mem_->get_ocl_mem_object());
+#endif  // USE_DNNL_GPU_OCL
+    }
+#endif  // ENABLE_TRAINING
 
     if (bias_data != nullptr) {
       bias_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(bias_data)));
@@ -557,15 +581,20 @@ class DnnlConv : public DnnlKernel {
         } else {
           primitive_dst_mem_->set_data_handle(dst_data);
         }
-      } else { // gpu_available_
+      } else {  // gpu_available_
         reorder_dst_mem_to_->set_data_handle(dst_data);
       }
     }
     return Status::OK();
   }
+#ifdef ENABLE_TRAINING
+  std::shared_ptr<dnnl::convolution_forward::primitive_desc> GetPrimitiveDesc() {
+    return conv_fwd_pd_;
+  }
+#endif  // ENABLE_TRAINING
 
  private:
-  void ReadAttributes(const Provider_NodeAttributes& attributes,
+  void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     std::string auto_pad;
     auto attr = attributes.find(attributes_prefix + "auto_pad");
@@ -626,6 +655,9 @@ class DnnlConv : public DnnlKernel {
  private:
   dnnl::memory::desc filter_desc_;
   dnnl::memory::format_tag filter_format_;
+#ifdef ENABLE_TRAINING
+  std::shared_ptr<dnnl::memory> filter_dst_mem_;
+#endif  // ENABLE_TRAINING
 
   std::shared_ptr<dnnl::memory> src_mem_from_;
   std::unique_ptr<dnnl::memory> src_mem_to_;
@@ -648,7 +680,12 @@ class DnnlConv : public DnnlKernel {
   std::unique_ptr<dnnl::memory::desc> filter_md_;
   std::unique_ptr<dnnl::memory::desc> bias_md_;
 
+#ifndef ENABLE_TRAINING
   std::unique_ptr<dnnl::convolution_forward::primitive_desc> conv_fwd_pd_;
+#else
+  std::shared_ptr<dnnl::convolution_forward::primitive_desc> conv_fwd_pd_;
+#endif  // ENABLE_TRAINING
+
   std::unique_ptr<dnnl::primitive> conv_fwd_;
 
   dnnl::engine dnnl_engine_cpu_;

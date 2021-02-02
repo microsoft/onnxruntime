@@ -170,7 +170,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
     return Transpose4DImpl(element_size, input_shape, tmp_input_strides, input.DataRaw(),
-                           tmp_output_strides, output.MutableDataRaw(), output.Shape().Size());
+                           tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
   }
 
   // General cases
@@ -185,7 +185,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   }
 
   auto status = TransposeImpl(element_size, new_rank, input_strides, input.DataRaw(),
-                              output_strides, output.MutableDataRaw(), output.Shape().Size());
+                              output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
 
   return status;
 }

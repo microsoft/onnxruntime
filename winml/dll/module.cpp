@@ -6,10 +6,17 @@
 #include <Hstring.h>
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
+
+#ifndef BUILD_INBOX
+
 #include "Dummy.h"
+#include "LearningModelSessionOptionsExperimental.h"
+#include "LearningModelSessionExperimental.h"
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
+
+#endif
 
 using namespace winmlp;
 
@@ -67,6 +74,7 @@ extern "C" HRESULT WINAPI MLCreateOperatorRegistry(_COM_Outptr_ IMLOperatorRegis
 }
 CATCH_RETURN();
 
+__control_entrypoint(DllExport)
 STDAPI DllCanUnloadNow() {
   // This dll should not be freed by
   // CoFreeUnusedLibraries since there can be outstanding COM object
@@ -88,6 +96,7 @@ STDAPI DllCanUnloadNow() {
   return S_FALSE;
 }
 
+#ifndef BUILD_INBOX
 STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexcept {
   try {
     *factory = nullptr;
@@ -97,10 +106,15 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
       return std::equal(left.rbegin(), left.rend(), right.rbegin(), right.rend());
     };
 
-    std::wostringstream dummy_class;
-    dummy_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.Dummy";
-    if (requal(name, dummy_class.str())) {
+    winrt::hstring winml_namespace = winrt::to_hstring(XSTRINGIFY(WINML_ROOT_NS));
+
+    if (requal(name, winml_namespace + L".AI.MachineLearning.Experimental.Dummy")) {
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::Dummy>());
+      return 0;
+    }
+
+    if (requal(name, winml_namespace + L".AI.MachineLearning.Experimental.LearningModelSessionExperimental")) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionExperimental>());
       return 0;
     }
 
@@ -109,11 +123,16 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
     return winrt::to_hresult();
   }
 }
+#endif
 
 STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
   auto ret = WINRT_GetActivationFactory(classId, factory);
-  if (ret != 0)
-    return DllGetExperimentalActivationFactory(classId, factory);
 
-  return 0;
+#ifndef BUILD_INBOX
+  if (ret != 0) {
+    return DllGetExperimentalActivationFactory(classId, factory);
+  }
+#endif
+
+  return ret;
 }

@@ -41,8 +41,6 @@ bool IsFP32Node(const Node* node) {
 
 // At present, we use these table to identify which input needs to be keep in FP32
 static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_args = {
-    {"TrainableDropout", {1}},
-    {"TrainableDropoutGrad", {2}},
     {"Dropout", {1}},
     {"DropoutGrad", {2}},
 };
@@ -50,8 +48,6 @@ static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_
 // Currently the list here is same as stage1 above due to empty FP32_Nodes.
 // It's possibile we will have more FP32 nodes added, this map will also be extended.
 static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_args = {
-    {"TrainableDropout", {1}},
-    {"TrainableDropoutGrad", {2}},
     {"Dropout", {1}},
     {"DropoutGrad", {2}},
 };

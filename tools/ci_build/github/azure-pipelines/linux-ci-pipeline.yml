@@ -40,7 +40,7 @@ jobs:
               --use_openmp \
               --enable_onnx_tests \
               --enable_symbolic_shape_infer_tests \
-              --use_mklml --enable_pybind --build_java --build_nodejs
+              --enable_pybind --build_java --build_nodejs
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2

@@ -105,6 +105,8 @@ target_include_directories(onnxruntime_common
         $<TARGET_PROPERTY:safeint_interface,INTERFACE_INCLUDE_DIRECTORIES>
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
+target_link_libraries(onnxruntime_common Boost::mp11)
+
 if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()

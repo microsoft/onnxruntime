@@ -12,7 +12,8 @@ namespace training {
 Status AdamOptimizerBuilder::Build(
     const OptimizerBuilderConfig& config,
     GraphAugmenter::GraphDefs& graph_defs,
-    std::vector<TensorProto>& new_external_initializers,
+    std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
   const auto& weight_argdefs = config.weight_argdefs;
@@ -36,14 +37,14 @@ Status AdamOptimizerBuilder::Build(
 
     // In distributed training, some weights may not be updated by all ranks.
     if (opt_configs[i].enabled) {
+      weight_to_opt_mapping[weight_name] = {};
       // The type proto initializer for Update Count
-      const std::string uc_prefix = "Update_Count";
-      const std::string update_count_string = uc_prefix + "_" + weight_name;  // per weight optimizer requires a per weight update count
+      const std::string update_count_string = ADAM_UC_PREFIX + "_" + weight_name;  // per weight optimizer requires a per weight update count
       TensorProto uc_tensor_proto;
 
       // Update 'Update_Count' initializer with init value
       const auto& initial_states = opt_configs[i].initial_states;
-      const auto uc_state_it = initial_states.find(uc_prefix);
+      const auto uc_state_it = initial_states.find(ADAM_UC_PREFIX);
       if (uc_state_it != initial_states.end()) {
         const auto& init_tensor = uc_state_it->second.Get<Tensor>();
         ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
@@ -54,6 +55,7 @@ Status AdamOptimizerBuilder::Build(
 
       // Add uc tensorproto as initializers
       new_external_initializers.emplace_back(uc_tensor_proto);
+      weight_to_opt_mapping[weight_name][ADAM_UC_PREFIX] = update_count_string;
 
       std::vector<ArgDef> input_args;
       input_args.push_back(ArgDef(opt_configs[i].lr_feed_name, CreateLearningRateTypeProto(graph_defs)));
@@ -80,10 +82,8 @@ Status AdamOptimizerBuilder::Build(
       const auto element_type = opt_configs[i].use_mixed_precision_moments ? 
                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : 
                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
-
       // Add first- and second-order momentums to input list.
-      const std::vector<std::string> moments_prefixes({"Moment_1", "Moment_2"});
-      for (const auto& moments_prefix : moments_prefixes) {
+      for (const auto& moments_prefix : MOMENTS_PREFIXES) {
         const std::string gradient_moment_name = moments_prefix + "_" + weight_name;
 
         TensorProto moment_tensor_proto;
@@ -107,6 +107,7 @@ Status AdamOptimizerBuilder::Build(
         moment_type_proto->mutable_tensor_type()->set_elem_type(element_type);
 
         new_external_initializers.emplace_back(moment_tensor_proto);
+        weight_to_opt_mapping[weight_name][moments_prefix] = gradient_moment_name;
 
         input_args.push_back(ArgDef(gradient_moment_name, moment_type_proto));
         output_args.push_back(ArgDef(gradient_moment_name + "_Out", moment_type_proto));
