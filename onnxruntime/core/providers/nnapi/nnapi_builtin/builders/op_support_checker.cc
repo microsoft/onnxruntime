@@ -558,6 +558,9 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* init
 }
 
 bool PoolOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  if (node.OpType() != "MaxPool")
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
+
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type))
     return false;
@@ -953,11 +956,16 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
       const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
  private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const OpSupportCheckParams& params) const override;
+
   int32_t GetMinSupportedSdkVer(const Node& node, const OpSupportCheckParams& params) const override;
+
+  bool HasSupportedInputsImpl(const Node& node) const override;
 
   // All ops except "Sin" opset 5- uses consumed_inputs attribute which is not supported for now
   // "Sin" op has support from opset 7, return 6 here for all ops
-  int GetMinSupportedOpSet(const Node& /* node */) const override { return 6; }
+  int GetMinSupportedOpSet(const Node& node) const override;
 };
 
 /* static */ void UnaryOpSupportChecker::CreateSharedOpSupportChecker(
@@ -974,7 +982,58 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
           "Sin",
           "Sqrt",
           "Tanh",
+          "QLinearSigmoid",
       });
+}
+
+bool UnaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                                              const OpSupportCheckParams& params) const {
+  const auto& op_type = node.OpType();
+  if (op_type != "QLinearSigmoid")
+    return true;
+
+  const auto& op_name = node.Name();
+  const auto input_defs(node.InputDefs());
+  // const auto output_defs(node.OutputDefs());
+
+  if (input_defs.size() < 4)
+    return false;
+
+  bool has_output_zp = input_defs.size() == 5;
+
+  if (!HasValidQuantizationScales(initializers, node, {1, 3}, params))
+    return false;
+
+  if (!HasValidQuantizationZeroPoints(initializers, node,
+                                      has_output_zp
+                                          ? std::vector<size_t>{2}
+                                          : std::vector<size_t>{2, 4}))
+    return false;
+
+  auto output_scale = GetQuantizationScale(initializers, node, 3);
+  if (output_scale != 1.f / 256) {
+    LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
+                          << "] output scale can only be 1.f/256, actual scale: " << output_scale;
+    return false;
+  }
+
+  int32_t output_zp;
+  if (has_output_zp) {
+    auto status = GetQuantizationZeroPoint(initializers, node, 4, output_zp);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                          << "] GetQuantizationZeroPoint failed, message: " << status.ErrorMessage();
+      return false;
+    }
+
+    if (output_zp != 0) {
+      LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
+                            << "] output zero point can only be 0, actual zero point: " << output_scale;
+      return false;
+    }
+  }
+
+  return true;
 }
 
 int32_t UnaryOpSupportChecker::GetMinSupportedSdkVer(
@@ -990,6 +1049,31 @@ int32_t UnaryOpSupportChecker::GetMinSupportedSdkVer(
   }
 
   return 27;
+}
+
+bool UnaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  if (node.OpType() != "QLinearSigmoid")
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
+
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
+
+int UnaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
+  if (node.OpType() == "QLinearSigmoid")
+    return 1;
+
+  return 6;
 }
 
 #pragma endregion
@@ -1493,6 +1577,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sin", UnaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sqrt", UnaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Tanh", UnaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearSigmoid", UnaryOpSupportChecker);
   }
 
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Concat", ConcatOpSupportChecker);

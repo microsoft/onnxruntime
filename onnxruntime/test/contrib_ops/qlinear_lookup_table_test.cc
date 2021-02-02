@@ -89,5 +89,48 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8) {
   std::fesetround(origin_round_mode);
 }
 
+// NNAPI can only take 0 a Y_zero_point
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8_0_Y_ZP) {
+  auto run_test = [](bool scales_and_zp_are_initializers) {
+    OpTester test("QLinearSigmoid", 1, onnxruntime::kMSDomain);
+    float X_scale = 0.025f;
+    uint8_t X_zero_point = 128;
+    float Y_scale = 1.0f / 256.0f;
+    uint8_t Y_zero_point = 0;
+
+    std::vector<int64_t> dims = {16};
+    test.AddInput<uint8_t>("X", dims, {0, 16, 17, 18, 19, 90, 91, 127, 128, 136, 137, 138, 216, 217, 218, 255});
+    test.AddInput<float>("X_scale", {}, {X_scale}, scales_and_zp_are_initializers);
+    test.AddInput<uint8_t>("X_zero_point", {}, {X_zero_point}, scales_and_zp_are_initializers);
+    test.AddInput<float>("Y_scale", {}, {Y_scale}, scales_and_zp_are_initializers);
+    test.AddInput<uint8_t>("Y_zero_point", {}, {Y_zero_point}, scales_and_zp_are_initializers);
+
+    float abs_error = 0.0f;
+
+    // For quantized models, NNAPI's rounding is different than CPU provider
+    // Sometimes the result is within +/-1 of result of CPU provider
+    // NNAPI is using std::round which is HALF_AWAY_FROM_ZERO, see
+    // https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/operations/Quantize.cpp
+    // Use 1 as abs_error which is the smallest possbile for uint8_t
+    //
+    // NOTE, for now the tolerance will only apply if the NNAPI is actually used,
+    // if for any reason the execution falls back to CPU, we still expect an exact match
+    // See, 'void Check<uint8_t>(...' in onnxruntime/test/providers/provider_test_utils.cc
+#ifdef USE_NNAPI
+    abs_error = 1.0f;
+#endif
+
+    test.AddOutput<uint8_t>("Y", dims, {10, 15, 15, 15, 16, 71, 73, 126, 128, 141, 142, 144, 230, 231, 232, 246},
+                            false /* sort_output */, 0.0f /* rel_error */, abs_error);
+    auto origin_round_mode = std::fegetround();
+    std::fesetround(FE_TONEAREST);
+    test.Run();
+    std::fesetround(origin_round_mode);
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -143,7 +143,13 @@ std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(con
   for (const auto& node_idx : node_indices) {
     const auto* node(graph_viewer.GetNode(node_idx));
     auto qlinear_op_type = GetQLinearOpType(*node);
-    if (qlinear_op_type == QLinearOpType::DequantizeLinear || IsQLinearBinaryOp(qlinear_op_type)) {
+
+    // Not a qlinear op
+    if (qlinear_op_type == QLinearOpType::Unknown)
+      continue;
+
+    // All qlinear ops EXCEPT QuantizeLinear has quantized input
+    if (qlinear_op_type != QLinearOpType::QuantizeLinear) {
       const auto& input_name = node->InputDefs()[0]->Name();
       if (Contains(all_quantized_op_inputs, input_name))
         all_quantized_op_inputs.at(input_name).push_back(node);
@@ -293,7 +299,7 @@ Status ModelBuilder::RegisterModelInputs() {
           if (!Contains(all_quantized_op_inputs, input_name)) {
             // We current do not support uint8 input if it is not a quantized input
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "The input of graph doesn't have unsupported quantized type, name: ", input_name,
+                                   "The input of graph has unsupported quantized type, name: ", input_name,
                                    " type: ", type_proto->tensor_type().elem_type());
           }
 
@@ -305,7 +311,7 @@ Status ModelBuilder::RegisterModelInputs() {
         default: {
           // TODO: support other type
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "The input of graph doesn't have unsupported type, name: ", input_name,
+                                 "The input of graph has unsupported type, name: ", input_name,
                                  " type: ", type_proto->tensor_type().elem_type());
         }
       }

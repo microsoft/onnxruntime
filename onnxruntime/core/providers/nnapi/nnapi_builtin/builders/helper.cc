@@ -62,6 +62,8 @@ QLinearOpType GetQLinearOpType(const onnxruntime::Node& node) {
     return QLinearOpType::QLinearMatMul;
   else if (op_type == "QLinearAdd")
     return QLinearOpType::QLinearAdd;
+  else if (op_type == "QLinearSigmoid")
+    return QLinearOpType::QLinearSigmoid;
 
   return QLinearOpType::Unknown;
 }
@@ -264,6 +266,23 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
   return true;
 }
 
+float GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node, size_t idx) {
+  const auto& scale_tensor = *initializers.at(node.InputDefs()[idx]->Name());
+  return GetTensorFloatData(scale_tensor)[0];
+}
+
+common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
+                                        const Node& node, size_t idx, int32_t& zero_point) {
+  std::unique_ptr<uint8_t[]> unpacked_tensor;
+  size_t tensor_byte_size;
+  const auto& zero_point_tensor = *initializers.at(node.InputDefs()[idx]->Name());
+  ORT_RETURN_IF_ERROR(
+      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, Path(),
+                                                unpacked_tensor, tensor_byte_size));
+  zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
+  return Status::OK();
+}
+
 #define GET_TENSOR_DATA(FUNC_NAME, ELEMENT_TYPE, DATA)                                  \
   const ELEMENT_TYPE* GetTensor##FUNC_NAME(const ONNX_NAMESPACE::TensorProto& tensor) { \
     return tensor.DATA().empty()                                                        \
@@ -376,9 +395,6 @@ bool IsInternalQuantizationSupported(const Node& node, const GraphViewer& graph_
   if (node_type != "Transpose" &&
       node_type != "Resize" &&
       node_type != "Concat" &&
-      node_type != "GlobalAveragePool" &&
-      node_type != "GlobalMaxPool" &&
-      node_type != "AveragePool" &&
       node_type != "MaxPool") {
     return true;
   }
@@ -391,7 +407,13 @@ bool IsInternalQuantizationSupported(const Node& node, const GraphViewer& graph_
   if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT)
     return true;
 
-  // Get all the node in the group (current parition)
+  if (group.empty()) {  // This is the 1st node in the group (partition)
+    LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type " << node_type
+                          << " is the 1st node in the group, "
+                          << " it does not support using graph input(quantized) as node input";
+    return false;
+  }
+  // Get all the node in the group (current partition)
   const std::vector<NodeIndex>& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   std::unordered_set<NodeIndex> nodes_in_group;
   for (const auto index : group) {
@@ -401,7 +423,10 @@ bool IsInternalQuantizationSupported(const Node& node, const GraphViewer& graph_
   // The node's input(s) have to be an output of node(s) within the group
   // If not, then this node is using graph input(s) as input(s)
   for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    LOGS_DEFAULT(WARNING) << "source index " << it->GetNode().Index();
     if (!Contains(nodes_in_group, it->GetNode().Index())) {
+      LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type " << node_type
+                            << " does not support using graph input(quantized) as node input";
       return false;
     }
   }
