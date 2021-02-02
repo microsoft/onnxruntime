@@ -20,6 +20,7 @@ import "Windows.AI.MachineLearning.idl";
 #define ROOT_NS Microsoft
 #endif
 
+
 namespace ROOT_NS.AI.MachineLearning.Experimental {
   runtimeclass LearningModelBuilder;
 

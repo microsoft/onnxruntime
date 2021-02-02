@@ -110,7 +110,7 @@ def main():
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-path', type=str, default='',
-                        help='Path for Saving the current Model')
+                        help='Path for Saving the current Model state')
 
     # Basic setup
     args = parser.parse_args()
@@ -141,10 +141,6 @@ def main():
     model_desc = mnist_model_description()
     optim_config = optim.SGDConfig(lr=args.lr)
     opts = {'device': {'id': device}}
-    if args.save_path:
-        opts.update({'debug': {
-            'model_with_loss_function_path' : os.path.join(args.save_path, 'model_with_loss.onnx'),
-            'model_with_training_graph_path' : os.path.join(args.save_path, 'model_with_training.onnx'),}})
     opts = ORTTrainerOptions(opts)
 
     trainer = ORTTrainer(model,
