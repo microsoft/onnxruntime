@@ -118,6 +118,7 @@ ReductionOpTest.ArgMax_Double_Type
 ReductionOpTest.ArgMax_do_not_keepdims 
 ReductionOpTest.ArgMax_do_not_keepdims_2 
 ReductionOpTest.ArgMax2D 
+ReductionOpTest.ArgMax2D_dim1
 ReductionOpTest.ArgMin 
 ReductionOpTest.ArgMin_Double_Type 
 ReductionOpTest.ArgMin_Double_Precision 
