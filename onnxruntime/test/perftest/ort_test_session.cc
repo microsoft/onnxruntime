@@ -19,7 +19,6 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   //const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
   size_t id = static_cast<size_t>(test_input_id_.load() % test_inputs_.size());
   test_input_id_++;
-  std::cout << "test " << id << "th input" << std::endl;
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
   auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
