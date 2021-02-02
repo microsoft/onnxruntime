@@ -4,9 +4,24 @@
 //https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gather
 #include "core/providers/cpu/tensor/gather.h"
 #include "core/common/common.h"
+#include "core/framework/data_types_internal.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, int32_t, int64_t);
+}
+
+namespace {
+using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1);
+
+const auto index_type_constraints =
+    BuildKernelDefConstraintsFunctorFromTypeList<EnabledIndexTypes>{}();
+}  // namespace
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Gather,
@@ -14,8 +29,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     10,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("Tind", index_type_constraints),
     Gather);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -24,8 +38,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("Tind", index_type_constraints),
     Gather);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -33,8 +46,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("Tind", index_type_constraints),
     Gather);
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -64,52 +76,56 @@ Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const
   return Status::OK();
 }
 
+namespace {
 template <typename Tin>
-Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uint8_t* dst_base, bool is_string_type,
-                      const size_t element_bytes, const int64_t block_size, const int64_t M,
-                      const int64_t N, const int64_t data_batch_bytes, const int64_t gathered_batch_bytes,
-                      const TensorShape& input_data_shape, const int64_t axis, concurrency::ThreadPool* tp) {
-  const Tin* indices_data = indices_tensor->template Data<Tin>();
+struct GatherCopyDataDispatchTarget {
+  Status operator()(const Tensor* indices_tensor, const uint8_t* src_base, uint8_t* dst_base, bool is_string_type,
+                    const size_t element_bytes, const int64_t block_size, const int64_t M,
+                    const int64_t N, const int64_t data_batch_bytes, const int64_t gathered_batch_bytes,
+                    const TensorShape& input_data_shape, const int64_t axis, concurrency::ThreadPool* tp) const {
+    const Tin* indices_data = indices_tensor->template Data<Tin>();
 
-  // Check the indices first in case there's a out of bound index.
-  auto axis_dim_limit = input_data_shape[axis];
+    // Check the indices first in case there's a out of bound index.
+    auto axis_dim_limit = input_data_shape[axis];
 
-  for (int64_t i = 0; i < N; ++i) {
-    Tin idx = indices_data[i];
-    if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "indices element out of data bounds, idx=", idx,
-                             " must be within the inclusive range [", -axis_dim_limit, ",", axis_dim_limit - 1, "]");
+    for (int64_t i = 0; i < N; ++i) {
+      Tin idx = indices_data[i];
+      if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "indices element out of data bounds, idx=", idx,
+                               " must be within the inclusive range [", -axis_dim_limit, ",", axis_dim_limit - 1, "]");
+      }
     }
+
+    auto lambda = [&](int64_t index) {
+      int64_t batch = index / N;
+      int64_t i = index % N;
+
+      const int64_t src_offset_batch = batch * data_batch_bytes;
+      const int64_t dst_offset_batch = batch * gathered_batch_bytes;
+      Tin idx = indices_data[i];
+      idx = idx < 0 ? idx + static_cast<Tin>(axis_dim_limit) : idx;
+      const int64_t src_offset = src_offset_batch + idx * block_size;
+      const int64_t dst_offset = dst_offset_batch + i * block_size;
+
+      if (is_string_type) {
+        reinterpret_cast<std::string*>(dst_base)[dst_offset / element_bytes] =
+            reinterpret_cast<const std::string*>(src_base)[src_offset / element_bytes];
+      } else {
+        memcpy(dst_base + dst_offset, src_base + src_offset, block_size);
+      }
+    };
+    concurrency::ThreadPool::TryParallelFor(tp, M * N, static_cast<double>(block_size),
+                                            [&lambda](ptrdiff_t first, ptrdiff_t last) {
+                                              for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
+                                                lambda(index);
+                                              }
+                                            });
+
+    return Status::OK();
   }
-
-  auto lambda = [&](int64_t index) {
-    int64_t batch = index / N;
-    int64_t i = index % N;
-
-    const int64_t src_offset_batch = batch * data_batch_bytes;
-    const int64_t dst_offset_batch = batch * gathered_batch_bytes;
-    Tin idx = indices_data[i];
-    idx = idx < 0 ? idx + static_cast<Tin>(axis_dim_limit) : idx;
-    const int64_t src_offset = src_offset_batch + idx * block_size;
-    const int64_t dst_offset = dst_offset_batch + i * block_size;
-
-    if (is_string_type) {
-      reinterpret_cast<std::string*>(dst_base)[dst_offset / element_bytes] =
-          reinterpret_cast<const std::string*>(src_base)[src_offset / element_bytes];
-    } else {
-      memcpy(dst_base + dst_offset, src_base + src_offset, block_size);
-    }
-  };
-  concurrency::ThreadPool::TryParallelFor(tp, M * N, static_cast<double>(block_size),
-                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
-                                              lambda(index);
-                                            }
-                                          });
-
-  return Status::OK();
-}
+};
+}  // namespace
 
 Status Gather::Compute(OpKernelContext* context) const {
   Prepare p;
@@ -132,16 +148,10 @@ Status Gather::Compute(OpKernelContext* context) const {
 
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
-  if (p.indices_tensor->IsDataType<int32_t>()) {
-    return GatherCopyData<int32_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
-                                   block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);
-  }
-  if (p.indices_tensor->IsDataType<int64_t>()) {
-    return GatherCopyData<int64_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
-                                   block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);
-  }
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");
+  utils::MLTypeCallDispatcherFromTypeList<EnabledIndexTypes> dispatcher{p.indices_tensor->GetElementType()};
+  return dispatcher.InvokeRet<Status, GatherCopyDataDispatchTarget>(
+      p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
+      block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);
 }
 
 }  // namespace onnxruntime

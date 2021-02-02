@@ -387,6 +387,18 @@ class MLTypeCallDispatcher2 {
 
     ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
   }
+
+  template <typename Ret, template <typename...> class Fn, typename... Args>
+  Ret InvokeRet(Args&&... args) const {
+    mltype_dispatcher_internal::CallableDispatchableRetHelper<Ret> helper(dt_type_);
+    static_cast<void>(std::array<int, sizeof...(Types)>{
+        helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...});
+
+    // avoid "unused parameter" warning for the case where Types is empty
+    static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});
+
+    return helper.Get();
+  }
 };
 
 // the type MLTypeCallDispatcher2<T...> given a type list L<T...>
