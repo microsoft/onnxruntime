@@ -36,21 +36,6 @@
 #define WINML_THROW_HR_IF_TRUE_MSG(hr, value, message, ...) WINML_THROW_HR_IF_FALSE_MSG(hr, !(value), message, __VA_ARGS__)
 #define WINML_THROW_HR_IF_NULL_MSG(hr, value, message, ...) WINML_THROW_HR_IF_TRUE_MSG(hr, ((value) == nullptr), message, __VA_ARGS__)
 
-#define WINML_THROW_HR_IF_FALSE_MSG_NO_TELEMETRY_SENT(hr, value, message, ...)                        \
-  do {                                                                              \
-    auto _value = value;                                                            \
-    if (_value == false) {                                                          \
-      auto _hr = hr;                                                                \
-      char msg[1024];                                                               \
-      sprintf_s(msg, message, __VA_ARGS__);                                         \
-      winrt::hstring errorMessage(_winml::Strings::HStringFromUTF8(msg));           \
-      throw winrt::hresult_error(_hr, errorMessage);                                \
-    }                                                                               \
-  } while (0)
-
-#define WINML_THROW_HR_IF_TRUE_MSG_NO_TELEMETRY_SENT(hr, value, message, ...) WINML_THROW_HR_IF_FALSE_MSG_NO_TELEMETRY_SENT(hr, !(value), message, __VA_ARGS__)
-#define WINML_THROW_HR_IF_NULL_MSG_NO_TELEMETRY_SENT(hr, value, message, ...) WINML_THROW_HR_IF_TRUE_MSG_NO_TELEMETRY_SENT(hr, ((value) == nullptr), message, __VA_ARGS__)
-
 //
 // WINML_THROW_IF_FAILED* Variants
 //
@@ -61,6 +46,15 @@
     telemetry_helper.LogRuntimeError(_result, "", __FILE__, __FUNCTION__, __LINE__); \
     throw winrt::hresult_error(_result, winrt::hresult_error::from_abi);             \
   }
+
+#define WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hr, message, ...)               \
+  do {                                                                       \
+    auto _hr = hr;                                                           \
+    char msg[1024];                                                          \
+    sprintf_s(msg, message, __VA_ARGS__);                                    \
+    winrt::hstring errorMessage(_winml::Strings::HStringFromUTF8(msg));      \
+    throw winrt::hresult_error(_hr, errorMessage);                           \
+  } while (0)
 
 #define WINML_THROW_IF_FAILED(hr)                                                  \
   do {                                                                             \

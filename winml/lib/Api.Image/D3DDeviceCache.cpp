@@ -62,7 +62,7 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
     winrt::com_ptr<IDXGIAdapter1> spAdapter;
     hardwareAdapterSuccessfullyObtained = GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put());
     if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
-      WINML_THROW_HR_IF_TRUE_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, true, noHardwareAdaptersAvailableErrStr);
+      WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
     } else {
       WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
     }
@@ -73,7 +73,7 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
     winrt::com_ptr<IDXCoreAdapter> spAdapter;
     hardwareAdapterSuccessfullyObtained = GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put());
     if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
-      WINML_THROW_HR_IF_TRUE_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, true, noHardwareAdaptersAvailableErrStr);
+      WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
     } else {
       WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
     }
