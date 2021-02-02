@@ -312,7 +312,7 @@ class BertOnnxModelTF(BertOnnxModel):
         nodes_to_remove = []
         attention_count = 0
 
-        skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
+        skip_layer_norm_nodes = self.get_nodes_by_op_type("Add")
         for normalize_node in skip_layer_norm_nodes:
             # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
             parent = self.get_parent(normalize_node, 1)
@@ -392,7 +392,7 @@ class BertOnnxModelTF(BertOnnxModel):
                         name=parent.name + "_modified",
                         data_type=TensorProto.INT64,
                         dims=[3],
-                        vals=np.int64([[1, -1, hidden_size]]).tobytes(),
+                        vals=np.int64([[-1, 0, hidden_size]]).tobytes(),
                         raw=True)
                     self.add_initializer(tensor)
                     parent.input[1] = parent.name + "_modified"

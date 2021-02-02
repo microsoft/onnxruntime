@@ -237,8 +237,8 @@ class BertOnnxModel(OnnxModel):
 
         self.fuse_reshape()
 
-        if (options is None) or options.enable_skip_layer_norm:
-            self.fuse_skip_layer_norm()
+        #if (options is None) or options.enable_skip_layer_norm:
+        #    self.fuse_skip_layer_norm()
 
         if (options is None) or options.enable_attention:
             if options is not None:
