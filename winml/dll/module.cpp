@@ -20,18 +20,6 @@
 
 using namespace winmlp;
 
-void __stdcall OnErrorReported(bool alreadyReported, wil::FailureInfo const& failure) WI_NOEXCEPT {
-  if (!alreadyReported) {
-    winrt::hstring message(failure.pszMessage ? failure.pszMessage : L"");
-    telemetry_helper.LogRuntimeError(
-        failure.hr,
-        winrt::to_string(message),
-        failure.pszFile,
-        failure.pszFunction,
-        failure.uLineNumber);
-  }
-}
-
 extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ void* lpvReserved) {
   switch (dwReason) {
     case DLL_PROCESS_ATTACH:
@@ -40,7 +28,6 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
       // Register the TraceLogging provider feeding telemetry.  It's OK if this fails;
       // trace logging calls just become no-ops.
       telemetry_helper.Register();
-      wil::SetResultTelemetryFallback(&OnErrorReported);
       break;
     case DLL_PROCESS_DETACH:
       telemetry_helper.LogWinMLShutDown();
