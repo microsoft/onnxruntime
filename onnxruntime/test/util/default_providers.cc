@@ -43,7 +43,7 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 #ifdef USE_TENSORRT
-  OrtTensorRTProviderOptions params;
+  OrtTensorRTProviderOptions params{0, 0, nullptr};
   if (auto factory = CreateExecutionProviderFactory_Tensorrt(&params))
     return factory->CreateProvider();
 #endif

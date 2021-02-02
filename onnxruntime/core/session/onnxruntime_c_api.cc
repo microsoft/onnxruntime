@@ -1852,7 +1852,7 @@ ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
 
 #if defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
-                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* tensorrt_options) {
+                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(tensorrt_options);
   return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
