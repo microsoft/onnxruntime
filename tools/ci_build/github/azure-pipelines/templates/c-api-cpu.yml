@@ -29,6 +29,10 @@ parameters:
   type: string
   default: 'Microsoft.ML.OnnxRuntime'
 
+- name: BuildVariant
+  type: string
+  default: 'openmp'
+
 jobs:
 - job: Linux_C_API_Packaging_CPU_x64
   workspace:
@@ -165,7 +169,7 @@ jobs:
     packageName: x86
     buildparameter: --x86 ${{ parameters.AdditionalBuildFlags }}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    build_java: false
+    buildJava: false
 
 - template: win-ci.yml
   parameters:
@@ -180,7 +184,7 @@ jobs:
     packageName: arm
     buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}
     runTests: false
-    build_java: false
+    buildJava: false
 
 - template: win-ci.yml
   parameters:
@@ -195,7 +199,7 @@ jobs:
     packageName: arm64
     buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}
     runTests: false
-    build_java: false
+    buildJava: false
 
 - template: win-ci.yml
   parameters:
@@ -210,7 +214,7 @@ jobs:
     packageName: x64
     buildparameter: --build_java ${{ parameters.AdditionalBuildFlags }}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    build_java: true
+    buildJava: true
 
 
 - job: Jar_Packaging
@@ -263,7 +267,7 @@ jobs:
 
 
   - task: CopyFiles@2
-    displayName: 'Copy Files to: a'
+    displayName: 'Copy Java Files to Artifact Staging Directory'
     inputs:
       SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
@@ -492,7 +496,8 @@ jobs:
   - template: ../nuget/templates/upload-binary-sizes-from-nuget-package.yml
     parameters:
       downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
-      gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
+      gitCommitHash: $(OnnxRuntimeGitCommitHashShort)
+      buildVariant: ${{ parameters.BuildVariant }}
 
   - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
     parameters:

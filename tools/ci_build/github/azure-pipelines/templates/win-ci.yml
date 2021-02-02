@@ -49,7 +49,7 @@ parameters:
   type: string
   default: 'Microsoft.ML.OnnxRuntime'
 
-- name: build_java
+- name: buildJava
   displayName: Package name for nuget
   type: string
   default: 'Microsoft.ML.OnnxRuntime'
@@ -169,7 +169,7 @@ jobs:
 
 
     - task: CmdLine@2
-      condition: and(succeeded(), eq('${{ parameters.build_java}}', true))
+      condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
       inputs:
         script: |
           @echo on
@@ -212,7 +212,7 @@ jobs:
         displayName: 'Add symbols and notices to Java'    
       
     - task: PublishBuildArtifacts@1
-      condition: and(succeeded(), eq('${{ parameters.build_java}}', true))
+      condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
       displayName: 'Publish Java temp binaries'
       inputs:
         pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}' 
@@ -220,7 +220,7 @@ jobs:
 
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
       - task: Semmle@0
-        condition: and(succeeded(), eq('${{ parameters.build_java}}', true))
+        condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
         inputs:
           sourceCodeDirectory: '$(Build.SourcesDirectory)\java'
           language: 'java'

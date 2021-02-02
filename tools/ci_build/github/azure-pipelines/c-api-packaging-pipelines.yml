@@ -71,6 +71,7 @@ jobs:
 - template: templates/win-ci.yml
   parameters:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    ort_build_pool_name: 'Win-GPU-2019'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
@@ -81,4 +82,4 @@ jobs:
     packageName: x64-gpu
     buildparameter: --use_cuda --cuda_version=11.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0" --cudnn_home="C:\local\cudnn-11.0-windows-x64-v8.0.2.39\cuda
     runTests: true
-    build_java: true
+    buildJava: true

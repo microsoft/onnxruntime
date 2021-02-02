@@ -31,3 +31,4 @@ jobs:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.NoOpenMP'
     AdditionalBuildFlags: ''
+    BuildVariant: 'default'
