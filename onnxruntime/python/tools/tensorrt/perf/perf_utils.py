@@ -20,10 +20,11 @@ def find(regex_string):
     return results
 
 def get_latest_commit_hash():
-    p1 = subprocess.Popen(["git", "rev-parse", "--short", "HEAD"], stdout = subprocess.PIPE)
-    stdout, sterr = p1.communicate()
-    commit = stdout.decode("utf-8").strip()
-    return commit
+    return ""
+    #p1 = subprocess.Popen(["git", "rev-parse", "--short", "HEAD"], stdout = subprocess.PIPE)
+    #stdout, sterr = p1.communicate()
+    #commit = stdout.decode("utf-8").strip()
+    #return commit
 
 def parse_single_file(f):
 
