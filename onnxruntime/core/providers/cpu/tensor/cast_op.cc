@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <cstddef>
+#include <cstdio>
+#include <string>
 
 #include "boost/mp11.hpp"
 
