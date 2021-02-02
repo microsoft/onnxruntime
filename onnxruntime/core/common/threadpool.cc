@@ -470,18 +470,11 @@ struct alignas(8) Job {
 };
 
 struct Jobs {
-  int size_ = 0;
   ::std::list<Job> jobs_;
   mutable OrtMutex mutex_;
-  void push(const Job& job) {
-    ::std::lock_guard<OrtMutex> guard(mutex_);
-    jobs_.push_back(job);
-    size_++;
-  }
   void push(Job&& job) {
     ::std::lock_guard<OrtMutex> guard(mutex_);
     jobs_.push_back(job);
-    size_++;
   }
   Job pop() {
     ::std::lock_guard<OrtMutex> guard(mutex_);
@@ -490,49 +483,12 @@ struct Jobs {
     } else {
       Job job = std::move(jobs_.front());
       jobs_.pop_front();
-      size_--;
       return job;
     }
   }
-  /*
-  void push(const Job& job) {
-    ::std::lock_guard<OrtMutex> guard(mutex_);
-    if (size_ & 0x1) {
-      jobs_.push_back(job);
-    } else {
-      jobs_.push_front(job);
-    }
-    size_++;
-  }
-  void push(Job&& job) {
-    ::std::lock_guard<OrtMutex> guard(mutex_);
-    if (size_ & 0x1) {
-      jobs_.push_back(job);
-    } else {
-      jobs_.push_front(job);
-    }
-    size_++;
-  }
-  Job pop() {
-    ::std::lock_guard<OrtMutex> guard(mutex_);
-    if (jobs_.empty()) {
-      return {Idel, empty};
-    } else {
-      if (size_ & 0x1) {
-        Job job = std::move(jobs_.front());
-        jobs_.pop_front();
-        size_--;
-        return job;
-      } else {
-        Job job = std::move(jobs_.back());
-        jobs_.pop_back();
-        size_--;
-        return job;
-      }
-    }
-  }*/
   bool hasJob() const {
-    return size_ > 0;
+    ::std::lock_guard<OrtMutex> guard(mutex_);
+    return !jobs_.empty();
   }
 };
 
@@ -545,7 +501,9 @@ struct ThreadPoolImpl {
         while (alive_ || jobs_.hasJob()) {
           Job job = std::move(jobs_.pop());
           if (job) {
+            //occupied_++;
             job.fn_();
+            //occupied_--;
             if (&(job.progress_) != &non_empty) job.progress_++;
           } else {
             std::this_thread::yield();
@@ -566,26 +524,54 @@ struct ThreadPoolImpl {
     }
   }
   void Schedule(::std::function<void()> fn) {
-    if (threads_.empty() || ::std::this_thread::get_id() != main_thread_id_) {
+    if (threads_.empty()) {
       fn();
     } else {
       JobFn jobFn = std::move(fn);
       Job job{jobFn, non_empty};
-      jobs_.push(std::move(job));
-    }
-  }
+      if (::std::this_thread::get_id() == main_thread_id_) {
+        jobs_.push(std::move(job));
+      } else { // schedule from a thread
+        bool pushed = false;
+        /*
+        { // preempt start
+          ::std::lock_guard<OrtMutex> guard(jobs_.mutex_);
+          if (occupied_.load() < threads_.size()) {
+            jobs_.jobs_.push_front(std::move(job));
+            pushed = true;
+          }
+        }  // preempt end
+        */
+        if (!pushed) {
+          job.fn_();
+        }
+      }  // else
+    }  // else
+  }  // Schedule
   void ParallelFor(::std::ptrdiff_t laps, const Fn& fn) {
     auto size = static_cast<ptrdiff_t>(threads_.size() + 1);
     auto block = laps / size + ((laps % size) == 0 ? 0 : 1);
     auto splits = laps / block + ((laps % block) == 0 ? 0 : 1);
-    if (splits > 1 && ::std::this_thread::get_id() == main_thread_id_) {
+    if (splits > 1) {
       ::std::atomic<::std::ptrdiff_t> progress{0};
       auto branches = splits - 1;
-      for (::std::ptrdiff_t i = 0; i < branches; i++) {
-        auto begin = block * i;
-        auto end = block * i + block;
-        jobs_.push({[fn, begin, end](){fn(begin, end);}, progress});
-      }
+      if (::std::this_thread::get_id() == main_thread_id_) {
+        for (::std::ptrdiff_t i = 0; i < branches; i++) {
+          auto begin = block * i;
+          auto end = block * i + block;
+          jobs_.push({[&fn, begin, end]() { fn(begin, end); }, progress});
+        }
+      } else {  // from thread
+        branches = 0;
+        /*
+        ::std::lock_guard<OrtMutex> guard(jobs_.mutex_);
+        branches = std::min(branches, static_cast<::std::ptrdiff_t>(threads_.size() - occupied_.load()));
+        for (::std::ptrdiff_t i = 0; i < branches; i++) {
+          auto begin = block * i;
+          auto end = block * i + block;
+          jobs_.jobs_.push_front({[&fn, begin, end]() { fn(begin, end); }, progress});
+        }*/
+      }  // else
       fn(branches * block, laps);
       while (progress.load() < branches) {
         onnxruntime::concurrency::SpinPause();
@@ -598,17 +584,33 @@ struct ThreadPoolImpl {
     auto size = static_cast<ptrdiff_t>(threads_.size() + 1);
     auto block = laps / size + ((laps % size) == 0 ? 0 : 1);
     auto splits = laps / block + ((laps % block) == 0 ? 0 : 1);
-    if (splits > 1 && ::std::this_thread::get_id() == main_thread_id_) {
+    if (splits > 1) {
       ::std::atomic<::std::ptrdiff_t> progress{0};
       auto branches = splits - 1;
-      for (::std::ptrdiff_t i = 0; i < branches; i++) {
-        auto begin = block * i;
-        auto end = block * i + block;
-        jobs_.push({[fn, begin, end]() {
+      if (::std::this_thread::get_id() == main_thread_id_) {
+        for (::std::ptrdiff_t i = 0; i < branches; i++) {
+          auto begin = block * i;
+          auto end = block * i + block;
+          jobs_.push({[&fn, begin, end]() {
                           for (auto i = begin; i < end; i++) {
                             fn(i);
                           } }, progress});
-      }
+        }  // for
+      } else {  // from thread
+        branches = 0;
+        /*
+        ::std::lock_guard<OrtMutex> guard(jobs_.mutex_);
+        branches = std::min(branches, static_cast<::std::ptrdiff_t>(threads_.size() - occupied_.load()));
+        for (::std::ptrdiff_t i = 0; i < branches; i++) {
+          auto begin = block * i;
+          auto end = block * i + block;
+          jobs_.jobs_.push_front({[&fn, begin, end]() {
+                          for (auto i = begin; i < end; i++) {
+                            fn(i);
+                          } }, progress});
+        }  // for
+        */
+      }  // else
       for (::std::ptrdiff_t i = branches * block; i < laps; i++) {
         fn(i);
       }
@@ -622,6 +624,7 @@ struct ThreadPoolImpl {
     }
   }
   ::std::vector<::std::thread> threads_;
+  //::std::atomic<size_t> occupied_{0};
   ::std::thread::id main_thread_id_ = ::std::this_thread::get_id();
   bool alive_ = true;
   Jobs jobs_;
