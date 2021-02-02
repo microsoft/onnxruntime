@@ -1595,11 +1595,11 @@ def main():
         logger.info("\n===========================================")
         logger.info("=========== System information  ===========")
         logger.info("===========================================")
-        #info = get_system_info()
-        #pp.pprint(info)
-        #csv_filename = args.benchmark_fail_csv if args.benchmark_fail_csv else f"system_info_csv{time_stamp}.csv"
-        #csv_filename = os.path.join(path, csv_filename)
-        #output_system_info(info, csv_filename)
+        info = get_system_info()
+        pp.pprint(info)
+        csv_filename = args.benchmark_fail_csv if args.benchmark_fail_csv else f"system_info_csv{time_stamp}.csv"
+        csv_filename = os.path.join(path, csv_filename)
+        output_system_info(info, csv_filename)
 
 
 if __name__ == "__main__":
