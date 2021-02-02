@@ -4,6 +4,7 @@
 #pragma once
 #include <core/session/onnxruntime_cxx_api.h>
 #include <random>
+#include <atomic>
 #include "test_configuration.h"
 #include "test_session.h"
 class TestModelInfo;
@@ -41,6 +42,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
   std::vector<std::vector<Ort::Value>> test_inputs_;
+  std::atomic_ullong test_input_id_{0};
   std::vector<std::string> output_names_;
   // The same size with output_names_.
   // TODO: implement a customized allocator, then we can remove output_names_ to simplify this code
