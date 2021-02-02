@@ -68,7 +68,7 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 
-- template: win-ci.yml
+- template: templates/win-ci.yml
   parameters:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
