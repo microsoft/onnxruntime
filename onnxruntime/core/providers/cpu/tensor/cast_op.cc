@@ -101,7 +101,9 @@ CastToString(const SrcType& input, std::string& output) {
     InlinedBuffer<char, 32> buffer(gsl::narrow<size_t>(snprintf_result + 1));
 
     snprintf_result = std::snprintf(buffer.data(), buffer.size(), format, value);
-    ORT_ENFORCE(snprintf_result == buffer.size() - 1, "Failed to write value with snprintf().");
+    ORT_ENFORCE(
+        snprintf_result > 0 && gsl::narrow_cast<size_t>(snprintf_result) == buffer.size() - 1,
+        "Failed to write value with snprintf().");
 
     output.assign(buffer.data(), buffer.size() - 1);
   }
