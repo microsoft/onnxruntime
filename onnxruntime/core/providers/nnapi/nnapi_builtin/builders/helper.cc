@@ -234,8 +234,10 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
 
         std::unique_ptr<uint8_t[]> unpacked_tensor;
         size_t tensor_byte_size;
-        auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, node.ModelPath(),
-                                                                unpacked_tensor, tensor_byte_size);
+        auto status = onnxruntime::utils::UnpackInitializerData(
+            zero_tensor,
+            node.ModelPath(),  // We don't support external initializers in NNAPI
+            unpacked_tensor, tensor_byte_size);
         if (!status.IsOK()) {
           LOGS_DEFAULT(ERROR) << "QLinearConv erro when unpack zero tensor:" << status.ErrorMessage();
           return false;
@@ -392,8 +394,9 @@ bool IsValidSupportedNodesVec(const std::vector<size_t>& supported_node_vec, con
 bool IsInternalQuantizationSupported(const Node& node, const GraphViewer& graph_viewer,
                                      const std::vector<size_t>& group) {
   const auto& node_type = node.OpType();
+
+  // For now only these [non-qlinear]operators will handle uint8 inputs
   if (node_type != "Transpose" &&
-      node_type != "Resize" &&
       node_type != "Concat" &&
       node_type != "MaxPool") {
     return true;

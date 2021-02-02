@@ -104,24 +104,7 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8_0_Y_ZP) {
     test.AddInput<uint8_t>("X_zero_point", {}, {X_zero_point}, scales_and_zp_are_initializers);
     test.AddInput<float>("Y_scale", {}, {Y_scale}, scales_and_zp_are_initializers);
     test.AddInput<uint8_t>("Y_zero_point", {}, {Y_zero_point}, scales_and_zp_are_initializers);
-
-    float abs_error = 0.0f;
-
-    // For quantized models, NNAPI's rounding is different than CPU provider
-    // Sometimes the result is within +/-1 of result of CPU provider
-    // NNAPI is using std::round which is HALF_AWAY_FROM_ZERO, see
-    // https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/operations/Quantize.cpp
-    // Use 1 as abs_error which is the smallest possbile for uint8_t
-    //
-    // NOTE, for now the tolerance will only apply if the NNAPI is actually used,
-    // if for any reason the execution falls back to CPU, we still expect an exact match
-    // See, 'void Check<uint8_t>(...' in onnxruntime/test/providers/provider_test_utils.cc
-#ifdef USE_NNAPI
-    abs_error = 1.0f;
-#endif
-
-    test.AddOutput<uint8_t>("Y", dims, {10, 15, 15, 15, 16, 71, 73, 126, 128, 141, 142, 144, 230, 231, 232, 246},
-                            false /* sort_output */, 0.0f /* rel_error */, abs_error);
+    test.AddOutput<uint8_t>("Y", dims, {10, 15, 15, 15, 16, 71, 73, 126, 128, 141, 142, 144, 230, 231, 232, 246});
     auto origin_round_mode = std::fegetround();
     std::fesetround(FE_TONEAREST);
     test.Run();
