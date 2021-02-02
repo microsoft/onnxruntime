@@ -53,9 +53,11 @@ class QuantType(Enum):
     QInt8 = 1
     QUInt8 = 2
 
+
 class QuantFormat(Enum):
     QOperator = 1
     QDQ = 2
+
 
 QUANT_TYPE_TO_NP_TYPE = {
     QuantType.QInt8: numpy.dtype('int8'),
@@ -63,7 +65,7 @@ QUANT_TYPE_TO_NP_TYPE = {
 }
 
 
-def quantize_nparray(qtype, arr, scale, zero_point, low = None, high = None):
+def quantize_nparray(qtype, arr, scale, zero_point, low=None, high=None):
     dtype = QUANT_TYPE_TO_NP_TYPE[qtype]
     cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
     cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
@@ -122,19 +124,17 @@ class QuantizedValue:
         self.axis = axis
         self.qType = qType
 
+
 class TensorToQuantize:
     '''
     Represents a tensor to be quantized
     '''
-    def __init__(self,
-                 tensor_name,
-                 per_channel:bool = False,
-                 reduce_range:bool = False,
-                 axis:int = 0):
+    def __init__(self, tensor_name, per_channel: bool = False, reduce_range: bool = False, axis: int = 0):
         self.tensor_name = tensor_name
         self.per_channel = per_channel
         self.axis = axis
         self.reduce_range = reduce_range
+
 
 def attribute_to_kwarg(attribute):
     '''

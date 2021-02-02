@@ -86,12 +86,15 @@ class ONNXCalibrater:
 
         for node in model.graph.node:
             should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
-                                       (node.name not in self.black_nodes)) or (node.name in self.white_nodes) or ((not self.calibrate_op_types) and (node.name not in self.black_nodes))
+                                   (node.name not in self.black_nodes)) or (node.name in self.white_nodes) or (
+                                       (not self.calibrate_op_types) and (node.name not in self.black_nodes))
             if should_be_calibrate:
                 for tensor_name in itertools.chain(node.input, node.output):
                     if tensor_name in value_infos.keys():
                         vi = value_infos[tensor_name]
-                        if vi.type.HasField('tensor_type') and (vi.type.tensor_type.elem_type in tensor_type_to_calibrate) and (tensor_name not in initializer):
+                        if vi.type.HasField('tensor_type') and (
+                                vi.type.tensor_type.elem_type in tensor_type_to_calibrate) and (
+                                    tensor_name not in initializer):
                             tensors_to_calibrate.add(tensor_name)
 
         # If augmenting all ops, it's possible that some nodes' input value are 0.
@@ -143,7 +146,7 @@ class ONNXCalibrater:
         sess_options = onnxruntime.SessionOptions()
         if ort_graph_optimization_enable:
             sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-        else:            
+        else:
             sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         session = onnxruntime.InferenceSession(self.augmented_model_path,
                                                sess_options=sess_options,
@@ -328,7 +331,7 @@ def calculate_calibration_data(model,
         calibrator = get_calibrator(model,
                                     calibration_data_reader,
                                     op_types_to_quantize,
-                                    nodes_to_exclude,                                    
+                                    nodes_to_exclude,
                                     nodes_to_quantize,
                                     augmented_model_path=augmented_model_path)
 
@@ -386,9 +389,10 @@ def calibrate(model,
     augmented_model = calibrater.augment_graph()
     onnx.save(augmented_model, augmented_model_path)
     #3. generate quantization thresholds
-    dict_for_quantization = calibrater.get_intermediate_outputs(providers=providers, ort_graph_optimization_enable=ort_graph_optimization_enable)
+    dict_for_quantization = calibrater.get_intermediate_outputs(
+        providers=providers, ort_graph_optimization_enable=ort_graph_optimization_enable)
     #4. generate quantization parameters dict
-    quantization_params_dict = {}    
+    quantization_params_dict = {}
     if quantization_params_calculation_enable:
         quantization_params_dict = calibrater.calculate_quantization_params(dict_for_quantization)
     print("Calibrated,quantized parameters calculated and returned.")

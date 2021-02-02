@@ -25,6 +25,7 @@ from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .calibrate import CalibrationDataReader, calibrate
 
+
 def optimize_model(model_path: Path):
     '''
         Generate model that applies graph optimization (constant folding,etc.)

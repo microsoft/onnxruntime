@@ -35,8 +35,8 @@ QLinearOpsRegistry = {
     "Sigmoid": QLinearActivation,
     "MaxPool": QMaxPool,
     "GlobalAveragePool": QGlobalAveragePool,
-    "Split" : QSplit,
-    "Pad" : QPad,
+    "Split": QSplit,
+    "Pad": QPad,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 

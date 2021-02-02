@@ -507,7 +507,7 @@ class ONNXQuantizer:
 
         return True, scale_name, zero_point_name, scale_shape, zero_point_shape
 
-    def _get_quantize_input_nodes(self, node, input_index, qType, given_scale_name = None, given_zp_name = None):
+    def _get_quantize_input_nodes(self, node, input_index, qType, given_scale_name=None, given_zp_name=None):
         '''
         Given an input for a node (which is not a initializer), this function
             - add nodes to compute zero point and scale for this input if they don't exist.

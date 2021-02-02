@@ -24,22 +24,12 @@ from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 
+
 class QDQQuantizer(ONNXQuantizer):
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, quantization_params,
                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
-        ONNXQuantizer.__init__(
-            self,
-            model,
-            per_channel,
-            reduce_range,
-            mode,
-            static,
-            weight_qType,
-            input_qType,
-            quantization_params,
-            nodes_to_quantize,
-            nodes_to_exclude,
-            op_types_to_quantize)
+        ONNXQuantizer.__init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType,
+                               quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
         self.tensors_to_quantize = []
 
     def is_qdq_format(self):
@@ -56,7 +46,9 @@ class QDQQuantizer(ONNXQuantizer):
             if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type is TensorProto.FLOAT:
                 self.tensors_to_quantize.append(tensor_to_quantize)
         else:
-            print("Warning: failed to infer the type of tensor: {}. Skip to quantize it. Please check if it is expected.".format(tensor_name))
+            print(
+                "Warning: failed to infer the type of tensor: {}. Skip to quantize it. Please check if it is expected.".
+                format(tensor_name))
 
     def quantize_model(self):
         for node in self.model.nodes():
@@ -86,7 +78,8 @@ class QDQQuantizer(ONNXQuantizer):
 
                 self.model.remove_initializer(initializer)
                 inputs = [weight.name + "_quantized", weight.name + "_scale", weight.name + "_zero_point"]
-                node = onnx.helper.make_node("DequantizeLinear", inputs, [tensor_to_quantize.tensor_name], tensor_name + '_DequantizeLinear')
+                node = onnx.helper.make_node("DequantizeLinear", inputs, [tensor_to_quantize.tensor_name],
+                                             tensor_name + '_DequantizeLinear')
                 self.model.add_node(node)
             else:
                 data_found, scale_name, zp_name, _, _ = self._get_quantization_params(tensor_name)
@@ -94,17 +87,19 @@ class QDQQuantizer(ONNXQuantizer):
                 if data_found == False:
                     raise ValueError(
                         "Quantization parameters are not specified for param {}."
-                        "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".
-                        format(tensor_name))
+                        "In static mode quantization params for inputs and outputs of nodes to be quantized are required."
+                        .format(tensor_name))
 
-                qlinear_node = onnx.helper.make_node("QuantizeLinear", [tensor_name, scale_name, zp_name], [tensor_name + "_QuantizeLinear"],
-                                                        tensor_name + "_QuantizeLinear")
-                dequant_node = onnx.helper.make_node("DequantizeLinear", [tensor_name + "_QuantizeLinear", scale_name, zp_name], [tensor_name + "_DequantizeLinear"], tensor_name + "_DequantizeLinear")
+                qlinear_node = onnx.helper.make_node("QuantizeLinear", [tensor_name, scale_name, zp_name],
+                                                     [tensor_name + "_QuantizeLinear"], tensor_name + "_QuantizeLinear")
+                dequant_node = onnx.helper.make_node("DequantizeLinear",
+                                                     [tensor_name + "_QuantizeLinear", scale_name, zp_name],
+                                                     [tensor_name + "_DequantizeLinear"],
+                                                     tensor_name + "_DequantizeLinear")
                 self.model.replace_input_of_all_nodes(tensor_name, tensor_name + "_DequantizeLinear")
 
                 self.model.add_nodes([qlinear_node, dequant_node])
 
-                quantized_value = QuantizedValue(tensor_name, tensor_name + "_QuantizeLinear", scale_name,
-                                         zp_name, QuantizedValueType.Input, None,
-                                         self.input_qType)
+                quantized_value = QuantizedValue(tensor_name, tensor_name + "_QuantizeLinear", scale_name, zp_name,
+                                                 QuantizedValueType.Input, None, self.input_qType)
                 self.quantized_value_map[tensor_name] = quantized_value
