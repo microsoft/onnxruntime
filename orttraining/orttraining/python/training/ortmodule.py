@@ -376,6 +376,12 @@ class ORTModule(torch.nn.Module):
                 # Append backward ouput for all trained initializers
                 results += [_ort_output_to_torch_tensor(backward_output)
                             for backward_output in backward_outputs[:num_initializers]]
+
+                # The OrtValue has a shared_ptr to the data. At this point there are two shared_ptrs to the data, one throught the 
+                # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
+                # The following call clears the iobinding output, reducing the use_count to 1, so that once torch finishes computation
+                # on the DLpack tensors, the memory can be freed.
+                self._gradient_io_binding.clear_binding_outputs()
                 return tuple(results)
 
         return _ORTModuleFunction.apply(*self._convert_gradient_graph_input_to_list(self._original_module, *inputs, **kwargs))
