@@ -180,10 +180,6 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   add_compile_definitions(ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  add_compile_definitions(ENABLE_TRAINING_OPS)
-endif()
-
 # General C# properties
 if (onnxruntime_BUILD_CSHARP)
   check_language(CSharp)
@@ -1245,6 +1241,10 @@ if (onnxruntime_USE_DML)
 
   add_definitions(-DUSE_DML=1)
   include(dml)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING_OPS)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_OPS)

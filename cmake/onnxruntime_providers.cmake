@@ -138,8 +138,14 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 
-  list(REMOVE_ITEM onnxruntime_providers_src "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/summary_op.cc")
-  list(REMOVE_ITEM onnxruntime_providers_src "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/summary_op.h")
+  file(GLOB_RECURSE onnxruntime_cpu_full_training_only_srcs
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.cc"
+  )
+
+  list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
