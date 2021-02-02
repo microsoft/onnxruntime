@@ -376,6 +376,7 @@ class ORTModule(torch.nn.Module):
                 # Append backward ouput for all trained initializers
                 results += [_ort_output_to_torch_tensor(backward_output)
                             for backward_output in backward_outputs[:num_initializers]]
+                self._gradient_io_binding.clear_binding_outputs()
                 return tuple(results)
 
         return _ORTModuleFunction.apply(*self._convert_gradient_graph_input_to_list(self._original_module, *inputs, **kwargs))

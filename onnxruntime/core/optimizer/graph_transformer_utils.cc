@@ -37,6 +37,8 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/matmul_transpose_fusion.h"
+#include "orttraining/core/optimizer/bias_dropout_fusion.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -151,6 +153,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
 
+      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
