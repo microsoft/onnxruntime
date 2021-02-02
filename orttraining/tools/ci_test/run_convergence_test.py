@@ -61,7 +61,7 @@ def main():
     ]).check_returncode()
 
     # reference data
-    if args.gpu_sku == 'MI100':
+    if args.gpu_sku == 'MI100_32G':
         reference_csv = "bert_base.convergence.baseline.mi100.csv"
     else:
         reference_csv = "bert_base.convergence.baseline.csv"
