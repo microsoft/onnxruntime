@@ -6,6 +6,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/threading.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/sgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qdwconv.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/pooling.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/transpose.cpp
@@ -59,13 +60,13 @@ if(MSVC)
   elseif(onnxruntime_target_platform STREQUAL "x64")
     enable_language(ASM_MASM)
 
-    set(mlas_platform_srcs_avx
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx/min_max_elements.cpp
+    file(GLOB_RECURSE mlas_platform_srcs_avx CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx/*.cpp"
     )
     set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "/arch:AVX")
 
-    set(mlas_platform_srcs_avx2
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/qladd_avx2.cpp
+    file(GLOB_RECURSE mlas_platform_srcs_avx2 CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/*.cpp"
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
@@ -259,6 +260,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/ErfKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/qladd_avx2.cpp
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/qdwconv_avx2.cpp
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 
@@ -352,7 +354,7 @@ else()
 endif()
 
 add_library(onnxruntime_mlas STATIC ${mlas_common_srcs} ${mlas_platform_srcs})
-target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64)
+target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
   target_compile_options(onnxruntime_mlas PRIVATE "/wd6385")
