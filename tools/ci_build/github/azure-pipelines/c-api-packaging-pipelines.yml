@@ -26,6 +26,8 @@ jobs:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+    AdditionalBuildFlags: '--use_openmp'
 
 - job: Linux_C_API_Packaging_GPU_x64
   workspace:
@@ -64,104 +66,19 @@ jobs:
       parameters :
         condition : 'succeeded'
     - template: templates/clean-agent-build-directory-step.yml
-    
-- job: Windows_Packaging_GPU
-  workspace:
-    clean: all
-  pool: 'Win-GPU-2019'
-  timeoutInMinutes:  240
-  variables:
+
+
+- template: win-ci.yml
+  parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
+    job_name_suffix: gpu
     EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
-    msbuildArch: amd64
     msbuildPlatform: x64
-    CUDA_VERSION: '11.0'
-    buildparameter: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.2.39\cuda"
-  steps:
-    - template: templates/telemetry-steps.yml
-
-    - task: UsePythonVersion@0
-      inputs: 
-        versionSpec: '3.7' 
-        addToPath: true 
-        architecture: $(buildArch)
-
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
-
-    - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy
-      workingDirectory: '$(Build.BinariesDirectory)'
-      displayName: 'Install python modules' 
-    - powershell: |
-       $Env:USE_MSVC_STATIC_RUNTIME=1
-       $Env:ONNX_ML=1
-       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
-       python setup.py bdist_wheel
-       python -m pip uninstall -y onnx
-       Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
-      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
-      displayName: 'Install ONNX'
-
-    - template: templates/set-test-data-variables-step.yml
-    - template: templates/set-version-number-variables-step.yml
-
-    - task: PythonScript@0
-      displayName: 'Generate cmake config'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
-        workingDirectory: '$(Build.BinariesDirectory)'
-
- 
-    - task: VSBuild@1
-      displayName: 'Build'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-        platform: $(msbuildPlatform)
-        configuration: RelWithDebInfo
-        msbuildArchitecture: $(buildArch)
-        maximumCpuCount: true
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-        createLogFile: true
-
-    - task: PythonScript@0
-      displayName: 'test'
-      condition: and(succeeded(), eq('${{ parameters.RunOnnxRuntimeTests }}', true))
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
-        workingDirectory: '$(Build.BinariesDirectory)'
-
-    - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
-      parameters:
-        buildConfig: RelWithDebInfo
-        artifactName: 'onnxruntime-win-$(buildArch)-gpu-$(OnnxRuntimeVersion)'
-        commitId: $(OnnxRuntimeGitCommitHash)
-        artifactNameNoVersionString: 'onnxruntime-win-$(buildArch)-gpu'
-        DoEsrp: ${{ parameters.DoEsrp }}
-
-    - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-      - task: PythonScript@0
-        displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON '
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter) --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-          workingDirectory: '$(Build.BinariesDirectory)'
-
-      - template: templates/compliance.yml
-        parameters :
-          msbuildPlatform: $(msbuildPlatform)
-
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
-    
+    packageName: x64-gpu
+    buildparameter: --use_cuda --cuda_version=11.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0" --cudnn_home="C:\local\cudnn-11.0-windows-x64-v8.0.2.39\cuda
+    runTests: true
+    build_java: true

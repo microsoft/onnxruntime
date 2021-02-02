@@ -22,7 +22,7 @@ parameters:
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
   type: string
-  default: --use_openmp
+  default: ''
 
 - name: OrtNugetPackageId
   displayName: Package name for nuget
@@ -151,229 +151,66 @@ jobs:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-- job: Windows_Packaging_CPU
-  workspace:
-    clean: all
-  pool: 'Win-CPU-2019'
-  timeoutInMinutes:  300
-  strategy:
-    matrix: 
-      x86:
-        EnvSetupScript: setup_env_x86.bat
-        buildArch: x86
-        msbuildArch: x86
-        msbuildPlatform: Win32
-        packageName: x86
-        buildparameter: --x86
-        runTests: ${{ parameters.RunOnnxRuntimeTests }}
-        build_java: false
-      x64:
-        EnvSetupScript: setup_env.bat
-        buildArch: x64
-        msbuildArch: amd64
-        msbuildPlatform: x64
-        packageName: x64
-        buildparameter: --build_java
-        runTests: ${{ parameters.RunOnnxRuntimeTests }}
-        build_java: true
-      arm:
-        EnvSetupScript: setup_env.bat
-        buildArch: x64
-        msbuildArch: amd64
-        msbuildPlatform: arm
-        packageName: arm
-        buildparameter: --arm
-        runTests: false
-        build_java: false
-      arm64:
-        EnvSetupScript: setup_env.bat
-        buildArch: x64
-        msbuildArch: amd64
-        msbuildPlatform: arm64
-        packageName: arm64
-        buildparameter: --arm64  --build_java
-        runTests: false
-        build_java: false
-  steps:
-    - template: telemetry-steps.yml
-    
-    - task: UsePythonVersion@0
-      inputs: 
-        versionSpec: '3.7' 
-        addToPath: true 
-        architecture: $(buildArch)
 
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
+- template: win-ci.yml
+  parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
+    job_name_suffix: x86_openmp
+    EnvSetupScript: setup_env_x86.bat
+    buildArch: x86
+    msbuildPlatform: Win32
+    packageName: x86
+    buildparameter: --x86 ${{ parameters.AdditionalBuildFlags }}
+    runTests: ${{ parameters.RunOnnxRuntimeTests }}
+    build_java: false
 
-    - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy
-      workingDirectory: '$(Build.BinariesDirectory)'
-      displayName: 'Install python modules' 
-    - powershell: |
-       $Env:USE_MSVC_STATIC_RUNTIME=1
-       $Env:ONNX_ML=1
-       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
-       python setup.py bdist_wheel
-       python -m pip uninstall -y onnx
-       Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
-      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'      
-      displayName: 'Install ONNX'    
+- template: win-ci.yml
+  parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
+    job_name_suffix: arm_openmp
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildPlatform: arm
+    packageName: arm
+    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}
+    runTests: false
+    build_java: false
 
-    - template: set-test-data-variables-step.yml
-    - template: set-version-number-variables-step.yml
+- template: win-ci.yml
+  parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
+    job_name_suffix: arm64_openmp
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildPlatform: arm64
+    packageName: arm64
+    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}
+    runTests: false
+    build_java: false
 
-    - task: PythonScript@0
-      displayName: 'Generate cmake config'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" ${{ parameters.AdditionalBuildFlags }} --build_shared_lib --enable_onnx_tests --enable_wcos  --use_winml $(TelemetryOption) $(buildparameter)'
-        workingDirectory: '$(Build.BinariesDirectory)'
- 
-    - task: VSBuild@1
-      displayName: 'Build'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-        platform: $(msbuildPlatform)
-        configuration: RelWithDebInfo
-        msbuildArchitecture: $(buildArch)
-        maximumCpuCount: true
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-        createLogFile: true
-
-    - task: PythonScript@0
-      displayName: 'test'
-      condition: and(succeeded(), eq(variables.runTests, true))
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" ${{ parameters.AdditionalBuildFlags }} --build_shared_lib --enable_onnx_tests --enable_wcos  --use_winml $(TelemetryOption) $(buildparameter)'
-        workingDirectory: '$(Build.BinariesDirectory)'
-
-    - script: |
-       dir *.dll
-       mkdir $(Build.ArtifactStagingDirectory)\testdata
-      workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
-      displayName: 'List built DLLs' 
-
-    - template: c-api-artifacts-package-and-publish-steps-windows.yml
-      parameters:
-        buildConfig: RelWithDebInfo
-        artifactName: 'onnxruntime-win-$(packageName)-$(OnnxRuntimeVersion)'
-        artifactNameNoVersionString: 'onnxruntime-win-$(packageName)'
-        commitId: $(OnnxRuntimeGitCommitHash)
-        DoEsrp: ${{ parameters.DoEsrp }}
-
-    #Upload protoc.exe, which will be used in nuget build for generating C# files
-    - task: PublishPipelineArtifact@1
-      condition: and(succeeded(), eq(variables.packageName, 'x64'))
-      inputs:
-        targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\external\protobuf\cmake\RelWithDebInfo\protoc.exe' 
-        artifactName: 'drop-extra' 
-
-
-    - task: CopyFiles@2
-      displayName: 'Copy custom_op_library to: $(Build.ArtifactStagingDirectory)'
-      condition: and(succeeded(), eq(variables.packageName, 'x64'))
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-        Contents: 'custom_op_library.dll'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
-
-    #To be used in test_win.yml
-    - task: PublishPipelineArtifact@1
-      condition: and(succeeded(), eq(variables.packageName, 'x64'))
-      inputs:
-        targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\external\protobuf\cmake\RelWithDebInfo\protoc.exe' 
-        artifactName: 'drop-nuget'
-
-
-    - task: CmdLine@2
-      condition: and(succeeded(), eq(variables.build_java, true))
-      inputs:
-        script: |
-          @echo on
-          cd $(Build.SourcesDirectory)\java
-          gradle cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
-          if %errorlevel% neq 0 exit /b %errorlevel%
-          cd $(Build.BinariesDirectory)\RelWithDebInfo
-          set NATIVE_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\stage\ai\onnxruntime\native\win-x64
-          mkdir %NATIVE_FOLDER%
-          echo "Directories created"
-          copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)
-          pushd $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)
-          set artifact_id=onnxruntime
-          jar xf onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
-          move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-$(OnnxRuntimeVersion).pom
-          rd /s /q META-INF
-          popd
-          copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
-          copy .\RelWithDebInfo\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
-          copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\stage\Privacy.md
-          copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\stage\ThirdPartyNotices.txt
-          @echo $(OnnxRuntimeGitCommitHash) > $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\stage\GIT_COMMIT_ID
-          pushd $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\stage
-          jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime.pdb
-          jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime4j_jni.pdb
-          jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\onnxruntime-$(OnnxRuntimeVersion).jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
-          popd
-          pushd $(Build.SourcesDirectory)\java\build\classes\java\test
-          if %errorlevel% neq 0 exit /b %errorlevel%
-          jar cvf $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\testing.jar .
-          if %errorlevel% neq 0 exit /b %errorlevel%
-          popd
-          pushd $(Build.SourcesDirectory)\java\build\resources\test
-          rd /s /q ai\onnxruntime\native
-          jar uvf $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\testing.jar .
-          popd
-          rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)\stage
-          dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)
-        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo'
-        displayName: 'Add symbols and notices to Java'    
-      
-    - task: PublishBuildArtifacts@1
-      condition: and(succeeded(), eq(variables.build_java, true))
-      displayName: 'Publish Java temp binaries'
-      inputs:
-        pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-$(msbuildPlatform)' 
-        artifactName: 'drop-onnxruntime-java-win-$(msbuildPlatform)'
-
-    - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-      - task: Semmle@0
-        condition: and(succeeded(), eq(variables.build_java, true))
-        inputs:
-          sourceCodeDirectory: '$(Build.SourcesDirectory)\java'
-          language: 'java'
-          cleanupBuildCommands: 'C:\ProgramData\chocolatey\bin\gradle.exe -Dorg.gradle.daemon=false clean'
-          buildCommands: 'C:\ProgramData\chocolatey\bin\gradle.exe -Dorg.gradle.daemon=false jar'
-          querySuite: 'Recommended'
-          timeout: '7200'
-          ram: '16384'
-          addProjectDirToScanningExclusionList: true
-
-      - task: PythonScript@0
-        displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON '
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" ${{ parameters.AdditionalBuildFlags }} --build_shared_lib --enable_onnx_tests --enable_wcos  --use_winml $(TelemetryOption) $(buildparameter) --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-          workingDirectory: '$(Build.BinariesDirectory)'
-
-      - template: compliance.yml
-        parameters :
-          msbuildPlatform: $(msbuildPlatform)
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
-
+- template: win-ci.yml
+  parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
+    job_name_suffix: x64_openmp
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: x64
+    buildparameter: --build_java ${{ parameters.AdditionalBuildFlags }}
+    runTests: ${{ parameters.RunOnnxRuntimeTests }}
+    build_java: true
 
 
 - job: Jar_Packaging
@@ -383,7 +220,10 @@ jobs:
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
   - MacOS_C_API_Packaging_CPU_x64
-  - Windows_Packaging_CPU
+  - Windows_Packaging_CPU_x86_openmp
+  - Windows_Packaging_CPU_x64_openmp
+  - Windows_Packaging_CPU_arm_openmp
+  - Windows_Packaging_CPU_arm64_openmp
   condition: succeeded()
   steps:
   - checkout: self
@@ -451,7 +291,10 @@ jobs:
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
   - MacOS_C_API_Packaging_CPU_x64
-  - Windows_Packaging_CPU
+  - Windows_Packaging_CPU_x86_openmp
+  - Windows_Packaging_CPU_x64_openmp
+  - Windows_Packaging_CPU_arm_openmp
+  - Windows_Packaging_CPU_arm64_openmp
   condition: succeeded()
   steps:
   - checkout: self
@@ -637,7 +480,7 @@ jobs:
   - name: GDN_CODESIGN_TARGETDIRECTORY
     value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
   pool: 'Win-CPU-2019'
-  condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
+  #condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
@@ -667,7 +510,7 @@ jobs:
     displayName: 'Copy Signed Native NuGet Package to Blob Store'
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
-      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(NuGetPackageVersionNumber).nupkg'
+      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/${{ parameters.OrtNugetPackageId }}.$(NuGetPackageVersionNumber).nupkg'
       azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
       destination: azureBlob
       storage: ortpackages
@@ -692,7 +535,7 @@ jobs:
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       command: 'push'
-      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(NuGetPackageVersionNumber).nupkg'
+      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/${{ parameters.OrtNugetPackageId }}.$(NuGetPackageVersionNumber).nupkg'
       feedPublish: 'OnnxRuntime'
 
   - task: DotNetCoreCLI@2
@@ -708,7 +551,7 @@ jobs:
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       command: 'push'
-      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(NuGetPackageVersionNumber).nupkg'
+      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/${{ parameters.OrtNugetPackageId }}.$(NuGetPackageVersionNumber).nupkg'
       publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
 
   - task: NuGetCommand@2
