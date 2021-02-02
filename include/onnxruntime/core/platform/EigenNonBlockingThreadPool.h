@@ -130,21 +130,39 @@
 namespace onnxruntime {
 namespace concurrency {
 
+#define NOW ::std::chrono::high_resolution_clock::now()
+
 #include <thread>
 class PerCallStatistic {
  public:
   struct Statistics {
-    onnxruntime::TimePoint last_landmarks_;
+    ::std::list<onnxruntime::TimePoint> last_landmarks_;
     ::std::list<::std::string> durations;
     void Reset() {
       durations.clear();
     }
+    /*
     void Record(bool diff_with_last, const ::std::string& comment) {
       auto now = ::std::chrono::high_resolution_clock::now();
       if (diff_with_last) {
-        durations.push_back(comment + ::std::to_string(TimeDiffMicroSeconds(last_landmarks_, now)));
+        durations.push_back(comment + ::std::to_string(TimeDiffMicroSeconds(last_landmarks_.back(), now)));
+        last_landmarks_.pop_back();
       }
-      last_landmarks_ = now;
+      last_landmarks_.push_back(std::move(now));
+    }*/
+    void RecordStart() {
+      last_landmarks_.push_back(std::move(NOW));
+    }
+    void RecordEnd(const ::std::string& event) {
+      assert(!last_landmarks_.empty());
+      durations.push_back(event + ::std::to_string(TimeDiffMicroSeconds(last_landmarks_.back(), NOW)));
+      last_landmarks_.pop_back();
+    }
+    void RecordEndAndStart(const ::std::string& event) {
+      assert(!last_landmarks_.empty());
+      durations.push_back(event + ::std::to_string(TimeDiffMicroSeconds(last_landmarks_.back(), NOW)));
+      last_landmarks_.pop_back();
+      last_landmarks_.push_back(std::move(NOW));
     }
   };
   ~PerCallStatistic() = default;
@@ -170,6 +188,7 @@ class PerCallStatistic {
       iter->second.Reset();
     }
   }
+  /*
   static void Record(bool diff_with_last, const std::string& comment = "") {
     auto& instance = Instance();
     auto key = ::std::this_thread::get_id();
@@ -177,6 +196,34 @@ class PerCallStatistic {
     auto iter = instance.records_.find(key);
     if (iter != instance.records_.end()) {
       iter->second.Record(diff_with_last, comment);
+    }
+  }*/
+
+  static void RecordStart() {
+    auto& instance = Instance();
+    auto key = ::std::this_thread::get_id();
+    std::unique_lock<std::mutex> lock(instance.mutex_);
+    auto iter = instance.records_.find(key);
+    if (iter != instance.records_.end()) {
+      iter->second.RecordStart();
+    }
+  }
+  static void RecordEnd(const std::string& event) {
+    auto& instance = Instance();
+    auto key = ::std::this_thread::get_id();
+    std::unique_lock<std::mutex> lock(instance.mutex_);
+    auto iter = instance.records_.find(key);
+    if (iter != instance.records_.end()) {
+      iter->second.RecordEnd(event);
+    }
+  }
+  static void RecordEndAndStart(const std::string& event) {
+    auto& instance = Instance();
+    auto key = ::std::this_thread::get_id();
+    std::unique_lock<std::mutex> lock(instance.mutex_);
+    auto iter = instance.records_.find(key);
+    if (iter != instance.records_.end()) {
+      iter->second.RecordEndAndStart(event);
     }
   }
   static std::string GetStatistic() {
@@ -866,6 +913,8 @@ void EndParallelSectionInternal(PerThread &pt,
   // Notify workers to exit from the section
   ps.active = false;
 
+  PerCallStatistic::RecordStart();
+
   // Attempt to revoke any tasks that were sent to workers but not
   // started.
   unsigned tasks_started = static_cast<unsigned>(ps.tasks.size());
@@ -879,11 +928,15 @@ void EndParallelSectionInternal(PerThread &pt,
     ps.tasks.pop_back();
   }
 
+  PerCallStatistic::RecordEndAndStart("Revoke: ");
+
   // Wait for workers to exit ParLoopWorker
   auto tasks_to_wait_for = tasks_started - tasks_revoked;
   while (ps.tasks_finished < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
   }
+
+  PerCallStatistic::RecordEnd("WaitAll: ");
 
   // Clear status to allow the ThreadPoolParallelSection to be
   // re-used.
@@ -947,8 +1000,9 @@ void SummonWorkers(PerThread &pt,
     // This uses a best-effort assessment of which threads are
     // spinning.
     std::vector<unsigned> good_hints, alt_hints;
+    PerCallStatistic::RecordStart();
     GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
-
+    PerCallStatistic::RecordEndAndStart("hints: ");
     // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
       Task t;
@@ -963,7 +1017,6 @@ void SummonWorkers(PerThread &pt,
           q_idx = Rand(&pt.rand) % num_threads_;
         }
       }
-
       // If the worker's queue accepts the task, then record it in
       // the vector of tasks that we will need to synchronize with on
       // exiting the parallel section.  If the queue rejects the task
@@ -979,6 +1032,7 @@ void SummonWorkers(PerThread &pt,
         td.EnsureAwake();
       }
     }
+    PerCallStatistic::RecordEnd("distribute: ");
   }
 }
 
@@ -990,7 +1044,7 @@ void SummonWorkers(PerThread &pt,
 void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
                           unsigned n) override {
-  PerCallStatistic::Record(false);
+  PerCallStatistic::RecordStart();
   PerThread* pt = GetPerThread();
   assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
   assert((n > 1) && "Trivial parallel section; should be avoided by caller");
@@ -1019,18 +1073,16 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
     }
   };
   SummonWorkers(*pt, ps, n, worker_fn);
-
-  PerCallStatistic::Record(true, "RunInParallelSection preproc: ");
+  PerCallStatistic::RecordEndAndStart("RunInParallelSection preproc: ");
   // Run work in the main thread
   loop.fn(0);
-  PerCallStatistic::Record(true, "RunInParallelSection run: ");
-
+  PerCallStatistic::RecordEndAndStart("RunInParallelSection run: ");
   // Wait for workers to exit the loop
   ps.current_loop = 0;
   while (ps.workers_in_loop) {
     onnxruntime::concurrency::SpinPause();
   }
-  PerCallStatistic::Record(true, "RunInParallelSection postproc: ");
+  PerCallStatistic::RecordEnd("RunInParallelSection postproc: ");
 }
 
 // Run a single parallel loop _without_ a parallel section.  This is a
@@ -1038,7 +1090,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // handing off multiple loops to the pool of workers.
 
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
-  PerCallStatistic::Record(false);
+  PerCallStatistic::RecordStart();
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
@@ -1049,16 +1101,18 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   // fn directly without needing to receive it via ps.current_loop.
   SummonWorkers(*pt, ps, n, fn);
 
-  PerCallStatistic::Record(true, "preproc: ");
+  PerCallStatistic::RecordEnd("preproc: ");
+  PerCallStatistic::RecordStart();
   // Run work in the main thread
   fn(0);
-  PerCallStatistic::Record(true, "run: ");
+  PerCallStatistic::RecordEnd("run: ");
+  PerCallStatistic::RecordStart();
   // Wait for workers to exit the parallel section and hence to have
   // completed the loop (i.e., ps.tasks_finished matches the number of
   // tasks that have been created less the number successfully
   // revoked).
   EndParallelSectionInternal(*pt, ps);
-  PerCallStatistic::Record(true, "postproc: ");
+  PerCallStatistic::RecordEnd("postproc: ");
 }
 
 void Cancel() override {
