@@ -963,9 +963,10 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
 
   bool HasSupportedInputsImpl(const Node& node) const override;
 
-  // All ops except "Sin" opset 5- uses consumed_inputs attribute which is not supported for now
-  // "Sin" op has support from opset 7, return 6 here for all ops
   int GetMinSupportedOpSet(const Node& node) const override;
+
+  static bool IsQuantizedOpSupported(const InitializedTensorSet& initializers, const Node& node,
+                                     const OpSupportCheckParams& params);
 };
 
 /* static */ void UnaryOpSupportChecker::CreateSharedOpSupportChecker(
@@ -988,9 +989,60 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
 
 bool UnaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                                               const OpSupportCheckParams& params) const {
-  const auto& op_type = node.OpType();
-  if (op_type != "QLinearSigmoid")
+  if (node.OpType() == "QLinearSigmoid")
+    return IsQuantizedOpSupported(initializers, node, params);
+  else  // Everything except "QLinearSigmoid" are by default supported
     return true;
+}
+
+int32_t UnaryOpSupportChecker::GetMinSupportedSdkVer(
+    const Node& node, const OpSupportCheckParams& /* params */) const {
+  const auto& op(node.OpType());
+  if (op == "Abs" ||
+      op == "Exp" ||
+      op == "Neg" ||
+      op == "Sin" ||
+      op == "Sqrt" ||
+      op == "Log") {
+    return 29;
+  }
+
+  return 27;
+}
+
+bool UnaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  // We only need to override input check for QLinearSigmoid
+  if (node.OpType() != "QLinearSigmoid")
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
+
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
+
+// All ops except "Sin" opset 5- uses consumed_inputs attribute which is not supported for now
+// "Sin" op has support from opset 7, return 6 here for all ops
+// "QLinearSigmoid" is a contrib op, OpSet will always be 1
+int UnaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
+  if (node.OpType() == "QLinearSigmoid")
+    return 1;
+
+  return 6;
+}
+
+/* static */ bool UnaryOpSupportChecker::IsQuantizedOpSupported(
+    const InitializedTensorSet& initializers, const Node& node, const OpSupportCheckParams& params) {
+  const auto& op_type = node.OpType();
+  ORT_ENFORCE(op_type == "QLinearSigmoid");
 
   const auto& op_name = node.Name();
   const auto input_defs(node.InputDefs());
@@ -1010,6 +1062,8 @@ bool UnaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initia
                                           : std::vector<size_t>{2, 4}))
     return false;
 
+  // NNAPI requires the scale be 1.f/256 and zero point to be 0
+  // See https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/android10-c2f2-release/nn/common/operations/Activation.cpp#180
   auto output_scale = GetQuantizationScale(initializers, node, 3);
   if (output_scale != 1.f / 256) {
     LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
@@ -1034,46 +1088,6 @@ bool UnaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initia
   }
 
   return true;
-}
-
-int32_t UnaryOpSupportChecker::GetMinSupportedSdkVer(
-    const Node& node, const OpSupportCheckParams& /* params */) const {
-  const auto& op(node.OpType());
-  if (op == "Abs" ||
-      op == "Exp" ||
-      op == "Neg" ||
-      op == "Sin" ||
-      op == "Sqrt" ||
-      op == "Log") {
-    return 29;
-  }
-
-  return 27;
-}
-
-bool UnaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
-  if (node.OpType() != "QLinearSigmoid")
-    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
-
-  int32_t input_type;
-  if (!GetType(*node.InputDefs()[0], input_type))
-    return false;
-
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
-}
-
-int UnaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
-  if (node.OpType() == "QLinearSigmoid")
-    return 1;
-
-  return 6;
 }
 
 #pragma endregion

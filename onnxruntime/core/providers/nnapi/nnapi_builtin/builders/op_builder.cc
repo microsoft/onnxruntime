@@ -1872,7 +1872,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     int32_t x_zero_point = 0;
     ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2, x_zero_point));
 
-    // Verify if the scale and zero point matchs from onnx input and nnapi input match
+    // Verify if the scale and zero point values from onnx input and nnapi input match
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
 
     // We already verified this in  UnaryOpSupportChecker::IsOpSupportedImpl
