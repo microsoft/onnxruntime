@@ -20,12 +20,17 @@ jobs:
     #   displayName: 'Onnx Zoo Models Perf'
     #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf.sh "many-models"'
-      displayName: 'Many Models Perf'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf.sh "many-models"'
+    #   displayName: 'Many Models Perf'
+    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf.sh "partner-models"'
-      displayName: 'Partner Models Perf'
+    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf.sh "partner-models"'
+    #   displayName: 'Partner Models Perf'
+    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+
+    # temp test artifact
+    - script: sudo docker run --gpus all -v /home/hcsuser/repos/onnxruntime/onnxruntime/python/tools/tensorrt/perf/:/usr/share/perf/ -v /home/hcsuser/mount/test:/usr/share/mount/many-models onnxruntime-trt-perf /bin/bash /usr/share/perf/perf.sh -d /usr/share/perf/ -o many-models -m /usr/share/mount/many-models
+      displayName: 'Small Test Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact' 
