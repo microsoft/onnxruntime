@@ -112,7 +112,10 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
     external_stream_ = true;
     stream_ = static_cast<hipStream_t>(info.user_compute_stream);
   } else {
-    HIP_CALL_THROW(hipStreamCreateWithFlags(&stream_, hipStreamNonBlocking));
+    // HIP_CALL_THROW(hipStreamCreateWithFlags(&stream_, hipStreamNonBlocking));
+    // TODO: use default stream now due to failures of FusedMatMulOpTest.
+    // Will check with AMD to verify whether ROCBlas can run with specified stream.
+    stream_ = nullptr;
   }
 
   size_t free = 0;
