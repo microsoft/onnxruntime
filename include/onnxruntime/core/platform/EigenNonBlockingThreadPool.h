@@ -1026,10 +1026,14 @@ void SummonWorkers(PerThread &pt,
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
+      PerCallStatistic::RecordStart();
       t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
+      PerCallStatistic::RecordEnd("pushqueue: ");
       if (!t) {
         ps.tasks.push_back({q_idx, w_idx});
+        PerCallStatistic::RecordStart();
         td.EnsureAwake();
+        PerCallStatistic::RecordEnd("awake: ");
       }
     }
     PerCallStatistic::RecordEnd("distribute: ");

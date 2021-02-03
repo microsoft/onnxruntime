@@ -49,44 +49,44 @@ struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
 static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop counter shards to match cache-line size");
 
 class alignas(CACHE_LINE_BYTES) LoopCounter {
-public:
- LoopCounter(uint64_t num_iterations,
-             uint64_t d_of_p,
-             uint64_t block_size = 1) : _block_size(block_size),
-                                        _num_shards(GetNumShards(num_iterations,
-                                                                 d_of_p,
-                                                                 block_size)) {
-   // Divide the iteration space between the shards.  If the iteration
-   // space does not divide evenly into shards of multiples of
-   // block_size then the final shard is left uneven.
+ public:
+  LoopCounter(uint64_t num_iterations,
+              uint64_t d_of_p,
+              uint64_t block_size = 1) : _block_size(block_size),
+                                         _num_shards(GetNumShards(num_iterations,
+                                                                  d_of_p,
+                                                                  block_size)) {
+    // Divide the iteration space between the shards.  If the iteration
+    // space does not divide evenly into shards of multiples of
+    // block_size then the final shard is left uneven.
 
-   auto num_blocks = num_iterations / block_size;
-   auto blocks_per_shard = num_blocks / _num_shards;
-   auto iterations_per_shard = blocks_per_shard * block_size;
+    auto num_blocks = num_iterations / block_size;
+    auto blocks_per_shard = num_blocks / _num_shards;
+    auto iterations_per_shard = blocks_per_shard * block_size;
 
-   for (uint64_t shard = 0; shard < _num_shards; shard++) {
-     // Initialize with a relaxed store; synchronization with worker
-     // threads is provided via the thread pool
-     _shards[shard]._next.store(shard * iterations_per_shard,
-                                ::std::memory_order_relaxed);
+    for (uint64_t shard = 0; shard < _num_shards; shard++) {
+      // Initialize with a relaxed store; synchronization with worker
+      // threads is provided via the thread pool
+      _shards[shard]._next.store(shard * iterations_per_shard,
+                                 ::std::memory_order_relaxed);
 
-     bool is_last_shard = (shard == _num_shards-1);
-     _shards[shard]._end = is_last_shard ? num_iterations : ((shard+1) * iterations_per_shard);
-   }
- }
+      bool is_last_shard = (shard == _num_shards - 1);
+      _shards[shard]._end = is_last_shard ? num_iterations : ((shard + 1) * iterations_per_shard);
+    }
+  }
 
- // Allocate each thread to a home shard, from which it starts
- // claiming iterations.
- //
- // We use the worker ID provided by the thread pool as the basis of
- // this allocation.  Doing so promotes locality between successive
- // loops: the worker that runs a given iteration in one loop will
- // tend to run the same iterations in the next loop.  This helps
- // operators with a series of short loops, such as GRU.
+  // Allocate each thread to a home shard, from which it starts
+  // claiming iterations.
+  //
+  // We use the worker ID provided by the thread pool as the basis of
+  // this allocation.  Doing so promotes locality between successive
+  // loops: the worker that runs a given iteration in one loop will
+  // tend to run the same iterations in the next loop.  This helps
+  // operators with a series of short loops, such as GRU.
 
- unsigned GetHomeShard(unsigned idx) const {
-   return idx % _num_shards;
- }
+  unsigned GetHomeShard(unsigned idx) const {
+    return idx % _num_shards;
+  }
 
   // Attempt to claim iterations from the sharded counter.  The function either
   // returns true, along with a block of exactly block_size iterations, or it returns false
@@ -112,7 +112,7 @@ public:
     return false;
   }
 
-private:
+ private:
   // Derive the number of shards to use for a given loop.  We require
   // at least one block of work per shard, and subject to the
   // constraints:
@@ -200,6 +200,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
   // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
   auto d_of_p = DegreeOfParallelism(this);
+
   auto num_blocks = total / block_size;
   int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(d_of_p), num_blocks));
   assert(num_work_items > 0);
