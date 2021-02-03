@@ -83,8 +83,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
   int GetCudnnConvAlgo() const { return cudnn_conv_algo_; }
   void UpdateProviderOptionsInfo();
+  static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy, void* external_alloc, void* external_free);
 
-private:
+ private:
   OrtDevice::DeviceId device_id_;
   cudaDeviceProp device_prop_;
   size_t cuda_mem_limit_;

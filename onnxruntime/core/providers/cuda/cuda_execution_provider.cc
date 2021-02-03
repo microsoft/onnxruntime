@@ -58,13 +58,8 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit,
-                                                          ArenaExtendStrategy arena_extend_strategy, void* external_alloc, void* external_free) {
-  CUDA_CALL_THROW(cudaSetDevice(device_id));
-  CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
-  CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-
-  if (external_alloc != nullptr && external_free != nullptr) {
+AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy, void* external_alloc, void* external_free) {
+if (external_alloc != nullptr && external_free != nullptr) {
     AllocatorCreationInfo default_memory_info(
         [external_alloc, external_free](OrtDevice::DeviceId id) {
           return onnxruntime::make_unique<CUDAExternalAllocator>(id, CUDA, external_alloc, external_free);
@@ -72,7 +67,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
         device_id,
         false);
 
-    allocator_ = CreateAllocator(default_memory_info);
+    return CreateAllocator(default_memory_info);
 
   } else {
     AllocatorCreationInfo default_memory_info(
@@ -86,8 +81,17 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
          -1, -1});
 
     // CUDA malloc/free is expensive so always use an arena
-    allocator_ = CreateAllocator(default_memory_info);
+    return CreateAllocator(default_memory_info);
   }
+}
+
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit,
+                                                          ArenaExtendStrategy arena_extend_strategy, void* external_alloc, void* external_free) {
+  CUDA_CALL_THROW(cudaSetDevice(device_id));
+  CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+
+  allocator_ = CreateCudaAllocator(device_id, cuda_mem_limit, arena_extend_strategy, external_alloc, external_free);
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -146,31 +150,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaDeviceSynchronize());
   CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, device_id_));
 
-  if (external_alloc_ != nullptr && external_free_ != nullptr) {
-    void* alloc = external_alloc_;
-    void* free = external_free_;
-    AllocatorCreationInfo default_memory_info(
-        [alloc, free](OrtDevice::DeviceId device_id) {
-          return onnxruntime::make_unique<CUDAExternalAllocator>(device_id, CUDA, alloc, free);
-        },
-        device_id_,
-        false);  // REVIEW(codemzs): This should be passed as an option.
-
-    InsertAllocator(CreateAllocator(default_memory_info));
-
-  } else {
-    AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId device_id) {
-          return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
-        },
-        device_id_,
-        true,  // REVIEW(codemzs): This should be passed as an option.
-        {cuda_mem_limit_,
-         static_cast<int>(arena_extend_strategy_),
-         -1, -1});
-
-    InsertAllocator(CreateAllocator(default_memory_info));
-  }
+  InsertAllocator(CreateCudaAllocator(device_id_, cuda_mem_limit_, arena_extend_strategy_, external_alloc_, external_free_));
 
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId device_id) {

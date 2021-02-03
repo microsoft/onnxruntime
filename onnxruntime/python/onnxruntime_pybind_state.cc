@@ -595,34 +595,7 @@ static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
   if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    // Use arena-based allocator
-    if (cuda_external_alloc != nullptr && cuda_external_free != nullptr) {
-      AllocatorCreationInfo default_memory_info(
-          [](OrtDevice::DeviceId id) {
-            return onnxruntime::make_unique<CUDAExternalAllocator>(id, CUDA, cuda_external_alloc, cuda_external_free);
-          },
-          id,
-          false  //Review(codemzs): We should be using the option passed by the user.
-      );
-
-      auto allocator = CreateAllocator(default_memory_info);
-
-      id_to_allocator_map.insert({id, allocator});
-    } else {
-      AllocatorCreationInfo default_memory_info(
-          [](OrtDevice::DeviceId id) {
-            return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
-          },
-          id,
-          true, //Review(codemzs): We should be using the option passed by the user.
-          {cuda_mem_limit,
-           static_cast<int>(arena_extend_strategy),
-           -1, -1});
-
-      auto allocator = CreateAllocator(default_memory_info);
-
-      id_to_allocator_map.insert({id, allocator});
-    }
+    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, cuda_mem_limit, arena_extend_strategy, cuda_external_alloc, cuda_external_free)});
   }
 
   return id_to_allocator_map[id];
