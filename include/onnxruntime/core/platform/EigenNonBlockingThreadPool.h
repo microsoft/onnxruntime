@@ -130,6 +130,53 @@
 namespace onnxruntime {
 namespace concurrency {
 
+class ThreadPoolProfiler final {
+ public:
+
+  ~ThreadPoolProfiler() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
+
+  static void Reset();
+  static void RecordStart();
+  static void RecordEnd(std::string&& event);
+  static void RecordEndAndStart(std::string&& event);
+  static std::string GetStatistic();
+
+ private:
+
+  using CLOCK = std::chrono::high_resolution_clock;
+
+  ThreadPoolProfiler() = default;
+
+  static ThreadPoolProfiler& Instance() {
+    static ThreadPoolProfiler profiler;
+    return profiler;
+  }
+
+  struct Statistics {
+    std::list<onnxruntime::TimePoint> landmarks_;
+    std::list<std::string> statictics_;
+    void Reset() {
+      statictics_.clear();
+    }
+    void RecordStart() {
+      landmarks_.push_back(std::move(CLOCK::now()));
+    }
+    void RecordEnd(const std::string& event) {
+      statictics_.push_back(event + ": " + std::to_string(TimeDiffMicroSeconds(landmarks_.back(), CLOCK::now())));
+      landmarks_.pop_back();
+    }
+    void RecordEndAndStart(const std::string& event) {
+      statictics_.push_back(event + ": " + std::to_string(TimeDiffMicroSeconds(landmarks_.back(), CLOCK::now())));
+      landmarks_.pop_back();
+      landmarks_.push_back(std::move(CLOCK::now()));
+    }
+  };  //Statistics
+
+  std::mutex mutex_;
+  std::unordered_map<std::thread::id, Statistics> records_;
+};  // ThreadPoolProfiler
+
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;
 
@@ -883,7 +930,9 @@ void SummonWorkers(PerThread &pt,
     // This uses a best-effort assessment of which threads are
     // spinning.
     std::vector<unsigned> good_hints, alt_hints;
+    ThreadPoolProfiler::RecordStart();
     GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+    ThreadPoolProfiler::RecordEndAndStart("GetGoodWorkerHints");
 
     // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
@@ -915,6 +964,7 @@ void SummonWorkers(PerThread &pt,
         td.EnsureAwake();
       }
     }
+    ThreadPoolProfiler::RecordEnd("Task enqueue");
   }
 }
 
@@ -926,6 +976,7 @@ void SummonWorkers(PerThread &pt,
 void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
                           unsigned n) override {
+  ThreadPoolProfiler::RecordStart();
   PerThread* pt = GetPerThread();
   assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
   assert((n > 1) && "Trivial parallel section; should be avoided by caller");
@@ -954,15 +1005,18 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
     }
   };
   SummonWorkers(*pt, ps, n, worker_fn);
+  ThreadPoolProfiler::RecordEndAndStart("ParallelSection preprocessing");
 
   // Run work in the main thread
   loop.fn(0);
+  ThreadPoolProfiler::RecordEndAndStart("ParallelSection run");
 
   // Wait for workers to exit the loop
   ps.current_loop = 0;
   while (ps.workers_in_loop) {
     onnxruntime::concurrency::SpinPause();
   }
+  ThreadPoolProfiler::RecordEnd("ParallelSection postprocessing");
 }
 
 // Run a single parallel loop _without_ a parallel section.  This is a
@@ -970,6 +1024,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // handing off multiple loops to the pool of workers.
 
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
+  ThreadPoolProfiler::RecordStart();
   PerThread *pt = GetPerThread();
   ThreadPoolParallelSection ps;
   StartParallelSectionInternal(*pt, ps);
@@ -979,15 +1034,18 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   // multi-loop RunInParallelSection, this single-loop worker can run
   // fn directly without needing to receive it via ps.current_loop.
   SummonWorkers(*pt, ps, n, fn);
+  ThreadPoolProfiler::RecordEndAndStart("Preprocessing");
 
   // Run work in the main thread
   fn(0);
+  ThreadPoolProfiler::RecordEndAndStart("Run");
 
   // Wait for workers to exit the parallel section and hence to have
   // completed the loop (i.e., ps.tasks_finished matches the number of
   // tasks that have been created less the number successfully
   // revoked).
   EndParallelSectionInternal(*pt, ps);
+  ThreadPoolProfiler::RecordEnd("Postprocessing");
 }
 
 void Cancel() override {

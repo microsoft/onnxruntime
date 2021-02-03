@@ -222,6 +222,9 @@ class ThreadPool {
                   "Per-thread state should be trivially destructible");
   };
 
+  static void ResetProfiler();
+  static std::string GetProfileStatistics();
+
   // Schedules fn() for execution in the pool of threads.  The function may run
   // synchronously if it cannot be enqueued.  This will occur if the thread pool's
   // degree-of-parallelism is 1, but it may also occur for implementation-dependent

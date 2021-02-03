@@ -25,6 +25,70 @@ namespace onnxruntime {
 
 namespace concurrency {
 
+void ThreadPoolProfiler::Reset() {
+  auto& instance = Instance();
+  auto key = ::std::this_thread::get_id();
+  std::unique_lock<std::mutex> lock(instance.mutex_);
+  auto iter = instance.records_.find(key);
+  if (iter == instance.records_.end()) {
+    instance.records_[key] = std::move(Statistics());
+  } else {
+    iter->second.Reset();
+  }
+}
+
+void ThreadPoolProfiler::RecordStart() {
+  auto& instance = Instance();
+  if (!instance.records_.empty()) {
+    auto key = ::std::this_thread::get_id();
+    std::unique_lock<std::mutex> lock(instance.mutex_);
+    auto iter = instance.records_.find(key);
+    if (iter != instance.records_.end()) {
+      iter->second.RecordStart();
+    }
+  }
+}
+
+void ThreadPoolProfiler::RecordEnd(std::string&& event) {
+  auto& instance = Instance();
+  if (!instance.records_.empty()) {
+    auto key = ::std::this_thread::get_id();
+    std::unique_lock<std::mutex> lock(instance.mutex_);
+    auto iter = instance.records_.find(key);
+    if (iter != instance.records_.end()) {
+      iter->second.RecordEnd(event);
+    }
+  }
+}
+
+void ThreadPoolProfiler::RecordEndAndStart(std::string&& event) {
+  auto& instance = Instance();
+  if (!instance.records_.empty()) {
+    auto key = ::std::this_thread::get_id();
+    std::unique_lock<std::mutex> lock(instance.mutex_);
+    auto iter = instance.records_.find(key);
+    if (iter != instance.records_.end()) {
+      iter->second.RecordEndAndStart(event);
+    }
+  }
+}
+
+std::string ThreadPoolProfiler::GetStatistic() {
+  ::std::stringstream ss;
+  auto& instance = Instance();
+  if (!instance.records_.empty()) {
+    auto key = ::std::this_thread::get_id();
+    std::unique_lock<std::mutex> lock(instance.mutex_);
+    auto iter = instance.records_.find(key);
+    if (iter != instance.records_.end()) {
+      for (const auto& statistic : iter->second.statictics_) {
+        ss << statistic << ", ";
+      }
+    }
+  }
+  return ::std::move(ss.str());
+}
+
 // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
 // the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
 // to it), and it claims iterations via atomic operations on its home shard.  It then proceeds through the other
@@ -219,6 +283,14 @@ void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<voi
       fn(idx);
     }
   });
+}
+
+void ThreadPool::ResetProfiler() {
+  ThreadPoolProfiler::Reset(); // reset profiler for this thread
+}
+
+std::string ThreadPool::GetProfileStatistics() {
+  return std::move(ThreadPoolProfiler::GetStatistic());
 }
 
 void ThreadPool::Schedule(std::function<void()> fn) {
