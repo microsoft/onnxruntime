@@ -9,8 +9,6 @@
 #include "protobufHelpers.h"
 #include "winrt/Windows.Storage.h"
 
-#include "winrt/Microsoft.AI.MachineLearning.Experimental.h"
-
 #include <D3d11_4.h>
 #include <dxgi1_6.h>
 #include "Psapi.h"
@@ -19,11 +17,13 @@ using namespace winrt;
 using namespace winml;
 using namespace wfc;
 
+#ifndef BUILD_INBOX
 // experimental
 using namespace winml_experimental;
 using Operator = winml_experimental::LearningModelOperator;
 
 static const wchar_t MS_EXPERIMENTAL_DOMAIN[] = L"com.microsoft.experimental";
+#endif
 
 using wf::IPropertyValue;
 
@@ -425,6 +425,7 @@ static void CloseSession()
                               });
 }
 
+#ifndef BUILD_INBOX
 static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind) {
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> output_shape = {32};
@@ -472,7 +473,9 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
   }
   printf("\n");
 }
+#endif
 
+#ifndef BUILD_INBOX
 static void DiscreteFourierTransform(bool is_onesided = false) {
   std::vector<int64_t> shape = {1, 5};
   std::vector<int64_t> output_shape = {1, 5, 2};
@@ -506,6 +509,7 @@ static void DiscreteFourierTransform(bool is_onesided = false) {
   }
   printf("\n");
 }
+#endif
 
 template <typename T>
 static auto MakePureFrequency(float frequency_in_hertz, size_t signal_size, size_t sample_rate) {
@@ -552,6 +556,7 @@ static auto MakeThreeTones(size_t signal_size, size_t sample_rate) {
   return middle_c;
 }
 
+#ifndef BUILD_INBOX
 static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
     size_t hop_size, size_t sample_rate, bool is_onesided = false) {
   auto n_dfts = static_cast<size_t>(1 + floor((signal_size - dft_size) / hop_size));
@@ -628,6 +633,7 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
   
   printf("\n");
 }
+#endif
 
 static void ModelBuilding_MelWeightMatrix() {
 #ifndef BUILD_INBOX
@@ -663,6 +669,7 @@ static void ModelBuilding_MelWeightMatrix() {
 #endif
 }
 
+#ifndef BUILD_INBOX
 static void MelSpectrogramOnThreeToneSignal(
     size_t batch_size, size_t signal_size, size_t window_size, size_t dft_size,
     size_t hop_size, size_t n_mel_bins, size_t sampling_rate) {
@@ -752,6 +759,7 @@ static void MelSpectrogramOnThreeToneSignal(
   builder.Save(L"spectrogram.onnx");
   printf("\n");
 }
+#endif
 
 static void ModelBuilding_StandardDeviationNormalization() {
 #ifndef BUILD_INBOX

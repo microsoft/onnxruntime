@@ -5,7 +5,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "orttraining/training_ops/cpu/tensor/gather_elements_grad_impl.h"
 #endif
 
@@ -255,7 +255,7 @@ Status Scatter::Compute(OpKernelContext* context) const {
   return status;
 }
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 
 namespace contrib {
 

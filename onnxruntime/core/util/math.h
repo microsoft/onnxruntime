@@ -20,7 +20,6 @@
 // still keep it simple, so all platforms would be able to support it fairly
 // easily.
 
-
 // We include the cblas header here so that we can obtain the macros from cblas.
 extern "C" {
 #include "core/framework/cblas.h"
@@ -48,7 +47,6 @@ template <typename T, class Provider>
 void Log(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Sqr(int N, const T* x, T* y, Provider* provider);
-
 
 #define DECLARE_BINARY_OP(name)                                                     \
   template <typename T, class Provider>                                             \
@@ -240,6 +238,20 @@ struct Im2col<T, StorageOrder::NHWC> {
       ptrdiff_t rank,
       T* data_col,
       T padding_value = 0);
+  void operator()(
+      const T* data_im,
+      int64_t input_channels,
+      const int64_t* input_shape,
+      const int64_t* output_shape,
+      const int64_t* kernel_shape,
+      const int64_t* stride,
+      const int64_t* dilation,
+      const int64_t* pad,
+      ptrdiff_t rank,
+      int64_t output_start,
+      int64_t output_count,
+      T const** data_indirection,
+      const T* padding_ptr);
 };
 
 template <typename T, class Provider, int order>

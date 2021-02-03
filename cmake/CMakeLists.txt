@@ -142,6 +142,7 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
@@ -732,7 +733,6 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
   endif()
 
   if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-
     add_library(arm_compute SHARED IMPORTED)
     set_target_properties(arm_compute PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -747,11 +747,9 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-
-    link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_core arm_compute_graph)
 
 endif()
 
@@ -765,7 +763,6 @@ if (onnxruntime_USE_ARMNN)
   endif()
 
   if (NOT onnxruntime_USE_ACL AND NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-
     add_library(arm_compute SHARED IMPORTED)
     set_target_properties(arm_compute PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -780,20 +777,16 @@ if (onnxruntime_USE_ARMNN)
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-
-    link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
   if (NOT ${onnxruntime_ARMNN_LIBS} STREQUAL "")
-
-    find_library(ARMNN_LIBRARY NAMES armnn
-                     PATHS ${onnxruntime_ARMNN_LIBS}
-                     NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-
-    link_libraries(armnn)
+    add_library(armnn SHARED IMPORTED)
+    set_target_properties(armnn PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ARMNN_LIBS}/libarmnn.so")
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn arm_compute arm_compute_core arm_compute_graph)
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -1136,7 +1129,9 @@ if (onnxruntime_USE_CUDA)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
 
+  # CUDA_HOME and CUDNN_HOME may differ, so need to add both to the link directories
   if (WIN32)
+    link_directories(${onnxruntime_CUDA_HOME}/lib/x64)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
     # delayload causes crash on exit, so disable for now
@@ -1149,8 +1144,10 @@ if (onnxruntime_USE_CUDA)
     #endforeach(cuda_dll_path)
 
   else()
+    link_directories(${onnxruntime_CUDA_HOME}/lib64)
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
   endif()
+  
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
@@ -1242,8 +1239,13 @@ if (onnxruntime_USE_DML)
   include(dml)
 endif()
 
+if (onnxruntime_ENABLE_TRAINING_OPS)
+  add_compile_definitions(ENABLE_TRAINING_OPS)
+endif()
+
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING_OPS)
 
   if (UNIX)
     # Find MPI
