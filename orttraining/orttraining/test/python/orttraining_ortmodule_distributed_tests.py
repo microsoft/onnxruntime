@@ -18,14 +18,18 @@ log = logging.getLogger("ORTModuleDistributedTests")
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cwd", help="Path to the current working directory")
+    parser.add_argument("--mnist", help="Path to the mnist data directory", type=str, default=None)
     return parser.parse_args()
 
 
-def run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log):
+def run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log, data_dir):
     log.debug('Running: ORTModule deepspeed zero stage 1 tests')
 
     command = ['deepspeed', 'orttraining_test_ortmodule_deepspeed_zero_stage_1.py',
         '--deepspeed_config', 'orttraining_test_ortmodule_deepspeed_zero_stage_1_config.json']
+
+    if data_dir:
+        command.extend(['--data_dir', data_dir])
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
@@ -43,7 +47,7 @@ def main():
 
     log.info("Running ortmodule tests pipeline")
 
-    run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log)
+    run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log, args.mnist)
     run_pytorch_ddp_tests(cwd, log)
 
     return 0
