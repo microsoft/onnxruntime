@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef BUILD_EXPERIMENTAL
+
 #include "core/providers/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
@@ -17,7 +19,7 @@ namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
     DFT,
-    kMSDomain,
+    kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
@@ -25,7 +27,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 ONNX_OPERATOR_KERNEL_EX(
     IDFT,
-    kMSDomain,
+    kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
@@ -33,7 +35,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 ONNX_OPERATOR_KERNEL_EX(
     STFT,
-    kMSDomain,
+    kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
@@ -515,3 +517,5 @@ Status STFT::Compute(OpKernelContext* ctx) const {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

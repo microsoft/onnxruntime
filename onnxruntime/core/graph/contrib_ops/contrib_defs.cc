@@ -2373,7 +2373,11 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
     RegisterNchwcSchemas();
   }
   RegisterBertSchemas();
+
+#ifdef BUILD_EXPERIMENTAL
   onnxruntime::signal::RegisterSignalSchemas();
+#endif
+
   RegisterQuantizationSchemas();
 }
 }  // namespace contrib

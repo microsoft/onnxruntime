@@ -98,6 +98,10 @@ if (onnxruntime_ENABLE_TRAINING)
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${orttraining_graph_src})
 endif()
 
+if (onnxruntime_BUILD_EXPERIMENTAL)
+  target_compile_definitions(onnxruntime_graph PRIVATE BUILD_EXPERIMENTAL=1)
+endif()
+
 if (WIN32)
   set(onnxruntime_graph_static_library_flags
       -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
