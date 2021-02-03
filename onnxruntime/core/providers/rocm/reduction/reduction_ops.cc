@@ -604,24 +604,30 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
       }
     }
   } else {  // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
-    if (temp_X) {
-      auto temp_output = rocm_ep.GetScratchBuffer<float>(output_count);
-      MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
-          rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
-          workspace_rocm.get(), workspace_bytes,
-          &one, input_tensor, temp_X.get(),
-          &zero, output_tensor, temp_output.get()));
+    // miopenReduceTensor has issue if input and output has same size, which will happen if the axis to be reduced has dim value of 1.
+    // the output is zeros of the output size
+    if (input_count == output_count) {
+      HIP_RETURN_IF_ERROR(hipMemsetAsync(output.template MutableData<int64_t>(), static_cast<int64_t>(0), output_count * sizeof(int64_t)));
     } else {
-      auto temp_output = rocm_ep.GetScratchBuffer<HipT>(output_count);
-      MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
-          rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
-          workspace_rocm.get(), workspace_bytes,
-          &one, input_tensor, reinterpret_cast<const HipT*>(input.template Data<T>()),
-          &zero, output_tensor, temp_output.get()));
-    }
+      if (temp_X) {
+        auto temp_output = rocm_ep.GetScratchBuffer<float>(output_count);
+        MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
+            rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
+            workspace_rocm.get(), workspace_bytes,
+            &one, input_tensor, temp_X.get(),
+            &zero, output_tensor, temp_output.get()));
+      } else {
+        auto temp_output = rocm_ep.GetScratchBuffer<HipT>(output_count);
+        MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
+            rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
+            workspace_rocm.get(), workspace_bytes,
+            &one, input_tensor, reinterpret_cast<const HipT*>(input.template Data<T>()),
+            &zero, output_tensor, temp_output.get()));
+      }
 
-    // MIOpen reduction index is uint32_t for now, cast it to int64_t according to ONNX spec
-    Impl_Cast<uint32_t, int64_t>(reinterpret_cast<uint32_t*>(indices_rocm.get()), output.template MutableData<int64_t>(), output_count);
+      // MIOpen reduction index is uint32_t for now, cast it to int64_t according to ONNX spec
+      Impl_Cast<uint32_t, int64_t>(reinterpret_cast<uint32_t*>(indices_rocm.get()), output.template MutableData<int64_t>(), output_count);
+    }
   }
 
   if (calculate_log) {
