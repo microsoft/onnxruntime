@@ -62,14 +62,14 @@ struct GlobalAllowed {};
 }  // namespace tags
 
 // optionally holds a list of types associated with a tag class
-// if types are defined, the data member 'types' should contain them in a type list
-// otherwise, if no types are defined (distinct from an empty list of types), there should be no data member 'types'
+// if types are defined, the type alias member called 'types' should contain them in a boost mp11 list
+// otherwise, if no types are defined (distinct from an empty list of types), there should be no 'types' type alias
 // see the tags in onnxruntime::op_kernel_type_control::tags for intended uses
 template <typename Tag>
 struct TypesHolder {};
 
 /**
- * Provides a type list of enabled types via the 'types' data member.
+ * Provides a type list of enabled types via the 'types' type alias member.
  * Enabled types are the set intersection of supported and allowed types.
  *
  * @tparam SupportedTypesHolder A 'TypesHolder' with a list of supported types.
@@ -84,15 +84,15 @@ struct EnabledTypes {
   template <typename T>
   using GetTypesMember = typename T::types;
 
-  // checks whether T has data member 'types'
+  // checks whether T has a type alias member called 'types'
   template <typename T>
   using HasTypesMember = boost::mp11::mp_valid<GetTypesMember, T>;
 
   static_assert(HasTypesMember<SupportedTypesHolder>::value,
-                "SupportedTypesHolder must have a 'types' data member.");
+                "SupportedTypesHolder must have a type alias called 'types'.");
 
   // the allowed type lists to consider
-  // for each element of AllowedTypesHolders, get and include a 'types' data member if present
+  // for each element of AllowedTypesHolders, get and include the content of the 'types' type alias member if present
   using AllowedTypesMembers =
       boost::mp11::mp_transform<
           GetTypesMember,
@@ -105,43 +105,40 @@ struct EnabledTypes {
       boost::mp11::mp_push_front<AllowedTypesMembers, GetTypesMember<SupportedTypesHolder>>;
 
   static_assert(boost::mp11::mp_all_of<TypeListsToConsider, boost::mp11::mp_is_list>::value,
-                "All 'types' data members must be type lists.");
-
-  // converts type list L into a type set (type list with unique elements)
-  template <typename L>
-  using MakeSet =
-      boost::mp11::mp_apply<
-          boost::mp11::mp_set_push_back,
-          boost::mp11::mp_append<TypeList<TypeList<>>, L>>;
+                "All 'types' type aliases must be boost::mp11 lists.");
 
   // type lists converted to type sets
-  using TypeSetsToConsider = boost::mp11::mp_transform<MakeSet, TypeListsToConsider>;
+  using TypeSetsToConsider = boost::mp11::mp_transform<boost::mp11::mp_unique, TypeListsToConsider>;
 
  public:
   using types = boost::mp11::mp_apply<boost::mp11::mp_set_intersection, TypeSetsToConsider>;
 };
 
 /**
-* Check if the type list contains the specified type.
+* Check if the set of types contains the specified type.
 */
-template <typename TypeList, typename T>
+template <typename TypeSet, typename T>
 constexpr bool HasType() {
-  return std::is_same<boost::mp11::mp_set_contains<TypeList, T>, boost::mp11::mp_true>::value;
+  static_assert(boost::mp11::mp_is_set<TypeSet>::value, "TypeSet must be a boost::mp11 set.");
+
+  return boost::mp11::mp_set_contains<TypeSet, T>::value;
 }
 
 template <typename T>
 using SizeOfT = boost::mp11::mp_size_t<sizeof(T)>;
 
 /**
-* Check if the type list contains a type with the same size as T.
+* Check if the set of types contains a type with the same size as T.
 * 
 * @remarks e.g. will return true if T is int32_t and the list contains any 4 byte type (i.e. sizeof(int32_t)) 
 *               such as int32_t, uint32_t or float.
 */
-template <typename TypeList, typename T>
+template <typename TypeSet, typename T>
 constexpr bool HasTypeWithSameSize() {
-  using EnabledTypeSizes = boost::mp11::mp_unique<boost::mp11::mp_transform<SizeOfT, TypeList>>;
-  return std::is_same<boost::mp11::mp_set_contains<EnabledTypeSizes, SizeOfT<T>>, boost::mp11::mp_true>::value;
+  static_assert(boost::mp11::mp_is_set<TypeSet>::value, "TypeSet must be a boost::mp11 set.");
+
+  using EnabledTypeSizes = boost::mp11::mp_unique<boost::mp11::mp_transform<SizeOfT, TypeSet>>;
+  return boost::mp11::mp_contains<EnabledTypeSizes, SizeOfT<T>>::value;
 }
 
 }  // namespace op_kernel_type_control
