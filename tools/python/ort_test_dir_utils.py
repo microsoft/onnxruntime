@@ -129,7 +129,7 @@ def create_test_dir(model_path, root_path, test_name,
 
     if not symbolic_dim_values_map:
         symbolic_dim_values_map = {}
-
+    initializer_set = set()
     for initializer in onnx.load(model_path).graph.initializer:
         initializer_set.add(initializer.name)
     _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values_map, initializer_set)
