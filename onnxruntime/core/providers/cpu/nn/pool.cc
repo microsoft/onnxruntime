@@ -12,7 +12,8 @@ namespace onnxruntime {
 
 template <typename T>
 inline static void RunLoop(concurrency::ThreadPool* tp, std::ptrdiff_t total_channels, T&& task) {
-  concurrency::ThreadPool::TryParallelFor(tp, total_channels, task.Cost(), task);
+  //concurrency::ThreadPool::TryParallelFor(tp, total_channels, task.Cost(), task);
+  task(0, total_channels);
 }
 
 template <typename T, typename PoolType>
