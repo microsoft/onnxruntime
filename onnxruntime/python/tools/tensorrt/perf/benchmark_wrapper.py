@@ -23,6 +23,10 @@ def get_ep_list(comparison):
         ep_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
     return ep_list 
 
+def clean_nonmetadata_csv(path): 
+    if os.path.exists(path): 
+        os.remove(path)
+
 def main():
     args = parse_arguments()
     setup_logger(False)
@@ -39,6 +43,12 @@ def main():
     benchmark_success_csv = 'success_' + commit + '.csv' 
     benchmark_latency_csv = 'latency_' + commit + '.csv'
     benchmark_status_csv = 'status_' + commit + '.csv'
+
+    success_path = os.path.join(os.getcwd(), args.perf_result_path, benchmark_success_csv)
+    clean_nonmetadata_csv(success_path)
+    status_path = os.path.join(os.getcwd(), args.perf_result_path, benchmark_status_csv)
+    clean_nonmetadata_csv(status_path)
+
 
     for model, model_info in models.items():
         logger.info("\n" + "="*40 + "="*len(model))
@@ -98,7 +108,7 @@ def main():
         if os.path.exists(FAIL_MODEL_FILE) or len(model_to_fail_ep) > 1:
             model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
             output_fail(model_to_fail_ep, os.path.join(path, benchmark_fail_csv))
-            logger.info("\nSaved model status results to {}".format(benchmark_fail_csv)) 
+            logger.info("\nSaved model fail results to {}".format(benchmark_fail_csv)) 
             logger.info(model_to_fail_ep)
 
         logger.info("\n=========================================")
@@ -108,7 +118,7 @@ def main():
         if os.path.exists(METRICS_FILE):
             model_to_metrics = read_map_from_file(METRICS_FILE)
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
-            logger.info("\nSaved model status results to {}".format(benchmark_metrics_csv)) 
+            logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv)) 
     
     elif args.running_mode == "benchmark":
         logger.info("\n=======================================================")

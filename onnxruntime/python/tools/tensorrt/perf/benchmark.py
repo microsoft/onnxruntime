@@ -888,8 +888,8 @@ def run_onnxruntime(args, models):
         path = os.getcwd()
 
         # cleanup files before running a new inference
-        if args.running_mode == "validate":
-            remove_profiling_files(path)
+        #if args.running_mode == "validate":
+        #    remove_profiling_files(path)
 
         inputs = []
         ref_outputs = []
