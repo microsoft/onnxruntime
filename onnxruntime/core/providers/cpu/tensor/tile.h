@@ -14,7 +14,7 @@ namespace TileOp {
 // repeats: [1, 200, 1]
 // output shape: [1, 200, 256 * 50]
 
-// As a slight generalized extension, it also supports "batched" multiple copies of the input data buffer
+// As a slight extension, it also supports "batched" multiple copies of the input data buffer
 // (`is_batched_memcpy` will be set to true)
 // E.g.: input_shape: [5, 1, 256 * 50]
 // repeats: [1, 200, 1]

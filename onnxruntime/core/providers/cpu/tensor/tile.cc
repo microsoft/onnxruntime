@@ -100,9 +100,11 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
 }
 
 namespace TileOp {
-// Find the first non-1 repeat and check the input shape to the left of that dimension,
-// if the dim values are 1, then the tiling logic is essentially copying the input buffer
-// multiple times. The number of times can be computed as the product of the repeat values.
+// Find the first non-1 repeat and check the input shape to the left of that dimension:
+// 1) If the dim values to the left are all 1s (or don't exist), then the tiling logic is essentially copying the input buffer
+// multiple times. The number of times can be computed as the product of the repeat values. (OR)
+// 2) Allow at-most one non-1 dim value to the left (for the batch dimension), in this case, the sub-tensor at each batch index
+// is copied multiple times. This is still faster because it avoids other Tile operator's machinery.
 bool IsTileMemcpy(const TensorShape& input_shape,
                   const int64_t* repeats,
                   size_t rank,
@@ -117,10 +119,9 @@ bool IsTileMemcpy(const TensorShape& input_shape,
         for (int64_t j = 0; j <= i; ++j) {
           num_of_copies_per_batch *= repeats[j];
         }
-
         is_batched_memcpy = false;
         return true;
-      } else if (i == 1) {
+      } else if (i == 1) {  // else check if the previous dim is just the batch dim
         num_of_elements_per_batch = static_cast<size_t>(input_shape.SizeFromDimension(1));
         num_of_copies_per_batch = repeats[i];
         num_of_batch_copies = repeats[0];
@@ -217,14 +218,16 @@ Status Tile::Compute(OpKernelContext* ctx) const {
       }
 
       // Now account for batch dim repeat
-      // reset some values
-      output_data_casted = reinterpret_cast<int8_t*>(output_tensor.MutableDataRaw());
-      copy_bytes *= num_of_copies_per_batch * batch_count;
-      int8_t* copy_ptr = output_data_casted + copy_bytes;
+      if (num_of_batch_copies > 1) {
+        // reset some values
+        output_data_casted = reinterpret_cast<int8_t*>(output_tensor.MutableDataRaw());
+        copy_bytes *= num_of_copies_per_batch * batch_count;
+        int8_t* copy_ptr = output_data_casted + copy_bytes;
 
-      for (size_t i = 1; i < num_of_batch_copies; ++i) {
-        memcpy(static_cast<void*>(copy_ptr), static_cast<const void*>(output_data_casted), copy_bytes);
-        copy_ptr += copy_bytes;
+        for (size_t i = 1; i < num_of_batch_copies; ++i) {
+          memcpy(static_cast<void*>(copy_ptr), static_cast<const void*>(output_data_casted), copy_bytes);
+          copy_ptr += copy_bytes;
+        }
       }
     }
 

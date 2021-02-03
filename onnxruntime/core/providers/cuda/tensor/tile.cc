@@ -118,7 +118,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
         TileBatchedMemcpyImpl(
             reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input_data),
             num_of_elements_per_batch,
-            input_shape[0],
+            input_shape[0],  // The tensor is atleast 1-D- this is safe
             fast_divmod(static_cast<int>(num_of_elements_per_batch * num_of_copies_per_batch)),
             reinterpret_cast<typename ToCudaType<float>::MappedType*>(output_data),
             output_shape.Size());
@@ -127,7 +127,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
         TileBatchedMemcpyImpl(
             reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input_data),
             num_of_elements_per_batch,
-            input_shape[0],
+            input_shape[0],  // The tensor is atleast 1-D- this is safe
             fast_divmod(static_cast<int>(num_of_elements_per_batch * num_of_copies_per_batch)),
             reinterpret_cast<typename ToCudaType<double>::MappedType*>(output_data),
             output_shape.Size());
@@ -135,7 +135,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
         TileBatchedMemcpyImpl(
             reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input_data),
             num_of_elements_per_batch,
-            input_shape[0],
+            input_shape[0],  // The tensor is atleast 1-D- this is safe
             fast_divmod(static_cast<int>(num_of_elements_per_batch * num_of_copies_per_batch)),
             reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output_data),
             output_shape.Size());
