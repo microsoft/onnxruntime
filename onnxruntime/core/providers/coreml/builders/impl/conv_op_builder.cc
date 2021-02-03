@@ -88,12 +88,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     auto* padding_type = coreml_conv->mutable_valid();
     if (AutoPadType::NOTSET == auto_pad_type && onnx_pads != std::vector<int64_t>{0, 0, 0, 0}) {
       // NOTSET is adding the explicit padding to the ValidPadding.paddingAmounts
-      auto* heightBorder = padding_type->mutable_paddingamounts()->add_borderamounts();
-      heightBorder->set_startedgesize(onnx_pads[0]);
-      heightBorder->set_endedgesize(onnx_pads[2]);
-      auto* widthBorder = padding_type->mutable_paddingamounts()->add_borderamounts();
-      widthBorder->set_startedgesize(onnx_pads[1]);
-      widthBorder->set_endedgesize(onnx_pads[3]);
+      auto* height_border = padding_type->mutable_paddingamounts()->add_borderamounts();
+      height_border->set_startedgesize(onnx_pads[0]);
+      height_border->set_endedgesize(onnx_pads[2]);
+      auto* width_border = padding_type->mutable_paddingamounts()->add_borderamounts();
+      width_border->set_startedgesize(onnx_pads[1]);
+      width_border->set_endedgesize(onnx_pads[3]);
     }
   }
 
@@ -137,7 +137,7 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
   if (input_defs.size() > 2) {
     const auto& bias_name = input_defs[2]->Name();
     if (!Contains(initializers, bias_name)) {
-      LOGS(logger, VERBOSE) << "The bias of Conv [" << name << "] must be known";
+      LOGS(logger, VERBOSE) << "The bias of Conv [" << name << "] must be a constant initializer";
       return false;
     }
   }

@@ -69,7 +69,7 @@ common::Status HandleAutoPad(const std::vector<int64_t> input_shape,
       std::vector<int64_t> same_lower_pads;
       ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
                                           onnx_pads, onnx_strides, onnx_dilations,
-                                          AutoPadType::SAME_UPPER, same_lower_pads));
+                                          AutoPadType::SAME_LOWER, same_lower_pads));
       if (onnx_pads == same_lower_pads) {
         auto_pad_type_out = AutoPadType::SAME_LOWER;
         return Status::OK();
