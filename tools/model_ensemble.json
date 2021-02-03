@@ -1,0 +1,51 @@
+{
+    "degree_of_parallelism": 10,
+    "ensemble": [
+        {
+            "model_name": "mul_1",
+            "model_file_path": "/bert_ort/pranav/onnxruntime/onnxruntime/test/testdata/mul_1.onnx",
+            "input_names": [
+                "X"
+            ],
+            "output_names": [
+                "Y"
+            ],
+            "output_shape_map": [
+                [
+                    3,
+                    2
+                ]
+            ],
+            "output_input_map": [
+                [
+                    "Y",
+                    "X"
+                ]
+            ],
+            "device_id": 2
+        },
+        {
+            "model_name": "mul_1",
+            "model_file_path": "/bert_ort/pranav/onnxruntime/onnxruntime/test/testdata/mul_1.onnx",
+            "input_names": [
+                "X"
+            ],
+            "output_names": [
+                "Y"
+            ],
+            "output_shape_map": [
+                [
+                    3,
+                    2
+                ]
+            ],
+            "output_input_map": [
+                [
+                    "Y",
+                    "X"
+                ]
+            ],
+            "device_id": 3
+        }
+    ]
+}

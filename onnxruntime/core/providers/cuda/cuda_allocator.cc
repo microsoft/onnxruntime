@@ -67,7 +67,7 @@ void* CUDAAllocator::Alloc(size_t size) {
 void CUDAAllocator::Free(void* p) {
   int current_device;
   cudaGetDevice(&current_device);
-  std::cout << "in cuda allocator free " << current_device << " " << Info().id << std::endl;
+  // std::cout << "in cuda allocator free " << current_device << " " << Info().id << std::endl;
   ChangeDevice(false);
   CheckDevice(false);  // ignore CUDA failure when free
   cudaFree(p);         // do not throw error since it's OK for cudaFree to fail during shutdown
@@ -88,7 +88,7 @@ void* CUDAPinnedAllocator::Alloc(size_t size) {
 void CUDAPinnedAllocator::Free(void* p) {
   int current_device;
   cudaGetDevice(&current_device);
-  std::cout << "in cuda allocator pinned free " << current_device << " " << Info().id << std::endl;
+  // std::cout << "in cuda allocator pinned free " << current_device << " " << Info().id << std::endl;
   CUDA_CALL_THROW(cudaFreeHost(p));
 }
 

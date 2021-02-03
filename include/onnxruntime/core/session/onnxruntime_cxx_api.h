@@ -415,7 +415,7 @@ struct Value : Base<OrtValue> {
   template <typename T>
   static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
   static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
-                            ONNXTensorElementDataType type);
+                             ONNXTensorElementDataType type);
   template <typename T>
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
