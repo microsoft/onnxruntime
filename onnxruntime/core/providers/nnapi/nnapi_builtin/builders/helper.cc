@@ -415,6 +415,8 @@ bool IsInternalQuantizedNode(const Node& node) {
 bool IsInternalQuantizationSupported(const Node& node, const std::vector<size_t>& group,
                                      const std::unordered_set<NodeIndex>& nodes_in_group) {
   const auto& op_type = node.OpType();
+  // We only need to check input0 for all operators except "Concat"
+  bool check_all_inputs = op_type == "Concat";
 
   if (group.empty()) {  // This is the 1st node in the group (partition)
     LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type " << op_type
@@ -427,8 +429,8 @@ bool IsInternalQuantizationSupported(const Node& node, const std::vector<size_t>
   // If not, then this node is using graph input(s) as input(s)
   for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
     LOGS_DEFAULT(WARNING) << "source index " << it->GetNode().Index();
-    // So far we only care about input 0
-    if (it->GetDstArgIndex() == 0 && !Contains(nodes_in_group, it->GetNode().Index())) {
+    if ((check_all_inputs || it->GetDstArgIndex() == 0) &&
+        !Contains(nodes_in_group, it->GetNode().Index())) {
       LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type " << op_type
                             << " does not support using graph input(quantized) as node input";
       return false;
