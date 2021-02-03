@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 import torch
 import time
 from torchvision import datasets, transforms
@@ -135,6 +136,8 @@ def main():
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
                         help='Log level (default: WARNING)')
+    parser.add_argument('--data_dir', type=str, default='./mnist',
+                        help='Path to the mnist data directory')
 
     args = parser.parse_args()
 
@@ -149,7 +152,7 @@ def main():
         device = "cpu"
 
     ## Data loader
-    train_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=True, download=True,
+    train_loader = torch.utils.data.DataLoader(datasets.MNIST(args.data_dir, train=True, download=True,
                                             transform=transforms.Compose([transforms.ToTensor(),
                                                                           transforms.Normalize((0.1307,), (0.3081,))])),
                                             batch_size=args.batch_size,
@@ -157,7 +160,7 @@ def main():
     test_loader = None
     if args.test_batch_size > 0:
         test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('./data', train=False, transform=transforms.Compose([
+            datasets.MNIST(args.data_dir, train=False, transform=transforms.Compose([
                 transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args.test_batch_size, shuffle=True)
 
