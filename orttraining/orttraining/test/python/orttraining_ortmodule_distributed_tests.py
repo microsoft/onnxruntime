@@ -29,6 +29,13 @@ def run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log):
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
+def run_pytorch_ddp_tests(cwd, log):
+    log.debug('Running: ORTModule Pytorch DDP tests')
+
+    command = [sys.executable, 'orttraining_test_ort_module_pytorch_ddp.py', '--use_ort_module']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def main():
     args = parse_arguments()
@@ -37,6 +44,7 @@ def main():
     log.info("Running ortmodule tests pipeline")
 
     run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log)
+    run_pytorch_ddp_tests(cwd, log)
 
     return 0
 
