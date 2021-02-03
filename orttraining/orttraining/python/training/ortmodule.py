@@ -64,7 +64,7 @@ def _create_iobinding(io_binding, inputs, model, device):
                               list(inputs[idx].size()),
                               inputs[idx].data_ptr())
 
-    for idx, value_info in enumerate(model.graph.output):
+    for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=_get_device_index(device))
 
 def _onnx_value_info_to_buffer_tensor(value_info, device):
@@ -265,8 +265,8 @@ class ORTModule(torch.nn.Module):
         if not self._is_training:
             return self._original_module(*inputs, **kwargs)
 
-        if not self._onnx_gradient or self._require_export:
-            self._require_export = False
+        # Exporting module to ONNX for the first time
+        if not self._onnx_gradient:
             self._get_forward_graph_and_init_gradient_graph_builder(*inputs, **kwargs)
 
         _, _, input_names_require_grad = _extract_input_information(self._original_module, *inputs, **kwargs)
@@ -327,10 +327,12 @@ class ORTModule(torch.nn.Module):
                     for backward_output in backward_outputs[:len(self._onnx_graphs_info.initializer_grad_names_to_train)]]
                 return tuple(results)
 
-        return _ORTModuleFunction.apply(*self._convert_gradient_graph_input_to_list(self._original_module, *inputs, **kwargs))
+        proc_inputs = [data for data in inputs if data is not None]
+        
+        return _ORTModuleFunction.apply(*self._convert_gradient_graph_input_to_list(*proc_inputs, **kwargs))
 
     @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
-    def _convert_gradient_graph_input_to_list(self, module, *inputs, **kwargs):
+    def _convert_gradient_graph_input_to_list(self, *inputs, **kwargs):
         '''Creates forward `*inputs` list from user input and PyTorch initializers
 
         TODO: **kwargs is not supported
@@ -344,8 +346,7 @@ class ORTModule(torch.nn.Module):
             are the same as the original PyTorch model
         '''
         # User inputs
-        _, input_tensors = ORTModule._extract_user_inputs(module, *inputs, **kwargs)
-        result = [tensor for tensor in input_tensors if tensor is not None]
+        result = list(inputs[:len(self._onnx_graphs_info.user_input_names)])
 
         # Initializers
         for param in self._original_module.named_parameters():
@@ -386,22 +387,3 @@ class ORTModule(torch.nn.Module):
                               dynamic_axes=dynamic_axes)
 
         return onnx.load_model_from_string(f.getvalue())
-
-    @staticmethod
-    def _extract_user_inputs(module, *inputs, **kwargs):
-        sig = signature(module.forward)
-        all_input_names = sig.parameters.keys()
-        input_names = []
-        input_tensors = []
-        for idx, name in enumerate(all_input_names):
-            tensor = None
-            if idx < len(inputs) and inputs[idx] is not None:
-                input_names.append(name)
-                tensor = inputs[idx]
-            if name in kwargs:
-                if tensor is None:
-                    input_names.append(name)
-                tensor = kwargs[name]
-            input_tensors.append(tensor)
-
-        return input_names, input_tensors
