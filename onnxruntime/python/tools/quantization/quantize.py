@@ -18,7 +18,7 @@ from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitiali
 from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
 from .quant_utils import QuantType, QuantFormat
 
-from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer, QLinearOpsRegistry, IntegerOpsRegistry
+from .registry import QLinearOpsRegistry, IntegerOpsRegistry
 
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer

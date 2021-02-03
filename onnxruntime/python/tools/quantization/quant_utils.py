@@ -159,16 +159,14 @@ class QuantizedValue:
         self.qType = qType
 
 
-class TensorToQuantize:
+class BiasToQuantize:
     '''
-    Represents a tensor to be quantized
+    Represents a bias to be quantized
     '''
-    def __init__(self, tensor_name, per_channel: bool = False, reduce_range: bool = False, axis: int = 0):
-        self.tensor_name = tensor_name
-        self.per_channel = per_channel
-        self.axis = axis
-        self.reduce_range = reduce_range
-
+    def __init__(self, bias_name, input_name, weight_name):
+        self.bias_name = bias_name
+        self.input_name = input_name
+        self.weight_name = weight_name
 
 def attribute_to_kwarg(attribute):
     '''
