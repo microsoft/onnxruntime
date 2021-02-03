@@ -489,9 +489,10 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
     } else {
       if (IsValidSupportedNodesGroup(supported_node_group, graph_viewer)) {
         supported_node_groups.push_back(supported_node_group);
-        supported_node_group.clear();
-        node_outputs_in_group.clear();
       }
+
+      supported_node_group.clear();
+      node_outputs_in_group.clear();
     }
   }
 
