@@ -12,12 +12,6 @@ jobs:
     inputs:
       versionSpec: $(pythonVersion)
 
-  - task: JavaToolInstaller@0
-    inputs:
-      versionSpec: '11'
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'PreInstalled'
-
   - script: brew install coreutils ninja
     displayName: Install coreutils and ninja
 
@@ -28,6 +22,12 @@ jobs:
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
     displayName: Start Android emulator
+
+  - task: JavaToolInstaller@0
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
 
   - script: python3 tools/ci_build/build.py --android --build_dir build --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --android_api=29 --skip_submodule_sync --parallel --cmake_generator=Ninja --build_java
     displayName: CPU EP, Build and Test on Android Emulator
