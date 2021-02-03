@@ -80,15 +80,6 @@ jobs:
         artifactName: 'drop-linux'
         targetPath: '$(Build.ArtifactStagingDirectory)'
 
-    - template: java-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          arch: 'linux-x64'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-x64'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
-          nativeLibraryName: 'libonnxruntime4j_jni.so'
-
     - template: c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
@@ -148,15 +139,6 @@ jobs:
       inputs:
         artifactName: 'drop-osx'
         targetPath: '$(Build.ArtifactStagingDirectory)'
-
-    - template: java-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          arch: 'osx-x64'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-osx-x64'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.dylib'
-          nativeLibraryName: 'libonnxruntime4j_jni.dylib'
 
     - template: component-governance-component-detection-steps.yml
       parameters :
