@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef BUILD_EXPERIMENTAL
+
 #include "core/providers/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
@@ -17,7 +19,7 @@ namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
     HannWindow,
-    kMSDomain,
+    kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0)
@@ -27,7 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 ONNX_OPERATOR_KERNEL_EX(
     HammingWindow,
-    kMSDomain,
+    kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0)
@@ -37,7 +39,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 ONNX_OPERATOR_KERNEL_EX(
     BlackmanWindow,
-    kMSDomain,
+    kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0)
@@ -48,7 +50,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 ONNX_OPERATOR_KERNEL_EX(
     MelWeightMatrix,
-    kMSDomain,
+    kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0)
@@ -319,3 +321,5 @@ Status MelWeightMatrix::Compute(OpKernelContext* ctx) const {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

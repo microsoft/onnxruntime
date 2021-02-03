@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef BUILD_EXPERIMENTAL
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -8,7 +10,7 @@ namespace onnxruntime {
 namespace test {
 
 static void TestNaiveDFTFloat(bool is_onesided) {
-  OpTester test("DFT", 1, onnxruntime::kMSDomain);
+  OpTester test("DFT", 1, onnxruntime::kMSExperimentalDomain);
 
   std::vector<int64_t> shape = {1, 5};
   std::vector<int64_t> output_shape = {1, 5, 2};
@@ -33,7 +35,7 @@ static void TestNaiveDFTFloat(bool is_onesided) {
 }
 
 static void TestRadix2DFTFloat(bool is_onesided) {
-  OpTester test("DFT", 1, onnxruntime::kMSDomain);
+  OpTester test("DFT", 1, onnxruntime::kMSExperimentalDomain);
 
   std::vector<int64_t> shape = {1, 8};
   std::vector<int64_t> output_shape = {1, 8, 2};
@@ -68,7 +70,7 @@ TEST(MLSignalOpTest, DFTFloat) {
 }
 
 TEST(MLSignalOpTest, IDFTFloat) {
-  OpTester test("IDFT", 1, onnxruntime::kMSDomain);
+  OpTester test("IDFT", 1, onnxruntime::kMSExperimentalDomain);
   
   std::vector<int64_t> shape = {1, 5, 2};
   std::vector<float> input =
@@ -94,7 +96,7 @@ TEST(MLSignalOpTest, IDFTFloat) {
 }
 
 TEST(MLSignalOpTest, STFTFloat) {
-  OpTester test("STFT", 1, onnxruntime::kMSDomain);
+  OpTester test("STFT", 1, onnxruntime::kMSExperimentalDomain);
 
   std::vector<float> signal(64, 1);
   test.AddInput<float>("signal", {1, 64}, signal);
@@ -119,7 +121,7 @@ TEST(MLSignalOpTest, STFTFloat) {
 }
 
 TEST(MLSignalOpTest, HannWindowFloat) {
-  OpTester test("HannWindow", 1, onnxruntime::kMSDomain);
+  OpTester test("HannWindow", 1, onnxruntime::kMSExperimentalDomain);
 
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> output_shape = {32};
@@ -137,7 +139,7 @@ TEST(MLSignalOpTest, HannWindowFloat) {
 }
 
 TEST(MLSignalOpTest, HammingWindowFloat) {
-  OpTester test("HammingWindow", 1, onnxruntime::kMSDomain);
+  OpTester test("HammingWindow", 1, onnxruntime::kMSExperimentalDomain);
   
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> output_shape = {32};
@@ -155,7 +157,7 @@ TEST(MLSignalOpTest, HammingWindowFloat) {
 }
 
 TEST(MLSignalOpTest, BlackmanWindowFloat) {
-  OpTester test("BlackmanWindow", 1, onnxruntime::kMSDomain);
+  OpTester test("BlackmanWindow", 1, onnxruntime::kMSExperimentalDomain);
   
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> output_shape = {32};
@@ -173,7 +175,7 @@ TEST(MLSignalOpTest, BlackmanWindowFloat) {
 }
 
 TEST(MLSignalOpTest, MelWeightMatrixFloat) {
-  OpTester test("MelWeightMatrix", 1, onnxruntime::kMSDomain);
+  OpTester test("MelWeightMatrix", 1, onnxruntime::kMSExperimentalDomain);
 
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> output_shape = {9, 8};
@@ -201,3 +203,5 @@ TEST(MLSignalOpTest, MelWeightMatrixFloat) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif

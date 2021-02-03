@@ -152,6 +152,10 @@ if (MSVC)
 endif()
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
 
+if (onnxruntime_BUILD_EXPERIMENTAL)
+  target_compile_definitions(onnxruntime_providers PRIVATE BUILD_EXPERIMENTAL=1)
+endif()
+
 if (onnxruntime_USE_FEATURIZERS)
   add_dependencies(onnxruntime_providers onnxruntime_featurizers)
   onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_featurizers)

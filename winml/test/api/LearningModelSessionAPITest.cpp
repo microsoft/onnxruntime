@@ -23,7 +23,7 @@ using namespace wfc;
 using namespace winml_experimental;
 using Operator = winml_experimental::LearningModelOperator;
 
-static const wchar_t MS_DOMAIN[] = L"com.microsoft";
+static const wchar_t MS_EXPERIMENTAL_DOMAIN[] = L"com.microsoft.experimental";
 
 using wf::IPropertyValue;
 
@@ -431,7 +431,7 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
   auto double_data_type = TensorInt64Bit::CreateFromArray({}, {11});
 
   auto window_operator =
-    Operator(window_operator_name, L"Window0", MS_DOMAIN)
+    Operator(window_operator_name, L"Window0", MS_EXPERIMENTAL_DOMAIN)
       .SetInput(L"size", L"Input")
       .SetOutput(L"output", L"Output");
 
@@ -482,7 +482,7 @@ static void DiscreteFourierTransform(bool is_onesided = false) {
       LearningModelBuilder::Create(13)
         .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
         .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
-        .Operators().Add(Operator(L"DFT", L"DFT0", MS_DOMAIN)
+        .Operators().Add(Operator(L"DFT", L"DFT0", MS_EXPERIMENTAL_DOMAIN)
           .SetInput(L"input", L"Input")
           .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {is_onesided}))
           .SetOutput(L"output", L"Output"))
@@ -576,10 +576,10 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
               L"Output.HannWindow", L"The HannWindow used",
               TensorKind::Float, {INT64(dft_size)}))
-          .Operators().Add(Operator(L"HannWindow", L"HannWindow0", MS_DOMAIN)
+          .Operators().Add(Operator(L"HannWindow", L"HannWindow0", MS_EXPERIMENTAL_DOMAIN)
               .SetConstant(L"size", dft_length)
               .SetOutput(L"output", L"Output.HannWindow"))
-          .Operators().Add(Operator(L"STFT", L"STFT0", MS_DOMAIN)
+          .Operators().Add(Operator(L"STFT", L"STFT0", MS_EXPERIMENTAL_DOMAIN)
               .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {INT64(is_onesided)}))
               .SetInput(L"signal", L"Input.TimeSignal")
               .SetInput(L"window", L"Output.HannWindow")
@@ -635,7 +635,7 @@ static void ModelBuilding_MelWeightMatrix() {
   auto builder =
     LearningModelBuilder::Create(13)
       .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelWeightMatrix", L"", TensorKind::Float, output_shape))
-      .Operators().Add(Operator(L"MelWeightMatrix", L"MelWeightMatrix0", MS_DOMAIN)
+      .Operators().Add(Operator(L"MelWeightMatrix", L"MelWeightMatrix0", MS_EXPERIMENTAL_DOMAIN)
         .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
         .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(16)}))
         .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(8192)}))
@@ -675,10 +675,10 @@ static void MelSpectrogramOnThreeToneSignal(
     LearningModelBuilder::Create(13)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, signal_shape))
       .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
-      .Operators().Add(Operator(L"HannWindow", L"HannWindow0", MS_DOMAIN)
+      .Operators().Add(Operator(L"HannWindow", L"HannWindow0", MS_EXPERIMENTAL_DOMAIN)
         .SetConstant(L"size", TensorInt64Bit::CreateFromArray({}, {INT64(window_size)}))
         .SetOutput(L"output", L"hann_window"))
-      .Operators().Add(Operator(L"STFT", L"STFT0", MS_DOMAIN)
+      .Operators().Add(Operator(L"STFT", L"STFT0", MS_EXPERIMENTAL_DOMAIN)
         .SetInput(L"signal", L"Input.TimeSignal")
         .SetInput(L"window", L"hann_window")
         .SetConstant(L"frame_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
@@ -693,7 +693,7 @@ static void MelSpectrogramOnThreeToneSignal(
         .SetInput(L"A", L"magnitude_squared")
         .SetConstant(L"B", TensorFloat::CreateFromArray({}, {static_cast<float>(dft_size)}))
         .SetOutput(L"C", L"power_frames"))
-      .Operators().Add(Operator(L"MelWeightMatrix", L"MelWeightMatrix0", MS_DOMAIN)
+      .Operators().Add(Operator(L"MelWeightMatrix", L"MelWeightMatrix0", MS_EXPERIMENTAL_DOMAIN)
         .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(n_mel_bins)}))
         .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
         .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(sampling_rate)}))
@@ -891,10 +891,10 @@ static void ModelBuilding_DiscreteFourierTransformInverseIdentity() {
       LearningModelBuilder::Create(13)
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
-          .Operators().Add(Operator(L"DFT", L"DFT0", MS_DOMAIN)
+          .Operators().Add(Operator(L"DFT", L"DFT0", MS_EXPERIMENTAL_DOMAIN)
                              .SetInput(L"input", L"Input")
                              .SetOutput(L"output", L"dft0_output"))
-          .Operators().Add(Operator(L"IDFT", L"IDFT0", MS_DOMAIN)
+          .Operators().Add(Operator(L"IDFT", L"IDFT0", MS_EXPERIMENTAL_DOMAIN)
                              .SetInput(L"input", L"dft0_output")
                              .SetOutput(L"output", L"Output"))
           .CreateModel();

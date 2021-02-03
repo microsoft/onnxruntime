@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef BUILD_EXPERIMENTAL
+
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/graph/constants.h"
@@ -41,7 +43,7 @@ static T get_scalar_value_from_tensor(const ONNX_NAMESPACE::TensorProto* t) {
 
 void RegisterSignalSchemas() {
   MS_SIGNAL_OPERATOR_SCHEMA(DFT)
-      .SetDomain(kMSDomain)
+      .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(DFT)DOC")
       .Attr("onesided",
@@ -97,7 +99,7 @@ void RegisterSignalSchemas() {
   ;
 
   MS_SIGNAL_OPERATOR_SCHEMA(IDFT)
-      .SetDomain(kMSDomain)
+      .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(IDFT)DOC")
       .Input(0,
@@ -138,7 +140,7 @@ void RegisterSignalSchemas() {
       });
 
   MS_SIGNAL_OPERATOR_SCHEMA(STFT)
-      .SetDomain(kMSDomain)
+      .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(STFT)DOC")
       .Attr("onesided",
@@ -179,7 +181,7 @@ void RegisterSignalSchemas() {
 
   // Window Functions
   MS_SIGNAL_OPERATOR_SCHEMA(HannWindow)
-      .SetDomain(kMSDomain)
+      .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(HannWindow)DOC")
       .Attr("output_datatype",
@@ -209,7 +211,7 @@ void RegisterSignalSchemas() {
       });
 
   MS_SIGNAL_OPERATOR_SCHEMA(HammingWindow)
-      .SetDomain(kMSDomain)
+      .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(HammingWindow)DOC")
       .Attr("output_datatype",
@@ -238,7 +240,7 @@ void RegisterSignalSchemas() {
       });
 
   MS_SIGNAL_OPERATOR_SCHEMA(BlackmanWindow)
-      .SetDomain(kMSDomain)
+      .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(BlackmanWindow)DOC")
       .Attr("output_datatype",
@@ -267,7 +269,7 @@ void RegisterSignalSchemas() {
       });
 
   MS_SIGNAL_OPERATOR_SCHEMA(MelWeightMatrix)
-      .SetDomain(kMSDomain)
+      .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(MelWeightMatrix)DOC")
       .Attr("output_datatype",
@@ -318,3 +320,5 @@ void RegisterSignalSchemas() {
 
 }  // namespace audio
 }  // namespace onnxruntime
+
+#endif
