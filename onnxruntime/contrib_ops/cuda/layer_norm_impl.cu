@@ -305,7 +305,7 @@ struct SharedMemory<double> {
 };
 }  // namespace
 
-template <typename T, typename U, bool simplified>
+template <typename T, typename U, bool simplified, int noBias>
 __global__ void cuApplyLayerNorm(
     T* __restrict__ output_vals,
     U* __restrict__ mean,
@@ -336,6 +336,8 @@ __global__ void cuApplyLayerNorm(
       T beta_i = (beta != NULL) ? beta[i] : (T) 0;
       if (simplified) {
         ovals[i] = gamma_i * static_cast<T>(c_invvar * curr);
+      } else if (noBias == 1) {
+        ovals[i] = gamma_i * static_cast<T>(c_invvar * (curr - mu));
       } else {
         ovals[i] = gamma_i * static_cast<T>(c_invvar * (curr - mu)) + beta_i;
       }
@@ -347,7 +349,7 @@ __global__ void cuApplyLayerNorm(
   }
 }
 
-template <typename T, typename U, bool simplified>
+template <typename T, typename U, bool simplified, int noBias>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
     T* output,
@@ -367,7 +369,7 @@ void HostApplyLayerNorm(
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
-  cuApplyLayerNorm<T, U, simplified><<<blocks, threads, nshared, 0>>>(
+  cuApplyLayerNorm<T, U, simplified, noBias><<<blocks, threads, nshared, 0>>>(
       output,
       mean,
       invvar,
