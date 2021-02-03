@@ -5,20 +5,23 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/bfc_arena.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "core/graph/model.h"
 
+#include <algorithm>
 #include <condition_variable>
+#include<fstream>
+#include<iostream>
 #include <mutex>
 #include <tuple>
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
-using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
 
@@ -75,6 +78,8 @@ struct ModelPrepParameters {
   std::string training_onnx_model_path;
   std::string modified_training_onnx_model_path;
   std::string training_optimized_ort_model_path;
+  std::string required_ops_path;
+  std::string weight_file_path;
 
   std::string predicted_value_name;
   std::string expected_value_name;
@@ -114,10 +119,12 @@ Status ConfigModelPrepParameters(int argc, char* argv[], ModelPrepParameters& pa
     params.training_onnx_model_path = model_base_path + "_bw.onnx";
     params.modified_training_onnx_model_path = model_base_path + "_bw_modified.onnx";
     params.training_optimized_ort_model_path = model_base_path + "_bw_modified_optimized.ort";
+    params.required_ops_path = model_base_path + "_required_ops.txt";
+    params.weight_file_path = model_base_path + "_weights.dat";
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
-    cerr << msg << ": " << e.what() << "\n"
-         << options.help() << "\n";
+    cerr << msg << ": " << e.what() << std::endl
+         << options.help() << std::endl;
     return Status(ONNXRUNTIME, FAIL, msg);
   }
 
@@ -147,38 +154,115 @@ onnxruntime::common::Status CreateTrainingGraph(const ModelPrepParameters& param
   auto session = std::make_unique<TrainingSession>(TRAINING_SESSION_OPTION, env);
   auto status = session->Load(params.starting_onnx_model_path);
   if (!status.IsOK()) {
-    std::cerr << "Failed to load model in a training session: " << status.ErrorMessage() << "\n";
+    std::cerr << "Failed to load model in a training session: " << status.ErrorMessage() << std::endl;
     return status;
   }
 
   status = session->ConfigureForTraining(trainer_config, config_result);
   if (!status.IsOK()) {
-    std::cerr << "Failed to configure training session: " << status.ErrorMessage() << "\n";
+    std::cerr << "Failed to configure training session: " << status.ErrorMessage() << std::endl;
     return status;
   }
 
   status = session->Save(ToPathString(params.training_onnx_model_path), TrainingSession::SaveOption::NO_RELOAD);
   if (!status.IsOK()) {
-    std::cerr << "Failed to save training graph: " << status.ErrorMessage() << "\n";
+    std::cerr << "Failed to save training graph: " << status.ErrorMessage() << std::endl;
     return status;
   }
 
-  std::cout << "Training graph written to " << params.training_onnx_model_path << "\n";
+  std::cout << "Training graph written to " << params.training_onnx_model_path << std::endl;
 
   return status;
 }
 
+void WriteWeightsToFile(std::map<std::string, std::vector<float>> weights, const std::string& output_path) {
+  ofstream f(output_path, ios::out | ios::binary);
+  // construct metadata
+  std::string key_list;
+  std::string length_list;
+  for (auto weight_iter = weights.begin(); weight_iter != weights.end(); weight_iter++) {
+    if (weight_iter != weights.begin()) {
+      key_list += ",";
+      length_list += ",";
+    }
+    key_list += "\"" + weight_iter->first + "\"";
+    length_list += std::to_string(weight_iter->second.size() * sizeof(float));
+  }
+  std::string metadata = "{";
+  metadata += "\"version\":1.0,";
+  metadata += "\"key_list\":[" + key_list + "],";
+  metadata += "\"length_list\":[" + length_list + "]}";
+
+  int32_t metadata_length = (int32_t)(metadata.size() * sizeof(metadata[0]));
+  f.write((char *) &(metadata_length), sizeof(int32_t)); 
+  f.write(metadata.data(), metadata_length);
+  for (auto weight_iter = weights.begin(); weight_iter != weights.end(); weight_iter++) {
+      for (auto value_iter = weight_iter->second.begin(); value_iter != weight_iter->second.end(); value_iter++) {
+          f.write((char*)&(*value_iter), sizeof(float));
+      }
+  }
+  f.close();
+}
+
+void WriteRequiredOpsToFile(const std::map<std::string, std::set<std::string>>& required_ops, const std::string& output_path) {
+   ofstream f(output_path, ios::out);
+   if(!f) {
+       std::cerr << "Failed to open file: " << output_path << std::endl;
+       return;
+   }
+   for (auto namespace_iter = required_ops.begin(); namespace_iter != required_ops.end(); namespace_iter++) {
+       f << namespace_iter->first;
+       bool first_op = true;
+       for (auto op_iter = namespace_iter->second.begin(); op_iter != namespace_iter->second.end(); op_iter++) {
+           if (first_op) {
+               f << ";";
+               first_op = false;
+           }
+           else {
+               f << ",";
+           }
+           f << (*op_iter);
+       }
+       f << std::endl;
+   }
+   f.close();
+}
+
+onnxruntime::common::Status ExtractTrainableWeights(const ModelPrepParameters& params) {
+  std::map<std::string, std::vector<float>> weights_to_export = {};
+  std::shared_ptr<onnxruntime::Model> model;
+  auto status = onnxruntime::Model::Load(ToPathString(params.starting_onnx_model_path), model, nullptr, logging::LoggingManager::DefaultLogger());
+  auto input_list = model->MainGraph().GetAllInitializedTensors();
+  for (auto it = input_list.begin(); it != input_list.end(); it++) {
+      
+      size_t raw_data_size = it->second->raw_data().length();
+      size_t expect_element_count = raw_data_size / sizeof(float); 
+      std::vector<float> weight(expect_element_count, 0.0);
+      auto unpack_status = onnxruntime::utils::UnpackTensor(
+          *(it->second),
+          it->second->raw_data().data(),
+          raw_data_size,
+          weight.data(),
+          expect_element_count);
+      if (unpack_status.IsOK())
+      {
+          weights_to_export.insert({it->first, weight});
+      }
+  }
+  WriteWeightsToFile(weights_to_export, params.weight_file_path);
+  return Status::OK();
+}
+
 onnxruntime::common::Status PrepareTrainingGraphForInferenceSession(const ModelPrepParameters& params) {
   std::vector<std::string> initializers_to_remove = {};
-  std::vector<std::string> optimizer_state = {};
-  std::map<std::string, std::vector<float>> trainable_weights = {};
+  std::map<std::string, std::set<std::string>> required_ops = {};
   std::vector<const NodeArg*> new_inputs = {};
   std::vector<const NodeArg*> new_outputs = {};
   std::shared_ptr<onnxruntime::Model> new_model;
 
   auto status = onnxruntime::Model::Load(ToPathString(params.training_onnx_model_path), new_model, nullptr, logging::LoggingManager::DefaultLogger());
   if (!status.IsOK()) {
-    std::cerr << "Failed to load training graph: " << status.ErrorMessage() << "\n";
+    std::cerr << "Failed to load training graph: " << status.ErrorMessage() << std::endl;
     return status;
   }
 
@@ -188,29 +272,23 @@ onnxruntime::common::Status PrepareTrainingGraphForInferenceSession(const ModelP
       auto current_node = new_model->MainGraph().Nodes().begin();
       current_node != new_model->MainGraph().Nodes().end();
       current_node++) {
+    int version = current_node->SinceVersion();
+    std::string domain = current_node->Domain().empty() ? "ai.onnx" : current_node->Domain();
+    std::string opset_key = domain + ";" + std::to_string(version);
+    if (required_ops.find(opset_key) == required_ops.end()) {
+        required_ops.insert({opset_key, {}});
+    }
+    required_ops[opset_key].insert(current_node->OpType());
+
     if (current_node->OpType() == params.optimizer_type) {
       auto optimizer_input_defs = current_node->InputDefs();
       for (auto optimizer_input = optimizer_input_defs.begin(); optimizer_input != optimizer_input_defs.end(); optimizer_input++) {
         std::string optimizer_input_name = (*optimizer_input)->Name();
         if (new_model->MainGraph().IsInitializedTensor(optimizer_input_name)) {
           initializers_to_remove.push_back(optimizer_input_name);
-          // if the initiaizer is also an input then consider it a trainable weight, otherwise it's optimizer state
-          bool is_trainable_weight = false;
-
-          for (auto input = graph_inputs.begin(); input != graph_inputs.end(); input++) {
-            if ((*input)->Name() == optimizer_input_name) {
-              is_trainable_weight = true;
-            }
-          }
-          if (is_trainable_weight) {
-            std::vector<float> weight = {};
-            const TensorProto* proto;
-            new_model->MainGraph().GetInitializedTensor(optimizer_input_name, proto);
-            trainable_weights.insert({optimizer_input_name, weight});
-
-          } else {
-            optimizer_state.push_back(optimizer_input_name);
-            new_inputs.push_back(*optimizer_input);
+          bool input_exists = std::any_of(graph_inputs.begin(), graph_inputs.end(), [optimizer_input_name](const NodeArg* input){return input->Name() == optimizer_input_name;});
+          if (!input_exists) {
+              new_inputs.push_back(*optimizer_input);
           }
         }
       }
@@ -222,25 +300,34 @@ onnxruntime::common::Status PrepareTrainingGraphForInferenceSession(const ModelP
       }
     }
   }
+
+  // Save required ops to a file
+  WriteRequiredOpsToFile(required_ops, params.required_ops_path);
+
+  // Add new inputs
   for (auto new_input = new_inputs.begin(); new_input != new_inputs.end(); new_input++) {
     graph_inputs.push_back(*new_input);
   }
   new_model->MainGraph().SetInputs(graph_inputs);
+
+  // Ad new outputs
   for (auto new_output = new_outputs.begin(); new_output != new_outputs.end(); new_output++) {
     graph_outputs.push_back(*new_output);
   }
   new_model->MainGraph().SetOutputs(graph_outputs);
+
+  // Remove initializers
   for (auto initializer = initializers_to_remove.begin(); initializer < initializers_to_remove.end(); initializer++) {
     new_model->MainGraph().RemoveInitializedTensor(*initializer);
   }
 
   status = onnxruntime::Model::Save(*new_model, params.modified_training_onnx_model_path);
   if (!status.IsOK()) {
-    std::cerr << "Failed to save training graph: " << status.ErrorMessage() << "\n";
+    std::cerr << "Failed to save training graph: " << status.ErrorMessage() << std::endl;
     return status;
   }
 
-  std::cout << "Modified training graph written to " << params.modified_training_onnx_model_path << "\n";
+  std::cout << "Modified training graph written to " << params.modified_training_onnx_model_path << std::endl;
 
   return status;
 }
@@ -250,17 +337,17 @@ onnxruntime::common::Status SaveOptimizedOrtModel(const std::string& source_mode
   auto inference_session = std::make_unique<InferenceSession>(INFERENCE_SESSION_OPTION, env, source_model_path);
   auto status = inference_session->Load();
   if (!status.IsOK()) {
-    std::cerr << "Failed to load model in an inference session: " << status.ErrorMessage() << "\n";
+    std::cerr << "Failed to load model in an inference session: " << status.ErrorMessage() << std::endl;
     return status;
   }
   
   status = inference_session->Initialize();
   if (!status.IsOK()) {
-    std::cerr << "Failed to initialize inference session: " << status.ErrorMessage() << "\n";
+    std::cerr << "Failed to initialize inference session: " << status.ErrorMessage() << std::endl;
     return status;
   }
 
-  std::cout << "Optimized training graph written to " << destination_model_path << "\n";
+  std::cout << "Optimized training graph written to " << destination_model_path << std::endl;
 
   return status;
 }
@@ -279,6 +366,11 @@ int main(int argc, char* args[]) {
 
   ModelPrepParameters params = {};
   auto status = ConfigModelPrepParameters(argc, args, params);
+  if (!status.IsOK()) {
+    return 1;
+  }
+
+  status = ExtractTrainableWeights(params);
   if (!status.IsOK()) {
     return 1;
   }
