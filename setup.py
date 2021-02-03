@@ -183,7 +183,7 @@ else:
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
   libs.extend(['onnxruntime_providers_openvino.dll'])
   # DirectML Libs
-  libs.extend(['directml.dll'])
+  libs.extend(['DirectML.45813174ea1bb03e018e891327e2ceb27bda588b.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
   if nightly_build:
