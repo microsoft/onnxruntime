@@ -31,4 +31,5 @@ jobs:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.NoOpenMP'
     AdditionalBuildFlags: ''
+    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
