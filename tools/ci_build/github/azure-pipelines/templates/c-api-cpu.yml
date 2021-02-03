@@ -9,6 +9,11 @@ parameters:
   type: boolean
   default: true
 
+- name: PublishingNuget
+  displayName: Publishing Nuget Packages and report binary size to mysql
+  type: boolean
+  default: true
+
 - name: DoEsrp
   displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
   type: boolean
@@ -21,6 +26,11 @@ parameters:
 
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
+  type: string
+  default: ''
+
+- name: AdditionalWinBuildFlags
+  displayName: Additional build flags that just for Windows Builds
   type: string
   default: ''
 
@@ -167,7 +177,7 @@ jobs:
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
-    buildparameter: --x86 ${{ parameters.AdditionalBuildFlags }}
+    buildparameter: --x86 ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
 
@@ -182,7 +192,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: arm
     packageName: arm
-    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}
+    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
 
@@ -197,7 +207,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}
+    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
 
@@ -212,7 +222,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64
-    buildparameter: --build_java ${{ parameters.AdditionalBuildFlags }}
+    buildparameter: --build_java ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
 
@@ -484,7 +494,7 @@ jobs:
   - name: GDN_CODESIGN_TARGETDIRECTORY
     value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
   pool: 'Win-CPU-2019'
-  #condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
+  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))))
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
