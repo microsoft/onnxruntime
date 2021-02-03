@@ -239,8 +239,8 @@ class ONNXQuantizer:
         self.model.graph().ClearField('node')
         self.model.graph().node.extend(self.new_nodes)
 
-        # Remove weights which are already quantized from graph.
-        self._remove_quantized_weights()
+        # Remove ununsed weights from graph.
+        self.model.remove_unused_constant()
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
@@ -629,7 +629,6 @@ class ONNXQuantizer:
 
         self.new_nodes += nodes_list
 
-
     def quantize_bias_dynamic(self, bias_name, input_name, weight_name, new_node_list):
         '''
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
@@ -667,7 +666,6 @@ class ONNXQuantizer:
         new_node_list.append(bias_cast_node)
 
         return quantized_bias_name
-
 
     def quantize_bias_static(self, bias_name, input_name, weight_name):
         '''
@@ -721,8 +719,8 @@ class ONNXQuantizer:
         self._quantized_weights.append(quantized_bias_entry)
 
         assert (bias_name not in self.quantized_value_map)
-        quantized_value = QuantizedValue(bias_name, quantized_bias_name, quantized_bias_scale_name, "", QuantizedValueType.Initializer,
-                                            None, onnx_proto.TensorProto.INT32)
+        quantized_value = QuantizedValue(bias_name, quantized_bias_name, quantized_bias_scale_name, "",
+                                         QuantizedValueType.Initializer, None, onnx_proto.TensorProto.INT32)
         self.quantized_value_map[bias_name] = quantized_value
 
         return quantized_bias_name

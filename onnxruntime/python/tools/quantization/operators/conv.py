@@ -20,7 +20,8 @@ class ConvInteger(QuantOperatorBase):
         quantized_bias_name = ""
         bias_present = False
         if len(node.input) == 3:
-            quantized_bias_name = self.quantizer.quantize_bias_dynamic(node.input[2], node.input[0], node.input[1], nodes)
+            quantized_bias_name = self.quantizer.quantize_bias_dynamic(node.input[2], node.input[0], node.input[1],
+                                                                       nodes)
             bias_present = True
 
         conv_integer_output = node.output[0] + "_output_quantized"

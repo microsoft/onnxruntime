@@ -6,7 +6,7 @@ from .operators.attention import AttentionQuant
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
 from .operators.gather import GatherQuant
 from .operators.conv import QLinearConv, ConvInteger, QDQConv
-from .operators.activation import QLinearActivation
+from .operators.activation import QLinearActivation, QDQRemovableActivation
 from .operators.binary_op import QLinearBinaryOp
 from .operators.maxpool import QMaxPool
 from .operators.gavgpool import QGlobalAveragePool
@@ -42,19 +42,21 @@ QLinearOpsRegistry.update(CommonOpsRegistry)
 
 QDQRegistry = {
     "Conv": QDQConv,
+    "Clip": QDQRemovableActivation,
+    "Relu": QDQRemovableActivation,
 }
+
 
 def CreateDefaultOpQuantizer(onnx_quantizer, node):
     return QuantOperatorBase(onnx_quantizer, node)
 
 
 def CreateOpQuantizer(onnx_quantizer, node):
-    if onnx_quantizer.is_qdq_format():
-        return QDQOperatorBase(onnx_quantizer, node)
     registry = IntegerOpsRegistry if onnx_quantizer.mode == QuantizationMode.IntegerOps else QLinearOpsRegistry
     if node.op_type in registry.keys():
         return registry[node.op_type](onnx_quantizer, node)
     return QuantOperatorBase(onnx_quantizer, node)
+
 
 def CreateQDQQuantizer(onnx_quantizer, node):
     if node.op_type in QDQRegistry.keys():

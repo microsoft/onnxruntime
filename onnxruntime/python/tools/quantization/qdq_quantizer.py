@@ -24,6 +24,7 @@ from .registry import CreateQDQQuantizer
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 
+
 class QDQQuantizer(ONNXQuantizer):
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, quantization_params,
                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
@@ -32,6 +33,7 @@ class QDQQuantizer(ONNXQuantizer):
         self.tensors_to_quantize = []
         self.tensors_to_quantize_per_channel = []
         self.bias_to_quantize = []
+        self.nodes_to_remove = []
 
     def quantize_tensor(self, tensor_name):
         weight = find_by_name(tensor_name, self.model.initializer())
@@ -54,8 +56,8 @@ class QDQQuantizer(ONNXQuantizer):
                 self.tensors_to_quantize_per_channel.append((tensor_name, axis))
         else:
             print(
-                "Warning: only support per-channel quantization on weight. Quantize tensor: {} with per-tensor instead.".
-                format(tensor_name))
+                "Warning: only support per-channel quantization on weight. Quantize tensor: {} with per-tensor instead."
+                .format(tensor_name))
             self.quantize_tensor(tensor_name)
 
     def quantize_bias_tensor(self, bias_name, input_name, weight_name):
@@ -66,6 +68,12 @@ class QDQQuantizer(ONNXQuantizer):
         else:
             print("Warning: Expected {} to be a weight".format(bias_name))
 
+    def remove_node(self, node):
+        self.nodes_to_remove.append(node)
+
+    def remove_nodes(self):
+        self.model.remove_nodes(self.nodes_to_remove)
+
     def quantize_model(self):
         for node in self.model.nodes():
             if self.should_quantize(node):
@@ -74,11 +82,19 @@ class QDQQuantizer(ONNXQuantizer):
 
         self.quantize_tensors()
         self.quantize_bias_tensors()
+        self.remove_nodes()
+        self.model.remove_unused_constant()
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
 
         return self.model.model
+
+    def try_replacing_upstream_output(self, upstream_output_name, output_name):
+        if len(self.model.input_name_to_nodes()[upstream_output_name]) == 1:
+            self.model.replace_output_of_all_nodes(upstream_output_name, output_name)
+            return True
+        return False
 
     def quantize_tensors(self):
         for tensor_name in self.tensors_to_quantize:
@@ -129,5 +145,6 @@ class QDQQuantizer(ONNXQuantizer):
             self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
             quant_value = self.quantized_value_map[bias_name]
             inputs = [quant_value.q_name, quant_value.scale_name, quant_value.zp_name]
-            dequant_node = onnx.helper.make_node("DequantizeLinear", inputs, [bias_name], bias_name + '_DequantizeLinear')
+            dequant_node = onnx.helper.make_node("DequantizeLinear", inputs, [bias_name],
+                                                 bias_name + '_DequantizeLinear')
             self.model.add_node(dequant_node)

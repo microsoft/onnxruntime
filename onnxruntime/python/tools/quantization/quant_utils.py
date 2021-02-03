@@ -168,6 +168,7 @@ class BiasToQuantize:
         self.input_name = input_name
         self.weight_name = weight_name
 
+
 def attribute_to_kwarg(attribute):
     '''
     Convert attribute to kwarg format for use with onnx.helper.make_node.

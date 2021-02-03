@@ -1,5 +1,6 @@
 import onnx
 from .base_operator import QuantOperatorBase
+from .qdq_base_operator import QDQOperatorBase
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from onnx import onnx_pb as onnx_proto
 
@@ -69,3 +70,15 @@ class QLinearActivation(QuantOperatorBase):
 
         nodes.append(qlinear_activation_node)
         self.quantizer.new_nodes += nodes
+
+
+class QDQRemovableActivation(QDQOperatorBase):
+    def __init__(self, onnx_quantizer, onnx_node):
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def quantize(self):
+        node = self.node
+
+        # TODO: support Clip of opset version 12
+        if self.quantizer.try_replacing_upstream_output(node.input[0], node.output[0]):
+            self.quantizer.remove_node(self.node)
