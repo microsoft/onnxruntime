@@ -96,14 +96,14 @@ def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
                 "Update_Count": update_tensor # if optimizer is adam, absent otherwise
             },
         ...
-        "shared_optimizer_state": # if optimizer is shared, absent otherwise. 
+        "shared_optimizer_state": # if optimizer is shared, absent otherwise.
                                     So far, only lamb optimizer uses this.
         {
             "step": step_tensor # int array of size 1
         }
 
     Args:
-        expected_state (dict(dict())): Expected optimizer state 
+        expected_state (dict(dict())): Expected optimizer state
         actual_state (dict(dict())): Actual optimizer state
         rtol (float, default is 1e-7): Max relative difference
         atol (float, default is 0): Max absolute difference
@@ -113,6 +113,24 @@ def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
         for k,v in a_state.items():
             assert_allclose(v, expected_state[param_name][k], rtol=rtol, atol=atol,
                             err_msg=f"Optimizer state mismatch for param {param_name}, key {k}")
+
+def is_dynamic_axes(model):
+    # Check inputs
+    for inp in model._onnx_training.graph.input:
+        shape = inp.type.tensor_type.shape
+        if shape:
+            for dim in shape.dim:
+                if dim.dim_param and not isinstance(dim.dim_param, str):
+                    return False
+
+    # Check outputs
+    for out in model._onnx_training.graph.output:
+        shape = out.type.tensor_type.shape
+        if shape:
+            for dim in shape.dim:
+                if dim.dim_param and not isinstance(dim.dim_param, str):
+                    return False
+    return True
 
 # TODO: thiagofc: Checkpoint related for redesign
 def _get_name(name):
