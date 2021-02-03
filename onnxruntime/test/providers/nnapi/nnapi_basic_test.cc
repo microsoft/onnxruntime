@@ -83,7 +83,7 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
 
 #if defined(__ANDROID__)
   std::vector<int64_t> dims_x = {1, 3};
-  std::vector<float> values_x = {0.0f, 128.0f, 256.0f};
+  std::vector<float> values_x = {0.0f, 256.0f, 512.0f};
   OrtValue ml_value_x;
   CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x,
                        &ml_value_x);
