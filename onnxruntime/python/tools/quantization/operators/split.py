@@ -11,6 +11,7 @@ class QSplit(QuantOperatorBase):
     def quantize(self):
         node = self.node
         quantized_input_names, zero_point_names, scale_names, nodes = self.quantizer.quantize_inputs(node, [0])
+        quantized_node_name = ""
         if node.name != "":
             quantized_node_name = node.name + "_quant"
         kwargs = {}
