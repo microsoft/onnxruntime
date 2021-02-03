@@ -121,6 +121,29 @@ struct EnabledTypes {
   using types = boost::mp11::mp_apply<boost::mp11::mp_set_intersection, TypeSetsToConsider>;
 };
 
+/**
+* Check if the type list contains the specified type.
+*/
+template <typename TypeList, typename T>
+constexpr bool HasType() {
+  return std::is_same<boost::mp11::mp_set_contains<TypeList, T>, boost::mp11::mp_true>::value;
+}
+
+template <typename T>
+using SizeOfT = boost::mp11::mp_size_t<sizeof(T)>;
+
+/**
+* Check if the type list contains a type with the same size as T.
+* 
+* @remarks e.g. will return true if T is int32_t and the list contains any 4 byte type (i.e. sizeof(int32_t)) 
+*               such as int32_t, uint32_t or float.
+*/
+template <typename TypeList, typename T>
+constexpr bool HasTypeWithSameSize() {
+  using EnabledTypeSizes = boost::mp11::mp_unique<boost::mp11::mp_transform<SizeOfT, TypeList>>;
+  return std::is_same<boost::mp11::mp_set_contains<EnabledTypeSizes, SizeOfT<T>>, boost::mp11::mp_true>::value;
+}
+
 }  // namespace op_kernel_type_control
 }  // namespace onnxruntime
 
@@ -145,6 +168,16 @@ struct EnabledTypes {
       ArgIndex>
 
 // public macros
+
+/** Data types that are used in DataTypeImpl::AllTensorTypes()
+*/
+#define ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES \
+  bool,                                               \
+      float, double,                                  \
+      uint8_t, uint16_t, uint32_t, uint64_t,          \
+      int8_t, int16_t, int32_t, int64_t,              \
+      MLFloat16, BFloat16,                            \
+      std::string
 
 /**
  * Specifies a supported set of types for a given Op kernel argument.
