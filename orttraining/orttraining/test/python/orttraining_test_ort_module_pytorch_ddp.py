@@ -1,4 +1,4 @@
-# This test scripts is a modified version of Pytorch's tutorial.
+# This test script is a modified version of Pytorch's tutorial.
 # For details, see https://pytorch.org/tutorials/intermediate/ddp_tutorial.html.
 import os
 import sys
