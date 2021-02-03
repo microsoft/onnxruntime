@@ -83,77 +83,7 @@ def _onnx_value_info_to_buffer_tensor(value_info, device):
     dtype = _utils.dtype_onnx_to_torch(value_info.type.tensor_type.elem_type)
     return torch.zeros(shape, device=device, dtype=dtype)
 
-def _parse_inputs_for_onnx_export(module, inputs):
-    # Ignore optional *inputs explicitly specified as None
-    sig = signature(module.forward)
-    all_input_names = sig.parameters.keys()
-    input_names = []
-    dynamic_axes = {}
-    for input_idx, name in enumerate(all_input_names):
-        if input_idx < len(inputs) and inputs[input_idx] is not None:
-            input_names.append(name)
-            dynamic_axes[name] = {}
-            for dim_idx in range(len(inputs[input_idx].shape)):
-                dynamic_axes[name].update({dim_idx : 'input{}_dim{}'.format(input_idx, dim_idx)})
-    return input_names, dynamic_axes
-
-def _parse_outputs_for_onnx_export(module, inputs):
-    #   Do an inference to grab outputs
-    is_train_mode = module.training
-    module.eval()
-    with torch.no_grad():
-        # Deepcopy inputs, since input values may change after model run.
-        sample_inputs_copy = _deepcopy_model_input(*inputs)
-        try:
-            # Deepcopy model, in case model is stateful and changes after model run.
-            model_copy = copy.deepcopy(module)
-        except Exception:
-            model_copy = module
-            warnings.warn("This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
-                            " Compute will continue, but unexpected results may occur!")
-
-        sample_outputs = model_copy(*sample_inputs_copy)
-        def _create_output_dim_names(output, output_idx):
-            output_names, dynamic_axes = [], {}
-            name = 'out{}'.format(output_idx)
-            output_names.append(name)
-            dynamic_axes[name] = {}
-            for dim_idx in range(len(output.shape)):
-                dynamic_axes[name].update({dim_idx : '{}_dim{}'.format(name, dim_idx)})
-            return output_names, dynamic_axes
-
-        output_names = []
-        output_dynamic_axes = {}
-        if isinstance(sample_outputs, torch.Tensor):
-            output_names, output_dynamic_axes = _create_output_dim_names(sample_outputs, 0)
-        elif isinstance(sample_outputs, container_abcs.Mapping):
-            raise NotImplementedError('Dictionaries are not supported as output yet')
-        elif isinstance(sample_outputs, container_abcs.Sequence):
-            for idx, out in enumerate(sample_outputs):
-                tmp_output_names, tmp_output_dynamic_axes = _create_output_dim_names(out, idx)
-                output_names += tmp_output_names
-                output_dynamic_axes.update(tmp_output_dynamic_axes)
-        else:
-            raise RuntimeError('ORTModule does not support the following model output type {}'.format(type(sample_outputs)))
-    if is_train_mode:
-        module.train()
-    return output_names, output_dynamic_axes
-
-# TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
-# and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
-# from forward graph outputs will be converted to torch.uint8 tensor. When this tensor
-# is feeded to backward graph as input, it will cause data type mismatch issue during
-# inference session running. We cannot change the from_dlpack() in PyTorch side, so we
-# have to handle this specially, which will introduce a cast here and there is data copied.
-# Always cast from torch.uint8 to torch.bool is not logically right, we need to check the
-# real data type of the inputs in the backeard graph, and perform the cast only necessary.
-def _ort_output_to_torch_tensor(ort_output):
-    tensor = from_dlpack(ort_output.to_dlpack())
-    return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
-
-def _extract_input_information(module, *inputs, **kwargs):
-    '''Returns the all input names, dynamic_axes information and input names that require gradient'''
-
+def _parse_inputs_for_onnx_export(module, *inputs, **kwargs):
     # Ignore optional *inputs explicitly specified as None
     sig = signature(module.forward)
     all_input_names = sig.parameters.keys()
@@ -169,9 +99,65 @@ def _extract_input_information(module, *inputs, **kwargs):
             input_names.append(name)
             dynamic_axes[name] = {}
             for dim_idx in range(len(inputs[input_idx].shape)):
-                dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
-
+                dynamic_axes[name].update({dim_idx : 'input{}_dim{}'.format(input_idx, dim_idx)})
     return input_names, dynamic_axes, input_names_require_grad
+
+def _parse_outputs_for_onnx_export(module, inputs):
+
+    def _create_output_dim_names(output, output_idx, from_sequence):
+        if from_sequence and not isinstance(output, torch.Tensor):
+            raise TypeError('ORTModule does not support the following model output type {} within a Sequence'.format(type(sample_outputs)))
+        output_names, dynamic_axes = [], {}
+        name = 'out{}'.format(output_idx)
+        output_names.append(name)
+        dynamic_axes[name] = {}
+        for dim_idx in range(len(output.shape)):
+            dynamic_axes[name].update({dim_idx : '{}_dim{}'.format(name, dim_idx)})
+        return output_names, dynamic_axes
+
+    #   Do an inference to grab outputs
+    is_train_mode = module.training
+    module.eval()
+    with torch.no_grad():
+        # Deepcopy inputs, since input values may change after model run.
+        sample_inputs_copy = _deepcopy_model_input(*inputs)
+        try:
+            # Deepcopy model, in case model is stateful and changes after model run.
+            model_copy = copy.deepcopy(module)
+        except Exception:
+            model_copy = module
+            warnings.warn("This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
+                            " Compute will continue, but unexpected results may occur!")
+
+        sample_outputs = model_copy(*sample_inputs_copy)
+        output_names = []
+        output_dynamic_axes = {}
+        if isinstance(sample_outputs, torch.Tensor):
+            output_names, output_dynamic_axes = _create_output_dim_names(sample_outputs, 0, False)
+        elif isinstance(sample_outputs, container_abcs.Mapping):
+            raise NotImplementedError('Dictionaries are not supported as output yet')
+        elif isinstance(sample_outputs, container_abcs.Sequence):
+            for idx, out in enumerate(sample_outputs):
+                tmp_output_names, tmp_output_dynamic_axes = _create_output_dim_names(out, idx, True)
+                output_names += tmp_output_names
+                output_dynamic_axes.update(tmp_output_dynamic_axes)
+        else:
+            raise TypeError('ORTModule does not support the following model output type {}'.format(type(sample_outputs)))
+    if is_train_mode:
+        module.train()
+    return output_names, output_dynamic_axes
+
+# TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
+# and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
+# from forward graph outputs will be converted to torch.uint8 tensor. When this tensor
+# is feeded to backward graph as input, it will cause data type mismatch issue during
+# inference session running. We cannot change the from_dlpack() in PyTorch side, so we
+# have to handle this specially, which will introduce a cast here and there is data copied.
+# Always cast from torch.uint8 to torch.bool is not logically right, we need to check the
+# real data type of the inputs in the backeard graph, and perform the cast only necessary.
+def _ort_output_to_torch_tensor(ort_output):
+    tensor = from_dlpack(ort_output.to_dlpack())
+    return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
 class ORTModule(torch.nn.Module):
 
@@ -224,7 +210,7 @@ class ORTModule(torch.nn.Module):
 
     def _build_training_graph(self, *inputs, **kwargs):
         input_names, dynamic_axes, self._input_names_require_grad = \
-                _extract_input_information(self._original_module, *inputs, **kwargs)
+            _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
         self._onnx_training = self._get_forward_graph(input_names, dynamic_axes, *inputs, **kwargs)
         if self._save_onnx:
             onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
@@ -323,7 +309,7 @@ class ORTModule(torch.nn.Module):
         if not self._onnx_training:
             self._build_training_graph(*inputs, **kwargs)
 
-        _, _, input_names_require_grad = _extract_input_information(self._original_module, *inputs, **kwargs)
+        _, _, input_names_require_grad = _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
         # If inputs requiring gradient change from one call to forward to the next, the module_gradient_graph_builder
         # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
         if input_names_require_grad != self._input_names_require_grad:
@@ -507,7 +493,7 @@ class ORTModule(torch.nn.Module):
         '''
 
         # Setup dynamic axes for onnx model
-        input_names, dynamic_axes = _parse_inputs_for_onnx_export(self._original_module, inputs)
+        input_names, dynamic_axes, _ = _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
         output_names, output_dynamic_axes = _parse_outputs_for_onnx_export(self._original_module, inputs)
         dynamic_axes.update(output_dynamic_axes)
 
