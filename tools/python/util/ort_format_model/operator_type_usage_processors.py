@@ -182,6 +182,18 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
                 self._output_types[int(o_str)] = set(values)
 
 
+class Output0TypedRegistrationProcessor(DefaultTypeUsageProcessor):
+    '''
+    Processor for operators where the first output type is used in a typed kernel registration.
+    '''
+    def __init__(self, domain: str, optype: str):
+        # init with tracking of output 0 only.
+        super().__init__(domain, optype, inputs=[], outputs=[0])
+
+    def is_typed_registration_needed(self, type_in_registration: str):
+        return type_in_registration in self._output_types[0]
+
+
 class OneHotProcessor(TypeUsageProcessor):
     '''
     Processor for the OneHot operator, which requires custom logic as the type registration key is a concatenation of
@@ -276,23 +288,23 @@ def _create_operator_type_usage_processors():
     #
     add(DefaultTypeUsageProcessor('ai.onnx', 'Cast', inputs=[0], outputs=[0]))  # track input0 and output0
 
-    # Gather and GatherElements have switching on both the data type (input0) and indices type (input1)
+    # Operators that switch on the type of input 0 and 1
     add(DefaultTypeUsageProcessor('ai.onnx', 'Gather', inputs=[0, 1]))
     add(DefaultTypeUsageProcessor('ai.onnx', 'GatherElements', inputs=[0, 1]))
-
-    # Pow dispatches on base and exponential types
     add(DefaultTypeUsageProcessor('ai.onnx', 'Pow', inputs=[0, 1]))
 
-    # ConstantOfShape switches on size of output type
+    # Operators that switch on output type
     add(DefaultTypeUsageProcessor('ai.onnx', 'ConstantOfShape', inputs=[], outputs=[0]))
+    add(DefaultTypeUsageProcessor('com.microsoft', 'DynamicQuantizeMatMul', inputs=[], outputs=[0]))
 
     # Random generator ops produce new data so we track the output type
     onnx_random_ops = ['RandomNormal', 'RandomNormalLike', 'RandomUniform', 'RandomUniformLike', 'Multinomial']
     [add(DefaultTypeUsageProcessor('ai.onnx', op, inputs=[], outputs=[0])) for op in onnx_random_ops]
 
     # we only support 'float' as input for [Dynamic]QuantizeLinear so just track the output type
-    add(DefaultTypeUsageProcessor('ai.onnx', 'QuantizeLinear', inputs=[], outputs=[0]))
-    add(DefaultTypeUsageProcessor('ai.onnx', 'DynamicQuantizeLinear', inputs=[], outputs=[0]))
+    # as that's what is used in the typed registration
+    add(Output0TypedRegistrationProcessor('ai.onnx', 'QuantizeLinear'))
+    add(Output0TypedRegistrationProcessor('ai.onnx', 'DynamicQuantizeLinear'))
 
     # OneHot concatenates type strings into a triple in the typed registration
     #   e.g. float_int64_t_int64_t
