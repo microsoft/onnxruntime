@@ -14,7 +14,7 @@ import numpy as np
 from onnx import onnx_pb as onnx_proto
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
-from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
+from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
 from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
 from .quant_utils import QuantType, QuantFormat
 
@@ -151,8 +151,8 @@ def quantize_static(model_input,
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
     :param calibration_data_reader: a calibration data reader. It enumerates calibration data and generates inputs for the original model.
-    :param quant_format: QuantFormat{default, QDQ}.
-        Default format quantizes the model with quantized operators directly.
+    :param quant_format: QuantFormat{QOperator, QDQ}.
+        QOperator format quantizes the model with quantized operators directly.
         QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
     :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
     :param op_types: operators to quantize

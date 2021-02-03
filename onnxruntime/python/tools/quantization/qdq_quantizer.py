@@ -15,7 +15,7 @@ from onnx import onnx_pb as onnx_proto
 from onnx import TensorProto
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
-from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
+from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
 from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, type_to_name, quantize_nparray
 from .quant_utils import QuantType, onnx_domain, __producer__, __version__
 

@@ -33,30 +33,54 @@ type_to_name = {
 # QLinearOps: Use QLinearOps in quantized model. Only QLinearConv and QLinearMatMul ops are supported now.
 
 
-class QuantizationMode():
+class QuantizationMode(Enum):
     IntegerOps = 0
     QLinearOps = 1
 
+    def __str__(self):
+        return self.name
 
-quantization_modes = [
-    getattr(QuantizationMode, attr) for attr in dir(QuantizationMode)
-    if not callable(getattr(QuantizationMode, attr)) and not attr.startswith("__")
-]
+    @staticmethod
+    def from_string(mode):
+        try:
+            return QuantizationMode[mode]
+        except KeyError:
+            raise ValueError()
 
 
-class QuantizedValueType():
+class QuantizedValueType(Enum):
     Input = 0
     Initializer = 1
 
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def from_string(v):
+        try:
+            return QuantizedValueType[v]
+        except KeyError:
+            raise ValueError()
+
 
 class QuantType(Enum):
-    QInt8 = 1
-    QUInt8 = 2
+    QInt8 = 0
+    QUInt8 = 1
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def from_string(t):
+        try:
+            return QuantType[t]
+        except KeyError:
+            raise ValueError()
 
 
 class QuantFormat(Enum):
-    QOperator = 1
-    QDQ = 2
+    QOperator = 0
+    QDQ = 1
 
     def __str__(self):
         return self.name
