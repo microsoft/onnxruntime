@@ -654,6 +654,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         worker_data_[i].queue.Flush();
       }
     }
+
+    Cancel(); //force all threads to exit
+
     // Join threads explicitly (by destroying) to avoid destruction order within
     // this class.
     for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
@@ -1219,26 +1222,28 @@ int CurrentThreadId() const EIGEN_FINAL {
 
     SetDenormalAsZero(set_denormal_as_zero_);
 
-    while (!cancelled_ && !should_exit) {
+    //while (!cancelled_ && !should_exit) {
+    while (!(cancelled_ && q.Empty())) {
         Task t = q.PopFront();
         if (!t) {
+          td.SetSpinning();
+          ::std::this_thread::yield();
           // Spin waiting for work.  We indicate, via SetGOodWorkerHint that we are
           // spinning.  This will bias other threads toward pushing work to our queue.
           // In addition, priodically make a best-effort attempt to steal from other
           // threads which are not themselves spinning.
-
+          /*
           SetGoodWorkerHint(thread_id, true);
           for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
             t = ((i+1)%steal_count == 0) ? TrySteal() : q.PopFront();
             onnxruntime::concurrency::SpinPause();
           }
           SetGoodWorkerHint(thread_id, false);
-
           if (!t) {
             // No work passed to us while spinning; make a further full attempt to
             // steal work from other threads prior to blocking.
             if (num_threads_ != 1) {
-              t = Steal(true /* true => check all queues */);
+              t = Steal(true);
             }
             if (!t) {
               td.SetBlocked(
@@ -1286,7 +1291,7 @@ int CurrentThreadId() const EIGEN_FINAL {
                     blocked_--;
                   });
             }
-          }
+          }*/
         }
         if (t) {
           td.SetActive();
