@@ -412,27 +412,21 @@ bool IsInternalQuantizedNode(const Node& node) {
 
 // We support some operators running using uint8 internally
 // These nodes cannot use a graph input as input since onnx graph input does not carry scale/zero point info
-bool IsInternalQuantizationSupported(const Node& node, const std::vector<size_t>& group,
-                                     const std::unordered_set<NodeIndex>& nodes_in_group) {
+bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<std::string>& node_outputs_in_group) {
   const auto& op_type = node.OpType();
+
+  // The node's input(s) have to be an output of node(s) within the group
+  // If not, then this node is using graph/partition input(s) as input(s)
+  const auto& input_defs = node.InputDefs();
+
   // We only need to check input0 for all operators except "Concat"
   bool check_all_inputs = op_type == "Concat";
 
-  if (group.empty()) {  // This is the 1st node in the group (partition)
-    LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type " << op_type
-                          << " is the 1st node in the group, "
-                          << " it does not support using graph input(quantized) as node input";
-    return false;
-  }
-
-  // The node's input(s) have to be an output of node(s) within the group
-  // If not, then this node is using graph input(s) as input(s)
-  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
-    LOGS_DEFAULT(WARNING) << "source index " << it->GetNode().Index();
-    if ((check_all_inputs || it->GetDstArgIndex() == 0) &&
-        !Contains(nodes_in_group, it->GetNode().Index())) {
-      LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type " << op_type
-                            << " does not support using graph input(quantized) as node input";
+  for (size_t i = 0; i < (check_all_inputs ? input_defs.size() : 1); i++) {
+    if (!Contains(node_outputs_in_group, input_defs[i]->Name())) {
+      LOGS_DEFAULT(VERBOSE) << "Node [" << node.Name() << "] type: [" << op_type
+                            << "] has input [" << input_defs[i]->Name()
+                            << "] does not support using graph input(quantized) as node input";
       return false;
     }
   }
@@ -451,16 +445,15 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const Op
 
 bool IsNodeSupportedInternal(const Node& node, const GraphViewer& graph_viewer,
                              const OpSupportCheckParams& params,
-                             const std::vector<size_t>& group,
-                             const std::unordered_set<NodeIndex>& nodes_in_group) {
+                             const std::unordered_set<std::string>& node_outputs_in_group) {
   if (!IsNodeSupported(node, graph_viewer, params))
     return false;
 
   // We also want to check if the node is supported as an internal quantized node
   if (IsInternalQuantizedNode(node))
-    return IsInternalQuantizationSupported(node, group, nodes_in_group);
-
-  return true;
+    return IsInternalQuantizationSupported(node, node_outputs_in_group);
+  else  // This is not a internal quantized node, it is supported
+    return true;
 }
 
 std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
@@ -475,11 +468,11 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
   // This holds the supported node's topological index
   std::vector<size_t> supported_node_group;
   // This holds the NodeIndex of the nodes in the above group
-  std::unordered_set<NodeIndex> nodes_in_group;
+  std::unordered_set<std::string> node_outputs_in_group;
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer.GetNode(node_indices[i]));
-    bool supported = IsNodeSupportedInternal(*node, graph_viewer, params, supported_node_group, nodes_in_group);
+    bool supported = IsNodeSupportedInternal(*node, graph_viewer, params, node_outputs_in_group);
     LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node->OpType()
                           << "] index: [" << i
                           << "] name: [" << node->Name()
@@ -487,12 +480,17 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
                           << "]";
     if (supported) {
       supported_node_group.push_back(i);
-      nodes_in_group.insert(node->Index());
+
+      // We want to put all the output names of nodes in the current group for easy query
+      // See IsInternalQuantizationSupported()
+      for (const auto* output : node->OutputDefs()) {
+        node_outputs_in_group.insert(output->Name());
+      }
     } else {
       if (IsValidSupportedNodesGroup(supported_node_group, graph_viewer)) {
         supported_node_groups.push_back(supported_node_group);
         supported_node_group.clear();
-        nodes_in_group.clear();
+        node_outputs_in_group.clear();
       }
     }
   }
