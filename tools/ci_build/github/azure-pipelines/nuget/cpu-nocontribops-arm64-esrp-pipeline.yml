@@ -24,7 +24,7 @@ variables:
   DisableMlOps: 'ON'
 
 jobs:
-- template: ../templates/c-api-cpu.yml
+- template: ../templates/c-api-cpu-no-java.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
     DoCompliance: ${{ parameters.DoCompliance }}
