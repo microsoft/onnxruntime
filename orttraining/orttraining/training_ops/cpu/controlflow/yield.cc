@@ -9,11 +9,15 @@
 namespace onnxruntime {
 namespace contrib {
 
-ONNX_OPERATOR_KERNEL_EX(Yield, kMSDomain, 1, kCpuExecutionProvider,
-                        KernelDefBuilder()
-                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-                            .VariadicAlias(0, 0),  // TODO: this is a hack to avoid allocating output buffer
-                        Yield);
+ONNX_OPERATOR_KERNEL_EX(
+    Yield,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .VariadicAlias(0, 0),  // TODO: this is a hack to avoid allocating output buffer
+    Yield);
 
 Status Yield::Compute(OpKernelContext* ctx) const {
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
