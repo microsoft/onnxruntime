@@ -86,6 +86,7 @@ def _ort_output_to_torch_tensor(ort_output):
     tensor = from_dlpack(ort_output.to_dlpack())
     return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
+
 def _extract_input_information(module, *inputs, **kwargs):
     '''Returns the all input names, dynamic_axes information and input names that require gradient'''
 
@@ -117,7 +118,7 @@ class ORTModule(torch.nn.Module):
 
         # TODO: This is incorrect when different layers may be in different devices
         self._device = next(module.parameters()).device
-        self._require_export = False
+        self._device_changed  = False
 
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
@@ -151,6 +152,16 @@ class ORTModule(torch.nn.Module):
         grad_builder_config.input_names_require_grad = []
         self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
         self._module_gradient_graph_builder.initialize(self._onnx_training.SerializeToString(), grad_builder_config)
+
+    def _get_forward_graph_and_init_gradient_graph_builder(self, *inputs, **kwargs):
+        input_names, dynamic_axes, self._input_names_require_grad = \
+                        _extract_input_information(self._original_module, *inputs, **kwargs)
+        self._onnx_training = self._get_forward_graph(input_names, dynamic_axes, *inputs, **kwargs)
+
+        if self._save_onnx:
+            onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
+
+        self._initialize_module_gradient_graph_builder()
 
     def _create_training_session(self):
         providers = None
@@ -191,7 +202,7 @@ class ORTModule(torch.nn.Module):
         '''Thin layer to capture device for ORTModule IO bindings'''
 
         if self._device.type != 'cpu':
-            self._require_export = True
+            self._device_changed  = True
             self._device = torch.device('cpu')
 
         return super(ORTModule, self).cpu()
@@ -201,10 +212,10 @@ class ORTModule(torch.nn.Module):
 
         if device is None:
             if _get_device_str(self._device) != _get_default_device_str('cuda'):
-                self._require_export = True
+                self._device_changed  = True
                 self._device = torch.device(_get_default_device_str('cuda'))
         elif _get_device_str(self._device) != _get_device_str(device):
-            self._require_export = True
+            self._device_changed  = True
             self._device = torch.device(_get_device_str(device))
 
         return super(ORTModule, self).cuda(device)
@@ -230,7 +241,7 @@ class ORTModule(torch.nn.Module):
         if device:
             device_str = _get_device_str(device)
             if _get_device_str(self._device) != device_str:
-                self._require_export = True
+                self._device_changed  = True
                 self._device = torch.device(device_str)
         return super(ORTModule, self).to(*args, **kwargs)
 
@@ -256,18 +267,16 @@ class ORTModule(torch.nn.Module):
 
         if not self._onnx_gradient or self._require_export:
             self._require_export = False
-            input_names, dynamic_axes, self._input_names_require_grad = \
-                            _extract_input_information(self._original_module, *inputs, **kwargs)
-            self._onnx_training = self._get_forward_graph(input_names, dynamic_axes, *inputs, **kwargs)
+            self._get_forward_graph_and_init_gradient_graph_builder(*inputs, **kwargs)
 
-            if self._save_onnx:
-                onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
-
+        _, _, input_names_require_grad = _extract_input_information(self._original_module, *inputs, **kwargs)
+        # If inputs requiring gradient change from one call to forward to the next, the module_gradient_graph_builder
+        # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
+        if input_names_require_grad != self._input_names_require_grad:
+            self._input_names_require_grad = input_names_require_grad
             self._initialize_module_gradient_graph_builder()
 
-        # Perform shape inference and re-split forward/backward graph for bacthes with different shapes
-        _, input_tensors = ORTModule._extract_user_inputs(self._original_module, *inputs, **kwargs)
-        new_input_shape = [list(input.size()) for input in input_tensors if input is not None]
+        new_input_shape = [list(input.size()) for input in inputs if input is not None]
         if self._current_input_shape is None or self._current_input_shape != new_input_shape:
             self._current_input_shape = new_input_shape
             self._build_training_graph()
