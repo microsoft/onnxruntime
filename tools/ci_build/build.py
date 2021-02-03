@@ -160,6 +160,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument(
+        "--enable_training_ops", action='store_true', help="Enable training ops in inference graph.")
+    parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
@@ -711,6 +713,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_OPS=" + (
+            "ON" if args.enable_training_ops else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + (
             "ON" if args.enable_training else "OFF"),
