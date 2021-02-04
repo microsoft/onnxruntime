@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 import onnxruntime
 from onnxruntime.training import ORTModule
-import _test_helpers
 
 # PyTorch model definitions for tests
 
@@ -123,9 +122,10 @@ def test_forward_call_single_positional_argument():
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
-    # Make sure model runs without any exception
-    output = model(x)
-    assert output is not None
+    try:
+        model(x)
+    except Exception as exception:
+        raise exception
 
 def test_forward_call_multiple_positional_arguments():
     device = 'cuda'
@@ -135,10 +135,10 @@ def test_forward_call_multiple_positional_arguments():
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
-
-    # Make sure model runs without any exception
-    output = model(x, y)
-    assert output is not None
+    try:
+        model(x, y)
+    except Exception as exception:
+        raise exception
 
 def test_forward_call_positional_arguments():
     device = 'cuda'
@@ -147,10 +147,10 @@ def test_forward_call_positional_arguments():
     model = NeuralNetPositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
     model = ORTModule(model)
     args = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
-
-    # Make sure model runs without any exception
-    output = model(*args)
-    assert output is not None
+    try:
+        model(*args)
+    except Exception as exception:
+        raise exception
 
 def test_forward_call_keyword_arguments():
     device = 'cuda'
@@ -161,10 +161,10 @@ def test_forward_call_keyword_arguments():
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
-
-    # Make sure model runs without any exception
-    output = model(x, y, z)
-    assert output is not None
+    try:
+        model(x, y, z)
+    except Exception as exception:
+        raise exception
 
 def test_forward_call_positional_and_keyword_arguments():
     device = 'cuda'
@@ -176,10 +176,10 @@ def test_forward_call_positional_and_keyword_arguments():
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
-
-    # Make sure model runs without any exception
-    output = model(a, x, y, z)
-    assert output is not None
+    try:
+        model(a, x, y, z)
+    except Exception as exception:
+        raise exception
 
 def test_model_cuda():
     original_device = 'cpu'
@@ -345,99 +345,3 @@ def test_gpu_reserved_memory_with_torch_no_grad():
 
     assert mem_reserved_after_export_with_torch_no_grad < mem_reserved_after_export_without_torch_no_grad
     assert mem_reserved_before_export < mem_reserved_after_export_with_torch_no_grad
-
-@pytest.mark.parametrize("device", ['cpu', 'cuda'])
-def test_exception_raised_for_dict_return_value_module(device):
-    class NeuralNetDictOutput(torch.nn.Module):
-        def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetDictOutput, self).__init__()
-
-            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
-            self.relu1 = torch.nn.ReLU()
-            self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
-
-            self.fc2_1 = torch.nn.Linear(input_size, hidden_size)
-            self.relu2 = torch.nn.ReLU()
-            self.fc2_2 = torch.nn.Linear(hidden_size, num_classes)
-
-            self.fc3_1 = torch.nn.Linear(input_size, hidden_size)
-            self.relu3 = torch.nn.ReLU()
-            self.fc3_2 = torch.nn.Linear(hidden_size, num_classes)
-
-        def forward(self, input1, input2, input3):
-            out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
-            out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
-            out3 = self.fc3_2(self.relu3(self.fc3_1(input2)))
-            return {'a': out1, 'b': out2, 'c': out3}
-
-    N, D_in, H, D_out = 64, 784, 500, 10
-    model = NeuralNetDictOutput(D_in, H, D_out).to(device)
-    model = ORTModule(model)
-    x = torch.randn(N, D_in, device=device)
-    y = torch.randn(N, D_in, device=device)
-    z = torch.randn(N, D_in, device=device)
-
-    with pytest.raises(NotImplementedError) as not_implemented_error:
-        model(x, y, z)
-    assert str(not_implemented_error.value) == 'Dictionaries are not supported as output yet'
-
-@pytest.mark.parametrize("device", ['cpu', 'cuda'])
-def test_exception_raised_for_custom_class_return_value_module(device):
-    class CustomClass(object):
-        def __init__(self, out1, out2, out3):
-            self.out1 = out1
-            self.out2 = out2
-            self.out3 = out3
-
-    class NeuralNetCustomClassOutput(torch.nn.Module):
-        def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetCustomClassOutput, self).__init__()
-
-            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
-            self.relu1 = torch.nn.ReLU()
-            self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
-
-            self.fc2_1 = torch.nn.Linear(input_size, hidden_size)
-            self.relu2 = torch.nn.ReLU()
-            self.fc2_2 = torch.nn.Linear(hidden_size, num_classes)
-
-            self.fc3_1 = torch.nn.Linear(input_size, hidden_size)
-            self.relu3 = torch.nn.ReLU()
-            self.fc3_2 = torch.nn.Linear(hidden_size, num_classes)
-
-        def forward(self, input1, input2, input3):
-            out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
-            out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
-            out3 = self.fc3_2(self.relu3(self.fc3_1(input2)))
-            return CustomClass(out1, out2, out3)
-
-    N, D_in, H, D_out = 64, 784, 500, 10
-    model = NeuralNetCustomClassOutput(D_in, H, D_out).to(device)
-    model = ORTModule(model)
-    x = torch.randn(N, D_in, device=device)
-    y = torch.randn(N, D_in, device=device)
-    z = torch.randn(N, D_in, device=device)
-
-    with pytest.raises(TypeError) as runtime_error:
-        model(x, y, z)
-    assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
-
-def test_dynamic_axes_config_NeuralNetSinglePositionalArgument(device = 'cuda'):
-    N, D_in, H, D_out = 64, 784, 500, 10
-    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
-    model = ORTModule(model)
-    x = torch.randn(N, D_in, device=device)
-
-    output = model(x)
-    assert output is not None
-    assert _test_helpers.is_dynamic_axes(model)
-    del model, output
-
-def test_dynamic_axes_config_BertForSequenceClassification(device = 'cuda'):
-    model = _get_bert_for_sequence_classification_model(device)
-    model = ORTModule(model).to(device)
-    x, y, z = _get_bert_for_sequence_classification_sample_data(device)
-
-    output = model(x, y, None, None, None, None, z)
-    assert output is not None
-    assert _test_helpers.is_dynamic_axes(model)
