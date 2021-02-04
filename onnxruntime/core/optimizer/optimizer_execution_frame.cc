@@ -77,10 +77,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   data_transfer_mgr_.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
 
   // Create MLValues related maps
-  #pragma clang diagnostic push
-  #pragma clang diagnostic ignored "-Wunused-lambda-capture"
   auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
-  #pragma clang diagnostic pop
     int idx = ort_value_name_idx_map_.Add(arg.Name());
     ort_value_idx_nodearg_map_[idx] = &arg;
 
