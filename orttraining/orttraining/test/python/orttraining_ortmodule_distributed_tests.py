@@ -42,16 +42,25 @@ def run_ortmodule_deepspeed_pipeline_parallel_tests(cwd, log):
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
+def run_ortmodule_fairscale_sharded_optimizer_tests(cwd, log):
+    log.debug('Running: ORTModule fairscale sharded optimizer tests')
+    command = ['python', 'orttraining_test_ortmodule_fairscale_sharded_optimizer.py',
+               '--use_sharded_optimizer', '--use_ortmodule']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
+
 def main():
     args = parse_arguments()
     cwd = args.cwd
 
     log.info("Running ortmodule tests pipeline")
 
-    run_ortmodule_deepspeed_pipeline_parallel_tests(cwd, log)
-
     run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log, args.mnist)
-
+    run_ortmodule_deepspeed_pipeline_parallel_tests(cwd, log)
+    run_ortmodule_fairscale_sharded_optimizer_tests(cwd, log)
+ 
     return 0
 
 
