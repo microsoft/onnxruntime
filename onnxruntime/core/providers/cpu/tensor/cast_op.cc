@@ -76,7 +76,7 @@ CastToString(const SrcType& input, std::string& output) {
     constexpr const char* format = "%.8g";
     const double value = static_cast<double>(input);
 
-    char static_buffer[32];
+    char static_buffer[256];
     std::unique_ptr<char[]> dynamic_buffer{};
 
     gsl::span<char> buffer_span = gsl::make_span(static_buffer);
@@ -215,7 +215,8 @@ struct TensorCaster<std::string, DstType> {
 };
 
 #if defined(_M_AMD64)
-// add some specializations to use _M_AMD64-specific optimized MLFloat16 -> float conversion
+// specializations to use optimized and Windows x64-specific
+// MlasConvertHalfToFloatBuffer() routine for MLFloat16 -> float conversion
 
 template <typename DstType>
 void CastMLFloat16ThroughFloat(
