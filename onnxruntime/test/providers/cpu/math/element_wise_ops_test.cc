@@ -203,9 +203,9 @@ TEST(MathOpTest, Add_Broadcast_0x1) {
     test.AddInput<float>("B", {1}, {2.0f});
     test.AddOutput<float>("C", {1}, {12.0f});
 #if defined(OPENVINO_CONFIG_MYRIAD)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily on MYRIADX due to a bug
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily on MYRIADX due to a bug
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 #endif
   };
 
@@ -221,9 +221,9 @@ TEST(MathOpTest, Add_Broadcast_1x0) {
     test.AddInput<float>("B", {}, {2.0f}, scalar_as_initializer);
     test.AddOutput<float>("C", {1}, {12.0f});
 #if defined(OPENVINO_CONFIG_MYRIAD)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily on MYRIADX due to a bug
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily on MYRIADX due to a bug
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 #endif
   };
 
@@ -1876,6 +1876,21 @@ void TrigDoubleTest(OpTester& test, std::initializer_list<double> input) {
   test.Run();
 }
 
+template <float (&op)(float value)>
+void TrigFloat16Test(OpTester& test, std::initializer_list<float> input) {
+  std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
+
+  std::vector<MLFloat16> float16_input;
+  std::vector<MLFloat16> float16_output;
+  for (auto v : input) {
+    float16_input.push_back(MLFloat16(math::floatToHalf(v)));
+    float16_output.push_back(MLFloat16(math::floatToHalf(op(v))));
+  }
+
+  test.AddInput<MLFloat16>("X", dims, float16_input);
+  test.AddOutput<MLFloat16>("Y", dims, float16_output);
+  test.Run();
+}
 TEST(MathOpTest, SinFloat) {
   OpTester test("Sin");
   TrigFloatTest<std::sin>(test, {1.1f, -1.1f, 2.2f, -2.2f});
@@ -1886,11 +1901,26 @@ TEST(MathOpTest, SinDouble) {
   TrigDoubleTest<std::sin>(test, {1.1, -1.1, 2.2, -2.2});
 }
 
-TEST(MathOpTest, Cos) {
+TEST(MathOpTest, SinFloat16) {
+  OpTester test("Sin");
+  TrigFloat16Test<std::sin>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+}
+TEST(MathOpTest, CosFloat) {
   OpTester test("Cos");
   TrigFloatTest<std::cos>(test, {1.1f, -1.1f, 2.2f, -2.2f});
 }
 
+TEST(MathOpTest, CosDouble) {
+  if (DefaultCudaExecutionProvider().get() != nullptr) {  // double type not supported on CPU
+    OpTester test("Cos");
+    TrigDoubleTest<std::cos>(test, {1.1, -1.1, 2.2, -2.2});
+  }
+}
+
+TEST(MathOpTest, CosFloat16) {
+  OpTester test("Cos");
+  TrigFloat16Test<std::cos>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+}
 TEST(MathOpTest, Tan) {
   OpTester test("Tan");
   TrigFloatTest<std::tan>(test, {-100.0f, -50.0f, 0.0f, 50.0f, 100.0f});
