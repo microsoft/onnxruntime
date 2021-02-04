@@ -44,6 +44,7 @@ struct ScenarioTestsApi
     VoidTest BindMultipleCPUBuffersInputsOnGpu;
     VoidTest BindMultipleCPUBuffersOutputsOnCpu;
     VoidTest BindMultipleCPUBuffersOutputsOnGpu;
+    VoidTest TestBatchBuffers;
 };
 const ScenarioTestsApi& getapi();
 
@@ -89,4 +90,5 @@ WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersInputsOnCpu)
 WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersInputsOnGpu)
 WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersOutputsOnCpu)
 WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersOutputsOnGpu)
+WINML_TEST(ScenarioCppWinrtTests, TestBatchBuffers)
 WINML_TEST_CLASS_END()

@@ -1666,6 +1666,38 @@ static void BindMultipleCPUBuffersOutputsOnGpu() {
   BindMultipleCPUBuffersAsOutputs(LearningModelDeviceKind::DirectX);
 }
 
+static void TestBatchBuffers() {
+  LearningModel model = nullptr;
+  APITest::LoadModel(L"testdata\\transform\\fusion\\attention_symbolic_batch.onnx", model);
+
+  LearningModelSession session(model);
+  LearningModelBinding binding(session);
+
+  std::vector<float> input1_1(3 * 8, 1);
+  std::vector<float> input1_2(3 * 8, 2);
+  std::vector<int64_t> input2_1(3, 1);
+  std::vector<int64_t> input2_2(3, 2);
+  winrt::Windows::Storage::Streams::DataWriter writer1_1;
+  writer1_1.WriteBytes(winrt::array_view<uint8_t>(reinterpret_cast<uint8_t*>(input1_1.data()), reinterpret_cast<uint8_t*>(input1_1.data()) + (input1_1.size() * sizeof(float))));
+  winrt::Windows::Storage::Streams::DataWriter writer1_2;
+  writer1_2.WriteBytes(winrt::array_view<uint8_t>(reinterpret_cast<uint8_t*>(input1_2.data()), reinterpret_cast<uint8_t*>(input1_2.data()) + (input1_2.size() * sizeof(float))));
+  winrt::Windows::Storage::Streams::DataWriter writer2_1;
+  writer2_1.WriteBytes(winrt::array_view<uint8_t>(reinterpret_cast<uint8_t*>(input2_1.data()), reinterpret_cast<uint8_t*>(input2_1.data()) + (input2_1.size() * sizeof(int64_t))));
+  winrt::Windows::Storage::Streams::DataWriter writer2_2;
+  writer2_2.WriteBytes(winrt::array_view<uint8_t>(reinterpret_cast<uint8_t*>(input2_2.data()), reinterpret_cast<uint8_t*>(input2_2.data()) + (input2_2.size() * sizeof(int64_t))));
+
+  auto buffers_1 = winrt::single_threaded_vector<winrt::Windows::Storage::Streams::IBuffer>();
+  auto buffers_2 = winrt::single_threaded_vector<winrt::Windows::Storage::Streams::IBuffer>();
+  buffers_1.Append(writer1_1.DetachBuffer());
+  buffers_1.Append(writer1_2.DetachBuffer());
+  buffers_2.Append(writer2_1.DetachBuffer());
+  buffers_2.Append(writer2_2.DetachBuffer());
+  binding.Bind(L"input_1", buffers_1);
+  binding.Bind(L"input_2", buffers_2);
+
+  session.Evaluate(binding, L"");
+}
+
 const ScenarioTestsApi& getapi() {
   static ScenarioTestsApi api =
       {
@@ -1709,6 +1741,7 @@ const ScenarioTestsApi& getapi() {
           BindMultipleCPUBuffersInputsOnGpu,
           BindMultipleCPUBuffersOutputsOnCpu,
           BindMultipleCPUBuffersOutputsOnGpu,
+          TestBatchBuffers,
       };
 
   if (SkipGpuTests()) {
