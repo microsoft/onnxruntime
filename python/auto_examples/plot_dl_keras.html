@@ -4,25 +4,23 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ONNX Runtime for Keras &#8212; ONNX Runtime 1.4.0 documentation</title>
-    <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
-    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
-    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery-binder.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery-dataframe.css" />
-    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
-    <script src="../_static/jquery.js"></script>
-    <script src="../_static/underscore.js"></script>
-    <script src="../_static/doctools.js"></script>
-    <script src="../_static/language_data.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ONNX Runtime for Keras &#8212; ONNX Runtime 1.6.0 documentation</title>
+    <link rel="stylesheet" href="../static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery-rendered-html.css" />
+    <script id="documentation_options" data-url_root="../" src="../static/documentation_options.js"></script>
+    <script src="../static/jquery.js"></script>
+    <script src="../static/underscore.js"></script>
+    <script src="../static/doctools.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Train, convert and predict with ONNX Runtime" href="plot_convert_pipeline_vectorizer.html" />
-    <link rel="prev" title="Profile the execution of a simple model" href="plot_profiling.html" />
    
-  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  <link rel="stylesheet" href="../static/custom.css" type="text/css" />
   
   
   <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
@@ -39,7 +37,8 @@
             
   <div class="sphx-glr-download-link-note admonition note">
 <p class="admonition-title">Note</p>
-<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-dl-keras-py"><span class="std std-ref">here</span></a>     to download the full example code</p>
+<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-dl-keras-py"><span class="std std-ref">here</span></a>
+to download the full example code</p>
 </div>
 <div class="sphx-glr-example-title section" id="onnx-runtime-for-keras">
 <span id="l-example-backend-api-tensorflow"></span><span id="sphx-glr-auto-examples-plot-dl-keras-py"></span><h1>ONNX Runtime for Keras<a class="headerlink" href="#onnx-runtime-for-keras" title="Permalink to this headline">¶</a></h1>
@@ -60,9 +59,18 @@ to compute the predictions.</p>
 
     <span class="kn">from</span> <span class="nn">keras2onnx</span> <span class="kn">import</span> <span class="n">convert_keras</span>
     <span class="n">onx</span> <span class="o">=</span> <span class="n">convert_keras</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s1">&#39;dense121.onnx&#39;</span><span class="p">)</span>
-    <span class="n">onx</span><span class="o">.</span><span class="n">ir_version</span> <span class="o">=</span> <span class="mi">6</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;dense121.onnx&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">onx</span><span class="o">.</span><span class="n">SerializeToString</span><span class="p">())</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-pytb notranslate"><div class="highlight"><pre><span></span><span class="gt">Traceback (most recent call last):</span>
+  File <span class="nb">&quot;C:\xadupre\microsoft_xadupre\onnxruntime\docs\python\examples\plot_dl_keras.py&quot;</span>, line <span class="m">28</span>, in <span class="n">&lt;module&gt;</span>
+    <span class="n">onx</span> <span class="o">=</span> <span class="n">convert_keras</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s1">&#39;dense121.onnx&#39;</span><span class="p">)</span>
+  File <span class="nb">&quot;C:\xadupre\microsoft_xadupre\keras-onnx\keras2onnx\main.py&quot;</span>, line <span class="m">82</span>, in <span class="n">convert_keras</span>
+    <span class="n">tf_graph</span> <span class="o">=</span> <span class="n">build_layer_output_from_model</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">output_dict</span><span class="p">,</span> <span class="n">input_names</span><span class="p">,</span>
+  File <span class="nb">&quot;C:\xadupre\microsoft_xadupre\keras-onnx\keras2onnx\_parser_tf.py&quot;</span>, line <span class="m">308</span>, in <span class="n">build_layer_output_from_model</span>
+    <span class="n">graph</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">outputs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">graph</span>
+<span class="gr">AttributeError</span>: <span class="n">&#39;KerasTensor&#39; object has no attribute &#39;graph&#39;</span>
 </pre></div>
 </div>
 <p>Let’s load an image (source: wikipedia).</p>
@@ -73,11 +81,6 @@ to compute the predictions.</p>
 <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">ximg</span> <span class="o">/</span> <span class="mi">255</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s1">&#39;off&#39;</span><span class="p">)</span>
-</pre></div>
-</div>
-<img alt="plot dl keras" class="sphx-glr-single-img" src="../_images/sphx_glr_plot_dl_keras_001.png" />
-<p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>(-0.5, 1279.5, 959.5, -0.5)
 </pre></div>
 </div>
 <p>Let’s load the model with onnxruntime.</p>
@@ -97,11 +100,6 @@ to compute the predictions.</p>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;image shape:&quot;</span><span class="p">,</span> <span class="n">ximg</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>The model expects input shape: [&#39;N&#39;, 224, 224, 3]
-image shape: (960, 1280, 3)
-</pre></div>
-</div>
 <p>Let’s resize the image.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">ok</span><span class="p">:</span>
     <span class="kn">from</span> <span class="nn">skimage.transform</span> <span class="kn">import</span> <span class="n">resize</span>
@@ -114,21 +112,12 @@ image shape: (960, 1280, 3)
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;new shape:&quot;</span><span class="p">,</span> <span class="n">ximg</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>new shape: (1, 224, 224, 3)
-</pre></div>
-</div>
 <p>Let’s compute the output.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">ok</span><span class="p">:</span>
     <span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
     <span class="n">res</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">ximg</span><span class="p">})</span>
     <span class="n">prob</span> <span class="o">=</span> <span class="n">res</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">prob</span><span class="o">.</span><span class="n">ravel</span><span class="p">()[:</span><span class="mi">10</span><span class="p">])</span>  <span class="c1"># Too big to be displayed.</span>
-</pre></div>
-</div>
-<p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[2.0847994e-05 9.0344076e-07 1.6248664e-06 4.8085840e-06 6.5068948e-06
- 9.4026956e-07 1.9977851e-06 4.6639366e-07 9.4333046e-07 3.2267365e-06]
 </pre></div>
 </div>
 <p>Let’s get more comprehensive results.</p>
@@ -141,26 +130,13 @@ image shape: (960, 1280, 3)
     <span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Downloading data from https://storage.googleapis.com/download.tensorflow.org/data/imagenet_class_index.json
-
- 8192/35363 [=====&gt;........................] - ETA: 0s
-40960/35363 [==================================] - 0s 0us/step
-    class_id           name         P
-0  n09468604         valley  0.673279
-1  n09193705            alp  0.267428
-2  n09399592     promontory  0.013859
-3  n09246464          cliff  0.013251
-4  n03792972  mountain_tent  0.007756
-</pre></div>
-</div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  6.749 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  6.417 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-dl-keras-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
-<p><a class="reference download internal" download="" href="../_downloads/b81c8c31615f9400a26ee60f0641af3f/plot_dl_keras.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_dl_keras.py</span></code></a></p>
+<p><a class="reference download internal" download="" href="../downloads/b81c8c31615f9400a26ee60f0641af3f/plot_dl_keras.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_dl_keras.py</span></code></a></p>
 </div>
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
-<p><a class="reference download internal" download="" href="../_downloads/c9f88a9294285c733dcce209fcc939de/plot_dl_keras.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_dl_keras.ipynb</span></code></a></p>
+<p><a class="reference download internal" download="" href="../downloads/c9f88a9294285c733dcce209fcc939de/plot_dl_keras.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_dl_keras.ipynb</span></code></a></p>
 </div>
 </div>
 <p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
@@ -174,7 +150,7 @@ image shape: (960, 1280, 3)
       <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
         <div class="sphinxsidebarwrapper">
             <p class="logo"><a href="../index.html">
-              <img class="logo" src="../_static/ONNX_Runtime_icon.png" alt="Logo"/>
+              <img class="logo" src="../static/ONNX_Runtime_icon.png" alt="Logo"/>
             </a></p>
 <h1 class="logo"><a href="../index.html">ONNX Runtime</a></h1>
 
@@ -196,10 +172,6 @@ image shape: (960, 1280, 3)
 <h3>Related Topics</h3>
 <ul>
   <li><a href="../index.html">Documentation overview</a><ul>
-  <li><a href="index.html">Gallery of examples</a><ul>
-      <li>Previous: <a href="plot_profiling.html" title="previous chapter">Profile the execution of a simple model</a></li>
-      <li>Next: <a href="plot_convert_pipeline_vectorizer.html" title="next chapter">Train, convert and predict with ONNX Runtime</a></li>
-  </ul></li>
   </ul></li>
 </ul>
 </div>
@@ -226,14 +198,14 @@ image shape: (960, 1280, 3)
       <div class="clearer"></div>
     </div>
     <div class="footer">
-      &copy;2018-2019, Microsoft.
+      &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.4.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
-      <a href="../_sources/auto_examples/plot_dl_keras.rst.txt"
+      <a href="../sources/auto_examples/plot_dl_keras.rst.txt"
           rel="nofollow">Page source</a>
     </div>
 

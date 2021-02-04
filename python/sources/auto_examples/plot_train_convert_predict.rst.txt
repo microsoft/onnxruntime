@@ -1,0 +1,546 @@
+.. only:: html
+
+    .. note::
+        :class: sphx-glr-download-link-note
+
+        Click :ref:`here <sphx_glr_download_auto_examples_plot_train_convert_predict.py>`     to download the full example code
+    .. rst-class:: sphx-glr-example-title
+
+    .. _sphx_glr_auto_examples_plot_train_convert_predict.py:
+
+
+.. _l-logreg-example:
+
+Train, convert and predict with ONNX Runtime
+============================================
+
+This example demonstrates an end to end scenario
+starting with the training of a machine learned model
+to its use in its converted from.
+
+.. contents::
+    :local:
+
+Train a logistic regression
++++++++++++++++++++++++++++
+
+The first step consists in retrieving the iris datset.
+
+
+.. code-block:: default
+
+
+    from sklearn.datasets import load_iris
+    iris = load_iris()
+    X, y = iris.data, iris.target
+
+    from sklearn.model_selection import train_test_split
+    X_train, X_test, y_train, y_test = train_test_split(X, y)
+
+
+
+
+
+
+
+
+Then we fit a model.
+
+
+.. code-block:: default
+
+
+    from sklearn.linear_model import LogisticRegression
+    clr = LogisticRegression()
+    clr.fit(X_train, y_train)
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+
+    LogisticRegression()
+
+
+
+We compute the prediction on the test set
+and we show the confusion matrix.
+
+
+.. code-block:: default
+
+    from sklearn.metrics import confusion_matrix
+
+    pred = clr.predict(X_test)
+    print(confusion_matrix(y_test, pred))
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    [[15  0  0]
+     [ 0 11  1]
+     [ 0  2  9]]
+
+
+
+
+Conversion to ONNX format
++++++++++++++++++++++++++
+
+We use module 
+`sklearn-onnx <https://github.com/onnx/sklearn-onnx>`_
+to convert the model into ONNX format.
+
+
+.. code-block:: default
+
+
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import FloatTensorType
+
+    initial_type = [('float_input', FloatTensorType([None, 4]))]
+    onx = convert_sklearn(clr, initial_types=initial_type)
+    with open("logreg_iris.onnx", "wb") as f:
+        f.write(onx.SerializeToString())
+
+
+
+
+
+
+
+
+We load the model with ONNX Runtime and look at
+its input and output.
+
+
+.. code-block:: default
+
+
+    import onnxruntime as rt
+    sess = rt.InferenceSession("logreg_iris.onnx")
+
+    print("input name='{}' and shape={}".format(
+        sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
+    print("output name='{}' and shape={}".format(
+        sess.get_outputs()[0].name, sess.get_outputs()[0].shape))
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    input name='float_input' and shape=[None, 4]
+    output name='output_label' and shape=[None]
+
+
+
+
+We compute the predictions.
+
+
+.. code-block:: default
+
+
+    input_name = sess.get_inputs()[0].name
+    label_name = sess.get_outputs()[0].name
+
+    import numpy
+    pred_onx = sess.run([label_name], {input_name: X_test.astype(numpy.float32)})[0]
+    print(confusion_matrix(pred, pred_onx))
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    [[15  0  0]
+     [ 0 13  0]
+     [ 0  0 10]]
+
+
+
+
+The prediction are perfectly identical.
+
+Probabilities
++++++++++++++
+
+Probabilities are needed to compute other
+relevant metrics such as the ROC Curve.
+Let's see how to get them first with
+scikit-learn.
+
+
+.. code-block:: default
+
+
+    prob_sklearn = clr.predict_proba(X_test)
+    print(prob_sklearn[:3])
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    [[1.73218830e-01 8.23426993e-01 3.35417635e-03]
+     [7.42494153e-02 9.21910775e-01 3.83980986e-03]
+     [9.74276732e-01 2.57231679e-02 9.98201855e-08]]
+
+
+
+
+And then with ONNX Runtime.
+The probabilies appear to be 
+
+
+.. code-block:: default
+
+
+    prob_name = sess.get_outputs()[1].name
+    prob_rt = sess.run([prob_name], {input_name: X_test.astype(numpy.float32)})[0]
+
+    import pprint
+    pprint.pprint(prob_rt[0:3])
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    [{0: 0.17321892082691193, 1: 0.8234269618988037, 2: 0.003354174317792058},
+     {0: 0.07424944639205933, 1: 0.9219107627868652, 2: 0.0038398131728172302},
+     {0: 0.9742767214775085, 1: 0.025723155587911606, 2: 9.982016280218886e-08}]
+
+
+
+
+Let's benchmark.
+
+
+.. code-block:: default
+
+    from timeit import Timer
+
+    def speed(inst, number=10, repeat=20):
+        timer = Timer(inst, globals=globals())
+        raw = numpy.array(timer.repeat(repeat, number=number))
+        ave = raw.sum() / len(raw) / number
+        mi, ma = raw.min() / number, raw.max() / number
+        print("Average %1.3g min=%1.3g max=%1.3g" % (ave, mi, ma))
+        return ave
+
+    print("Execution time for clr.predict")
+    speed("clr.predict(X_test)")
+
+    print("Execution time for ONNX Runtime")
+    speed("sess.run([label_name], {input_name: X_test.astype(numpy.float32)})[0]")
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    Execution time for clr.predict
+    Average 7.59e-05 min=4.75e-05 max=0.000155
+    Execution time for ONNX Runtime
+    Average 3.9e-05 min=3.67e-05 max=6.01e-05
+
+    3.902899999999931e-05
+
+
+
+Let's benchmark a scenario similar to what a webservice
+experiences: the model has to do one prediction at a time
+as opposed to a batch of prediction.
+
+
+.. code-block:: default
+
+
+    def loop(X_test, fct, n=None):
+        nrow = X_test.shape[0]
+        if n is None:
+            n = nrow
+        for i in range(0, n):
+            im = i % nrow
+            fct(X_test[im: im+1])
+
+    print("Execution time for clr.predict")
+    speed("loop(X_test, clr.predict, 100)")
+
+    def sess_predict(x):
+        return sess.run([label_name], {input_name: x.astype(numpy.float32)})[0]
+
+    print("Execution time for sess_predict")
+    speed("loop(X_test, sess_predict, 100)")
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    Execution time for clr.predict
+    Average 0.00598 min=0.005 max=0.00753
+    Execution time for sess_predict
+    Average 0.00315 min=0.00248 max=0.00516
+
+    0.003146542500000038
+
+
+
+Let's do the same for the probabilities.
+
+
+.. code-block:: default
+
+
+    print("Execution time for predict_proba")
+    speed("loop(X_test, clr.predict_proba, 100)")
+
+    def sess_predict_proba(x):
+        return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]
+
+    print("Execution time for sess_predict_proba")
+    speed("loop(X_test, sess_predict_proba, 100)")
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    Execution time for predict_proba
+    Average 0.00812 min=0.00658 max=0.0116
+    Execution time for sess_predict_proba
+    Average 0.00287 min=0.00238 max=0.00362
+
+    0.0028650640000000395
+
+
+
+This second comparison is better as 
+ONNX Runtime, in this experience,
+computes the label and the probabilities
+in every case.
+
+Benchmark with RandomForest
++++++++++++++++++++++++++++
+
+We first train and save a model in ONNX format.
+
+
+.. code-block:: default
+
+    from sklearn.ensemble import RandomForestClassifier
+    rf = RandomForestClassifier()
+    rf.fit(X_train, y_train)
+
+    initial_type = [('float_input', FloatTensorType([1, 4]))]
+    onx = convert_sklearn(rf, initial_types=initial_type)
+    with open("rf_iris.onnx", "wb") as f:
+        f.write(onx.SerializeToString())
+
+
+
+
+
+
+
+
+We compare.
+
+
+.. code-block:: default
+
+
+    sess = rt.InferenceSession("rf_iris.onnx")
+
+    def sess_predict_proba_rf(x):
+        return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]
+
+    print("Execution time for predict_proba")
+    speed("loop(X_test, rf.predict_proba, 100)")
+
+    print("Execution time for sess_predict_proba")
+    speed("loop(X_test, sess_predict_proba_rf, 100)")
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    Execution time for predict_proba
+    Average 0.594 min=0.506 max=0.727
+    Execution time for sess_predict_proba
+    Average 0.00329 min=0.00265 max=0.00614
+
+    0.0032889064999999107
+
+
+
+Let's see with different number of trees.
+
+
+.. code-block:: default
+
+
+    measures = []
+
+    for n_trees in range(5, 51, 5):   
+        print(n_trees)
+        rf = RandomForestClassifier(n_estimators=n_trees)
+        rf.fit(X_train, y_train)
+        initial_type = [('float_input', FloatTensorType([1, 4]))]
+        onx = convert_sklearn(rf, initial_types=initial_type)
+        with open("rf_iris_%d.onnx" % n_trees, "wb") as f:
+            f.write(onx.SerializeToString())
+        sess = rt.InferenceSession("rf_iris_%d.onnx" % n_trees)
+        def sess_predict_proba_loop(x):
+            return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]
+        tsk = speed("loop(X_test, rf.predict_proba, 100)", number=5, repeat=5)
+        trt = speed("loop(X_test, sess_predict_proba_loop, 100)", number=5, repeat=5)
+        measures.append({'n_trees': n_trees, 'sklearn': tsk, 'rt': trt})
+
+    from pandas import DataFrame
+    df = DataFrame(measures)
+    ax = df.plot(x="n_trees", y="sklearn", label="scikit-learn", c="blue", logy=True)
+    df.plot(x="n_trees", y="rt", label="onnxruntime",
+                    ax=ax, c="green", logy=True)
+    ax.set_xlabel("Number of trees")
+    ax.set_ylabel("Prediction time (s)")
+    ax.set_title("Speed comparison between scikit-learn and ONNX Runtime\nFor a random forest on Iris dataset")
+    ax.legend()
+
+
+
+.. image:: /auto_examples/images/sphx_glr_plot_train_convert_predict_001.png
+    :alt: Speed comparison between scikit-learn and ONNX Runtime For a random forest on Iris dataset
+    :class: sphx-glr-single-img
+
+
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    5
+    Average 0.0719 min=0.0581 max=0.079
+    Average 0.00291 min=0.00257 max=0.00326
+    10
+    Average 0.0919 min=0.0727 max=0.106
+    Average 0.00241 min=0.00232 max=0.00248
+    15
+    Average 0.129 min=0.119 max=0.141
+    Average 0.00296 min=0.00266 max=0.00327
+    20
+    Average 0.148 min=0.126 max=0.17
+    Average 0.00345 min=0.00309 max=0.00387
+    25
+    Average 0.184 min=0.155 max=0.206
+    Average 0.00298 min=0.00254 max=0.00355
+    30
+    Average 0.208 min=0.162 max=0.256
+    Average 0.00242 min=0.00238 max=0.00249
+    35
+    Average 0.268 min=0.242 max=0.325
+    Average 0.00326 min=0.00272 max=0.00449
+    40
+    Average 0.513 min=0.422 max=0.796
+    Average 0.00399 min=0.00352 max=0.00489
+    45
+    Average 0.44 min=0.399 max=0.499
+    Average 0.00344 min=0.00336 max=0.00355
+    50
+    Average 0.503 min=0.447 max=0.584
+    Average 0.00342 min=0.00318 max=0.00368
+
+    <matplotlib.legend.Legend object at 0x000001878B902EB8>
+
+
+
+
+.. rst-class:: sphx-glr-timing
+
+   **Total running time of the script:** ( 3 minutes  9.986 seconds)
+
+
+.. _sphx_glr_download_auto_examples_plot_train_convert_predict.py:
+
+
+.. only :: html
+
+ .. container:: sphx-glr-footer
+    :class: sphx-glr-footer-example
+
+
+
+  .. container:: sphx-glr-download sphx-glr-download-python
+
+     :download:`Download Python source code: plot_train_convert_predict.py <plot_train_convert_predict.py>`
+
+
+
+  .. container:: sphx-glr-download sphx-glr-download-jupyter
+
+     :download:`Download Jupyter notebook: plot_train_convert_predict.ipynb <plot_train_convert_predict.ipynb>`
+
+
+.. only:: html
+
+ .. rst-class:: sphx-glr-signature
+
+    `Gallery generated by Sphinx-Gallery <https://sphinx-gallery.github.io>`_
