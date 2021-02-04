@@ -62,3 +62,21 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
 
   return nullptr;
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
+  auto cuda_err = cudaSetDevice(device_id);
+  OrtStatus* status = nullptr;
+  if (cuda_err != cudaSuccess) {
+    status = CreateStatus(ORT_FAIL, "Failed to set device id.");
+  }
+  return status;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
+  auto cuda_err = cudaGetDevice(device_id);
+  OrtStatus* status = nullptr;
+  if (cuda_err != cudaSuccess) {
+    status = CreateStatus(ORT_FAIL, "Failed to get device id.");
+  }
+  return status;
+}

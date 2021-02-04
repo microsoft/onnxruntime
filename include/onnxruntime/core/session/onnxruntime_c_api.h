@@ -1146,6 +1146,9 @@ struct OrtApi {
   */
   ORT_API2_STATUS(ModelMetadataGetGraphDescription, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+
+  ORT_API2_STATUS(SetCurrentGpuDeviceId, _In_ int device_id);
+  ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
 };
 
 /*
