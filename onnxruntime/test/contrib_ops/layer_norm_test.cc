@@ -18,7 +18,8 @@ static Status SplitDims(
     const std::vector<int64_t>& dims, int64_t axis,
     std::vector<int64_t>& n_dims, std::vector<int64_t>& m_dims) {
   if (axis < 0) axis += dims.size();
-  ORT_RETURN_IF_NOT(0 <= axis && static_cast<decltype(dims.size())>(axis) <= dims.size());
+  ORT_RETURN_IF_NOT(0 <= axis && static_cast<decltype(dims.size())>(axis) <= dims.size(),
+                    "0 <= axis && axis <= dims.size() was false");
   const auto boundary = dims.begin() + axis;
   n_dims.assign(dims.begin(), boundary);
   m_dims.assign(boundary, dims.end());
@@ -41,7 +42,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   ASSERT_NE(keep_dims, 0);
 
   const std::vector<int64_t>& stats_dims = keep_dims ? n_and_ones_dims : n_dims;
-  
+
   CompareOpTester test(op.c_str());
   test.AddAttribute("axis", axis);
   test.AddAttribute("keep_dims", keep_dims);
