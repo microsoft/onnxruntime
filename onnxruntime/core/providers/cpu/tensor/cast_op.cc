@@ -55,26 +55,6 @@ using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvide
 // string cast helpers
 // Note: when C++17 is available, use <charconv> functions
 
-// use a fixed size array or fall back to a dynamically allocated one
-template <typename T, size_t InlinedSize>
-class InlinedBuffer {
- public:
-  explicit InlinedBuffer(size_t size)
-      : size_{size},
-        buffer_{},
-        dynamic_buffer_{size > InlinedSize ? onnxruntime::make_unique<T[]>(size) : nullptr} {
-  }
-
-  T* data() { return dynamic_buffer_ ? dynamic_buffer_.get() : &buffer_[0]; }
-
-  size_t size() const { return size_; }
-
- private:
-  const size_t size_;
-  T buffer_[InlinedSize];
-  const std::unique_ptr<T[]> dynamic_buffer_;
-};
-
 // handle floating point output separately
 template <typename SrcType>
 typename std::enable_if<std::is_floating_point<SrcType>::value, void>::type
@@ -94,18 +74,29 @@ CastToString(const SrcType& input, std::string& output) {
     constexpr const char* format = "%.8g";
     const double value = static_cast<double>(input);
 
-    auto snprintf_result = std::snprintf(nullptr, 0, format, value);
-    ORT_ENFORCE(snprintf_result > 0, "Failed to determine required snprintf() buffer length.");
+    char static_buffer[32];
+    std::unique_ptr<char[]> dynamic_buffer{};
 
-    // buffer for string and trailing '\0'
-    InlinedBuffer<char, 32> buffer(gsl::narrow<size_t>(snprintf_result + 1));
+    gsl::span<char> buffer_span = gsl::make_span(static_buffer);
 
-    snprintf_result = std::snprintf(buffer.data(), buffer.size(), format, value);
-    ORT_ENFORCE(
-        snprintf_result > 0 && gsl::narrow_cast<size_t>(snprintf_result) == buffer.size() - 1,
-        "Failed to write value with snprintf().");
+    auto snprintf_result = std::snprintf(buffer_span.data(), buffer_span.size(), format, value);
+    ORT_ENFORCE(snprintf_result > 0, "snprintf() failed with return value: ", snprintf_result);
 
-    output.assign(buffer.data(), buffer.size() - 1);
+    // include trailing '\0'
+    const size_t required_buffer_size = gsl::narrow_cast<size_t>(snprintf_result) + 1;
+
+    if (required_buffer_size > buffer_span.size()) {
+      // didn't get it all, allocate a bigger buffer and retry
+      dynamic_buffer = onnxruntime::make_unique<char[]>(required_buffer_size);
+      buffer_span = gsl::make_span(dynamic_buffer.get(), required_buffer_size);
+      snprintf_result = std::snprintf(buffer_span.data(), buffer_span.size(), format, value);
+      ORT_ENFORCE(
+          snprintf_result > 0 &&
+              gsl::narrow_cast<size_t>(snprintf_result) == buffer_span.size() - 1,
+          "Failed to write value with snprintf().");
+    }
+
+    output.assign(buffer_span.data(), required_buffer_size - 1);
   }
 }
 
@@ -161,18 +152,21 @@ void CastFromString(const std::string& input, BFloat16& output) {
   output = static_cast<BFloat16>(intermediate);
 }
 
+// type that is usable with Eigen cast
 template <typename T>
-struct EigenType {
+struct EigenCastType {
   using type = T;
 };
 
+// ORT float16 types don't support casting, so map them to Eigen ones
+
 template <>
-struct EigenType<MLFloat16> {
+struct EigenCastType<MLFloat16> {
   using type = Eigen::half;
 };
 
 template <>
-struct EigenType<BFloat16> {
+struct EigenCastType<BFloat16> {
   using type = Eigen::bfloat16;
 };
 
@@ -180,15 +174,15 @@ struct EigenType<BFloat16> {
 template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCaster {
   void Cast(const OpKernelContext&, const Tensor& in, Tensor& out, const TensorShape& shape) const {
-    using EigenSrcType = typename EigenType<SrcType>::type;
-    using EigenDstType = typename EigenType<DstType>::type;
+    using SrcEigenCastType = typename EigenCastType<SrcType>::type;
+    using DstEigenCastType = typename EigenCastType<DstType>::type;
 
     const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
     const auto in_vector =
-        ConstEigenVectorMap<EigenSrcType>(reinterpret_cast<const EigenSrcType*>(in.Data<SrcType>()), shape_size);
+        ConstEigenVectorMap<SrcEigenCastType>(reinterpret_cast<const SrcEigenCastType*>(in.Data<SrcType>()), shape_size);
     auto out_vector =
-        EigenVectorMap<EigenDstType>(reinterpret_cast<EigenDstType*>(out.MutableData<DstType>()), shape_size);
-    out_vector = in_vector.template cast<EigenDstType>();
+        EigenVectorMap<DstEigenCastType>(reinterpret_cast<DstEigenCastType*>(out.MutableData<DstType>()), shape_size);
+    out_vector = in_vector.template cast<DstEigenCastType>();
   }
 };
 
@@ -219,7 +213,7 @@ struct TensorCaster<std::string, DstType> {
 };
 
 #if defined(_M_AMD64)
-// add some specializations to use optimized MLFloat16 -> float conversion
+// add some specializations to use _M_AMD64-specific optimized MLFloat16 -> float conversion
 
 template <typename DstType>
 void CastMLFloat16ThroughFloat(

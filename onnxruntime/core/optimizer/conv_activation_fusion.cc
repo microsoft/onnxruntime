@@ -49,7 +49,7 @@ static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& m
           //  value = static_cast<float>(*i.data<double>());
           //  break;
           case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-            value = math::halfToFloat(i.data<BFloat16>()->val);
+            value = math::halfToFloat(i.data<MLFloat16>()->val);
             break;
           default:
             ORT_THROW("Unexpected data type for Clip input of ", initializer->data_type());
