@@ -62,7 +62,8 @@ contrib_ops_excluded_files = [
                     'conv_transpose_with_dynamic_pads.h',
                     'cuda_contrib_kernels.cc',
                     'cuda_contrib_kernels.h',
-                    'inverse.cc'
+                    'inverse.cc',
+                    'fused_conv.cc'
 ]
 
 provider_excluded_files = [
@@ -84,8 +85,6 @@ provider_excluded_files = [
                 'math/einsum_utils/einsum_auxiliary_ops.h',
                 'math/einsum_utils/einsum_auxiliary_ops_diagonal.cu',
                 'math/einsum_utils/einsum_auxiliary_ops_diagonal.h',
-                'math/binary_elementwise_ops.cc',
-                'math/binary_elementwise_ops_impl.cu',
                 'math/cumsum.cc',
                 'math/cumsum.h',
                 'math/cumsum_impl.cu',
@@ -167,10 +166,6 @@ provider_excluded_files = [
                 'tensor/gather_elements_impl.cu',
                 'tensor/gather_elements_impl.h',
                 'tensor/gather_nd_impl.cu',
-                'tensor/nonzero_impl.cu',
-                'tensor/nonzero_impl.h',
-                'tensor/nonzero_op.cc',
-                'tensor/nonzero_op.h',
                 'tensor/pad.cc',
                 'tensor/pad.h',
                 'tensor/pad_impl.cu',
@@ -206,6 +201,8 @@ provider_excluded_files = [
                 'cuda_execution_provider_info.h',
                 'cuda_execution_provider.cc',
                 'cuda_execution_provider.h',
+                'cuda_memory_check.cc',
+                'cuda_memory_check.h',
                 'cuda_fence.cc',
                 'cuda_fence.h',
                 'cuda_fwd.h',

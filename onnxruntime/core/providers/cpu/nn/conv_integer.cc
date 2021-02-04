@@ -149,19 +149,19 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
         }
       }
 
-      QGemm(static_cast<int>(M / conv_attrs_.group),
-            static_cast<int>(output_image_size),
-            static_cast<int>(kernel_dim),
-            Wdata + group_id * W_offset,
-            static_cast<int>(kernel_dim),
-            filter_offset,
-            col_buffer_data == nullptr ? Xdata : col_buffer_data,
-            static_cast<int>(output_image_size),
-            input_offset,
-            false,
-            Ydata,
-            static_cast<int>(output_image_size),
-            thread_pool);
+      MlasGemm(static_cast<size_t>(M / conv_attrs_.group),
+               static_cast<size_t>(output_image_size),
+               static_cast<size_t>(kernel_dim),
+               Wdata + group_id * W_offset,
+               static_cast<size_t>(kernel_dim),
+               filter_offset,
+               col_buffer_data == nullptr ? Xdata : col_buffer_data,
+               static_cast<size_t>(output_image_size),
+               input_offset,
+               false,
+               Ydata,
+               static_cast<size_t>(output_image_size),
+               thread_pool);
 
       Xdata += X_offset;
       Ydata += Y_offset;

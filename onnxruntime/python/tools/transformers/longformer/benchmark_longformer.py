@@ -7,11 +7,12 @@
 #   python convert_longformer_to_onnx.py -m longformer-base-4096 -o
 #   python benchmark_longformer.py -m longformer-base-4096
 
-
 import timeit
 from datetime import datetime
 import csv
 import argparse
+import os
+import sys
 import torch
 import onnxruntime
 
@@ -23,8 +24,10 @@ MODELS = {
 
 is_debug = False
 
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 # Run onnx model with ORT
-from onnxruntime.transformers import benchmark_helper
+import benchmark_helper
 
 def get_dummy_inputs(sequence_length, num_global_tokens, device):
     # Create dummy inputs
@@ -36,6 +39,7 @@ def get_dummy_inputs(sequence_length, num_global_tokens, device):
     global_attention_mask[:, global_token_index] = 1
     # TODO: support more inputs like token_type_ids, position_ids
     return input_ids, attention_mask, global_attention_mask
+
 
 def diff_outputs(ort_outputs, torch_outputs):
     max_diff = []
@@ -60,10 +64,9 @@ def test_torch(device, model, model_name, batch_sizes, sequence_lengths, global_
     for batch_size in batch_sizes:
         for sequence_length in sequence_lengths:  # This is total length of <query, document>.
             for global_length in global_lengths:  # This is length of <query>. Short query (8) for search keywords, and longer query (16) for question like
-                print(
-                    f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}..."
-                )
-                input_ids, attention_mask, global_attention_mask = get_dummy_inputs(sequence_length, global_length, device)
+                print(f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}...")
+                input_ids, attention_mask, global_attention_mask = get_dummy_inputs(sequence_length, global_length,
+                                                                                    device)
 
                 # Run PyTorch
                 _ = model(input_ids, attention_mask=attention_mask, global_attention_mask=global_attention_mask)
@@ -92,8 +95,17 @@ def test_torch(device, model, model_name, batch_sizes, sequence_lengths, global_
     return results
 
 
-def test_onnxruntime(device, model, model_name, ort_session, batch_sizes, sequence_lengths, global_lengths, test_times, num_threads,
-                     optimizer=False, precision='fp32'):
+def test_onnxruntime(device,
+                     model,
+                     model_name,
+                     ort_session,
+                     batch_sizes,
+                     sequence_lengths,
+                     global_lengths,
+                     test_times,
+                     num_threads,
+                     optimizer=False,
+                     precision='fp32'):
     results = []
     for batch_size in batch_sizes:
         for sequence_length in sequence_lengths:  # This is total length of <query, document>.
@@ -101,7 +113,8 @@ def test_onnxruntime(device, model, model_name, ort_session, batch_sizes, sequen
                 print(
                     f"Testing batch_size={batch_size} sequence_length={sequence_length} global_length={global_length} optimizer={optimizer}, precision={precision}..."
                 )
-                input_ids, attention_mask, global_attention_mask = get_dummy_inputs(sequence_length, global_length, device)
+                input_ids, attention_mask, global_attention_mask = get_dummy_inputs(sequence_length, global_length,
+                                                                                    device)
 
                 # Run OnnxRuntime
                 ort_inputs = {
@@ -115,10 +128,9 @@ def test_onnxruntime(device, model, model_name, ort_session, batch_sizes, sequen
 
                 if is_debug:
                     # Run PyTorch then compare the results with OnnxRuntime.
-                    torch_outputs = model(
-                        input_ids,
-                        attention_mask=attention_mask,
-                        global_attention_mask=global_attention_mask)
+                    torch_outputs = model(input_ids,
+                                          attention_mask=attention_mask,
+                                          global_attention_mask=global_attention_mask)
 
                     max_diff = diff_outputs(ort_outputs, torch_outputs)
                     print("max diff for outputs", max_diff)
@@ -143,6 +155,9 @@ def test_onnxruntime(device, model, model_name, ort_session, batch_sizes, sequen
                     "datetime": str(datetime.now()),
                 }
 
+                max_last_state_size = max(batch_sizes) * max(sequence_lengths) * model.config.hidden_size
+                max_pooler_size = max(batch_sizes) * max(sequence_lengths)
+
                 result = benchmark_helper.inference_ort_with_io_binding(
                     ort_session,
                     ort_inputs,
@@ -150,12 +165,8 @@ def test_onnxruntime(device, model, model_name, ort_session, batch_sizes, sequen
                     repeat_times=test_times,
                     ort_output_names=["last_state", "pooler"],
                     ort_outputs=ort_outputs,
-                    output_buffers={
-                        "last_state": None,
-                        "pooler": None
-                    },
-                    max_last_state_size=max(batch_sizes) * max(sequence_lengths) * model.config.hidden_size,
-                    max_pooler_size=max(batch_sizes) * max(sequence_lengths),
+                    output_buffers=[],
+                    output_buffer_max_sizes=[max_last_state_size, max_pooler_size],
                     batch_size=batch_size,
                     device=device)
                 print(result)
@@ -176,32 +187,32 @@ def test_all(args):
         model.to(device)
 
         # Search onnx model in the following order: optimized fp16 model, optimized fp32 model, raw model
-        optimized=False
-        precision='fp32'
+        optimized = False
+        precision = 'fp32'
         onnx_model_path = model_name + ".onnx"
         optimized_fp32_model = model_name + "_fp32.onnx"
         optimized_fp16_model = model_name + "_fp16.onnx"
         import os.path
         if os.path.isfile(optimized_fp16_model):
             onnx_model_path = optimized_fp16_model
-            optimized=True
-            precision='fp16'
+            optimized = True
+            precision = 'fp16'
         elif os.path.isfile(optimized_fp32_model):
             onnx_model_path = optimized_fp32_model
-            optimized=True
+            optimized = True
 
         for num_threads in args.num_threads:
             if "torch" in args.engines:
-                results += test_torch(device, model, model_name, args.batch_sizes, args.sequence_lengths, args.global_lengths, args.test_times,
-                                    num_threads)
+                results += test_torch(device, model, model_name, args.batch_sizes, args.sequence_lengths,
+                                      args.global_lengths, args.test_times, num_threads)
 
             if "onnxruntime" in args.engines:
                 session = benchmark_helper.create_onnxruntime_session(onnx_model_path,
                                                                       use_gpu=True,
                                                                       enable_all_optimization=True,
                                                                       num_threads=num_threads)
-                results += test_onnxruntime(device, model, model_name, session, args.batch_sizes, args.sequence_lengths, args.global_lengths,
-                                            args.test_times, num_threads, optimized, precision)
+                results += test_onnxruntime(device, model, model_name, session, args.batch_sizes, args.sequence_lengths,
+                                            args.global_lengths, args.test_times, num_threads, optimized, precision)
     return results
 
 
@@ -290,12 +301,13 @@ def output_summary(results, csv_filename, args):
 
     print(f"Summary results are saved to csv file: {csv_filename}")
 
+
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
             "engine", "version", "device", "precision", "optimizer", "io_binding", "model_name", "inputs", "threads",
-            "batch_size", "sequence_length", "global_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
-            "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
+            "batch_size", "sequence_length", "global_length", "datetime", "test_times", "QPS", "average_latency_ms",
+            "latency_variance", "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -304,6 +316,7 @@ def output_details(results, csv_filename):
             csv_writer.writerow(result)
 
     print(f"Detail results are saved to csv file: {csv_filename}")
+
 
 def main():
     args = parse_arguments()

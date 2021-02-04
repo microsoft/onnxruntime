@@ -50,7 +50,7 @@ struct OptimizerNodeConfig {
   std::unordered_map<std::string, float> attributes{};
   std::unordered_map<std::string, int64_t> int_attributes{};
   std::string loss_scale_input_name{};
-  NameMLValMap initial_states{}; // initial states for optimizer initializers
+  NameMLValMap initial_states{};  // initial states for optimizer initializers
   bool use_mixed_precision_moments{false};
   bool update_weight{true};  // indicates whether Optimizer should do weight update, or output new gradient
   bool enabled{true};        // indicates whether this weight is included in the Optimizer
@@ -71,7 +71,8 @@ struct OptimizerGraphConfig {
   std::string loss_scale_input_name{};  // empty string means no loss scaling factor is applied
   AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
   bool enable_grad_norm_clip{true};
-  NameMLValMap shared_optimizer_states{}; // initial states for shared params, eg. 'Step' for lamb
+
+  NameMLValMap shared_optimizer_states{};  // initial states for shared params, eg. 'Step' for lamb
 
   ONNX_NAMESPACE::TensorProto_DataType AllReduceDataType() const {
     if (!allreduce_in_mixed_precision_type) {
@@ -79,10 +80,13 @@ struct OptimizerGraphConfig {
     }
 
     switch (mixed_precision_type) {
-      case MixedPrecisionDataType::FP16: return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-      case MixedPrecisionDataType::BF16: return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-      default: return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-    }  
+      case MixedPrecisionDataType::FP16:
+        return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+      case MixedPrecisionDataType::BF16:
+        return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+      default:
+        return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    }
   }
 };
 

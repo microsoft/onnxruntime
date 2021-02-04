@@ -52,11 +52,12 @@ class NonTensorTypeBase;
 class PrimitiveDataTypeBase;
 
 // MLFloat16
-union MLFloat16 {
+struct MLFloat16 {
   uint16_t val;
 
-  explicit MLFloat16(uint16_t x) : val(x) {}
   MLFloat16() : val(0) {}
+  explicit MLFloat16(uint16_t x) : val(x) {}
+  explicit MLFloat16(float f);
 
   // Taken from https://stackoverflow.com/a/60047308/12627730
   float AsFloat(uint32_t x) const {

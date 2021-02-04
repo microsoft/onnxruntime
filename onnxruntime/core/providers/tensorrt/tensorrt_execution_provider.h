@@ -114,6 +114,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
+  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+
  private:
   int max_partition_iterations_ = 1000;
   int min_subgraph_size_ = 1;
@@ -129,7 +131,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   OrtMutex tensorrt_mu_;
   int device_id_;
   AllocatorPtr allocator_;
-  mutable int subgraph_id_ = 0;
+  mutable char model_path_[4096]; // Reserved for max path length
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
