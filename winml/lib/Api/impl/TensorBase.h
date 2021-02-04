@@ -519,7 +519,7 @@ struct TensorBase : TBase {
       // efficiently query the size of the data.
       auto size_in_bytes = 0;
       for (auto buffer : buffers) {
-        size_in_bytes += buffer.Capacity();
+        size_in_bytes += buffer.Length();
       }
 
       auto num_elements = size_in_bytes / sizeof(T);

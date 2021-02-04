@@ -42,9 +42,14 @@ public:
     }
 
     virtual HRESULT STDMETHODCALLTYPE get_Length(
-        UINT32 * /*value*/)
+        UINT32 * value)
     {
-        return E_NOTIMPL;
+        if (value == nullptr) {
+            return E_POINTER;
+        }
+
+        *value = static_cast<uint32_t>(m_p_end - m_p_begin) * sizeof(T);
+        return S_OK;
     }
 
     virtual HRESULT STDMETHODCALLTYPE put_Length(
