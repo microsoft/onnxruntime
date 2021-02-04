@@ -34,11 +34,21 @@ def run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log, data_dir):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_ortmodule_deepspeed_pipeline_parallel_tests(cwd, log):
+    log.debug('Running: ORTModule deepspeed pipeline parallel tests')
+
+    command = ['deepspeed', 'orttraining_test_ortmodule_deepspeed_pipeline_parallel.py',
+        '--deepspeed_config', 'orttraining_test_ortmodule_deepspeed_pipeline_parallel_config.json']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 def main():
     args = parse_arguments()
     cwd = args.cwd
 
     log.info("Running ortmodule tests pipeline")
+
+    run_ortmodule_deepspeed_pipeline_parallel_tests(cwd, log)
 
     run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log, args.mnist)
 
