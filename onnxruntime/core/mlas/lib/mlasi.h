@@ -109,7 +109,7 @@ Abstract:
 // Define the maximum number of threads supported by this implementation.
 //
 
-#define MLAS_MAXIMUM_THREAD_COUNT                   16
+#define MLAS_MAXIMUM_THREAD_COUNT                   32
 
 //
 // Define the default strides to step through slices of the input matrices.
@@ -838,6 +838,16 @@ MlasGetMaximumThreadCount(
 #endif
 #else
     return onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(ThreadPool);
+#endif
+}
+
+inline int32_t
+MlasGetGranularThreadCount(
+    MLAS_THREADPOOL* ThreadPool) {
+#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+  MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+#else
+  return onnxruntime::concurrency::ThreadPool::DegreeOfGranularParallelism(ThreadPool);
 #endif
 }
 

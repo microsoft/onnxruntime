@@ -360,7 +360,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
   // Replicate the logic from MlasGemmU8X8Schedule to control the number of
   // worker threads used for the convolution.
-  constexpr int32_t maximum_thread_count = 16;
+  constexpr int32_t maximum_thread_count = 32;
   constexpr double thread_complexity = static_cast<double>(64 * 1024);
 
   const double complexity = static_cast<double>(output_image_size) *
@@ -377,7 +377,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   }
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
-  thread_count = std::min(thread_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
+  thread_count = std::min(thread_count, concurrency::ThreadPool::DegreeOfGranularParallelism(thread_pool));
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     const auto* input_data = Xdata;
