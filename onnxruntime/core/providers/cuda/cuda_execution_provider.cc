@@ -278,6 +278,18 @@ Status CUDAExecutionProvider::OnRunEnd() {
   return Status::OK();
 }
 
+Status CUDAExecutionProvider::SetComputeStream(void* stream) {
+  if (stream != stream_) {
+    if (stream_) {
+      CUDA_RETURN_IF_ERROR(cudaStreamDestroy(stream_));
+    }
+
+    external_stream_ = true;
+    stream_ = static_cast<cudaStream_t>(stream);
+  }
+  return Status::OK();
+}
+
 namespace cuda {
 // opset 1 to 9
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);

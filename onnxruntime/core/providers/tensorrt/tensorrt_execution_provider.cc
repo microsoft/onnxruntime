@@ -486,6 +486,23 @@ std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() cons
   return onnxruntime::CreateGPUDataTransfer(static_cast<void*>(GetComputeStream()));
 }
 
+Status TensorrtExecutionProvider::OnRunEnd() {
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
+  return Status::OK();
+}
+
+Status TensorrtExecutionProvider::SetComputeStream(void* stream) {
+  if (stream != stream_) {
+    if (stream_) {
+      CUDA_RETURN_IF_ERROR(cudaStreamDestroy(stream_));
+    }
+
+    external_stream_ = true;
+    stream_ = static_cast<cudaStream_t>(stream);
+  }
+  return Status::OK();
+}
+
 // Convert GraphViewer graph to GraphProto
 void ToGraphProtoInternal(const GraphViewer& graph, Provider_GraphProto& graph_proto) {
   for (const auto* input_arg : graph.GetInputs()) {

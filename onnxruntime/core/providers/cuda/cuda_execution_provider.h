@@ -37,17 +37,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  Status SetComputeStream(void* stream) override {
-    if (stream != stream_) {
-      if (stream_) {
-        CUDA_CALL(cudaStreamDestroy(stream_));
-      }
-
-      external_stream_ = true;
-      stream_ = static_cast<cudaStream_t>(stream);
-    }
-    return Status::OK();
-  }
+  Status SetComputeStream(void* stream) override;
 
   void* GetComputeStream() const override { return static_cast<void*>(stream_); }
 

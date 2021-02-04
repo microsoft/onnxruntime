@@ -117,17 +117,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
-  Status SetComputeStream(void* stream) override {
-    if (stream != stream_) {
-      if (stream_) {
-        cudaStreamDestroy(stream_);
-      }
 
-      external_stream_ = true;
-      stream_ = static_cast<cudaStream_t>(stream);
-    }
-    return Status::OK();
-  }
+  Status OnRunEnd() override;
+
+  Status SetComputeStream(void* stream) override;
 
   void* GetComputeStream() const override { return static_cast<void*>(stream_); }
 
