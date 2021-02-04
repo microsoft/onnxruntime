@@ -5,7 +5,7 @@ do case "${parameter}"
 in 
 d) PERF_DIR=${OPTARG};;
 o) OPTION=${OPTARG};;
-m) MANY_PATH=${OPTARG};;
+m) MODEL_PATH=${OPTARG};;
 esac
 done 
 
@@ -39,37 +39,6 @@ setup() {
     download_files
 }
 
-# many models 
-if [ $OPTION == "many-models" ]
-then
-    setup
-    python3 benchmark_wrapper.py -r validate -m $MANY_PATH -o result/$OPTION
-    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MANY_PATH -o result/$OPTION
-fi
-
-# ONNX model zoo
-if [ $OPTION == "onnx-zoo-models" ]
-then
-    MODEL_LIST="model.json"
-    setup
-    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/$OPTION
-    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/$OPTION
-fi
-
-# 1P models 
-if [ $OPTION == "partner-models" ]
-then
-    MODEL_LIST="partner_model_list.json"
-    setup
-    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/$OPTION
-    python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_LIST -o result/$OPTION
-fi
-
-# Test models 
-if [ $OPTION == "selected-models" ]
-then
-    MODEL_LIST="selected_models.json"
-    setup
-    python3 benchmark_wrapper.py -r validate -m $MODEL_LIST -o result/$OPTION
-    python3 benchmark_wrapper.py -r benchmark -i random -t 1 -m $MODEL_LIST -o result/$OPTION
-fi
+setup
+python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION
+python3 benchmark_wrapper.py -r benchmark -i random -t 10 -m $MODEL_PATH -o result/$OPTION
