@@ -8,3 +8,4 @@ git+http://github.com/onnx/onnx.git@174de7d086a768cba29374a56a7461eff87cfdb3#egg
 argparse
 sympy==1.1.1
 flake8
+flatbuffers

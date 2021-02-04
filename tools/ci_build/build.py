@@ -160,11 +160,7 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument(
-        "--enable_training_python_frontend_e2e_tests", action="store_true",
-        help="Enable the pytorch frontend training tests.")
-    parser.add_argument(
-        "--enable_training_pipeline_e2e_tests", action="store_true",
-        help="Enable the pipeline c++ e2e tests.")
+        "--enable_training_ops", action='store_true', help="Enable training ops in inference graph.")
     parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
@@ -450,10 +446,14 @@ def parse_arguments():
                         "RTTI is automatically disabled in a minimal build. "
                         "To enable execution providers that compile kernels at runtime (e.g. NNAPI) pass 'extended' "
                         "as a parameter. e.g. '--minimal_build extended'.")
-    parser.add_argument("--include_ops_by_model", type=str, help="include ops from model(s) under designated path.")
     parser.add_argument("--include_ops_by_config", type=str,
                         help="include ops from config file. "
                         "See /docs/Reduced_Operator_Kernel_build.md for more information.")
+    parser.add_argument("--enable_reduced_operator_type_support", action='store_true',
+                        help='If --include_ops_by_config is specified, and the configuration file was created from ORT '
+                             'format models with type reduction enabled, limit the types individual operators support '
+                             'where possible to further reduce the build size. '
+                             'See /docs/Reduced_Operator_Kernel_build.md for more information.')
 
     parser.add_argument("--disable_contrib_ops", action='store_true',
                         help="Disable contrib ops (reduces binary size)")
@@ -682,8 +682,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build != 'off' else "OFF"),
         "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build == 'extended' else "OFF"),
-        "-Donnxruntime_REDUCED_OPS_BUILD=" + (
-            "ON" if args.include_ops_by_config or args.include_ops_by_model else "OFF"),
+        "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if args.include_ops_by_config else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
             "ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
@@ -714,6 +713,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_OPS=" + (
+            "ON" if args.enable_training_ops else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + (
             "ON" if args.enable_training else "OFF"),
@@ -773,9 +774,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                            "ON" if args.use_openvino.startswith("HETERO") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
                        "-Donnxruntime_USE_OPENVINO_MULTI=" + (
-                           "ON" if args.use_openvino.startswith("MULTI") else "OFF"),
-                       "-Donnxruntime_USE_OPENVINO_BINARY=" + (
-                           "ON" if args.use_openvino else "OFF")]
+                           "ON" if args.use_openvino.startswith("MULTI") else "OFF")]
 
     # TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
@@ -1375,7 +1374,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run
-            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build != 'off':
+            if args.include_ops_by_config or args.minimal_build != 'off':
                 return
 
             if is_windows():
@@ -1761,11 +1760,11 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.include_ops_by_model or args.include_ops_by_config:
-        from exclude_unused_ops import exclude_unused_ops
-        models_path = args.include_ops_by_model if args.include_ops_by_model else ''
-        config_path = args.include_ops_by_config if args.include_ops_by_config else ''
-        exclude_unused_ops(models_path, config_path, use_cuda=args.use_cuda)
+    if args.include_ops_by_config:
+        from exclude_unused_ops_and_types import exclude_unused_ops_and_types
+        exclude_unused_ops_and_types(args.include_ops_by_config,
+                                     args.enable_reduced_operator_type_support,
+                                     args.use_cuda)
 
     if args.use_tensorrt:
         args.use_cuda = True

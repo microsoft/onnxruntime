@@ -55,7 +55,7 @@ IExecutionProvider* TestRknpuExecutionProvider();
 #endif
 
 #ifdef USE_COREML
-IExecutionProvider* TestCoreMLExecutionProvider();
+IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags);
 #endif
 
 template <typename T>

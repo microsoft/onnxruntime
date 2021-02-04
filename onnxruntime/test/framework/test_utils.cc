@@ -55,8 +55,8 @@ IExecutionProvider* TestRknpuExecutionProvider() {
 #endif
 
 #ifdef USE_COREML
-IExecutionProvider* TestCoreMLExecutionProvider() {
-  static CoreMLExecutionProvider coreml_provider;
+IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags) {
+  static CoreMLExecutionProvider coreml_provider(coreml_flags);
   return &coreml_provider;
 }
 #endif

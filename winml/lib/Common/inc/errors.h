@@ -47,6 +47,15 @@
     throw winrt::hresult_error(_result, winrt::hresult_error::from_abi);             \
   }
 
+#define WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hr, message, ...)               \
+  do {                                                                       \
+    auto _hr = hr;                                                           \
+    char msg[1024];                                                          \
+    sprintf_s(msg, message, __VA_ARGS__);                                    \
+    winrt::hstring errorMessage(_winml::Strings::HStringFromUTF8(msg));      \
+    throw winrt::hresult_error(_hr, errorMessage);                           \
+  } while (0)
+
 #define WINML_THROW_IF_FAILED(hr)                                                  \
   do {                                                                             \
     HRESULT _hr = hr;                                                              \

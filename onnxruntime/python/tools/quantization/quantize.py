@@ -35,7 +35,7 @@ def optimize_model(model_path: Path):
     sess_option = SessionOptions()
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-    _ = InferenceSession(model_path.as_posix(), sess_option)
+    _ = InferenceSession(model_path.as_posix(), sess_option, providers=['CPUExecutionProvider'])
     optimized_model = onnx.load(opt_model_path.as_posix())
     return optimized_model
 

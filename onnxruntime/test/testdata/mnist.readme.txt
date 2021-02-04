@@ -1,0 +1,6 @@
+The mnist model is used in a multiple tests for minimal/mobile builds in both ONNX and ORT formats.
+
+We also save both ONNX and ORT format versions of the model with level 1 (aka 'basic') optimizations applied.
+  - mnist.level1_opt.onnx makes sure the required operators for this model are automatically included in 
+    required_ops.config, which is used in the reduced ops CI build.
+  - mnist.level1_opt.ort is used in NNAPI unit tests.
