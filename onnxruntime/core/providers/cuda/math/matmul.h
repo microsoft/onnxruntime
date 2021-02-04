@@ -24,6 +24,8 @@ class MatMul final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
+  struct SparseInfo;
+
  private:
 #ifdef USE_CUSPARSELT
   Status PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) override;
@@ -34,7 +36,6 @@ class MatMul final : public CudaKernel {
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;
-  struct SparseInfo;
   // Argument 1 is a sparse weight coming from constant initializer
   // if set
   std::unique_ptr<SparseInfo> sparse_info_;

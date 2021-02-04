@@ -95,13 +95,13 @@ class ToCudaType<MLFloat16> {
   }
 };
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-
 template <>
 struct ToCudaTypeEnum<BFloat16> {
   static constexpr cudaDataType type = CUDA_R_16BF;
   static constexpr cusparseComputeType at_least_precision = CUSPARSE_COMPUTE_16F;
 };
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
 template <>
 class ToCudaType<BFloat16> {

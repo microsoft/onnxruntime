@@ -83,11 +83,53 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
 
 #ifdef USE_CUSPARSELT
 
+/// <summary>
+/// Captures Prepack() information along the data and its shape
+/// </summary>
+/// <typeparam name="T"></typeparam>
 template <typename T>
 struct MatMul<T>::SparseInfo {
-  OpKernel::PrepackParam param;
-  explicit SparseInfo(const OpKernel::PrepackParam p) : param(p) {}
+  OpKernel::PrepackParam param_;
+  TensorShape shape_;
+  IAllocatorUniquePtr<T> device_dense_buffer_;
+  SparseInfo(const OpKernel::PrepackParam& p, const TensorShape& shape,
+             IAllocatorUniquePtr<T>&& device_dense_buffer) : param_(p), shape_(shape), device_dense_buffer_(std::move(device_dense_buffer)) {}
 };
+
+static Status MakeDescriptors(const cusparseLtHandle_t* handle, cudaDataType cuda_type, size_t data_type_size, cusparseComputeType precision,
+                              int64_t m, int64_t k, int64_t n, bool transa, bool transb,
+                              cusparseLtMatDescriptor_t& mat_A, cusparseLtMatDescriptor_t& mat_B,
+                              cusparseLtMatDescriptor_t& mat_C, cusparseLtMatmulDescriptor_t& mat_mul) {
+  // Switch K and M as we are feeding them swapped. This argument swapping will only be available in the
+  // next release of the library.
+  CUSPARSELT_RETURN_IF_ERROR(cusparseLtDenseDescriptorInit(handle, &mat_A, k, m,
+                                                           (transa) ? m : k,
+                                                           static_cast<uint32_t>(data_type_size), cuda_type,
+                                                           CUSPARSE_ORDER_COL));
+
+  CUSPARSELT_RETURN_IF_ERROR(cusparseLtStructuredDescriptorInit(handle, &mat_B, n, k,
+                                                                (transb) ? n : k,
+                                                                static_cast<uint32_t>(data_type_size), cuda_type,
+                                                                CUSPARSE_ORDER_COL, CUSPARSELT_SPARSITY_50_PERCENT));
+
+  CUSPARSELT_RETURN_IF_ERROR(cusparseLtDenseDescriptorInit(handle, &mat_C, n, m,
+                                                           n, static_cast<uint32_t>(data_type_size), cuda_type,
+                                                           CUSPARSE_ORDER_COL));
+
+  cusparseOperation_t transA = transa ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
+  cusparseOperation_t transB = transb ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
+
+  CUSPARSELT_RETURN_IF_ERROR(cusparseLtMatmulDescriptorInit(handle, &mat_mul,
+                                                            transB,
+                                                            transA,
+                                                            &mat_B,
+                                                            &mat_A,
+                                                            &mat_C,
+                                                            &mat_C,
+                                                            precision));
+
+  return Status::OK();
+}
 
 /// <summary>
 /// This class contains helper methods to deal with 2:4 sparse data by means
@@ -96,14 +138,7 @@ struct MatMul<T>::SparseInfo {
 
 template <typename T>
 class Sparse2x4ComputeHelper {
-  cusparseLtMatDescriptor_t mat_A_desc_;
-  cusparseLtMatDescriptor_t mat_B_desc_;
-  cusparseLtMatDescriptor_t mat_C_desc_;
-  cusparseLtMatmulDescriptor_t mat_mul_desc_;
-  cusparseLtHandle_t alg_selection_;
   onnxruntime::optional<cusparseLtMatmulPlan_t> plan_;
-  IAllocatorUniquePtr<T> compressed_buffer_;
-  int64_t m, k, n;
 
  public:
   Sparse2x4ComputeHelper() = default;
@@ -125,44 +160,27 @@ class Sparse2x4ComputeHelper {
   /// <param name="transb"></param>
   /// <param name="right">2:4 initializer data</param>
   /// <returns>status</returns>
-  Status Initialize(const CudaKernel* kernel, const MatMulComputeHelper& helper,
-                    bool transa, bool transb, const Tensor* right) const {
-    cusparseOperation_t transA = transa ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
-    cusparseOperation_t transB = transb ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
-
+  onnxruntime::Status Compute(const CudaKernel* kernel, const typename MatMul<T>::SparseInfo& sparse_info,
+                              const MatMulComputeHelper& helper, float alpha, bool transa, bool transb,
+                              const Tensor* left, Tensor* Y) const {
     constexpr size_t data_type_size = sizeof(T);
     constexpr auto cuda_type = ToCudaTypeEnum<T>::type;
+    constexpr auto cuda_precision = ToCudaTypeEnum<T>::at_least_precision;
     const cusparseLtHandle_t* handle = kernel->CusparseLightHandle();
 
-    m_ = helper.M();
-    k_ = helper.K();
-    n_ = helper.N();
+    const int64_t m = helper.M();
+    const int64_t k = helper.K();
+    const int64_t n = helper.N();
 
-    // Switch K and M as we are feeding them swapped
-    CUSPARSELT_RETURN_IF_ERROR(cusparseLtDenseDescriptorInit(handle, &mat_A_desc_, k_, m_,
-                                                             (transa) ? m_ : k_,
-                                                             data_type_size, cuda_type,
-                                                             CUSPARSE_ORDER_COL));
+    const int64_t sparse_size = sparse_info.shape_.Size();
+    ORT_ENFORCE(sparse_size == n * k, "Sparse initializer shape size does not match computed K*N");
 
-    const int64_t sparse_size = right->Shape().Size();
-    ORT_ENFORCE(sparse_size == n_ * k_, "Sparse initializer shape size does not match computed K*N");
-    CUSPARSELT_RETURN_IF_ERROR(cusparseLtStructuredDescriptorInit(handle, &mat_B_desc_, n_, k_,
-                                                                  (transb) ? n_ : k_,
-                                                                  data_type_size, cuda_type,
-                                                                  CUSPARSE_ORDER_COL, CUSPARSELT_SPARSITY_50_PERCENT));
-
-    CUSPARSELT_RETURN_IF_ERROR(cusparseLtDenseDescriptorInit(handle, &mat_C_desc_, n_, m_,
-                                                             n_, data_type_size, cuda_type,
-                                                             CUSPARSE_ORDER_COL));
-
-    CUSPARSELT_RETURN_IF_ERROR(cusparseLtMatmulDescriptorInit(handle, &mat_mul_desc_,
-                                                              transB,
-                                                              transA,
-                                                              &mat_B_desc_,
-                                                              &mat_A_desc_,
-                                                              &mat_C_desc_,
-                                                              &mat_C_desc_,
-                                                              ToCudaTypeEnum<T>::at_least_precision));
+    cusparseLtMatDescriptor_t mat_A_desc_;
+    cusparseLtMatDescriptor_t mat_B_desc_;
+    cusparseLtMatDescriptor_t mat_C_desc_;
+    cusparseLtMatmulDescriptor_t mat_mul_desc_;
+    ORT_RETURN_IF_ERROR(MakeDescriptors(handle, cuda_type, data_type_size, cuda_precision, m, n, k,
+                                        transa, transb, mat_A_desc_, mat_B_desc_, mat_C_desc_, mat_mul_desc_));
 
     CUSPARSELT_RETURN_IF_ERROR(cusparseLtMatmulAlgSelectionInit(handle, &alg_selection_, &mat_mul_desc_, CUSPARSELT_MATMUL_ALG_DEFAULT));
 
@@ -171,8 +189,10 @@ class Sparse2x4ComputeHelper {
                                                                CUSPARSELT_MATMUL_ALG_CONFIG_ID,
                                                                &alg_id, sizeof(alg_id)));
 
+    cusparseLtHandle_t alg_selection_;
     size_t workspace_size;
     CUSPARSELT_RETURN_IF_ERROR(cusparseLtMatmulGetWorkspace(handle, &alg_selection_, &workspace_size));
+    auto workspace_buffer = kernel->GetScratchBuffer<T>(workspace_size);
 
     cusparseLtMatmulPlan_t plan;
     CUSPARSELT_RETURN_IF_ERROR(cusparseLtMatmulPlanInit(handle, &plan_, &mat_mul_desc_, &alg_selection_, workspace_size));
@@ -180,61 +200,48 @@ class Sparse2x4ComputeHelper {
 
     size_t compressed_size;  // bytes
     CUSPARSELT_RETURN_IF_ERROR(cusparseLtSpMMACompressedSize(handle, &*plan_, &compressed_size));
-
     size_t num_compressed_elements = compressed_size / data_type_size;
     if ((num_compressed_elements * data_type_size) < compressed_size) {
       num_compressed_elements++;
     }
-    // Copy to GPU for compression
-    auto dense_buffer = kernel->GetScratchBuffer<T>(sparse_size);
-    cudaMemcpy(dense_buffer.get(), right->DataRaw(), sparse_size * data_type_size, cudaMemcpyHostToDevice);
-    compressed_buffer_ = kernel->GetScratchBuffer<T>(num_compressed_elements);
-    CUSPARSELT_RETURN_IF_ERROR(cusparseLtSpMMACompress(handle, &*plan_, dense_buffer.get(),
-                                                       compressed_buffer_.get(), nullptr /* default stream */));
+    auto compressed_buffer = kernel->GetScratchBuffer<T>(num_compressed_elements);
+
+    const CudaT alpha = ToCudaType<T>::FromFloat(alpha);
+    const CudaT beta = ToCudaType<T>::FromFloat(0.0f);
+    cudaStream_t* streams = nullptr;
+    // Batches
+    if (helper.OutputOffsets().size() == 1) {
+      // No batches, we compress the whole buffer as a single matrix
+      CUSPARSELT_RETURN_IF_ERROR(cusparseLtSpMMACompress(handle, &*plan_, sparse_info_.dense_buffer.get(),
+                                                         compressed_buffer.get(), nullptr /* default stream */));
+
+      // We swapping arguments in hopes that the next release of the library supports the feature
+      auto* output = Y->MutableData<T>();
+      CUSPARSELT_RETURN_IF_ERROR(cusparseLtMatmul(handle, &*plan, &alpha, left->Data<T>(), compressed_buffer.get(),
+                                                  &beta, output, output, workspace_buffer.get(), streams, 0));
+      return Status::OK();
+    }
 
     return Status::OK();
   }
 
   /// <summary>
-  /// Determine if we have batches or strides and multiply repeatedly if necessary.
-  /// </summary>
-  /// <param name="left">Left Tensor</param>
-  /// <param name="Y">Output</param>
-  /// <returns>Status</returns>
-  Status Compute(const CudaKernel* kernel, const Tensor* left, const Tensor* right, Tensor* Y,
-                 float alpha, bool transa, bool transb) {
-
-    int64_t stride_A, stride_B, stride_C;
-    int64_t batch_count;
-
-    // We only support the case when the initializer is 2 - D.
-    // Otherwise, we would have to create a batch of compressed initializers
-    if (CanUseStridedBatchedGemm(left->Shape(), right->Shape(),
-                                 transa, transb, stride_A, stride_B, stride_C, batch_count)) {
-      ORT_ENFORCE(strideB == 0, "Expecting initializer to be 2 - D, no batches");
-      const T* left_data = left->Data<T>();
-      const T* right_data = compressed_buffer_.get();
-      // XXX: explore TP options
-      for (int64_t batch = 0; batch < batch_count; ++batch) {
-      }
-    }
-  }
-
-  /// <summary>
   /// This method validates constant initializer to be a valid 2:4 sparse data
   /// It creates fake A and C descriptors, Matmul descriptor and calls cusparseLtSpMMAPruneCheck()
-  ///to validate the initializer. If the initializer has more than 2 dimensions, it is flattened.
+  /// to validate the initializer. If the initializer has more than 2 dimensions, it is flattened.
   /// If it has only one dimension, a is appended to its shape.
   ///  See https://github.com/NVIDIA/CUDALibrarySamples/issues/19
   /// </summary>
-  static Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::PrepackParam& param, bool transA, bool transB, bool& is_packed) {
+  static onnxruntime::Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::PrepackParam& param,
+                                     bool transA, bool transB, std::unique_ptr<typename MatMul<T>::SparseInfo>& sparse_info, bool& is_packed) {
+    is_packed = false;
+
     if (!tensor.IsDataType<T>()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name + " : wrong data type for the constant initializer");
     }
 
     const auto& right_shape = tensor.Shape();
 
-    // To verify the 2:4 format create fake descriptors for A, B and C.
     int64_t M = 2;
     const auto right_num_dims = right_shape.NumDimensions();
     int64_t K = 0;
@@ -250,54 +257,37 @@ class Sparse2x4ComputeHelper {
 
     TensorShape left_shape({M, K});
 
-    constexpr size_t data_type_size = sizeof(T);
     constexpr auto cuda_type = ToCudaTypeEnum<T>::type;
+    constexpr auto cuda_precision = ToCudaTypeEnum<T>::at_least_precision;
+    constexpr size_t data_type_size = sizeof(T);
     const cusparseLtHandle_t* handle = kernel->CusparseLightHandle();
 
-    cusparseLtMatDescriptor_t mat_B_desc;
-    CUSPARSELT_RETURN_IF_ERROR(cusparseLtStructuredDescriptorInit(handle, &mat_B_desc, N, K,
-                                                                  (transB) ? K : N,
-                                                                  data_type_size, cuda_type,
-                                                                  CUSPARSE_ORDER_COL, CUSPARSELT_SPARSITY_50_PERCENT));
-
-    // Descriptors A, C and D are fake and are only needed for pruning verification and compression.
-    // The should not be needed. https://github.com/NVIDIA/CUDALibrarySamples/issues/19
+    // A and C are fake for validation purpose
+    // https://github.com/NVIDIA/CUDALibrarySamples/issues/19
     cusparseLtMatDescriptor_t mat_A_desc;
-    CUSPARSELT_RETURN_IF_ERROR(cusparseLtDenseDescriptorInit(handle, &mat_A_desc, K, M,
-                                                             (transA) ? M : K,
-                                                             data_type_size, cuda_type,
-                                                             CUSPARSE_ORDER_COL));
-
+    cusparseLtMatDescriptor_t mat_B_desc;
     cusparseLtMatDescriptor_t mat_C_desc;
-    CUSPARSELT_RETURN_IF_ERROR(cusparseLtDenseDescriptorInit(handle, &mat_C_desc, N, M,
-                                                             N, data_type_size, cuda_type,
-                                                             CUSPARSE_ORDER_COL));
-
-    // Swapping A and B
     cusparseLtMatmulDescriptor_t mat_mul_desc;
-    CUSPARSELT_RETURN_IF_ERROR(cusparseLtMatmulDescriptorInit(handle, &mat_mul_desc,
-                                                              (transB) ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                              (transA) ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                              &mat_B_desc,
-                                                              &mat_A_desc,
-                                                              &mat_C_desc,
-                                                              &mat_C_desc,
-                                                              ToCudaTypeEnum<T>::at_least_precision));
+
+    ORT_RETURN_IF_ERROR(MakeDescriptors(handle, cuda_type, data_type_size, cuda_precision, M, K, N,
+                                        transA, transB, mat_A_desc, mat_B_desc, mat_C_desc, mat_mul_desc));
 
     // Initializer tensors are stored on host, copy them for validation
     const auto data_size = right_shape.Size();
-    auto validation_buffer = kernel->GetScratchBuffer<T>(data_size);
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(validation_buffer.get(), tensor.DataRaw(), data_size * data_type_size, cudaMemcpyHostToDevice));
+    auto device_buffer = kernel->GetScratchBuffer<T>(data_size);
+    CUDA_RETURN_IF_ERROR(cudaMemcpy(device_buffer.get(), tensor.DataRaw(), data_size * data_type_size, cudaMemcpyHostToDevice));
 
     int valid = 1;
     CUSPARSELT_RETURN_IF_ERROR(cusparseLtSpMMAPruneCheck(handle, &mat_mul_desc,
-                                                         validation_buffer.get(),
+                                                         device_buffer.get(),
                                                          &valid,
                                                          static_cast<cudaStream_t>(0)));
 
     if (valid == 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name + " : 2:4 data format validation failed");
     }
+
+    sparse_info = onnxruntime::make_unique<MatMul<T>::SparseInfo>(param, right_shape, std::move(device_buffer));
 
     is_packed = true;
     return Status::OK();
@@ -313,9 +303,7 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
   // cuSparseLt only handles 2-D matrices
   if (IsAmpereAvaiable()) {
     if (param.input_idx == 1 && param.Is2x4Format()) {
-      ORT_RETURN_IF_ERROR(Sparse2x4ComputeHelper<T>::PrePack(this, tensor, param, trans_A_, trans_B_, is_packed));
-      sparse_info_ = onnxruntime::make_unique<SparseInfo>(param);
-      // We leave is_packed false as we do not copy the data into the kernel
+      ORT_RETURN_IF_ERROR(Sparse2x4ComputeHelper<T>::PrePack(this, tensor, param, trans_A_, trans_B_, sparse_info_, is_packed));
     }
   }
   return Status::OK();
@@ -349,12 +337,6 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0)
     return Status::OK();
-
-  //if (sparse_info_) {
-  //  if (sparse_info_->param.Is2x4Format()) {
-  //  }
-  //  ORT_ENFORCE(false, "SparseInfo present but format is not supported");
-  //}
 
   const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
