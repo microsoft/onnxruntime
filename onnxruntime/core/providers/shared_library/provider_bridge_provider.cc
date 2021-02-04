@@ -45,6 +45,14 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
 }
 
+void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) {
+  return g_host->AllocatorManager__InsertAllocator(p, allocator);
+}
+
+AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type) {
+  return g_host->AllocatorManager__GetAllocator(p, id, mem_type);
+}
+
 template <>
 MLDataType DataTypeImpl::GetType<float>() {
   return g_host->DataTypeImpl_GetType_float();
@@ -114,6 +122,10 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   g_host->IExecutionProvider__InsertAllocator(this, allocator);
 }
 
+void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
+  g_host->IExecutionProvider__TryInsertAllocator(this, allocator);
+}
+
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const std::vector<const KernelRegistry*>& kernel_registries) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
@@ -136,6 +148,10 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
 
 int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
+}
+
+void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+  return g_host->IExecutionProvider__RegisterAllocator(this, allocator_manager);
 }
 
 #ifdef USE_TENSORRT

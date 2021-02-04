@@ -580,11 +580,11 @@ size_t CalcResizeBufferSize(const onnxruntime::UpsampleMode upsample_mode,
                             const std::vector<int64_t>& output_dims) {
   switch (upsample_mode) {
     case UpsampleMode::NN:
-      return sizeof(int64_t) * output_dims.size() + sizeof(NearestMappingInfo) * std::accumulate(output_dims.begin(), output_dims.end(), 0);
+      return sizeof(int64_t) * output_dims.size() + sizeof(NearestMappingInfo) * static_cast<size_t>(std::accumulate(output_dims.begin(), output_dims.end(), (int64_t)0));
     case UpsampleMode::LINEAR:
-      return sizeof(LinearMappingInfo) * std::accumulate(output_dims.rbegin(), output_dims.rbegin() + 2, 0);
+      return sizeof(LinearMappingInfo) * static_cast<size_t>(std::accumulate(output_dims.rbegin(), output_dims.rbegin() + 2, (int64_t)0));
     case UpsampleMode::CUBIC:
-      return sizeof(CubicMappingInfo) * std::accumulate(output_dims.rbegin(), output_dims.rbegin() + 2, 0);
+      return sizeof(CubicMappingInfo) * static_cast<size_t>(std::accumulate(output_dims.rbegin(), output_dims.rbegin() + 2, (int64_t)0));
   }
   return 0;
 }
@@ -608,7 +608,7 @@ void ResizeNearestImpl(
     CudaFunctionNearestPixel calc_nearest_pixel,
     int64_t* /* prefix_dim_sum */,
     NearestMappingInfo* dims_mapping) {
-  int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  unsigned int blocksPerGrid = static_cast<unsigned int>(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
   bool could2d = rank >= 2 &&
                  transform_coordinate != GetDeviceOriginalCoordinateFunc(ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE) &&
@@ -616,12 +616,12 @@ void ResizeNearestImpl(
   if (could2d) {
     int64_t output_height = output_shape[rank - 2];
     int64_t output_width = output_shape[rank - 1];
-    fast_divmod div_output_image = (rank > 2) ? output_div_pitches[rank - 3] : fast_divmod(output_height * output_width);
+    fast_divmod div_output_image = (rank > 2) ? output_div_pitches[rank - 3] : fast_divmod(static_cast<int>(output_height * output_width));
     int blocksPerDimsMappingGrid = static_cast<int>(ceil((output_height + output_width) / 32.0));
 
     _ResizeNearestMappingKernel2D<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
-        input_shape[rank - 2], input_shape[rank - 1],
-        output_height, output_width,
+        static_cast<int>(input_shape[rank - 2]), static_cast<int>(input_shape[rank - 1]),
+        static_cast<int>(output_height), static_cast<int>(output_width),
         scales_vals[rank - 2], scales_vals[rank - 1],
         roi_vals[rank - 2], roi_vals[rank - 2 + rank],
         roi_vals[rank - 1], roi_vals[rank - 1 + rank],
@@ -630,7 +630,7 @@ void ResizeNearestImpl(
     if (extrapolation_enabled) {
       _ResizeNearestKernel2D<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_height, output_width,
-          input_shape[rank - 2] * input_shape[rank - 1], input_shape[rank - 1],
+          input_shape[rank - 2] * input_shape[rank - 1], static_cast<int>(input_shape[rank - 1]),
           div_output_image, output_div_pitches[rank - 2],
           input_data, output_data, N,
           extrapolation_value,
@@ -638,7 +638,7 @@ void ResizeNearestImpl(
     } else {
       _ResizeNearestKernel2D<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_height, output_width,
-          input_shape[rank - 2] * input_shape[rank - 1], input_shape[rank - 1],
+          input_shape[rank - 2] * input_shape[rank - 1], static_cast<int>(input_shape[rank - 1]),
           div_output_image, output_div_pitches[rank - 2],
           input_data, output_data, N,
           extrapolation_value,
@@ -647,7 +647,7 @@ void ResizeNearestImpl(
     return;
   }
 
-  int64_t total_dim_sum = std::accumulate(output_shape.Data(), output_shape.Data() + rank, 0);
+  int64_t total_dim_sum = std::accumulate(output_shape.Data(), output_shape.Data() + rank, (int64_t)0);
   int blocksPerDimsMappingGrid = (int)(ceil(static_cast<double>(total_dim_sum) / 32));
   _ResizeNearestMappingKernel<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
       rank, input_shape, output_shape,

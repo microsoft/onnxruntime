@@ -21,7 +21,9 @@
 //
 
 /* Modifications Copyright (c) Microsoft. */
-
+#ifdef _WIN32
+#pragma warning(disable : 4244)
+#endif
 #include "orttraining/training_ops/cuda/nn/layer_norm_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
@@ -500,7 +502,7 @@ void HostLayerNormGradient(
       grad_beta);
   // compute grad_input
   const uint64_t maxGridY = prop.maxGridSize[1];
-  const dim3 blocks1(1, std::min((uint64_t)n1, maxGridY), 1);
+  const dim3 blocks1(1, std::min<unsigned int>(static_cast<unsigned int>(n1), static_cast<unsigned int>(maxGridY)), 1);
   const dim3 threads1(warp_size, 4, 1);
   int nshared =
       threads1.y > 1 ? threads1.y * threads1.x * sizeof(U) : 0;
@@ -540,6 +542,10 @@ LAYERNORMGRAD_IMPL(half, float, true)
 LAYERNORMGRAD_IMPL(float, float, false)
 LAYERNORMGRAD_IMPL(double, double, false)
 LAYERNORMGRAD_IMPL(half, float, false)
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+LAYERNORMGRAD_IMPL(nv_bfloat16, float, true)
+LAYERNORMGRAD_IMPL(nv_bfloat16, float, false)
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

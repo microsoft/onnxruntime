@@ -239,6 +239,9 @@ class Model {
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
   static common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Model& fbs_model,
+#if !defined(ORT_MINIMAL_BUILD)
+                                          const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+#endif
                                           const logging::Logger& logger,
                                           std::unique_ptr<Model>& model);
 #endif

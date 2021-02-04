@@ -61,10 +61,6 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
-#define MLAS_SUPPORTS_GEMM_U8X8
-#endif
-
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_ARM64) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
 #define MLAS_SUPPORTS_PACKED_GEMM_U8X8
 #endif
@@ -426,14 +422,14 @@ MlasConv(
     MLAS_THREADPOOL* ThreadPool
     );
 
-template<typename FilterType>
 void
 MLASCALL
 MlasConvDepthwise(
-    const uint8_t* Input,
+    const uint8_t* const* Input,
     uint8_t InputZeroPoint,
-    const FilterType* Filter,
-    FilterType FilterZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    bool FilterIsSigned,
     int32_t* Output,
     size_t Channels,
     size_t OutputCount,

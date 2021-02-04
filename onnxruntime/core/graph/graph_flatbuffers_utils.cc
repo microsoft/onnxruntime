@@ -28,6 +28,7 @@ SaveDims(flatbuffers::FlatBufferBuilder& builder, const DimsFieldType& dims) {
 
 Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                 const TensorProto& initializer,
+                                const Path& model_path,
                                 flatbuffers::Offset<fbs::Tensor>& fbs_tensor) {
   auto name = SaveStringToOrtFormat(builder, initializer.has_name(), initializer.name());
   auto doc_string = SaveStringToOrtFormat(builder, initializer.has_doc_string(), initializer.doc_string());
@@ -46,7 +47,7 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     std::unique_ptr<uint8_t[]> unpacked_tensor;
     size_t tensor_byte_size = 0;
     ORT_RETURN_IF_ERROR(
-        onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor, tensor_byte_size));
+        onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor, tensor_byte_size));
     raw_data = builder.CreateVector(unpacked_tensor.get(), tensor_byte_size);
   }
 
@@ -65,16 +66,17 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 Status SaveSparseInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       const ONNX_NAMESPACE::SparseTensorProto& initializer,
+                                      const Path& model_path,
                                       flatbuffers::Offset<fbs::SparseTensor>& fbs_sparse_tensor) {
   // values
   const auto& values = initializer.values();
   flatbuffers::Offset<fbs::Tensor> values_off;
-  ORT_RETURN_IF_ERROR(SaveInitializerOrtFormat(builder, values, values_off));
+  ORT_RETURN_IF_ERROR(SaveInitializerOrtFormat(builder, values, model_path, values_off));
 
   // Indicies
   const auto& indicies = initializer.indices();
   flatbuffers::Offset<fbs::Tensor> indicies_off;
-  ORT_RETURN_IF_ERROR(SaveInitializerOrtFormat(builder, indicies, indicies_off));
+  ORT_RETURN_IF_ERROR(SaveInitializerOrtFormat(builder, indicies, model_path, indicies_off));
 
   // Shape
   auto shape = SaveDims(builder, initializer.dims());
@@ -122,7 +124,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     case fbs::AttributeType::TENSOR: {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
       ORT_RETURN_IF_ERROR(
-          experimental::utils::SaveInitializerOrtFormat(builder, attr_proto.t(), fbs_tensor));
+          experimental::utils::SaveInitializerOrtFormat(builder, attr_proto.t(), graph->ModelPath(), fbs_tensor));
       GET_FBS_ATTR(builder, type, t, fbs_tensor);
     } break;
     case fbs::AttributeType::GRAPH: {
@@ -152,7 +154,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       for (const auto& tensor : attr_proto.tensors()) {
         flatbuffers::Offset<fbs::Tensor> fbs_tensor;
         ORT_RETURN_IF_ERROR(
-            experimental::utils::SaveInitializerOrtFormat(builder, tensor, fbs_tensor));
+            experimental::utils::SaveInitializerOrtFormat(builder, tensor, graph->ModelPath(), fbs_tensor));
         fbs_tensors_vec.push_back(fbs_tensor);
       }
       auto tensors = builder.CreateVector(fbs_tensors_vec);

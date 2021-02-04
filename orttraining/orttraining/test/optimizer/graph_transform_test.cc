@@ -88,7 +88,6 @@ static void TestBiasDropoutFusion(const PathString& file_path, const logging::Lo
 
   ASSERT_EQ(op_to_count["Add"], add_count);
   ASSERT_EQ(op_to_count["Dropout"], 0);
-  ASSERT_EQ(op_to_count["TrainableDropout"], 0);
   ASSERT_EQ(op_to_count["com.microsoft.BiasDropout"], 1);
 }
 
@@ -98,7 +97,6 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion1.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion2.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_mismatch.onnx", *logger_, 1);
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_trainabledropout_residual_fusion.onnx", *logger_);
 }
 
 Node* GetNodeByName(Graph& graph, std::string node_name) {
@@ -167,7 +165,9 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   std::unordered_map<std::string, std::string> updated_weight_names;
   std::unordered_set<std::string> weights_to_train;
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info), TransformerLevel::Level1);
+  training::TrainingSession::OptimizerState init_optim_state;
+  IExecutionProvider* e = TestCPUExecutionProvider();
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -238,7 +238,9 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
   std::unordered_map<std::string, std::string> updated_weight_names;
   std::unordered_set<std::string> weights_to_train;
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train, weight_partition_info), TransformerLevel::Level1);
+  training::TrainingSession::OptimizerState init_optim_state;
+  IExecutionProvider* e = TestCPUExecutionProvider();
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -308,7 +310,9 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
   std::unordered_map<std::string, std::string> updated_weight_names;
   std::unordered_set<std::string> weights_to_train;
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info), TransformerLevel::Level1);
+  training::TrainingSession::OptimizerState init_optim_state;
+  IExecutionProvider* e = TestCPUExecutionProvider();
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -376,7 +380,9 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
   std::unordered_map<std::string, std::string> updated_weight_names;
   std::unordered_set<std::string> weights_to_train;
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train, weight_partition_info), TransformerLevel::Level1);
+  training::TrainingSession::OptimizerState init_optim_state;
+  IExecutionProvider* e = TestCPUExecutionProvider();
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
   ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -479,7 +485,9 @@ static void RunPartitionCorrectnessTest(std::string model_path,
     std::unordered_map<std::string, std::string> updated_weight_names;
     std::unordered_set<std::string> weights_to_train;
     std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
-    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train, weight_partition_info), TransformerLevel::Level1);
+    training::TrainingSession::OptimizerState init_optim_state;
+    IExecutionProvider* e = TestCPUExecutionProvider();
+    graph_transformation_mgr.Register(onnxruntime::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
     ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger);
     ORT_ENFORCE(ret.IsOK());
     graphs.push_back(&graph);

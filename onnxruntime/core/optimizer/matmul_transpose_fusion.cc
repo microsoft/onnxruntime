@@ -55,14 +55,15 @@ static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg) {
 
   bool is_trans_on_last_two_dims = true;
   for (int64_t i = 0; i < rank - 2; i++) {
-    if (perms[i] != i) {
+    if (perms[static_cast<size_t>(i)] != i) {
       is_trans_on_last_two_dims = false;
       break;
     }
   }
 
   if (is_trans_on_last_two_dims) {
-    is_trans_on_last_two_dims = perms[rank - 2] == rank - 1 && perms[rank - 1] == rank - 2;
+    // rank is atleast 2 (checked above) and so it is safe to cast (rank - 2) and (rank - 1) to size_t
+    is_trans_on_last_two_dims = perms[static_cast<size_t>(rank - 2)] == rank - 1 && perms[static_cast<size_t>(rank - 1)] == rank - 2;
   }
 
   if (!is_trans_on_last_two_dims) {
