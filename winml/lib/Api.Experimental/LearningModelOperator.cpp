@@ -5,24 +5,30 @@ namespace WINML_EXPERIMENTALP {
 
 static uint32_t c_operator_index = 0;
 
-LearningModelOperator::LearningModelOperator(hstring const& type, hstring const& name) :
-    LearningModelOperator(type, name, L"")
+LearningModelOperator::LearningModelOperator(hstring const& type) :
+    LearningModelOperator(type, L"")
 {}
 
-LearningModelOperator::LearningModelOperator(hstring const& type, hstring const& name, hstring const& domain) :
+LearningModelOperator::LearningModelOperator(hstring const& type, hstring const& domain) :
     type_(type),
-    name_(name),
     domain_(domain) {
   constant_input_mapping_ = winrt::single_threaded_map<winrt::hstring, wf::IInspectable>();
   input_mapping_ = winrt::single_threaded_map<winrt::hstring, winrt::hstring>();
   output_mapping_ = winrt::single_threaded_map<winrt::hstring, winrt::hstring>();
   attribute_values_ = winrt::single_threaded_map<winrt::hstring, wf::IInspectable>();
 
-  if (name_.empty()) {
+  SetName(L"");
+}
+
+winml_experimental::LearningModelOperator LearningModelOperator::SetName(hstring const& name) {
+  if (name.empty()) {
     std::wostringstream name_stream;
-    name_stream << type_.c_str() << "_" << c_operator_index;
+    name_stream << type_.c_str() << "_" << c_operator_index++;
     name_ = name_stream.str().c_str();
+  } else {
+    name_ = name;
   }
+  return *this;
 }
 
 winml_experimental::LearningModelOperator LearningModelOperator::SetInput(

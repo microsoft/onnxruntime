@@ -11,9 +11,10 @@ namespace WINML_EXPERIMENTALP {
 struct LearningModelOperator : LearningModelOperatorT<LearningModelOperator>
 {
     LearningModelOperator() = delete;
-    LearningModelOperator(hstring const& type, hstring const& name);
-    LearningModelOperator(hstring const& type, hstring const& name, hstring const& domain);
+    LearningModelOperator(hstring const& type);
+    LearningModelOperator(hstring const& type, hstring const& domain);
     
+    winml_experimental::LearningModelOperator SetName(hstring const& name);
     winml_experimental::LearningModelOperator SetInput(hstring const& operator_input_name, hstring const& input_name);
     winml_experimental::LearningModelOperator SetConstant(hstring const& operator_input_name, wf::IInspectable const& value);
     winml_experimental::LearningModelOperator SetOutput(hstring const& operator_output_name, hstring const& output_name);

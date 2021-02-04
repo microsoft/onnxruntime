@@ -41,9 +41,10 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
   runtimeclass LearningModelOperator {
-    LearningModelOperator(String type, String name);
-    LearningModelOperator(String type, String name, String domain);
+    LearningModelOperator(String type);
+    LearningModelOperator(String type, String domain);
 
+    LearningModelOperator SetName(String name);
     LearningModelOperator SetInput(String operator_input_name, String input_name);
     LearningModelOperator SetConstant(String operator_input_name, IInspectable default_value);
     LearningModelOperator SetOutput(String operator_output_name, String output_name);
@@ -94,6 +95,7 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     //! Creates a TensorFeatureDescriptor.. this should be a constructor on the TFD
     //TensorFeatureDescriptor(String name, String description, TensorKind kind, Int64[] shape);
     static ROOT_NS.AI.MachineLearning.TensorFeatureDescriptor CreateTensorFeatureDescriptor(String name, String description, ROOT_NS.AI.MachineLearning.TensorKind kind, Int64[] shape);
+    static ROOT_NS.AI.MachineLearning.TensorFeatureDescriptor CreateTensorFeatureDescriptor(String name, ROOT_NS.AI.MachineLearning.TensorKind kind, Int64[] shape);
 
     ROOT_NS.AI.MachineLearning.LearningModel CreateModel();
 

@@ -432,7 +432,7 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
   auto double_data_type = TensorInt64Bit::CreateFromArray({}, {11});
 
   auto window_operator =
-    Operator(window_operator_name, L"Window0", MS_EXPERIMENTAL_DOMAIN)
+    Operator(window_operator_name, MS_EXPERIMENTAL_DOMAIN)
       .SetInput(L"size", L"Input")
       .SetOutput(L"output", L"Output");
 
@@ -442,8 +442,8 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
     
   auto model = 
       LearningModelBuilder::Create(13)
-              .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Int64, scalar_shape))
-              .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", kind, output_shape))
+              .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", TensorKind::Int64, scalar_shape))
+              .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", kind, output_shape))
               .Operators().Add(window_operator)
               .CreateModel();
 
@@ -483,26 +483,26 @@ static void DiscreteFourierTransform(bool is_onesided = false) {
    
   auto model =
       LearningModelBuilder::Create(13)
-        .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
-        .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
-        .Operators().Add(Operator(L"DFT", L"DFT0", MS_EXPERIMENTAL_DOMAIN)
-          .SetInput(L"input", L"Input")
+        .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, shape))
+        .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
+        .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
+          .SetInput(L"input", L"Input.Signal")
           .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {is_onesided}))
-          .SetOutput(L"output", L"Output"))
+          .SetOutput(L"output", L"Output.Spectra"))
         .CreateModel();
   
   LearningModelSession session(model);
   LearningModelBinding binding(session);
 
   // Populate binding
-  binding.Bind(L"Input", TensorFloat::CreateFromArray(shape, {1, 2, 3, 4, 5}));
+  binding.Bind(L"Input.Signal", TensorFloat::CreateFromArray(shape, {1, 2, 3, 4, 5}));
 
   // Evaluate
   auto result = session.Evaluate(binding, L"");
 
   // Check results
-  printf("Output\n");
-  auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
+  printf("Output.Spectra\n");
+  auto y_tensor = result.Outputs().Lookup(L"Output.Spectra").as<TensorFloat>();
   auto y_ivv = y_tensor.GetAsVectorView();
   for (int i = 0; i < output_shape[0] * output_shape[1] * 2; i += 2) {
     printf("(%f + %fi), ", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
@@ -572,19 +572,13 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
   
   auto model =
       LearningModelBuilder::Create(13)
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-              L"Input.TimeSignal", L"The input time domain signal",
-              TensorKind::Float, input_shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-              L"Output.STFT", L"The output frequency domain spectra",
-              TensorKind::Float, output_shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-              L"Output.HannWindow", L"The HannWindow used",
-              TensorKind::Float, {INT64(dft_size)}))
-          .Operators().Add(Operator(L"HannWindow", L"HannWindow0", MS_EXPERIMENTAL_DOMAIN)
+          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, input_shape))
+          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.STFT", TensorKind::Float, output_shape))
+          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.HannWindow", TensorKind::Float, {INT64(dft_size)}))
+          .Operators().Add(Operator(L"HannWindow", MS_EXPERIMENTAL_DOMAIN)
               .SetConstant(L"size", dft_length)
               .SetOutput(L"output", L"Output.HannWindow"))
-          .Operators().Add(Operator(L"STFT", L"STFT0", MS_EXPERIMENTAL_DOMAIN)
+          .Operators().Add(Operator(L"STFT", MS_EXPERIMENTAL_DOMAIN)
               .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {INT64(is_onesided)}))
               .SetInput(L"signal", L"Input.TimeSignal")
               .SetInput(L"window", L"Output.HannWindow")
@@ -640,8 +634,8 @@ static void ModelBuilding_MelWeightMatrix() {
   std::vector<int64_t> output_shape = {INT64(9), INT64(8)};
   auto builder =
     LearningModelBuilder::Create(13)
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelWeightMatrix", L"", TensorKind::Float, output_shape))
-      .Operators().Add(Operator(L"MelWeightMatrix", L"MelWeightMatrix0", MS_EXPERIMENTAL_DOMAIN)
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelWeightMatrix", TensorKind::Float, output_shape))
+      .Operators().Add(Operator(L"MelWeightMatrix", MS_EXPERIMENTAL_DOMAIN)
         .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
         .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(16)}))
         .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(8192)}))
@@ -680,42 +674,43 @@ static void MelSpectrogramOnThreeToneSignal(
 
   auto builder =
     LearningModelBuilder::Create(13)
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", L"The input time domain signal", TensorKind::Float, signal_shape))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", L"The output spectrogram", TensorKind::Float, mel_spectrogram_shape))
-      .Operators().Add(Operator(L"HannWindow", L"HannWindow0", MS_EXPERIMENTAL_DOMAIN)
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, signal_shape))
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", TensorKind::Float, mel_spectrogram_shape))
+      .Operators().Add(Operator(L"HannWindow", MS_EXPERIMENTAL_DOMAIN)
         .SetConstant(L"size", TensorInt64Bit::CreateFromArray({}, {INT64(window_size)}))
         .SetOutput(L"output", L"hann_window"))
-      .Operators().Add(Operator(L"STFT", L"STFT0", MS_EXPERIMENTAL_DOMAIN)
+      .Operators().Add(Operator(L"STFT", MS_EXPERIMENTAL_DOMAIN)
+        .SetName(L"STFT_NAMED_NODE")
         .SetInput(L"signal", L"Input.TimeSignal")
         .SetInput(L"window", L"hann_window")
         .SetConstant(L"frame_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
         .SetConstant(L"frame_step", TensorInt64Bit::CreateFromArray({}, {INT64(hop_size)}))
         .SetOutput(L"output", L"stft_output"))
-      .Operators().Add(Operator(L"ReduceSumSquare", L"ReduceSumSquare0")
+      .Operators().Add(Operator(L"ReduceSumSquare")
         .SetInput(L"data", L"stft_output")
         .SetAttribute(L"axes", TensorInt64Bit::CreateFromArray({1}, {3}))
         .SetAttribute(L"keepdims", TensorInt64Bit::CreateFromArray({}, {0}))
         .SetOutput(L"reduced", L"magnitude_squared"))
-      .Operators().Add(Operator(L"Div", L"Div0")
+      .Operators().Add(Operator(L"Div")
         .SetInput(L"A", L"magnitude_squared")
         .SetConstant(L"B", TensorFloat::CreateFromArray({}, {static_cast<float>(dft_size)}))
         .SetOutput(L"C", L"power_frames"))
-      .Operators().Add(Operator(L"MelWeightMatrix", L"MelWeightMatrix0", MS_EXPERIMENTAL_DOMAIN)
+      .Operators().Add(Operator(L"MelWeightMatrix", MS_EXPERIMENTAL_DOMAIN)
         .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(n_mel_bins)}))
         .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
         .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(sampling_rate)}))
         .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
         .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {sampling_rate / 2.f}))
         .SetOutput(L"output", L"mel_weight_matrix"))
-      .Operators().Add(Operator(L"Reshape", L"Reshape0")
+      .Operators().Add(Operator(L"Reshape")
         .SetInput(L"data", L"power_frames")
         .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({2}, {INT64(batch_size * n_dfts), INT64(onesided_dft_size)}))
         .SetOutput(L"reshaped", L"reshaped_output"))
-      .Operators().Add(Operator(L"MatMul", L"MatMul0")
+      .Operators().Add(Operator(L"MatMul")
         .SetInput(L"A", L"reshaped_output")
         .SetInput(L"B", L"mel_weight_matrix")
         .SetOutput(L"Y", L"mel_spectrogram"))
-      .Operators().Add(Operator(L"Reshape", L"Reshape1")
+      .Operators().Add(Operator(L"Reshape")
         .SetInput(L"data", L"mel_spectrogram")
         .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, mel_spectrogram_shape))
         .SetOutput(L"reshaped", L"Output.MelSpectrogram"));
@@ -770,19 +765,19 @@ static void ModelBuilding_StandardDeviationNormalization() {
   std::vector<int64_t> output_shape = {1, channels, height, width};  
   LearningModelBuilder::Create(13)
     .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
-    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", L"The mean.", TensorKind::Float, {channels}))
-    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"StdDevs", L"The stddev.", TensorKind::Float, {channels}))
+    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", TensorKind::Float, {channels}))
+    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"StdDevs", TensorKind::Float, {channels}))
     .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, output_shape))
-    .Operators().Add(Operator(L"Sub", L"Sub0")
+    .Operators().Add(Operator(L"Sub")
                        .SetInput(L"A", L"Input")
                        .SetInput(L"B", L"Means")
-                       .SetOutput(L"C", L"Sub0Output"))
-    .Operators().Add(Operator(L"Div", L"Div0")
-                       .SetInput(L"A", L"Sub0Output")
+                       .SetOutput(L"C", L"SubOutput"))
+    .Operators().Add(Operator(L"Div")
+                       .SetInput(L"A", L"SubOutput")
                        .SetInput(L"B", L"StdDevs")
-                       .SetOutput(L"C", L"Div0Output"))
-    .Operators().Add(Operator(L"Transpose", L"Transpose1")
-                       .SetInput(L"data", L"Div0Output")
+                       .SetOutput(L"C", L"DivOutput"))
+    .Operators().Add(Operator(L"Transpose")
+                       .SetInput(L"data", L"DivOutput")
                        .SetAttribute(L"perm", TensorInt64Bit::CreateFromArray({4}, {0,3,1,2}))
                        .SetOutput(L"transposed", L"Output"))
     .Save(L"StandardDeviationNormalization.onnx");
@@ -801,15 +796,15 @@ static void ModelBuilding_Gemm() {
   };
   auto model =
     LearningModelBuilder::Create(13)
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"input_a", L"the a input", TensorKind::Float, shape))
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"input_b", L"the b input", TensorKind::Float, shape))
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"input_c", L"the c input", TensorKind::Float, shape))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"output_y", L"the y output", TensorKind::Float, shape))
-      .Operators().Add(Operator(L"Gemm", L"Gemm0")
-        .SetInput(L"A", L"intput_a")
-        .SetInput(L"B", L"intput_b")
-        .SetInput(L"C", L"intput_c")
-        .SetOutput(L"Y", L"output_y"))
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", TensorKind::Float, shape))
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputB", TensorKind::Float, shape))
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputC", TensorKind::Float, shape))
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"OutputY", TensorKind::Float, shape))
+      .Operators().Add(Operator(L"Gemm")
+        .SetInput(L"A", L"InputA")
+        .SetInput(L"B", L"InputB")
+        .SetInput(L"C", L"InputC")
+        .SetOutput(L"Y", L"OutputY"))
       .CreateModel();
 #endif
 }
@@ -821,10 +816,10 @@ static void ModelBuilding_DynamicMatmul() {
 
   auto model =
       LearningModelBuilder::Create(13)
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", L"The input1 matrix", TensorKind::Float, a_shape))
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputB", L"The input2 matrix", TensorKind::Float, b_shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, {a_shape[0], b_shape[1]}))
-          .Operators().Add(Operator(L"MatMul", L"MatMul0")
+          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", TensorKind::Float, a_shape))
+          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputB", TensorKind::Float, b_shape))
+          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", TensorKind::Float, {a_shape[0], b_shape[1]}))
+          .Operators().Add(Operator(L"MatMul")
                         .SetInput(L"A", L"InputA")
                         .SetInput(L"B", L"InputB")
                         .SetOutput(L"Y", L"Output"))
@@ -859,9 +854,9 @@ static void ModelBuilding_ConstantMatmul() {
 
   auto model =
     LearningModelBuilder::Create(13)
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", L"The input1 matrix", TensorKind::Float, a_shape))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output matrix", TensorKind::Float, {a_shape[0], b_shape[1]}))
-      .Operators().Add(Operator(L"MatMul", L"MatMul0")
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", TensorKind::Float, a_shape))
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", TensorKind::Float, {a_shape[0], b_shape[1]}))
+      .Operators().Add(Operator(L"MatMul")
         .SetInput(L"A", L"InputA")
         .SetConstant(L"B", TensorFloat::CreateFromArray(b_shape, std::vector<float>(SIZET(b_shape[0] * b_shape[1]), 1)))
         .SetOutput(L"Y", L"Output"))
@@ -897,28 +892,28 @@ static void ModelBuilding_DiscreteFourierTransformInverseIdentity() {
 
   auto model =
       LearningModelBuilder::Create(13)
-          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The input time domain signal", TensorKind::Float, shape))
-          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The output frequency domain spectra", TensorKind::Float, output_shape))
-          .Operators().Add(Operator(L"DFT", L"DFT0", MS_EXPERIMENTAL_DOMAIN)
-                             .SetInput(L"input", L"Input")
-                             .SetOutput(L"output", L"dft0_output"))
-          .Operators().Add(Operator(L"IDFT", L"IDFT0", MS_EXPERIMENTAL_DOMAIN)
-                             .SetInput(L"input", L"dft0_output")
-                             .SetOutput(L"output", L"Output"))
+          .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, shape))
+          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
+          .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
+                             .SetInput(L"input", L"Input.TimeSignal")
+                             .SetOutput(L"output", L"DFTOutput"))
+          .Operators().Add(Operator(L"IDFT", MS_EXPERIMENTAL_DOMAIN)
+                             .SetInput(L"input", L"DFTOutput")
+                             .SetOutput(L"output", L"Output.Spectra"))
           .CreateModel();
 
   LearningModelSession session(model);
   LearningModelBinding binding(session);
 
   // Populate binding
-  binding.Bind(L"Input", TensorFloat::CreateFromArray(shape, {1, 2, 3, 4, 5}));
+  binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromArray(shape, {1, 2, 3, 4, 5}));
 
   // Evaluate
   auto result = session.Evaluate(binding, L"");
 
   // Check results
-  printf("Output\n");
-  auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
+  printf("Output.Spectra\n");
+  auto y_tensor = result.Outputs().Lookup(L"Output.Spectra").as<TensorFloat>();
   auto y_ivv = y_tensor.GetAsVectorView();
   for (int i = 0; i < output_shape[0] * output_shape[1] * 2; i += 2) {
     printf("(%f + %fi), ", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
