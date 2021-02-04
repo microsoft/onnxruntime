@@ -37,6 +37,7 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
+#include <list>
 
 // ORT thread pool overview
 // ------------------------
