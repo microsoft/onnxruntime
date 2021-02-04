@@ -29,7 +29,8 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
                           const std::string& op,
                           optional<float> epsilon,
                           int64_t axis = -1,
-                          int64_t keep_dims = 1) {
+                          int64_t keep_dims = 1,
+                          int64_t no_bias = 0) {
   const std::vector<int64_t>& n_x_m_dims = x_dims;
   std::vector<int64_t> n_dims, m_dims;
   ASSERT_TRUE(SplitDims(n_x_m_dims, axis, n_dims, m_dims).IsOK());
@@ -41,9 +42,10 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   ASSERT_NE(keep_dims, 0);
 
   const std::vector<int64_t>& stats_dims = keep_dims ? n_and_ones_dims : n_dims;
-  
+
   CompareOpTester test(op.c_str());
   test.AddAttribute("axis", axis);
+  test.AddAttribute("no_bias", no_bias);
   test.AddAttribute("keep_dims", keep_dims);
   if (epsilon.has_value()) {
     test.AddAttribute("epsilon", epsilon.value());
