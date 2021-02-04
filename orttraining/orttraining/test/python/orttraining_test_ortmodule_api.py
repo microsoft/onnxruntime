@@ -269,21 +269,21 @@ def test_model_to_device_and_back_to_original(original_device, to_device):
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == original_device
 
-@pytest.mark.skip(reason="TODO: ORTModule.to(device) is disabled for now")
-def test_model_with_different_devices_same_session():
-    N, D_in, H, D_out = 64, 784, 500, 10
-    model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
-    model = ORTModule(model)
+# @pytest.mark.skip(reason="TODO: ORTModule.to(device) is disabled for now")
+# def test_model_with_different_devices_same_session():
+#     N, D_in, H, D_out = 64, 784, 500, 10
+#     model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
+#     model = ORTModule(model)
 
-    for i in range(5):
-        if i % 2 == 0:
-            device = 'cpu'
-        else:
-            device = 'cuda'
+#     for i in range(5):
+#         if i % 2 == 0:
+#             device = 'cpu'
+#         else:
+#             device = 'cuda'
 
-        model.to(device)
-        x = torch.randn(N, D_in, device=device)
-        y = model(x)
+#         model.to(device)
+#         x = torch.randn(N, D_in, device=device)
+#         y = model(x)
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_input_requires_grad_saved(device):
@@ -306,17 +306,17 @@ def test_input_requires_grad_backward_creates_input_grad(device):
     s.backward()
     assert x.grad is not None
 
-@pytest.mark.parametrize("device", ['cuda', 'cpu'])
-@pytest.mark.skip(reason="ORTModule doesn't support multiple consecutive forward calls.")
-def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder(device):
-    N, D_in, H, D_out = 32, 784, 500, 10
-    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
-    model = ORTModule(model)
-    x = torch.randn(N, D_in, device=device, requires_grad=True)
-    model(x.data)
-    module_gradient_graph_builder = model._module_gradient_graph_builder
-    model(x)
-    assert module_gradient_graph_builder != model._module_gradient_graph_builder
+# @pytest.mark.parametrize("device", ['cuda', 'cpu'])
+# @pytest.mark.skip(reason="ORTModule doesn't support multiple consecutive forward calls.")
+# def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder(device):
+#     N, D_in, H, D_out = 32, 784, 500, 10
+#     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+#     model = ORTModule(model)
+#     x = torch.randn(N, D_in, device=device, requires_grad=True)
+#     model(x.data)
+#     module_gradient_graph_builder = model._module_gradient_graph_builder
+#     model(x)
+#     assert module_gradient_graph_builder != model._module_gradient_graph_builder
 
 def test_gpu_reserved_memory_with_torch_no_grad():
     device = 'cuda'
