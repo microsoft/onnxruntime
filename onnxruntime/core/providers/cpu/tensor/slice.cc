@@ -5,6 +5,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 #include <unordered_map>
 #include <limits>
 
@@ -15,7 +16,7 @@ namespace onnxruntime {
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets
 ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Slice, Input, 0, 
+    kCpuExecutionProvider, kOnnxDomain, Slice, Input, 0,
     ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
 
 ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
@@ -25,14 +26,14 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
 namespace {
 using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                         Slice, Input, 0);
-using EnabledIndiciesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                            Slice, Input, 1);
+using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                           Slice, Input, 1);
 
 const std::vector<MLDataType> dataTypeConstraints =
     BuildKernelDefConstraintsFunctorFromTypeList<EnabledDataTypes>{}();
 
 const std::vector<MLDataType> indicesTypeConstraints =
-    BuildKernelDefConstraintsFunctorFromTypeList<EnabledIndiciesTypes>{}();
+    BuildKernelDefConstraintsFunctorFromTypeList<EnabledIndicesTypes>{}();
 
 // std::clamp doesn't exist until C++17 so create a local version
 template <typename T>
@@ -264,8 +265,8 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
     input_steps.resize(size);
 
   // check for type reduction of supported indices types
-  constexpr bool int32_enabled = op_kernel_type_control::HasType<EnabledIndiciesTypes, int32_t>();
-  constexpr bool int64_enabled = op_kernel_type_control::HasType<EnabledIndiciesTypes, int64_t>();
+  constexpr bool int32_enabled = utils::HasType<EnabledIndicesTypes, int32_t>();
+  constexpr bool int64_enabled = utils::HasType<EnabledIndicesTypes, int64_t>();
 
   if (int32_enabled && start_tensor.IsDataType<int32_t>()) {
     std::copy(start_tensor.Data<int32_t>(), start_tensor.Data<int32_t>() + size, input_starts.begin());
@@ -350,7 +351,7 @@ static inline bool CallSliceImplIfEnabled(OpKernelContext* ctx,
                                           const Tensor& input_tensor,
                                           SliceOp::PrepareForComputeMetadata& compute_metadata,
                                           Status& status) {
-  constexpr bool enabled = op_kernel_type_control::HasTypeWithSameSize<EnabledTypes, T>();
+  constexpr bool enabled = utils::HasTypeWithSameSize<EnabledTypes, T>();
   if (enabled) {
     status = SliceImpl<T>(ctx, input_tensor, compute_metadata);
   }
@@ -375,8 +376,9 @@ Status SliceBase::Compute(OpKernelContext* ctx) const {
     std::vector<int64_t> input_ends;
     std::vector<int64_t> input_axes;
     std::vector<int64_t> input_steps;
-    FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
-                         ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
+    ORT_RETURN_IF_ERROR(FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2),
+                                             ctx->Input<Tensor>(3), ctx->Input<Tensor>(4),
+                                             input_starts, input_ends, input_axes, input_steps));
 
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
   }
@@ -389,7 +391,7 @@ Status SliceBase::Compute(OpKernelContext* ctx) const {
 
   bool supported = false;
   if (input_tensor.IsDataTypeString()) {
-    if (op_kernel_type_control::HasType<EnabledDataTypes, std::string>()) {
+    if (utils::HasType<EnabledDataTypes, std::string>()) {
       supported = true;
       status = SliceImpl<std::string>(ctx, input_tensor, compute_metadata);
     }

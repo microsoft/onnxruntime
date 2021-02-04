@@ -62,7 +62,8 @@ struct GlobalAllowed {};
 }  // namespace tags
 
 // optionally holds a list of types associated with a tag class
-// if types are defined, the type alias member called 'types' should contain them in a boost mp11 list
+// if types are defined, the type alias member called 'types' should contain them in a type list
+// (e.g. using something like std::tuple or a boost::mp11::mp_list)
 // otherwise, if no types are defined (distinct from an empty list of types), there should be no 'types' type alias
 // see the tags in onnxruntime::op_kernel_type_control::tags for intended uses
 template <typename Tag>
@@ -105,7 +106,7 @@ struct EnabledTypes {
       boost::mp11::mp_push_front<AllowedTypesMembers, GetTypesMember<SupportedTypesHolder>>;
 
   static_assert(boost::mp11::mp_all_of<TypeListsToConsider, boost::mp11::mp_is_list>::value,
-                "All 'types' type aliases must be boost::mp11 lists.");
+                "All 'types' type aliases must be type lists.");
 
   // type lists converted to type sets
   using TypeSetsToConsider = boost::mp11::mp_transform<boost::mp11::mp_unique, TypeListsToConsider>;
@@ -113,33 +114,6 @@ struct EnabledTypes {
  public:
   using types = boost::mp11::mp_apply<boost::mp11::mp_set_intersection, TypeSetsToConsider>;
 };
-
-/**
-* Check if the set of types contains the specified type.
-*/
-template <typename TypeSet, typename T>
-constexpr bool HasType() {
-  static_assert(boost::mp11::mp_is_set<TypeSet>::value, "TypeSet must be a boost::mp11 set.");
-
-  return boost::mp11::mp_set_contains<TypeSet, T>::value;
-}
-
-template <typename T>
-using SizeOfT = boost::mp11::mp_size_t<sizeof(T)>;
-
-/**
-* Check if the set of types contains a type with the same size as T.
-* 
-* @remarks e.g. will return true if T is int32_t and the list contains any 4 byte type (i.e. sizeof(int32_t)) 
-*               such as int32_t, uint32_t or float.
-*/
-template <typename TypeSet, typename T>
-constexpr bool HasTypeWithSameSize() {
-  static_assert(boost::mp11::mp_is_set<TypeSet>::value, "TypeSet must be a boost::mp11 set.");
-
-  using EnabledTypeSizes = boost::mp11::mp_unique<boost::mp11::mp_transform<SizeOfT, TypeSet>>;
-  return boost::mp11::mp_contains<EnabledTypeSizes, SizeOfT<T>>::value;
-}
 
 }  // namespace op_kernel_type_control
 }  // namespace onnxruntime
@@ -165,16 +139,6 @@ constexpr bool HasTypeWithSameSize() {
       ArgIndex>
 
 // public macros
-
-/** Data types that are used in DataTypeImpl::AllTensorTypes()
-*/
-#define ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES \
-  bool,                                               \
-      float, double,                                  \
-      uint8_t, uint16_t, uint32_t, uint64_t,          \
-      int8_t, int16_t, int32_t, int64_t,              \
-      MLFloat16, BFloat16,                            \
-      std::string
 
 /**
  * Specifies a supported set of types for a given Op kernel argument.
@@ -268,44 +232,13 @@ constexpr bool HasTypeWithSameSize() {
                                       ArgDirection, ArgIndex)
 
 /**
- * std::tuple type with the enabled types for a given Op kernel argument.
- *
- * @param OpProvider The Op provider.
- * @param OpDomain The Op domain.
- * @param OpName The Op name.
- * @param OpSet The opset to use for the supported types list.
- * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
- * @param ArgIndex Index of the given Op kernel argument.
- */
-#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(                                              \
-    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)                           \
-  ::boost::mp11::mp_rename<                                                                \
-      ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(                                                 \
-          OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, SupportedTypeList), \
-      std::tuple>
-
-/**
- * std::tuple type with the enabled types for a given Op kernel argument that is valid for all opsets.
- *
- * @param OpProvider The Op provider.
- * @param OpDomain The Op domain.
- * @param OpName The Op name.
- * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
- * @param ArgIndex Index of the given Op kernel argument.
- */
-#define ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE_ALL_OPSETS(                                  \
-    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex)                                 \
-  ORT_OP_KERNEL_ARG_ENABLED_TYPE_TUPLE(OpProvider, OpDomain, OpName,                      \
-                                       ::onnxruntime::op_kernel_type_control::kAllOpSets, \
-                                       ArgDirection, ArgIndex)
-/**
  * Usage example:
  *
  * In MyProvider provider's implementation of MyOp kernel:
  *
  * // specify supported types, i.e., the full set of types that can be enabled
  * ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
- *     MyProvider, DomainContainingMyOp, MyOp, Input, 0,
+ *     MyProvider, DomainContainingMyOp, MyOp, OpSet, Input, 0,
  *     int, float, double);
  *
  * // get enabled types

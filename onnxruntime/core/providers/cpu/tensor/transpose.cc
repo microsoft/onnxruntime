@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cpu/tensor/transpose.h"
+
 #include "core/framework/utils.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 #include "utils.h"
 
 namespace onnxruntime {
@@ -170,7 +172,7 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 template <class T>
 static bool TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                     const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
-  constexpr bool enabled = op_kernel_type_control::HasTypeWithSameSize<EnabledDataTypes, T>();
+  constexpr bool enabled = utils::HasTypeWithSameSize<EnabledDataTypes, T>();
 
   if (enabled) {
     MultiIndex mindex;
@@ -274,7 +276,7 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
   Status status = Status::OK();
 
   if (is_string_type) {
-    constexpr bool string_enabled = op_kernel_type_control::HasType<EnabledDataTypes, std::string>();
+    constexpr bool string_enabled = utils::HasType<EnabledDataTypes, std::string>();
 
     if (string_enabled) {
       const auto* input_data = input.template Data<std::string>();
