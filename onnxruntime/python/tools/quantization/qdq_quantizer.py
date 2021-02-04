@@ -146,19 +146,26 @@ class QDQQuantizer(ONNXQuantizer):
             self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
             quant_value = self.quantized_value_map[bias_name]
             inputs = [quant_value.q_name, quant_value.scale_name, quant_value.zp_name]
-            dequant_node = onnx.helper.make_node("DequantizeLinear", inputs, [bias_name],
-                                                 bias_name + '_DequantizeLinear')
+            dequant_node = onnx.helper.make_node("DequantizeLinear",
+                                                 inputs, [bias_name],
+                                                 bias_name + '_DequantizeLinear',
+                                                 axis=0)
             self.model.add_node(dequant_node)
 
     def quantize_weights_per_channel(self):
+        if self.opset_version < 13 and len(self.tensors_to_quantize_per_channel) > 0:
+            raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
         for weight_name, axis in self.tensors_to_quantize_per_channel:
             #q_name, zp_name, scale_name = self.quantize_weight_per_channel(weight_name, self.weight_qType, axis)
-            q_name, zp_name, scale_name = self.quantize_weight_per_channel(weight_name, onnx_proto.TensorProto.INT8, axis)
+            q_name, zp_name, scale_name = self.quantize_weight_per_channel(weight_name, onnx_proto.TensorProto.INT8,
+                                                                           axis)
 
             inputs = [q_name, scale_name, zp_name]
             output_name = weight_name + "_DequantizeLinear"
-            node = onnx.helper.make_node("DequantizeLinear", inputs, [output_name],
-                                         weight_name + '_DequantizeLinear', axis = axis)
+            node = onnx.helper.make_node("DequantizeLinear",
+                                         inputs, [output_name],
+                                         weight_name + '_DequantizeLinear',
+                                         axis=axis)
             self.model.add_node(node)
 
             # Replace weight_name with output of DequantizeLinear
