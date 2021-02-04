@@ -260,37 +260,46 @@ class BertOnnxModel(OnnxModel):
 
     def optimize(self, options: BertOptimizationOptions = None, add_dynamic_axes=False):
         if (options is None) or options.enable_layer_norm:
+            print("fusing layer_norm")
             self.fuse_layer_norm()
 
         if (options is None) or options.enable_gelu:
+            print("fusing gelu")
             self.fuse_gelu()
 
+        print("preprocessing")
         self.preprocess()
-
+        print("fusing reshape")
         self.fuse_reshape()
 
         if (options is None) or options.enable_skip_layer_norm:
+            print("fusing skip_layer_norm")
             self.fuse_skip_layer_norm()
 
         if (options is None) or options.enable_attention:
             if options is not None:
                 self.attention_mask.set_mask_format(options.attention_mask_format)
+            print("fusing attention")
             self.fuse_attention()
 
         if (options is None) or options.enable_embed_layer_norm:
+            print("fusing embed_layer_norm")
             self.fuse_embed_layer()
 
         # Post-processing like removing extra reshape nodes.
+        print("post processing")
         self.postprocess()
 
         # Bias fusion is done after postprocess to avoid extra Reshape between bias and Gelu/FastGelu/SkipLayerNormalization
         if (options is None) or options.enable_bias_gelu:
             # Fuse Gelu and Add Bias before it.
+            print("fusing bias_gelu")
             self.fuse_bias_gelu(is_fastgelu=True)
             self.fuse_bias_gelu(is_fastgelu=False)
 
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
+            print("fusing add_bias_skip_layer_norm")
             self.fuse_add_bias_skip_layer_norm()
 
         if (options is not None and options.enable_gelu_approximation):

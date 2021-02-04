@@ -4,7 +4,7 @@
 #--------------------------------------------------------------------------
 from typing import Dict
 from logging import getLogger
-from onnx import helper
+from onnx import TensorProto, helper
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 
@@ -141,12 +141,13 @@ class FusionLayerNormalizationTF(Fusion):
             [(['Sub', 'Mul', 'Mul', 'Reciprocal', 'Sqrt', 'Add', 'ReduceMean', 'Mul', 'Sub', 'ReduceMean'],
             [   1,     1,   None,            0,      0,     0,         None,     0,    0,          None]),
             (['Sub', 'Mul', 'Mul', 'Reciprocal', 'Sqrt', 'Add', 'Cast', 'ReduceMean', 'Mul', 'Sub', 'ReduceMean'],
-            [   1,     1,   None,            0,      0,     0,     0,      None,        0,    0,          None])],
+            [   1,     1,   None,            0,      0,     0,     0,      None,        0,    0,          None]),
+            (['Neg', 'Mul', 'Mul', 'Reciprocal', 'Sqrt', 'Add', 'ReduceMean', 'Mul', 'Sub', 'ReduceMean'],
+            [   1,     0,   None,            0,      0,     0,         None,        0,    0,    None])],
             output_name_to_node) # yapf: disable
 
         if parent_nodes is None:
             return
-
         assert len(return_indice) == 3
         if not (return_indice[0] in [0, 1] and return_indice[1] in [0, 1] and return_indice[2] in [0, 1]):
             logger.debug("return indice is exepected in [0, 1], but got {return_indice}")
@@ -211,7 +212,15 @@ class FusionLayerNormalizationTF(Fusion):
         self.nodes_to_remove.extend(subgraph_nodes)
 
         weight_input = mul_node_1.input[1]
-        bias_input = sub_node_0.input[0]
+        #bias_input = sub_node_0.input[0]
+        import numpy as np
+        bias_val = np.zeros(768)
+        bias_tensor = helper.make_tensor(name="Bias_Weight_" + mul_node_1.name,
+                                           data_type=TensorProto.FLOAT,
+                                           dims=[768],
+                                           vals=bias_val.flatten().tolist())
+        self.model.add_initializer(bias_tensor)
+        bias_input = "Bias_Weight_" + mul_node_1.name
 
         #TODO: add epsilon attribute
         fused_node = helper.make_node('LayerNormalization',

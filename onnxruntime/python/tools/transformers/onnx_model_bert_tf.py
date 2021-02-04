@@ -76,10 +76,10 @@ class BertOnnxModelTF(BertOnnxModel):
                 self.add_node(unsqueeze_added_2)
 
         self.remove_nodes(nodes_to_remove)
-        if len(nodes_to_remove) > 0:
-            logger.info("Fused mask")
-        else:
-            self.fuse_mask_2()
+        #if len(nodes_to_remove) > 0:
+        #    logger.info("Fused mask")
+        #else:
+        #    self.fuse_mask_2()
 
     def fuse_mask_2(self):
         nodes_to_remove = []
@@ -354,7 +354,7 @@ class BertOnnxModelTF(BertOnnxModel):
 
         return True
 
-    def fuse_attention(self):
+    def fuse_attention_original(self):
         output_name_to_node = self.output_name_to_node()
 
         nodes_to_remove = []
@@ -450,6 +450,103 @@ class BertOnnxModelTF(BertOnnxModel):
                 attention_count += 1
 
                 nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
+                nodes_to_remove.extend(qk_nodes)
+                nodes_to_remove.extend(q_nodes)
+                nodes_to_remove.extend(k_nodes)
+                nodes_to_remove.extend(v_nodes)
+                nodes_to_remove.extend(mask_nodes)
+            else:
+                logger.debug("Root node not matched.")
+                continue
+        self.remove_nodes(nodes_to_remove)
+        self.update_graph()
+        logger.info(f"Fused Attention count:{attention_count}")
+
+    def fuse_attention(self):
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        attention_count = 0
+
+        skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
+        for normalize_node in skip_layer_norm_nodes:
+            parent = self.get_parent(normalize_node, 0)
+            if parent is None or parent.op_type not in ["SkipLayerNormalization", "LayerNormalization", "Add"]:
+                continue
+
+            qkv_nodes = self.match_parent_path(normalize_node, ['Einsum', 'Einsum'], [1, 0])
+            if qkv_nodes is None:
+                continue
+            einsum_after_attn = qkv_nodes[0]
+            einsum_qkv = qkv_nodes[1]
+
+            v_nodes = self.match_parent_path(einsum_qkv, ['Einsum'], [1])
+            if v_nodes is None:
+                continue
+            einsum_v = v_nodes[0]
+
+            qk_nodes = self.match_parent_path(einsum_qkv, ['Softmax', 'Add', "Mul", 'Einsum'], [0, 0, 0, 0])
+            if qk_nodes is None:
+                continue
+            (softmax_qk, add_qk, mul_qk, einsum_qk) = qk_nodes
+            q_nodes = self.match_parent_path(einsum_qk, ['Einsum'], [1])
+
+            if q_nodes is None:
+                continue
+            einsum_q = q_nodes[0]
+
+            k_nodes = self.match_parent_path(einsum_qk, ['Einsum'], [0])
+            if k_nodes is None:
+                continue
+            einsum_k = k_nodes[0]
+
+            mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Unsqueeze'], [1, 0, 1])
+            if mask_nodes is None:
+                continue
+
+            if not self.has_constant_input(mask_nodes[1], 1):
+                logger.debug("Sub node expected to have an input with constant value 1.0.")
+                continue
+
+            is_same_root = self.check_attention_input(einsum_q, einsum_k, einsum_v, parent, output_name_to_node)
+            if is_same_root:
+                # Add a cast between Mul and unsqueeze
+                unsqueeze_node = mask_nodes[-1]
+                if self.match_parent_path(unsqueeze_node, ['Cast'], [0]) is None:
+                    cast_output_name = "mask_output_" + unsqueeze_node.input[0]
+                    cast_node = helper.make_node("Cast", [unsqueeze_node.input[0]], [cast_output_name], "mask_to_int_" + unsqueeze_node.input[0], to=6) #int64
+                    self.add_node(cast_node)
+                    unsqueeze_node.input[0] = cast_output_name
+
+                mask_index = mask_nodes[-1].input[0]
+
+                logger.debug("Create an Attention node.")
+                attention_node = self.attention_fusion.create_attention_node_einsum(mask_index, einsum_q, einsum_k, einsum_v,
+                                                                                    parent.output[0],
+                                                                                    einsum_qkv.output[0])
+
+                if attention_node is None:
+                    continue
+
+                weight = self.get_initializer(einsum_after_attn.input[1])
+                w = numpy_helper.to_array(weight)
+                w = w.reshape(self.hidden_size, self.hidden_size)
+                weight_tensor = helper.make_tensor(name="MatMul_Weight_" + einsum_after_attn.name,
+                                                   data_type=TensorProto.FLOAT,
+                                                   dims=[self.hidden_size, self.hidden_size],
+                                                   vals=w.flatten().tolist())
+                self.add_initializer(weight_tensor)
+                matmul_output_name = "MatMul_Output_" + einsum_after_attn.name
+                matmul_node = helper.make_node('MatMul',
+                                                inputs=[einsum_qkv.output[0], "MatMul_Weight_" + einsum_after_attn.name],
+                                                outputs=[matmul_output_name],
+                                                name="MatMul_" + einsum_after_attn.name)
+                normalize_node.input[1] = matmul_output_name
+                self.add_node(attention_node)
+                self.add_node(matmul_node)
+                attention_count += 1
+
+                nodes_to_remove.extend(qkv_nodes)
                 nodes_to_remove.extend(qk_nodes)
                 nodes_to_remove.extend(q_nodes)
                 nodes_to_remove.extend(k_nodes)

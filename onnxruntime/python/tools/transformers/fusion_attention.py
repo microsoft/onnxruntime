@@ -158,6 +158,63 @@ class FusionAttention(Fusion):
 
         return attention_node
 
+    def create_attention_node_einsum(self, mask_index, q_matmul, k_matmul, v_matmul, input, output):
+        q_weight = self.model.get_initializer(q_matmul.input[1])
+        k_weight = self.model.get_initializer(k_matmul.input[1])
+        v_weight = self.model.get_initializer(v_matmul.input[1])
+
+        if q_weight is None:
+            print(f"{q_matmul.input[1]} is not initializer. Please set do_constant_folding=True in torch.onnx.export")
+            return None
+        if not (k_weight and v_weight):
+            return None
+
+        qw = numpy_helper.to_array(q_weight)
+        assert qw.size == self.hidden_size * self.hidden_size
+        qw = qw.reshape((self.hidden_size, self.hidden_size))
+
+        kw = numpy_helper.to_array(k_weight)
+        assert kw.size == self.hidden_size * self.hidden_size
+        kw = kw.reshape((self.hidden_size, self.hidden_size))
+
+        vw = numpy_helper.to_array(v_weight)
+        assert vw.size == self.hidden_size * self.hidden_size
+        vw = vw.reshape((self.hidden_size, self.hidden_size))
+
+        qkv_weight = np.stack((qw, kw, vw), axis=-2)
+
+        qkv_bias = np.zeros((3, self.hidden_size), dtype=float)
+
+        attention_node_name = self.model.create_node_name('Attention')
+
+        weight = helper.make_tensor(name=attention_node_name + '_qkv_weight',
+                                    data_type=TensorProto.FLOAT,
+                                    dims=[self.hidden_size, 3 * self.hidden_size],
+                                    vals=qkv_weight.flatten().tolist())
+        # Sometimes weights and bias are stored in fp16
+        if q_weight.data_type == 10:
+            weight.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(weight).astype(np.float16), weight.name))
+        self.model.add_initializer(weight)
+
+        bias = helper.make_tensor(name=attention_node_name + '_qkv_bias',
+                                  data_type=TensorProto.FLOAT,
+                                  dims=[3 * self.hidden_size],
+                                  vals=qkv_bias.flatten().tolist())
+        self.model.add_initializer(bias)
+
+        attention_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
+        if mask_index is not None:
+            attention_inputs.append(mask_index)
+
+        attention_node = helper.make_node('Attention',
+                                          inputs=attention_inputs,
+                                          outputs=[output],
+                                          name=attention_node_name)
+        attention_node.domain = "com.microsoft"
+        attention_node.attribute.extend([helper.make_attribute("num_heads", self.num_heads)])
+
+        return attention_node
+
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
         # Sometimes we can not fuse skiplayernormalization since the add before layernorm has an output that used by nodes outside skiplayernorm
         # Conceptually we treat add before layernorm as skiplayernorm node since they share the same pattern
