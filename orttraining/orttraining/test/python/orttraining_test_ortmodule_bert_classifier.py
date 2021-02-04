@@ -208,25 +208,27 @@ def test(model, validation_dataloader, device, args):
 
 def load_dataset(args):
     # 2. Loading CoLA Dataset
-    print('Downloading dataset...')
 
-    # Download the file (if we haven't already)
-    url = 'https://nyu-mll.github.io/CoLA/cola_public_1.1.zip'
-    if not os.path.exists('./cola_public_1.1.zip'):
-        wget.download(url, './cola_public_1.1.zip')
-    else:
-        print('Reusing cached dataset')
+    def _download_dataset(download_dir):
+        if not os.path.exists(download_dir):
+            # Download the file (if we haven't already)
+            print('Downloading dataset...')
+            url = 'https://nyu-mll.github.io/CoLA/cola_public_1.1.zip'
+            wget.download(url, './cola_public_1.1.zip')
+        else:
+            print('Reusing cached dataset')
 
-    # Unzip it
-    if not os.path.exists('./cola_public'):
-        print('Extracting cached dataset')
+    if not os.path.exists(args.data_dir):
+        _download_dataset('./cola_public_1.1.zip')
+        # Unzip it
+        print('Extracting dataset')
         with zipfile.ZipFile('./cola_public_1.1.zip', 'r') as zip_ref:
             zip_ref.extractall('./')
     else:
         print('Reusing extracted dataset')
 
     # Load the dataset into a pandas dataframe.
-    df = pd.read_csv("./cola_public/raw/in_domain_train.tsv", delimiter='\t', header=None, names=['sentence_source', 'label', 'label_notes', 'sentence'])
+    df = pd.read_csv(os.path.join(args.data_dir, "in_domain_train.tsv"), delimiter='\t', header=None, names=['sentence_source', 'label', 'label_notes', 'sentence'])
 
     # Get the lists of sentences and their labels.
     sentences = df.sentence.values
@@ -349,6 +351,8 @@ def main():
                         help='Log level (default: WARNING)')
     parser.add_argument('--num-hidden-layers', type=int, default=1, metavar='H',
                         help='Number of hidden layers for the BERT model. A vanila BERT has 12 hidden layers (default: 1)')
+    parser.add_argument('--data_dir', type=str, default='./cola_public/raw',
+                        help='Path to the bert data directory')
 
     args = parser.parse_args()
 
