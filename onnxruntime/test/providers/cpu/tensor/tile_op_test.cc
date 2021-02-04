@@ -56,11 +56,11 @@ void RunTestWrapper() {
   RunTest<T>({111, 112, 113}, {1, 1, 3}, {3, 1, 1}, {3}, {111, 112, 113, 111, 112, 113, 111, 112, 113}, {3, 1, 3});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat == 1)
-  // This will trigger the MemCpy optimization path
+  // This will trigger the (Batched) MemCpy optimization path
   RunTest<T>({111, 112, 113, 11, 12, 13}, {2, 1, 3}, {1, 2, 1}, {3}, {111, 112, 113, 111, 112, 113, 11, 12, 13, 11, 12, 13}, {2, 2, 3});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat > 1)
-  // This will trigger the MemCpy optimization path
+  // This will trigger the (Batched) MemCpy optimization path
   RunTest<T>({111, 112, 113, 11, 12, 13}, {2, 1, 3}, {2, 2, 1}, {3},
              {111, 112, 113, 111, 112, 113, 11, 12, 13, 11, 12, 13, 111, 112, 113, 111, 112, 113, 11, 12, 13, 11, 12, 13}, {4, 2, 3});
 }
@@ -97,12 +97,12 @@ void RunTestWrapper<bool>() {
   RunTest<bool>({true, false, true}, {1, 1, 3}, {3, 1, 1}, {3}, {true, false, true, true, false, true, true, false, true}, {3, 1, 3});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat == 1)
-  // This will trigger the MemCpy optimization path
+  // This will trigger the (Batched) MemCpy optimization path
   RunTest<bool>({true, false, true, true, false, true}, {2, 1, 3}, {1, 2, 1}, {3},
                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat > 1)
-  // This will trigger the MemCpy optimization path
+  // This will trigger the (Batched) MemCpy optimization path
   RunTest<bool>({true, false, true, true, false, true}, {2, 1, 3}, {2, 2, 1}, {3},
                 {true, false, true, true, false, true, true, false, true, true, false, true, true, false, true, true, false, true, true, false, true, true, false, true},
                 {4, 2, 3});
