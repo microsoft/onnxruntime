@@ -47,7 +47,7 @@ struct static_cast_int64 {
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
-#if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+#if defined OPENVINO_2020_3
   ORT_UNUSED_PARAMETER(const_outputs_map);
 #endif
 
@@ -142,7 +142,7 @@ void SetIODefs(const Provider_ModelProto& model_proto,
   // Configure input & output
   // Prepare input blobs
 
-#if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+#if defined OPENVINO_2020_3
   ORT_UNUSED_PARAMETER(const_outputs_map);
 #endif
   auto inputInfo = network->getInputsInfo();
@@ -293,7 +293,7 @@ void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t request_id, siz
   auto input_data = minputHolder.as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
   size_t input_data_size = inputBlob->byteSize();
 
-#if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+#if defined OPENVINO_2020_3
   ORT_UNUSED_PARAMETER(input_name);
   const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context.input_indexes[request_id]);
 #else

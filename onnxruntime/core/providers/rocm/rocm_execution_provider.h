@@ -18,8 +18,6 @@
 
 namespace onnxruntime {
 
-const int CPU_ALLOCATOR_DEVICE_ID = 0;
-
 // Logical device representation.
 class ROCMExecutionProvider : public IExecutionProvider {
  public:

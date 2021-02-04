@@ -794,7 +794,9 @@ void OpTester::Run(
         kAclExecutionProvider,
         kArmNNExecutionProvider,
         kNnapiExecutionProvider,
-        kRocmExecutionProvider};
+        kRocmExecutionProvider,
+        kCoreMLExecutionProvider,
+    };
 
     bool has_run = false;
 
@@ -861,6 +863,8 @@ void OpTester::Run(
           execution_provider = DefaultArmNNExecutionProvider();
         else if (provider_type == onnxruntime::kRocmExecutionProvider)
           execution_provider = DefaultRocmExecutionProvider();
+        else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
+          execution_provider = DefaultCoreMLExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -877,7 +881,8 @@ void OpTester::Run(
           if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider ||
-              provider_type == onnxruntime::kNnapiExecutionProvider)
+              provider_type == onnxruntime::kNnapiExecutionProvider ||
+              provider_type == onnxruntime::kCoreMLExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {

@@ -62,8 +62,8 @@ void LaunchBiasGeluGradDxKernel(
   // each grid row handles bias_size elements
   // there are input_size / bias_size rows
   constexpr int num_elements_per_thread = GridDim::maxElementsPerThread;
-  const auto num_threads_per_block =
-      std::min(CeilDiv(bias_size, num_elements_per_thread), static_cast<int64_t>(GridDim::maxThreadsPerBlock));
+  const int num_threads_per_block =
+      std::min<int>(static_cast<int>(CeilDiv(bias_size, num_elements_per_thread)), static_cast<int>(GridDim::maxThreadsPerBlock));
   const auto grid_width = CeilDiv(bias_size, num_elements_per_thread * num_threads_per_block);
   const auto grid_height = input_size / bias_size;
 
@@ -86,6 +86,11 @@ SPECIALIZED_BIAS_GELU_GRAD_IMPL(double, gelu_computation_mode::Default);
 SPECIALIZED_BIAS_GELU_GRAD_IMPL(half, gelu_computation_mode::Approximation);
 SPECIALIZED_BIAS_GELU_GRAD_IMPL(float, gelu_computation_mode::Approximation);
 SPECIALIZED_BIAS_GELU_GRAD_IMPL(double, gelu_computation_mode::Approximation);
+
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_BIAS_GELU_GRAD_IMPL(nv_bfloat16, gelu_computation_mode::Default);
+SPECIALIZED_BIAS_GELU_GRAD_IMPL(nv_bfloat16, gelu_computation_mode::Approximation);
+#endif
 
 #undef SPECIALIZED_BIAS_GELU_GRAD_IMPL
 

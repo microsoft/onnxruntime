@@ -95,7 +95,11 @@ class DnnlPool : public DnnlKernel {
     std::vector<int64_t> y_dims = SetOutputSize(x_shape_, x_shape_[1], &pads_);
     primitive_dst_shape_ = TensorShape(y_dims);
 
+#ifndef ENABLE_TRAINING
     if (x_shape_.NumDimensions() <= 3) {
+#else
+    if (x_shape_.NumDimensions() < 3) {
+#endif // ENABLE_TRAINING
       primitive_created_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                                   "1D Pooling is not supported by DNNL.");
     }
@@ -122,8 +126,15 @@ class DnnlPool : public DnnlKernel {
         algo = dnnl::algorithm::pooling_avg_include_padding;
       }
     }
+
+#ifdef ENABLE_TRAINING
+    auto prop_kind = dnnl::prop_kind::forward;
+#else
+    auto prop_kind = dnnl::prop_kind::forward_inference;
+#endif  // ENABLE_TRAINING
+
     fwd_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::desc>(
-        dnnl::pooling_forward::desc(dnnl::prop_kind::forward_inference, algo,
+        dnnl::pooling_forward::desc(prop_kind, algo,
                                     *src_md_, *primitive_dst_md_,
                                     strides_mkl, kernel_mkl,
                                     padding_left_mkl, padding_right_mkl));
@@ -234,12 +245,21 @@ class DnnlPool : public DnnlKernel {
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), gpu_engine));
     }
+
+#ifdef ENABLE_TRAINING
+    workspace_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        dnnl::memory(fwd_primitive_desc_.get()->workspace_desc(), cpu_engine));
+#endif // ENABLE_TRAINING
+
     pool_fwd_ = onnxruntime::make_unique<dnnl::pooling_forward>(
         dnnl::pooling_forward(*fwd_primitive_desc_));
 
     if (!gpu_available_) {
       net.push_back(*pool_fwd_);
       net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
+#ifdef ENABLE_TRAINING
+                        {DNNL_ARG_WORKSPACE, *workspace_mem_},
+#endif // ENABLE_TRAINING
                           {DNNL_ARG_DST, *primitive_dst_mem_}});
     } else {  // gpu_available_
       net.push_back(*pool_fwd_);
@@ -289,7 +309,11 @@ class DnnlPool : public DnnlKernel {
       // Reorder if needed
       auto& y_dims = primitive_dst_shape_.GetDims();
       // Allocate memory for output bufffer
+#ifndef ENABLE_TRAINING
       OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
+#else
+      OrtValue* output = ort.KernelContext_GetOutput(context, 0, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
+#endif // ENABLE_TRAINING
       T* dst_data = ort.GetTensorMutableData<T>(output);
 
       if (!gpu_available_) {
@@ -304,6 +328,20 @@ class DnnlPool : public DnnlKernel {
     }
     return Status::OK();
   }
+
+  #ifdef ENABLE_TRAINING
+  std::shared_ptr<dnnl::pooling_forward::primitive_desc> GetPrimitiveDesc() {
+    return fwd_primitive_desc_;
+  }
+
+  std::shared_ptr<dnnl::memory> GetWorkspacePtr() {
+    return workspace_mem_;
+  }
+
+  TensorShape GetOutputShape() {
+    return x_shape_;
+  }
+  #endif // ENABLE_TRAINING
 
  private:
   void ReadAttributes(const NodeAttributes& attributes,
@@ -375,11 +413,19 @@ class DnnlPool : public DnnlKernel {
   size_t dst_size_;
 
   std::shared_ptr<dnnl::memory> src_mem_;
+  #ifdef ENABLE_TRAINING
+  std::shared_ptr<dnnl::memory> workspace_mem_;
+  #endif // ENABLE_TRAINING
   std::shared_ptr<dnnl::memory> src_mem_gpu_;
 
   std::unique_ptr<dnnl::pooling_forward::desc> fwd_desc_;
   std::unique_ptr<dnnl::memory::desc> src_md_;
+#ifndef ENABLE_TRAINING
   std::unique_ptr<dnnl::pooling_forward::primitive_desc> fwd_primitive_desc_;
+#else
+  std::unique_ptr<dnnl::memory::desc> workspace_md_;
+  std::shared_ptr<dnnl::pooling_forward::primitive_desc> fwd_primitive_desc_;
+#endif // ENABLE_TRAINING
   std::unique_ptr<dnnl::primitive> pool_fwd_;
 
   std::shared_ptr<dnnl::memory> src_mem_from_;
@@ -393,12 +439,30 @@ class DnnlPool : public DnnlKernel {
  private:
   dnnl::memory::format_tag GetAVXFormat(const dnnl::memory::dims& src_dims_mkl) {
     bool is_2D = src_dims_mkl.size() == 4 ? true : false;
+#ifdef ENABLE_TRAINING
+    bool is_1D = src_dims_mkl.size() == 3 ? true : false;
+#endif
     dnnl::memory::format_tag fmt = dnnl::memory::format_tag::any;
     if (!gpu_available_ && CPUIDInfo::GetCPUIDInfo().HasAVX512f()) {
+#ifdef ENABLE_TRAINING
+      if (is_1D)
+        fmt = dnnl::memory::format_tag::nCw16c;
+      else
+#endif
       fmt = is_2D ? dnnl::memory::format_tag::nChw16c : dnnl::memory::format_tag::nCdhw16c;
     } else if (!gpu_available_ && CPUIDInfo::GetCPUIDInfo().HasAVX2() && (src_dims_mkl[1] % 8 == 0)) {
+#ifdef ENABLE_TRAINING
+      if (is_1D)
+        fmt = dnnl::memory::format_tag::nCw8c;
+      else
+#endif
       fmt = is_2D ? dnnl::memory::format_tag::nChw8c : dnnl::memory::format_tag::ncdhw;
     } else {
+#ifdef ENABLE_TRAINING
+      if (is_1D)
+        fmt = dnnl::memory::format_tag::ncw;
+      else
+#endif
       fmt = is_2D ? dnnl::memory::format_tag::nchw : dnnl::memory::format_tag::ncdhw;
     }
     return fmt;

@@ -6,6 +6,8 @@
 
 #include <core/graph/graph.h>
 
+#include "core/providers/common.h"
+#include "core/providers/shared/utils/utils.h"
 #include "helper.h"
 #include "op_support_checker.h"
 
@@ -194,6 +196,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
           "Mul",
           "Div",
           "QLinearAdd",
+          "Pow",
       });
 }
 
@@ -203,13 +206,18 @@ int32_t BinaryOpSupportChecker::GetMinSupportedSdkVer(
   if (op == "Sub" || op == "Div") {
     return 28;
   }
+
+  if (op == "Pow") {
+    return 29;
+  }
+
   return 27;
 }
 
 int BinaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
   const auto& op(node.OpType());
 
-  // Add/Sub/Mul/Div opset 6- has broadcast attributes we do not support now
+  // Add/Sub/Mul/Div/Pow opset 6- has broadcast attributes we do not support now
   if (op != "QLinearAdd")
     return 7;
 
@@ -217,12 +225,37 @@ int BinaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
 }
 
 bool BinaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
-  if (node.OpType() != "QLinearAdd")
+  bool is_qlinear_add = node.OpType() == "QLinearAdd";
+  bool is_pow = node.OpType() == "Pow";
+  if (!is_qlinear_add && !is_pow)
     return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
-  // QLinearAdd
-  if (!HasValidBinaryOpQuantizedInputs(node))
-    return false;
+  if (is_qlinear_add) {
+    // QLinearAdd
+    if (!HasValidBinaryOpQuantizedInputs(node))
+      return false;
+  }
+
+  // Pow we only support both input as fp32 now
+  if (is_pow) {
+    const auto& input1 = *node.InputDefs()[0];
+    const auto& input2 = *node.InputDefs()[1];
+
+    int32_t input_type_1;
+    if (!GetType(input1, input_type_1))
+      return false;
+
+    int32_t input_type_2;
+    if (!GetType(input2, input_type_2))
+      return false;
+
+    if (input_type_1 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT || input_type_1 != input_type_2) {
+      LOGS_DEFAULT(VERBOSE) << "Pow only supports fp32 inputs, actual input type"
+                            << ", Input type 1: " << input_type_1
+                            << ", Input type 2: " << input_type_2;
+      return false;
+    }
+  }
 
   return true;
 }
@@ -288,6 +321,8 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
     return 28;
   }
+
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
@@ -300,6 +335,22 @@ bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /*
   if (input_size > 4 || input_size == 0) {
     LOGS_DEFAULT(VERBOSE) << "Transpose only supports 1-4d shape, input is "
                           << input_size << "d shape";
+    return false;
+  }
+
+  return true;
+}
+
+bool TransposeOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
     return false;
   }
 
@@ -432,6 +483,8 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& params) const override {
     return params.use_nchw ? 29 : 28;
   }
+
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 /* static */ void PoolOpSupportChecker::CreateSharedOpSupportChecker(
@@ -498,6 +551,25 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* init
     }
   } else if (op_type != "GlobalAveragePool" && op_type != "GlobalMaxPool") {
     LOGS_DEFAULT(VERBOSE) << "PoolOpBuilder, unknown op: " << op_type;
+    return false;
+  }
+
+  return true;
+}
+
+bool PoolOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  if (node.OpType() != "MaxPool")
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
+
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
     return false;
   }
 
@@ -884,11 +956,17 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
       const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
  private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const OpSupportCheckParams& params) const override;
+
   int32_t GetMinSupportedSdkVer(const Node& node, const OpSupportCheckParams& params) const override;
 
-  // All ops except "Sin" opset 5- uses consumed_inputs attribute which is not supported for now
-  // "Sin" op has support from opset 7, return 6 here for all ops
-  int GetMinSupportedOpSet(const Node& /* node */) const override { return 6; }
+  bool HasSupportedInputsImpl(const Node& node) const override;
+
+  int GetMinSupportedOpSet(const Node& node) const override;
+
+  static bool IsQuantizedOpSupported(const InitializedTensorSet& initializers, const Node& node,
+                                     const OpSupportCheckParams& params);
 };
 
 /* static */ void UnaryOpSupportChecker::CreateSharedOpSupportChecker(
@@ -905,7 +983,16 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
           "Sin",
           "Sqrt",
           "Tanh",
+          "QLinearSigmoid",
       });
+}
+
+bool UnaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                                              const OpSupportCheckParams& params) const {
+  if (node.OpType() == "QLinearSigmoid")
+    return IsQuantizedOpSupported(initializers, node, params);
+  else  // Everything except "QLinearSigmoid" are by default supported
+    return true;
 }
 
 int32_t UnaryOpSupportChecker::GetMinSupportedSdkVer(
@@ -923,6 +1010,86 @@ int32_t UnaryOpSupportChecker::GetMinSupportedSdkVer(
   return 27;
 }
 
+bool UnaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  // We only need to override input check for QLinearSigmoid
+  if (node.OpType() != "QLinearSigmoid")
+    return BaseOpSupportChecker::HasSupportedInputsImpl(node);
+
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
+
+// All ops except "Sin" opset 5- uses consumed_inputs attribute which is not supported for now
+// "Sin" op has support from opset 7, return 6 here for all ops
+// "QLinearSigmoid" is a contrib op, OpSet will always be 1
+int UnaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
+  if (node.OpType() == "QLinearSigmoid")
+    return 1;
+
+  return 6;
+}
+
+/* static */ bool UnaryOpSupportChecker::IsQuantizedOpSupported(
+    const InitializedTensorSet& initializers, const Node& node, const OpSupportCheckParams& params) {
+  const auto& op_type = node.OpType();
+  ORT_ENFORCE(op_type == "QLinearSigmoid");
+
+  const auto& op_name = node.Name();
+  const auto input_defs(node.InputDefs());
+  // const auto output_defs(node.OutputDefs());
+
+  if (input_defs.size() < 4)
+    return false;
+
+  bool has_output_zp = input_defs.size() == 5;
+
+  if (!HasValidQuantizationScales(initializers, node, {1, 3}, params))
+    return false;
+
+  if (!HasValidQuantizationZeroPoints(initializers, node,
+                                      has_output_zp
+                                          ? std::vector<size_t>{2}
+                                          : std::vector<size_t>{2, 4}))
+    return false;
+
+  // NNAPI requires the scale be 1.f/256 and zero point to be 0
+  // See https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/android10-c2f2-release/nn/common/operations/Activation.cpp#180
+  auto output_scale = GetQuantizationScale(initializers, node, 3);
+  if (output_scale != 1.f / 256) {
+    LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
+                          << "] output scale can only be 1.f/256, actual scale: " << output_scale;
+    return false;
+  }
+
+  int32_t output_zp;
+  if (has_output_zp) {
+    auto status = GetQuantizationZeroPoint(initializers, node, 4, output_zp);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                          << "] GetQuantizationZeroPoint failed, message: " << status.ErrorMessage();
+      return false;
+    }
+
+    if (output_zp != 0) {
+      LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
+                            << "] output zero point can only be 0, actual zero point: " << output_scale;
+      return false;
+    }
+  }
+
+  return true;
+}
+
 #pragma endregion
 
 #pragma region op_concat
@@ -931,6 +1098,8 @@ class ConcatOpSupportChecker : public BaseOpSupportChecker {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
+
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
@@ -943,6 +1112,22 @@ bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* in
   if (input_size > 4 || input_size == 0) {
     LOGS_DEFAULT(VERBOSE) << "Concat only supports up to 1-4d shape, input is "
                           << input_size << "d shape";
+    return false;
+  }
+
+  return true;
+}
+
+bool ConcatOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
     return false;
   }
 
@@ -998,7 +1183,7 @@ class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
-    return 27;
+    return 29;
   }
 };
 
@@ -1039,7 +1224,7 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
-    return 29;
+    return 27;
   }
   bool HasSupportedInputsImpl(const Node& node) const override;
 };
@@ -1139,13 +1324,13 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
-    return 28;
-  }
+  int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing
   // We only support Resize opset 11+ here
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 11; }
+
+  bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
 bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
@@ -1258,6 +1443,35 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
   return true;
 }
 
+int32_t ResizeOpSupportChecker::GetMinSupportedSdkVer(const Node& node, const OpSupportCheckParams& /* params */) const {
+  int32_t input_type;
+
+  // This should not happen, but if it happens make sure this will require an impossible version
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return std::numeric_limits<int32_t>::max();
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8)
+    return 29;
+
+  return 28;
+}
+
+bool ResizeOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
+
 #pragma endregion
 
 #pragma region op_flatten
@@ -1362,6 +1576,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Mul", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Div", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearAdd", BinaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Pow", BinaryOpSupportChecker);
   }
 
   // Relu is always supported, we use BaseOpSupportChecker as default
@@ -1405,6 +1620,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sin", UnaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sqrt", UnaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Tanh", UnaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearSigmoid", UnaryOpSupportChecker);
   }
 
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Concat", ConcatOpSupportChecker);

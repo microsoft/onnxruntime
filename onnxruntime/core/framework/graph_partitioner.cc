@@ -419,6 +419,10 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   std::vector<std::unique_ptr<ComputeCapability>> capabilities =
       current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(type));
 
+  if (capabilities.empty()) {
+    return Status::OK();
+  }
+
   // storage for the GraphViewer for each IndexedSubGraph
   std::vector<std::unique_ptr<GraphViewer>> viewers;
   viewers.reserve(capabilities.size());

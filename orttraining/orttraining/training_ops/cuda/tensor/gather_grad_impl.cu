@@ -1,5 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifdef _WIN32
+#pragma warning(disable : 4244)
+#endif
 
 #include "orttraining/training_ops/cuda/tensor/gather_grad_impl.h"
 
@@ -543,6 +546,9 @@ void GatherGradImpl(
 
 SPECIALIZED_WITH_IDX(float)
 SPECIALIZED_WITH_IDX(half)
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_WITH_IDX(nv_bfloat16)
+#endif
 
 #undef SPECIALIZED_WITH_IDX
 #undef SPECIALIZED
