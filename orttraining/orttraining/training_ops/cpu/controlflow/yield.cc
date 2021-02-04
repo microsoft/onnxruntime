@@ -36,9 +36,13 @@ Status Yield::Compute(OpKernelContext* ctx) const {
   // wait for event from InferenceSession::ContinueRunInBackground() to continue the BW graph
   OrtEventPool::GetInstance().WaitAndResetEvent(background_thread_event_id);
 
-  // Get output grad from somewhere and prepare Op outputs.
-  for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-    ctx_internal->SetOutputMLValue(i_out, OrtMessageQueue::GetInstance().Pop());
+  if (ctx_internal->GetTerminateFlag()) {
+    LOGS(ctx->Logger(), WARNING) << "Resumed executing backward subgraph, terminate_flag is set to true.";
+  } else {
+    // Get output grad from somewhere and prepare Op outputs.
+    for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
+      ctx_internal->SetOutputMLValue(i_out, OrtMessageQueue::GetInstance().Pop());
+    }
   }
 
   return Status::OK();

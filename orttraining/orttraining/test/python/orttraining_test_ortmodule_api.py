@@ -269,6 +269,7 @@ def test_model_to_device_and_back_to_original(original_device, to_device):
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == original_device
 
+@pytest.mark.skip(reason="TODO: ORTModule.to(device) is disabled for now")
 def test_model_with_different_devices_same_session():
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
@@ -306,6 +307,7 @@ def test_input_requires_grad_backward_creates_input_grad(device):
     assert x.grad is not None
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
+@pytest.mark.skip(reason="ORTModule doesn't support multiple consecutive forward calls.")
 def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder(device):
     N, D_in, H, D_out = 32, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)

@@ -146,6 +146,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_cuda_acl_armnn_execution_providers));
 
+      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
       std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
@@ -153,7 +154,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
 
-      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(cuda_execution_providers));
       // TODO: This should be combined with MatMulScaleFusion and deprecate MatmulTransposeFusion
       transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(cpu_cuda_execution_providers));

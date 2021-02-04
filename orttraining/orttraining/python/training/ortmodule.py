@@ -282,7 +282,7 @@ class ORTModule(torch.nn.Module):
         # TODO: disabled for now, since it caused a bug in NVBert fp32 run
         # elif self._device_changed:
         #     self._create_training_session()
-        #     self._device_changed = False	
+        #     self._device_changed = False
 
         # Use a custom torch.autograd.Function to associate self.backward_graph as the
         # gradient implementation for self.forward_graph.
@@ -321,19 +321,21 @@ class ORTModule(torch.nn.Module):
                 backward_outputs = self._gradient_io_binding.get_outputs()
 
                 # Return input and initializer gradients
-                num_initializers = len(self._onnx_graphs_info.initializer_grad_names_to_train)
+                num_user_input_grads = len(self._input_names_require_grad)
+
                 results = []
                 for input_name in self._onnx_graphs_info.user_input_names:
                     try:
                         # Append to the results the backward output for each input that required grad
                         results.append(_ort_output_to_torch_tensor(
-                            backward_outputs[num_initializers + self._input_names_require_grad.index(input_name)]))	
-                    except ValueError:	
-                        # Append None to results for each input that did not require grad	
+                            backward_outputs[self._input_names_require_grad.index(input_name)]))
+                    except ValueError:
+                        # input_name is not found in the self._input_names_require_grad list
+                        # Append None to results for each input that did not require grad
                         results.append(None)
                 # Append gradients of initializer to results
                 results += [_ort_output_to_torch_tensor(backward_output) 
-                            for backward_output in backward_outputs[:num_initializers]]
+                            for backward_output in backward_outputs[num_user_input_grads:]]
                 return tuple(results)
 
         proc_inputs = [data for data in inputs if data is not None]
