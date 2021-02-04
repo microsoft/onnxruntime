@@ -383,7 +383,8 @@ InferenceSession::~InferenceSession() {
   // backward is not completed yet, set terminate_flag to True
   if (task_.bg_thread_future_.valid()) {
     *(task_.terminate_flag_) = true;
-    ContinueRunInBackground({});
+    Status s = ContinueRunInBackground({});
+    ORT_UNUSED_PARAMETER(s);
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
