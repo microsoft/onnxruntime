@@ -131,7 +131,6 @@ provider_excluded_files = [
                 'object_detection/roialign.h',
                 'object_detection/roialign_impl.cu',
                 'object_detection/roialign_impl.h',
-                'reduction/reduction_functions.cu',
                 'reduction/reduction_ops.cc',
                 'reduction/reduction_ops.h',
                 'rnn/cudnn_rnn_base.cc',
