@@ -161,7 +161,7 @@ class ThreadPoolProfiler final {
       statictics_.clear();
     }
     void RecordStart() {
-      landmarks_.push_back(std::move(CLOCK::now()));
+      landmarks_.push_back(CLOCK::now());
     }
     void RecordEnd(const std::string& event) {
       statictics_.push_back(event + ": " + std::to_string(TimeDiffMicroSeconds(landmarks_.back(), CLOCK::now())));
@@ -170,7 +170,7 @@ class ThreadPoolProfiler final {
     void RecordEndAndStart(const std::string& event) {
       statictics_.push_back(event + ": " + std::to_string(TimeDiffMicroSeconds(landmarks_.back(), CLOCK::now())));
       landmarks_.pop_back();
-      landmarks_.push_back(std::move(CLOCK::now()));
+      landmarks_.push_back(CLOCK::now());
     }
   };  //Statistics
 

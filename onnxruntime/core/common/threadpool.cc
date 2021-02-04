@@ -31,7 +31,7 @@ void ThreadPoolProfiler::Reset() {
   std::unique_lock<std::mutex> lock(instance.mutex_);
   auto iter = instance.records_.find(key);
   if (iter == instance.records_.end()) {
-    instance.records_[key] = std::move(Statistics());
+    instance.records_[key] = Statistics();
   } else {
     iter->second.Reset();
   }
@@ -86,7 +86,7 @@ std::string ThreadPoolProfiler::GetStatistic() {
       }
     }
   }
-  return ::std::move(ss.str());
+  return ss.str();
 }
 
 // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
@@ -290,7 +290,7 @@ void ThreadPool::ResetProfiler() {
 }
 
 std::string ThreadPool::GetProfileStatistics() {
-  return std::move(ThreadPoolProfiler::GetStatistic());
+  return ThreadPoolProfiler::GetStatistic();
 }
 
 void ThreadPool::Schedule(std::function<void()> fn) {
