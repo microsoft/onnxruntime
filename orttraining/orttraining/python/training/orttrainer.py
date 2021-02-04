@@ -167,7 +167,6 @@ class ORTTrainer(object):
         if self.options.mixed_precision.enabled and not self.options.mixed_precision.loss_scaler:
             # TODO: Move this to model_desc_validation.py
             self.options.mixed_precision.loss_scaler = amp.loss_scaler.DynamicLossScaler()
-
         # Post processing ONNX model given as input
         if self._onnx_model:
             if self.options._internal_use.enable_internal_postprocess:
@@ -611,6 +610,9 @@ class ORTTrainer(object):
                     else:
                         raise ValueError("Optimizer attributes must be either float or int.")
 
+        self.options.distributed.horizontal_parallel_size = max(self.options.distributed.horizontal_parallel_size, 1)
+        self.options.distributed.data_parallel_size = self.options.distributed.world_size // self.options.distributed.horizontal_parallel_size
+        
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
         ort_parameters.loss_output_name = loss_name
@@ -637,13 +639,32 @@ class ORTTrainer(object):
         ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
         ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
 
+        ort_parameters.data_parallel_size = self.options.distributed.data_parallel_size
+        ort_parameters.horizontal_parallel_size = self.options.distributed.horizontal_parallel_size
+        ort_parameters.pipeline_parallel_size = self.options.distributed.pipeline_parallel.pipeline_parallel_size
+        ort_parameters.num_pipeline_micro_batches = self.options.distributed.pipeline_parallel.num_pipeline_micro_batches
+        ort_parameters.pipeline_cut_info_string = self.options.distributed.pipeline_parallel.pipeline_cut_info_string
+        # We have special handling for dictionary-typed option.
+        # sliced_schema._validated_opts is the original dictionary while sliced_schema is a _ORTTrainerOptionsInternal.
+        ort_parameters.sliced_schema = self.options.distributed.pipeline_parallel.sliced_schema._validated_opts
+        # We have special handling for dictionary-typed option.
+        # sliced_axes._validated_opts is the original dictionary while sliced_schema is a _ORTTrainerOptionsInternal.
+        ort_parameters.sliced_axes = self.options.distributed.pipeline_parallel.sliced_axes._validated_opts
+        ort_parameters.sliced_tensor_names = self.options.distributed.pipeline_parallel.sliced_tensor_names
+
+        ort_parameters.model_after_graph_transforms_path = self.options.debug.graph_save_paths.model_after_graph_transforms_path
+        ort_parameters.model_with_gradient_graph_path = self.options.debug.graph_save_paths.model_with_gradient_graph_path
+        ort_parameters.model_with_training_graph_path = self.options.debug.graph_save_paths.model_with_training_graph_path
+
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
-        if (self.options.graph_transformer.attn_dropout_recompute or 
-            self.options.graph_transformer.gelu_recompute or 
+        if (self.options.graph_transformer.attn_dropout_recompute or
+            self.options.graph_transformer.gelu_recompute or
             self.options.graph_transformer.transformer_layer_recompute):
             session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
+        if len(self.options.debug.graph_save_paths.model_with_training_graph_after_optimization_path) > 0:
+            session_options.optimized_model_filepath = self.options.debug.graph_save_paths.model_with_training_graph_after_optimization_path
 
         # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
         # for example, load_state_dict will be called before returing the function, and it calls _init_session again
@@ -906,6 +927,8 @@ class ORTTrainer(object):
         world_rank = _utils.state_dict_trainer_options_world_rank_key()
         world_size = _utils.state_dict_trainer_options_world_size_key()
         optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
+        D_size = _utils.state_dict_trainer_options_data_parallel_size_key()
+        H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()
 
         state_dict[_utils.state_dict_trainer_options_key()] = {}
         state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = self.options.mixed_precision.enabled
@@ -914,6 +937,8 @@ class ORTTrainer(object):
         state_dict[_utils.state_dict_trainer_options_key()][world_rank] = self.options.distributed.world_rank
         state_dict[_utils.state_dict_trainer_options_key()][world_size] = self.options.distributed.world_size
         state_dict[_utils.state_dict_trainer_options_key()][optimizer_name] = self.optim_config.name
+        state_dict[_utils.state_dict_trainer_options_key()][D_size] = self.options.distributed.data_parallel_size
+        state_dict[_utils.state_dict_trainer_options_key()][H_size] = self.options.distributed.horizontal_parallel_size
 
     def state_dict(self, pytorch_format=False):
         """Returns a dictionary with model, and optionally, optimizer states
@@ -1008,6 +1033,14 @@ class ORTTrainer(object):
                     "optimizer_name":
                     {
                         type: str
+                    },
+                    "data_parallel_size":
+                    {
+                        type: int
+                    },
+                    "horizontal_parallel_size":
+                    {
+                        type: int
                     }
                 }
             },
@@ -1025,6 +1058,10 @@ class ORTTrainer(object):
                             "original_dim":
                             {
                                 type: array
+                            },
+                            "megatron_row_partition":
+                            {
+                                type: int
                             }
                         }
                     }
@@ -1059,6 +1096,8 @@ class ORTTrainer(object):
         if pytorch_format:
             if self.options.distributed.deepspeed_zero_optimization.stage > 0:
                 warnings.warn("Incomplete state_dict: ZeRO enabled", UserWarning)
+            if self.options.distributed.horizontal_parallel_size > 1:
+                warnings.warn("Incomplete state_dict: Megatron enabled", UserWarning)
             # if pytorch_format is true, return a flat dictionary with only model states
             # which is compatible with a PyTorch model
             return state_dict[_utils.state_dict_model_key()][_utils.state_dict_full_precision_key()]
@@ -1070,7 +1109,7 @@ class ORTTrainer(object):
         self._extract_trainer_options(state_dict)
 
         # add partition information in case of a distributed run
-        if self.options.distributed.deepspeed_zero_optimization.stage > 0:
+        if self.options.distributed.deepspeed_zero_optimization.stage > 0 or self.options.distributed.horizontal_parallel_size > 1:
             state_dict[_utils.state_dict_partition_info_key()] = self._training_session.get_partition_info_map()
 
         return state_dict
@@ -1146,7 +1185,7 @@ class ORTTrainer(object):
         # clear the callable partial
         self._load_state_dict = None
 
-        def _mismatch_keys(keys1, keys2, in_error_str):
+        def _mismatch_keys(keys1, keys2, in_error_str, allow_unexpected=False):
             """Find out the missing and the unexpected keys in two dictionaries
 
             Throws a runtime error if missing or unexpected keys are found
@@ -1159,48 +1198,48 @@ class ORTTrainer(object):
             unexpected_keys = list(keys2 - keys1)
             if len(missing_keys) > 0:
                 raise RuntimeError("Missing keys: {} in {}".format(missing_keys, in_error_str))
-            if len(unexpected_keys) > 0:
+            if len(unexpected_keys) > 0 and not allow_unexpected:
                 raise RuntimeError("Unexpected keys: {} in {}".format(unexpected_keys, in_error_str))
 
-        def _check_model_key_mismatch(current_state_dict, state_dict):
+        def _check_model_key_mismatch(current_state_dict, state_dict, allow_unexpected=False):
             """Check if there is any mismatch in the model sub state dictionary between the two state_dicts"""
 
             # check unxexpected and missing precision keys in the model state_dict compared to the training
             # session model state_dict
             _mismatch_keys(current_state_dict[_utils.state_dict_model_key()],
-                                   state_dict[_utils.state_dict_model_key()], 'state_dict[model]')
+                                   state_dict[_utils.state_dict_model_key()], 'state_dict[model]', allow_unexpected)
 
             # check for model state key mismatch
             for precision_key in current_state_dict[_utils.state_dict_model_key()]:
                 _mismatch_keys(current_state_dict[_utils.state_dict_model_key()][precision_key],
                                        state_dict[_utils.state_dict_model_key()][precision_key],
-                                       'state_dict[model][{}]'.format(precision_key))
+                                       'state_dict[model][{}]'.format(precision_key), allow_unexpected)
 
-        def _check_optimizer_key_mismatch(current_state_dict, state_dict):
+        def _check_optimizer_key_mismatch(current_state_dict, state_dict, allow_unexpected=False):
             """Check if there is any mismatch in the optimizer sub state dictionary between the two state_dicts"""
 
             # check for model state key mismatch for the optimizer state_dict
             _mismatch_keys(current_state_dict[_utils.state_dict_optimizer_key()],
                                    state_dict[_utils.state_dict_optimizer_key()],
-                                   'state_dict[optimizer]')
+                                   'state_dict[optimizer]', allow_unexpected)
 
             # check for optimizer state keys mismatch
             for model_state_key in current_state_dict[_utils.state_dict_optimizer_key()]:
                 _mismatch_keys(current_state_dict[_utils.state_dict_optimizer_key()][model_state_key],
                                        state_dict[_utils.state_dict_optimizer_key()][model_state_key],
-                                       'state_dict[optimizer][{}]'.format(model_state_key))
+                                       'state_dict[optimizer][{}]'.format(model_state_key), allow_unexpected)
 
-        def _check_key_mismatch(current_state_dict, state_dict):
+        def _check_key_mismatch(current_state_dict, state_dict, allow_unexpected=False):
             """Check if there is a mismatch in the keys (model and optimizer) in the two state_dicts"""
 
             # check presence of 'model' in the input state_dict
             if _utils.state_dict_model_key() in state_dict:
-                _check_model_key_mismatch(current_state_dict, state_dict)
+                _check_model_key_mismatch(current_state_dict, state_dict, allow_unexpected)
             else:
                 warnings.warn("Missing key: model in state_dict", UserWarning)
             # check presence of 'optimizer' in the input state_dict
             if _utils.state_dict_optimizer_key() in state_dict:
-                _check_optimizer_key_mismatch(current_state_dict, state_dict)
+                _check_optimizer_key_mismatch(current_state_dict, state_dict, allow_unexpected)
             else:
                 warnings.warn("Missing key: optimizer in state_dict", UserWarning)
 
@@ -1212,7 +1251,10 @@ class ORTTrainer(object):
         if self._training_session:
             current_state_dict = self.state_dict()
             if strict:
-                _check_key_mismatch(current_state_dict, state_dict)
+                # for Zero enabled, the current trainer might not have the complete state, and we must allow 
+                # extra keys to be present in the state dict
+                allow_unexpected = True if self.options.distributed.deepspeed_zero_optimization.stage > 0 else False
+                _check_key_mismatch(current_state_dict, state_dict, allow_unexpected)
 
         # load the model states from the input state dictionary into the onnx graph
         self._load_model_states(state_dict, strict)
@@ -1285,8 +1327,10 @@ class ORTTrainer(object):
     def _aggregation_required(self, loaded_trainer_options):
         """Checks if aggregation is required for the loading the state_dict into the ORTTrainer"""
 
-        # To load states in the backend, aggregation is required for every ZeRO checkpoint
-        return loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0
+        # To load states in the backend, aggregation is required for every ZeRO 
+        # or Megatron checkpoint
+        return loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0 or \
+                loaded_trainer_options[_utils.state_dict_trainer_options_horizontal_parallel_size_key()] > 1
 
     def load_checkpoint(self, *paths, strict=True):
         """Loads the saved checkpoint state dictionary into the ORTTrainer

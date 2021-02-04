@@ -536,8 +536,6 @@ public:
     }
 };
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-
 template<bool Packed>
 class MlasQgemmU8X8U8X8TestBase;
 
@@ -716,7 +714,7 @@ private:
 
         for (size_t f = 0; f < M * N; f++) {
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, offa, offb);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, int(offa), int(offb));
                 break;
             }
         }
@@ -923,7 +921,7 @@ private:
         for (size_t f = 0; f < M * N; f++) {
             // Sensitive to comparing positive/negative zero.
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, offa, offb, C[f], CReference[f]);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, int(offa), int(offb), C[f], CReference[f]);
                 break;
             }
         }
@@ -975,8 +973,6 @@ public:
         Test(1024, 1024, 256, 13, 15);
     }
 };
-
-#endif
 
 class MlasConv2DTest : public MlasTestBase
 {
@@ -3037,6 +3033,80 @@ public:
     }
 };
 
+template<typename OutputType>
+class MlasQuantizeLinearTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<OutputType> BufferOutput;
+    MatrixGuardBuffer<OutputType> BufferOutputReference;
+
+    void
+    GenerateReference(
+        const float* Input,
+        OutputType* OutputReference,
+        size_t N,
+        float Scale,
+        OutputType ZeroPoint
+        )
+    {
+        for (size_t n = 0; n < N; n++) {
+            float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
+            FloatValue = std::max(FloatValue, float(std::numeric_limits<OutputType>::min()));
+            FloatValue = std::min(FloatValue, float(std::numeric_limits<OutputType>::max()));
+            OutputReference[n] = (OutputType)FloatValue;
+        }
+    }
+
+    void
+    Test(
+        size_t N
+        )
+    {
+        float* Input = BufferInput.GetBuffer(N);
+        OutputType* Output = BufferOutput.GetBuffer(N);
+        OutputType* OutputReference = BufferOutputReference.GetBuffer(N);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+
+        std::uniform_real_distribution<float> min_gen(-10.f, -10e-3f);
+        float MinimumValue = min_gen(generator);
+
+        std::uniform_real_distribution<float> max_gen(10e-3f, 10.f);
+        float MaximumValue = max_gen(generator);
+
+        float Scale = (MaximumValue - MinimumValue) / 512.f;
+
+        std::uniform_int_distribution<int32_t> zp_distribution(std::numeric_limits<OutputType>::min(), std::numeric_limits<OutputType>::max());
+        OutputType ZeroPoint = static_cast<OutputType>(zp_distribution(generator));
+
+        std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
+        for (size_t n = 0; n < N; n++) {
+            Input[n] = distribution(generator);
+        }
+
+        GenerateReference(Input, OutputReference, N, Scale, ZeroPoint);
+        MlasQuantizeLinear(Input, Output, N, Scale, ZeroPoint);
+
+        for (size_t n = 0; n < N; n++) {
+            if (Output[n] != OutputReference[n]) {
+                printf("exp difference: size=%u, index=%u, output=%d, expected=%d\n", unsigned(N), unsigned(n), Output[n], OutputReference[n]);
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t n = 1; n <= 512; n++) {
+            Test(n);
+        }
+    }
+};
+
 void
 RunThreadedTests(
     void
@@ -3051,7 +3121,6 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasFgemmTest<double, false>>()->ExecuteShort();
 #endif
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
     printf("QGEMM U8S8=int32_t tests.\n");
     onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8S8=float tests.\n");
@@ -3060,7 +3129,6 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8U8=float tests.\n");
     onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float, false>>()->ExecuteShort();
-#endif
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
     if (MlasGemmPackBSize(128, 128, true) > 0) {
@@ -3156,6 +3224,10 @@ main(
 
     printf("MlasGlobalAveragePool tests.\n");
     onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
+
+    printf("MlasQuantizeLinear tests.\n");
+    onnxruntime::make_unique<MlasQuantizeLinearTest<int8_t>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQuantizeLinearTest<uint8_t>>()->ExecuteShort();
 
     printf("Done.\n");
 

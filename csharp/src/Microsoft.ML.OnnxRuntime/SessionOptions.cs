@@ -84,7 +84,13 @@ namespace Microsoft.ML.OnnxRuntime
         public static SessionOptions MakeSessionOptionWithNupharProvider(String settings = "")
         {
             SessionOptions options = new SessionOptions();
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options.Handle, 1, settings));
+
+            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options.Handle, 1, pinnedSettingsName.Pointer));
+            }
+
             return options;
         }
 
@@ -134,7 +140,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="deviceId">device identification, default empty string</param>
         public void AppendExecutionProvider_OpenVINO(string deviceId = "")
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, deviceId));
+            var deviceIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(deviceId), GCHandleType.Pinned);
+            using (var pinnedDeviceIdName = new PinnedGCHandle(deviceIdPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, pinnedDeviceIdName.Pointer));
+            }
         }
 
         /// <summary>
@@ -170,7 +180,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="settings">string with Nuphar specific settings</param>
         public void AppendExecutionProvider_Nuphar(string settings = "")
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, settings));
+            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, pinnedSettingsName.Pointer));
+            }
         }
         #endregion //ExecutionProviderAppends
 
@@ -241,13 +255,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="configValue">config key value</param>
         public void AddSessionConfigEntry(string configKey, string configValue)
         {
-            var utf8NameConfigKeyPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey), GCHandleType.Pinned);
-            var utf8NameConfigValuePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue), GCHandleType.Pinned);
-
-            using (var pinnedConfigKeyName = new PinnedGCHandle(utf8NameConfigKeyPinned))
-            using (var pinnedConfigValueName = new PinnedGCHandle(utf8NameConfigValuePinned))
+            using (var pinnedConfigKeyName = new PinnedGCHandle(GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey), GCHandleType.Pinned)))
+            using (var pinnedConfigValueName = new PinnedGCHandle(GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue), GCHandleType.Pinned)))
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, 
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle,
                                               pinnedConfigKeyName.Pointer, pinnedConfigValueName.Pointer));
             }
         }
@@ -423,7 +434,12 @@ namespace Microsoft.ML.OnnxRuntime
 
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(handle, value));
+                var logIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(value), GCHandleType.Pinned);
+                using (var pinnedlogIdName = new PinnedGCHandle(logIdPinned))
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(handle, pinnedlogIdName.Pointer));
+                }
+
                 _logId = value;
             }
         }

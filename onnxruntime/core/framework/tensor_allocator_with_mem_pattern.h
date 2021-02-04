@@ -112,5 +112,9 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     ORT_RETURN_IF_ERROR(planner_.TraceAllocation(id, len));
     return Status::OK();
   }
+
+  const MemoryPatternGroup& GetMemPatterns() override {
+    return mem_patterns_;
+  }
 };
 }  // namespace onnxruntime
