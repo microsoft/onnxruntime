@@ -110,17 +110,19 @@ Status GatherNDBase::PrepareCompute(
       GatherND<TIndex>);
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define GATHER_ND_T_TENSOR_TYPES {DataTypeImpl::GetTensorType<float>(),      \
-                                  DataTypeImpl::GetTensorType<double>(),     \
-                                  DataTypeImpl::GetTensorType<MLFloat16>(),  \
-                                  DataTypeImpl::GetTensorType<BFloat16>(),   \
-                                  DataTypeImpl::GetTensorType<int64_t>()}
+#define GATHER_ND_T_TENSOR_TYPES              \
+  { DataTypeImpl::GetTensorType<float>(),     \
+    DataTypeImpl::GetTensorType<double>(),    \
+    DataTypeImpl::GetTensorType<MLFloat16>(), \
+    DataTypeImpl::GetTensorType<BFloat16>(),  \
+    DataTypeImpl::GetTensorType<int64_t>() }
 #define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, BFloat16
 #else
-#define GATHER_ND_T_TENSOR_TYPES {DataTypeImpl::GetTensorType<float>(),      \
-                                  DataTypeImpl::GetTensorType<double>(),     \
-                                  DataTypeImpl::GetTensorType<MLFloat16>(),  \
-                                  DataTypeImpl::GetTensorType<int64_t>()}
+#define GATHER_ND_T_TENSOR_TYPES              \
+  { DataTypeImpl::GetTensorType<float>(),     \
+    DataTypeImpl::GetTensorType<double>(),    \
+    DataTypeImpl::GetTensorType<MLFloat16>(), \
+    DataTypeImpl::GetTensorType<int64_t>() }
 #define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t
 #endif
 
@@ -161,8 +163,8 @@ template <typename TIndex>
 Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto input_tensor = context->Input<Tensor>(0);
   auto indices_tensor = context->Input<Tensor>(1);
-  ORT_RETURN_IF_NOT(input_tensor != nullptr);
-  ORT_RETURN_IF_NOT(indices_tensor != nullptr);
+  ORT_RETURN_IF_NOT(input_tensor != nullptr, "input_tensor == nullptr");
+  ORT_RETURN_IF_NOT(indices_tensor != nullptr, "indices_tensor == nullptr");
 
   auto input_shape = input_tensor->Shape();
   auto indices_shape = indices_tensor->Shape();
