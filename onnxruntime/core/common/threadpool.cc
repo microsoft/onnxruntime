@@ -21,6 +21,8 @@ limitations under the License.
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
 
+#define MLAS_GRANULARITY_FACTOR 4
+
 namespace onnxruntime {
 
 namespace concurrency {
@@ -191,7 +193,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
 
   // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
   // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
-  auto d_of_p = DegreeOfParallelism(this);
+  auto d_of_p = DegreeOfGranularParallelism(this);
   auto num_blocks = total / block_size;
   int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(d_of_p), num_blocks));
   assert(num_work_items > 0);
@@ -358,7 +360,7 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& f) {
   ORT_ENFORCE(n >= 0);
   Eigen::TensorOpCost cost{c.bytes_loaded, c.bytes_stored, c.compute_cycles};
-  auto d_of_p = DegreeOfParallelism(this);
+  auto d_of_p = DegreeOfGranularParallelism(this);
   // Compute small problems directly in the caller thread.
   if ((!ShouldParallelizeLoop(n)) ||
       CostModel::numThreads(static_cast<double>(n), cost, d_of_p) == 1) {
@@ -392,6 +394,19 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
   // tp, plus 1 for the thread entering a loop.
   return tp ? (tp->NumThreads()+1) : 1;
 #endif
+}
+
+int ThreadPool::DegreeOfGranularParallelism(const concurrency::ThreadPool* tp) {
+  if (tp) {
+    int32_t threadcount = tp->NumThreads();
+    if (threadcount > 16) {
+      return ((tp->NumThreads() + 1));
+    } else {
+      return ((tp->NumThreads() + 1)) * MLAS_GRANULARITY_FACTOR;
+    }
+  } else {
+    return 1;
+  }
 }
 
 // Return the number of threads created by the pool.

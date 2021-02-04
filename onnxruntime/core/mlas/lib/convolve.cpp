@@ -889,7 +889,7 @@ Return Value:
 
         const size_t BatchGroupCount = BatchCount * GroupCount;
 
-        int32_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+        int32_t TargetThreadCount = MlasGetGranularThreadCount(ThreadPool);
 
         if (size_t(TargetThreadCount) >= BatchGroupCount) {
             TargetThreadCount = int32_t(BatchGroupCount);
