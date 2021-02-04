@@ -44,13 +44,13 @@ jobs:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
         Context: tools/ci_build/github/linux/docker
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimegpubuild
+        Repository: onnxruntimecuda11build
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx
           docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimegpubuild \
+          --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda11build \
           /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
           --skip_submodule_sync  --parallel --build_shared_lib --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr/local/cuda-$(CUDA_VERSION)
         workingDirectory: $(Build.SourcesDirectory)
