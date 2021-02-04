@@ -25,7 +25,10 @@ limitations under the License.
 #include <thrust/execution_policy.h>
 
 #include <cub/cub.cuh>
-
+//TODO:fix the warnings
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#endif
 namespace onnxruntime {
 namespace cuda {
 
@@ -420,7 +423,7 @@ Status NonMaxSuppressionImpl(
     IAllocatorUniquePtr<void> d_normalized_output_indices_ptr{allocator(num_to_keep * 3 * sizeof(int64_t))};
     auto* d_normalized_output_indices = static_cast<int64_t*>(d_normalized_output_indices_ptr.get());
 
-    int blocksPerGrid = (int)(ceil(static_cast<float>(num_to_keep) / GridDim::maxThreadsPerBlock));
+    blocksPerGrid = (int)(ceil(static_cast<float>(num_to_keep) / GridDim::maxThreadsPerBlock));
     IndexMultiSelect<int, int><<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(num_to_keep, d_selected_indices, d_sorted_indices, d_output_indices);
     NormalizeOutput<<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(num_to_keep, d_output_indices, d_normalized_output_indices, batch_index, class_index);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());

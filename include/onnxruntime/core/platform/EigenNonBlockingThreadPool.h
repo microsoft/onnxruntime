@@ -133,6 +133,31 @@ namespace concurrency {
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;
 
+// Align to avoid false sharing with prior fields.  If required,
+// alignment or padding must be added subsequently to avoid false
+// sharing with later fields.  Note that:
+//
+// - The __x86_64__ value is twice the line size (64 bytes).  This
+//   accounts for 2-line prefetch behavior on some cores.
+//
+// - Ideally, ORT_ALIGN_TO_AVOID_FALSE_SHARING is used.  However, the
+//   definition of ThreadPoolParallelSection uses naive padding
+//   because C++11 does not support alignment constraints on
+//   allocation or expose stdlib.h aligned_alloc.  C++17 introduces
+//   support for aligned allocation which we could use here.
+
+#if defined(__x86_64__)
+#define ORT_FALSE_SHARING_BYTES 128
+#else
+#define ORT_FALSE_SHARING_BYTES 64
+#endif
+
+#define ORT_ALIGN_TO_AVOID_FALSE_SHARING alignas(ORT_FALSE_SHARING_BYTES)
+
+struct PaddingToAvoidFalseSharing {
+  char padding[ORT_FALSE_SHARING_BYTES];
+};
+
 // Extended Eigen thread pool interface, avoiding the need to modify
 // the ThreadPoolInterface.h header from the external Eigen
 // repository.
@@ -200,7 +225,9 @@ class ThreadPoolParallelSection {
   // tasks may be running currently, or may be present in work queues,
   // or may have been removed from the queues by
   // RunQueue::RevokeWithTag.
+  PaddingToAvoidFalseSharing padding_1;
   std::atomic<unsigned> tasks_finished{0};
+  PaddingToAvoidFalseSharing padding_2;
 
   // If non-null, the current loop that tasks should be executing.  We
   // need to be careful on access to the contents of current_loop
@@ -459,6 +486,7 @@ class RunQueue {
   };
 
   OrtMutex mutex_;
+
   // Low log(kSize) + 1 bits in front_ and back_ contain rolling index of
   // front/back, respectively. The remaining bits contain modification counters
   // that are incremented on Push operations. This allows us to (1) distinguish
@@ -466,9 +494,9 @@ class RunQueue {
   // position, these conditions would be indistinguishable); (2) obtain
   // consistent snapshot of front_/back_ for Size operation using the
   // modification counters.
-  std::atomic<unsigned> front_;
-  std::atomic<unsigned> back_;
-  Elem array_[kSize];
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<unsigned> front_;
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<unsigned> back_;
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING Elem array_[kSize];
 
   // SizeOrNotEmpty returns current queue size; if NeedSizeEstimate is false,
   // only whether the size is 0 is guaranteed to be correct.

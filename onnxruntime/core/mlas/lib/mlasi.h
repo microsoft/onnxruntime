@@ -489,6 +489,47 @@ void
 
 typedef MLAS_QLINEAR_BINARY_OP_U8_KERNEL* PMLAS_QLINEAR_BINARY_OP_U8_KERNEL;
 
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_U8_KERNEL)(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    );
+
+typedef MLAS_QUANTIZE_LINEAR_U8_KERNEL* PMLAS_QUANTIZE_LINEAR_U8_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_S8_KERNEL)(
+    const float* Input,
+    int8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    );
+
+typedef MLAS_QUANTIZE_LINEAR_S8_KERNEL* PMLAS_QUANTIZE_LINEAR_S8_KERNEL;
+
+template<typename FilterType>
+struct MLAS_U8X8_KERNEL
+{
+    typedef
+    void
+    (MLASCALL DepthwiseKernel)(
+        const uint8_t* const* Input,
+        uint8_t InputZeroPoint,
+        const FilterType* Filter,
+        FilterType FilterZeroPoint,
+        int32_t* Output,
+        size_t Channels,
+        size_t OutputCount,
+        size_t KernelSize
+        );
+};
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -581,6 +622,8 @@ extern "C" {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32Kernel;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8Kernel;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8Kernel;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
@@ -593,6 +636,8 @@ extern "C" {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelAvx;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8KernelAvx2;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8KernelAvx2;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
 #endif
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
@@ -674,6 +719,38 @@ MlasGemmU8X8PackedOperation(
     );
 
 //
+// Quantized depthwise convolution kernels.
+//
+
+template<typename FilterType>
+void
+MLASCALL
+MlasConvDepthwiseKernel(
+    const uint8_t* const* Input,
+    uint8_t InputZeroPoint,
+    const FilterType* Filter,
+    FilterType FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+template<typename FilterType>
+void
+MLASCALL
+MlasConvDepthwiseKernelAvx2(
+    const uint8_t* const* Input,
+    uint8_t InputZeroPoint,
+    const FilterType* Filter,
+    FilterType FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+//
 // Environment information class.
 //
 
@@ -705,6 +782,8 @@ struct MLAS_PLATFORM {
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ErfKernelRoutine;
     PMLAS_QLINEAR_BINARY_OP_S8_KERNEL QLinearAddS8Kernel;
     PMLAS_QLINEAR_BINARY_OP_U8_KERNEL QLinearAddU8Kernel;
+    MLAS_U8X8_KERNEL<int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
+    MLAS_U8X8_KERNEL<uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ComputeExpF32Kernel;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL LogisticKernelRoutine;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL TanhKernelRoutine;
@@ -713,6 +792,8 @@ struct MLAS_PLATFORM {
     PMLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL ComputeLogSoftmaxOutputF32Kernel;
     PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL ReduceMaximumF32Kernel;
     PMLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL ReduceMinimumMaximumF32Kernel;
+    PMLAS_QUANTIZE_LINEAR_S8_KERNEL QuantizeLinearS8Kernel;
+    PMLAS_QUANTIZE_LINEAR_U8_KERNEL QuantizeLinearU8Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
 #endif

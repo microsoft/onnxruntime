@@ -236,8 +236,8 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
     jint onnxTypeInt = convertFromONNXDataFormat(onnxType);
 
     // Create the long array for the shape.
-    jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, numDim);
-    (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, numDim, (jlong*)dimensions);
+    jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, safecast_size_t_to_jsize(numDim));
+    (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, safecast_size_t_to_jsize(numDim), (jlong*)dimensions);
     // Free the dimensions array
     free(dimensions);
     dimensions = NULL;
@@ -485,7 +485,7 @@ size_t copyJavaToPrimitiveArray(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
 }
 
 size_t copyJavaToTensor(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, size_t tensorSize,
-                        uint32_t dimensionsRemaining, jarray input) {
+                        size_t dimensionsRemaining, jarray input) {
     if (dimensionsRemaining == 1) {
         // write out 1d array of the respective primitive type
         return copyJavaToPrimitiveArray(jniEnv,onnxType,tensor,input);
@@ -576,7 +576,7 @@ size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
 }
 
 size_t copyTensorToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, size_t tensorSize,
-                        uint32_t dimensionsRemaining, jarray output) {
+                        size_t dimensionsRemaining, jarray output) {
     if (dimensionsRemaining == 1) {
         // write out 1d array of the respective primitive type
         return copyPrimitiveArrayToJava(jniEnv,onnxType,tensor,output);
@@ -650,7 +650,7 @@ void copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* a
         memcpy(tempBuffer,characterBuffer+offsets[i],curSize);
         tempBuffer[curSize-1] = '\0';
         jobject tempString = (*jniEnv)->NewStringUTF(jniEnv,tempBuffer);
-        (*jniEnv)->SetObjectArrayElement(jniEnv,outputArray,i,tempString);
+        (*jniEnv)->SetObjectArrayElement(jniEnv,outputArray,safecast_size_t_to_jsize(i),tempString);
     }
 
     if (tempBuffer != NULL) {
@@ -672,7 +672,7 @@ jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
 
     // Create the java array
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv,"java/lang/String");
-    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv,length,stringClazz,NULL);
+    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv,safecast_size_t_to_jsize(length),stringClazz, NULL);
 
     copyStringTensorToArray(jniEnv, api, allocator, tensor, length, outputArray);
 
@@ -696,7 +696,7 @@ jlongArray createLongArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValu
     checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
 
     // Create the java array and copy to it.
-    jlongArray outputArray = (*jniEnv)->NewLongArray(jniEnv,length);
+    jlongArray outputArray = (*jniEnv)->NewLongArray(jniEnv,safecast_size_t_to_jsize(length));
     copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
     return outputArray;
 }
@@ -718,7 +718,7 @@ jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtVa
     checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
 
     // Create the java array and copy to it.
-    jfloatArray outputArray = (*jniEnv)->NewFloatArray(jniEnv,length);
+    jfloatArray outputArray = (*jniEnv)->NewFloatArray(jniEnv,safecast_size_t_to_jsize(length));
     copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
     return outputArray;
 }
@@ -740,7 +740,7 @@ jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
     checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
 
     // Create the java array and copy to it.
-    jdoubleArray outputArray = (*jniEnv)->NewDoubleArray(jniEnv,length);
+    jdoubleArray outputArray = (*jniEnv)->NewDoubleArray(jniEnv,safecast_size_t_to_jsize(length));
     copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
     return outputArray;
 }
@@ -1022,11 +1022,35 @@ jint convertErrorCode(OrtErrorCode code) {
 void checkOrtStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * status) {
     if (status != NULL) {
         const char* message = api->GetErrorMessage(status);
-        int len = strlen(message)+1;
+        size_t len = strlen(message)+1;
         char* copy = malloc(sizeof(char)*len);
         memcpy(copy,message,len);
         int messageId = convertErrorCode(api->GetErrorCode(status));
         api->ReleaseStatus(status);
         throwOrtException(jniEnv,messageId,copy);
     }
+}
+
+jsize safecast_size_t_to_jsize(size_t v) {
+#ifndef NDEBUG
+  jsize result = (jsize)v;
+  if (v != (size_t)result) {
+    abort();
+  }
+  return result;
+#else
+  return (jsize)v;
+#endif
+}
+
+jsize safecast_int64_to_jsize(int64_t v) {
+#ifndef NDEBUG
+  jsize result = (jsize)v;
+  if (v != (int64_t)result) {
+    abort();
+  }
+  return result;
+#else
+  return (jsize)v;
+#endif
 }

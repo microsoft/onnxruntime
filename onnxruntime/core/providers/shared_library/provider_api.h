@@ -21,6 +21,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
+#include "core/common/path_string.h"
 
 namespace onnxruntime {
 namespace logging {
@@ -73,6 +74,7 @@ struct Function;
 struct Graph;
 struct GraphViewer;
 struct Model;
+struct Path;
 struct Node;
 struct NodeArg;
 struct NodeAttributes;
@@ -207,6 +209,9 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 std::string GetEnvironmentVar(const std::string& var_name);
 
 inline AutoPadType StringToAutoPadType(const std::string& str) { return g_host->StringToAutoPadType(str); }
+
+void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator);
+AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type);
 
 namespace logging {
 

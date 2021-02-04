@@ -61,7 +61,7 @@ void ComputeSliceOffsetsImpl(
     const int64_t* const sizes_from_slice_dims_data,  // num_slice_dims elements
     const TIndex* const indices_data,                 // num_slices * num_slice_dims elements
     int64_t* const input_slice_offsets_data) {        // num_slices elements
-  const auto blocks_per_grid = CeilDiv(num_slices, GridDim::maxThreadsPerBlock);
+  const unsigned int blocks_per_grid = static_cast<unsigned int>(CeilDiv(num_slices, GridDim::maxThreadsPerBlock));
   _ComputeSliceOffsetsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock>>>(
       batch_dims,
       input_dims,
@@ -81,7 +81,7 @@ void GatherNDImpl(
     void* output_data,
     const size_t slice_size,
     const int64_t* input_slice_offsets_data) {
-  const auto blocks_per_grid = CeilDiv(num_slices * slice_size, GridDim::maxThreadsPerBlock);
+  const unsigned int blocks_per_grid = static_cast<unsigned int>(CeilDiv(num_slices * slice_size, GridDim::maxThreadsPerBlock));
   _GatherNDKernel<T><<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0>>>(
       num_slices, static_cast<const T*>(input_data), static_cast<T*>(output_data), slice_size, input_slice_offsets_data);
 }
@@ -109,6 +109,9 @@ SPECIALIZED_IMPL(int64_t)
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 SPECIALIZED_IMPL(half)
 SPECIALIZED_IMPL(double)
+#endif
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_IMPL(nv_bfloat16)
 #endif
 
 }  // namespace cuda

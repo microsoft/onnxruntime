@@ -26,16 +26,20 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_java \
     --disable_ml_ops \
     --disable_exceptions \
-    --test_binary_size \
     --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config
 
-# Install the mysql connector
-python3 -m pip install --user mysql-connector-python
+# set current size limit to 1165KB. 
+python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/check_build_binary_size.py \
+    --threshold=1165000 \
+    /build/MinSizeRel/libonnxruntime.so
 
 # Post the binary size info to ort mysql DB
 # The report script's DB connection failure will not fail the pipeline
 # To reduce noise, we only report binary size for Continuous integration (a merge to master or rel-*)
 if [[ $BUILD_REASON == "IndividualCI" || $BUILD_REASON == "BatchedCI" ]]; then
+    # Install the mysql connector
+    python3 -m pip install --user mysql-connector-python
+
     python3 /onnxruntime_src/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
         --ignore_db_error \
         --commit_hash=$BUILD_SOURCEVERSION \
