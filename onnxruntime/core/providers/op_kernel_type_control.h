@@ -93,7 +93,7 @@ struct EnabledTypes {
                 "SupportedTypesHolder must have a type alias called 'types'.");
 
   // the allowed type lists to consider
-  // for each element of AllowedTypesHolders, get and include the content of the 'types' type alias member if present
+  // for each element of AllowedTypesHolders, get and include the 'types' type alias member if present
   using AllowedTypesMembers =
       boost::mp11::mp_transform<
           GetTypesMember,

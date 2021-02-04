@@ -33,7 +33,7 @@ constexpr bool HasTypeWithSameSize() {
   static_assert(boost::mp11::mp_is_set<TypeSet>::value, "TypeSet must be a type set.");
 
   using EnabledTypeSizes = boost::mp11::mp_unique<boost::mp11::mp_transform<SizeOfT, TypeSet>>;
-  return boost::mp11::mp_contains<EnabledTypeSizes, SizeOfT<T>>::value;
+  return boost::mp11::mp_set_contains<EnabledTypeSizes, SizeOfT<T>>::value;
 }
 
 }  // namespace utils
