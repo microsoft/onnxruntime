@@ -706,7 +706,7 @@ class ONNXQuantizer:
 
         # update scale initializer
         quantized_bias_scale_name = quantized_bias_name + "_scale"
-        bias_scale_data = np.asarray([bias_scale], dtype=np.float32).reshape([1])
+        bias_scale_data = np.asarray(bias_scale, dtype=np.float32).reshape(-1)
         packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, quantized_bias_scale_name)
         self.model.initializer().extend([packed_bias_scale_initializer])
 

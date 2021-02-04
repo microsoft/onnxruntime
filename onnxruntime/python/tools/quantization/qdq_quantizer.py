@@ -81,6 +81,7 @@ class QDQQuantizer(ONNXQuantizer):
                 op_quantizer.quantize()
 
         self.quantize_tensors()
+        self.quantize_weights_per_channel()
         self.quantize_bias_tensors()
         self.remove_nodes()
         self.model.remove_unused_constant()
@@ -148,3 +149,17 @@ class QDQQuantizer(ONNXQuantizer):
             dequant_node = onnx.helper.make_node("DequantizeLinear", inputs, [bias_name],
                                                  bias_name + '_DequantizeLinear')
             self.model.add_node(dequant_node)
+
+    def quantize_weights_per_channel(self):
+        for weight_name, axis in self.tensors_to_quantize_per_channel:
+            #q_name, zp_name, scale_name = self.quantize_weight_per_channel(weight_name, self.weight_qType, axis)
+            q_name, zp_name, scale_name = self.quantize_weight_per_channel(weight_name, onnx_proto.TensorProto.INT8, axis)
+
+            inputs = [q_name, scale_name, zp_name]
+            output_name = weight_name + "_DequantizeLinear"
+            node = onnx.helper.make_node("DequantizeLinear", inputs, [output_name],
+                                         weight_name + '_DequantizeLinear', axis = axis)
+            self.model.add_node(node)
+
+            # Replace weight_name with output of DequantizeLinear
+            self.model.replace_input_of_all_nodes(weight_name, output_name)
