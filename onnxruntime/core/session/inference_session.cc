@@ -55,11 +55,6 @@
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/message_queue.h"
 
-#if !defined(ORT_MINIMAL_BUILD)
-#include "core/framework/customregistry.h"
-#include "core/session/custom_ops.h"
-#endif
-
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
 using namespace onnxruntime::common;
