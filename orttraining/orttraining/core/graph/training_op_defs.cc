@@ -2223,7 +2223,7 @@ Return true if all elements are true and false otherwise.
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Assume the outputs and gradients are one-to-one matching
-        ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs(), "Yield op doesn't have the same number of inputs and output");
+        //ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs(), "Yield op doesn't have the same number of inputs and output");
 
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i, i);

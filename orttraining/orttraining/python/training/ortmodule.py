@@ -189,7 +189,7 @@ class ORTModule(torch.nn.Module):
         self._gradient_io_binding = self._gradient_session.io_binding()
 
     def _build_training_graph(self, *inputs, **kwargs):
-        self._module_gradient_graph_builder.build(self._current_input_shape)
+        self._module_gradient_graph_builder.build()
         self._onnx_gradient = onnx.load_model_from_string(self._module_gradient_graph_builder.get_gradient_model())
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
 
