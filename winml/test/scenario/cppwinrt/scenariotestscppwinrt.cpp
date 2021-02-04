@@ -1667,8 +1667,10 @@ static void BindMultipleCPUBuffersOutputsOnGpu() {
 }
 
 static void TestBatchBuffers() {
+  std::wstring filePath = FileHelpers::GetModulePath() + L"testdata\\transform\\fusion\\attention_symbolic_batch.onnx";
+
   LearningModel model = nullptr;
-  APITest::LoadModel(L"testdata\\transform\\fusion\\attention_symbolic_batch.onnx", model);
+  APITest::LoadModel(filePath, model);
 
   LearningModelSession session(model);
   LearningModelBinding binding(session);
