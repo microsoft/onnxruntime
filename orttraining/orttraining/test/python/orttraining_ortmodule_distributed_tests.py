@@ -44,7 +44,7 @@ def run_ortmodule_deepspeed_pipeline_parallel_tests(cwd, log):
 
 def run_ortmodule_fairscale_sharded_optimizer_tests(cwd, log):
     log.debug('Running: ORTModule fairscale sharded optimizer tests')
-    command = ['python', 'orttraining_test_ortmodule_fairscale_sharded_optimizer.py',
+    command = ['python3', 'orttraining_test_ortmodule_fairscale_sharded_optimizer.py',
                '--use_sharded_optimizer', '--use_ortmodule']
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
