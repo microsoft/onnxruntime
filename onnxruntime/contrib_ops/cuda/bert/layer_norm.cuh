@@ -101,7 +101,7 @@ __device__ inline void LayerNorm(
     const int idx = offset + i;
     const T val = output[idx];
     const T g(gamma[i]);
-    const T b(nullptr == beta ? 0 : beta[i]);
+    const T b = (nullptr == beta) ? (T)0 : beta[i];
     output[idx] = g * (val - mu) * rsigma + b;
   }
 }
@@ -129,7 +129,7 @@ __device__ inline void LayerNormSmall(const T val, const cub::KeyValuePair<T, T>
 
   if (threadIdx.x < ld) {
     const T g(gamma[threadIdx.x]);
-    const T b(nullptr == beta ? 0 : beta[threadIdx.x]);
+    const T b = (nullptr == beta) ? (T)0 : beta[threadIdx.x];
     output[idx] = g * (val - mu) * rsigma + b;
   }
 }
