@@ -922,12 +922,6 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             return GetTriangle(offset, upper: true);
         }
 
-        /// <summary>
-        /// GetTriangle
-        /// </summary>
-        /// <param name="offset">offset</param>
-        /// <param name="upper">upper</param>
-        /// <returns></returns>
         public Tensor<T> GetTriangle(int offset, bool upper)
         {
             if (Rank < 2)
@@ -1164,14 +1158,8 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             }
         }
 
-        /// <summary>
-        /// IsFixedSize
-        /// </summary>
         public bool IsFixedSize => true;
 
-        /// <summary>
-        /// IsReadOnly
-        /// </summary>
         public bool IsReadOnly => false;
 
         int IList.Add(object value)
@@ -1578,11 +1566,6 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
         #endregion
 
-        /// <summary>
-        /// GetArrayString
-        /// </summary>
-        /// <param name="includeWhitespace">includeWhitespace</param>
-        /// <returns>GetArrayString result</returns>
         public string GetArrayString(bool includeWhitespace = true)
         {
             var builder = new StringBuilder();
