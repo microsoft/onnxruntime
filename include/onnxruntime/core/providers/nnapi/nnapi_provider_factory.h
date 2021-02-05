@@ -19,9 +19,14 @@ enum NNAPIFlags {
   // Please note for now, NNAPI perform worse using NCHW compare to using NHWC
   NNAPI_FLAG_USE_NCHW = 0x002,
 
+  // Disable using NNAPI CPU implementation (nnapi-reference) for execution
+  // Please note, by enabling this option, it may cause the model cannot be executed using
+  // NNAPI execution provider.
+  NNAPI_FLAG_CPU_DISABLED = 0x004,
+
   // Keep NNAPI_FLAG_MAX at the end of the enum definition
   // And assign the last NNAPIFlag to it
-  NNAPI_FLAG_LAST = NNAPI_FLAG_USE_NCHW,
+  NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_DISABLED,
 };
 
 #ifdef __cplusplus
