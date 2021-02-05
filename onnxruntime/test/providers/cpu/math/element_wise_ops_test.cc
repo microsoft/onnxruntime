@@ -1905,6 +1905,7 @@ TEST(MathOpTest, SinFloat16) {
   OpTester test("Sin");
   TrigFloat16Test<std::sin>(test, {1.1f, -1.1f, 2.2f, -2.2f});
 }
+
 TEST(MathOpTest, CosFloat) {
   OpTester test("Cos");
   TrigFloatTest<std::cos>(test, {1.1f, -1.1f, 2.2f, -2.2f});
