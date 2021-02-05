@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#ifdef _WIN32
+#pragma warning(disable : 4244)
+#endif
 #include "orttraining/training_ops/cuda/tensor/gather_nd_grad_impl.h"
 
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -29,7 +31,7 @@ void GatherNDGradImpl(
     void* output_data,
     const size_t slice_size,
     const int64_t* input_slice_offsets_data) {
-  const auto blocks_per_grid = CeilDiv(num_slices * slice_size, GridDim::maxThreadsPerBlock);
+  const unsigned int blocks_per_grid = static_cast<unsigned int>(CeilDiv(num_slices * slice_size, GridDim::maxThreadsPerBlock));
   _GatherNDGradKernel<T><<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0>>>(
       num_slices, static_cast<const T*>(update_data), static_cast<T*>(output_data), slice_size, input_slice_offsets_data);
 }
@@ -41,6 +43,9 @@ SPECIALIZED_GRAD_IMPL(float);
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 SPECIALIZED_GRAD_IMPL(half);
 SPECIALIZED_GRAD_IMPL(double);
+#endif
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_GRAD_IMPL(nv_bfloat16);
 #endif
 
 }  // namespace cuda

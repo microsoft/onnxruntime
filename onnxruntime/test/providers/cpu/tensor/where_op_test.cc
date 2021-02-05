@@ -88,6 +88,7 @@ void WhereBroadcastTest(const T& x_value, const T& y_value) {
 
 TEST(WhereOpTest, BasicNumeric) {
   WhereBasicNumericTest<float>();
+  WhereBasicNumericTest<double>();
 }
 
 TEST(WhereOpTest, BasicString) {
@@ -106,6 +107,7 @@ TEST(WhereOpTest, BasicString) {
 
 TEST(WhereOpTest, Broadcast) {
   WhereBroadcastTest<float>(1.0f, 0.0f);
+  WhereBroadcastTest<double>(1.0f, 0.0f);
   WhereBroadcastTest<std::string>("true", "false");
 }
 

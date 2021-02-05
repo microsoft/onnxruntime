@@ -21,7 +21,7 @@ enum WorkerGroupType {
   // The view of Megatron-style model parallel workers.
   HorizontalParallel = 4,
   // The view of pipeline model parallel workers
-  ModelParallel = 5,
+  PipelineParallel = 5,
   WorkerGroupTypeCount = 6,
 };
 
@@ -32,9 +32,19 @@ struct WorkerGroup {
   int32_t rank_in_group{-1};  // current worker' relative rank within this group, ranging from 0 to size-1
 
   std::string ToString() const {
-    return "group_type: " + std::to_string(group_type) + ", group_id: " + std::to_string(group_id) +
-           ", rank in group:" + std::to_string(rank_in_group) + ", world-rank:" +
-           std::to_string(ranks[rank_in_group]);
+    std::stringstream msg;
+    msg << "group_type: " << group_type << ", group_id: " << group_id <<
+           ", rank in group:" << rank_in_group << ", world-rank:" << ranks.at(rank_in_group);
+    msg << ", ranks: [";
+    for (size_t i = 0; i < ranks.size(); ++i) {
+      msg << ranks.at(i);
+      if (i != ranks.size() - 1) {
+        msg << ", ";
+      }
+    }
+    msg << "]";
+
+    return msg.str();
   }
 };
 
@@ -94,8 +104,8 @@ class DistributedRunContext {
         return "CrossNodeDataParallel";
       case WorkerGroupType::HorizontalParallel:
         return "HorizontalParallel";
-      case WorkerGroupType::ModelParallel:
-        return "ModelParallel";
+      case WorkerGroupType::PipelineParallel:
+        return "PipelineParallel";
       default:
         ORT_THROW("Unsupported distributed worker group type.");
     }

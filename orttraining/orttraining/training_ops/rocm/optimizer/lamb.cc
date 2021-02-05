@@ -69,7 +69,7 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
 REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, MLFloat16, MLFloat16)
 REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, float, MLFloat16)
 REGISTER_LAMB_KERNEL_TYPED(float, float, float, float, float, MLFloat16)
-REGISTER_LAMB_KERNEL_TYPED(double, double, double, double, double, MLFloat16)
+// REGISTER_LAMB_KERNEL_TYPED(double, double, double, double, double, MLFloat16)
 // REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, MLFloat16, MLFloat16)
 // REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float, MLFloat16)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16, MLFloat16)
@@ -178,6 +178,7 @@ Status launch_lamb_compute_direction(
     const std::vector<float>& betas,
     const std::vector<float>& lambdas,
     const std::vector<float>& epsilons,
+    const std::vector<float>& max_norms,
     const int64_t do_bias_correction) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
@@ -198,13 +199,15 @@ Status launch_lamb_compute_direction(
   const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
-  std::map<std::tuple<float, float, float, float>, std::vector<std::vector<void*>>> buckets;
-  std::map<std::tuple<float, float, float, float>, std::vector<int>> tensor_sizes_in_buckets;
+  std::map<std::tuple<float, float, float, float, float>, std::vector<std::vector<void*>>> buckets;
+  std::map<std::tuple<float, float, float, float, float>, std::vector<int>> tensor_sizes_in_buckets;
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       // For the first iteration (indexed by 0), the update count should be 2.
-      const float alpha_correction = do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
-      const float beta_correction = do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
+      const float alpha_correction =
+          do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
+      const float beta_correction =
+          do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
 
       LambComputeDirection(
           p_ws[i],
@@ -217,6 +220,7 @@ Status launch_lamb_compute_direction(
           HipT4(betas[i]),
           HipT2(lambdas[i]),
           HipT4(epsilons[i]),
+          HipT2(max_norms[i]),
           HipT4(alpha_correction),
           HipT4(beta_correction),
           p_ds[i],
@@ -232,7 +236,7 @@ Status launch_lamb_compute_direction(
       ptrs[4] = p_m1_news[i];                  // new 1st momentum
       ptrs[5] = p_m2_news[i];                  // new 2nd momentum
 
-      auto key = std::make_tuple(alphas[i], betas[i], lambdas[i], epsilons[i]);
+      auto key = std::make_tuple(alphas[i], betas[i], lambdas[i], epsilons[i], max_norms[i]);
       buckets[key].push_back(ptrs);
       tensor_sizes_in_buckets[key].push_back(tensor_sizes[i]);
     }
@@ -240,8 +244,8 @@ Status launch_lamb_compute_direction(
 
   for (auto& pair : buckets) {
     const auto key = pair.first;
-    float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f;
-    std::tie(alpha, beta, lambda, epsilon) = key;
+    float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f, max_norm = 0.f;
+    std::tie(alpha, beta, lambda, epsilon, max_norm) = key;
 
     // For the first iteration (indexed by 0), the update count should be 1.
     const float alpha_correction =
@@ -257,7 +261,7 @@ Status launch_lamb_compute_direction(
         tensor_sizes_in_buckets[key],
         buckets[key],
         lamb_stage1,
-        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, alpha_correction, beta_correction);
+        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, HipT2(max_norm), alpha_correction, beta_correction);
   }
 
   return Status::OK();
@@ -272,7 +276,7 @@ Status launch_lamb_reduction(
     std::vector<HipTNorm*>& p_d_norms,
     std::vector<const HipTIn1*>& p_ws,
     std::vector<HipTIn2*>& p_ds,
-    HipTNorm* reduction_buffer,
+    void* reduction_buffer,
     size_t reduction_buffer_size) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
@@ -291,16 +295,18 @@ Status launch_lamb_reduction(
   const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
-      reduce_square_sum(
+      ORT_RETURN_IF_ERROR(reduce_square_sum(
           p_ws[i],
           p_w_norms[i],
           tensor_sizes[i],
-          reduction_buffer);
-      reduce_square_sum(
+          reduction_buffer,
+          reduction_buffer_size));
+      ORT_RETURN_IF_ERROR(reduce_square_sum(
           p_ds[i],
           p_d_norms[i],
           tensor_sizes[i],
-          reduction_buffer);
+          reduction_buffer,
+          reduction_buffer_size));
     } else {
       std::vector<void*> ptrs(tensor_count_per_group);
       ptrs[0] = const_cast<HipTIn1*>(p_ws[i]);  // weight tensor
@@ -331,7 +337,7 @@ Status launch_lamb_reduction(
         buckets,
         reducer,
         kernel,
-        reinterpret_cast<void*>(reduction_buffer),
+        reduction_buffer,
         reduction_buffer_size);
   }
 
@@ -412,8 +418,7 @@ Status launch_lamb_update(
         LambStage2;
     LambStage2 lamb_stage2;
 
-    launch_multi_tensor_functor<
-        tensor_count_per_group, LambStage2>(
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage2>(
         2048 * 32,
         tensor_sizes_in_bucket,
         buckets,
@@ -480,6 +485,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   ORT_ENFORCE(beta_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(lambda_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(epsilon_.size() >= static_cast<size_t>(group_count));
+  ORT_ENFORCE(max_norm_clip_.size() >= static_cast<size_t>(group_count));
 
   // If gradient norm is not finite, we copy inputs to outputs directly.
   if (ctx->Input<Tensor>(0)) {
@@ -541,11 +547,9 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     max_tensor_size = std::max(max_tensor_size, static_cast<int>(w.Shape().Size()));
   }
 
-  const size_t buffer_size = [&]() {
+  const size_t reduction_buffer_size = [&]() {
     // Allocate a buffer in byte for reduction API calls.
-    size_t rbs = static_cast<size_t>(
-        compute_reduction_buffer_size(
-            static_cast<int>(sizeof(T2)), max_tensor_size));
+    size_t rbs = compute_reduction_buffer_size<HipT2>(max_tensor_size);
 
     // Enlarge reduction buffer to accomodate multi-tensor reduction kernel as well
     const int tensor_group_size = 4;  // w, d, w_norm, d_norm
@@ -556,9 +560,8 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     return rbs;
   }();
 
-  // Allocate reduction buffer whose size is buffer_size bytes.
-  IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(buffer_size);
-  HipT2* reduction_data = reinterpret_cast<HipT2*>(reduction_buffer.get());
+  // Allocate reduction buffer whose size is reduction_buffer_size bytes.
+  IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size);
 
   // Input tensors' pointers.
   std::vector<const HipT2*> p_ws(group_count);
@@ -638,7 +641,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     p_w_mixed_precision_news[group_index] = w_mixed_precision_new != nullptr ? reinterpret_cast<HipT_MIXED_PRECISION_FP*>(w_mixed_precision_new->template MutableData<T_MIXED_PRECISION_FP>()) : nullptr;
   }
 
-  launch_lamb_compute_direction(
+  ORT_RETURN_IF_ERROR(launch_lamb_compute_direction(
       step_data ? *step_data : 0,
       group_count,
       loss_scale_data,
@@ -647,10 +650,10 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       p_ws, p_gs, p_m1s, p_m2s,
       p_ds,
       p_m1_news, p_m2_news,
-      alpha_, beta_, lambda_, epsilon_,
-      do_bias_correction_);
+      alpha_, beta_, lambda_, epsilon_, max_norm_clip_,
+      do_bias_correction_));
 
-  launch_lamb_reduction(
+  ORT_RETURN_IF_ERROR(launch_lamb_reduction(
       *this,
       group_count,
       tensor_sizes,
@@ -658,10 +661,10 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       p_d_norms,
       p_ws,
       p_ds,
-      reduction_data,
-      buffer_size);
+      reduction_buffer.get(),
+      reduction_buffer_size));
 
-  launch_lamb_update(
+  ORT_RETURN_IF_ERROR(launch_lamb_update(
       group_count,
       eta_data,
       ratio_min_,
@@ -673,7 +676,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       p_ds,
       p_w_news,
       p_g_news,
-      p_w_mixed_precision_news);
+      p_w_mixed_precision_news));
 
   if (step_tensor) {
     Tensor* step_tensor_new = ctx->Output(0, step_tensor->Shape());

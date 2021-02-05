@@ -1058,6 +1058,7 @@ namespace Microsoft.ML.OnnxRuntime
         private string _graphName;
         private string _domain;
         private string _description;
+        private string _graphDescription;
         private long _version;
         private Dictionary<string, string> _customMetadataMap = new Dictionary<string, string>();
 
@@ -1105,6 +1106,14 @@ namespace Microsoft.ML.OnnxRuntime
                 using (var ortAllocation = new OrtMemoryAllocation(allocator, descriptionHandle, 0))
                 {
                     _description = NativeOnnxValueHelper.StringFromNativeUtf8(descriptionHandle);
+                }
+
+                // Process graph description
+                IntPtr graphDescriptionHandle = IntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphDescription(modelMetadataHandle, allocator.Pointer, out graphDescriptionHandle));
+                using (var ortAllocation = new OrtMemoryAllocation(allocator, graphDescriptionHandle, 0))
+                {
+                    _graphDescription = NativeOnnxValueHelper.StringFromNativeUtf8(graphDescriptionHandle);
                 }
 
                 // Process version
@@ -1202,6 +1211,18 @@ namespace Microsoft.ML.OnnxRuntime
             get
             {
                 return _description;
+            }
+        }
+
+        /// <summary>
+        /// Unstructured graph description
+        /// </summary>
+        /// <value>description string</value>
+        public string GraphDescription
+        {
+            get
+            {
+                return _graphDescription;
             }
         }
 

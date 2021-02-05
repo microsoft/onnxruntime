@@ -202,10 +202,10 @@ public:
 };
 
 template<typename T, bool Packed>
-class MlasFgemmTestBase;
+class FgemmPackedContext;
 
 template<typename T>
-class MlasFgemmTestBase<T, false> : public MlasTestBase
+class FgemmPackedContext<T, false>
 {
 public:
     void
@@ -230,7 +230,7 @@ public:
 };
 
 template<typename T>
-class MlasFgemmTestBase<T, true> : public MlasTestBase
+class FgemmPackedContext<T, true>
 {
 public:
     void
@@ -261,7 +261,7 @@ private:
 };
 
 template<typename T, bool Packed>
-class MlasFgemmTest : public MlasFgemmTestBase<T, Packed>
+class MlasFgemmTest : public MlasTestBase
 {
 private:
     void
@@ -273,6 +273,14 @@ private:
         float beta
         )
     {
+        //
+        // Skip the test if the B buffer cannot be packed.
+        //
+
+        if (Packed && (N == 0 || K == 0)) {
+            return;
+        }
+
         const T* A = BufferA.GetBuffer(K * M);
         const T* B = BufferB.GetBuffer(N * K);
         T* C = BufferC.GetBuffer(N * M);
@@ -305,7 +313,7 @@ private:
         std::fill_n(C, M * N, -0.5f);
         std::fill_n(CReference, M * N, -0.5f);
 
-        this->TestGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+        PackedContext.TestGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
         ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -430,6 +438,7 @@ private:
     MatrixGuardBuffer<T> BufferB;
     MatrixGuardBuffer<T> BufferC;
     MatrixGuardBuffer<T> BufferCReference;
+    FgemmPackedContext<T, Packed> PackedContext;
 
 public:
     void
@@ -437,7 +446,7 @@ public:
         void
         ) override
     {
-        for (size_t b = 1; b < 16; b++) {
+        for (size_t b = 0; b < 16; b++) {
             Test(b, b, b, 1.0f, 0.0f);
         }
         for (size_t b = 16; b <= 256; b <<= 1) {
@@ -504,9 +513,9 @@ public:
             }
         }
 
-        for (size_t M = 1; M < 160; M++) {
-            for (size_t N = 1; N < 160; N++) {
-                for (size_t K = 1; K < 160; K++) {
+        for (size_t M = 0; M < 160; M++) {
+            for (size_t N = 0; N < 160; N++) {
+                for (size_t K = 0; K < 160; K++) {
                     Test(M, N, K, 1.0f, 0.0f);
                 }
             }
@@ -515,7 +524,7 @@ public:
 
         for (size_t M = 160; M < 320; M += 24) {
             for (size_t N = 112; N < 320; N += 24) {
-                for (size_t K = 1; K < 16; K++) {
+                for (size_t K = 0; K < 16; K++) {
                     Test(M, N, K, 1.0f, 0.0f);
                 }
                 for (size_t K = 16; K < 160; K += 32) {
@@ -526,8 +535,6 @@ public:
         }
     }
 };
-
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
 
 template<bool Packed>
 class MlasQgemmU8X8U8X8TestBase;
@@ -707,7 +714,7 @@ private:
 
         for (size_t f = 0; f < M * N; f++) {
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, offa, offb);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, int(offa), int(offb));
                 break;
             }
         }
@@ -914,7 +921,7 @@ private:
         for (size_t f = 0; f < M * N; f++) {
             // Sensitive to comparing positive/negative zero.
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, offa, offb, C[f], CReference[f]);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, int(offa), int(offb), C[f], CReference[f]);
                 break;
             }
         }
@@ -966,8 +973,6 @@ public:
         Test(1024, 1024, 256, 13, 15);
     }
 };
-
-#endif
 
 class MlasConv2DTest : public MlasTestBase
 {
@@ -3028,6 +3033,80 @@ public:
     }
 };
 
+template<typename OutputType>
+class MlasQuantizeLinearTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<OutputType> BufferOutput;
+    MatrixGuardBuffer<OutputType> BufferOutputReference;
+
+    void
+    GenerateReference(
+        const float* Input,
+        OutputType* OutputReference,
+        size_t N,
+        float Scale,
+        OutputType ZeroPoint
+        )
+    {
+        for (size_t n = 0; n < N; n++) {
+            float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
+            FloatValue = std::max(FloatValue, float(std::numeric_limits<OutputType>::min()));
+            FloatValue = std::min(FloatValue, float(std::numeric_limits<OutputType>::max()));
+            OutputReference[n] = (OutputType)FloatValue;
+        }
+    }
+
+    void
+    Test(
+        size_t N
+        )
+    {
+        float* Input = BufferInput.GetBuffer(N);
+        OutputType* Output = BufferOutput.GetBuffer(N);
+        OutputType* OutputReference = BufferOutputReference.GetBuffer(N);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+
+        std::uniform_real_distribution<float> min_gen(-10.f, -10e-3f);
+        float MinimumValue = min_gen(generator);
+
+        std::uniform_real_distribution<float> max_gen(10e-3f, 10.f);
+        float MaximumValue = max_gen(generator);
+
+        float Scale = (MaximumValue - MinimumValue) / 512.f;
+
+        std::uniform_int_distribution<int32_t> zp_distribution(std::numeric_limits<OutputType>::min(), std::numeric_limits<OutputType>::max());
+        OutputType ZeroPoint = static_cast<OutputType>(zp_distribution(generator));
+
+        std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
+        for (size_t n = 0; n < N; n++) {
+            Input[n] = distribution(generator);
+        }
+
+        GenerateReference(Input, OutputReference, N, Scale, ZeroPoint);
+        MlasQuantizeLinear(Input, Output, N, Scale, ZeroPoint);
+
+        for (size_t n = 0; n < N; n++) {
+            if (Output[n] != OutputReference[n]) {
+                printf("exp difference: size=%u, index=%u, output=%d, expected=%d\n", unsigned(N), unsigned(n), Output[n], OutputReference[n]);
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t n = 1; n <= 512; n++) {
+            Test(n);
+        }
+    }
+};
+
 void
 RunThreadedTests(
     void
@@ -3042,7 +3121,6 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasFgemmTest<double, false>>()->ExecuteShort();
 #endif
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
     printf("QGEMM U8S8=int32_t tests.\n");
     onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8S8=float tests.\n");
@@ -3051,7 +3129,6 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8U8=float tests.\n");
     onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float, false>>()->ExecuteShort();
-#endif
 
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
     if (MlasGemmPackBSize(128, 128, true) > 0) {
@@ -3147,6 +3224,10 @@ main(
 
     printf("MlasGlobalAveragePool tests.\n");
     onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
+
+    printf("MlasQuantizeLinear tests.\n");
+    onnxruntime::make_unique<MlasQuantizeLinearTest<int8_t>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQuantizeLinearTest<uint8_t>>()->ExecuteShort();
 
     printf("Done.\n");
 

@@ -75,6 +75,17 @@ REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float, MLFloa
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16, MLFloat16)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, float, MLFloat16)
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+REGISTER_LAMB_KERNEL_TYPED(float, float, BFloat16, float, BFloat16, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(float, float, BFloat16, float, float, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(float, float, float, float, float, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(double, double, double, double, double, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, BFloat16, BFloat16, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, BFloat16, float, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, float, BFloat16, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, float, float, BFloat16)
+#endif
+
 void check_inputs_and_outputs(
     const Tensor* w,
     const Tensor* g,
@@ -178,6 +189,7 @@ Status launch_lamb_compute_direction(
     const std::vector<float>& betas,
     const std::vector<float>& lambdas,
     const std::vector<float>& epsilons,
+    const std::vector<float>& max_norms,
     const int64_t do_bias_correction) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
@@ -198,8 +210,8 @@ Status launch_lamb_compute_direction(
   const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
-  std::map<std::tuple<float, float, float, float>, std::vector<std::vector<void*>>> buckets;
-  std::map<std::tuple<float, float, float, float>, std::vector<int>> tensor_sizes_in_buckets;
+  std::map<std::tuple<float, float, float, float, float>, std::vector<std::vector<void*>>> buckets;
+  std::map<std::tuple<float, float, float, float, float>, std::vector<int>> tensor_sizes_in_buckets;
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       // For the first iteration (indexed by 0), the update count should be 2.
@@ -219,6 +231,7 @@ Status launch_lamb_compute_direction(
           CudaT4(betas[i]),
           CudaT2(lambdas[i]),
           CudaT4(epsilons[i]),
+          CudaT2(max_norms[i]),
           CudaT4(alpha_correction),
           CudaT4(beta_correction),
           p_ds[i],
@@ -234,7 +247,7 @@ Status launch_lamb_compute_direction(
       ptrs[4] = p_m1_news[i];                   // new 1st momentum
       ptrs[5] = p_m2_news[i];                   // new 2nd momentum
 
-      auto key = std::make_tuple(alphas[i], betas[i], lambdas[i], epsilons[i]);
+      auto key = std::make_tuple(alphas[i], betas[i], lambdas[i], epsilons[i], max_norms[i]);
       buckets[key].push_back(ptrs);
       tensor_sizes_in_buckets[key].push_back(tensor_sizes[i]);
     }
@@ -242,8 +255,8 @@ Status launch_lamb_compute_direction(
 
   for (auto& pair : buckets) {
     const auto key = pair.first;
-    float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f;
-    std::tie(alpha, beta, lambda, epsilon) = key;
+    float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f, max_norm = 0.f;
+    std::tie(alpha, beta, lambda, epsilon, max_norm) = key;
 
     // For the first iteration (indexed by 0), the update count should be 1.
     const float alpha_correction =
@@ -259,7 +272,7 @@ Status launch_lamb_compute_direction(
         tensor_sizes_in_buckets[key],
         buckets[key],
         lamb_stage1,
-        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, alpha_correction, beta_correction);
+        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, CudaT2(max_norm), alpha_correction, beta_correction);
   }
 
   return Status::OK();
@@ -647,7 +660,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       p_ws, p_gs, p_m1s, p_m2s,
       p_ds,
       p_m1_news, p_m2_news,
-      alpha_, beta_, lambda_, epsilon_,
+      alpha_, beta_, lambda_, epsilon_, max_norm_clip_,
       do_bias_correction_));
 
   ORT_RETURN_IF_ERROR(launch_lamb_reduction(

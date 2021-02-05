@@ -7,7 +7,7 @@
 #include <string.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 6
+#define ORT_API_VERSION 7
 
 #ifdef __cplusplus
 extern "C" {
@@ -173,10 +173,10 @@ typedef OrtStatus* OrtStatusPtr;
 #endif
 
 // __VA_ARGS__ on Windows and Linux are different
-#define ORT_API(RETURN_TYPE, NAME, ...) ORT_EXPORT RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+#define ORT_API(RETURN_TYPE, NAME, ...) RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_API_STATUS(NAME, ...) \
-  ORT_EXPORT _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
+  _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
 
 // XXX: Unfortunately, SAL annotations are known to not work with function pointers
 #define ORT_API2_STATUS(NAME, ...) \
@@ -184,7 +184,7 @@ typedef OrtStatus* OrtStatusPtr;
 
 // Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT and ORT_EXPORT
 #define ORT_API_STATUS_IMPL(NAME, ...) \
-  _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+  _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_CLASS_RELEASE(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X * input)
 
@@ -934,7 +934,7 @@ struct OrtApi {
   // Release instance of OrtAllocator obtained from CreateAllocator API
   ORT_CLASS_RELEASE(Allocator);
 
-  ORT_API2_STATUS(RunWithBinding, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
+  ORT_API2_STATUS(RunWithBinding, _Inout_ OrtSession* sess, _In_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
 
   // Creates an IoBinding instance that allows one to bind pre-allocated OrtValues
   // to input names. Thus if you want to use a raw on device buffer as input or output
@@ -1134,6 +1134,18 @@ struct OrtApi {
                   int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out);
 
   ORT_CLASS_RELEASE(ArenaCfg);
+
+  /**
+  * Use this API to obtain the description of the graph present in the model
+  * (doc_string field of the GraphProto message within the ModelProto message).
+  * If it doesn't exist, an empty string will be returned.
+  * \param model_metadata - an instance of OrtModelMetadata
+  * \param allocator - allocator used to allocate the string that will be returned back 
+  * \param value - is set to a null terminated string allocated using 'allocator'. 
+    The caller is responsible for freeing it.
+  */
+  ORT_API2_STATUS(ModelMetadataGetGraphDescription, _In_ const OrtModelMetadata* model_metadata,
+                  _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 };
 
 /*

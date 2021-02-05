@@ -46,7 +46,7 @@ class MatMulIntegerBase : public OpKernel {
 #endif
 
  protected:
-  bool b_is_signed_;
+  bool b_is_signed_{true};
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
 };

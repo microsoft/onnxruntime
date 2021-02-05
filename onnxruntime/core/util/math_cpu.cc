@@ -41,11 +41,11 @@ namespace onnxruntime {
 namespace math {
 
 // MatMul implementation purely based on Eigen.
-#define EIGEN_MATMUL_FUNCTION(T)                                                                \
-  template <>                                                                                   \
-  void MatMul<T>(int M, int N, int K, const T* A, const T* B, T* C, concurrency::ThreadPool*) { \
-    auto C_mat = EigenMatrixMap<T>(C, N, M);                                                    \
-    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M);        \
+#define EIGEN_MATMUL_FUNCTION(T)                                                                                  \
+  template <>                                                                                                     \
+  void MatMul<T>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const T* A, const T* B, T* C, concurrency::ThreadPool*) { \
+    auto C_mat = EigenMatrixMap<T>(C, N, M);                                                                      \
+    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M);                          \
   }
 
 EIGEN_MATMUL_FUNCTION(int32_t)
@@ -59,8 +59,6 @@ EIGEN_MATMUL_FUNCTION(uint64_t)
 // will delegate the Caffe math functions that are BLAS-related to either the
 // CBLAS call or the Eigen implementation.
 ////////////////////////////////////////////////////////////////////////////////
-// when USE_MKLML is defined, use cblas APIs for MKLML
-#if !defined(USE_MKLML_FOR_BLAS)
 
 // Caffe2 gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -78,8 +76,8 @@ EIGEN_MATMUL_FUNCTION(uint64_t)
 // (transpose) if the argument TransA or TransB is set to CblasNoTrans or
 // CblasTrans, respectively, for each of A and B.
 template <>
-void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                             const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
+void Gemm<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
+                             ptrdiff_t N, ptrdiff_t K, float alpha, const float* A, const float* B, float beta,
                              float* C, ThreadPool* threadpool) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
@@ -88,8 +86,8 @@ void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE
 
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
-void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
+void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
+                              ptrdiff_t N, ptrdiff_t K, double alpha, const double* A, const double* B, double beta,
                               double* C, ThreadPool* threadpool) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
@@ -97,8 +95,8 @@ void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOS
 }
 #else
 template <>
-void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
+void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
+                              ptrdiff_t N, ptrdiff_t K, double alpha, const double* A, const double* B, double beta,
                               double* C, ThreadPool*) {
   auto C_mat = EigenMatrixMap<double>(C, N, M);
   if (beta == 0) {
@@ -142,13 +140,13 @@ void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOS
 #endif
 
 template <>
-void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
+void MatMul<float>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
 }
 
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
-void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C, ThreadPool* threadpool) {
+void MatMul<double>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const double* A, const double* B, double* C, ThreadPool* threadpool) {
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
 }
 #else
@@ -156,7 +154,7 @@ EIGEN_MATMUL_FUNCTION(double)
 #endif
 
 template <>
-void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
+void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                                float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
                                int ldc, ThreadPool* threadpool) {
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
@@ -212,80 +210,6 @@ template void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int
 SPECIALIZED_AXPY(float)
 #undef SPECIALIZED_AXPY
 
-#else
-
-template <>
-void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                             const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
-                             float* C, ThreadPool* /*context*/) {
-  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
-  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
-  cblas_sgemm(CblasRowMajor, TransA, TransB,
-              gsl::narrow_cast<int>(M),
-              gsl::narrow_cast<int>(N),
-              gsl::narrow_cast<int>(K),
-              alpha, A, lda, B, ldb,
-              beta, C, gsl::narrow_cast<int>(N));
-}
-
-template <>
-void Gemm<double, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                              const int64_t N, const int64_t K, double alpha, const double* A, const double* B, double beta,
-                              double* C, ThreadPool* /*context*/) {
-  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
-  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
-  cblas_dgemm(CblasRowMajor, TransA, TransB,
-              gsl::narrow_cast<int>(M),
-              gsl::narrow_cast<int>(N),
-              gsl::narrow_cast<int>(K),
-              alpha, A, lda, B, ldb,
-              beta, C, gsl::narrow_cast<int>(N));
-}
-
-template <>
-void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool*) {
-  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
-}
-
-template <>
-void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C, ThreadPool*) {
-  cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
-}
-
-template <>
-void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
-                               float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
-                               int ldc, ThreadPool* /*context*/) {
-  cblas_sgemm(CblasRowMajor, TransA, TransB, M, N, K, alpha, A, lda, B, ldb,
-              beta, C, ldc);
-}
-
-template <>
-void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,
-                              float beta, float* y, CPUMathUtil* /*context*/) {
-  cblas_sgemv(CblasRowMajor, TransA, M, N, alpha, A, N, x, 1, beta, y, 1);
-}
-
-template <>
-void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const double* A, const double* x,
-                               float beta, double* y, CPUMathUtil* /*context*/) {
-  cblas_dgemv(CblasRowMajor, TransA, M, N, alpha, A, N, x, 1, beta, y, 1);
-}
-
-#define CAFFE2_SPECIALIZED_AXPY(T, prefix)                                           \
-  template <>                                                                        \
-  void Axpy<T, CPUMathUtil>(int N, const T alpha, const T* x, T* y, CPUMathUtil*) {  \
-    cblas_##prefix##axpy(N, alpha, x, 1, y, 1);                                      \
-  }                                                                                  \
-  template <>                                                                        \
-  void Axpy<T, CPUMathUtil>(int N, const T* alpha, const T* x, T* y, CPUMathUtil*) { \
-    cblas_##prefix##axpy(N, *alpha, x, 1, y, 1);                                     \
-  }
-CAFFE2_SPECIALIZED_AXPY(float, s)
-#undef CAFFE2_SPECIALIZED_AXPY
-
-#endif
-
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                  \
   template <>                                                              \
   void Funcname<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil*) {   \
@@ -331,14 +255,14 @@ SPECIALIZED_ROWWISEMAX(float)
 SPECIALIZED_ROWWISEMAX(double)
 #undef SPECIALIZED_ROWWISEMAX
 
-#define SPECIALIZED_SET(T)                                                       \
-  template <>                                                                    \
-  void Set<T, CPUMathUtil>(const int64_t N, const T alpha, T* Y, CPUMathUtil*) { \
-    if (alpha == (T)0) {                                                         \
-      memset(Y, 0, N * sizeof(T));                                               \
-    } else {                                                                     \
-      EigenVectorMap<T>(Y, N).setConstant(alpha);                                \
-    }                                                                            \
+#define SPECIALIZED_SET(T)                                                         \
+  template <>                                                                      \
+  void Set<T, CPUMathUtil>(const ptrdiff_t N, const T alpha, T* Y, CPUMathUtil*) { \
+    if (alpha == (T)0) {                                                           \
+      memset(Y, 0, N * sizeof(T));                                                 \
+    } else {                                                                       \
+      EigenVectorMap<T>(Y, N).setConstant(alpha);                                  \
+    }                                                                              \
   }
 
 SPECIALIZED_SET(float);
@@ -447,7 +371,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
     const int64_t* stride,
     const int64_t* dilation,
     const int64_t* pad,
-    int64_t rank,
+    ptrdiff_t rank,
     T* data_col,
     bool accumulate_output,
     T padding_value) {
@@ -457,7 +381,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
   for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
     // Loop over spatial axes in reverse order to compute a per-axis offset.
     int64_t offset = c_col;
-    for (int64_t d_i = rank - 1; d_i >= 0; --d_i) {
+    for (ptrdiff_t d_i = rank - 1; d_i >= 0; --d_i) {
       if (d_i < rank - 1) {
         offset /= kernel_shape[d_i + 1];
       }
@@ -469,7 +393,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
       int64_t index_col = c_col;
       int64_t index_im = c_col / kernel_size;
       bool is_padding = false;
-      for (int64_t d_i = 0; d_i < rank; ++d_i) {
+      for (ptrdiff_t d_i = 0; d_i < rank; ++d_i) {
         int64_t d = d_iter[d_i];
         int64_t d_im = d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
         is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i]);
@@ -531,7 +455,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
             if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
               // Increase the copy count size to reduce the number of copy calls.
               int64_t batch_w = std::min(kw, input_w - iw);
-              std::memcpy(data_col, data_im + (ih * input_w + iw) * group_channels, sizeof(T) * batch_w * group_channels);
+              std::memcpy(data_col, data_im + (ih * input_w + iw) * group_channels, gsl::narrow<size_t>(sizeof(T) * batch_w * group_channels));
               data_col += batch_w * group_channels;
               iw += batch_w;
               kw -= batch_w;
@@ -546,7 +470,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
             if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
               // N.B. Using std::memcpy helped here over std::copy_n when doing a
               // transform for an image with a small number of group channels.
-              std::memcpy(data_col, data_im + (ih * input_w + iw) * input_channels, sizeof(T) * group_channels);
+              std::memcpy(data_col, data_im + (ih * input_w + iw) * input_channels, gsl::narrow<size_t>(sizeof(T) * group_channels));
               data_col += group_channels;
             } else {
               data_col = std::fill_n(data_col, group_channels, padding_value);
@@ -577,7 +501,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
     const int64_t* stride,
     const int64_t* dilation,
     const int64_t* pad,
-    int64_t rank,
+    ptrdiff_t rank,
     T* data_col,
     T padding_value) {
   // iterate dimensions on output image shape (without Batch and Channel)
@@ -593,7 +517,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
       // and the inner col, and whether the index lies in the padding.
       int64_t index_im = 0;
       bool is_padding = false;
-      for (int64_t d_i = 0; d_i < rank; ++d_i) {
+      for (ptrdiff_t d_i = 0; d_i < rank; ++d_i) {
         int64_t d_im = d_output[d_i] * stride[d_i] - pad[d_i] + d_kernel[d_i] * dilation[d_i];
         is_padding |= !is_a_ge_zero_and_a_lt_b(d_im, im_shape[d_i]);
         index_im *= im_shape[d_i];
@@ -610,6 +534,115 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
   } while (NextPosition(rank, output_shape, d_output.data()));
 }
 
+template <typename T>
+void Im2col<T, StorageOrder::NHWC>::operator()(
+    const T* data_im,
+    int64_t input_channels,
+    const int64_t* input_shape,
+    const int64_t* output_shape,
+    const int64_t* kernel_shape,
+    const int64_t* stride,
+    const int64_t* dilation,
+    const int64_t* pad,
+    ptrdiff_t rank,
+    int64_t output_start,
+    int64_t output_count,
+    T const** data_indirection,
+    const T* padding_ptr) {
+  if (rank == 1) {
+    int64_t stride_w = stride[0];
+    int64_t kernel_w = kernel_shape[0];
+    int64_t dilation_w = dilation[0];
+    int64_t pad_l = pad[0];
+    int64_t input_w = input_shape[0];
+
+    int64_t ow = output_start * stride_w;
+
+    while (output_count--) {
+      int64_t iw = ow - pad_l;
+      for (int64_t kw = 0; kw < kernel_w; kw++) {
+        const T* data_ptr = data_im + iw * input_channels;
+        data_indirection[kw] = is_a_ge_zero_and_a_lt_b(iw, input_w) ? data_ptr : padding_ptr;
+        iw += dilation_w;
+      }
+      data_indirection += kernel_w;
+      ow += stride_w;
+    }
+
+  } else if (rank == 2) {
+    int64_t stride_h = stride[0];
+    int64_t stride_w = stride[1];
+    int64_t kernel_h = kernel_shape[0];
+    int64_t kernel_w = kernel_shape[1];
+    int64_t dilation_h = dilation[0];
+    int64_t dilation_w = dilation[1];
+    int64_t pad_t = pad[0];
+    int64_t pad_l = pad[1];
+    int64_t input_h = input_shape[0];
+    int64_t input_w = input_shape[1];
+    int64_t output_w = output_shape[1];
+
+    int64_t oh = (output_start / output_w) * stride_h;
+    int64_t ow = (output_start % output_w) * stride_w;
+    int64_t ow_end = output_w * stride_w;
+
+    while (output_count--) {
+      for (int64_t kh = 0; kh < kernel_h; kh++) {
+        int64_t ih = kh * dilation_h + oh - pad_t;
+        if (is_a_ge_zero_and_a_lt_b(ih, input_h)) {
+          int64_t ihw = ih * input_w;
+          int64_t iw = ow - pad_l;
+          for (int64_t kw = 0; kw < kernel_w; kw++) {
+            const T* data_ptr = data_im + (ihw + iw) * input_channels;
+            data_indirection[kw] = is_a_ge_zero_and_a_lt_b(iw, input_w) ? data_ptr : padding_ptr;
+            iw += dilation_w;
+          }
+        } else {
+          std::fill_n(data_indirection, kernel_w, padding_ptr);
+        }
+        data_indirection += kernel_w;
+      }
+      ow += stride_w;
+      if (ow == ow_end) {
+        oh += stride_h;
+        ow = 0;
+      }
+    }
+
+  } else {
+    // iterate dimensions on output image shape (without Batch and Channel)
+    std::vector<int64_t> d_output(rank, 0);
+    // inner iterate dimensions on kernel shape (without output channel and input channel)
+    std::vector<int64_t> d_kernel(rank, 0);
+
+    // Skip ahead to the starting output index.
+    for (ptrdiff_t d_i = rank - 1; d_i >= 0; --d_i) {
+      d_output[d_i] = output_start % output_shape[d_i];
+      output_start /= output_shape[d_i];
+    }
+
+    while (output_count--) {
+      // Loop over spatial axes in reverse order to choose an index on kernel dimensions
+      do {
+        // Loop over spatial axes in forward order to compute the indices in the image
+        // and the inner col, and whether the index lies in the padding.
+        int64_t index_im = 0;
+        bool is_padding = false;
+        for (ptrdiff_t d_i = 0; d_i < rank; ++d_i) {
+          int64_t d_input = d_output[d_i] * stride[d_i] - pad[d_i] + d_kernel[d_i] * dilation[d_i];
+          is_padding |= !is_a_ge_zero_and_a_lt_b(d_input, input_shape[d_i]);
+          index_im *= input_shape[d_i];
+          index_im += d_input;
+        }
+        const T* data_ptr = data_im + index_im * input_channels;
+        *data_indirection++ = is_padding ? padding_ptr : data_ptr;
+      } while (NextPosition(rank, kernel_shape, d_kernel.data()));
+      // Loop over spatial axes along the output image shape
+      NextPosition(rank, output_shape, d_output.data());
+    }
+  }
+}
+
 template struct Im2col<uint8_t, StorageOrder::NHWC>;
 
 template <>
@@ -624,8 +657,8 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
   const int64_t output_w =
       (width + pad_l + pad_r - (dilation_w * (kernel_w - 1) + 1)) / stride_w +
       1;
-
-  Set<float, CPUMathUtil>(height * width * channels, 0, data_im, context);
+  const int64_t hwc = height * width * channels;
+  Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
   // Fast path for zero padding and no dilation
   // From Torch, modified THNN_(unfolded_acc)
@@ -725,7 +758,8 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64
   const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
-  Set<float, CPUMathUtil>(height * width * channels, 0, data_im, context);
+  const int64_t hwc = height * width * channels;
+  Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(hwc), 0, data_im, context);
   int64_t height_col = (height + pad_t + pad_b - dkernel_h) / stride_h + 1;
   int64_t width_col = (width + pad_l + pad_r - dkernel_w) / stride_w + 1;
   int64_t h_pad = -pad_t;
@@ -752,9 +786,9 @@ template <>
 void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, const int64_t* img_shape,
                                                       const int64_t* output_shape, int64_t channels_col, int64_t img_size,
                                                       const int64_t* kernel_shape, const int64_t* stride,
-                                                      const int64_t* dilation, const int64_t* pad, int64_t N,
+                                                      const int64_t* dilation, const int64_t* pad, ptrdiff_t N,
                                                       float* data_img, CPUMathUtil* context) {
-  Set<float, CPUMathUtil>(img_size, 0, data_img, context);
+  Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(img_size), 0, data_img, context);
   Im2col<float, StorageOrder::NCHW>()(
       data_col,
       img_shape,

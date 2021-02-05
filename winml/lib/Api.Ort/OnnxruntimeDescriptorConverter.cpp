@@ -279,25 +279,23 @@ CreateImageColorSpaceGamma(const char* color_space_gamma) {
   return winmlp::ImageColorSpaceGamma::ImageColorSpaceGamma_SRGB;
 }
 
-static winmlp::ImageNominalPixelRange
+static winml::LearningModelPixelRange
 CreateImageNominalPixelRange(const char* nominal_range) {
   if (nominal_range) {
     auto comparator =
         std::bind(std::strcmp, nominal_range, std::placeholders::_1);
 
     if (0 == comparator("NominalRange_0_255")) {
-      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255;
+      return winml::LearningModelPixelRange::ZeroTo255;
     } else if (0 == comparator("Normalized_0_1")) {
-      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_Normalized_0_1;
+      return winml::LearningModelPixelRange::ZeroToOne;
     } else if (0 == comparator("Normalized_1_1")) {
-      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_Normalized_1_1;
-    } else if (0 == comparator("NominalRange_16_235")) {
-      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_16_235;
+      return winml::LearningModelPixelRange::MinusOneToOne;
     }
   }
 
   // default value, non conforming values are overridden to NominalRange_0_255
-  return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255;
+  return winml::LearningModelPixelRange::ZeroTo255;
 }
 
 enum class TensorType { Tensor_Data,

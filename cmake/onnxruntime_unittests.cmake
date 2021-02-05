@@ -19,9 +19,9 @@ function(AddTest)
   list(REMOVE_DUPLICATES _UT_SOURCES)
 
   if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-    add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
+    onnxruntime_add_executable(${_UT_TARGET} ${TEST_SRC_DIR}/xctest/orttestmain.m)
   else()
-    add_executable(${_UT_TARGET} ${_UT_SOURCES})
+    onnxruntime_add_executable(${_UT_TARGET} ${_UT_SOURCES})
   endif()
 
   if (_UT_DEPENDS)
@@ -30,14 +30,6 @@ function(AddTest)
 
   if(_UT_LIBS)
     list(REMOVE_DUPLICATES _UT_LIBS)
-    list (FIND _UT_LIBS "cudart" _index)
-    if (${_index} GREATER -1)
-      if(WIN32)
-        target_link_directories(${_UT_TARGET} PRIVATE ${onnxruntime_CUDA_HOME}/x64/lib64)
-      else()
-        target_link_directories(${_UT_TARGET} PRIVATE ${onnxruntime_CUDA_HOME}/lib64)
-      endif()
-    endif()
   endif()
 
   source_group(TREE ${REPO_ROOT} FILES ${_UT_SOURCES})
@@ -322,7 +314,10 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc)
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
@@ -420,6 +415,10 @@ if(onnxruntime_USE_ROCM)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rocm)
 endif()
 
+if(onnxruntime_USE_COREML)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml onnxruntime_coreml_proto)
+endif()
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
@@ -458,6 +457,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_ROCM}
+    ${PROVIDERS_COREML}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -498,6 +498,14 @@ if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_rknpu)
 endif()
+
+if(onnxruntime_USE_COREML)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/coreml/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml onnxruntime_coreml_proto)
+endif()
+
 
 if(WIN32)
   if (onnxruntime_USE_TVM)
@@ -658,14 +666,6 @@ if (onnxruntime_USE_DNNL)
     COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
     )
 endif()
-if (onnxruntime_USE_MKLML)
-  add_custom_command(
-    TARGET ${test_data_target} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
-    $<TARGET_FILE_DIR:${test_data_target}>
-  )
-endif()
 if(WIN32)
   if (onnxruntime_USE_TVM)
     add_custom_command(
@@ -718,7 +718,7 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   list(APPEND onnx_test_libs onnxruntime_language_interop onnxruntime_pyop)
 endif()
 
-add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
+onnxruntime_add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
 if(MSVC)
   target_compile_options(onnx_test_runner PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -741,7 +741,7 @@ install(TARGETS onnx_test_runner
 
 if(onnxruntime_BUILD_BENCHMARKS)
   SET(BENCHMARK_DIR ${TEST_SRC_DIR}/onnx/microbenchmark)
-  add_executable(onnxruntime_benchmark
+  onnxruntime_add_executable(onnxruntime_benchmark
     ${BENCHMARK_DIR}/main.cc
     ${BENCHMARK_DIR}/modeltest.cc
     ${BENCHMARK_DIR}/pooling.cc
@@ -798,7 +798,7 @@ endif()
 file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
   ${onnxruntime_perf_test_src_patterns}
   )
-add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
+onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
 if(MSVC)
   target_compile_options(onnxruntime_perf_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -814,9 +814,11 @@ if (WIN32)
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils onnxruntime_common re2::re2
-          onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime onnxruntime_flatbuffers
-          ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+  set(onnxruntime_perf_test_libs 
+          onnx_test_runner_common onnxruntime_test_utils onnxruntime_common 
+          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto 
+          ${onnxruntime_EXTERNAL_LIBRARIES}
+          ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
   endif()
@@ -921,20 +923,20 @@ endif(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
 
 #some ETW tools
 if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
-  add_executable(generate_perf_report_from_etl ${ONNXRUNTIME_ROOT}/tool/etw/main.cc
+  onnxruntime_add_executable(generate_perf_report_from_etl ${ONNXRUNTIME_ROOT}/tool/etw/main.cc
           ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc
           ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
   target_compile_definitions(generate_perf_report_from_etl PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
   target_link_libraries(generate_perf_report_from_etl PRIVATE tdh Advapi32)
 
-  add_executable(compare_two_sessions ${ONNXRUNTIME_ROOT}/tool/etw/compare_two_sessions.cc
+  onnxruntime_add_executable(compare_two_sessions ${ONNXRUNTIME_ROOT}/tool/etw/compare_two_sessions.cc
           ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc
           ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
   target_compile_definitions(compare_two_sessions PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
   target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
 endif()
 
-add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
+onnxruntime_add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 if(MSVC)
   target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")

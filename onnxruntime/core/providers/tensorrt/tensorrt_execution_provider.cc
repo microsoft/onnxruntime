@@ -41,14 +41,6 @@ std::string GetCachePath(const std::string& root, const std::string& name) {
   }
 }
 
-std::string GetVecHash(const std::string& vec) {
-  std::size_t ret = vec.size();
-  for (auto i : vec) {
-    ret ^= static_cast<int>(i) + 0x9e3779b9 + (ret << 6) + (ret >> 2);
-  }
-  return std::to_string(ret);
-}
-
 float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
   int s = (input >> 31) & 0x01;
   int e = ((input & 0x7f800000) >> 23) - 127;
@@ -259,7 +251,6 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
   }
   return true;
 }
-
 }  // namespace
 
 namespace google {
@@ -302,9 +293,6 @@ template <>
 bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
-
-constexpr const char* TRT = "Tensorrt";
-constexpr const char* TRT_PINNED = "TensorrtPinned";
 
 class Memcpy final : public Provider_OpKernel {
  public:
@@ -383,17 +371,8 @@ TensorrtLogger& GetTensorrtLogger() {
 }
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
-
-  AllocatorCreationInfo default_memory_info(
-      [](int id) { return CreateCUDAAllocator(id, TRT); }, device_id_);
-  allocator_ = CreateAllocator(default_memory_info);
-  InsertAllocator(allocator_);
-
-  AllocatorCreationInfo pinned_allocator_info(
-      [](int) { return CreateCUDAPinnedAllocator(0, TRT_PINNED); }, device_id_);
-  InsertAllocator(CreateAllocator(pinned_allocator_info));
 
   // Get environment variables
   const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -467,6 +446,29 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
   } else {
     return IExecutionProvider::GetAllocator(id, mem_type);
   }
+}
+
+void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+  allocator_ = AllocatorManager__GetAllocator(allocator_manager.get(), device_id_, OrtMemTypeDefault);
+  if (nullptr == allocator_) {
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+    allocator_ = CreateAllocator(default_memory_info);
+    AllocatorManager__InsertAllocator(allocator_manager.get(), allocator_);
+  }
+  TryInsertAllocator(allocator_);
+
+  auto cuda_pinned_alloc = AllocatorManager__GetAllocator(allocator_manager.get(), DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
+  if (nullptr == cuda_pinned_alloc) {
+    AllocatorCreationInfo pinned_allocator_info(
+        [](OrtDevice::DeviceId device_id) {
+          return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+    cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
+    AllocatorManager__InsertAllocator(allocator_manager.get(), cuda_pinned_alloc);
+  }
+  TryInsertAllocator(cuda_pinned_alloc);
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
@@ -603,12 +605,15 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
 
-  // Assign inputs and outputs to subgraph's meta_def
+  // Generate unique kernel name for TRT subgraph
+  uint64_t model_hash = 0;
+  int id = GenerateMetaDefId(graph, model_hash);
+  std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
-  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(subgraph_id_++);
-  meta_def->domain() = kMSDomain;
+  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
 
+  // Assign inputs and outputs to subgraph's meta_def
   for (const auto& input : inputs) {
     if (input.second->Exists()) {
       meta_def->inputs().push_back(input.second->Name());
@@ -621,6 +626,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     }
   }
 
+  meta_def->domain() = kMSDomain;
   meta_def->since_version() = 1;
   sub_graph->SetMetaDef(std::move(meta_def));
 
@@ -745,7 +751,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
 
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list);
+        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path_);
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
@@ -878,6 +884,14 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+  // Get ModelPath
+  const auto& path_string = graph.ModelPath().ToPathString();
+#ifdef _WIN32
+  wcstombs(model_path_, path_string.c_str(), sizeof(model_path_));
+#else
+  strcpy(model_path_, path_string.c_str());
+#endif
+
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
@@ -951,7 +965,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     auto graph_body_viewer = graph_body.CreateGraphViewer();
     auto model = graph_body_viewer->CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
-
     *model_proto->mutable_graph() = *graph_body.ToGraphProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     std::string string_buf;
@@ -969,7 +982,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
     auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
     auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-    trt_parser->parse(string_buf.data(), string_buf.size());
+    trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
     int num_inputs = trt_network->getNbInputs();
@@ -1040,8 +1053,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       trt_node_name_with_precision += "_int8";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
     }
-    int num_nodes = graph_body_viewer->NumberOfNodes();
-    trt_node_name_with_precision += "_" + GetVecHash(trt_node_name_with_precision + std::to_string(num_nodes));
 
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime

@@ -56,6 +56,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::SessionEndProfiling,
     &winmla::SessionCopyOneInputAcrossDevices,
     &winmla::SessionGetNumberOfIntraOpThreads,
+    &winmla::SessionGetNamedDimensionsOverrides,
 
     // Dml methods (TODO need to figure out how these need to move to session somehow...)
     &winmla::DmlExecutionProviderSetDefaultRoundingMode,
@@ -82,7 +83,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::ReleaseModel
 };
 
-const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(const OrtApi* ort_api) NO_EXCEPTION {
+const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(_In_ const OrtApi* ort_api) NO_EXCEPTION {
   if (OrtApis::GetApi(2) == ort_api) {
     return &winml_adapter_api_1;
   }
