@@ -140,6 +140,8 @@ class ORTModule(torch.nn.Module):
         self._use_external_cuda_allocator = True
         if self._use_external_cuda_allocator:
             self._torch_cuda_allocator = _load_torch_allocator_cpp_extension()
+            self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
+            self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
 
     def cpu(self: T) -> T:
         '''Thin layer to capture device for ORTModule IO bindings'''
@@ -242,8 +244,8 @@ class ORTModule(torch.nn.Module):
                 providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
                 if self._use_external_cuda_allocator:
                     provider_options = [{"device_id": str(self._device.index),
-                                         "cuda_external_alloc": str(self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()),
-                                         "cuda_external_free": str(self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address())}]
+                                         "cuda_external_alloc": str(self._torch_alloc),
+                                         "cuda_external_free": str(self._torch_free)}]
                 else:
                     provider_options = [{"device_id": str(self._device.index)}]
                     
