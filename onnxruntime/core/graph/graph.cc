@@ -3398,7 +3398,7 @@ void Graph::CancelFuseSubGraph(const Node& fused_node) {
     return;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // Remove the FuntionBody from function_container_
+  // Remove the function body from function container
   const auto* fused_node_func = fused_node.GetFunctionBody();
   auto it = std::find_if(
       function_container_.begin(), function_container_.end(),

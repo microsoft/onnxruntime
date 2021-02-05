@@ -448,34 +448,19 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     nodes_and_viewers.push_back(IExecutionProvider::FusedNodeAndGraph{fused_node, *viewers.back()});
   }
 
-  std::vector<NodeComputeInfo> node_compute_funcs;
-  node_compute_funcs.reserve(nodes_and_viewers.size());
-  std::unordered_set<size_t> compile_error_indices;
-  compile_error_indices.reserve(nodes_and_viewers.size());
-
-  // We will compile the partitions one by one, and put the result back into node_compute_funcs
-  // In case one of the partitions fails the compile, we can fall back this particular partition to next EP
-  for (size_t i = 0; i < nodes_and_viewers.size(); ++i) {
-    std::vector<IExecutionProvider::FusedNodeAndGraph> single_node_and_viewer{nodes_and_viewers[i]};
-    std::vector<NodeComputeInfo> single_node_compute_func;
-    auto status = current_ep.Compile(single_node_and_viewer, single_node_compute_func);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "EP: " << current_ep.Type() << " has Compile error: " << status.ErrorMessage();
-      compile_error_indices.insert(i);
-      node_compute_funcs.push_back(NodeComputeInfo());  // insert an empty stub here
-    } else {
-      ORT_RETURN_IF(single_node_compute_func.empty(), "single_node_compute_func should have 1 elements");
-      node_compute_funcs.push_back(single_node_compute_func[0]);
-    }
-  }
-
-  for (size_t j = 0, end = nodes_and_viewers.size(); j < end; j++) {
+  // We will compile the fused nodes one by one, and fuse the subgraph if successful.
+  // If a compilation fails we undo the fusion and leave the original nodes available for other EPs to take
+  for (size_t j = 0, end = nodes_and_viewers.size(); j < end; ++j) {
     Node& node = nodes_and_viewers[j].fused_node;
-    if (compile_error_indices.find(j) != compile_error_indices.end()) {
+    std::vector<NodeComputeInfo> single_node_compute_func;
+    auto status = current_ep.Compile({nodes_and_viewers[j]}, single_node_compute_func);
+    if (!status.IsOK()) {
       // There is compile error with the nodes_and_viewer[j], remove the fused_node and function from the graph
+      LOGS_DEFAULT(ERROR) << "EP: " << current_ep.Type() << " has Compile error: " << status.ErrorMessage();
       graph.CancelFuseSubGraph(node);
     } else {
-      ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node.Name(), std::move(node_compute_funcs[j])));
+      ORT_RETURN_IF(single_node_compute_func.empty(), "single_node_compute_func should have 1 elements");
+      ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node.Name(), std::move(single_node_compute_func[0])));
 
       const auto& cur_capability = capabilities[j];
       const IndexedSubGraph& indexed_sub_graph = *cur_capability->sub_graph;

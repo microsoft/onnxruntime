@@ -330,19 +330,24 @@ TEST(InternalTestingEP, TestOrtModelWithCompileFailure) {
     ASSERT_STATUS_OK(session.Load(ort_model_path));
     ASSERT_STATUS_OK(session.Initialize());
 
+    // 2 Conv nodes shoule be replaced with fused nodes
     const auto& graph = session.GetGraph();
     int num_replaced_nodes = CountAndValidateAssignedNodes(
         session.GetGraph(), {"Conv"}, session.GetSessionState().GetFuncMgr());
 
     ASSERT_EQ(num_replaced_nodes, 2);
 
+    // The Gemm node should still not have been replaced
     int count_compile_failure_nodes = 0;
     for (const auto& node : graph.Nodes()) {
       if (compile_failure_ops.find(node.OpType()) != compile_failure_ops.end())
         count_compile_failure_nodes++;
     }
-
     ASSERT_EQ(count_compile_failure_nodes, 1);
+
+    // Execute the session, since the last node is Gemm, and its input 0 is all 0s
+    // So the result should be the bias initializer of the Gemm node
+    ExecuteMnist(session, true /* enable_custom_ep */);
   }
 }
 
