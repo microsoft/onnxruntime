@@ -76,6 +76,7 @@ enum class QLinearOpType : uint8_t {
   QLinearConv,
   QLinearMatMul,
   QLinearAdd,
+  QLinearSigmoid,
   // Not yet supported
   // QLinearAveragePool,
   // QLinearMul,
@@ -106,6 +107,11 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
 // Check if a qlinear op has valid zero points for given indices
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
                                     const std::vector<size_t>& indices);
+
+float GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node, size_t idx);
+
+common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
+                                        const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
 // Get initialize tensort float/int32/int64 data without unpacking
 // TODO, move to ort framework

@@ -6,7 +6,9 @@
 #include <thrust/logical.h>
 #include <thrust/functional.h>
 #include <thrust/execution_policy.h>
-
+#ifdef _WIN32
+#pragma warning(disable : 4244)
+#endif
 namespace onnxruntime {
 namespace cuda {
 
