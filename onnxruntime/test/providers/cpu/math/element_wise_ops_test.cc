@@ -1902,8 +1902,10 @@ TEST(MathOpTest, SinDouble) {
 }
 
 TEST(MathOpTest, SinFloat16) {
-  OpTester test("Sin");
-  TrigFloat16Test<std::sin>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+  if (DefaultCudaExecutionProvider().get() != nullptr) {  // MLFloat16 type not supported on CPU
+    OpTester test("Sin");
+    TrigFloat16Test<std::sin>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+  }
 }
 
 TEST(MathOpTest, CosFloat) {
@@ -1919,8 +1921,10 @@ TEST(MathOpTest, CosDouble) {
 }
 
 TEST(MathOpTest, CosFloat16) {
-  OpTester test("Cos");
-  TrigFloat16Test<std::cos>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+  if (DefaultCudaExecutionProvider().get() != nullptr) {  // MLFloat16 type not supported on CPU
+    OpTester test("Cos");
+    TrigFloat16Test<std::cos>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+  }
 }
 TEST(MathOpTest, Tan) {
   OpTester test("Tan");
