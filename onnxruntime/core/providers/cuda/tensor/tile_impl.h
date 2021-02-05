@@ -25,5 +25,14 @@ void TileMemcpyImpl(
     T* output_data,
     const size_t num_output_elements);
 
+template <typename T>
+void TileBatchedMemcpyImpl(
+    const T* input_data,
+    const size_t num_of_elements_per_input_batch,
+    const size_t num_input_batch_count,
+    const fast_divmod& num_of_elements_per_output_batch,
+    T* output_data,
+    const size_t num_output_elements);
+
 }  // namespace cuda
 }  // namespace onnxruntime
