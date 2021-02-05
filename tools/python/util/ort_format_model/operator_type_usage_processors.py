@@ -260,16 +260,31 @@ def _create_operator_type_usage_processors():
     #
     # Ops we are ignoring currently so as not to produce meaningless/unused output:
     # - Implementation is type agnostic:
-    #    DynamicQuantizeMatMul, If, Loop, Reshape, Scan, Shape, Squeeze, Unsqueeze
+    #    ai.onnx: If, Loop, Reshape, Scan, Shape, Squeeze, Unsqueeze
+    #    com.microsoft: DynamicQuantizeMatMul, MatMulIntegerToFloat
     # - Only one type supported in the ORT implementation:
-    #    FusedConv, FusedGemm, FusedMatMul, TransposeMatMul
+    #    com.microsoft: FusedConv, FusedGemm, FusedMatMul, TransposeMatMul
     # - Implementation does not have any significant type specific code:
-    #    Concat, Flatten, Not, QLinearConv, Reshape, Shape, Squeeze, Unsqueeze
-    default_processor_onnx_ops = ['Add', 'AveragePool', 'BatchNormalization', 'Clip', 'Conv',
-                                  'DequantizeLinear', 'Div', 'Equal', 'Exp', 'Expand',
-                                  'Gemm', 'Greater', 'Less', 'MatMul', 'Max', 'Min', 'Mul',
-                                  'NonMaxSuppression', 'NonZero', 'Pad', 'Range', 'Relu', 'Resize',
-                                  'Sigmoid', 'Softmax', 'Split', 'Sub', 'Tile', 'TopK', 'Transpose']
+    #    ai.onnx: Concat, Flatten, Not, QLinearConv, Reshape, Shape, Squeeze, Unsqueeze
+    #
+    default_processor_onnx_ops = ['Abs', 'Add', 'ArgMax', 'ArgMin', 'AveragePool',
+                                  'BatchNormalization', 'BitShift',
+                                  'Ceil', 'Clip', 'Conv', 'CumSum',
+                                  'DequantizeLinear', 'Div',
+                                  'Equal', 'Exp', 'Expand',
+                                  'Floor',
+                                  'Gemm', 'Greater',
+                                  'IsNaN'
+                                  'Less', 'Log', 'LogSoftmax', 'LpNormalization',
+                                  'MatMul', 'Max', 'Min', 'Mul',
+                                  'Neg', 'NonMaxSuppression', 'NonZero',
+                                  'Pad',
+                                  'Range', 'Reciprocal', 'ReduceL1', 'ReduceL2', 'ReduceLogSum', 'ReduceLogSumExp',
+                                  'ReduceMax', 'ReduceMean', 'ReduceMin', 'ReduceProd', 'ReduceSum', 'ReduceSumSquare',
+                                  'Relu', 'Resize', 'RoiAlign', 'Round',
+                                  'Sigmoid', 'Sin', 'Softmax', 'Split', 'Sqrt', 'Sub',
+                                  'Tanh', 'Tile', 'TopK', 'Transpose',
+                                  'Where']
 
     internal_ops = ['QLinearAdd', 'QLinearMul']
 
@@ -303,7 +318,6 @@ def _create_operator_type_usage_processors():
 
     # Operators that switch on output type
     add(DefaultTypeUsageProcessor('ai.onnx', 'ConstantOfShape', inputs=[], outputs=[0]))
-    add(DefaultTypeUsageProcessor('com.microsoft', 'DynamicQuantizeMatMul', inputs=[], outputs=[0]))
 
     # Random generator ops produce new data so we track the output type
     onnx_random_ops = ['RandomNormal', 'RandomNormalLike', 'RandomUniform', 'RandomUniformLike', 'Multinomial']
