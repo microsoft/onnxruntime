@@ -88,7 +88,7 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
       compression_type = "GistPack1";
     }
     
-    if (compression_type == "GistPack1" || compression_type == "GistPack8") {
+    if (compression_type == "GistPack1" || compression_type == "GistPack8" || compression_type == "GistPackMsfp15") {
       compressed_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
     }
     else if (compression_type == "GistPack16") {

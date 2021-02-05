@@ -196,6 +196,181 @@ __global__ void _GistPack16DecoderKernel(
 }
 
 template <typename T>
+__global__ void _GistPackMsfp15EncoderKernel(
+    const T* input_data,
+    uint8_t* output_data,
+    const CUDA_LONG num_threads,
+    const CUDA_LONG pre_axis_size,
+    const CUDA_LONG axis_size,
+    const CUDA_LONG num_tiles,
+    const CUDA_LONG tile_size) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, num_threads);
+
+  // Quantization parameters
+  const int bits = 7;
+  // mantissa bits, remove sign
+  const int m_bits = bits - 1;
+
+  // float32 parameters
+  const uint32_t s_mask = 0x80000000;
+  const int s_shift = 31;
+  const int pack_s_shift = 6;
+  const uint32_t e_mask = 0x7f800000;
+  const int e_shift = 23;
+  const int pack_e_shift = 7;
+  const uint32_t m_mask = 0x007fffff;
+
+  const int tile_i = id % num_tiles;
+  const int pre_axis_i = id / num_tiles;
+
+  // Loop over bounding box to find shared exponent
+  uint32_t shared_exp = 0;
+  for (size_t i = 0; i < tile_size; i++) {
+    // Get input
+    size_t in_i = pre_axis_i * axis_size +
+                  tile_i * tile_size +
+                  i;
+    T X = input_data[in_i];
+    uint32_t X_i = (uint32_t)__float_as_uint(X);
+    // Get exponent
+    uint32_t exp = (X_i & e_mask) >> e_shift;
+    // Shared exponent is max of exponents
+    if (exp > shared_exp) {
+      shared_exp = exp;
+    }
+  }
+
+
+  // If inf/nan is found, zero out values
+  if (shared_exp >= 0xff) {
+    for (size_t i = 0; i < tile_size; i++) {
+      size_t in_i = pre_axis_i * axis_size +
+                    tile_i * tile_size +
+                    i;
+      output_data[in_i] = 0;
+    }
+
+    return;
+  }
+
+
+  // Copy of shared exponent for packing
+  uint32_t pack_shared_exp = shared_exp;
+
+  // Loop over bounding box to quantize
+  for (size_t i = 0; i < tile_size; i++) {
+    size_t in_i = pre_axis_i * axis_size +
+                  tile_i * tile_size +
+                  i;
+    T X = input_data[in_i];
+    uint32_t X_i = (uint32_t)__float_as_uint(X);
+
+    // Get biased exponent
+    uint32_t exp = (X_i & e_mask) >> e_shift;
+    uint32_t sign;
+    uint32_t mantissa;
+    if (exp == 0) {
+      // Flush denorm to 0
+      sign = 0;
+      mantissa = 0;
+    } else {
+      // Decode float
+      sign = X_i & s_mask;
+      mantissa = X_i & m_mask;
+
+      // Difference in exponents
+      uint32_t exp_diff = shared_exp - exp;
+
+      // Implied 1
+      mantissa = mantissa + (1 << 23);
+      // Adjust for shared exponent
+      mantissa = mantissa >> exp_diff;
+      // Shift down to target bit width + 1
+      mantissa = mantissa >> (24 - m_bits - 1);
+      // Rounding (with overflow check)
+      if (mantissa != ((1 << (m_bits + 1)) - 1)) {
+        mantissa += 1;
+      }
+      // Shift away last bit
+      mantissa = mantissa >> 1;
+    }
+    // Store {exponent bit, mantissa} in output
+    uint8_t exp_bit = (pack_shared_exp % 2) << pack_e_shift;
+    pack_shared_exp = pack_shared_exp >> 1;
+    output_data[in_i] = (uint8_t) (exp_bit | (sign >> (s_shift - pack_s_shift)) | mantissa);
+  }
+}
+
+template <typename T>
+__global__ void _GistPackMsfp15DecoderKernel(
+  const uint8_t* input_data,
+  T* output_data,
+  const CUDA_LONG num_threads,
+  const CUDA_LONG pre_axis_size,
+  const CUDA_LONG axis_size,
+  const CUDA_LONG num_tiles,
+  const CUDA_LONG tile_size) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, num_threads);
+
+  // Quantization parameters
+  const int bits = 7;
+  // mantissa bits, remove sign
+  const int mbits = bits - 1;
+
+  const int s_shift = 31;
+  const int pack_s_shift = 6;
+  const uint8_t pack_s_mask = 0x40;
+  const int e_shift = 23;
+  const int pack_e_shift = 7;
+  const uint8_t pack_m_mask = 0x3f;
+
+  const int tile_i = id % num_tiles;
+  const int pre_axis_i = id / num_tiles;
+
+  // Extract exponent 
+  uint32_t shared_exp = 0;
+  for (int i = 7; i >= 0; i--) {
+    size_t in_i = pre_axis_i * axis_size +
+                  tile_i * tile_size +
+                  i;
+    shared_exp = shared_exp << 1;
+    shared_exp += (input_data[in_i] >> pack_e_shift);
+  }
+
+  // De-quantize values
+  for (size_t i = 0; i < tile_size; i++) {
+    size_t in_i = pre_axis_i * axis_size +
+                  tile_i * tile_size +
+                  i;
+    uint8_t X = input_data[in_i];
+    // Get sign bit
+    uint32_t sign = X & pack_s_mask;
+    // Get mantissa
+    uint32_t mantissa = (uint32_t) (X & pack_m_mask);
+
+    if (mantissa == 0) {
+      output_data[in_i] = 0.0;
+    } else {
+      // Find leading 1
+      uint8_t leading_bit_pos = floor(log2f(mantissa));
+      // Difference from shared exponent of this value
+      int exp_diff = 5 - leading_bit_pos;
+      // Adjust exponent
+      uint32_t exp = shared_exp - exp_diff;
+
+      // Shift back to restore mantissa
+      mantissa = mantissa << (24 - mbits + exp_diff);
+      // Remove implied 1
+      mantissa = mantissa & ((1 << 23) - 1);
+
+      // Reconstruct float number
+      uint32_t output =  (sign << (s_shift - pack_s_shift)) | (exp << e_shift) | mantissa;
+      output_data[in_i] = (float)__uint_as_float(output);
+    }
+  }
+}
+
+template <typename T>
 void GistBinarizeEncoderImpl(
     const T* input_data,
     bool* output_data,
@@ -273,6 +448,56 @@ void GistPack16DecoderImpl(
   _GistPack16DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data, output_data, (CUDA_LONG)N);
 }
 
+template <typename T>
+void GistPackMsfp15EncoderImpl(
+    const T* input_data,
+    uint8_t* output_data,
+    const size_t pre_axis_size,
+    const size_t axis_size) {
+
+  const int tile_size = 8;
+  assert(axis_size % tile_size == 0);
+  const int num_tiles = axis_size / tile_size;
+
+  const int threads = pre_axis_size * num_tiles;
+
+  int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
+  _GistPackMsfp15EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    input_data, 
+    output_data, 
+    (CUDA_LONG)threads,
+    (CUDA_LONG)pre_axis_size,
+    (CUDA_LONG)axis_size,
+    (CUDA_LONG)num_tiles,
+    (CUDA_LONG)tile_size
+  );
+}
+
+template <typename T>
+void GistPackMsfp15DecoderImpl(
+  const uint8_t* input_data,
+  T* output_data,
+  const size_t pre_axis_size,
+  const size_t axis_size) {
+
+  const int tile_size = 8;
+  assert(axis_size % tile_size == 0);
+  const int num_tiles = axis_size / tile_size;
+
+  const int threads = pre_axis_size * num_tiles;
+
+  int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
+  _GistPackMsfp15DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    input_data,
+    output_data,
+    (CUDA_LONG)threads,
+    (CUDA_LONG)pre_axis_size,
+    (CUDA_LONG)axis_size,
+    (CUDA_LONG)num_tiles,
+    (CUDA_LONG)tile_size
+  );
+}
+
 #define SPECIALIZED_IMPL_BIN_ENC(T) \
   template void GistBinarizeEncoderImpl<T>(const T* input_data, bool* output_data, const size_t N);
 #define SPECIALIZED_IMPL_BIN_DEC(T) \
@@ -289,6 +514,10 @@ void GistPack16DecoderImpl(
   template void GistPack16EncoderImpl<T>(const T* input_data, half* output_data, const size_t N);
 #define SPECIALIZED_IMPL_PACK16_DEC(T) \
   template void GistPack16DecoderImpl<T>(const half* input_data, T* output_data, const size_t N);
+#define SPECIALIZED_IMPL_PACKMSFP15_ENC(T) \
+  template void GistPackMsfp15EncoderImpl<T>(const T* input_data, uint8_t* output_data, const size_t pre_axis_size, const size_t axis_size);
+#define SPECIALIZED_IMPL_PACKMSFP15_DEC(T) \
+  template void GistPackMsfp15DecoderImpl<T>(const uint8_t* input_data, T* output_data, const size_t pre_axis_size, const size_t axis_size);
 
 SPECIALIZED_IMPL_BIN_ENC(float)
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 700
@@ -325,6 +554,10 @@ SPECIALIZED_IMPL_PACK8_DEC(half)
 SPECIALIZED_IMPL_PACK16_ENC(float)
 
 SPECIALIZED_IMPL_PACK16_DEC(float)
+
+SPECIALIZED_IMPL_PACKMSFP15_ENC(float)
+
+SPECIALIZED_IMPL_PACKMSFP15_DEC(float)
 
 }  // namespace cuda
 }  // namespace onnxruntime

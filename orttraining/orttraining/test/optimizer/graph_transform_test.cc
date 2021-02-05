@@ -59,7 +59,7 @@ TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
 TEST_F(GraphTransformationTests, GistEncodeDecode) {
   auto model_uri = MODEL_FOLDER "../test_training_model.onnx"; // requires an exisiting backward model
   
-  vector<std::string> gist_compr_vec = {"GistPack8", "GistPack16"};
+  vector<std::string> gist_compr_vec = {"GistPack8", "GistPack16", "GistPackMsfp15"};
   const int op_max = 9;
   
   for (int op = 1; op <= op_max; op++) {

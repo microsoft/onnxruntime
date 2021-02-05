@@ -1627,6 +1627,34 @@ Example 4:
           {"tensor(float16)"},
           "16 bits compressed tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPackMsfp15Encoder)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .Input(0, "X", "uncompressed input", "T")
+      .Output(0, "Y", "compressed output", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits compressed tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPackMsfp15Decoder)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+       .Input(0, "X", "compresssed input", "T1")
+       .Output(0, "Y", "uncompressed output", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits compressed tensors.");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SinGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)

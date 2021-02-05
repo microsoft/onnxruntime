@@ -69,5 +69,19 @@ class GistPack16DecoderOp final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class GistPackMsfp15EncoderOp final : public CudaKernel {
+ public:
+  GistPackMsfp15EncoderOp(const OpKernelInfo& info) : CudaKernel(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class GistPackMsfp15DecoderOp final : public CudaKernel {
+ public:
+  GistPackMsfp15DecoderOp(const OpKernelInfo& info) : CudaKernel(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -242,5 +242,75 @@ Status GistPack16DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+// Pack MSFP15
+#define REGISTER_KERNEL_TYPED_PACKMSFP15_ENC(T)                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      GistPackMsfp15Encoder,                                                      \
+      kOnnxDomain,                                                              \
+      9,                                                                        \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      GistPackMsfp15EncoderOp<T>);
+
+REGISTER_KERNEL_TYPED_PACKMSFP15_ENC(float)
+
+template <typename T>
+Status GistPackMsfp15EncoderOp<T>::ComputeInternal(OpKernelContext* context) const {
+  const Tensor* X = context->Input<Tensor>(0);
+  ORT_RETURN_IF_NOT(X != nullptr);
+
+  Tensor* Y = context->Output(0, X->Shape());
+
+  const auto shape = X->Shape();
+  const size_t ndims = shape.NumDimensions();
+  const size_t pre_axis_size = shape.SizeToDimension(ndims - 1);
+  const size_t axis_size = shape.SizeFromDimension(ndims - 1);
+
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
+  GistPackMsfp15EncoderImpl<CudaT>(
+      reinterpret_cast<const CudaT*>(X->template Data<T>()),
+      reinterpret_cast<uint8_t*>(Y->template MutableData<uint8_t>()),
+      pre_axis_size,
+      axis_size);
+
+  return Status::OK();
+}
+
+#define REGISTER_KERNEL_TYPED_PACKMSFP15_DEC(T)                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      GistPackMsfp15Decoder,                                                      \
+      kOnnxDomain,                                                              \
+      9,                                                                        \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      GistPackMsfp15DecoderOp<T>);
+
+REGISTER_KERNEL_TYPED_PACKMSFP15_DEC(float)
+
+template <typename T>
+Status GistPackMsfp15DecoderOp<T>::ComputeInternal(OpKernelContext* context) const {
+  const Tensor* X = context->Input<Tensor>(0);
+  ORT_RETURN_IF_NOT(X != nullptr);
+  Tensor* Y = context->Output(0, X->Shape());
+
+  const auto shape = X->Shape();
+  const size_t ndims = shape.NumDimensions();
+  const size_t pre_axis_size = shape.SizeToDimension(ndims - 1);
+  const size_t axis_size = shape.SizeFromDimension(ndims - 1);
+
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
+  GistPackMsfp15DecoderImpl<CudaT>(
+      reinterpret_cast<const uint8_t*>(X->template Data<uint8_t>()),
+      reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+      pre_axis_size,
+      axis_size);
+
+  return Status::OK();
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime
