@@ -921,10 +921,17 @@ class Graph {
   @returns Node with fused subgraph.
   @remarks As a new Graph instance for the fused nodes is not created, a GraphViewer can be constructed with the
            IndexedSubGraph information to provide a view of the subgraph. The original nodes are left in place
-           while this is in use. 
+           while this is in use.
 		   Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
+
+  /**
+  If we have BeginFuseSubGraph, but somehow hit errors, such as Compile of an EP failed on thesub_graph.
+  We can call CancelFuseSubGraph to undo the changes of BeginFuseSubGraph
+  @param fused_node The fused node and it's function body to be removed from the graph
+  */
+  void CancelFuseSubGraph(const Node& fused_node);
 
   void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
 #endif
