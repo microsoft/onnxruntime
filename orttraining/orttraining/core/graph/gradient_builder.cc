@@ -194,9 +194,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     }
   };
 
-  if (A_has_shape && B_has_shape && Y_has_shape) {
-    ORT_ENFORCE(A_shape.size() >= 2);
-    ORT_ENFORCE(B_shape.size() >= 2);
+  if (A_has_shape && B_has_shape && Y_has_shape &&
+      A_shape.size() >= 2 && B_shape.size() >= 2) {
     std::vector<AttributeProto> shared_attributes;
     shared_attributes.push_back(MakeAttribute("beta", float(0)));
     AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
