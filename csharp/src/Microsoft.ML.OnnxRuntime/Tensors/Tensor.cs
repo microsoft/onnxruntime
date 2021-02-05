@@ -1572,6 +1572,11 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
         #endregion
 
+        /// <summary>
+        /// GetArrayString
+        /// </summary>
+        /// <param name="includeWhitespace">includeWhitespace</param>
+        /// <returns>GetArrayString result</returns>
         public string GetArrayString(bool includeWhitespace = true)
         {
             var builder = new StringBuilder();
