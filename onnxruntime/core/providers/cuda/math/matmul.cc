@@ -239,6 +239,29 @@ class Sparse2x4ComputeHelper {
         b_data += stride_B;
         y_data += stride_C;
       }
+    } else {
+      ORT_ENFORCE(helper.LeftOffsets().size() == helper.RightOffsets().size(), "Left and right have different number of offsets");
+      ORT_ENFORCE(helper.RightOffsets().size() == helper.OutputOffsets().size(), "Right and Output have different number of offsets");
+      std::vector<const T*> left_arrays(helper.LeftOffsets().size());
+      std::vector<const T*> right_arrays(helper.RightOffsets().size());
+      std::vector<T*> output_arrays(helper.OutputOffsets().size());
+
+      MatMulComputeHelper::OffsetToArrays(left->template Data<T>(), helper.LeftOffsets(), gsl::make_span(left_arrays));
+      MatMulComputeHelper::OffsetToArrays(sparse_info.device_dense_buffer_.get(), helper.RightOffsets(), gsl::make_span(right_arrays));
+      MatMulComputeHelper::OffsetToArrays(Y->template MutableData<T>(), helper.OutputOffsets(), gsl::make_span(output_arrays));
+
+      // XXX: Consider parallelizing it
+      batch_count = helper.OutputOffsets().size();
+      for (int64_t batch = 0; batch < batch_count; ++batch) {
+        const T* a_data = left_arrays[batch];
+        const T* b_data = right_arrays[batch];
+        T* y_data = output_arrays[batch];
+        CUSPARSELT_RETURN_IF_ERROR(cusparseLtSpMMACompress(handle, &plan, b_data,
+                                                           compressed_buffer.get(), nullptr /* default stream */));
+        // Swapped arguments not supported at this time.
+        CUSPARSELT_RETURN_IF_ERROR(cusparseLtMatmul(handle, &plan, &alpha, compressed_buffer.get(), a_data,
+                                                    &beta, y_data, y_data, workspace_buffer.get(), streams, 0));
+      }
     }
 
     return Status::OK();
