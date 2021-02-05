@@ -212,7 +212,8 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
 
     GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_);
     if (node_defs.empty()) {
-      LOG(WARNING) << "GetGradientForOp() did not create any nodes for node " << node->Name() << " of type " << node->OpType() << "."; 
+      LOGS(logger_, WARNING) << "GetGradientForOp() did not create any nodes for node "
+                             << node->Name() << " of type " << node->OpType() << "."; 
     }
     
     // updates arg name if gradient accumulation is needed
