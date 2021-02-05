@@ -3406,7 +3406,6 @@ void Graph::CancelFuseSubGraph(const Node& fused_node) {
         return func.get() == fused_node_func;
       });
   if (it != function_container_.end()) {
-    LOGS(logger_, VERBOSE) << "Oh, we found it, this!!!!!";
     function_container_.erase(it);
   }
 #endif
