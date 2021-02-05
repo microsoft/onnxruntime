@@ -43,7 +43,7 @@ function(add_winml_test)
     list(REMOVE_DUPLICATES _UT_DEPENDS)
   endif()
 
-  add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  onnxruntime_add_executable(${_UT_TARGET} ${_UT_SOURCES})
   onnxruntime_add_include_to_target(${_UT_TARGET} onnx_proto)
   source_group(TREE ${WINML_TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_winml_target_properties(${_UT_TARGET})

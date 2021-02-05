@@ -1,5 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifdef _WIN32
+#pragma warning(disable : 4244)
+#endif
 
 #include "orttraining/training_ops/cuda/tensor/gather_grad_impl.h"
 

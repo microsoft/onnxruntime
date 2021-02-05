@@ -23,6 +23,8 @@ def rename_folder(root):
         renamed.append((r, name, into))
         full_src = os.path.join(r, name)
         full_into = os.path.join(r, into)
+        if os.path.exists(full_into):
+            raise RuntimeError("%r already exists, previous documentation should be removed.")
         print("rename %r" % full_src)
         os.rename(full_src, full_into)
 

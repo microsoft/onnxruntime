@@ -273,20 +273,25 @@ struct EnabledTypes {
  *
  * In MyProvider provider's implementation of MyOp kernel:
  *
+ * namespace onnxruntime {
+ * namespace op_kernel_type_control {
  * // specify supported types, i.e., the full set of types that can be enabled
  * ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
  *     MyProvider, DomainContainingMyOp, MyOp, Input, 0,
  *     int, float, double);
+ * }  // namespace op_kernel_type_control
+ * }  // namespace onnxruntime
+ *
+ * // ...
  *
  * // get enabled types
  * using MyOpFirstInputEnabledTypes =
- *     ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(MyProvider, DomainContainingMyOp, MyOp, Input, 0)
+ *     ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(MyProvider, DomainContainingMyOp, MyOp, Input, 0);
  *
- * ...
+ * // ...
  *
- * // in the implementation, we can dispatch to the enabled types
- * utils::MLTypeCallDispatcherFromTypeList<MyOpFirstInputEnabledTypes> dispatcher{firstInputRuntimeType};
- * ...
+ * // use MLTypeCallDispatcher to dispatch to implementations for enabled types
+ * using Dispatcher = onnxruntime::utils::MLTypeCallDispatcherFromTypeList<MyOpFirstInputEnabledTypes>;
  */
 
 // all allowed type specifications should be contained in the following file
