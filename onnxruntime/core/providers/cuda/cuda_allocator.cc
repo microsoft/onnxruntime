@@ -51,6 +51,23 @@ FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {
   return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
 }
 
+void* CUDAExternalAllocator::Alloc(size_t size) {
+  void* p = nullptr;
+  if (size > 0) {
+    p = alloc_(size);
+
+    // review(codemzs): ORT_ENFORCE does not seem appropiate.
+    ORT_ENFORCE(p != nullptr);
+
+  }
+
+  return p;
+}
+
+void CUDAExternalAllocator::Free(void* p) {
+  free_(p);
+}
+
 void* CUDAPinnedAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
@@ -67,45 +84,45 @@ FencePtr CUDAPinnedAllocator::CreateFence(const SessionState* session_state) {
   return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
 }
 
-TorchCUDAAllocator::TorchCUDAAllocator(OrtDevice::DeviceId device_id, const char* name)
-    : IAllocator(
-          OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                        OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
-                        device_id, OrtMemTypeDefault)) {
-  Env::Default().LoadDynamicLibrary("/data/anaconda/envs/sh36/lib/python3.6/site-packages/torch/lib/libc10_cuda.so", &libtorch_);
-  ORT_ENFORCE(libtorch_ != nullptr, "libc10_cuda missing");
-  /*
-  U _ZN3c104cuda20CUDACachingAllocator10emptyCacheEv
-  U _ZN3c104cuda20CUDACachingAllocator10raw_deleteEPv
-  U _ZN3c104cuda20CUDACachingAllocator12getFreeMutexEv
-  U _ZN3c104cuda20CUDACachingAllocator3getEv
-  U _ZN3c104cuda20CUDACachingAllocator4initEi
-  U _ZN3c104cuda20CUDACachingAllocator9cacheInfoEiPmS2_
-  U _ZN3c104cuda20CUDACachingAllocator9raw_allocEm
-  */
+// TorchCUDAAllocator::TorchCUDAAllocator(OrtDevice::DeviceId device_id, const char* name)
+//     : IAllocator(
+//           OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+//                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
+//                         device_id, OrtMemTypeDefault)) {
+//   Env::Default().LoadDynamicLibrary("/bert_ort/ettao/ettao-py36/lib/python3.6/site-packages/torch/lib/libc10_cuda.so", &libtorch_);
+//   ORT_ENFORCE(libtorch_ != nullptr, "libc10_cuda missing");
+//   /*
+//   U _ZN3c104cuda20CUDACachingAllocator10emptyCacheEv
+//   U _ZN3c104cuda20CUDACachingAllocator10raw_deleteEPv
+//   U _ZN3c104cuda20CUDACachingAllocator12getFreeMutexEv
+//   U _ZN3c104cuda20CUDACachingAllocator3getEv
+//   U _ZN3c104cuda20CUDACachingAllocator4initEi
+//   U _ZN3c104cuda20CUDACachingAllocator9cacheInfoEiPmS2_
+//   U _ZN3c104cuda20CUDACachingAllocator9raw_allocEm
+//   */
 
-  Env::Default().GetSymbolFromLibrary(libtorch_, "_ZN3c104cuda20CUDACachingAllocator9raw_allocEm", (void**)&torchMalloc);
-  Env::Default().GetSymbolFromLibrary(libtorch_, "_ZN3c104cuda20CUDACachingAllocator10raw_deleteEPv", (void**)&torchFree);
-  Env::Default().GetSymbolFromLibrary(libtorch_, "_ZN3c104cuda20CUDACachingAllocator10emptyCacheEv", (void**)&torchEmptyCache);
+//   Env::Default().GetSymbolFromLibrary(libtorch_, "_ZN3c104cuda20CUDACachingAllocator9raw_allocEm", (void**)&torchMalloc);
+//   Env::Default().GetSymbolFromLibrary(libtorch_, "_ZN3c104cuda20CUDACachingAllocator10raw_deleteEPv", (void**)&torchFree);
+//   Env::Default().GetSymbolFromLibrary(libtorch_, "_ZN3c104cuda20CUDACachingAllocator10emptyCacheEv", (void**)&torchEmptyCache);
 
-  torchEmptyCache();
-}
+//   torchEmptyCache();
+// }
 
-void* TorchCUDAAllocator::Alloc(size_t size) {
-  // CheckDevice(true);
-  void* p = nullptr;
-  if (size > 0) {
-    //BFCArena was updated recently to handle the exception and adjust the request size
-    // CUDA_CALL_THROW(torchMalloc((void**)&p, size));
-    p = torchMalloc(size);
-  }
-  return p;
-}
+// void* TorchCUDAAllocator::Alloc(size_t size) {
+//   // CheckDevice(true);
+//   void* p = nullptr;
+//   if (size > 0) {
+//     //BFCArena was updated recently to handle the exception and adjust the request size
+//     // CUDA_CALL_THROW(torchMalloc((void**)&p, size));
+//     p = torchMalloc(size);
+//   }
+//   return p;
+// }
 
-void TorchCUDAAllocator::Free(void* p) {
-  // CheckDevice(false);  // ignore CUDA failure when free
-  torchFree(p);
-  //cudaFree(p);  // do not throw error since it's OK for cudaFree to fail during shutdown
-}
+// void TorchCUDAAllocator::Free(void* p) {
+//   // CheckDevice(false);  // ignore CUDA failure when free
+//   torchFree(p);
+//   //cudaFree(p);  // do not throw error since it's OK for cudaFree to fail during shutdown
+// }
 
 }  // namespace onnxruntime

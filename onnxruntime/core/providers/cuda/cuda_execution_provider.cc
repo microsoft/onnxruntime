@@ -58,23 +58,40 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
+AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy, void* external_alloc, void* external_free) {
+if (external_alloc != nullptr && external_free != nullptr) {
+    AllocatorCreationInfo default_memory_info(
+        [external_alloc, external_free](OrtDevice::DeviceId id) {
+          return onnxruntime::make_unique<CUDAExternalAllocator>(id, CUDA, external_alloc, external_free);
+        },
+        device_id,
+        false);
+
+    return CreateAllocator(default_memory_info);
+
+  } else {
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId id) {
+          return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+        },
+        device_id,
+        true,
+        {cuda_mem_limit,
+         static_cast<int>(arena_extend_strategy),
+         -1, -1});
+
+    // CUDA malloc/free is expensive so always use an arena
+    return CreateAllocator(default_memory_info);
+  }
+}
+
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit,
+                                                          ArenaExtendStrategy arena_extend_strategy, void* external_alloc, void* external_free) {  
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
 
-  AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId id) {
-        return onnxruntime::make_unique<TorchCUDAAllocator>(id, CUDA);
-      },
-      device_id,
-      false,
-      {cuda_mem_limit,
-       static_cast<int>(arena_extend_strategy),
-       -1, -1});
-
-  // CUDA malloc/free is expensive so always use an arena
-  allocator_ = CreateAllocator(default_memory_info);
+  allocator_ = CreateCudaAllocator(device_id, cuda_mem_limit, arena_extend_strategy, external_alloc, external_free);
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -113,6 +130,8 @@ void CUDAExecutionProvider::UpdateProviderOptionsInfo() {
     strategy = "unknown";
   }
   options["arena_extend_strategy"] = strategy;
+  options["cuda_external_alloc"] = std::to_string(reinterpret_cast<size_t>(external_alloc_));
+  options["cuda_external_free"] = std::to_string(reinterpret_cast<size_t>(external_free_));
 
   IExecutionProvider::SetProviderOptions(options);
 }
@@ -123,28 +142,16 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
       cuda_mem_limit_(info.cuda_mem_limit),
       arena_extend_strategy_(info.arena_extend_strategy),
       cudnn_conv_algo_(info.cudnn_conv_algo),
-      do_copy_in_default_stream_(info.do_copy_in_default_stream) {
+      do_copy_in_default_stream_(info.do_copy_in_default_stream),
+      external_alloc_(info.external_alloc),
+      external_free_(info.external_free) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
   CUDA_CALL_THROW(cudaDeviceSynchronize());
   CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, device_id_));
 
-  size_t free = 0;
-  size_t total = 0;
-  CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
-
-  AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId device_id) {
-        return onnxruntime::make_unique<TorchCUDAAllocator>(device_id, CUDA);
-      },
-      device_id_,
-      false,
-      {cuda_mem_limit_,
-       static_cast<int>(arena_extend_strategy_),
-       -1, -1});
-
-  InsertAllocator(CreateAllocator(default_memory_info));
+  InsertAllocator(CreateCudaAllocator(device_id_, cuda_mem_limit_, arena_extend_strategy_, external_alloc_, external_free_));
 
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId device_id) {
@@ -216,7 +223,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
+      context = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_, external_alloc_, external_free_);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();

@@ -16,8 +16,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(
     OrtCudnnConvAlgoSearch cudnn_conv_algo = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
     size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
     ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-    bool do_copy_in_default_stream = true);
-
+    bool do_copy_in_default_stream = true,
+    void* external_alloc = nullptr,
+    void* external_free = nullptr);
+    
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
     const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads);
 

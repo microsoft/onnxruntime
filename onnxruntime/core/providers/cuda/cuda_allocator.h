@@ -22,6 +22,25 @@ class CUDAAllocator : public IAllocator {
   void CheckDevice(bool throw_when_fail) const;
 };
 
+class CUDAExternalAllocator : public CUDAAllocator {
+  typedef void* (*ExternalAlloc)(size_t size);
+  typedef void (*ExternalFree)(void* p);
+
+ public:
+  CUDAExternalAllocator(OrtDevice::DeviceId device_id, const char* name, void* alloc, void* free)
+      : CUDAAllocator(device_id, name) {
+    alloc_ = reinterpret_cast<ExternalAlloc>(alloc);
+    free_ = reinterpret_cast<ExternalFree>(free);
+  }
+
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
+
+ private:
+  ExternalAlloc alloc_;
+  ExternalFree free_;
+};
+
 //TODO: add a default constructor
 class CUDAPinnedAllocator : public IAllocator {
  public:
@@ -36,19 +55,19 @@ class CUDAPinnedAllocator : public IAllocator {
   FencePtr CreateFence(const SessionState* session_state) override;
 };
 
-class TorchCUDAAllocator : public IAllocator {
- public:
-  TorchCUDAAllocator(OrtDevice::DeviceId device_id, const char* name);
-  void* Alloc(size_t size) override;
-  void Free(void* p) override;
-  // FencePtr CreateFence(const SessionState* session_state) override;
+// class TorchCUDAAllocator : public IAllocator {
+//  public:
+//   TorchCUDAAllocator(OrtDevice::DeviceId device_id, const char* name);
+//   void* Alloc(size_t size) override;
+//   void Free(void* p) override;
+//   // FencePtr CreateFence(const SessionState* session_state) override;
 
- private:
-  // void CheckDevice(bool throw_when_fail) const;
-  void* libtorch_;
-  void* (*torchMalloc)(size_t);  // torch's alloc function handle
-  void (*torchFree)(void*);      // torch's free function handle
-  void (*torchEmptyCache)();      // torch's free function handle
-  };
+//  private:
+//   // void CheckDevice(bool throw_when_fail) const;
+//   void* libtorch_;
+//   void* (*torchMalloc)(size_t);  // torch's alloc function handle
+//   void (*torchFree)(void*);      // torch's free function handle
+//   void (*torchEmptyCache)();      // torch's free function handle
+//   };
 
 }  // namespace onnxruntime
