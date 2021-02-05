@@ -223,7 +223,7 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
     yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
 
-  gradient_graph.AddNode("YieldOp", "Yield", "Yield Op", yield_input_node_args, yield_output_node_args, {}, kMSDomain);
+  gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, {}, kMSDomain);
 }
 
 void ModuleGradientGraphBuilder::ReorderOutputs() {

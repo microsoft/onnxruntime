@@ -2209,7 +2209,7 @@ Return true if all elements are true and false otherwise.
         }
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Yield)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(YieldOp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
