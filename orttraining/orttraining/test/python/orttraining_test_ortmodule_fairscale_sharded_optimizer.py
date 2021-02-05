@@ -17,6 +17,11 @@ import numpy as np
 
 TEMPDIR = tempfile.gettempdir() 
 
+# Usage : 
+# pip install fairscale
+# python3 orttraining_test_ortmodule_fairscale_sharded_optimizer.py --use_sharded_optimizer --use_ortmodule 
+
+
 def dist_init(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
