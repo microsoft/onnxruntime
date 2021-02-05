@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/common/type_list.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
@@ -82,7 +83,7 @@ class ConstantOfShapeBase {
         p_value_ = reinterpret_cast<void*>(&(s_value_.int64_));
         break;
       default:
-        ORT_THROW("Unsupported value attribute datatype with sizeof=: ", size);
+        ORT_THROW("Unsupported value attribute datatype with size: ", size);
         break;
     }
   }
@@ -98,7 +99,7 @@ class ConstantOfShapeBase {
       ORT_ENFORCE(unpack_status.IsOK(), "Value attribute unpacking failed:", unpack_status.ErrorMessage()); \
       SetValue(sizeof(c_type), reinterpret_cast<void*>(&val));                                              \
     } else {                                                                                                \
-      ORT_THROW("Output type is not enabled in this build: ", tensor_type);                                 \
+      ORT_THROW("Value attribute datatype is not enabled in this build: ", tensor_type);                    \
     }                                                                                                       \
     break;                                                                                                  \
   }
