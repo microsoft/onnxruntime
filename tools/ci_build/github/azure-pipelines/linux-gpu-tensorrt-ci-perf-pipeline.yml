@@ -17,13 +17,13 @@ jobs:
       displayName: 'Onnx Zoo Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d IMAGE_NAME -o "many-models"'
-      displayName: 'Many Models Perf'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d IMAGE_NAME -o "many-models"'
+    #   displayName: 'Many Models Perf'
+    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d IMAGE_NAME -o "partner-models"'
-      displayName: 'Partner Models Perf'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d IMAGE_NAME -o "partner-models"'
+    #   displayName: 'Partner Models Perf'
+    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r /home/hcsuser/perf/result/ $(Build.SourcesDirectory)/Artifact' 
       displayName: 'Prepare Artifacts'
