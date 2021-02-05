@@ -62,8 +62,8 @@ void LaunchBiasGeluGradDxKernel(
   // each grid row handles bias_size elements
   // there are input_size / bias_size rows
   constexpr int num_elements_per_thread = GridDim::maxElementsPerThread;
-  const auto num_threads_per_block =
-      std::min(CeilDiv(bias_size, num_elements_per_thread), static_cast<int64_t>(GridDim::maxThreadsPerBlock));
+  const int num_threads_per_block =
+      std::min<int>(static_cast<int>(CeilDiv(bias_size, num_elements_per_thread)), static_cast<int>(GridDim::maxThreadsPerBlock));
   const auto grid_width = CeilDiv(bias_size, num_elements_per_thread * num_threads_per_block);
   const auto grid_height = input_size / bias_size;
 

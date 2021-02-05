@@ -481,7 +481,7 @@ def resolve_executable_path(command_or_path):
     if executable_path is None:
         raise BuildError("Failed to resolve executable path for "
                          "'{}'.".format(command_or_path))
-    return os.path.realpath(executable_path)
+    return os.path.abspath(executable_path)
 
 
 def get_linux_distro():
