@@ -22,6 +22,8 @@ static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE"
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
+static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
+static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -92,6 +94,8 @@ struct TensorrtFuncState {
   nvinfer1::IRuntime* runtime = nullptr;
   AllocatorPtr scratch_allocator;
   std::unordered_map<std::string, float> dynamic_range_map;
+  bool engine_decryption_enable;
+  int (*engine_decryption)(const char*, char*, size_t*);
 };
 
 // Logical device representation.
@@ -132,6 +136,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int device_id_;
   AllocatorPtr allocator_;
   mutable char model_path_[4096]; // Reserved for max path length
+  bool engine_decryption_enable_ = false;
+  int (*engine_decryption_)(const char*, char*, size_t*);
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
