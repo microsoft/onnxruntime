@@ -76,31 +76,73 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  size_t num_of_copies = 1;
-  if (TileOp::IsTileMemcpy(input_shape, repeats, rank, num_of_copies)) {
-    if (input_tensor.IsDataType<float>() ||
-        input_tensor.IsDataType<int32_t>()) {
-      TileMemcpyImpl(
-          reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input_data),
-          input_shape.Size(),
-          reinterpret_cast<typename ToCudaType<float>::MappedType*>(output_data),
-          output_shape.Size());
-    } else if (input_tensor.IsDataType<double>() ||
-               input_tensor.IsDataType<int64_t>()) {
-      TileMemcpyImpl(
-          reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input_data),
-          input_shape.Size(),
-          reinterpret_cast<typename ToCudaType<double>::MappedType*>(output_data),
-          output_shape.Size());
-    } else if (input_tensor.IsDataType<MLFloat16>()) {
-      TileMemcpyImpl(
-          reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input_data),
-          input_shape.Size(),
-          reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output_data),
-          output_shape.Size());
+  bool is_batched_memcpy = false;
+  size_t num_of_elements_per_batch = 1;
+  size_t num_of_copies_per_batch = 1;
+  size_t num_of_batch_copies = 1;
+  if (TileOp::IsTileMemcpy(input_shape,
+                           repeats,
+                           rank,
+                           is_batched_memcpy,
+                           num_of_elements_per_batch,
+                           num_of_copies_per_batch,
+                           num_of_batch_copies)) {
+    if (!is_batched_memcpy) {
+      if (input_tensor.IsDataType<float>() ||
+          input_tensor.IsDataType<int32_t>()) {
+        TileMemcpyImpl(
+            reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input_data),
+            input_shape.Size(),
+            reinterpret_cast<typename ToCudaType<float>::MappedType*>(output_data),
+            output_shape.Size());
+      } else if (input_tensor.IsDataType<double>() ||
+                 input_tensor.IsDataType<int64_t>()) {
+        TileMemcpyImpl(
+            reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input_data),
+            input_shape.Size(),
+            reinterpret_cast<typename ToCudaType<double>::MappedType*>(output_data),
+            output_shape.Size());
+      } else if (input_tensor.IsDataType<MLFloat16>()) {
+        TileMemcpyImpl(
+            reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input_data),
+            input_shape.Size(),
+            reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output_data),
+            output_shape.Size());
+      } else {
+        // Won't hit this as the kernel doesn't claim support for any type that will trigger this
+        ORT_THROW("Tile doesn't have an implementation yet for the type: ", input_tensor.DataType());
+      }
     } else {
-      // Won't hit this as the kernel doesn't claim support for any type that will trigger this
-      ORT_THROW("Tile doesn't have an implementation yet for the type: ", input_tensor.DataType());
+      if (input_tensor.IsDataType<float>() ||
+          input_tensor.IsDataType<int32_t>()) {
+        TileBatchedMemcpyImpl(
+            reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input_data),
+            num_of_elements_per_batch,
+            input_shape[0],  // The tensor is atleast 1-D- this is safe
+            fast_divmod(static_cast<int>(num_of_elements_per_batch * num_of_copies_per_batch)),
+            reinterpret_cast<typename ToCudaType<float>::MappedType*>(output_data),
+            output_shape.Size());
+      } else if (input_tensor.IsDataType<double>() ||
+                 input_tensor.IsDataType<int64_t>()) {
+        TileBatchedMemcpyImpl(
+            reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input_data),
+            num_of_elements_per_batch,
+            input_shape[0],  // The tensor is atleast 1-D- this is safe
+            fast_divmod(static_cast<int>(num_of_elements_per_batch * num_of_copies_per_batch)),
+            reinterpret_cast<typename ToCudaType<double>::MappedType*>(output_data),
+            output_shape.Size());
+      } else if (input_tensor.IsDataType<MLFloat16>()) {
+        TileBatchedMemcpyImpl(
+            reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input_data),
+            num_of_elements_per_batch,
+            input_shape[0],  // The tensor is atleast 1-D- this is safe
+            fast_divmod(static_cast<int>(num_of_elements_per_batch * num_of_copies_per_batch)),
+            reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output_data),
+            output_shape.Size());
+      } else {
+        // Won't hit this as the kernel doesn't claim support for any type that will trigger this
+        ORT_THROW("Tile doesn't have an implementation yet for the type: ", input_tensor.DataType());
+      }
     }
 
     return Status::OK();
