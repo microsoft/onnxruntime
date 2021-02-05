@@ -1336,6 +1336,8 @@ def output_latency(results, csv_filename):
 
 
             row = [key,
+                   cpu_average, 
+                   cpu_90_percentile, 
                    cuda_average,
                    cuda_90_percentile,
                    trt_average,
