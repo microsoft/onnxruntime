@@ -1164,8 +1164,14 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             }
         }
 
+        /// <summary>
+        /// IsFixedSize
+        /// </summary>
         public bool IsFixedSize => true;
 
+        /// <summary>
+        /// IsReadOnly
+        /// </summary>
         public bool IsReadOnly => false;
 
         int IList.Add(object value)
