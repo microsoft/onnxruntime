@@ -43,7 +43,6 @@ REGISTER_KERNEL_TYPED(BFloat16, float)
 template <typename T, typename U, bool simplified>
 LayerNorm<T, U, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
-  ORT_ENFORCE(op_kernel_info.GetAttr("no_bias", &no_bias_).IsOK());
   float tmp_epsilon;
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
   epsilon_ = tmp_epsilon;
@@ -60,7 +59,7 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
 
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  auto bias_data = (simplified || (no_bias_ == 1)) ? nullptr: reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  auto bias_data = (simplified || (nullptr == bias)) ? nullptr: reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
@@ -99,7 +98,7 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
   }
 
-  HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data, (no_bias_ == 1));
+  HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
   return Status::OK();
 }
 

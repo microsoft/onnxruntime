@@ -39,7 +39,6 @@ template <typename T, bool simplified>
 LayerNorm<T, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
-  ORT_ENFORCE(op_kernel_info.GetAttr("no_bias", &no_bias_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
@@ -51,7 +50,7 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* bias = p_ctx->Input<Tensor>(2);
   auto X_data = X->template Data<T>();
   auto scale_data = scale->template Data<T>();
-  auto bias_data = (simplified || (no_bias_ == 1)) ? nullptr : bias->template Data<T>();
+  auto bias_data = (simplified || nullptr == bias) ? nullptr : bias->template Data<T>();
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
@@ -125,7 +124,7 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
                                                  for (int64_t h = 0; h < norm_size; h++) {
                                                    if (simplified) {
                                                      p_output[h] = p_input[h] / mean_square * scale_data[h];
-                                                   } else if (no_bias_ == 1){
+                                                   } else if (nullptr == bias){
                                                      p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h];
                                                    } else {
                                                      p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];

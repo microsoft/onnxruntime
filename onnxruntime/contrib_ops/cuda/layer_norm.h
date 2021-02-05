@@ -20,7 +20,6 @@ class LayerNorm final : public CudaKernel {
 
  private:
   int64_t axis_;
-  int64_t no_bias_;
   double epsilon_;
 };
 

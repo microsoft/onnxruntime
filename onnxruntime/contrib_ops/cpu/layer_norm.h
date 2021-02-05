@@ -18,7 +18,6 @@ class LayerNorm final : public OpKernel {
 
  private:
   int64_t axis_;
-  int64_t no_bias_;
   float epsilon_;
 };
 

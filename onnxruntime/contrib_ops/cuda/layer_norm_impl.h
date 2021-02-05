@@ -40,8 +40,7 @@ void HostApplyLayerNorm(
     int n2,
     double epsilon,
     const T* gamma,
-    const T* beta,
-    const bool no_beta);
+    const T* beta);
 
 }  // namespace cuda
 }  // namespace contrib

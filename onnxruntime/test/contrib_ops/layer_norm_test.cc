@@ -30,7 +30,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
                           optional<float> epsilon,
                           int64_t axis = -1,
                           int64_t keep_dims = 1,
-                          int64_t no_bias = 0) {
+                          bool no_bias = false) {
   const std::vector<int64_t>& n_x_m_dims = x_dims;
   std::vector<int64_t> n_dims, m_dims;
   ASSERT_TRUE(SplitDims(n_x_m_dims, axis, n_dims, m_dims).IsOK());
@@ -45,7 +45,6 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 
   CompareOpTester test(op.c_str());
   test.AddAttribute("axis", axis);
-  test.AddAttribute("no_bias", no_bias);
   test.AddAttribute("keep_dims", keep_dims);
   if (epsilon.has_value()) {
     test.AddAttribute("epsilon", epsilon.value());
@@ -59,7 +58,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 
   test.AddInput<float>("X", n_x_m_dims, X_data);
   test.AddInput<float>("scale", m_dims, scale_data, true);
-  if (op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0) {
+  if (op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0 && no_bias == false) {
     test.AddInput<float>("B", m_dims, B_data, true);
   }
 
@@ -105,7 +104,7 @@ TEST(CudaKernelTest, LayerNorm_MidSizeTensor_NoBias) {
   std::vector<int64_t> X_dims{8, 80, 768};
   const int64_t axis = -1;
   const int64_t keep_dims = 1;
-  const int64_t no_bias = 1;
+  const bool no_bias = true;
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default, axis, keep_dims, no_bias);
 }
 

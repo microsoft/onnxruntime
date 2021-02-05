@@ -315,8 +315,7 @@ __global__ void cuApplyLayerNorm(
     const int n2,
     const U epsilon,
     const T* __restrict__ gamma,
-    const T* __restrict__ beta,
-    const bool no_beta) {
+    const T* __restrict__ beta) {
   // Assumptions:
   // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensors are contiguous
@@ -337,8 +336,6 @@ __global__ void cuApplyLayerNorm(
       T beta_i = (beta != NULL) ? beta[i] : (T) 0;
       if (simplified) {
         ovals[i] = gamma_i * static_cast<T>(c_invvar * curr);
-      } else if (no_beta) {
-        ovals[i] = gamma_i * static_cast<T>(c_invvar * (curr - mu));
       } else {
         ovals[i] = gamma_i * static_cast<T>(c_invvar * (curr - mu)) + beta_i;
       }
@@ -361,8 +358,7 @@ void HostApplyLayerNorm(
     int n2,
     double epsilon,
     const T* gamma,
-    const T* beta,
-    const bool no_beta) {
+    const T* beta) {
   const int maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
@@ -378,13 +374,12 @@ void HostApplyLayerNorm(
       input,
       n1, n2,
       U(epsilon),
-      gamma, beta,
-      no_beta);
+      gamma, beta);
 }
 
 #define LAYERNORM_LINEAR_IMPL(T, U, simplified)                                                                                                 \
   template void HostApplyLayerNorm<T, U, simplified>(const cudaDeviceProp& prop, T* output, U* mean, U* invvar, const T* input, int n1, int n2, \
-                                                     double epsilon, const T* gamma, const T* beta, const bool no_beta);
+                                                     double epsilon, const T* gamma, const T* beta);
 
 LAYERNORM_LINEAR_IMPL(float, float, true)
 LAYERNORM_LINEAR_IMPL(half, float, true)

@@ -2082,10 +2082,6 @@ Example 4:
       .Attr("stash_type",
             "type used for stash mean/inv_std_var",
             AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
-      .Attr("no_bias",
-            "Whether adding bias in LayerNorm. Default value is 0(meaning there is a bias).",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
       .Input(1, "scale", "Scale tensor.", "T")
