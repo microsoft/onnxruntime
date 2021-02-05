@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "cxxopts.hpp"
+#include "core/session/environment.h"
+#include "core/session/onnxruntime_session_options_config_keys.h "
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/bfc_arena.h"
@@ -11,6 +13,12 @@
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "core/graph/model.h"
+
+#include "core/framework/allocator.h"
+#include "core/framework/execution_provider.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/framework/utils.h"
+
 
 #include <algorithm>
 #include <condition_variable>
@@ -24,6 +32,48 @@ using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace std;
 
+
+class TracingCPUAllocator : public IAllocator {
+ public:
+  //explicit TracingCPUAllocator (const OrtMemoryInfo& memory_info);
+
+  TracingCPUAllocator();
+
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
+  size_t OutstandingAllocation();
+  size_t PeakAllocation();
+
+ private:
+  std::map<size_t, size_t> allocation_history;
+  size_t outstanding_allocation;
+  size_t peak_allocation;
+};
+
+TracingCPUAllocator::TracingCPUAllocator()
+    : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)), allocation_history(), outstanding_allocation(0), peak_allocation(0) {}
+
+void* TracingCPUAllocator::Alloc(size_t size) {
+  void* p = utils::DefaultAlloc(size);
+  allocation_history.insert({reinterpret_cast<size_t>(p), size});
+  outstanding_allocation += size;
+  peak_allocation = outstanding_allocation > peak_allocation ? outstanding_allocation : peak_allocation;
+  return p;
+}
+
+void TracingCPUAllocator::Free(void* p) {
+  size_t allocated_size = allocation_history.erase(reinterpret_cast<size_t>(p));
+  outstanding_allocation -= allocated_size;
+  utils::DefaultFree(p);
+}
+
+size_t TracingCPUAllocator::OutstandingAllocation() {
+  return outstanding_allocation;
+}
+
+size_t TracingCPUAllocator::PeakAllocation() {
+  return peak_allocation;
+}
 
 static std::vector<FreeDimensionOverride> training_overrides = {};
 static SessionOptions TRAINING_SESSION_OPTION = {
@@ -55,7 +105,7 @@ static SessionOptions INFERENCE_SESSION_OPTION = {
     false,                             //enable_profiling
     ORT_TSTR(""),                      //optimized_model_filepath
     true,                              //enable_mem_pattern
-    true,                              //enable_cpu_mem_arena
+    false,                              //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
     "",                                //session_logid
     -1,                                //session_log_severity_level
@@ -132,6 +182,10 @@ Status ConfigModelPrepParameters(int argc, char* argv[], ModelPrepParameters& pa
 }
 
 onnxruntime::common::Status CreateTrainingGraph(const ModelPrepParameters& params, const Environment& env) {
+
+  std::cout << std::endl;
+  std::cout << "Creating training graph based on inference graph" << std::endl;
+
   onnxruntime::training::TrainingSession::TrainingConfiguration trainer_config;
   TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
   lf.loss_function_info = LossFunctionInfo(OpDef(params.loss_function, kMSDomain, 1),
@@ -229,6 +283,9 @@ void WriteRequiredOpsToFile(const std::map<std::string, std::set<std::string>>& 
 }
 
 onnxruntime::common::Status ExtractTrainableWeights(const ModelPrepParameters& params) {
+
+  std::cout << "Extracting trainable weights" << std::endl;
+
   std::map<std::string, std::vector<float>> weights_to_export = {};
   std::shared_ptr<onnxruntime::Model> model;
   auto status = onnxruntime::Model::Load(ToPathString(params.starting_onnx_model_path), model, nullptr, logging::LoggingManager::DefaultLogger());
@@ -250,10 +307,17 @@ onnxruntime::common::Status ExtractTrainableWeights(const ModelPrepParameters& p
       }
   }
   WriteWeightsToFile(weights_to_export, params.weight_file_path);
+
+  std::cout << "Trainable weights written to " << params.weight_file_path << std::endl;
+
   return Status::OK();
 }
 
 onnxruntime::common::Status PrepareTrainingGraphForInferenceSession(const ModelPrepParameters& params) {
+
+  std::cout << std::endl;
+  std::cout << "Modifying training graph to run in inference session" << std::endl;
+
   std::vector<std::string> initializers_to_remove = {};
   std::map<std::string, std::set<std::string>> required_ops = {};
   std::vector<const NodeArg*> new_inputs = {};
@@ -332,8 +396,32 @@ onnxruntime::common::Status PrepareTrainingGraphForInferenceSession(const ModelP
   return status;
 }
 
-onnxruntime::common::Status SaveOptimizedOrtModel(const std::string& source_model_path, const std::string& destination_model_path, const Environment& env) {
+template <typename T>
+static void CreateOrtValue(const std::vector<int64_t>& dims,
+                             const std::vector<T>& value,
+                             OrtValue* p_mlvalue,
+                             AllocatorPtr alloc) {
+  TensorShape shape(dims);
+  assert(shape.Size() == static_cast<int64_t>(value.size()));
+  auto element_type = DataTypeImpl::GetType<T>();
+  auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+
+  if (value.size() > 0) {
+    memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());
+  }
+
+  p_mlvalue->Init(p_tensor.release(),
+                  DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+}
+
+onnxruntime::common::Status SaveOptimizedOrtModel(const std::string& source_model_path, const std::string& destination_model_path, const Environment& env, std::shared_ptr<TracingCPUAllocator>& alloc) {
+  
+  std::cout << std::endl;
+  std::cout << "Preparing optimized ORT model" << std::endl;
+
   INFERENCE_SESSION_OPTION.optimized_model_filepath = ToPathString(destination_model_path);
+  INFERENCE_SESSION_OPTION.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
   auto inference_session = std::make_unique<InferenceSession>(INFERENCE_SESSION_OPTION, env, source_model_path);
   auto status = inference_session->Load();
   if (!status.IsOK()) {
@@ -348,6 +436,55 @@ onnxruntime::common::Status SaveOptimizedOrtModel(const std::string& source_mode
   }
 
   std::cout << "Optimized training graph written to " << destination_model_path << std::endl;
+
+  std::cout << std::endl;
+  std::cout << "Executing training batch" << std::endl;
+  
+  onnxruntime::NameMLValMap inputs = {};
+  std::vector<std::string> output_names = {}; 
+  std::vector<OrtValue> output_values = {};
+  auto model_inputs = inference_session->GetModelInputs();
+  for (auto input_it = model_inputs.second->begin(); input_it != model_inputs.second->end(); input_it++) {
+      auto shape = (*input_it)->Shape();
+      onnx::DataType data_type = (*input_it)->Type();
+      OrtValue v = {};
+      std::vector<int64_t> dims = {};
+      int64_t total_size = 1;
+      for (int i = 0; i < shape->dim_size(); i++) {
+          int64_t d = 1;
+          if (shape->dim()[i].has_dim_value()) {
+              d = shape->dim()[i].dim_value();
+          }
+          //TODO: handle variable axes
+          dims.push_back(d);
+          total_size *= d;
+      }
+      if (data_type->compare("tensor(float)") == 0) { 
+        auto value = std::vector<float>(total_size, 1.0);
+        CreateOrtValue(dims, value, &v, alloc);
+      } else if (data_type->compare("tensor(int64)") == 0) { 
+        auto value = std::vector<int64_t>(total_size, 1);
+        CreateOrtValue(dims, value, &v, alloc);
+      }
+      else {
+          std::cerr << "Unsupported data type: " << (*data_type) << std::endl;
+      }
+      inputs.insert({(*input_it)->Name(), v});
+  }
+  auto model_outputs = inference_session->GetModelOutputs();
+  std::transform(
+      model_outputs.second->begin(),
+      model_outputs.second->end(),
+      std::back_inserter(output_names),
+      [](const NodeArg* node){return node->Name();});
+  std::cout << "Peak tensor memory allocated for input: " << alloc->PeakAllocation() << " bytes" << std::endl;
+  
+  status = inference_session->Run(inputs, output_names, &output_values);
+  if (!status.IsOK()) {
+    std::cerr << "Failed to run inference session: " << status.ErrorMessage() << std::endl;
+    return status;
+  }
+  std::cout << "Peak tensor memory allocated for all training: " << alloc->PeakAllocation() << " bytes" << std::endl;
 
   return status;
 }
@@ -384,8 +521,9 @@ int main(int argc, char* args[]) {
   if (!status.IsOK()) {
     return 1;
   }
-
-  status = SaveOptimizedOrtModel(params.modified_training_onnx_model_path, params.training_optimized_ort_model_path, *env);
+  auto cpu_allocator = std::make_shared<TracingCPUAllocator>();
+  ORT_ENFORCE(env->RegisterAllocator(cpu_allocator).IsOK());
+  status = SaveOptimizedOrtModel(params.modified_training_onnx_model_path, params.training_optimized_ort_model_path, *env, cpu_allocator);
   if (!status.IsOK()) {
     return 1;
   }
