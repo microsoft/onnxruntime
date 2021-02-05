@@ -450,40 +450,56 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
   std::vector<NodeComputeInfo> node_compute_funcs;
   node_compute_funcs.reserve(nodes_and_viewers.size());
+  std::unordered_set<size_t> compile_error_indices;
+  compile_error_indices.reserve(nodes_and_viewers.size());
 
-  ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_and_viewers, node_compute_funcs));
-
-  if (node_compute_funcs.size() != nodes_and_viewers.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, " did not return correct number of compiled functions");
+  // We will compile the partitions one by one, and put the result back into node_compute_funcs
+  // In case one of the partitions fails the compile, we can fall back this particular partition to next EP
+  for (size_t i = 0; i < nodes_and_viewers.size(); ++i) {
+    std::vector<IExecutionProvider::FusedNodeAndGraph> single_node_and_viewer{nodes_and_viewers[i]};
+    std::vector<NodeComputeInfo> single_node_compute_func;
+    auto status = current_ep.Compile(single_node_and_viewer, single_node_compute_func);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "EP: " << current_ep.Type() << " has Compile error: " << status.ErrorMessage();
+      compile_error_indices.insert(i);
+      node_compute_funcs.push_back(NodeComputeInfo());  // insert an empty stub here
+    } else {
+      ORT_RETURN_IF(single_node_compute_func.empty(), "single_node_compute_func should have 1 elements");
+      node_compute_funcs.push_back(single_node_compute_func[0]);
+    }
   }
 
   for (size_t j = 0, end = nodes_and_viewers.size(); j < end; j++) {
     Node& node = nodes_and_viewers[j].fused_node;
+    if (compile_error_indices.find(j) != compile_error_indices.end()) {
+      // There is compile error with the nodes_and_viewer[j], remove the fused_node and function from the graph
+      graph.CancelFuseSubGraph(node);
+    } else {
+      ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node.Name(), std::move(node_compute_funcs[j])));
 
-    ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node.Name(), std::move(node_compute_funcs[j])));
+      const auto& cur_capability = capabilities[j];
+      const IndexedSubGraph& indexed_sub_graph = *cur_capability->sub_graph;
+      const IndexedSubGraph::MetaDef& metadef = *indexed_sub_graph.GetMetaDef();
 
-    const auto& cur_capability = capabilities[j];
-    const IndexedSubGraph& indexed_sub_graph = *cur_capability->sub_graph;
-    const IndexedSubGraph::MetaDef& metadef = *indexed_sub_graph.GetMetaDef();
+      KernelDefBuilder builder;
+      BuildFusedKernelDef(builder, metadef, type);
+      auto kernel_def = builder.Build();
 
-    KernelDefBuilder builder;
-    BuildFusedKernelDef(builder, metadef, type);
-    auto kernel_def = builder.Build();
+      // save hash so SessionState can find the kernel. each kernel name should be unique
+      if (compiled_kernel_hashes.insert({metadef.name, kernel_def->GetHash()}).second == false) {
+        ORT_THROW("Existing entry in compiled kernel hashes for ", metadef.name,
+                  ". Execution Provider must generate unique names across the entire model.");
+      }
 
-    // save hash so SessionState can find the kernel. each kernel name should be unique
-    if (compiled_kernel_hashes.insert({metadef.name, kernel_def->GetHash()}).second == false) {
-      ORT_THROW("Existing entry in compiled kernel hashes for ", metadef.name,
-                ". Execution Provider must generate unique names across the entire model.");
+      ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
+          KernelCreateInfo(std::move(kernel_def), static_cast<KernelCreatePtrFn>(
+                                                      [](const OpKernelInfo& info) -> OpKernel* {
+                                                        return new FunctionKernel(info);
+                                                      }))));
+
+      // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
+      graph.FinalizeFuseSubGraph(indexed_sub_graph, node);
     }
-
-    ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
-        KernelCreateInfo(std::move(kernel_def), static_cast<KernelCreatePtrFn>(
-                                                    [](const OpKernelInfo& info) -> OpKernel* {
-                                                      return new FunctionKernel(info);
-                                                    }))));
-
-    // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
-    graph.FinalizeFuseSubGraph(indexed_sub_graph, node);
   }
 
   return Status::OK();
