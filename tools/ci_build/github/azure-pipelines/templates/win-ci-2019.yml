@@ -266,9 +266,10 @@ jobs:
         displayName: 'Unzip package to test'
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
-    # Compliance tasks require logs from Debug Build
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
       - template: compliance.yml
+        parameters :
+          msbuildPlatform: ${{ parameters.sln_platform }}
 
     - template: component-governance-component-detection-steps.yml
       parameters :
