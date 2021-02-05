@@ -23,10 +23,6 @@ def get_ep_list(comparison):
         ep_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
     return ep_list 
 
-def clean_nonmetadata_csv(path): 
-    if os.path.exists(path): 
-        os.remove(path)
-
 def main():
     args = parse_arguments()
     setup_logger(False)
@@ -43,12 +39,6 @@ def main():
     benchmark_success_csv = 'success_' + commit + '.csv' 
     benchmark_latency_csv = 'latency_' + commit + '.csv'
     benchmark_status_csv = 'status_' + commit + '.csv'
-
-    success_path = os.path.join(os.getcwd(), args.perf_result_path, benchmark_success_csv)
-    clean_nonmetadata_csv(success_path)
-    status_path = os.path.join(os.getcwd(), args.perf_result_path, benchmark_status_csv)
-    clean_nonmetadata_csv(status_path)
-
 
     for model, model_info in models.items():
         logger.info("\n" + "="*40 + "="*len(model))

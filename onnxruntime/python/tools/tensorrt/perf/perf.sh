@@ -26,6 +26,7 @@ cleanup_files() {
     rm -f $METRICS_FILE
     rm -f $SYMBOLIC_SHAPE_INFER
     rm -f $FLOAT_16
+    rm -rf result/$OPTION
 }
 
 download_files() {
