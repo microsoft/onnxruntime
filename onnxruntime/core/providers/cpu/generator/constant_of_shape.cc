@@ -22,7 +22,7 @@ using EnabledOutputTypes =
 
 class ConstantOfShape final : public ConstantOfShapeBase<EnabledOutputTypes>, public OpKernel {
  public:
-  explicit ConstantOfShape(const OpKernelInfo& info) : ConstantOfShapeBase(info), OpKernel(info){};
+  explicit ConstantOfShape(const OpKernelInfo& info) : ConstantOfShapeBase(info), OpKernel(info) {}
 
   Status Compute(OpKernelContext* ctx) const override;
 };
