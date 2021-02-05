@@ -922,6 +922,12 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             return GetTriangle(offset, upper: true);
         }
 
+        /// <summary>
+        /// GetTriangle
+        /// </summary>
+        /// <param name="offset">offset</param>
+        /// <param name="upper">upper</param>
+        /// <returns></returns>
         public Tensor<T> GetTriangle(int offset, bool upper)
         {
             if (Rank < 2)
