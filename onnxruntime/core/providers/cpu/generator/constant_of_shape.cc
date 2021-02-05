@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gsl/gsl"
-
 #include "core/providers/cpu/generator/constant_of_shape_base.h"
 #include "core/providers/op_kernel_type_control.h"
 
@@ -29,8 +27,7 @@ class ConstantOfShape final : public ConstantOfShapeBase<EnabledOutputTypes>, pu
 
 template <class T>
 inline void FilloutOutput(T value, void* output_data, size_t size) {
-  auto out = gsl::make_span(reinterpret_cast<T*>(output_data), size);
-  std::fill(out.begin(), out.end(), value);
+  std::fill_n(reinterpret_cast<T*>(output_data), size, value);
 }
 
 Status ConstantOfShape::Compute(OpKernelContext* ctx) const {

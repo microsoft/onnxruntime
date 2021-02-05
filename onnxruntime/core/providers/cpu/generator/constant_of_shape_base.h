@@ -84,7 +84,6 @@ class ConstantOfShapeBase {
         break;
       default:
         ORT_THROW("Unsupported value attribute datatype with size: ", size);
-        break;
     }
   }
 
@@ -128,7 +127,6 @@ void ConstantOfShapeBase<EnabledOutputTypeList>::SetValueFromTensorProto(const O
     CASE_FETCH_VALUE_DATA(uint64_t)
     default:
       ORT_THROW("Unsupported value attribute datatype: ", tensor_type);
-      break;
   }
 }
 
