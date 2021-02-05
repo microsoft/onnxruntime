@@ -1548,7 +1548,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         void TestCUDAAllocatorInternal(InferenceSession session)
         {
             int device_id = 0;
-            using (var info_cuda = new OrtMemoryInfo(OrtMemoryInfo.allocatorCUDA, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
+            using (var info_cuda = new OrtMemoryInfo(OrtMemoryInfo.allocatorGPU, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
             {
                 Assert.Equal("Gpu", info_cuda.Name);
                 Assert.Equal(device_id, info_cuda.Id);

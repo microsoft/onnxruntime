@@ -155,12 +155,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// Predefined utf8 encoded allocator names. Use them to construct an instance of
         /// OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.
         /// </summary>
-        public static readonly byte[] allocatorCUDA = Encoding.UTF8.GetBytes("Cuda" + Char.MinValue);
+        public static readonly byte[] allocatorGPU = Encoding.UTF8.GetBytes("Gpu" + Char.MinValue);
         /// <summary>
         /// Predefined utf8 encoded allocator names. Use them to construct an instance of
         /// OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.
         /// </summary>
-        public static readonly byte[] allocatorCUDA_PINNED = Encoding.UTF8.GetBytes("GpuPinned" + Char.MinValue);
+        public static readonly byte[] allocatorGPU_PINNED = Encoding.UTF8.GetBytes("GpuPinned" + Char.MinValue);
         /// <summary>
         /// Create an instance of OrtMemoryInfo according to the specification
         /// Memory info instances are usually used to get a handle of a native allocator
