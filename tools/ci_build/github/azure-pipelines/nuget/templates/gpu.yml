@@ -253,6 +253,22 @@ jobs:
              move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
              move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
 
+             unzip win-dml-arm64.zip -d win-arm64
+             mkdir %%~ni\runtimes\win-arm64
+             mkdir %%~ni\runtimes\win-arm64\native
+
+             move win-arm64\runtimes\win-arm64\native\onnxruntime.dll %%~ni\runtimes\win-arm64\native\onnxruntime.dll
+             move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
+             move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
+
+             unzip win-dml-arm.zip -d win-arm
+             mkdir %%~ni\runtimes\win-arm
+             mkdir %%~ni\runtimes\win-arm\native
+
+             move win-arm\runtimes\win-arm\native\onnxruntime.dll %%~ni\runtimes\win-arm\native\onnxruntime.dll
+             move win-arm\runtimes\win-arm\native\onnxruntime.lib %%~ni\runtimes\win-arm\native\onnxruntime.lib
+             move win-arm\runtimes\win-arm\native\onnxruntime.pdb %%~ni\runtimes\win-arm\native\onnxruntime.pdb
+
              pushd %%~ni
              zip -r ..\%%~ni.zip .
              popd
@@ -280,7 +296,7 @@ jobs:
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
       NugetPackage: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
-      PlatformsSupported: 'win-x64,win-x86'
+      PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
