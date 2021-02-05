@@ -109,13 +109,18 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
     def process_node(self, node: fbs.Node, value_name_to_typeinfo: dict):
         for i in self._input_types.keys():
             if i >= node.InputsLength():
-                raise RuntimeError('Node has {} inputs. Tracker for {} incorrectly configured as it requires {}.'
-                                   .format(node.InputsLength(), self.name, i))
-
-            type_str = value_name_to_typestr(node.Inputs(i), value_name_to_typeinfo)
-            self._input_types[i].add(type_str)
+                # Some operators have fewer inputs in earlier versions where data that was as an attribute
+                # become an input in later versions to allow it to be dynamically provided. Allow for that.
+                # e.g. Slice-1 had attributes for the indices, and Slice-10 moved those to be inputs
+                # raise RuntimeError('Node has {} outputs. Tracker for {} incorrectly configured as it requires {}.'
+                #                    .format(node.OutputsLength(), self.name, o))
+                pass
+            else:
+                type_str = value_name_to_typestr(node.Inputs(i), value_name_to_typeinfo)
+                self._input_types[i].add(type_str)
 
         for o in self._output_types.keys():
+            # Don't know of any ops where the number of outputs changed across versions, so require a valid length
             if o >= node.OutputsLength():
                 raise RuntimeError('Node has {} outputs. Tracker for {} incorrectly configured as it requires {}.'
                                    .format(node.OutputsLength(), self.name, o))
@@ -127,7 +132,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         if 0 not in self._input_types.keys():
             # currently all standard typed registrations are for input 0.
             # custom registrations can be handled by operator specific processors (e.g. OneHotProcessor below).
-            raise RuntimeError('Expected typed registration to use type from input 0.')
+            raise RuntimeError('Expected typed registration to use type from input 0. Node:{}'.format(self.name))
 
         return type_in_registration in self._input_types[0]
 
@@ -254,8 +259,8 @@ def _create_operator_type_usage_processors():
     #   - some known large kernels
     #
     # Ops we are ignoring currently so as not to produce meaningless/unused output:
-    # - Implementation is not type specific:
-    #    If, Loop, Reshape, Scan, Shape, Squeeze, Unsqueeze
+    # - Implementation is type agnostic:
+    #    DynamicQuantizeMatMul, If, Loop, Reshape, Scan, Shape, Squeeze, Unsqueeze
     # - Only one type supported in the ORT implementation:
     #    FusedConv, FusedGemm, FusedMatMul, TransposeMatMul
     # - Implementation does not have any significant type specific code:
@@ -264,7 +269,7 @@ def _create_operator_type_usage_processors():
                                   'DequantizeLinear', 'Div', 'Equal', 'Exp', 'Expand',
                                   'Gemm', 'Greater', 'Less', 'MatMul', 'Max', 'Min', 'Mul',
                                   'NonMaxSuppression', 'NonZero', 'Pad', 'Range', 'Relu', 'Resize',
-                                  'Sigmoid', 'Slice', 'Softmax', 'Split', 'Sub', 'Tile', 'TopK', 'Transpose']
+                                  'Sigmoid', 'Softmax', 'Split', 'Sub', 'Tile', 'TopK', 'Transpose']
 
     internal_ops = ['QLinearAdd', 'QLinearMul']
 
@@ -286,12 +291,15 @@ def _create_operator_type_usage_processors():
     #
     # Operators that require custom handling
     #
-    add(DefaultTypeUsageProcessor('ai.onnx', 'Cast', inputs=[0], outputs=[0]))  # track input0 and output0
+
+    # Cast switches on types of input 0 and output 0
+    add(DefaultTypeUsageProcessor('ai.onnx', 'Cast', inputs=[0], outputs=[0]))
 
     # Operators that switch on the type of input 0 and 1
     add(DefaultTypeUsageProcessor('ai.onnx', 'Gather', inputs=[0, 1]))
     add(DefaultTypeUsageProcessor('ai.onnx', 'GatherElements', inputs=[0, 1]))
     add(DefaultTypeUsageProcessor('ai.onnx', 'Pow', inputs=[0, 1]))
+    add(DefaultTypeUsageProcessor('ai.onnx', 'Slice', inputs=[0, 1]))
 
     # Operators that switch on output type
     add(DefaultTypeUsageProcessor('ai.onnx', 'ConstantOfShape', inputs=[], outputs=[0]))
