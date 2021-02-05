@@ -8,7 +8,7 @@ The ortmodule CI pipeline is intended for running tests related to the ```ORTMod
 The pipeline ```yml``` file is defined in [```tools/ci_build/github/azure-pipelines/orttraining-linux-gpu-ortmodule-test-ci-pipeline.yml```](https://github.com/microsoft/onnxruntime/blob/thiagofc/ortmodule-api/tools/ci_build/github/azure-pipelines/orttraining-linux-gpu-ortmodule-test-ci-pipeline.yml).
 The pipeline runs on every pull request commit to the branch ```thiagofc/ortmodule```.
 
-## Running Locally
+## Running Locally -test
 
 To run the entire set of ortmodule tests locally, run the following command from the build directory:
 ```sh
