@@ -4,7 +4,6 @@
 //https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gather
 #include "core/providers/cpu/tensor/gather.h"
 #include "core/common/common.h"
-#include "core/framework/data_types_internal.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/providers/op_kernel_type_control_utils.h"
