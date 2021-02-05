@@ -67,7 +67,8 @@ class GistEncodeDecode : public RewriteRule {
          return {"Softmax", "Transpose", "Reshape", "Add", "Dropout", "LayerNormalization", "MatMul", "Relu"};
       }
       else {
-         assert (0); // Gist op type not supported
+         std::cout << "Gist op type not supported" << std::endl;
+         return {};
       }
   }
 
