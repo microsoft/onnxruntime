@@ -52,6 +52,7 @@ __global__ void ReverseSequenceImplKernel(
 
 template <typename T>
 cudaError_t ReverseSequenceCudaImpl(
+    cudaStream_t stream,
     const T* x_data,
     const int64_t* seq_len_data,
     T* y_data,
@@ -66,11 +67,11 @@ cudaError_t ReverseSequenceCudaImpl(
   int blocksPerGrid = CeilDiv(group_count, GridDim::maxThreadsPerBlock);
 
   if (time_major) {
-    ReverseSequenceImplKernel<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(
+    ReverseSequenceImplKernel<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         x_data, seq_len_data, y_data, batch_size, max_seq_len, element_size,
         group_count, fdm_grouped_stride_0, fdm_grouped_stride_1);
   } else {
-    ReverseSequenceImplKernel<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(
+    ReverseSequenceImplKernel<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         x_data, seq_len_data, y_data, batch_size, max_seq_len, element_size,
         group_count, fdm_grouped_stride_0, fdm_grouped_stride_1);
   }
@@ -79,6 +80,7 @@ cudaError_t ReverseSequenceCudaImpl(
 
 #define InstantiateReverseSequenceImpl(T)       \
   template cudaError_t ReverseSequenceCudaImpl( \
+      cudaStream_t stream,                \
       const T* x_data,                          \
       const int64_t* seq_len_data,              \
       T* y_data,                                \

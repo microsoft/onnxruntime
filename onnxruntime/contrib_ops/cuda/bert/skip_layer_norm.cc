@@ -93,6 +93,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   size_t element_size = sizeof(T);
 
   if (!LaunchSkipLayerNormKernel(
+          Stream(),
           output->template MutableData<T>(),
           input->template Data<T>(),
           skip->template Data<T>(),

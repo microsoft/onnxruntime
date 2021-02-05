@@ -12,6 +12,7 @@ namespace rocm {
 
 template <typename T, bool is_log_softmax>
 Status SoftMaxComputeHelper(
+    hipStream_t stream,
     const T* X,
     const TensorShape& input_shape,
     T* Y,
@@ -29,7 +30,7 @@ Status SoftMaxComputeHelper(
   // miopenSoftmaxForward/Backward is not optimal implementation.
   // TODO: remove miopen path completely in the future.
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, is_log_softmax>(Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+    dispatch_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, is_log_softmax>(stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
     return Status::OK();
   }
 
@@ -51,8 +52,8 @@ Status SoftMaxComputeHelper(
 }
 
 #define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                            \
-  template Status SoftMaxComputeHelper<T, false>(const T* input, const TensorShape& shape, T* Y, miopenHandle_t handle, int64_t axis); \
-  template Status SoftMaxComputeHelper<T, true>(const T* input, const TensorShape& shape, T* Y, miopenHandle_t handle, int64_t axis);
+  template Status SoftMaxComputeHelper<T, false>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, miopenHandle_t handle, int64_t axis); \
+  template Status SoftMaxComputeHelper<T, true>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, miopenHandle_t handle, int64_t axis);
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
 // SPECIALIZED_SOFTMAX_HELPER_IMPL(double)
@@ -119,9 +120,9 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
 
   if (log_softmax_) {
-    return SoftMaxComputeHelper<T, true>(X_data, input_shape, Y_data, MiopenHandle(), axis_);
+    return SoftMaxComputeHelper<T, true>(Stream(), X_data, input_shape, Y_data, MiopenHandle(), axis_);
   } else {
-    return SoftMaxComputeHelper<T, false>(X_data, input_shape, Y_data, MiopenHandle(), axis_);
+    return SoftMaxComputeHelper<T, false>(Stream(), X_data, input_shape, Y_data, MiopenHandle(), axis_);
   }
 }
 

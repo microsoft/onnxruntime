@@ -31,6 +31,7 @@ __global__ void _SGDOptimizer(
 
 template <typename T>
 void SGDOptimizerImpl(
+    cudaStream_t stream,
     const T* eta,
     const T* weights,
     const T* gradients,
@@ -39,7 +40,7 @@ void SGDOptimizerImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _SGDOptimizer<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _SGDOptimizer<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       eta,
       weights,
       gradients,
@@ -50,6 +51,7 @@ void SGDOptimizerImpl(
 
 #define SPECIALIZED_IMPL__SGDOptimizerImpl(T) \
   template void SGDOptimizerImpl(             \
+      cudaStream_t stream,              \
       const T* eta,                           \
       const T* weights,                       \
       const T* gradients,                     \
