@@ -154,7 +154,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
             m, n, false);
       }
       case ApplicableMatrixReduction::Columns:
-        // don't call reduce_matrix_columns() since it will reset initial output data
+      // don't call reduce_matrix_columns() since it will reset initial output data
       default:
         break;
     }
@@ -202,9 +202,11 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   auto output_count = output_shape.Size();
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {
+    IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
     CudaT* input_data = nullptr;
     if (calculate_sqt_) {
-      input_data = reinterpret_cast<CudaT*>(GetScratchBuffer<T>(input_count).get());
+      input_data_buffer = GetScratchBuffer<T>(input_count);
+      input_data = reinterpret_cast<CudaT*>(input_data_buffer.get());
       fast_divmod tmp_div;
       Impl_Mul<CudaT>(static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
                       reinterpret_cast<const CudaT*>(X), nullptr,
@@ -225,8 +227,10 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 
       // Exp(X-ReduceMax)
       const TensorShape rhs_shape(output_dims);
-      auto exp_result = GetScratchBuffer<T>(input_count).get();
-      auto log_sum_result = GetScratchBuffer<T>(output_count).get();
+      auto exp_result_buffer = GetScratchBuffer<T>(input_count);
+      auto exp_result = exp_result_buffer.get();
+      auto log_sum_result_buffer = GetScratchBuffer<T>(output_count);
+      auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
       ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, rhs_shape, input_shape));
       Impl_Sub<CudaT>(prepare.output_rank_or_simple_broadcast,
@@ -600,24 +604,30 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
       }
     }
   } else {  // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
-    if (temp_X) {
-      auto temp_output = cuda_ep.GetScratchBuffer<float>(output_count);
-      CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
-          workspace_cuda.get(), workspace_bytes,
-          &one, input_tensor, temp_X.get(),
-          &zero, output_tensor, temp_output.get()));
+    // cudnnReduceTensor has issue if input and output has same size, which will happen if the axis to be reduced has dim value of 1.
+    // the output is zeros of the output size
+    if (input_count == output_count) {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.template MutableData<int64_t>(), static_cast<int64_t>(0), output_count * sizeof(int64_t)));
     } else {
-      auto temp_output = cuda_ep.GetScratchBuffer<CudaT>(output_count);
-      CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
-          workspace_cuda.get(), workspace_bytes,
-          &one, input_tensor, reinterpret_cast<const CudaT*>(input.template Data<T>()),
-          &zero, output_tensor, temp_output.get()));
-    }
+      if (temp_X) {
+        auto temp_output = cuda_ep.GetScratchBuffer<float>(output_count);
+        CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
+            cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
+            workspace_cuda.get(), workspace_bytes,
+            &one, input_tensor, temp_X.get(),
+            &zero, output_tensor, temp_output.get()));
+      } else {
+        auto temp_output = cuda_ep.GetScratchBuffer<CudaT>(output_count);
+        CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
+            cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
+            workspace_cuda.get(), workspace_bytes,
+            &one, input_tensor, reinterpret_cast<const CudaT*>(input.template Data<T>()),
+            &zero, output_tensor, temp_output.get()));
+      }
 
-    // CUDA reduction index is uint32_t for now, cast it to int64_t according to ONNX spec
-    Impl_Cast<uint32_t, int64_t>(reinterpret_cast<uint32_t*>(indices_cuda.get()), output.template MutableData<int64_t>(), output_count);
+      // CUDA reduction index is uint32_t for now, cast it to int64_t according to ONNX spec
+      Impl_Cast<uint32_t, int64_t>(reinterpret_cast<uint32_t*>(indices_cuda.get()), output.template MutableData<int64_t>(), output_count);
+    }
   }
 
   if (calculate_log) {

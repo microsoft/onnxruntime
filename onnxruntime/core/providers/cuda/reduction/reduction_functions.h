@@ -12,7 +12,7 @@ namespace cuda {
 namespace detail {
 size_t compute_reduce_matrix_columns_intermediate_buffer_size(
     int element_size, int num_rows, int num_cols);
-}
+}  // namespace detail
 
 /**
  * Computes the size in bytes of the intermediate buffer needed by reduce_matrix_columns().

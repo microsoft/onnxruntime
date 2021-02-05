@@ -122,6 +122,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "523d5e03d86c26267ee6bdf17dd20f6ce6bdadd7",
+          "repositoryUrl": "https://github.com/apple/coremltools.git"
+        },
+        "comments": "git submodule at cmake/external/coremltools"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
           "repositoryUrl": "https://github.com/NVlabs/cub.git"
         },
@@ -206,6 +216,16 @@
           "repositoryUrl": "https://github.com/microsoft/mimalloc.git"
         },
         "comments": "git submodule at cmake/external/mimalloc"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "21cace4e574180ba64d9307a5e4ea9e5e94d3e8d",
+          "repositoryUrl": "https://github.com/boostorg/mp11.git"
+        },
+        "comments": "git submodule at cmake/external/mp11"
       }
     },
     {

@@ -654,7 +654,8 @@ class Graph {
 
   /** Return true if "node_arg" is a input or an initializer. Otherwise, returns false. */
   bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept {
-    return std::find(graph_inputs_including_initializers_.begin(), graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
+    return std::find(graph_inputs_including_initializers_.begin(),
+                     graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
   }
 
   /** Gets the Graph inputs that are initializers
@@ -1085,6 +1086,9 @@ class Graph {
   static common::Status LoadFromOrtFormat(
       const onnxruntime::experimental::fbs::Graph& fbs_graph, const Model& owning_model,
       const std::unordered_map<std::string, int>& domain_to_version,
+#if !defined(ORT_MINIMAL_BUILD)
+      IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+#endif
       const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
   // deserialize a subgraph
@@ -1104,6 +1108,9 @@ class Graph {
   // Create empty Graph instance to re-create from ORT format serialized data.
   Graph(const Model& owning_model,
         const std::unordered_map<std::string, int>& domain_to_version,
+#if !defined(ORT_MINIMAL_BUILD)
+        IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+#endif
         Graph* parent_graph, const Node* parent_node,
         const logging::Logger& logger);
 

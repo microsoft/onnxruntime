@@ -44,7 +44,7 @@ jobs:
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
       workingDirectory: $(Build.SourcesDirectory)
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime and disable exception
+    displayName: Build minimal onnxruntime with exceptions disabled
     inputs:
       script: |
         # We will try to build the ORT minimal with exception disabled
@@ -67,7 +67,7 @@ jobs:
               --disable_exceptions
       workingDirectory: $(Build.SourcesDirectory)
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime and run tests, exception enabled
+    displayName: Build minimal onnxruntime and run tests with exceptions enabled
     inputs:
       script: |
         docker run --rm \

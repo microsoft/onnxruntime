@@ -47,7 +47,7 @@ file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
 
-add_library(onnxruntime_pybind11_state MODULE ${onnxruntime_pybind_srcs})
+onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
@@ -194,6 +194,9 @@ file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
     "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
 )
+file(GLOB onnxruntime_python_quantization_test_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/test/python/quantization/*.py"
+)
 file(GLOB onnxruntime_python_checkpoint_test_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/python/checkpoint/*.py"
 )
@@ -242,6 +245,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/dhp_parallel
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -257,6 +261,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_test_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_test_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/quantization/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_checkpoint_test_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/checkpoint/
@@ -353,7 +360,6 @@ if (onnxruntime_USE_OPENVINO)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
-          ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
           ${OPENVINO_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_openvino>
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/

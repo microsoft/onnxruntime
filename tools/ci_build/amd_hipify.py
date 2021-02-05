@@ -62,7 +62,8 @@ contrib_ops_excluded_files = [
                     'conv_transpose_with_dynamic_pads.h',
                     'cuda_contrib_kernels.cc',
                     'cuda_contrib_kernels.h',
-                    'inverse.cc'
+                    'inverse.cc',
+                    'fused_conv.cc'
 ]
 
 provider_excluded_files = [
@@ -130,12 +131,8 @@ provider_excluded_files = [
                 'object_detection/roialign.h',
                 'object_detection/roialign_impl.cu',
                 'object_detection/roialign_impl.h',
-                'reduction/reduction_functions.cc',
-                'reduction/reduction_functions.cu',
-                'reduction/reduction_functions.h',
                 'reduction/reduction_ops.cc',
                 'reduction/reduction_ops.h',
-                'reduction/reduction_utils.cuh',
                 'rnn/cudnn_rnn_base.cc',
                 'rnn/cudnn_rnn_base.h',
                 'rnn/gru.cc',
@@ -165,10 +162,6 @@ provider_excluded_files = [
                 'tensor/gather_elements_impl.cu',
                 'tensor/gather_elements_impl.h',
                 'tensor/gather_nd_impl.cu',
-                'tensor/nonzero_impl.cu',
-                'tensor/nonzero_impl.h',
-                'tensor/nonzero_op.cc',
-                'tensor/nonzero_op.h',
                 'tensor/pad.cc',
                 'tensor/pad.h',
                 'tensor/pad_impl.cu',
@@ -241,8 +234,6 @@ training_ops_excluded_files = [
                     'controlflow/record.h',
                     'controlflow/wait.cc',
                     'controlflow/wait.h',
-                    'loss/softmax_cross_entropy_loss_impl.cc',
-                    'loss/softmaxcrossentropy_impl.cc',
                     'math/div_grad.cc',
                     'math/div_grad.h',
                     'math/div_grad_impl.cu',
@@ -258,7 +249,6 @@ training_ops_excluded_files = [
                     'optimizer/adam.cu',
                     'optimizer/lamb.cc',
                     'reduction/reduction_all.cc',
-                    'reduction/reduction_all.cu',
                     'reduction/reduction_ops.cc',
                     'tensor/gather_elements_grad.cc',
                     'tensor/gather_elements_grad.h',

@@ -60,6 +60,15 @@ QUANT_TYPE_TO_NP_TYPE = {
 }
 
 
+def quantize_nparray(qtype, arr, scale, zero_point, low = None, high = None):
+    dtype = QUANT_TYPE_TO_NP_TYPE[qtype]
+    cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
+    cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
+    arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
+    numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
+    return arr_fp32.astype(dtype)
+
+
 class QuantizedInitializer:
     '''
         Represents a linearly quantized weight input from ONNX operators
