@@ -19,7 +19,7 @@ target_include_directories(onnxruntime_session PRIVATE ${ONNXRUNTIME_ROOT} ${PRO
 add_dependencies(onnxruntime_session ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_session PROPERTIES FOLDER "ONNXRuntime")
 if (onnxruntime_USE_CUDA)
-  target_include_directories(onnxruntime_session PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  target_include_directories(onnxruntime_session PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})
