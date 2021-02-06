@@ -123,18 +123,11 @@ void Impl_Cast(
     const InT* input_data,
     OutT* output_data,
     size_t count) {
-<<<<<<< HEAD
-  UnaryElementWiseImpl(input_data,
+  UnaryElementWiseImpl(stream,
+                       input_data,
                        output_data,
                        OP_Cast<InT, OutT>(),
                        count);
-=======
-    UnaryElementWiseImpl(stream,
-                         input_data,
-                         output_data,
-                         OP_Cast<InT, OutT>(),
-                         count);
->>>>>>> origin/master
 }
 
 #define SPECIALIZED_CAST_IMPL2(InT, OutT) \
