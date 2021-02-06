@@ -12,7 +12,7 @@ from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
-from onnxruntime.quantization import quantize_static, calibrate, CalibrationDataReader, QuantFormat
+from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantFormat
 
 
 class ResNet50DataReader(CalibrationDataReader):

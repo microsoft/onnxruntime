@@ -15,7 +15,8 @@ from onnx import onnx_pb as onnx_proto
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
-from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, type_to_name, quantize_nparray
+from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, type_to_name
+from .quant_utils import quantize_nparray, quantize_data, compute_scale_zp, get_qrange_for_qType
 from .quant_utils import QuantType, onnx_domain, __producer__, __version__
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
@@ -23,58 +24,8 @@ from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
 from .onnx_model import ONNXModel
 
 
-def quantize_data(data, quantize_range, qType):
-    '''
-        :parameter data: data to quantize
-        :parameter quantize_range: list of data to weight pack.
-        :parameter qType: data type to quantize to. Supported types UINT8 and INT8
-        :return: minimum, maximum, zero point, scale, and quantized weights
-        To pack weights, we compute a linear transformation
-            - when data type == uint8 mode, from [rmin, rmax] -> [0, 2^{b-1}] and
-            - when data type == int8, from [-m , m] -> [-(2^{b-1}-1), 2^{b-1}-1] where
-                m = max(abs(rmin), abs(rmax))
-        and add necessary intermediate nodes to trasnform quantized weight to full weight using the equation
-        r = S(q-z), where
-            r: real original value
-            q: quantized value
-            S: scale
-            z: zero point
-    '''
-    rmin = min(min(data), 0)
-    rmax = max(max(data), 0)
-
-    if qType == onnx_proto.TensorProto.INT8:
-        max_range = max(abs(rmin), abs(rmax))
-        scale = (float(max_range) * 2) / quantize_range if max_range > 0 else 1
-        zero_point = 0
-        # signed byte type
-        quantized_data = quantize_nparray(QuantType.QInt8, np.asarray(data), scale, zero_point)
-    elif qType == onnx_proto.TensorProto.UINT8:
-        scale = (float(rmax) - rmin) / quantize_range if rmin != rmax else 1
-        zero_point = round((0 - rmin) / scale)  # round to nearest integer
-        quantized_data = quantize_nparray(QuantType.QUInt8, np.asarray(data), scale, zero_point)
-    else:
-        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
-
-    return rmin, rmax, zero_point, scale, quantized_data
-
-
-def _get_qrange_for_qType(qType, reduce_range=False):
-    '''
-    Helper function to get the quantization range for a type.
-        parameter qType: quantization type.
-        return: quantization range.
-    '''
-    if qType == onnx_proto.TensorProto.UINT8:
-        return 127 if reduce_range else 255
-    elif qType == onnx_proto.TensorProto.INT8:
-        return 128 if reduce_range else 254  # [-64, 64] for reduce_range, and [-127, 127] full_range.
-    else:
-        raise ValueError('unsupported quantization data type')
-
-
 class ONNXQuantizer:
-    def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, quantization_params,
+    def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, tensors_range,
                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
 
         # run shape inference on the model
@@ -89,9 +40,22 @@ class ONNXQuantizer:
         self.mode = mode  # QuantizationMode.Value
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
-        self.input_qType = input_qType  # quantize input type
-        self.weight_qType = weight_qType  # quantize data type
-        self.quantization_params = quantization_params
+
+        self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+        self.weight_qType = onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+
+        '''
+            Dictionary specifying the min and max values for tensors. It has following format:
+                {
+                    "param_name": [min, max]
+                }
+            example:
+                {
+                    'Conv_3:0': [np.float32(0), np.float32(0.5)],
+                    'Conv_4:0': [np.float32(1), np.float32(3.5)]
+                }
+        '''
+        self.tensors_range = tensors_range
         self.nodes_to_quantize = nodes_to_quantize  # specific nodes to quantize
         self.nodes_to_exclude = nodes_to_exclude  # specific nodes to exclude
         self.op_types_to_quantize = op_types_to_quantize
@@ -101,6 +65,8 @@ class ONNXQuantizer:
 
         if not self.mode in QuantizationMode:
             raise ValueError('unsupported quantization mode {}'.format(self.mode))
+
+        self.quantization_params = self.calculate_quantization_params()
 
         # QuantizeRange tensor name and zero tensor name for scale and zero point calculation.
         # Used when static is False
@@ -209,11 +175,11 @@ class ONNXQuantizer:
         return self.model.model
 
     def should_quantize(self, node):
-        if (node.op_type not in self.op_types_to_quantize):
-            return False
-
         if self.nodes_to_quantize is not None and len(
                 self.nodes_to_quantize) != 0 and node.name not in self.nodes_to_quantize:
+            return False
+
+        if (node.op_type not in self.op_types_to_quantize):
             return False
 
         if self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
@@ -326,7 +292,7 @@ class ONNXQuantizer:
         '''
         weights_data = self.tensor_proto_to_array(initializer)
         rmin, rmax, zero_point, scale, quantized_weights_data = quantize_data(
-            weights_data.flatten().tolist(), _get_qrange_for_qType(qType, self.reduce_range), qType)
+            weights_data.flatten().tolist(), get_qrange_for_qType(qType, self.reduce_range), qType)
         weight = QuantizedInitializer(initializer.name,
                                       initializer, [rmin], [rmax], [zero_point], [scale],
                                       weights_data,
@@ -397,7 +363,7 @@ class ONNXQuantizer:
         nodes_list.append(abs_max_node)
         #   and divide by (quantize_range/2.0) which will be equal to max(...)*2.0/quantize_range
         initializer_div = onnx.helper.make_tensor(self.fixed_qrange_int8_name, onnx_proto.TensorProto.FLOAT, [],
-                                                  [_get_qrange_for_qType(qType) / 2.0])
+                                                  [get_qrange_for_qType(qType) / 2.0])
         self.model.add_initializer(initializer_div)
         scale_div_name = input_name + "scale_Div"
         scale_div_node = onnx.helper.make_node("Div", [abs_max_node.output[0], self.fixed_qrange_int8_name],
@@ -436,7 +402,7 @@ class ONNXQuantizer:
 
         # Add tensors for quantize range and zero value.
         initializer_qrange = onnx.helper.make_tensor(self.fixed_qrange_uint8_name, onnx_proto.TensorProto.FLOAT, [],
-                                                     [_get_qrange_for_qType(qType)])
+                                                     [get_qrange_for_qType(qType)])
         self.model.add_initializer(initializer_qrange)
         initializer_qvalue = onnx.helper.make_tensor(self.fixed_zero_name, onnx_proto.TensorProto.FLOAT, [], [0.0])
         self.model.add_initializer(initializer_qvalue)
@@ -490,12 +456,12 @@ class ONNXQuantizer:
             raise ValueError("Quantization parameters should contain zero point and scale. "
                              "Specified values for output {}: {}".format(param_name, params))
 
-        zero_point_values = [params[0].item()]
+        zero_point_values = [params[0]]
         zero_point_shape = []
         zero_point_name = param_name + "_zero_point"
-        zero_point_type = onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[params[0].dtype]
+        zero_point_type = self.input_qType
 
-        scale_values = [params[1].item()]
+        scale_values = [params[1]]
         scale_shape = []
         scale_name = param_name + "_scale"
 
@@ -807,7 +773,7 @@ class ONNXQuantizer:
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
-                per_channel_data.flatten().tolist(), _get_qrange_for_qType(weight_qType, self.reduce_range),
+                per_channel_data.flatten().tolist(), get_qrange_for_qType(weight_qType, self.reduce_range),
                 weight_qType)
             rmin_list.append(rmin)
             rmax_list.append(rmax)
@@ -872,3 +838,32 @@ class ONNXQuantizer:
             dequantize_node = self._dequantize_value(output.name)
             if dequantize_node is not None:
                 self.new_nodes.append(dequantize_node)
+
+    def calculate_quantization_params(self):
+        if self.tensors_range is None:
+            return
+
+        # adjust tensor_ranges for input of Clip and Relu node
+        for node in self.model.nodes():
+            if node.op_type not in ['Clip', 'Relu']:
+                continue
+            if not self.should_quantize(node):
+                continue
+            if len(self.model.input_name_to_nodes()[node.input[0]]) != 1:
+                continue
+            if node.input[0] not in self.tensors_range.keys() or node.output[0] not in self.tensors_range.keys():
+                continue
+            self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
+
+        quantization_params = {}
+        for tensor_name in self.tensors_range.keys():
+            rmin, rmax = self.tensors_range[tensor_name]
+
+            # adjust rmin and rmax such that 0 is included in the range. This is required
+            # to make sure zero can be uniquely represented.
+            rmin = min(rmin, 0)
+            rmax = max(rmax, 0)
+
+            quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, self.input_qType, get_qrange_for_qType(self.input_qType))
+
+        return quantization_params

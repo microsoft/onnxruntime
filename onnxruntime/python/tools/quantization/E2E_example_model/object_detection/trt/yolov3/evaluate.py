@@ -7,7 +7,7 @@
 # --------------------------------------------------------------------------
 
 import onnxruntime
-from onnxruntime.quantization.calibrate import CalibrationDataReader, calibrate
+from onnxruntime.quantization.calibrate import CalibrationDataReader
 import numpy as np
 
 

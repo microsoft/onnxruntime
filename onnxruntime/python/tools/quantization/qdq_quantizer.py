@@ -26,10 +26,10 @@ from .onnx_quantizer import ONNXQuantizer
 
 
 class QDQQuantizer(ONNXQuantizer):
-    def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, quantization_params,
+    def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, tensors_range,
                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize):
         ONNXQuantizer.__init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType,
-                               quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
+                               tensors_range, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
         self.tensors_to_quantize = []
         self.tensors_to_quantize_per_channel = []
         self.bias_to_quantize = []
@@ -92,7 +92,9 @@ class QDQQuantizer(ONNXQuantizer):
         return self.model.model
 
     def try_replacing_upstream_output(self, upstream_output_name, output_name):
-        if len(self.model.input_name_to_nodes()[upstream_output_name]) == 1:
+        if output_name in self.quantization_params.keys() and \
+           len(self.model.input_name_to_nodes()[upstream_output_name]) == 1 and \
+           not self.model.is_graph_output(output_name):
             self.model.replace_output_of_all_nodes(upstream_output_name, output_name)
             return True
         return False

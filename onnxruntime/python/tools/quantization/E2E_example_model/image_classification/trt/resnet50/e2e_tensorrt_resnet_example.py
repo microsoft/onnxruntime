@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 import onnx
 import onnxruntime
-from onnxruntime.quantization import CalibrationDataReader, calibrate, write_calibration_table
+from onnxruntime.quantization import CalibrationDataReader, create_calibrater, write_calibration_table
 
 
 class ImageNetDataReader(CalibrationDataReader):
@@ -337,13 +337,10 @@ if __name__ == '__main__':
                                          model_path=augmented_model_path,
                                          input_name=input_name)
         # For TensorRT calibration, augment all FP32 tensors (empty op_types), disable ORT graph optimization and skip quantization parameter calculation
-        calibration_cache = calibrate(new_model_path,
-                                      data_reader,
-                                      op_types=[],
-                                      providers=["CUDAExecutionProvider"],
-                                      ort_graph_optimization_enable=False,
-                                      quantization_params_calculation_enable=False)
-        write_calibration_table(calibration_cache)
+        calibrator = create_calibrater(new_model_path)
+        calibrator.set_execution_providers(["CUDAExecutionProvider"])
+        calibrator.collect_data(data_reader)
+        write_calibration_table(calibrator.compute_range())
 
     # Run prediction in Tensorrt EP
     data_reader = ImageNetDataReader(ilsvrc2012_dataset_path,

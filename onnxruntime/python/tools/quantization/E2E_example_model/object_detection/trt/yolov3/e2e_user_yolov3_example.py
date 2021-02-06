@@ -1,12 +1,12 @@
 import os
-from onnxruntime.quantization import get_calibrator, write_calibration_table, generate_calibration_table
+from onnxruntime.quantization import create_calibrator, write_calibration_table
 from data_reader import YoloV3DataReader, YoloV3VariantDataReader
 from evaluate import YoloV3Evaluator, YoloV3VariantEvaluator
 
 
 def get_calibration_table(model_path, augmented_model_path, calibration_dataset):
 
-    calibrator = get_calibrator(model_path, None, augmented_model_path=augmented_model_path)
+    calibrator = create_calibrator(model_path, None, augmented_model_path=augmented_model_path)
 
     # DataReader can handle dataset with batch or serial processing depends on its implementation
     # Following examples show two different ways to generate calibration table
@@ -29,8 +29,7 @@ def get_calibration_table(model_path, augmented_model_path, calibration_dataset)
                                        stride=stride,
                                        batch_size=1,
                                        model_path=augmented_model_path)
-        calibrator.set_data_reader(data_reader)
-        generate_calibration_table(calibrator, model_path, augmented_model_path, False, data_reader)
+        calibrator.collect_data(data_reader)
         start_index += stride
     '''
     2. Use batch processing (much faster)
@@ -41,10 +40,9 @@ def get_calibration_table(model_path, augmented_model_path, calibration_dataset)
     '''
 
     # data_reader = YoloV3DataReader(calibration_dataset, stride=1000, batch_size=20, model_path=augmented_model_path)
-    # calibrator.set_data_reader(data_reader)
-    # generate_calibration_table(calibrator, model_path, augmented_model_path, True, data_reader)
+    # calibrator.collect_data(data_reader)
 
-    write_calibration_table(calibrator.get_calibration_cache())
+    write_calibration_table(calibrator.compute_range())
     print('calibration table generated and saved.')
 
 
@@ -66,7 +64,7 @@ def get_prediction_evaluation(model_path, validation_dataset, providers):
 
 def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calibration_dataset):
 
-    calibrator = get_calibrator(model_path, None, augmented_model_path=augmented_model_path)
+    calibrator = create_calibrator(model_path, None, augmented_model_path=augmented_model_path)
 
     # DataReader can handle dataset with batch or serial processing depends on its implementation
     # Following examples show two different ways to generate calibration table
@@ -91,8 +89,7 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
                                               stride=stride,
                                               batch_size=1,
                                               model_path=augmented_model_path)
-        calibrator.set_data_reader(data_reader)
-        generate_calibration_table(calibrator, model_path, augmented_model_path, False, data_reader)
+        calibrator.collect_data(data_reader)
         start_index += stride
     '''
     2. Use batch processing (much faster)
@@ -103,10 +100,9 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
     '''
 
     # data_reader = YoloV3VariantDataReader(calibration_dataset, width=608, height=608, stride=1000, batch_size=20, model_path=augmented_model_path)
-    # calibrator.set_data_reader(data_reader)
-    # generate_calibration_table(calibrator, model_path, augmented_model_path, True, data_reader)
+    # calibrator.collect_data(data_reader)
 
-    write_calibration_table(calibrator.get_calibration_cache())
+    write_calibration_table(calibrator.compute_range())
     print('calibration table generated and saved.')
 
 

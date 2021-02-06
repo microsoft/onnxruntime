@@ -23,7 +23,7 @@ from .registry import QLinearOpsRegistry, IntegerOpsRegistry
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
-from .calibrate import CalibrationDataReader, calibrate
+from .calibrate import CalibrationDataReader, create_calibrator
 
 
 def optimize_model(model_path: Path):
@@ -115,8 +115,6 @@ def quantize(model,
     print("Warning: onnxruntime.quantization.quantize is deprecated.\n\
          Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization.")
     if nbits == 8 or nbits == 7:
-        input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
-        weight_qType = onnx_proto.TensorProto.INT8 if symmetric_weight else onnx_proto.TensorProto.UINT8
         mode = quantization_mode
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
@@ -124,7 +122,7 @@ def quantize(model,
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QLinearOpsRegistry.keys()) if static else list(IntegerOpsRegistry.keys())
 
-        quantizer = ONNXQuantizer(copy_model, per_channel, nbits == 7, mode, static, weight_qType, input_qType,
+        quantizer = ONNXQuantizer(copy_model, per_channel, nbits == 7, mode, static, symmetric_weight, symmetric_activation,
                                   quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
 
         quantizer.quantize_model()
@@ -178,8 +176,6 @@ def quantize_static(model_input,
     if activation_type != QuantType.QUInt8:
         raise ValueError("Static quantization only support uint8 for activation now.")
 
-    input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
-    weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     mode = QuantizationMode.QLinearOps
 
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
@@ -187,8 +183,9 @@ def quantize_static(model_input,
 
     model = load_model(Path(model_input), optimize_model)
 
-    quantization_params_dict = calibrate(model, calibration_data_reader, op_types_to_quantize, nodes_to_quantize,
-                                         nodes_to_exclude)
+    calibrator = create_calibrator(model, op_types_to_quantize)
+    calibrator.collect_data(calibration_data_reader)
+    tensors_range = calibrator.compute_range()
 
     if quant_format is QuantFormat.QOperator:
         quantizer = ONNXQuantizer(
@@ -197,9 +194,9 @@ def quantize_static(model_input,
             reduce_range,
             mode,
             True,  # static
-            weight_qType,
-            input_qType,
-            quantization_params_dict,
+            weight_type,
+            activation_type,
+            tensors_range,
             nodes_to_quantize,
             nodes_to_exclude,
             op_types_to_quantize)
@@ -210,9 +207,9 @@ def quantize_static(model_input,
             reduce_range,
             mode,
             True,  # static
-            weight_qType,
-            input_qType,
-            quantization_params_dict,
+            weight_type,
+            activation_type,
+            tensors_range,
             nodes_to_quantize,
             nodes_to_exclude,
             op_types_to_quantize)
@@ -256,8 +253,6 @@ def quantize_dynamic(model_input: Path,
     :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     '''
 
-    input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
-    weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     mode = QuantizationMode.IntegerOps
 
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
@@ -270,8 +265,8 @@ def quantize_dynamic(model_input: Path,
         reduce_range,
         mode,
         False,  #static
-        weight_qType,
-        input_qType,
+        weight_type,
+        activation_type,
         None,
         nodes_to_quantize,
         nodes_to_exclude,
@@ -313,8 +308,6 @@ def quantize_qat(model_input: Path,
     :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     '''
 
-    input_qType = onnx_proto.TensorProto.INT8 if activation_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
-    weight_qType = onnx_proto.TensorProto.INT8 if weight_type == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
     mode = QuantizationMode.IntegerOps
 
     #optimize the original model
@@ -329,8 +322,8 @@ def quantize_qat(model_input: Path,
         reduce_range,
         mode,
         False,  #static
-        weight_qType,
-        input_qType,
+        weight_type,
+        activation_type,
         None,
         nodes_to_quantize,
         nodes_to_exclude,

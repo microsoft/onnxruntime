@@ -247,3 +247,9 @@ class ONNXModel:
                         self.graph().input.remove(graph_input)
 
         self.remove_initializers(ununsed_weights)
+
+    def is_graph_output(self, output_name):
+        for output in self.model.graph.output:
+            if output.name == output_name:
+                return True
+        return False
