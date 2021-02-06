@@ -57,7 +57,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
   info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(cuda_options->arena_extend_strategy);
   info.cudnn_conv_algo_search = cuda_options->cudnn_conv_algo_search;
   info.do_copy_in_default_stream = cuda_options->do_copy_in_default_stream;
-
+  info.has_user_compute_stream = cuda_options->has_user_compute_stream;
+  info.user_compute_stream = cuda_options->user_compute_stream;
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(info));
 
   return nullptr;

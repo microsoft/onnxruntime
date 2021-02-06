@@ -20,6 +20,7 @@ size_t GetAttentionWorkspaceSize(
 
 bool LaunchAttentionKernel(
     const cudaDeviceProp& prop,                   // Device Properties
+    cudaStream_t stream,                          // cuda stream
     const void* input,                            // Input tensor
     const int* mask_index,                        // Attention mask raw data or index (end position of each sequence, or end positions and start positions). NULL means no mask.
     const std::vector<int64_t>* mask_index_dims,  // Mask index shape

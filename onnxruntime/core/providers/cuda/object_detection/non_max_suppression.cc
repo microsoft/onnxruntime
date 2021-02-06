@@ -66,6 +66,7 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
       auto* h_number_selected = static_cast<int*>(h_number_selected_ptr.get());
 
       ORT_RETURN_IF_ERROR(NonMaxSuppressionImpl(
+          Stream(),
           [this](size_t bytes) { return GetScratchBuffer<void>(bytes); },
           pc,
           GetCenterPointBox(),
@@ -120,7 +121,8 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
     concat_sizes_range_gpu.CopyToGpu();
     input_ptr.CopyToGpu();
 
-    ORT_RETURN_IF_ERROR(ConcatImpl(sizeof(int64_t),
+    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(),
+                                   sizeof(int64_t),
                                    num_elements,
                                    last_dim,
                                    concat_sizes_gpu.GpuPtr(),

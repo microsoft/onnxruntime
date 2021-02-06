@@ -11,6 +11,7 @@ from .operators.maxpool import QMaxPool
 from .operators.gavgpool import QGlobalAveragePool
 from .operators.lstm import LSTMQuant
 from .operators.split import QSplit
+from .operators.pad import QPad
 
 CommonOpsRegistry = {"Gather": GatherQuant, "EmbedLayerNormalization": EmbedLayerNormalizationQuant}
 
@@ -33,7 +34,8 @@ QLinearOpsRegistry = {
     "Sigmoid": QLinearActivation,
     "MaxPool": QMaxPool,
     "GlobalAveragePool": QGlobalAveragePool,
-    "Split": QSplit,
+    "Split" : QSplit,
+    "Pad" : QPad,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 

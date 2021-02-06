@@ -8,7 +8,7 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/orttraining-linux-ci-pipeline?label=Linux+CPU+Training)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=86)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/orttraining-linux-gpu-ci-pipeline?label=Linux+GPU+Training)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=84)
 
-**ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more. **[aka.ms/onnxruntime](https://aka.ms/onnxruntime)**
+**ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more. **[onnxruntime.ai](https://onnxruntime.ai)**
 
 
 Many users can benefit from ONNX Runtime, including those looking to:

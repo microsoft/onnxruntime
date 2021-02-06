@@ -173,6 +173,10 @@ inline HRESULT GetActivationFactory(
 {
     // Fallback to OS binary if the redistributable is not present!
     auto library = LoadLibraryExW(MachineLearningDll, nullptr, 0);
+    if (library == nullptr)
+    {
+      return HRESULT_FROM_WIN32(GetLastError());
+    }
 
     using DllGetActivationFactory = HRESULT __stdcall(HSTRING, void** factory);
     auto call = reinterpret_cast<DllGetActivationFactory*>(GetProcAddress(library, "DllGetActivationFactory"));

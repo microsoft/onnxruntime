@@ -4,6 +4,10 @@
 // Public wrappers around internal ort interfaces (currently)
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
+#ifdef USE_TENSORRT
+#include <cuda_runtime.h>
+#endif
+
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
   TypeName() = delete;                      \
   TypeName(const TypeName&) = delete;       \
@@ -22,7 +26,6 @@ using DataType = const std::string*;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
-
 // These types don't directly map to internal types
 struct Provider_KernelCreateInfo;
 struct Provider_OpKernel_Base;
@@ -128,10 +131,10 @@ struct ProviderHost {
 #ifdef USE_TENSORRT
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
 
-  virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
-  virtual void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
 
   virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
@@ -160,6 +163,7 @@ struct ProviderHost {
   // IExecutionProvider
   virtual AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) = 0;
   virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
+  virtual void IExecutionProvider__TryInsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const std::vector<const KernelRegistry*>& kernel_registries) = 0;
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
@@ -168,6 +172,7 @@ struct ProviderHost {
 
   virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) = 0;
 
+  virtual void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) = 0;
   // Status
   virtual std::string Status__ToString(const Status* p) = 0;
 
@@ -436,6 +441,7 @@ struct ProviderHost {
   virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger) = 0;
 
   virtual const std::string& GraphViewer__Name(const GraphViewer* p) noexcept = 0;
+  virtual const Path& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
 
   virtual const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) = 0;
   virtual const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) = 0;
@@ -455,6 +461,9 @@ struct ProviderHost {
 
   virtual const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) = 0;
   virtual const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept = 0;
+
+  // Path
+  virtual PathString Path__ToPathString(const Path* p) noexcept = 0;
 
   // Provider_OpKernel_Base
   virtual const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) = 0;
@@ -480,6 +489,10 @@ struct ProviderHost {
   virtual const TensorShape& Tensor__Shape(const Tensor* p) = 0;
   virtual size_t Tensor__SizeInBytes(const Tensor* p) = 0;
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
+
+  // AllocatorManager
+  virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
+  virtual AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type) = 0;
 };
 
 extern ProviderHost* g_host;
@@ -974,6 +987,7 @@ struct GraphViewer {
   std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
 
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
+  const Path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
 
   const Node* GetNode(NodeIndex node_index) const { return g_host->GraphViewer__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->GraphViewer__GetNodeArg(this, name); }
@@ -1000,6 +1014,13 @@ struct GraphViewer {
   GraphViewer(const GraphViewer&) = delete;
   void operator=(const GraphViewer&) = delete;
 };
+
+struct Path {
+  PathString ToPathString() const noexcept { return g_host->Path__ToPathString(this); }
+
+  PROVIDER_DISALLOW_ALL(Path)
+};
+
 #endif
 
 struct Provider_OpKernel_Base {

@@ -2095,6 +2095,18 @@ TEST(ReductionOpTest, ArgMax2D_select_last) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(ReductionOpTest, ArgMax2D_dim1) {
+  OpTester test("ArgMax", 11);
+  test.AddAttribute("axis", (int64_t)1);
+  test.AddInput<float>("data", {3, 1},
+                       {1.0f,
+                        6.0f,
+                        9.0f});
+  test.AddOutput<int64_t>("reduced", {3, 1},
+                          {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(ReductionOpTest, ArgMin) {
   OpTester test("ArgMin");
   test.AddAttribute("axis", (int64_t)0);
