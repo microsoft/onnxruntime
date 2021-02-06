@@ -281,7 +281,7 @@ class ThreadPool {
   /**
    * Tries to call the given function in parallel, with calls split into (num_batches) batches.
    *\param num_batches If it is zero, it will be replaced to the value of DegreeOfParallelism().
-   *\param fn A std::function or STL style functor with signature of "void f(int32_t);"
+   *\param fn A std::function or STL style functor with signature of "void f(std::ptrdiff_t);"
    * Pitfall: Caller should cap `num_batches` to a reasonable value based on the cost of `fn` and the value of `total`.
    *For example, if fn is as simple as: int sum=0; fn = [&](int i){sum +=i;} and `total` is 100, then num_batches should
    *be just 1.

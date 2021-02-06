@@ -2265,6 +2265,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
+  // Set the parent directory of model path to load external tensors if exist
+  ctx.set_model_dir(ToMBString(ModelPath().ParentPath().ToPathString()));
+
 
   LexicalScopeContext lsc;
   lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),
@@ -3389,6 +3392,31 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   return node;
 }
 
+void Graph::CancelFuseSubGraph(const Node& fused_node) {
+  auto node_idx = fused_node.Index();
+  if (!GetNode(node_idx))
+    return;
+
+  if (fused_node.NodeType() != Node::Type::Fused)
+    return;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Remove the function body from function container
+  const auto* fused_node_func = fused_node.GetFunctionBody();
+  auto it = std::find_if(
+      function_container_.begin(), function_container_.end(),
+      [fused_node_func](const std::unique_ptr<onnxruntime::Function>& func) {
+        return func.get() == fused_node_func;
+      });
+  if (it != function_container_.end()) {
+    function_container_.erase(it);
+  }
+#endif
+
+  // Remove the fused_node
+  RemoveNode(node_idx);
+}
+
 void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node) {
   const auto* func_meta_def = sub_graph.GetMetaDef();
   ORT_ENFORCE(nullptr != func_meta_def);
@@ -3429,9 +3457,7 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
         if (it != input_indexes.cend()) {
           AddEdge(producer_idx, new_node_idx, src_idx, it->second);
         }
-      } 
-      else
-      {
+      } else {
         int dst_implicit_input_idx = dst_idx - (int)node->InputDefs().size();
         ORT_ENFORCE(dst_implicit_input_idx < (int)node->ImplicitInputDefs().size());
         auto it = input_indexes.find(node->ImplicitInputDefs()[dst_implicit_input_idx]->Name());

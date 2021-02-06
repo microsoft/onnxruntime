@@ -9,7 +9,8 @@ namespace onnxruntime {
 namespace cuda {
 
 template <bool is_grad>
-Status SliceImplEx(const size_t element_size,
+Status SliceImplEx(cudaStream_t stream,
+                   const size_t element_size,
                    const int32_t dimension_count,
                    const TArray<int64_t>& starts,
                    const TArray<int64_t>& steps,
@@ -19,7 +20,8 @@ Status SliceImplEx(const size_t element_size,
                    void* output_data,
                    const size_t N);
 
-Status SliceImpl(const size_t element_size,
+Status SliceImpl(cudaStream_t stream,
+                 const size_t element_size,
                  const int32_t dimension_count,
                  const TArray<int64_t>& starts,
                  const TArray<int64_t>& steps,
@@ -29,7 +31,8 @@ Status SliceImpl(const size_t element_size,
                  void* output_data,
                  const size_t N);
 
-Status SliceImplGrad(const size_t element_size,
+Status SliceImplGrad(cudaStream_t stream,
+                     const size_t element_size,
                      const int32_t dimension_count,
                      const TArray<int64_t>& starts,
                      const TArray<int64_t>& steps,

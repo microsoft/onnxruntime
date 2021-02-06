@@ -23,7 +23,7 @@ namespace EinsumOp {
 namespace DeviceHelpers {
 
 // Data copy op - Copies raw data from the source tensor's buffer to the destination tensor's buffer
-using DataCopy = std::function<Status(const Tensor& input, Tensor& output)>;
+using DataCopy = std::function<Status(const Tensor& input, Tensor& output, void* einsum_cuda_assets)>;
 
 // Transpose op - Transposes given input based on data in `permutation`
 using Transpose = std::function<Status(const std::vector<size_t>& permutation, const Tensor& input,
@@ -54,12 +54,12 @@ using ReduceSum = std::function<Tensor(const Tensor& input, const std::vector<in
 // Eg. input_shape = [2, 3, 5, 3] and dim_1 = 1 and dim_2 = 3
 // The output_shape will be [2, 3, 5] and dim_1 will contain the diagonal elements
 using Diagonal = std::function<std::unique_ptr<Tensor>(const Tensor& input, int64_t dim_1, int64_t dim_2,
-                                                       AllocatorPtr allocator)>;
+                                                       AllocatorPtr allocator, void* einsum_cuda_assets)>;
 
 // These are CPU specific device helper implementations
 namespace CpuDeviceHelpers {
 
-Status DataCopy(const Tensor& input, Tensor& output);
+Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);
 
 Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets);
@@ -76,7 +76,7 @@ Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                  const TensorShape* input_shape_override,
                  concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
-std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator);
+std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator, void* einsum_cuda_assets);
 
 }  // namespace CpuDeviceHelpers
 
