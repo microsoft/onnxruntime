@@ -197,10 +197,6 @@ def parse_arguments():
         "--cuda_home", help="Path to CUDA home."
         "Read from CUDA_HOME environment variable if --use_cuda is true and "
         "--cuda_home is not specified.")
-    parser.add_argument(
-        "--cudnn_home", help="Path to CUDNN home. "
-        "Read from CUDNN_HOME environment variable if --use_cuda is true and "
-        "--cudnn_home is not specified.")
 
     # Python bindings
     parser.add_argument(
@@ -615,7 +611,7 @@ def use_dev_mode(args):
     return 'ON'
 
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, rocm_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
@@ -630,7 +626,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
-        "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
         "-Donnxruntime_USE_FEATURIZERS=" + (
             "ON" if args.use_featurizers else "OFF"),
         "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
@@ -1035,26 +1030,20 @@ def add_dir_if_exists(directory, dir_list):
 
 def setup_cuda_vars(args):
     cuda_home = ""
-    cudnn_home = ""
 
     if args.use_cuda:
         cuda_home = args.cuda_home if args.cuda_home else os.getenv(
             "CUDA_HOME")
-        cudnn_home = args.cudnn_home if args.cudnn_home else os.getenv(
-            "CUDNN_HOME")
-
         cuda_home_valid = (cuda_home is not None and os.path.exists(cuda_home))
-        cudnn_home_valid = (cudnn_home is not None and os.path.exists(
-            cudnn_home))
 
-        if not cuda_home_valid or not cudnn_home_valid:
+        if not cuda_home_valid:
             raise BuildError(
-                "cuda_home and cudnn_home paths must be specified and valid.",
-                "cuda_home='{}' valid={}. cudnn_home='{}' valid={}"
+                "cuda_home path must be specified and valid.",
+                "cuda_home='{}' valid={}. "
                 .format(
-                    cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid))
+                    cuda_home, cuda_home_valid))
 
-    return cuda_home, cudnn_home
+    return cuda_home
 
 
 def setup_tensorrt_vars(args):
@@ -1809,7 +1798,7 @@ def main():
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
 
     # if using cuda, setup cuda paths and env vars
-    cuda_home, cudnn_home = setup_cuda_vars(args)
+    cuda_home = setup_cuda_vars(args)
 
     mpi_home = args.mpi_home
     nccl_home = args.nccl_home
@@ -1925,7 +1914,7 @@ def main():
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
         generate_build_tree(
-            cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
+            cmake_path, source_dir, build_dir, cuda_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
             path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args)
 
