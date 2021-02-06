@@ -1864,7 +1864,8 @@ void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
 }
 
 template <double (&op)(double value)>
-void TrigDoubleTest(OpTester& test, std::initializer_list<double> input) {
+void TrigDoubleTest(OpTester& test, std::initializer_list<double> input,
+                    const std::unordered_set<std::string>& excluded_provider_types = {}) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
 
   std::vector<double> output;
@@ -1873,7 +1874,7 @@ void TrigDoubleTest(OpTester& test, std::initializer_list<double> input) {
 
   test.AddInput<double>("X", dims, input);
   test.AddOutput<double>("Y", dims, output);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
 template <float (&op)(float value)>
@@ -1916,7 +1917,9 @@ TEST(MathOpTest, CosFloat) {
 TEST(MathOpTest, CosDouble) {
   if (DefaultCudaExecutionProvider().get() != nullptr) {  // double type not supported on CPU
     OpTester test("Cos");
-    TrigDoubleTest<std::cos>(test, {1.1, -1.1, 2.2, -2.2});
+    TrigDoubleTest<std::cos>(test, {1.1, -1.1, 2.2, -2.2}, {kTensorrtExecutionProvider});
+    // Fails TensorRT unit-test because the unit tests only test one EP at a time and the TensorRT EP will not be able to find an implementation in the fall-back CPU EP,
+    // so skip it
   }
 }
 
