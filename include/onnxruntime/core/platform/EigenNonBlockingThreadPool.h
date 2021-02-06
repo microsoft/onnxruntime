@@ -381,7 +381,7 @@ class RunQueue {
   // PushBack adds w at the end of the queue.
   // If queue is full returns w, otherwise returns default-constructed Work.
   Work PushBack(Work w) {
-    std::unique_lock<SpinLock> lock(mutex_);
+    //std::unique_lock<SpinLock> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     Elem& e = array_[(back - 1) & kMask];
     ElemState s = e.state.load(std::memory_order_relaxed);
@@ -403,7 +403,7 @@ class RunQueue {
   //
   // If the queue is full, returns w, otherwise returns default-constructed work.
   Work PushBackWithTag(Work w, Tag tag, unsigned &w_idx) {
-    std::unique_lock<SpinLock> lock(mutex_);
+    //std::unique_lock<SpinLock> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back-1) & kMask;
     Elem& e = array_[w_idx];
@@ -419,6 +419,7 @@ class RunQueue {
     return Work();
   }
 
+  /*
   // PopBack removes and returns the last elements in the queue.
   Work PopBack() {
     if (Empty())
@@ -449,7 +450,7 @@ class RunQueue {
     e->state.store(ElemState::kEmpty, std::memory_order_release);
     back_.store(back + 1 + (kSize << 1), std::memory_order_relaxed);
     return w;
-  }
+  }*/
 
   // RevokeItem removes a work item from the queue.  Items are identified positionally,
   // and so a tag is used to detect whether the same position is occupied by a 
@@ -465,7 +466,7 @@ class RunQueue {
 
   bool RevokeWithTag(Tag tag, unsigned w_idx) {
     bool revoked = false;
-    std::unique_lock<SpinLock> lock(mutex_);
+    //std::unique_lock<SpinLock> lock(mutex_);
     Elem& e = array_[w_idx];
     ElemState s = e.state.load(std::memory_order_relaxed);
 
@@ -1318,13 +1319,14 @@ int CurrentThreadId() const EIGEN_FINAL {
                     bool should_block = true;
                     // We already did a best-effort emptiness check when stealing; now
                     // do a full check prior to blocking.
+                    /*
                     int victim = NonEmptyQueueIndex();
                     if (victim != -1) {
                       should_block = false;
                       if (!cancelled_) {
                         t = worker_data_[victim].queue.PopBack();
                       }
-                    }
+                    }*/
                     // Number of blocked threads is used as termination condition.
                     // If we are shutting down and all worker threads blocked without work,
                     // that's we are done.
@@ -1386,7 +1388,8 @@ int CurrentThreadId() const EIGEN_FINAL {
   //   to be spinning.  In these cases, even though the victim thread is
   //   looking for work itself, it may have been pre-empted.
 
-  Task Steal(bool check_all) {
+  Task Steal(bool /*check_all*/) {
+    /*
     PerThread* pt = GetPerThread();
     unsigned size = static_cast<unsigned>(num_threads_);
     unsigned r = Rand(&pt->rand);
@@ -1412,7 +1415,7 @@ int CurrentThreadId() const EIGEN_FINAL {
         }
       }
     }
-
+    */
     return Task();
   }
 
