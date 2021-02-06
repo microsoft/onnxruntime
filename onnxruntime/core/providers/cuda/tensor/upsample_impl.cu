@@ -149,7 +149,8 @@ __global__ void _UpampleBilinear2DInputKernel(const int64_t input_dim0,
 }
 
 template <typename T>
-void UpampleImpl(const onnxruntime::UpsampleMode upsample_mode,
+void UpampleImpl(cudaStream_t stream,
+                 const onnxruntime::UpsampleMode upsample_mode,
                  const size_t rank,
                  const int64_t input_dim2,
                  const TArray<int64_t>& input_pitches,
@@ -160,22 +161,23 @@ void UpampleImpl(const onnxruntime::UpsampleMode upsample_mode,
                  const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   if (onnxruntime::UpsampleMode::NN == upsample_mode) {
-    _UpampleNearestKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _UpampleNearestKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         rank, input_pitches, output_div_pitches, scales_div,
         input_data, output_data, N);
   } else if (onnxruntime::UpsampleMode::LINEAR == upsample_mode && rank == 4) {
-    _UpampleBilinear4DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _UpampleBilinear4DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         input_dim2, input_pitches, output_div_pitches, scales_div,
         input_data, output_data, N);
   } else if (onnxruntime::UpsampleMode::LINEAR == upsample_mode && rank == 2) {
-    _UpampleBilinear2DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _UpampleBilinear2DInputKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         input_dim2, input_pitches, output_div_pitches, scales_div,
         input_data, output_data, N);
   }
 }
 
 #define SPECIALIZED_IMPL(T)                                                     \
-  template void UpampleImpl<T>(const onnxruntime::UpsampleMode upsample_mode,   \
+  template void UpampleImpl<T>(cudaStream_t stream,                       \
+                               const onnxruntime::UpsampleMode upsample_mode,   \
                                const size_t rank,                               \
                                const int64_t input_dim2,                        \
                                const TArray<int64_t>& input_pitches,                    \
