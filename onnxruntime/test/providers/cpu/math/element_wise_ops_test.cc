@@ -1865,7 +1865,7 @@ void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
 
 template <double (&op)(double value)>
 void TrigDoubleTest(OpTester& test, std::initializer_list<double> input,
-                    const std::unordered_set<std::string>& excluded_provider_types = {}) {
+                    const std::unordered_set<std::string> excluded_provider_types = {}) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
 
   std::vector<double> output;
