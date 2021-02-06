@@ -55,9 +55,9 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto shape_tensor = context->Input<Tensor>(0);
   auto indices_tensor = context->Input<Tensor>(1);
   auto update_tensor = context->Input<Tensor>(2);
-  ORT_RETURN_IF_NOT(shape_tensor != nullptr);
-  ORT_RETURN_IF_NOT(indices_tensor != nullptr);
-  ORT_RETURN_IF_NOT(update_tensor != nullptr);
+  ORT_RETURN_IF(shape_tensor == nullptr, "shape_tensor != nullptr");
+  ORT_RETURN_IF(indices_tensor == nullptr, "indices_tensor != nullptr");
+  ORT_RETURN_IF(update_tensor == nullptr, "update_tensor != nullptr");
 
   auto indices_shape = indices_tensor->Shape();
   auto update_shape = update_tensor->Shape();
