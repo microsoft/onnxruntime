@@ -196,7 +196,7 @@ def parse_arguments():
     parser.add_argument(
         "--cuda_home", help="Path to CUDA home."
         "Read from CUDA_HOME environment variable if --use_cuda is true and "
-        "--cuda_home is not specified.")    
+        "--cuda_home is not specified.")
 
     # Python bindings
     parser.add_argument(
