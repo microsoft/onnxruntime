@@ -8,6 +8,7 @@ namespace cuda {
 
 template <typename T>
 void InstanceNormImpl(
+    cudaStream_t stream,
     const T* input_data,
     const T* scale,
     const T* bias,

@@ -33,14 +33,15 @@ struct OP_ReluGrad : public CtxReluGrad {
 
 #define BINARY_ELEMENTWISE_IMPL(name)                                                  \
   BINARY_ELEMENTWISE_IMPL_DECLARATION(name) {                                          \
-    BinaryElementWiseNoBroadcastImpl(lhs_data, rhs_data,                               \
+    BinaryElementWiseNoBroadcastImpl(stream,                                           \
+                                     lhs_data, rhs_data,                               \
                                      output_data,                                      \
                                      *reinterpret_cast<const OP_##name<T>*>(func_ctx), \
                                      count);                                           \
   }
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL(name, T) \
-  template void Impl_##name<T>(const T* lhs_data, const T* rhs_data, T* output_data, const Ctx##name* func_ctx, size_t count);
+  template void Impl_##name<T>(cudaStream_t stream, const T* lhs_data, const T* rhs_data, T* output_data, const Ctx##name* func_ctx, size_t count);
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, half)     \

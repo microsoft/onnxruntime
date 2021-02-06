@@ -98,7 +98,7 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
   }
 
-  HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
+  HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
   return Status::OK();
 }
 

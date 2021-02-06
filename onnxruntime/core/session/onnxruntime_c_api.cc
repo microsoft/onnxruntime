@@ -1860,6 +1860,15 @@ ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
 }
 
+#if defined(ORT_MINIMAL_BUILD)
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
+                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
+}
+#endif
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2094,6 +2103,8 @@ static constexpr OrtApi ort_api_1_to_7 = {
 
     // Version 7 - In development, feel free to add/remove/rearrange here
     &OrtApis::ModelMetadataGetGraphDescription,
+
+    &OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
     &OrtApis::SetCurrentGpuDeviceId,
     &OrtApis::GetCurrentGpuDeviceId,
 };
