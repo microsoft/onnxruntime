@@ -59,7 +59,7 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
 
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  auto bias_data = simplified ? nullptr: reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  auto bias_data = (simplified || (nullptr == bias)) ? nullptr: reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
@@ -91,7 +91,7 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
       mean_data = reinterpret_cast<CudaU*>(mean->template MutableData<U>());
     }
   }
-  
+
   Tensor* var = ctx->Output(output_index, TensorShape(mean_inv_std_var_dim));
   CudaU* inv_var_data = nullptr;
   if (var != nullptr) {
