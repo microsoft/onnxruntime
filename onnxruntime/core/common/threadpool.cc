@@ -463,6 +463,18 @@ using Fn = ::std::function<void(::std::ptrdiff_t, ::std::ptrdiff_t)>;
 using SimpleFn = ::std::function<void(::std::ptrdiff_t)>;
 using JobFn = ::std::function<void()>;
 
+struct Print {
+  Print(const std::string& evt) : evt_(evt) {
+    std::cout << evt_ << " start" << std::endl;
+  }
+  ~Print() {
+    std::cout << evt_ << " end" << std::endl;
+  }
+  std::string evt_;
+};
+
+#define PRINT(e) Print(e)
+
 struct alignas(8) Job {
   JobFn fn_;
   ::std::atomic<::std::ptrdiff_t>& progress_;
@@ -527,6 +539,7 @@ struct ThreadPoolImpl {
     if (threads_.empty()) {
       fn();
     } else {
+      PRINT("Schedule");
       JobFn jobFn = std::move(fn);
       Job job{jobFn, non_empty};
       if (::std::this_thread::get_id() == main_thread_id_) {
@@ -549,6 +562,7 @@ struct ThreadPoolImpl {
     }  // else
   }  // Schedule
   void ParallelFor(::std::ptrdiff_t laps, const Fn& fn) {
+    PRINT("ParallelFor" + std::to_string(laps));
     auto size = static_cast<ptrdiff_t>(threads_.size() + 1);
     auto block = laps / size + ((laps % size) == 0 ? 0 : 1);
     auto splits = laps / block + ((laps % block) == 0 ? 0 : 1);
@@ -581,6 +595,7 @@ struct ThreadPoolImpl {
     }
   }
   void SimpleParallelFor(::std::ptrdiff_t laps, const SimpleFn& fn) {
+    PRINT("SimpleParallelFor " + std::to_string(laps));
     auto size = static_cast<ptrdiff_t>(threads_.size() + 1);
     auto block = laps / size + ((laps % size) == 0 ? 0 : 1);
     auto splits = laps / block + ((laps % block) == 0 ? 0 : 1);
