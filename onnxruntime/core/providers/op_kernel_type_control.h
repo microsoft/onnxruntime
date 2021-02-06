@@ -204,7 +204,7 @@ struct EnabledTypes {
     OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, ...) \
   ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(                      \
       OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex,    \
-      ::onnxruntime::TypeList<__VA_ARGS__>)
+      ORT_TYPE_LIST(__VA_ARGS__))
 
 /**
  * Specifies a supported set of types for a given Op kernel argument that is valid for all opsets.
