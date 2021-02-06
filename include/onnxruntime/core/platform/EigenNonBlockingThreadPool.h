@@ -658,7 +658,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   };
 
   typedef std::function<void()> Task;
-  typedef RunQueue<Task, Tag, 64> Queue;
+  typedef RunQueue<Task, Tag, 256> Queue;
 #ifdef _WIN32
   using CHAR_TYPE = wchar_t;
 #else
