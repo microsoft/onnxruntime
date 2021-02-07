@@ -15,12 +15,26 @@ if platform.system() == "Windows":
     from . import version_info
 
     if version_info.use_cuda:
-        cuda_env_variable = "CUDA_PATH_V" + version_info.cuda_version.replace(".", "_")
-        if cuda_env_variable not in os.environ:
-            raise ImportError(f"CUDA Toolkit {version_info.cuda_version} not installed on the machine.")
+        cuda_version_major, cuda_version_minor = version_info.cuda_version.split(".")
+        if int(cuda_version_major) < 11:
+            # Prior to CUDA 11 both major and minor version at build time/runtime have to match.
+            cuda_env_variable = f"CUDA_PATH_V{cuda_version_major}_{cuda_version_minor}"
+            if cuda_env_variable not in os.environ:
+                raise ImportError(f"CUDA Toolkit {version_info.cuda_version} not installed on the machine.")
+        else:
+            # With CUDA 11 and newer only the major version at build time/runtime has to match.
+            # Use the most recent minor version available.
+            cuda_env_variable = None
+            for i in range(9, -1, -1):
+                if f"CUDA_PATH_V{cuda_version_major}_{i}" in os.environ:
+                    cuda_env_variable = f"CUDA_PATH_V{cuda_version_major}_{i}"
+                    break
+            if not cuda_env_variable:
+                raise ImportError(f"CUDA Toolkit {cuda_version_major}.x not installed on the machine.")
+
         cuda_bin_dir = os.path.join(os.environ[cuda_env_variable], "bin")
         if not os.path.isfile(os.path.join(cuda_bin_dir, f"cudnn64_{version_info.cudnn_version}.dll")):
-            raise ImportError(f"cuDNN {version_info.cudnn_version} not installed on the machine.")
+            raise ImportError(f"cuDNN {version_info.cudnn_version} not installed in {cuda_bin_dir}.")
 
         if sys.version_info >= (3, 8):
             # Python 3.8 (and later) doesn't search system PATH when loading DLLs, so the CUDA location needs to be
