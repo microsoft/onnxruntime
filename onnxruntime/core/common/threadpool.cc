@@ -466,10 +466,10 @@ using JobFn = ::std::function<void()>;
 
 struct Print {
   Print(const std::string& evt) : evt_(evt) {
-    std::cout << evt_ << " start" << std::endl;
+    //std::cout << evt_ << " start" << std::endl;
   }
   ~Print() {
-    std::cout << evt_ << " end" << std::endl;
+    //std::cout << evt_ << " end" << std::endl;
   }
   std::string evt_;
 };
@@ -553,6 +553,8 @@ struct ThreadPoolImpl {
     }
   }
   void Schedule(::std::function<void()> fn) {
+    fn();
+    /*
     if (threads_.empty()) {
       fn();
     } else {
@@ -560,8 +562,11 @@ struct ThreadPoolImpl {
         fn();
       }
     }  // else
+    */
   }  // Schedule
   void ParallelFor(::std::ptrdiff_t laps, const Fn& fn) {
+    fn(0, laps);
+    /*
     PRINT("ParallelFor" + std::to_string(laps));
     auto size = static_cast<ptrdiff_t>(threads_.size() + 1);
     auto block = laps / size + ((laps % size) == 0 ? 0 : 1);
@@ -583,9 +588,13 @@ struct ThreadPoolImpl {
       }
     } else {
       fn(0, laps);
-    }
+    }*/
   }
   void SimpleParallelFor(::std::ptrdiff_t laps, const SimpleFn& fn) {
+    for (::std::ptrdiff_t i = 0; i < laps; i++) {
+      fn(i);
+    }
+    /*
     PRINT("SimpleParallelFor " + std::to_string(laps));
     auto size = static_cast<ptrdiff_t>(threads_.size() + 1);
     auto block = laps / size + ((laps % size) == 0 ? 0 : 1);
@@ -614,7 +623,7 @@ struct ThreadPoolImpl {
       for (::std::ptrdiff_t i = 0; i < laps; i++) {
         fn(i);
       }
-    }
+    }*/
   }
   ::std::vector<::std::thread> threads_;
   //::std::atomic<size_t> occupied_{0};
