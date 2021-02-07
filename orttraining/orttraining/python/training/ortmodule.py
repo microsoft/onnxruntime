@@ -197,8 +197,8 @@ class ORTModule(torch.nn.Module):
     def train(self: T, mode: bool = True) -> T:
         self._is_training = mode
         self._original_module.train(mode)
-        if self._is_training and self._device.type == 'cuda':
-            torch.cuda.empty_cache()
+        #if self._is_training and self._device.type == 'cuda':
+        #    torch.cuda.empty_cache()
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -211,7 +211,7 @@ class ORTModule(torch.nn.Module):
             return self._original_module(*inputs, **kwargs)
 
         if not self._onnx_gradient or self._require_export:
-            self._require_export = False
+            #self._require_export = False
             with torch.no_grad():
                 self._onnx_training = ORTModule._get_forward_graph(self._original_module, *inputs, **kwargs)
 
@@ -227,6 +227,10 @@ class ORTModule(torch.nn.Module):
 
             if self._save_onnx:
                 onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
+            if self._require_export:
+                torch.cuda.empty_cache()
+
+            self._require_export = False
 
         # Perform shape inference and re-split forward/backward graph for bacthes with different shapes
         _, input_tensors = ORTModule._extract_user_inputs(self._original_module, *inputs, **kwargs)
@@ -250,7 +254,7 @@ class ORTModule(torch.nn.Module):
                     provider_options = [{"device_id": str(self._device.index)}]
                     
                 # Release CUDA cache used by PyTorch during exporter
-                torch.cuda.empty_cache()
+                #torch.cuda.empty_cache()
             elif self._device.type == 'cpu':
                 providers = ["CPUExecutionProvider"]
                 provider_options = [{}]

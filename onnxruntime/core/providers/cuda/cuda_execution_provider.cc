@@ -65,10 +65,7 @@ if (external_alloc != nullptr && external_free != nullptr) {
           return onnxruntime::make_unique<CUDAExternalAllocator>(id, CUDA, external_alloc, external_free);
         },
         device_id,
-        true,
-        {cuda_mem_limit,
-         static_cast<int>(arena_extend_strategy),
-         -1, -1});
+        false);
 
     return CreateAllocator(default_memory_info);
 
