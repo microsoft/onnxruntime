@@ -162,6 +162,9 @@ if (WIN32)
     file(WRITE "${VERSION_INFO_FILE}" "use_cuda = True\n")
 
     file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/lib/x64/cudnn64_*.lib")
+    if (NOT CUDNN_DLL_PATH)
+      message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
+    endif()
     get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
     string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
 
