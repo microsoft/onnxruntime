@@ -3,7 +3,7 @@
 
 #pragma once
 #include "core/common/optional.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 
@@ -33,9 +33,6 @@ struct PrepareReduceMetadata {
   std::vector<int64_t> squeezed_output_dims;
   std::vector<int64_t> input_dims_cudnn;
   std::vector<int64_t> output_dims_cudnn;
-  int64_t rank;
-  int64_t stride;
-  bool contiguous_axes;
 };
 
 template <bool allow_multi_axes>

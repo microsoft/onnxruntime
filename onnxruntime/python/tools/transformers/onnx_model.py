@@ -368,11 +368,6 @@ class OnnxModel:
                 shape_list.append("?")  # shall not happen
         return shape_list
 
-    def convert_list_to_tensor(self, name, type, shape, value):
-        """ Convert list to tensor
-        """
-        return helper.make_tensor(name, type, shape, value)
-
     def change_input_output_float32_to_float16(self):
         """ Change graph input and output data type from FLOAT to FLOAT16
         """
@@ -412,6 +407,12 @@ class OnnxModel:
     def convert_model_float32_to_float16(self, cast_input_output=True):
         """ Convert a graph to FLOAT16
         """
+        from packaging.version import Version
+        import onnxconverter_common as oc
+        if Version(oc.__version__) > Version("1.7.0"):
+            self.model = oc.float16.convert_float_to_float16(self.model, keep_io_types=cast_input_output)
+            return
+
         graph = self.model.graph
         initializers = graph.initializer
 

@@ -4,6 +4,8 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "core/graph/basic_types.h"
 #include "core/graph/onnx_protobuf.h"

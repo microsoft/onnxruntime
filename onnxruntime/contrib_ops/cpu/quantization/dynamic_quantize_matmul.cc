@@ -50,6 +50,12 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
+    MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(
+        y_data + helper.OutputOffsets()[i],
+        static_cast<size_t>(helper.N()),
+        &multiplier,
+        bias_data);
+
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
     if (packed_b_) {
       MlasGemm(static_cast<size_t>(helper.M()),
@@ -61,31 +67,29 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                packed_b_.get(),
                b_zero_point,
                b_is_signed_,
-               y_data + helper.OutputOffsets()[i],
+               reinterpret_cast<int32_t*>(y_data + helper.OutputOffsets()[i]),
                static_cast<size_t>(helper.N()),
-               &multiplier,
-               bias_data,
-               thread_pool);
+               thread_pool,
+               &scale_bias_processor);
       continue;
     }
 #endif
     const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
     const bool b_is_signed = b->IsDataType<int8_t>();
-    QGemm(static_cast<int>(helper.M()),
-          static_cast<int>(helper.N()),
-          static_cast<int>(helper.K()),
-          a_data + helper.LeftOffsets()[i],
-          static_cast<int>(helper.K()),
-          a_zero_point,
-          b_data + helper.RightOffsets()[i],
-          static_cast<int>(helper.N()),
-          b_zero_point,
-          b_is_signed,
-          y_data + helper.OutputOffsets()[i],
-          static_cast<int>(helper.N()),
-          &multiplier,
-          bias_data,
-          thread_pool);
+    MlasGemm(static_cast<size_t>(helper.M()),
+             static_cast<size_t>(helper.N()),
+             static_cast<size_t>(helper.K()),
+             a_data + helper.LeftOffsets()[i],
+             static_cast<size_t>(helper.K()),
+             a_zero_point,
+             b_data + helper.RightOffsets()[i],
+             static_cast<size_t>(helper.N()),
+             b_zero_point,
+             b_is_signed,
+             reinterpret_cast<int32_t*>(y_data + helper.OutputOffsets()[i]),
+             static_cast<size_t>(helper.N()),
+             thread_pool,
+             &scale_bias_processor);
   }
 
   return Status::OK();
@@ -104,24 +108,6 @@ class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
 
   Status Compute(OpKernelContext* context) const override;
 };
-
-static void GetQuantizationParameter(const float* data, int64_t num_of_elements, float& scale, uint8_t& zp) {
-  // find input range min and max
-  float min, max;
-  MlasFindMinMaxElement(data, &min, &max, num_of_elements);
-
-  // ensure the input range includes zero
-  min = std::min(min, 0.0f);
-  max = std::max(max, 0.0f);
-
-  // find scale and zero point
-  uint8_t qmin = 0;
-  uint8_t qmax = 255;
-  scale = max == min ? 1.0f : (max - min) / (qmax - qmin);
-
-  float initial_zero_point = qmin - min / scale;
-  zp = static_cast<uint8_t>(RoundHalfToEven(std::max(float(qmin), std::min(float(qmax), initial_zero_point))));
-}
 
 Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);

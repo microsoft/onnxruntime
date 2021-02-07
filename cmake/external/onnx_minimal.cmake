@@ -14,7 +14,7 @@ endif()
 
 set(ONNX_SOURCE_ROOT ${PROJECT_SOURCE_DIR}/external/onnx)
 
-add_library(onnx_proto ${ONNX_SOURCE_ROOT}/onnx/onnx-ml.proto ${ONNX_SOURCE_ROOT}/onnx/onnx-operators-ml.proto)
+add_library(onnx_proto ${ONNX_SOURCE_ROOT}/onnx/onnx-ml.proto ${ONNX_SOURCE_ROOT}/onnx/onnx-operators-ml.proto ${ONNX_SOURCE_ROOT}/onnx/onnx-data.proto)
 
 target_include_directories(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)

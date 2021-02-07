@@ -6,6 +6,12 @@
 namespace onnxruntime {
 namespace test {
 
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#endif
+
 static void TestActivations(const std::vector<int64_t>& tensor_dim,
                             const std::string& operator_name,
                             bool is_grad_op,
@@ -31,7 +37,7 @@ static void TestActivations(const std::vector<int64_t>& tensor_dim,
     test.AddOutput<float>("Y", tensor_dim, Y_data);
   }
 
-  test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
+  test.CompareWithCPU(kGpuExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
 TEST(CudaKernelTest, Gelu_basic) {
@@ -102,7 +108,7 @@ static void TestActivationsWithBroadcastBias(
     test.AddOutput<float>("Y", tensor_dim, Y_data);
   }
 
-  test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
+  test.CompareWithCPU(kGpuExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
 TEST(CudaKernelTest, FastGelu_bias) {

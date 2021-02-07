@@ -7,4 +7,10 @@
 #include "raw/microsoft.ai.machinelearning.h"
 #include "raw/microsoft.ai.machinelearning.gpu.h"
 
-void RunOnDevice(Microsoft::AI::MachineLearning::learning_model& model, Microsoft::AI::MachineLearning::learning_model_device& device, bool copy_inputs);
+enum class InputStrategy {
+    CopyInputs,
+    BindAsReference,
+    BindWithMultipleReferences
+};
+
+void RunOnDevice(Microsoft::AI::MachineLearning::learning_model& model, Microsoft::AI::MachineLearning::learning_model_device& device, InputStrategy strategy);

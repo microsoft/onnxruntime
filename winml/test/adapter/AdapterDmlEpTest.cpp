@@ -27,6 +27,9 @@ void AdapterDmlEpTestSetup() {
   ort_api = OrtGetApiBase()->GetApi(2);
   winml_adapter_api = OrtGetWinMLAdapter(ort_api);
   ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+#ifdef BUILD_INBOX
+  winrt_activation_handler = WINRT_RoGetActivationFactory;
+#endif
 }
 
 void AdapterDmlEpTestTeardown() {

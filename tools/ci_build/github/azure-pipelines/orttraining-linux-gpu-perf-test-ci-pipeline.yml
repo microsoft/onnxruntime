@@ -13,15 +13,17 @@ jobs:
     clean: true
     submodules: recursive
 
-  - script: >
-      tools/ci_build/github/linux/run_dockerbuild.sh
-      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
-      -x "
-      --config RelWithDebInfo
-      --enable_training
-      --update --build
-      "
-    displayName: 'Build performance tests'
+  - template: templates/run-docker-build-steps.yml
+    parameters:
+      RunDockerBuildArgs: >
+        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
+        -t onnxruntime_perf_test_image
+        -x "
+        --config RelWithDebInfo
+        --enable_training
+        --update --build
+        "
+      DisplayName: 'Build performance tests'
 
   - script: >
       docker run --gpus all --rm --name onnxruntime-gpu-perf
@@ -29,7 +31,7 @@ jobs:
       --volume $(Build.BinariesDirectory):/build
       --volume /bert_ort/bert_models:/build/bert_models:ro
       --volume /bert_data:/build/bert_data:ro
-      -e NIGHTLY_BUILD onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6
+      -e NIGHTLY_BUILD onnxruntime_perf_test_image
       /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_bert_perf_test.py
       --binary_dir /build/RelWithDebInfo
       --training_data_root /build/bert_data
@@ -42,7 +44,7 @@ jobs:
       --volume $(Build.BinariesDirectory):/build
       --volume /bert_ort/gpt2_models:/build/gpt2_models:ro
       --volume /bert_data/gpt2_data:/build/gpt2_data:ro
-      -e NIGHTLY_BUILD onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6
+      -e NIGHTLY_BUILD onnxruntime_perf_test_image
       /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
       --binary_dir /build/RelWithDebInfo
       --training_data_root /build/gpt2_data

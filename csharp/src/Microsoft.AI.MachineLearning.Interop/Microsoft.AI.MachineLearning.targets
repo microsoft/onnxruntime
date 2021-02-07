@@ -13,17 +13,6 @@
     <RuntimesDirectory Condition="'$(RuntimesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native</RuntimesDirectory>
     <WindowsAIBinary>$(RuntimesDirectory)\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
     <OnnxRuntimeBinary>$(RuntimesDirectory)\onnxruntime.dll</OnnxRuntimeBinary>
-    <DirectMLBinary>$(RuntimesDirectory)\directml.dll</DirectMLBinary>
-  </PropertyGroup>
-
-  <PropertyGroup>
-    <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary);$(DirectMLBinary)</MLBinaries>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(WindowsAI-Platform)' == x64 OR '$(WindowsAI-Platform)' == x86">
-    <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary);$(DirectMLBinary)</MLBinaries>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(OutputType)' == 'AppContainerExe' OR '$(WindowsAI-Platform)' == arm OR '$(WindowsAI-Platform)' == arm64">
-    <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary)</MLBinaries>
   </PropertyGroup>
 
   <Target Name="CopyMLBinaries" BeforeTargets="CoreBuild">
@@ -31,6 +20,6 @@
       <WindowsAIBinplaceMessage>Binplacing WindowsAI binaries: {0} and {1}.</WindowsAIBinplaceMessage>
     </PropertyGroup>
     <Message Text="$([System.String]::Format('$(WindowsAIBinplaceMessage)', '$(WindowsAIBinary)', '$(OnnxRuntimeBinary)'))" />
-    <Copy SkipUnchangedFiles="True" SourceFiles="$(MLBinaries)" DestinationFolder="$(OutDir)" />
+    <Copy SkipUnchangedFiles="True" SourceFiles="$(WindowsAIBinary);$(OnnxRuntimeBinary)" DestinationFolder="$(OutDir)" />
   </Target>
 </Project>

@@ -216,7 +216,16 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                                                                                       1 /* depth multiplier */,
                                                                                       arm_compute::Size2D(aclDilation0, dilations[0]));
 #elif defined(ACL_2002)
-      bool optimizable = false;
+      bool optimizable = bool(arm_compute::NEDepthwiseConvolutionLayerOptimized::validate(tconv.in->info(),
+                                                                           tconv.k->info(),
+                                                                           (B != nullptr) ? tconv.b->info() : nullptr,
+                                                                           tconv.out->info(),
+                                                                           aclPadStride,
+                                                                           1 /* depth multiplier */,
+                                                                           acl_activ_enabled ?
+                                                                              arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) :
+                                                                              arm_compute::ActivationLayerInfo(),
+                                                                           arm_compute::Size2D(aclDilation0, dilations[0])));
 #endif
 
       if (optimizable) {
@@ -286,7 +295,12 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   }
 
   const T* x_data = X->template Data<T>();
-  ACLImportMemory(pConv->in->allocator(), (void*)x_data, X->Shape().Size() * 4);
+  if(X->Shape().Size() != 0 && pConv->in->info()->has_padding() ){
+    pConv->in->allocator()->allocate();
+    importDataToTensor<T>(pConv->in.get(), x_data);
+  }else{
+    ACLImportMemory(pConv->in->allocator(), (void*)x_data, X->Shape().Size() * 4);
+  }
 
   const T* k_data = W->template Data<T>();
   ACLImportMemory(pConv->k->allocator(), (void*)k_data, W->Shape().Size() * 4);
@@ -297,12 +311,20 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   }
 
   T* y_data = Y->template MutableData<T>();
-  ACLImportMemory(pConv->out->allocator(), (void*)y_data, Y->Shape().Size() * 4);
+  if(Y->Shape().Size() != 0 && pConv->out->info()->has_padding() ){
+    pConv->out->allocator()->allocate();
+  } else {
+    ACLImportMemory(pConv->out->allocator(), (void*)y_data, Y->Shape().Size() * 4);
+  }
 
   arm_compute::Allocator alloc_mm{};
   pConv->mm_layer->populate(alloc_mm, 1);
   pConv->layer->run();
   pConv->mm_layer->clear();
+
+  if(Y->Shape().Size() != 0 && pConv->out->info()->has_padding() ){
+    importDataFromTensor<T>(pConv->out.get(), y_data);
+  }
 
   pConv->in->allocator()->free();
   pConv->k->allocator()->free();

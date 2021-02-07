@@ -13,6 +13,7 @@ struct GlobalContext {
   InferenceEngine::Core ie_core;
   bool is_wholly_supported_graph = false;
   bool enable_vpu_fast_compile = false;
+  size_t num_of_threads;
   std::string device_type;
   std::string precision_str;
   std::string device_id;
@@ -27,11 +28,8 @@ struct SubGraphContext {
   bool set_vpu_config = false;
   bool is_constant = false;
   std::string subgraph_name;
-  #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
   std::vector<int> input_indexes;
-  #else
   std::unordered_map<std::string, int> input_names;
-  #endif
   std::unordered_map<std::string, int> output_names;
   InferenceEngine::Precision precision;
 };

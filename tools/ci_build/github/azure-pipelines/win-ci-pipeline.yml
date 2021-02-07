@@ -39,6 +39,16 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
+     set ORT_DOXY_SRC=$(Build.SourcesDirectory)
+     set ORT_DOXY_OUT=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+     mkdir %ORT_DOXY_SRC% 
+     mkdir %ORT_DOXY_OUT%
+     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
+     
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'API Documentation Check and generate'
+
+  - script: |
      python -m pip install -q pyopenssl setuptools wheel numpy flake8
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
@@ -48,6 +58,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
+     python -m pip uninstall -y onnx
      Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
@@ -102,7 +113,7 @@ jobs:
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: '$(BuildConfig)'
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'      
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: DotNetCoreCLI@2
     displayName: 'Build C#'    
@@ -153,13 +164,6 @@ jobs:
 
 - job: 'x86_build'
   pool: 'Win-CPU-2019'
-  strategy:
-    maxParallel: 2
-    matrix:
-      debug:
-        BuildConfig: 'Debug'
-      release:
-        BuildConfig: 'RelWithDebInfo'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -168,6 +172,7 @@ jobs:
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     setVcvars: true
+    BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
@@ -196,6 +201,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
+     python -m pip uninstall -y onnx
      Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
@@ -292,13 +298,6 @@ jobs:
    
 - job: 'x86_no_contrib_ops'
   pool: 'Win-CPU-2019'
-  strategy:
-    maxParallel: 2
-    matrix:
-      debug:
-        BuildConfig: 'Debug'
-      release:
-        BuildConfig: 'RelWithDebInfo'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -307,6 +306,7 @@ jobs:
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     setVcvars: true
+    BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
@@ -335,6 +335,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
+     python -m pip uninstall -y onnx
      Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
@@ -420,13 +421,6 @@ jobs:
 
 - job: 'build_x64_no_contrib_ops'
   pool: 'Win-CPU-2019'
-  strategy:
-    maxParallel: 2
-    matrix:
-      debug:
-        BuildConfig: 'Debug'
-      release:
-        BuildConfig: 'RelWithDebInfo'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -435,6 +429,7 @@ jobs:
     EnvSetupScript: setup_env.bat
     buildArch: x64
     setVcvars: true
+    BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
   timeoutInMinutes: 120
   workspace:
@@ -463,6 +458,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
+     python -m pip uninstall -y onnx
      Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'

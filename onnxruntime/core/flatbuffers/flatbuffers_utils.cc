@@ -197,21 +197,26 @@ static Status LoadTensorDimensionOrtFormat(const fbs::Dimension& fbs_dim,
   return Status::OK();
 }
 
+static Status LoadTensorShapeOrtFormat(const fbs::Shape& fbs_shape, TensorShapeProto& shape_proto) {
+  auto fbs_dims = fbs_shape.dim();
+  if (fbs_dims) {
+    auto dims = shape_proto.mutable_dim();
+    dims->Reserve(fbs_dims->size());
+    for (const auto fbs_dim : *fbs_dims) {
+      ORT_RETURN_IF(nullptr == fbs_dim, "Null entry in dimensions. Invalid ORT format model.");
+      TensorShapeProto_Dimension dim;
+      ORT_RETURN_IF_ERROR(LoadTensorDimensionOrtFormat(*fbs_dim, *dims->Add()));
+    }
+  }
+  return Status::OK();
+}
+
 static Status LoadTensorTypeAndShapeOrtFormat(const fbs::TensorTypeAndShape& fbs_tensor_type,
                                               TypeProto_Tensor& tensor_type_proto) {
   tensor_type_proto.set_elem_type(static_cast<int32_t>(fbs_tensor_type.elem_type()));
   auto fbs_shape = fbs_tensor_type.shape();
   if (fbs_shape) {
-    auto fbs_dims = fbs_shape->dim();
-    if (fbs_dims) {
-      auto dims = tensor_type_proto.mutable_shape()->mutable_dim();
-      dims->Reserve(fbs_dims->size());
-      for (const auto fbs_dim : *fbs_dims) {
-        ORT_RETURN_IF(nullptr == fbs_dim, "Null entry in dimensions. Invalid ORT format model.");
-        TensorShapeProto_Dimension dim;
-        ORT_RETURN_IF_ERROR(LoadTensorDimensionOrtFormat(*fbs_dim, *dims->Add()));
-      }
-    }
+    ORT_RETURN_IF_ERROR(LoadTensorShapeOrtFormat(*fbs_shape, *tensor_type_proto.mutable_shape()));
   }
   return Status::OK();
 }

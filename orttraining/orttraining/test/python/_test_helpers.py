@@ -83,6 +83,37 @@ def _assert_state_dict_weights(state_dict_a, state_dict_b, verbose, rtol, atol):
             print(f'Weight name: {a_name}: absolute difference: {np.abs(np_a_vals-np_b_vals).max()}')
         assert_allclose(a_val, b_val, rtol=rtol, atol=atol, err_msg=f"Weight mismatch for {a_name}")
 
+def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
+    r"""Asserts whether optimizer state differences are within specified tolerance
+
+    Compares the expected and actual optimizer states of dicts and raises AssertError
+    when they diverge by more than atol or rtol.
+    The optimizer dict is of the form:
+        model_weight_name:
+            {
+                "Moment_1": moment1_tensor,
+                "Moment_2": moment2_tensor,
+                "Update_Count": update_tensor # if optimizer is adam, absent otherwise
+            },
+        ...
+        "shared_optimizer_state": # if optimizer is shared, absent otherwise. 
+                                    So far, only lamb optimizer uses this.
+        {
+            "step": step_tensor # int array of size 1
+        }
+
+    Args:
+        expected_state (dict(dict())): Expected optimizer state 
+        actual_state (dict(dict())): Actual optimizer state
+        rtol (float, default is 1e-7): Max relative difference
+        atol (float, default is 0): Max absolute difference
+    """
+    assert expected_state.keys() == actual_state.keys()
+    for param_name, a_state in actual_state.items():
+        for k,v in a_state.items():
+            assert_allclose(v, expected_state[param_name][k], rtol=rtol, atol=atol,
+                            err_msg=f"Optimizer state mismatch for param {param_name}, key {k}")
+
 # TODO: thiagofc: Checkpoint related for redesign
 def _get_name(name):
     if os.path.exists(name):

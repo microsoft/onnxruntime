@@ -3,15 +3,8 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/multi_tensor/common.cuh"
-
-constexpr int PARALLEL_LOADS = 4;
-constexpr int WARP_THREAD_COUNT = 32;
-constexpr int MAX_BLOCK_COUNT = 288;
-constexpr int MAX_TENSOR_COUNT = 128;
-constexpr int MAX_BLOCK_THREAD_COUNT = 512;
 
 namespace onnxruntime {
 namespace cuda {
@@ -26,7 +19,7 @@ class IsFiniteOp final : public CudaKernel {
 };
 
 template <typename TSrc>
-void IsFinite(const TSrc* input, bool* output, size_t N);
+void IsFinite(cudaStream_t stream, const TSrc* input, bool* output, size_t N);
 
 template <typename TSrc>
 class IsAllFiniteOp final : public CudaKernel {
@@ -39,7 +32,7 @@ class IsAllFiniteOp final : public CudaKernel {
 
 template <typename T>
 struct IsAllFiniteFunctor {
-  void operator()(ChunkGroup<1> chunks, bool* output); 
+  void operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output); 
 };
 
 }  // namespace cuda

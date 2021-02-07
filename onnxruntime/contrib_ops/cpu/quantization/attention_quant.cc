@@ -202,44 +202,49 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         // A: input          (BxSxNxH)          (B.)S x NH            S x NH
         // B: weights        (NxHx3xNxH)        NH  x (3.N.)H         NH x H
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
+
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(qkv_dest + qkv_offset,
+                                                                    head_size,
+                                                                    &dequant_scale,
+                                                                    bias_data + weights_offset);
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
         if (packed_weights_) {
           const auto* packed_weight =
               static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
+
           MlasGemm(
-              sequence_length,             // M      = S
-              head_size,                   // N      = H
-              hidden_size,                 // K      = NH
-              input_data + input_offset,   // A
-              hidden_size,                 // lda    = NH
-              input_zero_point,            // input zero point
-              packed_weight,               // B
-              weight_zero_point,           // weight zero point
-              weights_is_signed,           // weight data type
-              qkv_dest + qkv_offset,       // C
-              head_size,                   // ldc
-              &dequant_scale,              // output scale
-              bias_data + weights_offset,  // bias
-              nullptr);                    // use single-thread
+              sequence_length,                                    // M      = S
+              head_size,                                          // N      = H
+              hidden_size,                                        // K      = NH
+              input_data + input_offset,                          // A
+              hidden_size,                                        // lda    = NH
+              input_zero_point,                                   // input zero point
+              packed_weight,                                      // B
+              weight_zero_point,                                  // weight zero point
+              weights_is_signed,                                  // weight data type
+              reinterpret_cast<int32_t*>(qkv_dest + qkv_offset),  // C
+              head_size,                                          // ldc
+              nullptr,                                            // use single-thread
+              &scale_bias_processor);                             // output processor
+
           continue;
         }
 #endif
-        QGemm(sequence_length,                // M      = S
-              head_size,                      // N      = H
-              hidden_size,                    // K      = NH
-              input_data + input_offset,      // A
-              hidden_size,                    // lda    = NH
-              input_zero_point,               // input zero point
-              weights_data + weights_offset,  // B
-              3 * hidden_size,                // ldb    = 3NH
-              weight_zero_point,              // weight zero point
-              weights_is_signed,              // weight data type
-              qkv_dest + qkv_offset,          // C
-              head_size,                      // ldc
-              &dequant_scale,                 // output scale
-              bias_data + weights_offset,     // bias
-              nullptr                         // use single-thread
-        );
+        MlasGemm(
+            sequence_length,                                      // M      = S
+            head_size,                                            // N      = H
+            hidden_size,                                          // K      = NH
+            input_data + input_offset,                            // A
+            hidden_size,                                          // lda    = NH
+            input_zero_point,                                     // input zero point
+            weights_data + weights_offset,                        // B
+            3 * hidden_size,                                      // ldb    = 3NH
+            weight_zero_point,                                    // weight zero point
+            weights_is_signed,                                    // weight data type
+            reinterpret_cast<int32_t*>(qkv_dest + qkv_offset),    // C
+            head_size,                                            // ldc
+            nullptr,                                              // use single-thread
+            &scale_bias_processor);                               // post processor
       }
     });
   }

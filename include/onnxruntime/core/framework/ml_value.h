@@ -11,10 +11,7 @@
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
-#if !defined(ORT_MINIMAL_BUILD)
 class SparseTensor;
-#endif
-
 class TensorSeq;
 }  // namespace onnxruntime
 
@@ -109,7 +106,6 @@ inline onnxruntime::TensorSeq* OrtValue::GetMutable<onnxruntime::TensorSeq>() {
   return static_cast<onnxruntime::TensorSeq*>(data_.get());
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 template <>
 inline const onnxruntime::SparseTensor& OrtValue::Get<onnxruntime::SparseTensor>() const {
   ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
@@ -121,7 +117,6 @@ inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor
   ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
   return static_cast<onnxruntime::SparseTensor*>(data_.get());
 }
-#endif
 
 //TODO: remove the following line
 #define MLValue OrtValue

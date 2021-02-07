@@ -33,6 +33,9 @@ OrtEnv* ort_env;
 
 void AdapterSessionTestSetup() {
   winrt::init_apartment();
+#ifdef BUILD_INBOX
+  winrt_activation_handler = WINRT_RoGetActivationFactory;
+#endif
   WINML_EXPECT_HRESULT_SUCCEEDED(Microsoft::WRL::MakeAndInitialize<_winml::OnnxruntimeEngineFactory>(engine_factory.put()));
   WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory->GetOrtEnvironment(&ort_env));
   WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api = engine_factory->UseWinmlAdapterApi());
@@ -158,7 +161,7 @@ void LoadAndPurloinModel(const UniqueOrtSession& session, const std::string& mod
 
   winrt::com_ptr<_winml::IOnnxruntimeModel> onnxruntime_model;
   WINML_EXPECT_NO_THROW(onnxruntime_model = model.as<_winml::IOnnxruntimeModel>());
-  OrtModel* ort_model;
+  OrtModel* ort_model = nullptr;
   WINML_EXPECT_HRESULT_SUCCEEDED(onnxruntime_model->DetachOrtModel(&ort_model));
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionLoadAndPurloinModel(session.get(), ort_model), ort_api);
 }
@@ -179,7 +182,7 @@ void Initialize() {
 
   winrt::com_ptr<_winml::IOnnxruntimeModel> onnxruntime_model;
   WINML_EXPECT_NO_THROW(onnxruntime_model = model.as<_winml::IOnnxruntimeModel>());
-  OrtModel* ort_model;
+  OrtModel* ort_model = nullptr;
   WINML_EXPECT_HRESULT_SUCCEEDED(onnxruntime_model->DetachOrtModel(&ort_model));
   THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionLoadAndPurloinModel(session.get(), ort_model), ort_api);
 

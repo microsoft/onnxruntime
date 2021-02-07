@@ -17,6 +17,9 @@
 #include "LearningModelDevice.h"
 #include "EventTimer.h"
 
+#include "robuffer.h"
+#include "inc/DisjointBufferHelpers.h"
+
 using namespace Microsoft::WRL;
 using namespace Windows::Graphics::DirectX::Direct3D11;
 
@@ -425,8 +428,8 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeRGB8 || tensorDesc.sizes[1] == 3, "Target tensor description expects kImageTensorChannelTypeRGB8, but has %lld channels specified instead of 3.", tensorDesc.sizes[1]);
   WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeBGR8 || tensorDesc.sizes[1] == 3, "Target tensor description expects kImageTensorChannelTypeBGR8, but has %lld channels specified instead of 3.", tensorDesc.sizes[1]);
   WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeGRAY8 || tensorDesc.sizes[1] == 1, "Target tensor description expects kImageTensorChannelTypeGRAY8, but has %lld channels specified instead of 1.", tensorDesc.sizes[1]);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[2] == outputDesc.Height, "Target tensor height (%lld) does not match input height (%d).", tensorDesc.sizes[2], outputDesc.Height);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[3] == (UINT)outputDesc.Width, "Target tensor width (%lld) does not match input width (%d).", tensorDesc.sizes[3], (UINT)outputDesc.Width);
+  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[2] == outputDesc.Height, "Target tensor height (%lld) does not match input height (%lu).", tensorDesc.sizes[2], outputDesc.Height);
+  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[3] == (UINT)outputDesc.Width, "Target tensor width (%lld) does not match input width (%lu).", tensorDesc.sizes[3], (UINT)outputDesc.Width);
 
   // Create descriptor heaps
   UINT srvUavDescriptorSize = spDx12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -593,6 +596,53 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   readback_heap_->Unmap(0, &CD3DX12_RANGE(0, 0));
 }
 
+void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
+    _In_ ID3D12Resource* input_tensor,
+    _In_ size_t buffer_size_in_bytes,
+    _In_ _winml::D3DDeviceCache& device_cache,
+    _Inout_ const std::vector<wss::IBuffer>& buffers) {
+  assert(input_tensor != nullptr);
+
+  // TODO: Make an allocator for readback heaps
+  if (!readback_heap_ || readback_heap_->GetDesc().Width < buffer_size_in_bytes) {
+    WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(buffer_size_in_bytes),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&readback_heap_)));
+  }
+
+  ResetCommandList(device_cache);
+
+  auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(input_tensor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  command_list_->ResourceBarrier(1, &barrier);
+  command_list_->CopyBufferRegion(readback_heap_.Get(), 0, input_tensor, 0, buffer_size_in_bytes);
+
+  WINML_THROW_IF_FAILED(command_list_->Close());
+  ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};
+  device_cache.GetCommandQueue()->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+  // Sync to make sure the the heap received all the data
+  device_cache.SyncD3D12ToCPU();
+
+  byte* readback_buffer = nullptr;
+  WINML_THROW_IF_FAILED(readback_heap_->Map(0, &CD3DX12_RANGE(0, buffer_size_in_bytes), reinterpret_cast<void**>(&readback_buffer)));
+  auto readback_buffer_span = gsl::span<byte>(readback_buffer, buffer_size_in_bytes);
+  _winml::StoreSpanIntoDisjointBuffers(
+      buffers.size(),
+      [&](size_t i) {
+        byte* buffer_start = nullptr;
+        auto byte_access = buffers[i].as<Windows::Storage::Streams::IBufferByteAccess>();
+        byte_access->Buffer(&buffer_start);
+        return gsl::span<byte>(buffer_start, static_cast<size_t>(buffers[i].Capacity()));
+      },
+      readback_buffer_span);
+
+  readback_heap_->Unmap(0, &CD3DX12_RANGE(0, 0));
+}
+
 D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor(
     const UINT32 batchIdx,
     const D3D12_RESOURCE_DESC& resourceDesc,
@@ -666,8 +716,8 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
           tensorDesc.channelType == kImageTensorChannelTypeRGB8,
       "Target tensor description expects kImageTensorChannelTypeGRAY8, kImageTensorChannelTypeBGR8, or kImageTensorChannelTypeRGB8 but has %d was specified.",
       tensorDesc.channelType);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[2] == (UINT)height, "Target tensor height (%lld) does not match input height (%d).", tensorDesc.sizes[2], (UINT)height);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[3] == (UINT)width, "Target tensor width (%lld) does not match input width (%d).", tensorDesc.sizes[3], (UINT)width);
+  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[2] == (UINT)height, "Target tensor height (%lld) does not match input height (%lu).", tensorDesc.sizes[2], (UINT)height);
+  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[3] == (UINT)width, "Target tensor width (%lld) does not match input width (%lu).", tensorDesc.sizes[3], (UINT)width);
 
   // get the byte buffer out of a softwarebitmap
   BYTE* pData = nullptr;

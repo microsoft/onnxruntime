@@ -1,23 +1,30 @@
 include (ExternalProject)
 
-set(DNNL_URL https://github.com/intel/mkl-dnn.git)
-# If DNNL_TAG is updated, check if platform.cmake.patch need to be updated.
-set(DNNL_TAG v1.1.1)
+set(DNNL_URL https://github.com/oneapi-src/onednn)
+# If DNNL_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
+set(DNNL_TAG v1.7)
 
 if(WIN32)
-  set(MKLML_OS_VERSION_STR "win")
-  set(MKLML_FILE_EXTENSION "zip")
   set(DNNL_SHARED_LIB dnnl.dll)
-  set(DNNL_IMPORT_LIB dnnl.lib)  
+  set(DNNL_IMPORT_LIB dnnl.lib)
 else()
-  set(MKLML_FILE_EXTENSION "tgz")
   if (APPLE)
     set(DNNL_SHARED_LIB libdnnl.1.dylib)
-    set(MKLML_OS_VERSION_STR "mac")    
   else()
     set(DNNL_SHARED_LIB libdnnl.so.1)
-    set(MKLML_OS_VERSION_STR "lnx")    
   endif()  
+endif()
+
+if(onnxruntime_USE_DNNL AND onnxruntime_ENABLE_TRAINING AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl")
+  message(FATAL_ERROR "--enable_training not supported with dnnl GPU runtime. Remove '--enable_training' or remove '--dnnl_gpu_runtime'.")
+elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
+  message(FATAL_ERROR "--dnnl_opencl_root required")
+elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
+  message(FATAL_ERROR "--dnnl_gpu_runtime required")
+elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
+  file(TO_CMAKE_PATH ${onnxruntime_DNNL_OPENCL_ROOT} onnxruntime_DNNL_OPENCL_ROOT)
+  set(DNNL_OCL_INCLUDE_DIR ${onnxruntime_DNNL_OPENCL_ROOT}/include)
+  set(DNNL_GPU_CMAKE_ARGS "-DDNNL_GPU_RUNTIME=OCL " "-DOPENCLROOT=${onnxruntime_DNNL_OPENCL_ROOT}")
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -46,7 +53,7 @@ if (onnxruntime_USE_DNNL)
     GIT_TAG ${DNNL_TAG}
     # PATCH_COMMAND ${MKLDNN_PATCH_DISCARD_COMMAND} COMMAND ${DNNL_PATCH_COMMAND}
     SOURCE_DIR ${DNNL_SOURCE}
-    CMAKE_ARGS -DDNNL_BUILD_TESTS=OFF -DDNNL_BUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=${DNNL_INSTALL}
+    CMAKE_ARGS -DDNNL_BUILD_TESTS=OFF -DDNNL_BUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=${DNNL_INSTALL} ${DNNL_GPU_CMAKE_ARGS}
   )
   link_directories(${DNNL_LIB_DIR})
 endif()

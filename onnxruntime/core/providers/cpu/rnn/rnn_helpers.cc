@@ -201,6 +201,126 @@ void DumpMatrixImpl(const std::string& name, const float* src, int row, int col,
   std::cout << std::endl;
 }
 
+void ComputeGemm(const int M,
+                 const int N,
+                 const int K,
+                 const float alpha,
+                 const float* A,
+                 const float* A_end,
+                 const GemmWeights<float>& weights,
+                 const float beta,
+                 float* C,
+                 float* C_end,
+                 const int ldc,
+                 AllocatorPtr /*allocator*/,
+                 concurrency::ThreadPool* thread_pool) {
+  // validate all the inputs
+  // need to use the lda/ldb/ldc strides which should be >= the columns for the span
+  ORT_ENFORCE(A + (M * K) <= A_end);
+  ORT_ENFORCE(C + (M * ldc - (ldc - N)) <= C_end);
+
+  if (weights.is_prepacked_) {
+    MlasGemm(
+        CblasNoTrans,
+        M, N, K, alpha,
+        A, K,
+        weights.buffer_, beta,
+        C, ldc, thread_pool);
+  } else {
+    ::onnxruntime::math::GemmEx<float>(
+        CblasNoTrans, CblasTrans,
+        M, N, K, alpha,
+        A, K,
+        static_cast<const float*>(weights.buffer_), K, beta,
+        C, ldc, thread_pool);
+  }
+}
+
+void ComputeGemm(const int M,
+                 const int N,
+                 const int K,
+                 const float alpha,
+                 const float* A,
+                 const float* A_end,
+                 const GemmWeights<uint8_t>& weights,
+                 const float beta,
+                 float* C,
+                 float* C_end,
+                 const int ldc,
+                 AllocatorPtr allocator,
+                 concurrency::ThreadPool* thread_pool) {
+  // validate all the inputs
+  // need to use the lda/ldb/ldc strides which should be >= the columns for the span
+  ORT_ENFORCE(A + (M * K) <= A_end);
+  ORT_ENFORCE(C + (M * ldc - (ldc - N)) <= C_end);
+  ORT_ENFORCE(weights.quant_para_);
+  ORT_ENFORCE(alpha == 1.0f && (beta == 0.0f || beta == 1.0f), "Quantized GEMM only support alpha equal to 1.0f and beta equal to 0.0f or 1.0f");
+
+  float a_scale;
+  uint8_t a_zero_point;
+  GetQuantizationParameter(A, M * K, a_scale, a_zero_point);
+
+  uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(M * K) * sizeof(uint8_t)));
+  BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(allocator));
+  // quantize the data
+  MlasQuantizeLinear(A, a_data_quant, M * K, a_scale, a_zero_point);
+
+  bool b_is_signed = weights.quant_para_->is_signed;
+  uint8_t b_zero_point = weights.quant_para_->zero_point ? *static_cast<const uint8_t*>(weights.quant_para_->zero_point) : 0;
+
+  std::vector<float> scale_multiplier(weights.quant_para_->scale_size);
+  for (size_t s = 0; s < weights.quant_para_->scale_size; s++) {
+    scale_multiplier[s] = a_scale * (weights.quant_para_->scale[s]);
+  }
+
+  size_t ld_C_buffer = ldc;
+  int32_t* C_buffer = reinterpret_cast<int32_t*>(C);
+  BufferUniquePtr tmp_res_buffer_holder;
+  if (beta == 1.0f) {
+    C_buffer = static_cast<int32_t*>(allocator->Alloc(SafeInt<size_t>(M * N) * sizeof(int32_t)));
+    ld_C_buffer = static_cast<size_t>(N);
+    tmp_res_buffer_holder = BufferUniquePtr(C_buffer, BufferDeleter(allocator));
+  }
+
+  MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR output_processor(
+      C, ldc, scale_multiplier.data(), nullptr,
+      beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+      scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+  if (weights.is_prepacked_) {
+    MlasGemm(static_cast<size_t>(M),
+             static_cast<size_t>(N),
+             static_cast<size_t>(K),
+             a_data_quant,
+             static_cast<size_t>(K),
+             a_zero_point,
+             weights.buffer_,
+             b_zero_point,
+             b_is_signed,
+             C_buffer,
+             ld_C_buffer,
+             thread_pool,
+             &output_processor);
+    return;
+  }
+#endif
+
+  MlasGemm(static_cast<size_t>(M),
+           static_cast<size_t>(N),
+           static_cast<size_t>(K),
+           a_data_quant,
+           static_cast<size_t>(K),
+           a_zero_point,
+           static_cast<const uint8_t*>(weights.buffer_),
+           static_cast<size_t>(N),
+           b_zero_point,
+           b_is_signed,
+           C_buffer,
+           ld_C_buffer,
+           thread_pool,
+           &output_processor);
+}
+
 namespace deepcpu {
 
 const float alpha_1 = 4.89352455891786e-03f;

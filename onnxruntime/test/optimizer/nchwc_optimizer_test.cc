@@ -22,14 +22,9 @@ struct NchwcTestHelper {
 
   template <typename T>
   NodeArg* MakeInput(const std::vector<int64_t>& shape, const ONNX_NAMESPACE::TypeProto& type_proto) {
-    int64_t num_elements = 1;
-    for (auto& dim : shape) {
-      num_elements *= dim;
-    }
-
     OrtValue input_value;
     CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), shape,
-                     FillRandomData<T>(static_cast<size_t>(num_elements)), &input_value);
+                     FillRandomData<T>(shape), &input_value);
     std::string name = graph_.GenerateNodeArgName("input");
     feeds_.insert(std::make_pair(name, input_value));
 
@@ -70,7 +65,7 @@ struct NchwcTestHelper {
     }
 
     tensor_proto.mutable_float_data()->Resize(static_cast<int>(data.size()), 0.f);
-    memcpy(tensor_proto.mutable_float_data()->mutable_data(), data.data(), data.size() * sizeof(float));
+    std::copy_n(data.data(), data.size(), tensor_proto.mutable_float_data()->mutable_data());
 
     graph_.AddInitializedTensor(tensor_proto);
 
@@ -78,8 +73,7 @@ struct NchwcTestHelper {
   }
 
   NodeArg* MakeInitializer(const std::vector<int64_t>& shape) {
-    int64_t num_elements = std::accumulate(shape.begin(), shape.end(), int64_t(1), std::multiplies<int64_t>{});
-    return MakeInitializer(shape, FillRandomData<float>(static_cast<size_t>(num_elements)));
+    return MakeInitializer(shape, FillRandomData<float>(shape));
   }
 
   NodeArg* Make1DInitializer(const std::vector<float>& data) {
@@ -154,6 +148,12 @@ struct NchwcTestHelper {
       }
     }
     return random_data;
+  }
+
+  template <typename T>
+  std::vector<T> FillRandomData(const std::vector<int64_t>& shape) {
+    int64_t num_elements = std::accumulate(shape.begin(), shape.end(), int64_t(1), std::multiplies<int64_t>{});
+    return FillRandomData<T>(static_cast<size_t>(num_elements));
   }
 
   Graph& graph_;

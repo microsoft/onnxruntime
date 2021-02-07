@@ -151,7 +151,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     pip install build/${BUILD_CONFIG}/dist/*.whl
 
 # Install AzureML support and commonly used packages.
-RUN pip install azureml-defaults transformers==2.11.0 msgpack==1.0.0 tensorboardX==1.8 tensorboard==2.3.0
+RUN pip install azureml-defaults sentencepiece==0.1.92 transformers==2.11.0 msgpack==1.0.0 tensorboardX==1.8 tensorboard==2.3.0
 
 # switch to cuda runtime environment
 # note: launch with --gpus all or nvidia-docker

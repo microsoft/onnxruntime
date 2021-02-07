@@ -1,34 +1,32 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/tensor/upsample.h"
 #include "core/common/safeint.h"
+#include "core/platform/threadpool.h"
+#include "core/providers/cpu/tensor/upsample.h"
 #include <sstream>
 
 using namespace onnxruntime::common;
 using namespace std;
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    Upsample,
-    7, 9,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Upsample<float>);
+#define REGISTER_VERSIONED_TYPED_KERNEL(T, start, end)                          \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                     \
+      Upsample,                                                                 \
+      start,                                                                    \
+      end,                                                                      \
+      T,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Upsample<T>)
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    Upsample,
-    7, 9,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Upsample<int32_t>);
+REGISTER_VERSIONED_TYPED_KERNEL(float, 7, 8);
+REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 7, 8);
+REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 7, 8);
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    Upsample,
-    7, 9,
-    uint8_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
-    Upsample<uint8_t>);
+// Upsample was deprecated in opset 10
+REGISTER_VERSIONED_TYPED_KERNEL(float, 9, 9);
+REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 9, 9);
+REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 template <typename T>
 void UpsampleNearest2x(int64_t batch_size,
@@ -316,10 +314,11 @@ void UpsampleBilinear(int64_t batch_size,
                       const std::vector<float>& roi,
                       bool use_extrapolation,
                       float extrapolation_value,
-                      const T* Xdata,
-                      T* Ydata,
+                      const T* XdataBase,
+                      T* YdataBase,
                       AllocatorPtr& alloc,
-                      GetOriginalCoordinateFunc get_original_coordinate) {
+                      GetOriginalCoordinateFunc get_original_coordinate,
+                      concurrency::ThreadPool* tp) {
   std::vector<float> y_original;
   y_original.reserve(output_height);
 
@@ -408,35 +407,37 @@ void UpsampleBilinear(int64_t batch_size,
       dx2[x] = 0.5f;
     }
   }
+  
+ for (int64_t n = 0; n < batch_size; ++n) {
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, num_channels,
+                                                  [&](std::ptrdiff_t c) {
+                                                    const T* Xdata = XdataBase + (n * num_channels + c) * (input_height * input_width);
+                                                    T* Ydata = YdataBase + (n * num_channels + c) * (output_height * output_width);
+                                                    for (int64_t y = 0; y < output_height; ++y) {
+                                                      for (int64_t x = 0; x < output_width; ++x) {
+                                                        // when use_extrapolation is set and original index of x or y is out of the dim range
+                                                        // then use extrapolation_value as the output value.
+                                                        if (use_extrapolation &&
+                                                            ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
+                                                             (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
+                                                          Ydata[output_width * y + x] = static_cast<T>(extrapolation_value);
+                                                          continue;
+                                                        }
 
-  for (int64_t n = 0; n < batch_size; ++n) {
-    for (int64_t c = 0; c < num_channels; ++c) {
-      for (int64_t y = 0; y < output_height; ++y) {
-        for (int64_t x = 0; x < output_width; ++x) {
-          // when use_extrapolation is set and original index of x or y is out of the dim range
-          // then use extrapolation_value as the output value.
-          if (use_extrapolation &&
-              ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
-               (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
-            Ydata[output_width * y + x] = static_cast<T>(extrapolation_value);
-            continue;
-          }
+                                                        T X11 = Xdata[input_width_mul_y1[y] + in_x1[x]];
+                                                        T X21 = Xdata[input_width_mul_y1[y] + in_x2[x]];
+                                                        T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
+                                                        T X22 = Xdata[input_width_mul_y2[y] + in_x2[x]];
 
-          // subscript ordering in the variable - (xy)
-          T X11 = Xdata[input_width_mul_y1[y] + in_x1[x]];
-          T X21 = Xdata[input_width_mul_y1[y] + in_x2[x]];
-          T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
-          T X22 = Xdata[input_width_mul_y2[y] + in_x2[x]];
-
-          Ydata[output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
-                                                       dx1[x] * dy2[y] * X21 +
-                                                       dx2[x] * dy1[y] * X12 +
-                                                       dx1[x] * dy1[y] * X22);
-        }
-      }
-      Xdata += input_height * input_width;
-      Ydata += output_width * output_height;
-    }
+                                                        Ydata[output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
+                                                                                                     dx1[x] * dy2[y] * X21 +
+                                                                                                     dx2[x] * dy1[y] * X12 +
+                                                                                                     dx1[x] * dy1[y] * X22);
+                                                      }
+                                                    }
+                                                    Xdata += input_height * input_width;
+                                                    Ydata += output_width * output_height;
+                                                  });
   }
 }
 
@@ -460,10 +461,11 @@ void UpsampleTrilinear(int64_t batch_size,
                        const std::vector<float>& roi,
                        bool use_extrapolation,
                        float extrapolation_value,
-                       const T* Xdata,
-                       T* Ydata,
+                       const T* XdataBase,
+                       T* YdataBase,
                        AllocatorPtr& alloc,
-                       GetOriginalCoordinateFunc get_original_coordinate) {
+                       GetOriginalCoordinateFunc get_original_coordinate,
+                       concurrency::ThreadPool* tp) {
   std::vector<float> z_original;
   z_original.reserve(output_depth);
 
@@ -587,48 +589,51 @@ void UpsampleTrilinear(int64_t batch_size,
   }
 
   for (int64_t n = 0; n < batch_size; ++n) {
-    for (int64_t c = 0; c < num_channels; ++c) {
-      for (int64_t z = 0; z < output_depth; ++z) {
-        for (int64_t y = 0; y < output_height; ++y) {
-          for (int64_t x = 0; x < output_width; ++x) {
-            // when use_extrapolation is set and original index of x or y is out of the dim range
-            // then use extrapolation_value as the output value.
-            if (use_extrapolation &&
-                ((z_original[z] < 0 || z_original[z] > static_cast<float>(input_depth - 1)) ||
-                 (y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
-                 (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
-              Ydata[output_width * output_height * z + output_width * y + x] =
-                  static_cast<T>(extrapolation_value);
-              continue;
-            }
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, num_channels,
+                                                  [&](std::ptrdiff_t c) {
+                                                    const T* Xdata = XdataBase + (n * num_channels + c) * (input_depth * input_height * input_width);
+                                                    T* Ydata = YdataBase + (n * num_channels + c) * (output_depth * output_height * output_width);
+                                                    for (int64_t z = 0; z < output_depth; ++z) {
+                                                      for (int64_t y = 0; y < output_height; ++y) {
+                                                        for (int64_t x = 0; x < output_width; ++x) {
+                                                          // when use_extrapolation is set and original index of x or y is out of the dim range
+                                                          // then use extrapolation_value as the output value.
+                                                          if (use_extrapolation &&
+                                                              ((z_original[z] < 0 || z_original[z] > static_cast<float>(input_depth - 1)) ||
+                                                               (y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
+                                                               (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
+                                                            Ydata[output_width * output_height * z + output_width * y + x] =
+                                                                static_cast<T>(extrapolation_value);
+                                                            continue;
+                                                          }
 
-            // subscript ordering in the variable - (xyz)
-            T X111 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x1[x]];
-            T X211 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x2[x]];
-            T X121 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x1[x]];
-            T X221 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x2[x]];
+                                                          // subscript ordering in the variable - (xyz)
+                                                          T X111 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x1[x]];
+                                                          T X211 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x2[x]];
+                                                          T X121 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x1[x]];
+                                                          T X221 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x2[x]];
 
-            T X112 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x1[x]];
-            T X212 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x2[x]];
-            T X122 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x1[x]];
-            T X222 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x2[x]];
+                                                          T X112 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x1[x]];
+                                                          T X212 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x2[x]];
+                                                          T X122 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x1[x]];
+                                                          T X222 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x2[x]];
 
-            Ydata[output_width * output_height * z + output_width * y + x] =
-                static_cast<T>(dx2[x] * dy2[y] * dz2[z] * X111 +
-                               dx1[x] * dy2[y] * dz2[z] * X211 +
-                               dx2[x] * dy1[y] * dz2[z] * X121 +
-                               dx1[x] * dy1[y] * dz2[z] * X221 +
+                                                          Ydata[output_width * output_height * z + output_width * y + x] =
+                                                              static_cast<T>(dx2[x] * dy2[y] * dz2[z] * X111 +
+                                                                             dx1[x] * dy2[y] * dz2[z] * X211 +
+                                                                             dx2[x] * dy1[y] * dz2[z] * X121 +
+                                                                             dx1[x] * dy1[y] * dz2[z] * X221 +
 
-                               dx2[x] * dy2[y] * dz1[z] * X112 +
-                               dx1[x] * dy2[y] * dz1[z] * X212 +
-                               dx2[x] * dy1[y] * dz1[z] * X122 +
-                               dx1[x] * dy1[y] * dz1[z] * X222);
-          }
-        }
-      }
-      Xdata += input_depth * input_height * input_width;
-      Ydata += output_depth * output_width * output_height;
-    }
+                                                                             dx2[x] * dy2[y] * dz1[z] * X112 +
+                                                                             dx1[x] * dy2[y] * dz1[z] * X212 +
+                                                                             dx2[x] * dy1[y] * dz1[z] * X122 +
+                                                                             dx1[x] * dy1[y] * dz1[z] * X222);
+                                                        }
+                                                      }
+                                                    }
+                                                    Xdata += input_depth * input_height * input_width;
+                                                    Ydata += output_depth * output_width * output_height;
+                                                  });
   }
 }
 
@@ -898,7 +903,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
                          is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
                          use_extrapolation_, extrapolation_value_, X->template Data<T>(),
-                         Y->template MutableData<T>(), alloc, get_original_coordinate_);
+                         Y->template MutableData<T>(), alloc, get_original_coordinate_, 
+                         output_height*output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
         //'trilinear' == 3-D input or 5-D input with outermost 2 scales as 1
@@ -920,7 +926,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                           output_depth, output_height, output_width,
                           is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
                           is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
-                          X->template Data<T>(), Y->template MutableData<T>(), alloc, get_original_coordinate_);
+                          X->template Data<T>(), Y->template MutableData<T>(), alloc, get_original_coordinate_, 
+                          output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         return Status::OK();
       } else {
         // User shouldn't hit this as the check has been performed in ScalesValidation()
@@ -977,14 +984,25 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   const std::vector<float>* roi_ptr = roi_cached_ ? &roi_ : &roi_array;
 
   if (!roi_cached_) {
+    bool use_default_roi = true;
     if (need_roi_input_) {
       ORT_ENFORCE(roi_input_idx_ > 0, "Invalid roi input index.");
-
       const auto* roi = context->Input<Tensor>(roi_input_idx_);
-      ParseRoiData(roi, roi_array);
-    } else {
-      roi_array.resize(X->Shape().GetDims().size() * 2);
-      std::fill(roi_array.begin(), roi_array.end(), 0.0f);
+      if (roi != nullptr) {
+        ParseRoiData(roi, roi_array);
+        use_default_roi = false;
+      }
+    }
+    if (use_default_roi) {
+      // default roi includes ensures all the values in that axis are included in the roi
+      // normalized roi is thus : [start, end] = [0, 1]
+      const auto& input_dims = X->Shape().GetDims();
+      size_t input_rank = input_dims.size();
+      roi_array.resize(input_rank * 2);
+      for (size_t i = 0; i < input_rank; ++i) {
+        roi_array[i] = 0;
+        roi_array[i + input_rank] = 1;
+      }
     }
   }
 
@@ -996,7 +1014,6 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
 
   const auto* scales = context->Input<Tensor>(scales_input_idx_);
   const auto* sizes = context->Input<Tensor>(sizes_input_idx_);
-  ORT_ENFORCE(scales != nullptr);
 
   if (scales_cached_) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");

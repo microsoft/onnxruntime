@@ -18,19 +18,27 @@ namespace utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+template <typename DimsFieldType>
+inline flatbuffers::Offset<flatbuffers::Vector<int64_t>>
+SaveDims(flatbuffers::FlatBufferBuilder& builder, const DimsFieldType& dims) {
+  std::vector<int64_t> dims_data(dims.size());
+  std::copy(dims.cbegin(), dims.cend(), dims_data.begin());
+  return builder.CreateVector(dims_data);
+}
+
 Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                 const TensorProto& initializer,
+                                const Path& model_path,
                                 flatbuffers::Offset<fbs::Tensor>& fbs_tensor) {
   auto name = SaveStringToOrtFormat(builder, initializer.has_name(), initializer.name());
   auto doc_string = SaveStringToOrtFormat(builder, initializer.has_doc_string(), initializer.doc_string());
-  std::vector<int64_t> dims_data(initializer.dims().size());
-  std::copy(initializer.dims().cbegin(), initializer.dims().cend(), dims_data.begin());
-  auto dims = builder.CreateVector(dims_data);
+  auto dims = SaveDims(builder, initializer.dims());
+
   flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> string_data;
   flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data;
 
   auto src_type = initializer.data_type();
-  bool has_string_data = src_type == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+  const bool has_string_data = src_type == ONNX_NAMESPACE::TensorProto_DataType_STRING;
   if (has_string_data) {
     std::vector<std::string> string_data_vec(initializer.string_data().size());
     std::copy(initializer.string_data().cbegin(), initializer.string_data().cend(), string_data_vec.begin());
@@ -39,7 +47,7 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     std::unique_ptr<uint8_t[]> unpacked_tensor;
     size_t tensor_byte_size = 0;
     ORT_RETURN_IF_ERROR(
-        onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor, tensor_byte_size));
+        onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor, tensor_byte_size));
     raw_data = builder.CreateVector(unpacked_tensor.get(), tensor_byte_size);
   }
 
@@ -53,6 +61,33 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   else
     tb.add_raw_data(raw_data);
   fbs_tensor = tb.Finish();
+  return Status::OK();
+}
+
+Status SaveSparseInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                      const ONNX_NAMESPACE::SparseTensorProto& initializer,
+                                      const Path& model_path,
+                                      flatbuffers::Offset<fbs::SparseTensor>& fbs_sparse_tensor) {
+  // values
+  const auto& values = initializer.values();
+  flatbuffers::Offset<fbs::Tensor> values_off;
+  ORT_RETURN_IF_ERROR(SaveInitializerOrtFormat(builder, values, model_path, values_off));
+
+  // Indicies
+  const auto& indicies = initializer.indices();
+  flatbuffers::Offset<fbs::Tensor> indicies_off;
+  ORT_RETURN_IF_ERROR(SaveInitializerOrtFormat(builder, indicies, model_path, indicies_off));
+
+  // Shape
+  auto shape = SaveDims(builder, initializer.dims());
+
+  fbs::SparseTensorBuilder stb(builder);
+  stb.add_values(values_off);
+  stb.add_indices(indicies_off);
+  stb.add_dims(shape);
+
+  fbs_sparse_tensor = stb.Finish();
+
   return Status::OK();
 }
 
@@ -89,7 +124,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     case fbs::AttributeType::TENSOR: {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
       ORT_RETURN_IF_ERROR(
-          experimental::utils::SaveInitializerOrtFormat(builder, attr_proto.t(), fbs_tensor));
+          experimental::utils::SaveInitializerOrtFormat(builder, attr_proto.t(), graph->ModelPath(), fbs_tensor));
       GET_FBS_ATTR(builder, type, t, fbs_tensor);
     } break;
     case fbs::AttributeType::GRAPH: {
@@ -119,7 +154,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       for (const auto& tensor : attr_proto.tensors()) {
         flatbuffers::Offset<fbs::Tensor> fbs_tensor;
         ORT_RETURN_IF_ERROR(
-            experimental::utils::SaveInitializerOrtFormat(builder, tensor, fbs_tensor));
+            experimental::utils::SaveInitializerOrtFormat(builder, tensor, graph->ModelPath(), fbs_tensor));
         fbs_tensors_vec.push_back(fbs_tensor);
       }
       auto tensors = builder.CreateVector(fbs_tensors_vec);
@@ -163,13 +198,37 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
       mutable_str_data->Add(fbs_str->str());
     }
   } else {
-    auto fbs_raw_data = fbs_tensor.raw_data();
+    const auto* fbs_raw_data = fbs_tensor.raw_data();
     ORT_RETURN_IF(nullptr == fbs_raw_data, "Missing raw data for initializer. Invalid ORT format model.");
 
     // fbs_raw_data is uint8_t vector, so the size is byte size
     initializer.set_raw_data(fbs_raw_data->Data(), fbs_raw_data->size());
   }
 
+  return Status::OK();
+}
+
+Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor,
+                                      SparseTensorProto& initializer) {
+  SparseTensorProto loaded_initializer;
+  auto fbs_values_tensor = fbs_sparse_tensor.values();
+  ORT_RETURN_IF(nullptr == fbs_values_tensor, "Missing values for sparse initializer. Invalid ORT format model.");
+  auto* values_tensor = loaded_initializer.mutable_values();
+  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_values_tensor, *values_tensor));
+  ORT_RETURN_IF(values_tensor->name().empty(), "Missing name for SparseTensor initializer. Invalid ORT format model.");
+
+  auto fbs_indicies_tensor = fbs_sparse_tensor.indices();
+  ORT_RETURN_IF(nullptr == fbs_indicies_tensor, "Missing indicies for sparse initializer: ", "'", values_tensor->name(), "'",
+    "Invalid ORT format model.");
+  auto* indicies_tensor = loaded_initializer.mutable_indices();
+  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_indicies_tensor, *indicies_tensor));
+
+  auto fbs_dims = fbs_sparse_tensor.dims();
+  ORT_RETURN_IF(nullptr == fbs_dims, "Missing dims for sparse initializer: ", "'", values_tensor->name(), "'",
+                "Invalid ORT format model.");
+  loaded_initializer.mutable_dims()->Add(fbs_dims->cbegin(), fbs_dims->cend());
+
+  swap(loaded_initializer, initializer);
   return Status::OK();
 }
 

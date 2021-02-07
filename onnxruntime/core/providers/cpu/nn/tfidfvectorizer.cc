@@ -121,13 +121,12 @@ struct TfIdfVectorizer::Impl {
   // and so on in pool. For example, if ngram_counts is [0, 17, 36],
   // the first index (zero-based) of 1-gram/2-gram/3-gram
   // in pool are 0/17/36.
-  std::vector<int64_t> ngram_counts_;
+  gsl::span<const int64_t> ngram_counts_;
   // Contains output indexes
   // represents ngram_indexes output
-  std::vector<int64_t> ngram_indexes_;
-  std::vector<float> weights_;
+  gsl::span<const int64_t> ngram_indexes_;
+  gsl::span<const float>   weights_;
 
-  std::vector<std::string> pool_strings_;
   // This map contains references to pool_string_ entries
   // of pool_strings attribute
   StrMap str_map_;
@@ -179,7 +178,7 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
   ORT_ENFORCE(status.IsOK(), "max_skip_count is required");
   ORT_ENFORCE(impl_->max_skip_count_ >= 0, "max_skip_count must be non-negative: ", std::to_string(impl_->max_skip_count_));
 
-  status = info.GetAttrs(std::string("ngram_counts"), impl_->ngram_counts_);
+  status = info.GetAttrsAsSpan("ngram_counts", impl_->ngram_counts_);
   ORT_ENFORCE(status.IsOK() && !impl_->ngram_counts_.empty(), "Non-empty ngram_counts is required");
   ORT_ENFORCE(size_t(impl_->min_gram_length_) <= impl_->ngram_counts_.size(),
               "min_gram_length must be inbounds of ngram_counts: ",
@@ -188,7 +187,7 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
               "max_gram_length must be inbounds of ngram_counts: ",
               std::to_string(impl_->max_gram_length_), " <= ", std::to_string(impl_->ngram_counts_.size()));
 
-  status = info.GetAttrs("ngram_indexes", impl_->ngram_indexes_);
+  status = info.GetAttrsAsSpan("ngram_indexes", impl_->ngram_indexes_);
   ORT_ENFORCE(status.IsOK() && !impl_->ngram_indexes_.empty(), "Non-empty ngram_indexes is required");
   {
     // Check that all are positive
@@ -200,7 +199,7 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
     impl_->output_size_ = *greatest_hit + 1;
   }
 
-  status = info.GetAttrs("weights", impl_->weights_);
+  status = info.GetAttrsAsSpan("weights", impl_->weights_);
   if (status.IsOK()) {
     ORT_ENFORCE(impl_->weights_.size() == impl_->ngram_indexes_.size(),
                 "Got weights of size: ", std::to_string(impl_->weights_.size()),
@@ -208,17 +207,18 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
                 " must be of equal size");
   }
 
-  std::vector<int64_t> pool_int64s;
-  status = info.GetAttrs("pool_strings", impl_->pool_strings_);
+  gsl::span<const int64_t> pool_int64s;
+  std::vector<std::reference_wrapper<const std::string>> pool_strings;
+  status = info.GetAttrsStringRefs("pool_strings", pool_strings);
   if (status.IsOK()) {
-    ORT_ENFORCE(!impl_->pool_strings_.empty(), "pool_strings must not be empty if specified");
+    ORT_ENFORCE(!pool_strings.empty(), "pool_strings must not be empty if specified");
   } else {
-    status = info.GetAttrs("pool_int64s", pool_int64s);
+    status = info.GetAttrsAsSpan("pool_int64s", pool_int64s);
     ORT_ENFORCE(status.IsOK() && !pool_int64s.empty(), "non-empty pool_int64s is required if pool_strings not provided");
   }
 
   // Iterator via the pool. Insert 1 item for 1-grams, 2 items for 2-grams, etc.
-  const auto total_items = (impl_->pool_strings_.empty()) ? pool_int64s.size() : impl_->pool_strings_.size();
+  const auto total_items = (pool_strings.empty()) ? pool_int64s.size() : pool_strings.size();
   size_t ngram_id = 1;  // start with 1, 0 - means no n-gram
   // Load into dictionary only required gram sizes
   const size_t min_gram_length = impl_->min_gram_length_;
@@ -236,10 +236,10 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
       auto ngrams = items / ngram_size;
       // Skip loading into hash_set ngrams that are not in the range of [min_gram_length-max_gram_length]
       if (ngram_size >= min_gram_length && ngram_size <= max_gram_length) {
-        if (impl_->pool_strings_.empty()) {
+        if (pool_strings.empty()) {
           ngram_id = PopulateGrams<int64_t>(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int64_map_);
         } else {
-          ngram_id = PopulateGrams<std::string>(impl_->pool_strings_.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->str_map_);
+          ngram_id = PopulateGrams<std::string>(pool_strings.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->str_map_);
         }
       } else {
         ngram_id += ngrams;
@@ -315,7 +315,7 @@ void TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx, ptrdiff_t row_num, size_
   auto X = ctx->Input<Tensor>(0);
   const auto elem_size = X->DataType()->Size();
 
-  const void* row_begin = AdvanceElementPtr(X->DataRaw(), row_num * row_size, elem_size);
+  const void* const row_begin = AdvanceElementPtr(X->DataRaw(), row_num * row_size, elem_size);
   const void* const row_end = AdvanceElementPtr(row_begin, row_size, elem_size);
 
   const auto& impl = *impl_;

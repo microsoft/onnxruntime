@@ -121,7 +121,7 @@ table ValueInfo {
   type:TypeInfo;
 }
 
-// TODO add support of SparseTensor/Opaque
+// TODO add support of SparseTensor, Opaque if needed
 union TypeInfoValue {
   tensor_type:TensorTypeAndShape,
   sequence_type:SequenceType,
@@ -155,6 +155,12 @@ table Tensor {
   string_data:[string];
 }
 
+table SparseTensor {
+  values:Tensor;
+  indices:Tensor;
+  dims:[int64];
+}
+
 table Attribute{
   name:string;
   doc_string:string;
@@ -185,6 +191,7 @@ table Graph{
 
   inputs:[string];
   outputs:[string];
+  sparse_initializers:[SparseTensor];
 }
 
 table Model {
@@ -195,8 +202,10 @@ table Model {
   domain:string;
   model_version:int64;
   doc_string:string;
-
+  
   graph:Graph;
+  
+  graph_doc_string:string;
 }
 
 table KernelCreateInfos {
@@ -219,7 +228,7 @@ table SessionState {
 table InferenceSession {
   // This is the ORT format model version
   // The version number is defined as kOrtModelVersion in <repo root>/onnxruntime/core/session/inference_session.cc
-  // Please update it when there is a change to this schema which will break the compatibilites
+  // Please update it when there is a change to this schema which will break the compatibilities
   ort_version:string;
 
   model:Model;

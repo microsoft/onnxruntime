@@ -23,6 +23,9 @@
 #include "core/framework/utils.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_allocator.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+#include "core/framework/memory_info.h"
+#endif
 
 namespace onnxruntime {
 namespace session_state_utils {
@@ -90,7 +93,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 common::Status SaveInitializedTensors(
     const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
     const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
-    const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator& planner,
+    const OrtValueNameIdxMap& ort_value_name_idx_map,
+    const std::vector<OrtValueIndex>& initializer_allocation_order,
+    ITensorAllocator& planner,
     const std::function<Status(int idx, const OrtValue& value, const OrtCallback& d, bool constant)>& save_tensor_func,
     const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
@@ -140,20 +145,33 @@ common::Status SaveInitializedTensors(
     id_to_initialized_tensor[ort_value_index] = entry.second;
   }
 
-  for (const auto& entry : id_to_initialized_tensor) {
+  // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
+  auto initialized_tensors_to_allocate = id_to_initialized_tensor;
+  for (int ort_value_index : initializer_allocation_order) {
+    const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
+    ORT_ENFORCE(entry != initialized_tensors_to_allocate.end());
+    ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
+    initialized_tensors_to_allocate.erase(entry);
+  }
+
+  for (const auto& entry : initialized_tensors_to_allocate) {
     // We don't want to trace shared initializers since their memory is provided by the user
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       continue;
     }
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
-
   //2. allocate weight buffer on different locations
   // planned_initializers_memory_size_in_byte is not actual physical size.
   // It's the virtual size computed by planner.
   std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::RecordPatternInfo(planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
+  MemoryInfo::MemoryInfoProfile::CreateEvents("initializer_" + std::to_string(MemoryInfo::GetIteration()),
+                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
+#endif
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "

@@ -14,6 +14,11 @@
 
 #include "core/session/onnxruntime_c_api.h"
 
+#include "ConverterResourceStore.h"
+#include "VideoFrameToTensorConverter.h"
+#include "TensorToVideoFrameConverter.h"
+#include "D3DDeviceCache.h"
+
 namespace _winml {
 
 // TensorBase
@@ -69,28 +74,28 @@ struct TensorBase : TBase {
   ///    b) TensorBase(winrt::Windows::Foundation::Collections::IIterable<int64_t> const& shape)
   ///  3) use provided backing gpu memory
   ///    a) TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* pResource)
-  TensorBase() : m_resources(std::make_shared<TensorResources<T>>()) {
+  TensorBase() : resources_(std::make_shared<TensorResources<T>>()) {
   }
 
   TensorBase(wfc::IIterable<int64_t> const& shape) : shape_(begin(shape), end(shape)),
-                                                     m_resources(std::make_shared<TensorResources<T>>()) {
-    GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape_);
+                                                     resources_(std::make_shared<TensorResources<T>>()) {
+    CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape_);
   }
 
   TensorBase(std::vector<int64_t> const& shape) : shape_(shape),
-                                                  m_resources(std::make_shared<TensorResources<T>>()) {
-    GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape_);
+                                                  resources_(std::make_shared<TensorResources<T>>()) {
+    CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape_);
   }
 
   TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* resource) : shape_(shape),
-                                                                            m_resources(std::make_shared<TensorResources<T>>()) {
+                                                                            resources_(std::make_shared<TensorResources<T>>()) {
     // This Api is not supported for TensorString
     WINML_THROW_HR_IF_TRUE_MSG(
         E_ILLEGAL_METHOD_CALL,
         (std::is_same<T, std::string>::value),
         "TensorString objects cannot be created from a ID3D12Resource!");
 
-    GetGpuResource().copy_from(resource);
+    GpuTensor().copy_from(resource);
   }
 
   HRESULT CreateGPUMLValue(ID3D12Resource* resource, BindingContext& context, IValue** out) {
@@ -110,89 +115,135 @@ struct TensorBase : TBase {
   HRESULT CPUTensorize(_winml::BindingContext& context, IValue** out) {
     auto session = context.session.as<winmlp::LearningModelSession>();
     auto engine = session->GetEngine();
+    auto should_sync_buffer = context.type == _winml::BindingType::kInput;
 
-    if (GetCpuResource() != nullptr) {
-      return CreateTensorValueFromExternalBuffer(engine, out);
+    if (CpuTensor() != nullptr) {
+      return CreateTensorValueFromExternalBuffer(engine, should_sync_buffer, out);
     }
 
     // If there is no matching cpu resource, then fallback to a gpu resource
-    if (GetGpuResource() != nullptr) {
-      return CreateGPUMLValue(GetGpuResource().get(), context, out);
+    if (GpuTensor() != nullptr) {
+      return CreateGPUMLValue(GpuTensor().get(), context, out);
     }
 
     WINML_THROW_HR(WINML_ERR_INVALID_BINDING);
   }
 
   HRESULT GPUTensorize(_winml::BindingContext& context, IValue** out) {
-    if (GetGpuResource() != nullptr) {
-      return CreateGPUMLValue(GetGpuResource().get(), context, out);
+    if (GpuTensor() != nullptr) {
+      return CreateGPUMLValue(GpuTensor().get(), context, out);
     }
 
     // Get engine
     auto session = context.session.as<winmlp::LearningModelSession>();
+    auto device = session->Device().as<winmlp::LearningModelDevice>();
     auto engine = session->GetEngine();
 
+    auto should_sync_buffer = context.type == _winml::BindingType::kInput;
+
     // If there is no matching gpu resource, then fallback to a cpu resource
-    if (GetCpuResource() != nullptr) {
-      return CreateTensorValueFromExternalBuffer(engine, out);
+    if (CpuTensor() != nullptr) {
+      auto num_backing_buffers = CpuTensor()->num_buffers(); 
+      if (num_backing_buffers == 1) {
+        // If we have a single backing cpu buffer, there is no need to create GPU resources.
+        // The engine will use the buffer provided, and perform the needed copies into the GPU context as needed.
+        return CreateTensorValueFromExternalBuffer(engine, should_sync_buffer, out);
+      } else {
+        // If we have multiple backing cpu buffers, then...
+        if (context.type == _winml::BindingType::kInput) {
+          // If we are binding inputs, then a GPU resource needs to be allocated, and individual buffer contents need
+          // to be copied directly into a gpu resource.
+
+          if (GpuTensor() == nullptr) {
+            GpuTensor() = CreateD3D12Resource(session);
+          }
+
+          _winml::ConverterResourceDescription descriptor = {};
+          descriptor.pixel_format = static_cast<DWORD>(wgdx::DirectXPixelFormat::Unknown);
+          descriptor.width = static_cast<int>(CpuTensor()->size_in_bytes());
+          descriptor.height = static_cast<int>(1);
+          descriptor.luid = device->GetD3DDevice()->GetAdapterLuid();  // Converted image on GPU
+
+          context.converter = _winml::PoolObjectWrapper::Create(device->TensorizerStore()->Fetch(descriptor));
+          context.converter->Get()->Tensorizer->ConvertBuffersToBatchedGPUTensor(
+            CpuTensor()->buffers(),
+            CpuTensor()->size_in_bytes(),
+            *device->GetD3DDeviceCache(),
+            GpuTensor().get());
+
+          return CreateGPUMLValue(GpuTensor().get(), context, out);
+
+        } else if (context.type == _winml::BindingType::kOutput) {
+          // If we are binding outputs, then the buffers do not need to bound. If the engine produces a output on the gpu
+          // we already have a detensorize path which will need to copy the allocated output d3d12resource
+          // into the output buffers without temporary intermediary buffers! No binding here is necessary.
+          // If the output produces a cpu buffer (even in the GPU case), we will already have a cpu buffer, and just need
+          // to copy back to the output buffers, no binding is necessary.
+          GpuTensor() = CreateD3D12Resource(session);
+          return CreateGPUMLValue(GpuTensor().get(), context, out);
+        }
+      }
     }
 
     if (TensorKind() == winml::TensorKind::String) {
       // Lazily allocate the cpu TensorString resource
       // TensorStrings are CPU only, and so a gpu resource cannot be allocated for them.
-      GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape_);
-      return CreateTensorValueFromExternalBuffer(engine, out);
+      CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape_);
+      return CreateTensorValueFromExternalBuffer(engine, should_sync_buffer, out);
     } else {
-      // Try to allocate the backing memory for the caller
-      auto bufferSize = std::accumulate(std::begin(shape_), std::end(shape_), static_cast<int64_t>(1), std::multiplies<int64_t>());
-      auto bufferByteSize = sizeof(T) * bufferSize;
-
-      // DML needs the resources' sizes to be a multiple of 4 bytes
-      if (bufferByteSize % 4 != 0) {
-        bufferByteSize += 4 - (bufferByteSize % 4);
-      }
-
-      D3D12_HEAP_PROPERTIES heapProperties = {
-          D3D12_HEAP_TYPE_DEFAULT,
-          D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-          D3D12_MEMORY_POOL_UNKNOWN,
-          0,
-          0};
-      D3D12_RESOURCE_DESC resourceDesc = {
-          D3D12_RESOURCE_DIMENSION_BUFFER,
-          0,
-          static_cast<uint64_t>(bufferByteSize),
-          1,
-          1,
-          1,
-          DXGI_FORMAT_UNKNOWN,
-          {1, 0},
-          D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-          D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
-
-      auto device = session->Device().as<winmlp::LearningModelDevice>();
-
-      winrt::com_ptr<ID3D12Resource> gpu_resource = nullptr;
-      device->GetD3DDevice()->CreateCommittedResource(
-          &heapProperties,
-          D3D12_HEAP_FLAG_NONE,
-          &resourceDesc,
-          D3D12_RESOURCE_STATE_COMMON,
-          nullptr,
-          __uuidof(ID3D12Resource),
-          gpu_resource.put_void());
-
-      GetGpuResource() = gpu_resource;
-
-      return CreateGPUMLValue(GetGpuResource().get(), context, out);
+      GpuTensor() = CreateD3D12Resource(session);
+      return CreateGPUMLValue(GpuTensor().get(), context, out);
     }
+  }
+
+  winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(winrt::com_ptr<winmlp::LearningModelSession> session) {
+    // Try to allocate the backing memory for the caller
+    auto bufferSize = std::accumulate(std::begin(shape_), std::end(shape_), static_cast<int64_t>(1), std::multiplies<int64_t>());
+    auto bufferByteSize = sizeof(T) * bufferSize;
+
+    // DML needs the resources' sizes to be a multiple of 4 bytes
+    if (bufferByteSize % 4 != 0) {
+      bufferByteSize += 4 - (bufferByteSize % 4);
+    }
+
+    D3D12_HEAP_PROPERTIES heapProperties = {
+        D3D12_HEAP_TYPE_DEFAULT,
+        D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        D3D12_MEMORY_POOL_UNKNOWN,
+        0,
+        0};
+    D3D12_RESOURCE_DESC resourceDesc = {
+        D3D12_RESOURCE_DIMENSION_BUFFER,
+        0,
+        static_cast<uint64_t>(bufferByteSize),
+        1,
+        1,
+        1,
+        DXGI_FORMAT_UNKNOWN,
+        {1, 0},
+        D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
+
+    auto device = session->Device().as<winmlp::LearningModelDevice>();
+
+    winrt::com_ptr<ID3D12Resource> gpu_resource = nullptr;
+    device->GetD3DDevice()->CreateCommittedResource(
+        &heapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDesc,
+        D3D12_RESOURCE_STATE_COMMON,
+        nullptr,
+        __uuidof(ID3D12Resource),
+        gpu_resource.put_void());
+
+    return gpu_resource;
   }
 
   void EnsureBufferNotInUse() {
     auto isBufferInUse =
         std::any_of(
-            m_outstandingReferences.begin(),
-            m_outstandingReferences.end(),
+            outstanding_references_.begin(),
+            outstanding_references_.end(),
             [](auto weakRef) { return weakRef.get() != nullptr; });
 
     WINML_THROW_HR_IF_TRUE_MSG(WINML_ERR_INVALID_BINDING, isBufferInUse, "The tensor has outstanding memory buffer references that must be closed prior to evaluation!");
@@ -203,7 +254,7 @@ struct TensorBase : TBase {
   (_winml::BindingContext& context, IValue** out) {
     RETURN_HR_IF_NULL_MSG(
         WINML_ERR_INVALID_BINDING,
-        m_resources,
+        resources_,
         "The tensor has been closed and its resources have been detached!");
 
     EnsureBufferNotInUse();
@@ -233,51 +284,54 @@ struct TensorBase : TBase {
   }
 
   template <typename ElementType = T, typename ElementViewType = ViewT>
-  void SetBufferFromValueResourceBuffer(uint32_t size, void* data) {
+  void SetBufferFromValueResourceBuffer(size_t size, void* data) {
     // This adds compile time checks that ensure that the API can only be called when
     // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
     ASSERT_TEMPLATE_PARAMETERS<ElementType, ElementViewType>();
 
-    GetCpuResource()->set(size, reinterpret_cast<ElementType*>(data));
+    CpuTensor()->set(size, reinterpret_cast<ElementType*>(data));
   }
 
   template <>
-  void SetBufferFromValueResourceBuffer<std::string, winrt::hstring>(uint32_t size, void* data) {
+  void SetBufferFromValueResourceBuffer<std::string, winrt::hstring>(size_t size, void* data) {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
-    GetCpuResource()->get_tensor_buffer()->Set(size, reinterpret_cast<std::string_view*>(data));
+    auto string_data = std::static_pointer_cast<_winml::string_data>(CpuTensor()->get_data());
+    string_data->set(size, reinterpret_cast<std::string_view*>(data));
   }
 
   template <typename ElementType = T, typename ElementViewType = ViewT>
-  HRESULT CreateTensorValueFromExternalBuffer(_winml::IEngine* engine, IValue** value) {
+  HRESULT CreateTensorValueFromExternalBuffer(_winml::IEngine* engine, bool sync_buffer, IValue** value) {
     // This adds compile time checks that ensure that the API can only be called when
     // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
     ASSERT_TEMPLATE_PARAMETERS<ElementType, ElementViewType>();
 
     RETURN_IF_FAILED_MSG(engine->CreateTensorValueFromExternalBuffer(
-                             GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
-                             GetCpuResource()->shape().size(), TensorKind(), value),
+                             CpuTensor()->buffer(sync_buffer).data(), CpuTensor()->size_in_bytes(), CpuTensor()->shape().data(),
+                             CpuTensor()->shape().size(), TensorKind(), value),
                          "Failed to prepare buffer for copy back from device resource.");
     return S_OK;
   }
 
   template <>
-  HRESULT CreateTensorValueFromExternalBuffer<std::string, winrt::hstring>(_winml::IEngine* engine, IValue** value) {
+  HRESULT CreateTensorValueFromExternalBuffer<std::string, winrt::hstring>(_winml::IEngine* engine, bool /*sync_buffer*/, IValue** value) {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
+    auto string_data = std::static_pointer_cast<_winml::string_data>(CpuTensor()->get_data());
+    auto& string_vector = string_data->get_backing_vector();
+
     std::vector<const char*> raw_values;
-    auto string_array = GetCpuResource()->buffer().second;
     std::transform(
-        string_array,
-        string_array + GetCpuResource()->size_in_bytes(),
+        std::begin(string_vector),
+        std::end(string_vector),
         std::back_inserter(raw_values),
         [&](auto& str) { return str.c_str(); });
 
     RETURN_IF_FAILED_MSG(engine->CreateStringTensorValueFromDataWithCopy(
-                             raw_values.data(), raw_values.size(), GetCpuResource()->shape().data(),
-                             GetCpuResource()->shape().size(), value),
+                             raw_values.data(), raw_values.size(), CpuTensor()->shape().data(),
+                             CpuTensor()->shape().size(), value),
                          "Failed to prepare buffer for copy back from device resource.");
     return S_OK;
   }
@@ -287,7 +341,7 @@ struct TensorBase : TBase {
   (BindingContext& context, IValue* value) {
     RETURN_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
-        m_resources,
+        resources_,
         "The tensor has been closed and its resources have been detached during evaluation!");
 
     _winml::Resource updated_resource;
@@ -297,37 +351,63 @@ struct TensorBase : TBase {
     RETURN_IF_FAILED_MSG(value->GetTensorShape(shape_), "Failed to get the tensor shape from resource!");
 
     // make sure we always have a CPU resource
-    if (GetCpuResource() == nullptr) {
-      GetCpuResource() = std::make_shared<_winml::Tensor<T>>(shape_);
+    if (CpuTensor() == nullptr) {
+      CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape_);
     }
 
     bool is_cpu;
     if (SUCCEEDED(value->IsCpu(&is_cpu)) && is_cpu) {
       // Get the data pointer and size
-      T* data;
-      uint32_t size;
-      std::tie(size, data) = GetCpuResource()->buffer();
+      auto buffer = CpuTensor()->buffer(false);
 
-      if (updated_resource.get() != reinterpret_cast<void*>(data)) {
+      if (updated_resource.get() != reinterpret_cast<void*>(buffer.data())) {
         // Only copy the data if the source and destination are not the same!
         // The engine provided buffer will not match the tensor buffer when
         // the tensor is created as a placeholder output, or as an unbound output.
-        auto shape_size = static_cast<uint32_t>(ShapeSize(shape_));
+        auto shape_size = static_cast<size_t>(ShapeSize(shape_));
         SetBufferFromValueResourceBuffer(shape_size, updated_resource.get());
+      } else {
+        // If the engine wrote to the data directly, it is possible that the underlying data was held by many buffers
+        // In that case the underlying buffers will not match the engine output, and they need to be flushed.
+        CpuTensor()->flush();
       }
     } else {
       // If we got a gpu resource, we should move the data to the cpu so accessors can retrieve the data.
       // We don't need to copy the engine provided dx resource into a local copy since we always preallocate gpu
       // resources for tensors. Therefore we are certain that the returned dxresource is the same as the one we passed in
       // and was updated in place.
-      auto spSession = context.session.as<winmlp::LearningModelSession>();
-      auto engine = spSession->GetEngine();
+      auto session = context.session.as<winmlp::LearningModelSession>();
+      auto device = session->Device().as<winmlp::LearningModelDevice>();
+      auto engine = session->GetEngine();
 
-      winrt::com_ptr<IValue> dest;
-      RETURN_IF_FAILED_MSG(CreateTensorValueFromExternalBuffer(engine, dest.put()),
-                           "Failed to prepare buffer for copy back from device resource.");
-      RETURN_IF_FAILED(engine->CopyValueAcrossDevices(value, dest.get()));
+      if (CpuTensor()->num_buffers() == 1) {
+        winrt::com_ptr<IValue> dest;
+        RETURN_IF_FAILED_MSG(CreateTensorValueFromExternalBuffer(engine, false, dest.put()),
+                             "Failed to prepare buffer for copy back from device resource.");
+        RETURN_IF_FAILED(engine->CopyValueAcrossDevices(value, dest.get()));
+      } else {
+        auto buffer_size_in_bytes = static_cast<size_t>(ShapeSize(shape_)) * sizeof(T);
+
+        _winml::ConverterResourceDescription descriptor = {};
+        descriptor.pixel_format = static_cast<DWORD>(wgdx::DirectXPixelFormat::Unknown);
+        descriptor.luid = device->GetD3DDevice()->GetAdapterLuid();  // Converted image on GPU
+
+        auto pooled_converter = _winml::PoolObjectWrapper::Create(device->DetensorizerStore()->Fetch(descriptor));
+        auto d3dResource = reinterpret_cast<ID3D12Resource*>(updated_resource.get());
+        pooled_converter->Get()->Detensorizer->ConvertBatchedDX12TensorToBuffers(
+            d3dResource,
+            buffer_size_in_bytes,
+            *device->GetD3DDeviceCache(),
+            CpuTensor()->buffers());
+
+        // Reset the Allocator before return to the Cache. Must Sync this background thread to that completion before we do.
+        device->GetD3DDeviceCache()->SyncD3D12ToCPU();
+        pooled_converter->Get()->Detensorizer->ResetAllocator();
+      }
     }
+
+    // release any converter resources and return to the pool
+    context.converter = nullptr;
 
     return S_OK;
   }
@@ -410,14 +490,47 @@ struct TensorBase : TBase {
   static typename TBase::class_type CreateFromBuffer(
       winrt::array_view<int64_t const> shape,
       wss::IBuffer const& buffer) try {
-    std::vector<int64_t> vecShape(shape.begin(), shape.end());
-    typename TBase::class_type tensorValue = winrt::make<TDerived>();
-    auto tensorValueImpl = tensorValue.as<TDerived>();
-    tensorValueImpl->shape_ = vecShape;
-    tensorValueImpl->GetCpuResource() = std::make_shared<_winml::Tensor<T>>(vecShape, buffer);
-    return tensorValue;
+    std::vector<int64_t> vec_shape(std::begin(shape), std::end(shape));
+    auto buffers = winrt::single_threaded_vector<wss::IBuffer>();
+    buffers.Append(buffer);
+    return TensorBase::CreateFromBatchedBuffersInternal(vec_shape, buffers);
   }
   WINML_CATCH_ALL
+
+  // ITensor<T>::CreateFromBatchedBuffers
+  static typename TBase::class_type CreateFromBatchedBuffers(
+      wfc::IIterable<int64_t> shape,
+      wfc::IIterable<wss::IBuffer> const& buffers) try {
+    std::vector<int64_t> vec_shape(begin(shape), end(shape));
+    return TensorBase::CreateFromBatchedBuffersInternal(vec_shape, buffers);
+  }
+  WINML_CATCH_ALL
+
+  
+  // ITensor<T>::CreateFromBatchedBuffersInternal
+  static typename TBase::class_type CreateFromBatchedBuffersInternal(
+      std::vector<int64_t> shape,
+      wfc::IIterable<wss::IBuffer> const& buffers) {
+    if (HasFreeDimensions(shape)) {
+      // If the tensor is being created with a free dimension, the data needs to
+      // provide its actual size so that the free dimension can be computed.
+      // In the case of IIterable<T>, there is no Size accessor, and so we require that
+      // in this case the underlying object also implement IVectorView, so that we may
+      // efficiently query the size of the data.
+      auto size_in_bytes = 0;
+      for (auto buffer : buffers) {
+        size_in_bytes += buffer.Capacity();
+      }
+
+      auto num_elements = size_in_bytes / sizeof(T);
+      shape = GetAdjustedShape(shape, num_elements);
+    }
+
+    typename TBase::class_type tensorValue = winrt::make<TDerived>();
+    auto tensorValueImpl = tensorValue.as<TDerived>();
+    tensorValueImpl->SetBufferFromIterableOfBuffers(shape, buffers);
+    return tensorValue;
+  }
 
   // ITensorNative::CreateFromD3D12Resource
   static HRESULT CreateFromD3D12Resource(
@@ -502,6 +615,11 @@ struct TensorBase : TBase {
 
   // IMemoryBuffer::CreateReference
   wf::IMemoryBufferReference CreateReference() try {
+    // Ensure that CreateReference is only called when there is 1 buffer.
+    WINML_THROW_HR_IF_TRUE_MSG(
+        E_ILLEGAL_METHOD_CALL,
+        CpuTensor() != nullptr && CpuTensor()->num_buffers() != 1, "A single buffer reference cannot be retrieved when the tensor is backed by multiple buffers!");
+
     // Create a TensorMemoryBufferReference<T>
 
     // Per IMemoryBuffer.CreateReference (https://docs.microsoft.com/en-us/uwp/api/windows.foundation.imemorybuffer.createreference)
@@ -509,11 +627,11 @@ struct TensorBase : TBase {
     // "has been closed. In that case, the returned IMemoryBufferReference is already closed."
     // Creating a TensorMemoryBufferReference<T> with a null pointer is equivalent to creating it as closed.
 
-    auto memoryBufferReference = winrt::make<TensorMemoryBufferReference<T>>(shape_, m_resources);
+    auto memoryBufferReference = winrt::make<TensorMemoryBufferReference<T>>(shape_, resources_);
 
     // Create and cache a weak reference to the TensorMemoryBufferReference<T>
     winrt::weak_ref<TensorMemoryBufferReference<T>> weak(memoryBufferReference.as<TensorMemoryBufferReference<T>>());
-    m_outstandingReferences.push_back(weak);
+    outstanding_references_.push_back(weak);
 
     // Return the strong ref to the caller
     return memoryBufferReference;
@@ -523,7 +641,7 @@ struct TensorBase : TBase {
   // IMemoryBuffer::Close
   void Close() try {
     // Let go of the lifetime of the resources, this is will indicate that the memorybuffer is closed
-    m_resources = nullptr;
+    resources_ = nullptr;
   }
   WINML_CATCH_ALL
 
@@ -538,10 +656,10 @@ struct TensorBase : TBase {
 
     RETURN_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
-        m_resources,
+        resources_,
         "The tensor has been closed and its resources have been detached!");
 
-    return m_resources->GetBuffer(shape_, value, capacity);
+    return resources_->GetBuffer(shape_, value, capacity);
   }
 
   // ITensorNative::GetD3D12Resource
@@ -552,10 +670,10 @@ struct TensorBase : TBase {
       RETURN_HR_IF(ERROR_INVALID_FUNCTION, (std::is_same<T, std::string>::value));
       RETURN_HR_IF_NULL_MSG(
           E_ILLEGAL_METHOD_CALL,
-          m_resources,
+          resources_,
           "The tensor has been closed and its resources have been detached!");
 
-      GetGpuResource().copy_to(ppResource);
+      GpuTensor().copy_to(ppResource);
       return S_OK;
     }
     WINML_CATCH_ALL_COM
@@ -574,12 +692,11 @@ struct TensorBase : TBase {
     // owned IVectorView object.
 
     // Get the raw buffer pointer from the native tensor implementation.
-    uint32_t size;
-    ElementType* pData;
-    std::tie(size, pData) = GetCpuResource()->buffer();
+    auto buffer = CpuTensor()->buffer();
+    auto element_data = static_cast<ElementType*>(buffer.data());
 
     // Copy data that will be passed back to caller.
-    auto copy = std::vector<ElementType>(pData, pData + size);
+    auto copy = std::vector<ElementType>(element_data, element_data + buffer.size());
 
     // Create IVectorView from copied data.
     return winrt::single_threaded_vector<ElementViewType>(std::move(copy)).GetView();
@@ -592,23 +709,20 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
 
-    uint32_t size;
-    _winml::Half* pBuffer;
-
-    // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    auto buffer = CpuTensor()->buffer();
+    auto element_data = static_cast<_winml::Half*>(buffer.data());
 
     // Copy the HALFs to floats
-    std::vector<float> floatValue(size);
+    std::vector<float> float_value(buffer.size());
     DirectX::PackedVector::XMConvertHalfToFloatStream(
-        floatValue.data(),
+        float_value.data(),
         sizeof(float) /* output stride */,
-        reinterpret_cast<DirectX::PackedVector::HALF*>(pBuffer),
+        reinterpret_cast<DirectX::PackedVector::HALF*>(element_data),
         sizeof(_winml::Half) /* input stride */,
-        size);
+        buffer.size());
 
     // Create IVectorView from copied data.
-    return winrt::single_threaded_vector<float>(std::move(floatValue)).GetView();
+    return winrt::single_threaded_vector<float>(std::move(float_value)).GetView();
   }
   WINML_CATCH_ALL
 
@@ -618,16 +732,15 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
-    uint32_t size;
-    std::string* pData;
-    std::tie(size, pData) = GetCpuResource()->buffer();
+    auto string_data = std::static_pointer_cast<_winml::string_data>(CpuTensor()->get_data());
+    auto& string_vector = string_data->get_backing_vector();
 
-    auto copy = std::vector<winrt::hstring>(size, L"");
+    auto copy = std::vector<winrt::hstring>(string_vector.size(), L"");
     std::generate(
         copy.begin(),
         copy.end(),
-        [n = 0, &pData]() mutable {
-          return _winml::Strings::HStringFromUTF8(pData[n++]);
+        [n = 0, &string_vector]() mutable {
+          return _winml::Strings::HStringFromUTF8(string_vector[n++]);
         });
 
     return winrt::single_threaded_vector<winrt::hstring>(std::move(copy)).GetView();
@@ -639,14 +752,13 @@ struct TensorBase : TBase {
   wfc::IVectorView<uint8_t> GetAsVectorView<int8_t, uint8_t>() try {
     ASSERT_TEMPLATE_PARAMETERS<int8_t, uint8_t>();
 
-    uint32_t size;
-    int8_t* pData;
-    std::tie(size, pData) = GetCpuResource()->buffer();
+    auto buffer = CpuTensor()->buffer();
+    auto element_data = static_cast<int8_t*>(buffer.data());
 
     // Copy data that will be passed back to caller.
 
-    gsl::span<uint8_t> span(reinterpret_cast<uint8_t*>(pData), size);
-    std::vector<uint8_t> copy(span.begin(), span.begin() + size);
+    gsl::span<uint8_t> span(reinterpret_cast<uint8_t*>(element_data), buffer.size());
+    std::vector<uint8_t> copy(span.begin(), span.begin() + buffer.size());
 
     // Create IVectorView from copied data.
     return winrt::single_threaded_vector<uint8_t>(std::move(copy)).GetView();
@@ -696,14 +808,60 @@ struct TensorBase : TBase {
     RETURN_HR_IF_NULL(E_POINTER, pIsPlaceHolder);
     RETURN_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
-        m_resources,
+        resources_,
         "The tensor has been closed and its resources have been detached!");
 
-    *pIsPlaceHolder = GetCpuResource() == nullptr && GetGpuResource() == nullptr;
+    *pIsPlaceHolder = CpuTensor() == nullptr && GpuTensor() == nullptr;
     return S_OK;
   }
 
  private:
+  ///
+  /// SetBufferFromArray and parameterized specializations for MLFloat16, int8_t, and std::string
+  ///
+  template <typename ElementType = T, typename ElementViewType = ViewT>
+  void SetBufferFromIterableOfBuffers(const std::vector<int64_t>& shape, wfc::IIterable<wss::IBuffer> const& buffers) {
+    // This adds compile time checks that ensure that the API can only be called when
+    // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
+    ASSERT_TEMPLATE_PARAMETERS_EXACT<ElementType, ElementViewType>();
+
+    shape_ = shape;
+    CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape, buffers);
+  }
+
+  template <>
+  void SetBufferFromIterableOfBuffers<_winml::Half, float>(
+      const std::vector<int64_t>& shape, wfc::IIterable<wss::IBuffer> const& buffers) {
+    // Ensure that this call is being called with the correct template parameters
+    ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
+
+    shape_ = shape;
+    CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape, buffers);
+  }
+
+  template <>
+  void SetBufferFromIterableOfBuffers<int8_t, uint8_t>(
+      const std::vector<int64_t>& shape, wfc::IIterable<wss::IBuffer> const& buffers) {
+    // Ensure that this call is being called with the correct template parameters
+    ASSERT_TEMPLATE_PARAMETERS<int8_t, uint8_t>();
+
+    shape_ = shape;
+    CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape, buffers);
+  }
+
+  // Specialized version to convert hstring to string
+  template <>
+  void SetBufferFromIterableOfBuffers<std::string, winrt::hstring>(
+      const std::vector<int64_t>& /*shape*/, wfc::IIterable<wss::IBuffer> const& /*buffers*/) {
+    // Ensure that this call is being called with the correct template parameters
+    ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
+
+    WINML_THROW_HR_IF_TRUE_MSG(
+        E_ILLEGAL_METHOD_CALL,
+        std::is_same<T, std::string>::value,
+        "TensorString objects cannot be created from IBuffers!");
+  }
+
   ///
   /// SetBufferFromArray and parameterized specializations for MLFloat16, int8_t, and std::string
   ///
@@ -713,10 +871,15 @@ struct TensorBase : TBase {
     // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
     ASSERT_TEMPLATE_PARAMETERS_EXACT<ElementType, ElementViewType>();
 
+    // Ensure that the Set APIs are only called when there is 1 buffer.
+    // These APIs are only called when the tensor is being constructed from various collection and pointer public APIs.
+    // They should always be backed by a single underlying buffer.
+    FAIL_FAST_HR_IF(E_ILLEGAL_METHOD_CALL, CpuTensor()->num_buffers() != 1);
+
     // This method accepts data as an array, T[], from the caller.
     // This is a non-destructive API, so the caller data is
     // left untouched, and the data is copied into internal buffers.
-    GetCpuResource()->set(data.size(), data.data());
+    CpuTensor()->set(data.size(), data.data());
   }
 
   // Specialized version to convert floats to float16
@@ -725,15 +888,17 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
 
-    uint32_t size;
-    _winml::Half* pBuffer;
+    // Ensure that the Set APIs are only called when there is 1 buffer.
+    // These APIs are only called when the tensor is being constructed from various collection and pointer public APIs.
+    // They should always be backed by a single underlying buffer.
+    FAIL_FAST_HR_IF(E_ILLEGAL_METHOD_CALL, CpuTensor()->num_buffers() != 1);
 
-    // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    auto buffer = CpuTensor()->buffer();
+    auto element_data = static_cast<_winml::Half*>(buffer.data());
 
-    THROW_HR_IF(E_UNEXPECTED, data.size() != size);
+    THROW_HR_IF(E_UNEXPECTED, data.size() != buffer.size());
     DirectX::PackedVector::XMConvertFloatToHalfStream(
-        reinterpret_cast<DirectX::PackedVector::HALF*>(pBuffer),
+        reinterpret_cast<DirectX::PackedVector::HALF*>(element_data),
         sizeof(_winml::Half) /* output stride */,
         data.data(),
         sizeof(float) /* input stride */,
@@ -746,10 +911,15 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<int8_t, uint8_t>();
 
+    // Ensure that the Set APIs are only called when there is 1 buffer.
+    // These APIs are only called when the tensor is being constructed from various collection and pointer public APIs.
+    // They should always be backed by a single underlying buffer.
+    FAIL_FAST_HR_IF(E_ILLEGAL_METHOD_CALL, CpuTensor()->num_buffers() != 1);
+
     auto size = data.size();
     auto pData = data.data();
 
-    GetCpuResource()->set(size, reinterpret_cast<int8_t*>(const_cast<uint8_t*>(pData)));
+    CpuTensor()->set(size, reinterpret_cast<int8_t*>(const_cast<uint8_t*>(pData)));
   }
 
   // Specialized version to convert hstring to string
@@ -758,16 +928,19 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
-    uint32_t size;
-    std::string* pBuffer;
+    // Ensure that the Set APIs are only called when there is 1 buffer.
+    // These APIs are only called when the tensor is being constructed from various collection and pointer public APIs.
+    // They should always be backed by a single underlying buffer.
+    FAIL_FAST_HR_IF(E_ILLEGAL_METHOD_CALL, CpuTensor()->num_buffers() != 1);
 
-    // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
-    THROW_HR_IF(E_UNEXPECTED, data.size() > size);
+    auto string_data = std::static_pointer_cast<_winml::string_data>(CpuTensor()->get_data());
+    auto& string_vector = string_data->get_backing_vector();
+
+    THROW_HR_IF(E_UNEXPECTED, data.size() > string_vector.size());
 
     // Convert and copy into the underlying buffer
     std::transform(
-        data.begin(), data.end(), pBuffer,
+        data.begin(), data.end(), std::begin(string_vector),
         [](auto& element) mutable {
           return _winml::Strings::UTF8FromHString(element);
         });
@@ -783,16 +956,18 @@ struct TensorBase : TBase {
     // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
     ASSERT_TEMPLATE_PARAMETERS_EXACT<ElementType, ElementViewType>();
 
-    uint32_t size;
-    ElementType* pBuffer;
+    // Ensure that the Set APIs are only called when there is 1 buffer.
+    // These APIs are only called when the tensor is being constructed from various collection and pointer public APIs.
+    // They should always be backed by a single underlying buffer.
+    FAIL_FAST_HR_IF(E_ILLEGAL_METHOD_CALL, CpuTensor()->num_buffers() != 1);
 
-    // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    auto buffer = CpuTensor()->buffer();
+    auto element_data = static_cast<ElementType*>(buffer.data());
 
     // This method accepts data as an IVectorView<T>.
     // This is a non-destructive API, so the caller data is
     // left untouched, and the data is copied into internal buffers.
-    std::copy(begin(data), end(data), pBuffer);
+    std::copy(begin(data), end(data), element_data);
   }
 
   // Specialized version to convert floats to float16
@@ -802,11 +977,13 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<_winml::Half, float>();
 
-    uint32_t size;
-    _winml::Half* pBuffer;
+    // Ensure that the Set APIs are only called when there is 1 buffer.
+    // These APIs are only called when the tensor is being constructed from various collection and pointer public APIs.
+    // They should always be backed by a single underlying buffer.
+    FAIL_FAST_HR_IF(E_ILLEGAL_METHOD_CALL, CpuTensor()->num_buffers() != 1);
 
-    // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    auto buffer = CpuTensor()->buffer();
+    auto element_data = static_cast<_winml::Half*>(buffer.data());
 
     // Now that we take in IIterables and not vector views
     // how do we validate size???
@@ -815,7 +992,7 @@ struct TensorBase : TBase {
     std::transform(
         begin(data),
         end(data),
-        reinterpret_cast<DirectX::PackedVector::HALF*>(pBuffer),
+        reinterpret_cast<DirectX::PackedVector::HALF*>(element_data),
         DirectX::PackedVector::XMConvertFloatToHalf);
   }
 
@@ -826,13 +1003,14 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<int8_t, uint8_t>();
 
-    uint32_t size;
-    int8_t* pBuffer;
+    // Ensure that the Set APIs are only called when there is 1 buffer.
+    // These APIs are only called when the tensor is being constructed from various collection and pointer public APIs.
+    // They should always be backed by a single underlying buffer.
+    FAIL_FAST_HR_IF(E_ILLEGAL_METHOD_CALL, CpuTensor()->num_buffers() != 1);
 
-    // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
-
-    std::transform(begin(data), end(data), pBuffer, [](auto element) { return static_cast<int8_t>(element); });
+    auto buffer = CpuTensor()->buffer();
+    auto element_data = static_cast<int8_t*>(buffer.data());
+    std::transform(begin(data), end(data), element_data, [](auto element) { return static_cast<int8_t>(element); });
   }
 
   // Specialized version to convert hstring to string
@@ -842,40 +1020,42 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
-    uint32_t size;
-    std::string* pBuffer;
+    // Ensure that the Set APIs are only called when there is 1 buffer.
+    // These APIs are only called when the tensor is being constructed from various collection and pointer public APIs.
+    // They should always be backed by a single underlying buffer.
+    FAIL_FAST_HR_IF(E_ILLEGAL_METHOD_CALL, CpuTensor()->num_buffers() != 1);
 
-    // Get the data pointer and size
-    std::tie(size, pBuffer) = GetCpuResource()->buffer();
+    auto string_data = std::static_pointer_cast<_winml::string_data>(CpuTensor()->get_data());
+    auto& string_vector = string_data->get_backing_vector();
 
     // Convert and copy into the underlying buffer
-    std::transform(begin(data), end(data), pBuffer, [](const auto& element) {
+    std::transform(begin(data), end(data), std::begin(string_vector), [](const auto& element) {
       return _winml::Strings::UTF8FromHString(element);
     });
   }
 
-  std::shared_ptr<_winml::Tensor<T>>& GetCpuResource() {
+  std::shared_ptr<_winml::Tensor<T>>& CpuTensor() {
     WINML_THROW_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
-        m_resources,
+        resources_,
         "The tensor has been closed and its resources are detached!");
 
-    return m_resources->CpuResource;
+    return resources_->cpu_resource_;
   }
 
-  winrt::com_ptr<ID3D12Resource>& GetGpuResource() {
+  winrt::com_ptr<ID3D12Resource>& GpuTensor() {
     WINML_THROW_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
-        m_resources,
+        resources_,
         "The tensor has been closed and its resources are detached!");
 
-    return m_resources->GpuResource;
+    return resources_->gpu_resource_;
   }
 
  private:
   std::vector<int64_t> shape_;
-  std::shared_ptr<TensorResources<T>> m_resources;
-  std::vector<winrt::weak_ref<TensorMemoryBufferReference<T>>> m_outstandingReferences;
+  std::shared_ptr<TensorResources<T>> resources_;
+  std::vector<winrt::weak_ref<TensorMemoryBufferReference<T>>> outstanding_references_;
   bool m_isClosed = false;
 };
 

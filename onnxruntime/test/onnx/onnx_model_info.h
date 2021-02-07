@@ -37,9 +37,15 @@ class OnnxModelInfo : public TestModelInfo {
   std::string GetModelVersion() const override { return onnx_commit_tag_; }
 
   const std::string& GetNodeName() const override { return node_name_; }
+
+  const ONNX_NAMESPACE::ValueInfoProto* GetInputInfoFromModel(size_t i) const override {
+    return &input_value_info_[i];
+  }
+
   const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const override {
     return &output_value_info_[i];
   }
+
   int GetInputCount() const override { return static_cast<int>(input_value_info_.size()); }
   int GetOutputCount() const override { return static_cast<int>(output_value_info_.size()); }
   const std::string& GetInputName(size_t i) const override { return input_value_info_[i].name(); }

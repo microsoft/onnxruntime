@@ -19,6 +19,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace onnxruntime;
 
@@ -34,7 +35,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
       "'openvino', 'nuphar', 'migraphx', 'acl' or 'armnn'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
@@ -92,7 +93,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
   bool enable_dnnl = false;
-  bool enable_ngraph = false;
   bool enable_openvino = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
@@ -157,8 +157,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_cuda = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
             enable_dnnl = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
-            enable_ngraph = true;
           } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
             enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
@@ -256,7 +254,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   if (pause) {
     printf("Enter to continue...\n");
     fflush(stdout);
-    getchar();
+    (void)getchar();
   }
 
   {
@@ -306,8 +304,22 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      OrtTensorRTProviderOptions tensorrt_options{
+          0,
+          0,
+          nullptr};
+
+      OrtCUDAProviderOptions cuda_options{
+          0,
+          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+          std::numeric_limits<size_t>::max(),
+          0,
+          true,
+          0,
+          nullptr};
+
+      sf.AppendExecutionProvider_TensorRT(tensorrt_options);
+      sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -317,20 +329,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_OPENVINO
       //Setting default optimization level for OpenVINO can be overriden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-      if (p_models != 1) {
-        fprintf(stderr, "OpenVINO doesn't support more than 1 model running simultaneously default value of 1 will be set \n");
-        p_models = 1;
-      }
-      if (concurrent_session_runs != 1) {
-        fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
-        concurrent_session_runs = 1;
-      }
-      if (execution_mode == ExecutionMode::ORT_PARALLEL) {
-        fprintf(stderr, "OpenVINO doesn't support parallel executor switching to sequential executor\n");
-        sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
-      }
-
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, ""));
+      sf.AppendExecutionProvider_OpenVINO(OrtOpenVINOProviderOptions{});
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
@@ -343,9 +342,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           OrtCudnnConvAlgoSearch::EXHAUSTIVE,
           std::numeric_limits<size_t>::max(),
           0,
-          true
-      };
-      Ort::ThrowOnError(sf.OrtSessionOptionsAppendExecutionProvider_CUDA(sf, &cuda_options));
+          true,
+          0,
+          nullptr};
+      sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
@@ -367,17 +367,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_ngraph) {  // TODO: Re-order the priority?
-#ifdef USE_NGRAPH
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
-#else
-      fprintf(stderr, "nGraph is not supported in this build");
-      return -1;
-#endif
-    }
     if (enable_nnapi) {
 #ifdef USE_NNAPI
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf, 0));
 #else
       fprintf(stderr, "NNAPI is not supported in this build");
       return -1;
@@ -568,8 +560,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
       {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
       {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
-      {"if_seq", "NOT_IMPLEMENTED : Could not find an implementation for the node If(13)", {}},
-      {"loop13_seq", "NOT_IMPLEMENTED : Could not find an implementation for the node Loop(13)", {}},
+      {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
   };
 
 #ifdef DISABLE_ML_OPS
@@ -586,29 +577,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
   }
 #endif
-
-  if (enable_ngraph) {
-    broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-    broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip", "not implemented yet for opset 11"});
-    broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
-    broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
-    broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
-    broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
-    broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
-    broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
-  }
 
   if (enable_openvino) {
     broken_tests.insert({"operator_permute2", "Disabled temporariliy"});

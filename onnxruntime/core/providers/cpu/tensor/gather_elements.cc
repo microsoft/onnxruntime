@@ -25,6 +25,8 @@ ONNX_CPU_OPERATOR_KERNEL(
                                                         DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
 
+static constexpr int kParallelizationThreshold = 10 * 1000;
+
 // Some helpers needed for GatherElements op -
 
 // The following method computes the offset in the flattened array
@@ -87,7 +89,8 @@ static inline void increment_over_inner_dim(std::vector<int64_t>& current_dims, 
 }
 
 template <typename Tin>
-static inline int64_t GetNegativeIndexAdjustedValue(const Tin* indices_data, Tin index, int64_t axis, const TensorShape& input_shape) {
+static inline int64_t GetNegativeIndexAdjustedValue(const Tin* indices_data, Tin index, int64_t axis,
+                                                    const TensorShape& input_shape) {
   int64_t retval = -1;
   if (indices_data[index] < 0) {
     retval = static_cast<int64_t>(indices_data[index] + input_shape[axis]);
@@ -105,7 +108,7 @@ static inline int64_t GetNegativeIndexAdjustedValue(const Tin* indices_data, Tin
 #endif
 template <bool is_string, typename T, typename Tin>
 static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
-                      Tensor* output_tensor, int64_t axis) {
+                      Tensor* output_tensor, int64_t axis, concurrency::ThreadPool* ttp) {
   // get pointer to input data
   // optimizer will remove the redundant if/else block based on 'is_string' template parameter
   const T* input_data = nullptr;
@@ -135,11 +138,15 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
   auto num_elements = indices_tensor->Shape().Size();
   int64_t lower_index_limit = -input_shape[axis];
   int64_t upper_index_limit = input_shape[axis] - 1;
-  for (int64_t i = 0; i < num_elements; ++i) {
+
+  auto validation_fn = [indices_data, lower_index_limit, upper_index_limit](ptrdiff_t i) {
     auto indices_val = indices_data[i];
     if (indices_val < lower_index_limit || indices_val > upper_index_limit)
       ORT_THROW("GatherElements op: Value in indices must be within bounds [",
                 lower_index_limit, " , ", upper_index_limit, "]. Actual value is ", indices_val);
+  };
+  for (int64_t i = 0; i < num_elements; ++i) {  // TODO: parallelize this? didn't give any benefit in my tests
+    validation_fn(i);
   }
 
   int64_t num_inner_dim = calculate_num_inner_dim(indices_shape);
@@ -147,11 +154,21 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
   bool processing_inner_dim = (axis == input_rank - 1) ? true : false;
 
   int64_t base_offset = 0;
-  Tin indices_counter = -1;
-  int64_t output_counter = -1;
+  Tin indices_counter = 0;
   size_t element_size = input_tensor->DataType()->Size();
 
   std::vector<int64_t> process_dims(input_rank, 0);
+  int64_t output_counter = 0;
+
+  auto conditional_batch_call = [ttp, inner_dim_size](std::function<void(ptrdiff_t)> f) {
+    if (inner_dim_size < kParallelizationThreshold) {  // TODO: tune this, arbitrary threshold
+      for (int64_t i = 0; i < inner_dim_size; ++i) {
+        f(i);
+      }
+    } else {
+      concurrency::ThreadPool::TryBatchParallelFor(ttp, inner_dim_size, f, 0);
+    }
+  };
 
   if (!processing_inner_dim) {
     while (num_inner_dim-- != 0) {
@@ -160,22 +177,27 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
       // process 1 chunk of 'inner dimension' length
       // optimizer will remove the redundant if/else block based on 'is_string' template parameter
       if (is_string) {
-        for (int64_t i = 0; i < inner_dim_size; ++i) {
-          output_data[++output_counter] =
+        auto fn = [input_data, output_data, base_offset, input_shape_pitches,
+                   indices_data, indices_counter, axis, input_shape, output_counter](ptrdiff_t i) {
+          output_data[i + output_counter] =
               input_data[base_offset +
-                         (GetNegativeIndexAdjustedValue<Tin>(indices_data, ++indices_counter, axis, input_shape) *
+                         (GetNegativeIndexAdjustedValue<Tin>(indices_data, static_cast<Tin>(i) + indices_counter, axis, input_shape) *
                           input_shape_pitches[axis]) +
                          i];
-        }
+        };
+        conditional_batch_call(fn);
+        output_counter += inner_dim_size;
       } else {
-        for (int64_t i = 0; i < inner_dim_size; ++i) {
-          // optimizer will remove the redundant if/else block based on 'is_string' template parameter
-          memcpy(output_data,
-                 input_data + (base_offset + (GetNegativeIndexAdjustedValue<Tin>(indices_data, ++indices_counter, axis, input_shape) * input_shape_pitches[axis]) + i) * element_size,
+        auto fn = [input_data, output_data, base_offset, input_shape_pitches, element_size,
+                   indices_data, indices_counter, axis, input_shape](ptrdiff_t i) {
+          memcpy(output_data + (i * element_size),
+                 input_data + (base_offset + (GetNegativeIndexAdjustedValue<Tin>(indices_data, static_cast<Tin>(i) + indices_counter, axis, input_shape) * input_shape_pitches[axis]) + i) * element_size,
                  element_size);
-          output_data += element_size;
-        }
+        };
+        conditional_batch_call(fn);
+        output_data += inner_dim_size * element_size;
       }
+      indices_counter += static_cast<Tin>(inner_dim_size);
       increment_over_inner_dim(process_dims, indices_shape);
     }
   }
@@ -185,27 +207,31 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
       base_offset = compute_base_offset(process_dims, input_shape_pitches, axis);
 
       // process 1 chunk of 'inner dimension' length
-      // optimizer will remove the redundant if/else block based on 'is_string' template parameter
       if (is_string) {
-        for (int64_t i = 0; i < inner_dim_size; ++i) {
+        auto fn = [input_data, output_data, base_offset,
+                   indices_data, indices_counter, axis, input_shape, output_counter](ptrdiff_t i) {
           // for innermost axis, input_shape_pitches[axis] = 1 (so no need to multiply)
-          output_data[++output_counter] =
+          output_data[i + output_counter] =
               input_data[base_offset +
-                         GetNegativeIndexAdjustedValue<Tin>(indices_data, ++indices_counter, axis, input_shape)];
-        }
+                         GetNegativeIndexAdjustedValue<Tin>(indices_data, static_cast<Tin>(i) + indices_counter, axis, input_shape)];
+        };
+        conditional_batch_call(fn);
+        output_counter += inner_dim_size;
       } else {
-        for (int64_t i = 0; i < inner_dim_size; ++i) {
-          // for innermost axis, input_shape_pitches[axis] = 1 (so no need to multiply)
-          // optimizer will remove the redundant if/else block based on 'is_string' template parameter
-          memcpy(output_data,
+        // for innermost axis, input_shape_pitches[axis] = 1 (so no need to multiply)
+        auto fn = [input_data, output_data, base_offset, element_size,
+                   indices_data, indices_counter, axis, input_shape](ptrdiff_t i) {
+          memcpy(output_data + (i * element_size),
                  input_data + (base_offset +
-                               GetNegativeIndexAdjustedValue<Tin>(indices_data, ++indices_counter, axis, input_shape)) *
+                               GetNegativeIndexAdjustedValue<Tin>(indices_data, static_cast<Tin>(i) + indices_counter, axis, input_shape)) *
                                   element_size,
                  element_size);
-          output_data += element_size;
-        }
+        };
+        conditional_batch_call(fn);
+        output_data += inner_dim_size * element_size;
       }
 
+      indices_counter += static_cast<Tin>(inner_dim_size);
       increment_over_inner_dim(process_dims, indices_shape);
     }
   }
@@ -272,16 +298,17 @@ Status GatherElements::Compute(OpKernelContext* context) const {
   if (indices_shape.Size() == 0)
     return Status::OK();
 
+  auto* ttp = context->GetOperatorThreadPool();
   if (input_tensor->IsDataTypeString()) {
     if (indices_tensor->IsDataType<int32_t>())
-      core_impl<true, std::string, int32_t>(input_tensor, indices_tensor, output_tensor, axis);
+      core_impl<true, std::string, int32_t>(input_tensor, indices_tensor, output_tensor, axis, ttp);
     else
-      core_impl<true, std::string, int64_t>(input_tensor, indices_tensor, output_tensor, axis);
+      core_impl<true, std::string, int64_t>(input_tensor, indices_tensor, output_tensor, axis, ttp);
   } else {
     if (indices_tensor->IsDataType<int32_t>())
-      core_impl<false, int8_t, int32_t>(input_tensor, indices_tensor, output_tensor, axis);
+      core_impl<false, int8_t, int32_t>(input_tensor, indices_tensor, output_tensor, axis, ttp);
     else
-      core_impl<false, int8_t, int64_t>(input_tensor, indices_tensor, output_tensor, axis);
+      core_impl<false, int8_t, int64_t>(input_tensor, indices_tensor, output_tensor, axis, ttp);
   }
 
   return Status::OK();

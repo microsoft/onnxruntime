@@ -44,7 +44,7 @@ Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*
     Node& recompute_node = graph.AddNode(node.Name() + "_recompute",
                                          node.OpType(),
                                          "Recompute of " + node.Name(),
-                                         {node.MutableInputDefs()[0]},
+                                         node.MutableInputDefs(),
                                          {&recomputed_output},
                                          &node.GetAttributes(),
                                          node.Domain());

@@ -90,36 +90,28 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "multiple_choice_test_output/")
         self.cache_dir = '/tmp/multiple_choice/'
         self.logging_steps = 10
+        self.rtol = 2e-01
 
     def test_bert_with_swag(self):
-        expected_acc = 0.7640207937618715
-        expected_loss = 0.6234657892213054
-        results_per_api = dict()
-        for use_new_api in [False, True]:
-            results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False, use_new_api=use_new_api)
-            # assert_allclose(results['acc'], expected_acc)
-            # assert_allclose(results['loss'], expected_loss)
-            results_per_api[use_new_api] = results
+        expected_acc = 0.75
+        expected_loss = 0.64
 
-        verify_old_and_new_api_are_equal(results_per_api)
+        results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False)
+        assert(results['acc'] >= expected_acc)
+        assert(results['loss'] <= expected_loss)
 
     def test_bert_fp16_with_swag(self):
         # larger batch can be handled with mixed precision
         self.train_batch_size = 32
 
-        expected_acc = 0.7482255323402979
-        expected_loss = 0.6665752871014349
+        expected_acc = 0.73
+        expected_loss = 0.68
 
-        results_per_api = dict()
-        for use_new_api in [False, True]:
-            results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True, use_new_api=use_new_api)
-            assert_allclose(results['acc'], expected_acc)
-            assert_allclose(results['loss'], expected_loss)
-            results_per_api[use_new_api] = results
+        results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True)
+        assert(results['acc'] >= expected_acc)
+        assert(results['loss'] <= expected_loss)
 
-        verify_old_and_new_api_are_equal(results_per_api)
-
-    def run_multiple_choice(self, model_name, task_name, fp16, use_new_api):
+    def run_multiple_choice(self, model_name, task_name, fp16):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
         data_args = DataTrainingArguments(task_name=task_name, data_dir=self.data_dir,
             max_seq_length=self.max_seq_length)
@@ -209,14 +201,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
             return {"acc": simple_accuracy(preds, p.label_ids)}
 
         if model_name.startswith('bert'):
-            model_desc = ModelDescription([
-                IODescription('input_ids', ['batch', num_labels, 'max_seq_len_in_batch']),
-                IODescription('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch']),
-                IODescription('token_type_ids', ['batch', num_labels, 'max_seq_len_in_batch']),
-                IODescription('labels', ['batch', num_labels])], [
-                IODescription('loss', []),
-                IODescription('reshaped_logits', ['batch', num_labels])])
-            new_model_desc = {
+            model_desc = {
                 'inputs': [
                     ('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'],),
                     ('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch'],),
@@ -225,13 +210,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
                 'outputs': [('loss', [], True),
                             ('reshaped_logits', ['batch', num_labels])]}
         else:
-            model_desc = ModelDescription([
-                IODescription('input_ids', ['batch', num_labels, 'max_seq_len_in_batch']),
-                IODescription('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch']),
-                IODescription('labels', ['batch', num_labels])], [
-                IODescription('loss', []),
-                IODescription('reshaped_logits', ['batch', num_labels])])
-            new_model_desc = {
+            model_desc = {
                 'inputs': [
                     ('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'],),
                     ('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch'],),
@@ -243,12 +222,10 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         trainer = ORTTransformerTrainer(
             model=model,
             model_desc=model_desc,
-            new_model_desc=new_model_desc,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             compute_metrics=compute_metrics,
-            use_new_api=use_new_api
         )
 
         # Training

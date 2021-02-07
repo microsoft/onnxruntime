@@ -8,11 +8,10 @@ file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
 )
 
 if (onnxruntime_MINIMAL_BUILD)
-  file(GLOB onnxruntime_framework_src_exclude
+  set(onnxruntime_framework_src_exclude
     "${ONNXRUNTIME_ROOT}/core/framework/provider_bridge_ort.cc"
-    "${ONNXRUNTIME_ROOT}/core/framework/graph_partitioner.*"
-    "${ONNXRUNTIME_INCLUDE_DIR}/core/framework/customregistry.h"
-    "${ONNXRUNTIME_ROOT}/core/framework/customregistry.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.cc"
   )
 
   list(REMOVE_ITEM onnxruntime_framework_srcs ${onnxruntime_framework_src_exclude})
@@ -35,14 +34,17 @@ set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes
 add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
+# In order to find the shared provider libraries we need to add the origin to the rpath for all executables we build
+# For the shared onnxruntime library, this is set in onnxruntime.cmake through CMAKE_SHARED_LINKER_FLAGS
+# But our test files don't use the shared library so this must be set for them.
+# For Win32 it generates an absolute path for shared providers based on the location of the executable/onnxruntime.dll
+if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
+endif()
+
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
 
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
-if (WIN32)
-    # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-    set_target_properties(onnxruntime_framework PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/ConfigureVisualStudioCodeAnalysis.props)
-endif()
-

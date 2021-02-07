@@ -92,7 +92,6 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const size_t kernel_rank = kernel_shape.size();
 
   BufferUniquePtr col_buffer;
-  std::vector<int64_t> col_buffer_shape;
 
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
@@ -102,13 +101,6 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
 
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
-
-    if (kernel_rank != 2) {
-      const auto& output_dims = output_shape.GetDims();
-      col_buffer_shape.reserve(1 + output_dims.size());
-      col_buffer_shape.push_back(kernel_dim);
-      col_buffer_shape.insert(col_buffer_shape.end(), output_dims.begin(), output_dims.end());
-    }
   }
 
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
@@ -141,12 +133,11 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
               col_buffer_data,
               input_offset);
         } else {
-          math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
+          math::Im2col<uint8_t, StorageOrder::NCHW>()(
               Xdata,
-              X->Shape().GetDims().data() + 1,
-              col_buffer_shape.data(),
-              C * input_image_size,
-              col_buffer_size,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),
@@ -158,19 +149,19 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
         }
       }
 
-      QGemm(static_cast<int>(M / conv_attrs_.group),
-            static_cast<int>(output_image_size),
-            static_cast<int>(kernel_dim),
-            Wdata + group_id * W_offset,
-            static_cast<int>(kernel_dim),
-            filter_offset,
-            col_buffer_data == nullptr ? Xdata : col_buffer_data,
-            static_cast<int>(output_image_size),
-            input_offset,
-            false,
-            Ydata,
-            static_cast<int>(output_image_size),
-            thread_pool);
+      MlasGemm(static_cast<size_t>(M / conv_attrs_.group),
+               static_cast<size_t>(output_image_size),
+               static_cast<size_t>(kernel_dim),
+               Wdata + group_id * W_offset,
+               static_cast<size_t>(kernel_dim),
+               filter_offset,
+               col_buffer_data == nullptr ? Xdata : col_buffer_data,
+               static_cast<size_t>(output_image_size),
+               input_offset,
+               false,
+               Ydata,
+               static_cast<size_t>(output_image_size),
+               thread_pool);
 
       Xdata += X_offset;
       Ydata += Y_offset;

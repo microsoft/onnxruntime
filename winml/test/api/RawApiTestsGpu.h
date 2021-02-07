@@ -13,6 +13,7 @@ struct RawApiTestsGpuApi
   VoidTest CreateDirectXMinPowerDevice;
   VoidTest Evaluate;
   VoidTest EvaluateNoInputCopy;
+  VoidTest EvaluateManyBuffers;
 };
 
 const RawApiTestsGpuApi& getapi();
@@ -27,4 +28,5 @@ WINML_TEST(RawApiTestsGpu, CreateDirectXHighPerformanceDevice)
 WINML_TEST(RawApiTestsGpu, CreateDirectXMinPowerDevice)
 WINML_TEST(RawApiTestsGpu, Evaluate)
 WINML_TEST(RawApiTestsGpu, EvaluateNoInputCopy)
+WINML_TEST(RawApiTestsGpu, EvaluateManyBuffers)
 WINML_TEST_CLASS_END()

@@ -25,7 +25,7 @@ class Attention : public OpKernel, public AttentionCPUBase {
 
  private:
   BufferUniquePtr packed_weights_;
-  size_t packed_weights_size_;
+  size_t packed_weights_size_ = 0;
   TensorShape weight_shape_;
 };
 
@@ -57,7 +57,10 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   input       : (batch_size, sequence_length, hidden_size)
   //   weights     : (hidden_size, 3 * hidden_size)
   //   bias        : (3 * hidden_size)
-  //   mask_index  : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
+  //   mask_index  : nullptr, (batch_size), (2 * batch_size),
+  //                 or (batch_size, 1), (1, 1)
+  //                 or (batch_size, past_sequence_length + sequence_length)
+  //                 or (batch_size, sequence_length, past_sequence_length + sequence_length)
   //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
 
   const auto& dims = input_shape.GetDims();
@@ -134,8 +137,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with raw attention mask shall have shape batch_size x (past_sequence_length + sequence_length)");
         }
       }
+    } else if (mask_dims.size() == 3) {
+      if (static_cast<int>(mask_dims[0]) != batch_size || mask_dims[1] != sequence_length || static_cast<int>(mask_dims[2]) != past_sequence_length + sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' of 3d shall have shape batch_size x sequence_length x (past_sequence_length + sequence_length)");
+      }
     } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1 or 2 dimensions, got ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1, 2 or 3 dimensions, got ",
                              mask_dims.size());
     }
   }
@@ -172,7 +179,6 @@ template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
 }
 
-
 template <typename T>
 Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
   is_packed = false;
@@ -203,9 +209,9 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
     return Status::OK();
   }
 
-  const size_t loop_len = 3 * num_heads_;
+  const size_t loop_len = static_cast<size_t>(3) * num_heads_;
   auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
-  auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_size_ * loop_len));
+  auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packed_weights_size_, loop_len));
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
   for (size_t i = 0; i < loop_len; i++) {
@@ -227,7 +233,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* past = context->Input<Tensor>(4);
 
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  packed_weights_ ? weight_shape_ : weights->Shape(),
+                                  weights ? weights->Shape() : weight_shape_,
                                   bias->Shape(),
                                   mask_index,
                                   past));
@@ -252,14 +258,14 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + batch_size * sequence_length * hidden_size;
-  auto V = K + batch_size * sequence_length * hidden_size;
+  auto K = Q + static_cast<size_t>(batch_size) * sequence_length * hidden_size;
+  auto V = K + static_cast<size_t>(batch_size) * sequence_length * hidden_size;
   T* QKV[3] = {Q, K, V};
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
     const auto* input_data = input->template Data<T>();
-    const auto* weights_data = packed_weights_ ? nullptr : weights->template Data<T>();
+    const auto* weights_data = weights ? weights->template Data<T>() : nullptr;
     const auto* bias_data = bias->template Data<T>();
 
     const double cost =

@@ -28,6 +28,10 @@ struct TypeToTensorType;
 template <>
 struct TypeToTensorType<float> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 template <>
+struct TypeToTensorType<Float16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
+template <>
+struct TypeToTensorType<BFloat16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16; };
+template <>
 struct TypeToTensorType<double> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE; };
 template <>
 struct TypeToTensorType<int8_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8; };
@@ -286,6 +290,10 @@ inline void IoBinding::ClearBoundOutputs() {
   GetApi().ClearBoundOutputs(p_);
 }
 
+inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
+  ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
+}
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -477,12 +485,20 @@ inline SessionOptions& SessionOptions::AddInitializer(const char* name, const Or
   return *this;
 }
 
- #ifdef USE_CUDA
-inline OrtStatus* SessionOptions::OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions * options, OrtCUDAProviderOptions * cuda_options) {
-    ThrowOnError(GetApi().OrtSessionOptionsAppendExecutionProvider_CUDA(options, cuda_options));
-    return nullptr;
+inline SessionOptions& SessionOptions::AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CUDA(p_, &provider_options));
+  return *this;
 }
-#endif
+
+inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_TensorRT(p_, &provider_options));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpenVINO(p_, &provider_options));
+  return *this;
+}
 
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
@@ -588,6 +604,12 @@ inline char* ModelMetadata::GetDomain(OrtAllocator* allocator) const {
 inline char* ModelMetadata::GetDescription(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetDescription(p_, allocator, &out));
+  return out;
+}
+
+inline char* ModelMetadata::GetGraphDescription(OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().ModelMetadataGetGraphDescription(p_, allocator, &out));
   return out;
 }
 
@@ -941,7 +963,8 @@ inline size_t CustomOpApi::KernelContext_GetOutputCount(const OrtKernelContext* 
   return out;
 }
 
-inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
+inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index,
+                                                      _In_ const int64_t* dim_values, size_t dim_count) {
   OrtValue* out;
   ThrowOnError(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
   return out;

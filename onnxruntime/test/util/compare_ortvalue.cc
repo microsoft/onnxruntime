@@ -40,6 +40,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/framework/TensorSeq.h"
 #include <core/session/onnxruntime_cxx_api.h>
 
 using namespace onnxruntime;
@@ -302,10 +303,53 @@ namespace onnxruntime {
 std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const OrtValue& expected_mlvalue,
                                                        double per_sample_tolerance,
                                                        double relative_per_sample_tolerance, bool post_processing) {
-  if (o.IsTensor() != expected_mlvalue.IsTensor() || o.Type() != expected_mlvalue.Type()) {
+  if (o.Type() != expected_mlvalue.Type()) {
     return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
   }
-  if (!o.IsTensor()) {
+  if (o.IsTensor()) {
+    const Tensor& outvalue = o.Get<Tensor>();
+    const Tensor& expected_tensor = expected_mlvalue.Get<Tensor>();
+    if (outvalue.DataType() != expected_tensor.DataType()) {
+      std::ostringstream oss;
+      oss << "expect " << ElementTypeToString(expected_tensor.DataType()) << " got "
+          << ElementTypeToString(outvalue.DataType());
+      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
+    }
+    return CompareTwoTensors(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
+                             post_processing);
+  } else if (o.IsTensorSequence()) {
+    auto& expected_tensor_seq = expected_mlvalue.Get<TensorSeq>();
+    auto expected_tensor_count = expected_tensor_seq.Size();
+
+    auto& actual_tensor_seq = o.Get<TensorSeq>();
+    auto actual_tensor_count = actual_tensor_seq.Size();
+
+    if (expected_tensor_count != actual_tensor_count) {
+      std::ostringstream oss;
+      oss << "expected tensor count in the sequence: " << expected_tensor_count << " got "
+          << actual_tensor_count;
+      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
+    }
+
+    if (!expected_tensor_seq.IsSameDataType(actual_tensor_seq)) {
+      std::ostringstream oss;
+      oss << "expected tensor type in the sequence: " << expected_tensor_seq.DataType() << " got "
+          << actual_tensor_seq.DataType();
+      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
+    }
+
+    for (size_t i = 0; i < expected_tensor_count; ++i) {
+      auto res = CompareTwoTensors(actual_tensor_seq.Get(i), expected_tensor_seq.Get(i), per_sample_tolerance, relative_per_sample_tolerance,
+                                   post_processing);
+      if (res.first != COMPARE_RESULT::SUCCESS) {
+        return res;
+      }
+    }
+
+    return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+
+  } else {
+    // Maps
 #if !defined(DISABLE_ML_OPS)
     if (o.Type() == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
       return CompareSeqOfMapToFloat(o.Get<VectorMapInt64ToFloat>(), expected_mlvalue.Get<VectorMapInt64ToFloat>(),
@@ -320,16 +364,6 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
     return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "Map type is not supported in this build.");
 #endif
   }
-  const Tensor& outvalue = o.Get<Tensor>();
-  const Tensor& expected_tensor = expected_mlvalue.Get<Tensor>();
-  if (outvalue.DataType() != expected_tensor.DataType()) {
-    std::ostringstream oss;
-    oss << "expect " << ElementTypeToString(expected_tensor.DataType()) << " got "
-        << ElementTypeToString(outvalue.DataType());
-    return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
-  }
-  return CompareTwoTensors(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
-                           post_processing);
 }
 
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const Ort::Value& o) {
@@ -341,7 +375,7 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
 
     ::ONNX_NAMESPACE::TypeProto_Tensor t = v.type().tensor_type();
     // below code doesn't work
-    // if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
+    //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
     //	return COMPARE_RESULT::TYPE_MISMATCH;
     //}
     auto info = o.GetTensorTypeAndShapeInfo();
@@ -368,11 +402,19 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
       VectorToString(shape, oss);
       return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
     }
-  } else {
-    // Cannot do this check for tensor type.
+  } else if (v.type().has_sequence_type()) {
+    // TODO: CXX API doesn't have IsTensorSequence() supported for Ort::Value
+    // TODO: Repeat whatever we did for Tensor above in a loop ?
+    return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+  }
+
+  else {
+    // Cannot do this check for tensor/sequence of tensor type.
     // For tensor type, o.Type() is TensorTypeBase*, but p points to a subclass of TensorTypeBase
-    auto p = DataTypeImpl::TypeFromProto(v.type());
-    if (((OrtValue*)(const OrtValue*)o)->Type() != p) {
+    // For sequences of tensor type, o.Type() is SequenceTensorTypeBase*, but p points to a subclass of SequenceTensorTypeBase
+    MLDataType p = DataTypeImpl::TypeFromProto(v.type());
+    MLDataType q = ((OrtValue*)(const OrtValue*)o)->Type();
+    if (q != p) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
   }

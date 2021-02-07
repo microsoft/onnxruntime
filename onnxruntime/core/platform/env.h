@@ -79,9 +79,6 @@ struct ThreadOptions {
 /// multiple threads without any external synchronization.
 class Env {
  public:
-  struct Task {
-    std::function<void()> f;
-  };
   using EnvThread = onnxruntime::EnvThread;
   virtual ~Env() = default;
   // clang-format off
@@ -99,11 +96,6 @@ class Env {
   virtual EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
                                   _In_ unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                                   Eigen::ThreadPoolInterface* threadpool, const ThreadOptions& thread_options) = 0;
-  virtual Task CreateTask(std::function<void()> f) = 0;
-  /**
-   * Execute the task 't' in current thread
-   */
-  virtual void ExecuteTask(const Task& t) = 0;
 
   /// \brief Returns a default environment suitable for the current operating
   /// system.

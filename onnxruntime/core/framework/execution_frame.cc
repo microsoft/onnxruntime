@@ -15,6 +15,9 @@
 #include "core/framework/session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/utils.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+#include "core/framework/memory_info.h"
+#endif
 
 using namespace onnxruntime::common;
 
@@ -210,6 +213,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       mem_patterns_(nullptr),
       planner_(nullptr) {
   Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::IncreaseIteration();
+#endif
 
   // map the custom allocators to ort_value_idx entries
   if (!fetch_allocators.empty()) {
@@ -290,10 +296,17 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             if (buffer != nullptr) {
               buffers_[location] = BufferUniquePtr(buffer, alloc);
             }
-
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+            //Record activation memory pattern
+            MemoryInfo::ClearMemoryInfoPerExecution();
+            if (mem_patterns_ && buffer != nullptr) {
+              MemoryInfo::RecordPatternInfo(*mem_patterns_, MemoryInfo::MapType::StaticActivation);
+              MemoryInfo::MemoryInfoProfile::CreateEvents("static activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                                          MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 0);
+            }
+#endif
             // log size of activation. Keep it commented out for now to avoid log flooding.
-            // VLOGS(session_state_.Logger(), 1) << "Allocated memory for activations, size: "
-            //                                   << mem_patterns_->patterns[i].PeakSize();
+            // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: " <<mem_patterns_->patterns[i].PeakSize();
           }
         }
       }
@@ -330,7 +343,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   if (static_cast<uint64_t>(len) > std::numeric_limits<size_t>::max()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Tensor shape is too large");
   }
-  if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(static_cast<size_t>(len), element_type->Size(), &size)) {
+  if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(static_cast<size_t>(len), element_type->Size(), &size)) {
     return Status(ONNXRUNTIME, FAIL, "size overflow");
   }
 
@@ -350,6 +363,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // if we have pre-calculated memory pattern, and the ort_value is not output mlvalue
   // try to allocated on pre-allocated big chunk.
   const auto& per_alloc_plan = GetAllocationPlan(ort_value_index);
+
   if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput) {
     auto pattern = mem_patterns_->GetPatterns(location);
     if (pattern) {
@@ -403,6 +417,9 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     // if parallel executor is used.
     std::unique_lock<std::mutex> lock(mtx_);
     dynamic_activation_memory_sizes_in_byte_[location.name] += size;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    MemoryInfo::SetDynamicAllocation(ort_value_index);
+#endif
   }
 
   return Status::OK();
@@ -478,7 +495,6 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 static Status AllocateSparseTensor(MLValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
                                    const TensorShape& shape, size_t nnz, bool create_fence,
                                    const SessionState& session_state) {
@@ -496,7 +512,6 @@ static Status AllocateSparseTensor(MLValue& mlvalue, const DataTypeImpl& ml_type
 
   return Status::OK();
 }
-#endif
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape,
@@ -568,15 +583,14 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       }
     }
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    MemoryInfo::RecordActivationAllocInfo(ort_value_index, ort_value);
+#endif
+
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {
-#if !defined(ORT_MINIMAL_BUILD)
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, nnz, per_alloc_plan.create_fence_if_async, session_state_);
-#else
-    // Model load should have failed so this should be unreachable
-    ORT_THROW("SparseTensor is not supported in this build.");
-#endif
   } else if (ml_type->IsTensorSequenceType()) {
     return AllocateTensorSequence(ort_value);
   } else {

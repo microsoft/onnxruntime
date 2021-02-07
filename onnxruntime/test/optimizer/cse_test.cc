@@ -7,6 +7,11 @@
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/graph_transformer_utils.h"
+#include "orttraining/core/session/training_session.h"
+#endif
+
 #include "gtest/gtest.h"
 
 #include <algorithm>
@@ -150,6 +155,34 @@ TEST(CseTests, NoSimplifyCommutativeOperator) {
   ASSERT_EQ(op_count.at("Conv"), 4);
 }
 
+#ifdef ENABLE_TRAINING
+TEST(CseTests, SimpleTestTraining) {
+  auto model_uri = ORT_TSTR("testdata/transform/cse/cse1.onnx");
+  GraphTransformerManager graph_transformation_mgr(1);
+  auto transformers_to_register = training::transformer_utils::GeneratePreTrainingTransformers(
+      TransformerLevel::Level1, {}, {}, CPUExecutionProvider(CPUExecutionProviderInfo()));
+  for (auto& entry : transformers_to_register) {
+    ASSERT_TRUE(
+        graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1).IsOK());
+  }
+  ASSERT_TRUE(
+      graph_transformation_mgr.ApplyTransformers(model->MainGraph(), TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  Graph& graph = model->MainGraph();
+
+  const auto& graph_inputs = GetSortedNames(graph.GetInputs());
+  ASSERT_EQ(graph_inputs, (std::vector<std::string>{"x"}));
+
+  const auto& graph_outputs = GetSortedNames(graph.GetOutputs());
+  ASSERT_EQ(graph_outputs, (std::vector<std::string>{"Result"}));
+
+  auto op_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_count.at("MatMul"), 1);
+  ASSERT_EQ(op_count.at("Add"), 2);
+  ASSERT_EQ(op_count.at("Relu"), 1);
+}
+#endif
+
 TEST(CseTests, GraphOutput) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse_graph_output.onnx");
   std::shared_ptr<Model> model;
@@ -252,19 +285,29 @@ TEST(CseTests, Subgraph) {
     }
   }
 
-  output_names = GetSortedNames(if_true_graph->GetOutputs());
-  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+  // Assert that we were able to obtain subgraphs pertaining to the then/else attributes in the 'If' node
+  ASSERT_NE(if_true_graph, nullptr);
+  ASSERT_NE(if_false_graph, nullptr);
 
-  auto op_count = CountOpsInGraph(*if_true_graph);
-  ASSERT_EQ(op_count["Mul"], 1);
-  ASSERT_EQ(op_count["Sum"], 3);
+  // Keep VC++ static analyzer happy
+  if (if_true_graph) {
+    output_names = GetSortedNames(if_true_graph->GetOutputs());
+    ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
 
-  output_names = GetSortedNames(if_false_graph->GetOutputs());
-  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+    auto op_count = CountOpsInGraph(*if_true_graph);
+    ASSERT_EQ(op_count["Mul"], 1);
+    ASSERT_EQ(op_count["Sum"], 3);
+  }
 
-  op_count = CountOpsInGraph(*if_false_graph);
-  ASSERT_EQ(op_count["Mul"], 3);
-  ASSERT_EQ(op_count["Sum"], 1);
+  // Keep VC++ static analyzer happy
+  if (if_false_graph) {
+    output_names = GetSortedNames(if_false_graph->GetOutputs());
+    ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
+
+    auto op_count = CountOpsInGraph(*if_false_graph);
+    ASSERT_EQ(op_count["Mul"], 3);
+    ASSERT_EQ(op_count["Sum"], 1);
+  }
 }
 
 TEST(CseTests, MergedValueAndGraphOutputAreOutputsOfSameNode) {

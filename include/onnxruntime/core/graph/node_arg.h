@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/graph/basic_types.h"
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {

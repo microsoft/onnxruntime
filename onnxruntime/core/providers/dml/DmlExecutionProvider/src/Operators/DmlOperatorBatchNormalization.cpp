@@ -36,11 +36,13 @@ public:
 
         m_inputTensorDescs[0] = CreateTensorDescFromInput(kernelCreationContext, 0, TensorAxis::DoNotCoerce, TensorAxis::N, TensorAxis::LeftAligned);
 
-        // Massage each of these 1D tensors (of length C) into 4D tensors of the form [1,C,1,1].
+        // Massage each of these 1D tensors (of length C) into ND tensors of the form [1,C,1,1,...].
         for (uint32_t i = Scale; i < OnnxInputIndex::Count; ++i)
         {
-            m_inputTensorDescs[i] = CreateTensorDescFromInput(kernelCreationContext, i, TensorAxis::DoNotCoerce, TensorAxis::C, TensorAxis::LeftAligned);
+            m_inputTensorDescs[i] = CreateTensorDescFromInput(kernelCreationContext, i, TensorAxis::DoNotCoerce, TensorAxis::C, TensorAxis::LeftAligned, std::nullopt, m_inputTensorDescs[0].GetDimensionCount());
         }
+
+        m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelCreationContext, 0, TensorAxis::DoNotCoerce, TensorAxis::N, TensorAxis::LeftAligned, std::nullopt, m_inputTensorDescs[0].GetDimensionCount());
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

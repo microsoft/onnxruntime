@@ -22,7 +22,8 @@ void ComputeBroadcastBackwardAxes(
     const std::vector<Dimension>& A_dims,
     const std::vector<Dimension>& B_dims,
     std::vector<int64_t>* A_axes,
-    std::vector<int64_t>* B_axes);
+    std::vector<int64_t>* B_axes,
+    const std::string& node_name = "");
 
 void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
                                          const ArgDef& b,
@@ -180,6 +181,19 @@ class GradientBuilderBase {
     return node_->OpType();
   }
 
+  int SrcNodeOpsetVersion() const {
+    return node_->Op()->since_version();
+  }
+
+  const std::string& SrcNodeDomain() const {
+    return node_->Op()->domain();
+  }
+
+  int OnnxOpSetVersion() const {
+    return graph_ != nullptr && graph_->DomainToVersionMap().find(kOnnxDomain) != graph_->DomainToVersionMap().end() ?
+               graph_->DomainToVersionMap().at(kOnnxDomain) : -1;
+  }
+
   template <typename T>
   static NodeDef ConstantVectorNode(const std::vector<T>& values, const std::string& arg_name) {
     auto t_proto = ONNX_NAMESPACE::ToTensor<T>(values);
@@ -211,25 +225,31 @@ class GradientBuilderBase {
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       return ConstantScalarNode(MLFloat16(math::floatToHalf(value)), {1}, arg_name);
     }
-    
+
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
       return ConstantScalarNode(BFloat16(value), {1}, arg_name);
     }
-    
+
     return ConstantScalarNode(value, {1}, arg_name);
   }
 
   static NodeDef ZeroConstantNode(int elem_type) {
-    return ConstantScalarNode(0.0f, "ZeroConstant", elem_type);
+    return ConstantScalarNode(0.0f, "ZeroConstant_Type" + std::to_string(elem_type), elem_type);
   }
 
   static NodeDef HalfConstantNode(int elem_type) {
-    return ConstantScalarNode(0.5f, "HalfConstant", elem_type);
+    return ConstantScalarNode(0.5f, "HalfConstant_Type" + std::to_string(elem_type), elem_type);
   }
 
   static NodeDef OneConstantNode(int elem_type) {
-    return ConstantScalarNode(1.0f, "OneConstant", elem_type);
+    return ConstantScalarNode(1.0f, "OneConstant_Type" + std::to_string(elem_type), elem_type);
   }
+
+  void AddReduceSumNode(const ArgDef& input_arg_def,
+                        const ArgDef& output_arg_def,
+                        const std::vector<int64_t>& reduce_axes,
+                        bool keep_dims,
+                        std::vector<NodeDef>& output) const;
 
   void HandleBroadcasting(const ArgDef& input_grad,
                           const ArgDef& target,
@@ -243,6 +263,15 @@ class GradientBuilderBase {
                                  const ArgDef& output_grad,
                                  const ArgDef& reduce_axes,
                                  std::vector<NodeDef>& output) const;
+
+  std::vector<NodeDef> GetBiasGeluGradNodes(
+    bool use_approximation,
+    const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
+    const ArgDef& dX, const ArgDef& dB,                  // outputs
+    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
+    const std::string& node_name) const;
+
+  const std::string& NodeName() const { return node_->Name(); }
 
  private:
   friend class GradientGraphBuilder;

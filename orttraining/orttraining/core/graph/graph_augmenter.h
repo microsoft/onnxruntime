@@ -18,12 +18,14 @@ struct ArgDef {
   ArgDef() : name(""), type_proto(nullptr) {}
   ArgDef(std::string name, const TypeProto* type = nullptr) : name(name), type_proto(type) {}
 
-  std::string name;
-  const TypeProto* type_proto;
-
   bool operator==(const ArgDef& other) const {
     return name == other.name;
   }
+
+  bool Exists() { return !name.empty(); }
+
+  std::string name;
+  const TypeProto* type_proto;
 };
 
 struct OpDef {
@@ -43,32 +45,38 @@ struct NodeDef {
           const std::vector<ArgDef>& input_args,
           const std::vector<ArgDef>& output_args,
           const NodeAttributes& attributes = NodeAttributes(),
-          const std::string& name = "") : op_type(op_def.type),
-                                          domain(op_def.domain),
-                                          input_args(input_args),
-                                          output_args(output_args),
-                                          attributes(attributes),
-                                          name(name){};
+          const std::string& name = "",
+          int priority = 0) : op_type(op_def.type),
+                              domain(op_def.domain),
+                              input_args(input_args),
+                              output_args(output_args),
+                              attributes(attributes),
+                              name(name),
+                              priority(priority){};
 
   NodeDef(const std::string& op_type,
           const std::vector<ArgDef>& input_args,
           const std::vector<ArgDef>& output_args,
           const NodeAttributes& attributes = NodeAttributes(),
-          const std::string& name = "") : op_type(op_type),
-                                          input_args(input_args),
-                                          output_args(output_args),
-                                          attributes(attributes),
-                                          name(name){};
+          const std::string& name = "",
+          int priority = 0) : op_type(op_type),
+                              input_args(input_args),
+                              output_args(output_args),
+                              attributes(attributes),
+                              name(name),
+                              priority(priority){};
 
   NodeDef(const OpDef& op_def,
           const std::vector<ArgDef>& input_args,
           const std::vector<ArgDef>& output_args,
           const std::vector<AttributeProto>& attribute_protos,
-          const std::string& name = "") : op_type(op_def.type),
-                                          domain(op_def.domain),
-                                          input_args(input_args),
-                                          output_args(output_args),
-                                          name(name) {
+          const std::string& name = "",
+          int priority = 0) : op_type(op_def.type),
+                              domain(op_def.domain),
+                              input_args(input_args),
+                              output_args(output_args),
+                              name(name),
+                              priority(priority) {
     for (const AttributeProto& a : attribute_protos) {
       attributes.insert({a.name(), a});
     }
@@ -78,10 +86,12 @@ struct NodeDef {
           const std::vector<ArgDef>& input_args,
           const std::vector<ArgDef>& output_args,
           const std::vector<AttributeProto>& attribute_protos,
-          const std::string& name = "") : op_type(op_type),
-                                          input_args(input_args),
-                                          output_args(output_args),
-                                          name(name) {
+          const std::string& name = "",
+          int priority = 0) : op_type(op_type),
+                              input_args(input_args),
+                              output_args(output_args),
+                              name(name),
+                              priority(priority) {
     for (const AttributeProto& a : attribute_protos) {
       attributes.insert({a.name(), a});
     }
@@ -93,6 +103,7 @@ struct NodeDef {
   std::vector<ArgDef> output_args;
   NodeAttributes attributes;
   std::string name;
+  int priority;
 };
 
 /** GraphAugmenter is a stateless class to add new elements into a Graph.

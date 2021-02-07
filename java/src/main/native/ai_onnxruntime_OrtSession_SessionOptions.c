@@ -17,7 +17,6 @@
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
 #include "onnxruntime/core/providers/cuda/cuda_provider_factory.h"
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
-#include "onnxruntime/core/providers/ngraph/ngraph_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
@@ -297,6 +296,39 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeC
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addFreeDimensionOverrideByName
+ * Signature: (JJLjava/lang/String;J)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addFreeDimensionOverrideByName
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring dimensionName, jlong dimensionValue) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+
+  // Extract the string chars
+  const char* cName = (*jniEnv)->GetStringUTFChars(jniEnv, dimensionName, NULL);
+
+  checkOrtStatus(jniEnv,api,api->AddFreeDimensionOverrideByName(options,cName,dimensionValue));
+
+  // Release the string chars
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv,dimensionName,cName);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    disablePerSessionThreads
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_disablePerSessionThreads
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  checkOrtStatus(jniEnv,api,api->DisablePerSessionThreads(options));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addConfigEntry
  * Signature: (JJLjava/lang/String;Ljava/lang/String;)V
  */
@@ -357,24 +389,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnn
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addNGraph
- * Signature: (JJLjava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNGraph
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring backendString) {
-    (void)jobj;
-  #ifdef USE_NGRAPH
-    const char* backendType = (*jniEnv)->GetStringUTFChars(jniEnv, backendString, NULL);
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_NGraph((OrtSessionOptions*) handle, backendType));
-    (*jniEnv)->ReleaseStringUTFChars(jniEnv,backendString,backendType);
-  #else
-    (void)apiHandle;(void)handle;(void)backendString; // Parameters used when NGraph is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with NGraph support.");
-  #endif
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addOpenVINO
  * Signature: (JJLjava/lang/String;)V
  */
@@ -410,15 +424,15 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addTen
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addNnapi
- * Signature: (J)V
+ * Signature: (JJI)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNnapi
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint nnapiFlags) {
     (void)jobj;
   #ifdef USE_NNAPI
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Nnapi((OrtSessionOptions*) handle));
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Nnapi((OrtSessionOptions*) handle, (uint32_t) nnapiFlags));
   #else
-    (void)apiHandle;(void)handle; // Parameters used when NNAPI is defined.
+    (void)apiHandle;(void)handle;(void)nnapiFlags; // Parameters used when NNAPI is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with NNAPI support.");
   #endif
 }
