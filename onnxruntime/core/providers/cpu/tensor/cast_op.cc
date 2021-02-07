@@ -45,6 +45,9 @@ using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecu
 using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                        Cast, Output, 0);
 
+template <typename T>
+using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>, T>;
+
 // string cast helpers
 // Note: when C++17 is available, use <charconv> functions
 
@@ -94,17 +97,14 @@ CastToString(const SrcType& input, std::string& output) {
 }
 
 template <typename SrcType>
-typename std::enable_if<!std::is_floating_point<SrcType>::value, void>::type
+typename std::enable_if<std::is_integral<SrcType>::value, void>::type
 CastToString(const SrcType& input, std::string& output) {
   output = std::to_string(input);
 }
 
-// overloads for MLFloat16 and BFloat16
-void CastToString(const MLFloat16& input, std::string& output) {
-  CastToString(static_cast<float>(input), output);
-}
-
-void CastToString(const BFloat16& input, std::string& output) {
+template <typename SrcType>
+typename std::enable_if<IsOrtFloat16Type<SrcType>::value, void>::type
+CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
 
@@ -132,17 +132,12 @@ CastFromString(const std::string& input, DstType& output) {
   output = gsl::narrow_cast<DstType>(std::stoll(input));
 }
 
-// overloads for MLFloat16 and BFloat16
-void CastFromString(const std::string& input, MLFloat16& output) {
+template <typename DstType>
+typename std::enable_if<IsOrtFloat16Type<DstType>::value, void>::type
+CastFromString(const std::string& input, DstType& output) {
   float intermediate;
   CastFromString(input, intermediate);
-  output = static_cast<MLFloat16>(intermediate);
-}
-
-void CastFromString(const std::string& input, BFloat16& output) {
-  float intermediate;
-  CastFromString(input, intermediate);
-  output = static_cast<BFloat16>(intermediate);
+  output = static_cast<DstType>(intermediate);
 }
 
 // type that is usable with Eigen cast
@@ -151,7 +146,7 @@ struct EigenCastType {
   using type = T;
 };
 
-// ORT float16 types don't support casting, so map them to Eigen ones
+// ORT float16 types don't support Eigen cast, so map them to Eigen ones
 
 template <>
 struct EigenCastType<MLFloat16> {
@@ -166,7 +161,7 @@ struct EigenCastType<BFloat16> {
 // generic tensor X -> Y
 template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCaster {
-  void Cast(const OpKernelContext&, const Tensor& in, Tensor& out, const TensorShape& shape) const {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     using SrcEigenCastType = typename EigenCastType<SrcType>::type;
     using DstEigenCastType = typename EigenCastType<DstType>::type;
 
@@ -182,7 +177,7 @@ struct TensorCaster {
 // tensor X -> string
 template <typename SrcType>
 struct TensorCaster<SrcType, std::string> {
-  void Cast(const OpKernelContext&, const Tensor& in, Tensor& out, const TensorShape& shape) const {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
     auto* out_data = out.MutableData<std::string>();
@@ -195,7 +190,7 @@ struct TensorCaster<SrcType, std::string> {
 // tensor string -> X
 template <typename DstType>
 struct TensorCaster<std::string, DstType> {
-  void Cast(const OpKernelContext&, const Tensor& in, Tensor& out, const TensorShape& shape) const {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<std::string>();
     auto* out_data = out.MutableData<DstType>();
@@ -209,30 +204,10 @@ struct TensorCaster<std::string, DstType> {
 // specializations to use optimized and Windows x64-specific
 // MlasConvertHalfToFloatBuffer() routine for MLFloat16 -> float conversion
 
-template <typename DstType>
-void CastMLFloat16ThroughFloat(
-    const OpKernelContext& context, const Tensor& in, Tensor& out, const TensorShape& shape) {
-  // use optimized MLFloat16 -> float, then float -> DstType
-  AllocatorPtr allocator;
-  ORT_THROW_IF_ERROR(context.GetTempSpaceAllocator(&allocator));
-  auto intermediate_buffer = IAllocator::MakeUniquePtr<float>(allocator, gsl::narrow<size_t>(shape.Size()));
-  Tensor intermediate_tensor{DataTypeImpl::GetType<float>(), shape, intermediate_buffer.get(), allocator->Info()};
-  TensorCaster<MLFloat16, float>{}.Cast(context, in, intermediate_tensor, shape);
-  TensorCaster<float, DstType>{}.Cast(context, intermediate_tensor, out, shape);
-}
-
-// tensor MLFloat16 -> X
-template <typename DstType>
-struct TensorCaster<MLFloat16, DstType> {
-  void Cast(const OpKernelContext& context, const Tensor& in, Tensor& out, const TensorShape& shape) const {
-    CastMLFloat16ThroughFloat<DstType>(context, in, out, shape);
-  }
-};
-
 // tensor MLFloat16 -> float
 template <>
 struct TensorCaster<MLFloat16, float> {
-  void Cast(const OpKernelContext&, const Tensor& in, Tensor& out, const TensorShape& shape) const {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     auto out_data = out.MutableData<float>();
     auto in_data = in.Data<MLFloat16>();
     const size_t shape_size = gsl::narrow<size_t>(shape.Size());
@@ -240,11 +215,36 @@ struct TensorCaster<MLFloat16, float> {
   }
 };
 
+Tensor GetIntermediateMLFloat16ToFloatTensor(
+    const OpKernelContext& context, const TensorShape& shape, const Tensor& in) {
+  AllocatorPtr allocator;
+  ORT_THROW_IF_ERROR(context.GetTempSpaceAllocator(&allocator));
+  Tensor out{DataTypeImpl::GetType<float>(), shape, allocator};
+  TensorCaster<MLFloat16, float>{}.Cast(context, shape, in, out);
+  return out;
+}
+
+template <typename DstType>
+void CastMLFloat16ThroughFloatTensor(
+    const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) {
+  // use optimized MLFloat16 -> float, then float -> DstType
+  Tensor intermediate_tensor = GetIntermediateMLFloat16ToFloatTensor(context, shape, in);
+  TensorCaster<float, DstType>{}.Cast(context, shape, intermediate_tensor, out);
+}
+
+// tensor MLFloat16 -> X
+template <typename DstType>
+struct TensorCaster<MLFloat16, DstType> {
+  void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    CastMLFloat16ThroughFloatTensor<DstType>(context, shape, in, out);
+  }
+};
+
 // tensor MLFloat16 -> string
 template <>
 struct TensorCaster<MLFloat16, std::string> {
-  void Cast(const OpKernelContext& context, const Tensor& in, Tensor& out, const TensorShape& shape) const {
-    CastMLFloat16ThroughFloat<std::string>(context, in, out, shape);
+  void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    CastMLFloat16ThroughFloatTensor<std::string>(context, shape, in, out);
   }
 };
 #endif
@@ -266,18 +266,18 @@ class Cast final : public OpKernel {
 
 template <typename TSrc, typename TDst>
 struct Dispatcher {
-  void operator()(const OpKernelContext& context, const Tensor& src, Tensor& dst, const TensorShape& shape) {
-    TensorCaster<TSrc, TDst>{}.Cast(context, src, dst, shape);
+  void operator()(const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
+    TensorCaster<TSrc, TDst>{}.Cast(context, shape, src, dst);
   }
 };
 
 template <typename TSrc>
 struct SrcDispatcher {
   void operator()(
-      int32_t to, const OpKernelContext& context, const Tensor& src, Tensor& dst, const TensorShape& shape) {
+      int32_t to, const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
     using DstTypes = boost::mp11::mp_remove_if_q<EnabledDstTypes, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
     utils::MLTypeCallDispatcherFromTypeList<DstTypes> dispatcher{to};
-    dispatcher.template InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(context, src, dst, shape);
+    dispatcher.template InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(context, shape, src, dst);
   }
 };
 
@@ -299,7 +299,7 @@ Status Cast::Compute(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
-  dispatcher.Invoke<SrcDispatcher>(to_, *context, *X, *Y, shape);
+  dispatcher.Invoke<SrcDispatcher>(to_, *context, shape, *X, *Y);
 
   return Status::OK();
 }
