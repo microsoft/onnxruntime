@@ -16,6 +16,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math_cpuonly.h"
 
 #include "Eigen/src/Core/arch/Default/BFloat16.h"
@@ -31,21 +32,11 @@ namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
 ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    bool,
-    float, double,
-    uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t,
-    MLFloat16, BFloat16,
-    std::string);
+    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
 
 ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    bool,
-    float, double,
-    uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t,
-    MLFloat16, BFloat16,
-    std::string);
+    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
 }  // namespace op_kernel_type_control
 
 namespace {
@@ -313,11 +304,8 @@ Status Cast::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-const std::vector<MLDataType> castSrcTypeConstraints =
-    BuildKernelDefConstraintsFunctorFromTypeList<EnabledSrcTypes>{}();
-
-const std::vector<MLDataType> castDstTypeConstraints =
-    BuildKernelDefConstraintsFunctorFromTypeList<EnabledDstTypes>{}();
+const std::vector<MLDataType> src_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledSrcTypes>{}();
+const std::vector<MLDataType> dst_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledDstTypes>{}();
 
 }  // namespace
 
@@ -326,8 +314,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     6,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T1", castSrcTypeConstraints)
-        .TypeConstraint("T2", castDstTypeConstraints)
+        .TypeConstraint("T1", src_type_constraints)
+        .TypeConstraint("T2", dst_type_constraints)
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
@@ -335,8 +323,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     Cast,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T1", castSrcTypeConstraints)
-        .TypeConstraint("T2", castDstTypeConstraints)
+        .TypeConstraint("T1", src_type_constraints)
+        .TypeConstraint("T2", dst_type_constraints)
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
