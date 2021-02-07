@@ -49,6 +49,7 @@ TEST_P(ModelTest, Run) {
   ASSERT_NE(pos, std::string::npos);
   std::string provider_name = ToMBString(param.substr(0, pos));
   std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
+  std::wcout << model_path << std::endl;
   double per_sample_tolerance = 1e-3;
   // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
   // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
