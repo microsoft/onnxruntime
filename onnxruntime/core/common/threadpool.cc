@@ -466,10 +466,10 @@ using JobFn = ::std::function<void()>;
 
 struct Print {
   Print(const std::string& evt) : evt_(evt) {
-    //std::cout << evt_ << " start" << std::endl;
+    std::cout << evt_ << " start" << std::endl;
   }
   ~Print() {
-    //std::cout << evt_ << " end" << std::endl;
+    std::cout << evt_ << " end" << std::endl;
   }
   std::string evt_;
 };
