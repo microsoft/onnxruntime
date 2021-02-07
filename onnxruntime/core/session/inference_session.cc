@@ -1226,7 +1226,6 @@ common::Status InferenceSession::Initialize() {
       }
     }
   }
-
   return status;
 }
 
@@ -1411,6 +1410,18 @@ Status InferenceSession::Run(const RunOptions& run_options,
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
+  }
+
+  static int a = 0;
+  if (a == 0) {
+    std::string file_name = "inference_before_first_run.onnx";
+    const std::string target_path = Env::Default().GetEnvironmentVar("ORT_DEBUG_RUN_GRAPH_DUMP_PATH");
+    if (!target_path.empty()) {
+      PathString path_str(target_path + "/" + file_name + ".onnx");
+      std::remove(ToMBString(path_str).c_str());
+      Model::Save(*model_, path_str);
+    }
+    a += 1;
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT

@@ -611,7 +611,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     sessionOptions.use_deterministic_compute = use_deterministic_compute
 
     if "LOG_SEVERITY" not in os.environ:
-        os.environ["LOG_SEVERITY"] = "0" # 2, warning
+        #os.environ["LOG_SEVERITY"] = "0" # 2, warning
+        os.environ["LOG_SEVERITY"] = "2"
     sessionOptions.log_severity_level = int(os.environ['LOG_SEVERITY'])
     # hard  code temoira
     if ort_parameters.data_parallel_size == 1 and  ort_parameters.horizontal_parallel_size > 1:

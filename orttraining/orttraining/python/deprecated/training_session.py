@@ -20,7 +20,8 @@ class TrainingSession(InferenceSession):
         else:
             self._sess = C.TrainingSession()
 
-        lock = FileLock(os.environ['ORT_TRAINER_LOCK_FILE'])
+        #lock = FileLock(os.environ['ORT_TRAINER_LOCK_FILE'])
+        lock = FileLock("/tmp/ort_session_init.lock") # each node use one lock
         lock.acquire()
         print("start create_ort_trainer on rank {}".format(os.environ['OMPI_COMM_WORLD_RANK']))
 

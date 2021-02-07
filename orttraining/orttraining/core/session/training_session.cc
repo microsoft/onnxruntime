@@ -100,7 +100,7 @@ Status SetupOptimizerParams(
   // TODO make OptimizerGraphConfig::loss_scale_input_name optional<string>
   opt_graph_config.loss_scale_input_name =
       loss_scale_input_name.has_value() ? loss_scale_input_name.value() : "";
-  ;
+
   opt_graph_config.local_size = DistributedRunContext::RunConfig().local_size;
   opt_graph_config.local_rank = DistributedRunContext::RunConfig().local_rank;
   opt_graph_config.data_parallel_group_rank = DistributedRunContext::RankInGroup(WorkerGroupType::DataParallel);
@@ -248,7 +248,7 @@ Status TrainingSession::ConfigureForTraining(
                                                       config_result));
 
   ORT_RETURN_IF_ERROR(ApplyModelParallelTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config,
-                                                      config_result));
+                                                                   config_result));
 
   if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
@@ -558,11 +558,10 @@ Status TrainingSession::ApplyTransformationsToMainGraph(std::unordered_set<std::
 }
 
 Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
-                                                        const TrainingConfiguration::GraphTransformerConfiguration& /*config*/,
-                                                        TrainingConfigurationResult& config_result_out) {
-
+                                                                     const TrainingConfiguration::GraphTransformerConfiguration& /*config*/,
+                                                                     TrainingConfigurationResult& config_result_out) {
   // a note, previously, megatron transformation are done in different iterations, for different blocks,
-  // this is because, some graph matching logic requires other transformers work done. 
+  // this is because, some graph matching logic requires other transformers work done.
   // now we move all megatron related at the end, we assume just need one single optimizaiton pass.
   auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
 
@@ -589,7 +588,7 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
   // apply transformers
   Graph& graph = model_->MainGraph();
   ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(
-        graph, TransformerLevel::Level1, *session_logger_));
+      graph, TransformerLevel::Level1, *session_logger_));
   return common::Status::OK();
 }
 
@@ -947,14 +946,15 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
   int d = DistributedRunContext::RankInGroup(training::WorkerGroupType::DataParallel);
   int r = DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel);
   static int a = 0;
-  if (a == 0 && d == 0) {
-      std::string file_name = "before_first_run_" + std::to_string(d) + "_" + std::to_string(r) + ".onnx";
-      const std::string target_path = Env::Default().GetEnvironmentVar("ORT_DEBUG_RUN_GRAPH_DUMP_PATH");
-      if (!target_path.empty()) {
-        file_name = target_path + "/" + file_name;
-      }
-    std::cout << "before first run saving " << std::endl;
-    Save(file_name, SaveOption::NO_RELOAD);
+  if (a == 0) {
+    std::string file_name = "before_first_run_" + std::to_string(d) + "_" + std::to_string(r) + ".onnx";
+    const std::string target_path = Env::Default().GetEnvironmentVar("ORT_DEBUG_RUN_GRAPH_DUMP_PATH");
+    if (!target_path.empty()) {
+      file_name = target_path + "/" + file_name;
+
+      std::cout << "before first run saving " << std::endl;
+      Save(file_name, SaveOption::NO_RELOAD);
+    }
     a += 1;
   }
 
