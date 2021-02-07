@@ -1163,13 +1163,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
 
-      if ((trt_state->engine_cache_enable && trt_engine == nullptr) ) {
-        const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-        const std::string engine_cache_path = cache_path + ".engine";
-        const std::string profile_cache_path = cache_path + ".profile";
+      // Load serialized engine
+      const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+      const std::string engine_cache_path = cache_path + ".engine";
+      const std::string profile_cache_path = cache_path + ".profile";
+      if ((trt_state->engine_cache_enable && trt_engine == nullptr)) {
         std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
         std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
-        // Load serialized engine
         if (engine_file && profile_file) {
           // Deserialize profile
           shape_ranges = DeserializeProfile(profile_file);
