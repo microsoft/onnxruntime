@@ -10,7 +10,6 @@ import os
 import numpy as np
 import onnx
 import onnxruntime
-import logging
 from onnx import helper, TensorProto, ModelProto
 from onnx import onnx_pb as onnx_proto
 from six import string_types

@@ -1,8 +1,9 @@
-import onnx
+import logging
 import numpy
-from onnx import onnx_pb as onnx_proto
-from enum import Enum
+import onnx
 
+from enum import Enum
+from onnx import onnx_pb as onnx_proto
 from pathlib import Path
 
 __producer__ = "onnx.quantize"
@@ -314,7 +315,7 @@ def write_calibration_table(calibration_cache):
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
 
-    print("calibration cache: ", calibration_cache)
+    logging.info("calibration cache: {}".format(calibration_cache))
 
     with open("calibration.json", 'w') as file:
         file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
@@ -357,8 +358,8 @@ def write_calibration_table(calibration_cache):
         dict_len = cal_table.DictLength()
         for i in range(dict_len):
             key_value = cal_table.Dict(i)
-            print(key_value.Key())
-            print(key_value.Value())
+            logging.info(key_value.Key())
+            logging.info(key_value.Value())
 
     # write plain text
     with open("calibration.cache", 'w') as file:

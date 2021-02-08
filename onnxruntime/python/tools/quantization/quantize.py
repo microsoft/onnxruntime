@@ -7,9 +7,10 @@ import os
 import onnx
 import onnx.numpy_helper
 import struct
-from pathlib import Path
-
+import logging
 import numpy as np
+
+from pathlib import Path
 
 from onnx import onnx_pb as onnx_proto
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
@@ -112,7 +113,7 @@ def quantize(model,
     :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
     :return: ModelProto with quantization
     '''
-    print("Warning: onnxruntime.quantization.quantize is deprecated.\n\
+    logging.warning("onnxruntime.quantization.quantize is deprecated.\n\
          Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization.")
     if nbits == 8 or nbits == 7:
         mode = quantization_mode
@@ -122,8 +123,9 @@ def quantize(model,
         if not op_types_to_quantize or len(op_types_to_quantize) == 0:
             op_types_to_quantize = list(QLinearOpsRegistry.keys()) if static else list(IntegerOpsRegistry.keys())
 
-        quantizer = ONNXQuantizer(copy_model, per_channel, nbits == 7, mode, static, symmetric_weight, symmetric_activation,
-                                  quantization_params, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize)
+        quantizer = ONNXQuantizer(copy_model, per_channel, nbits == 7, mode, static, symmetric_weight,
+                                  symmetric_activation, quantization_params, nodes_to_quantize, nodes_to_exclude,
+                                  op_types_to_quantize)
 
         quantizer.quantize_model()
         return quantizer.model.model

@@ -4,13 +4,13 @@
 # license information.
 # --------------------------------------------------------------------------
 import os
-import onnx
-import onnx.numpy_helper
 import struct
 from pathlib import Path
-
 import numpy as np
+import logging
 
+import onnx
+import onnx.numpy_helper
 from onnx import onnx_pb as onnx_proto
 from onnx import TensorProto
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
@@ -45,9 +45,9 @@ class QDQQuantizer(ONNXQuantizer):
             if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type is TensorProto.FLOAT:
                 self.tensors_to_quantize.append(tensor_name)
         else:
-            print(
-                "Warning: failed to infer the type of tensor: {}. Skip to quantize it. Please check if it is expected.".
-                format(tensor_name))
+            logging.warning(
+                "failed to infer the type of tensor: {}. Skip to quantize it. Please check if it is expected.".format(
+                    tensor_name))
 
     def quantize_tensor_per_channel(self, tensor_name, axis):
         weight = find_by_name(tensor_name, self.model.initializer())
@@ -55,9 +55,9 @@ class QDQQuantizer(ONNXQuantizer):
             if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 self.tensors_to_quantize_per_channel.append((tensor_name, axis))
         else:
-            print(
-                "Warning: only support per-channel quantization on weight. Quantize tensor: {} with per-tensor instead."
-                .format(tensor_name))
+            logging.warning(
+                "only support per-channel quantization on weight. Quantize tensor: {} with per-tensor instead.".format(
+                    tensor_name))
             self.quantize_tensor(tensor_name)
 
     def quantize_bias_tensor(self, bias_name, input_name, weight_name):
@@ -66,7 +66,7 @@ class QDQQuantizer(ONNXQuantizer):
             if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 self.bias_to_quantize.append((bias_name, input_name, weight_name))
         else:
-            print("Warning: Expected {} to be a weight".format(bias_name))
+            logging.warning("Expected {} to be a weight".format(bias_name))
 
     def remove_node(self, node):
         self.nodes_to_remove.append(node)
@@ -106,16 +106,14 @@ class QDQQuantizer(ONNXQuantizer):
             # Quantize the input
             initializer = find_by_name(tensor_name, self.model.initializer())
             if initializer is not None:
-                weight = self._get_quantized_weight(initializer, self.weight_qType)
+                q_weight_name, zp_name, scale_name = self.quantize_weight(initializer, self.weight_qType)
 
-                # Update graph
-                self._update_weight(weight)
-
-                self.model.remove_initializer(initializer)
-                inputs = [weight.name + "_quantized", weight.name + "_scale", weight.name + "_zero_point"]
-                node = onnx.helper.make_node("DequantizeLinear", inputs, [tensor_name],
+                inputs = [q_weight_name, scale_name, zp_name]
+                output_name = tensor_name + '_DequantizeLinear'
+                node = onnx.helper.make_node("DequantizeLinear", inputs, [output_name],
                                              tensor_name + '_DequantizeLinear')
                 self.model.add_node(node)
+                self.model.replace_input_of_all_nodes(tensor_name, tensor_name + "_DequantizeLinear")
             else:
                 data_found, scale_name, zp_name, _, _ = self._get_quantization_params(tensor_name)
 
@@ -148,10 +146,14 @@ class QDQQuantizer(ONNXQuantizer):
             self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
             quant_value = self.quantized_value_map[bias_name]
             inputs = [quant_value.q_name, quant_value.scale_name, quant_value.zp_name]
-            dequant_node = onnx.helper.make_node("DequantizeLinear",
-                                                 inputs, [bias_name],
-                                                 bias_name + '_DequantizeLinear',
-                                                 axis=0)
+            if quant_value.axis is not None:
+                dequant_node = onnx.helper.make_node("DequantizeLinear",
+                                                     inputs, [bias_name],
+                                                     bias_name + '_DequantizeLinear',
+                                                     axis=quant_value.axis)
+            else:
+                dequant_node = onnx.helper.make_node("DequantizeLinear", inputs, [bias_name],
+                                                     bias_name + '_DequantizeLinear')
             self.model.add_node(dequant_node)
 
     def quantize_weights_per_channel(self):

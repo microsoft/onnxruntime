@@ -3,6 +3,7 @@ import onnx
 import glob
 import scipy.io
 import numpy as np
+import logging
 from PIL import Image
 import onnx
 import onnxruntime
@@ -273,17 +274,16 @@ def convert_model_batch_to_dynamic(model_path):
 def get_dataset_size(dataset_path, calibration_dataset_size):
     total_dataset_size = len(os.listdir(dataset_path + "/val"))
     if calibration_dataset_size > total_dataset_size:
-        print(
-            "Warning: calibration data size is bigger than available dataset. Will assign half of the dataset for calibration"
-        )
+        logging.warning(
+            "calibration data size is bigger than available dataset. Will assign half of the dataset for calibration")
         calibration_dataset_size = total_dataset_size // 2
     calibration_dataset_size = (calibration_dataset_size // batch_size) * batch_size
     if calibration_dataset_size == 0:
-        print("Warning: No dataset is assigned for calibration. Please use bigger dataset")
+        logging.warning("No dataset is assigned for calibration. Please use bigger dataset")
 
     prediction_dataset_size = ((total_dataset_size - calibration_dataset_size) // batch_size) * batch_size
     if prediction_dataset_size <= 0:
-        print("Warning: No dataset is assigned for evaluation. Please use bigger dataset")
+        logging.warning("No dataset is assigned for evaluation. Please use bigger dataset")
     return [calibration_dataset_size, prediction_dataset_size]
 
 
