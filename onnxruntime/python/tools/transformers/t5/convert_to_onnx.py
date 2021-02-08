@@ -29,6 +29,8 @@ from transformers import AutoConfig
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from t5_helper import PRETRAINED_T5_MODELS, T5Helper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
+from quantize_helper import QuantizeHelper
+from onnxruntime.quantization import quantize_dynamic
 
 logger = logging.getLogger('')
 
@@ -131,6 +133,14 @@ def export_onnx_models(model_name_or_path, cache_dir, output_dir, use_past_state
                 logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
         else:
             output_path = onnx_path
+
+        if precision == Precision.INT8:
+            quant_path = T5Helper.get_onnx_path(output_dir,
+                                        model_name_or_path,
+                                        suffix=filename_suffix + "_quant_" + str(precision),
+                                        new_folder=use_external_data_format)
+            QuantizeHelper.quantize_onnx_model(output_path, quant_path)
+            output_path = quant_path
 
         # Copy ONNX to output if necessary
         """

@@ -64,7 +64,8 @@ class QuantizeHelper:
         quantized_onnx_model = quantize(onnx_opt_model,
                                         quantization_mode=QuantizationMode.IntegerOps,
                                         symmetric_weight=True,
-                                        force_fusions=True)
+                                        force_fusions=True,
+                                        op_types_to_quantize=['MatMul'])
 
         if use_external_data_format:
             from pathlib import Path
