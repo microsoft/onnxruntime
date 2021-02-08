@@ -4,62 +4,68 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-typedef enum version_num { 
+using VarianceFunc = std::function<bool(const Node*, const Provider_InitializedTensorSet&)>;
+
+enum versionNum{ 
   V_2020_4,
   V_2021_1,
   V_2021_2
-} version_id_e;
+};
 
-using ConfirmationFunction = std::function<bool(const Node*, const Provider_InitializedTensorSet&)>;
+using VersionNum = enum versionNum;
 
-typedef struct supportedop {
-  version_id_e version;
+struct supportedOp {
+  VersionNum version;
   std::vector<std::string> device_type;  
   std::string optype;
-} supportedop_t;
+};
 
-typedef struct unsupportedopmode {
-  std::vector<version_id_e> ver;
-  ConfirmationFunction func; 
-} unsupportedopmode_t;
+struct unsupportedOpMode{
+  std::vector<VersionNum> ver;
+  VarianceFunc func; 
+};
 
-class Capability{
+using SupportedOp = struct supportedOp;
+using UnsupportedOpMode = struct unsupportedOpMode;
+using Pairs = std::pair<VersionNum,int>; 
+
+class DataOps{
 
 private:
-const GraphViewer& graph_viewer;
-version_id_e version_id;
-std::string device_id;
-std::multimap<std::string, unsupportedopmode_t &> _confirmation_map;
-std::vector<supportedop_t> subgraph_supported;
-std::vector<supportedop_t> no_dimension_supported;
-std::set<int> supported_types_vpu; 
-std::set<int> supported_types_cpu;
-std::set<int> supported_types_gpu;
-std::set<int> supported_types_initializer;
+const GraphViewer& graph_viewer_;
+VersionNum version_id_;
+std::string device_id_;
+std::multimap<std::string, UnsupportedOpMode &> op_list_;
+std::vector<SupportedOp> subgraph_supported_;
+std::vector<SupportedOp> no_dimension_supported_;
+std::set<Pairs> supported_types_vpu_; 
+std::set<Pairs> supported_types_cpu_;
+std::set<Pairs> supported_types_gpu_;
+std::set<Pairs> supported_types_initializer_;
 
 protected:
   virtual void populate_op_mode_supported();
   virtual void populate_types_supported();
-  bool check_if_op_is_supported(std::string name, std::vector<supportedop_t>& list);
-  bool check_if_dimension_unsupported(const Node* node);
-  bool check_if_unsupported_op_mode(const Node* node);
-  bool check_if_type_is_supported(const NodeArg* node_arg, bool is_initializer);
-  bool check_if_node_is_supported(const std::map<std::string, 
-                                  std::set<std::string>>& op_map,
-                                  const NodeIndex node_idx);
+  bool op_is_supported(std::string name, std::vector<SupportedOp>& list);
+  bool dimension_unsupported(const Node* node);
+  bool unsupported_op_mode(const Node* node);
+  bool type_is_supported(const NodeArg* node_arg, bool is_initializer);
+  bool node_is_supported(const std::map<std::string, 
+                         std::set<std::string>>& op_map,
+                         const NodeIndex node_idx);
    
 public:
-  Capability(const GraphViewer& graph_viewer_param, version_id_e ver, std::string dev_id):
-            graph_viewer(graph_viewer_param), version_id(ver), device_id(dev_id)  {
+  DataOps(const GraphViewer& graph_viewer_param, VersionNum ver, std::string dev_id):
+            graph_viewer_(graph_viewer_param), version_id_(ver), device_id_(dev_id)  {
     populate_op_mode_supported();
     populate_types_supported();
   }
 
   virtual std::vector<NodeIndex> GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers);
   virtual bool IsOpSupportedOnlyInModel(std::string name);
-  virtual bool CheckSpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node);
+  virtual bool SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node);
   virtual bool DoNotOmitSubGraph(const std::string& name);
-  virtual bool NodePushBack(const Node* node, const std::string& name);
+  virtual bool InsertNode(const Node* node, const std::string& name);
 
 };
 
