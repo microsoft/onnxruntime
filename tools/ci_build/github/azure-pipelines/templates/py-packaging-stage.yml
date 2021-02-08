@@ -656,7 +656,7 @@ stages:
       variables:
         CUDA_VERSION: '11.0'
         buildArch: x64
-        EnvSetupScript: setup_env_cuda.bat
+        EnvSetupScript: setup_env_cuda_11.bat
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
       strategy:
         matrix:
