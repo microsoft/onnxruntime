@@ -3,7 +3,6 @@
 #include <fstream>
 #include <list>
 #include <unordered_set>
-#include <dlfcn.h>
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -21,6 +20,18 @@
 #include <memory>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+
+#ifdef _WIN32
+#include <Windows.h>
+#define LIBTYPE HINSTANCE
+#define OPENLIB(libname) LoadLibraryW(L ## libname)
+#define LIBFUNC(lib, fn) GetProcAddress((lib), (fn))
+#else
+#include <dlfcn.h>
+#define LIBTYPE void*
+#define OPENLIB(libname) dlopen((libname), RTLD_LAZY)
+#define LIBFUNC(lib, fn) dlsym((lib), (fn))
+#endif
 
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
@@ -452,12 +463,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   if (engine_decryption_enable_) {
     std::string engine_decryption_lib_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionLibPath);
-	void* handle = dlopen(engine_decryption_lib_path.c_str(), RTLD_LAZY);
+	LIBTYPE handle = OPENLIB(engine_decryption_lib_path.c_str());
 	if (handle == nullptr) {
 	  ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
 							 "TensorRT EP could not open shared library from " + engine_decryption_lib_path);
 	}
-	engine_decryption_ = (int (*)(const char*, char*, size_t*))dlsym(handle, "decrypt");
+	engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
   }
 }
 
