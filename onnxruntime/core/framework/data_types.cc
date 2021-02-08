@@ -25,6 +25,10 @@ namespace onnxruntime {
 
 MLFloat16::MLFloat16(float f) : val{math::floatToHalf(f)} {}
 
+float MLFloat16::ToFloat() const {
+  return math::halfToFloat(val);
+}
+
 // Return the MLDataType used for a generic Tensor
 template <>
 MLDataType DataTypeImpl::GetType<Tensor>() {

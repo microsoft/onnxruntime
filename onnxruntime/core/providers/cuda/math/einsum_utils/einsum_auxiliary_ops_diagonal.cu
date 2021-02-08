@@ -47,6 +47,7 @@ __global__ void _DiagonalKernel(
 }
 
 void DiagonalImpl(
+    cudaStream_t stream,
     const void* input_data,
     const int64_t input_rank,
     const int64_t dim_1,
@@ -61,14 +62,14 @@ void DiagonalImpl(
 
     switch (element_size) {
       case sizeof(int32_t):
-        _DiagonalKernel<int32_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DiagonalKernel<int32_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
             reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data), input_rank, dim_1, dim_2,
             input_strides, reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data), output_strides,
             output_size);
         break;
 
       case sizeof(int64_t):
-        _DiagonalKernel<int64_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DiagonalKernel<int64_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
             reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data), input_rank, dim_1, dim_2,
             input_strides, reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data), output_strides,
             output_size);

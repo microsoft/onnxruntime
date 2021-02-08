@@ -1,5 +1,3 @@
-keras
-keras-onnx
 sphinx
 sphinx-gallery
 pyquickhelper
