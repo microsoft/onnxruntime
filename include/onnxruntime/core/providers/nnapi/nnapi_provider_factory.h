@@ -22,6 +22,7 @@ enum NNAPIFlags {
   // Disable using NNAPI CPU implementation (nnapi-reference) for execution
   // Please note, by enabling this option, it may cause the model cannot be executed using
   // NNAPI execution provider.
+  // This option is only available after Android API level 29, and will be ignored for Android API level 28-
   NNAPI_FLAG_CPU_DISABLED = 0x004,
 
   // Keep NNAPI_FLAG_MAX at the end of the enum definition
