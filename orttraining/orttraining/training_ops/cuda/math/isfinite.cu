@@ -15,14 +15,14 @@ __global__ void _IsFinite(const TSrc* input, bool* output, CUDA_LONG N) {
 }
 
 template <typename TSrc>
-void IsFinite(const TSrc* input, bool* output, size_t count) {
+void IsFinite(cudaStream_t stream, const TSrc* input, bool* output, size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _IsFinite<<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(input, output, N);
+  _IsFinite<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input, output, N);
 }
 
 #define SPECIALIZE_ISFINITE_IMPL(T) \
-template void IsFinite(const T* input, bool* output, size_t count);
+template void IsFinite(cudaStream_t stream, const T* input, bool* output, size_t count);
 
 SPECIALIZE_ISFINITE_IMPL(half)
 SPECIALIZE_ISFINITE_IMPL(float)
@@ -53,14 +53,14 @@ __global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output) {
 }
 
 template <typename T>
-void IsAllFiniteFunctor<T>::operator()(ChunkGroup<1> chunks, bool* output) {
+void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output) {
   const int block_count = chunks.chunk_count;
   const int thread_count = ChunkGroup<1>::thread_count_per_block;
-  IsAllFiniteMultiTensorImpl<T><<<block_count, thread_count, 0>>>(chunks, output);
+  IsAllFiniteMultiTensorImpl<T><<<block_count, thread_count, 0, stream>>>(chunks, output);
 }
 
 #define INSTANTIATE_ISALLFINITE_FUNCTOR(T) \
-  template void IsAllFiniteFunctor<T>::operator()(ChunkGroup<1> chunks, bool* output);
+  template void IsAllFiniteFunctor<T>::operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output);
 
 INSTANTIATE_ISALLFINITE_FUNCTOR(half)
 INSTANTIATE_ISALLFINITE_FUNCTOR(float)

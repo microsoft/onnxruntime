@@ -814,6 +814,7 @@ bool LongformerQkvToContext(
 
 bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& prop,
+    cudaStream_t stream,
     const void* input,
     const void* attention_mask,
     const void* global_input,
@@ -828,9 +829,6 @@ bool LaunchLongformerAttentionKernel(
     void* workspace,
     cublasHandle_t& cublas,
     const size_t element_size) {
-  // use default stream
-  const cudaStream_t stream = nullptr;
-
   if (element_size == 2) {
     return LongformerQkvToContext(prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,

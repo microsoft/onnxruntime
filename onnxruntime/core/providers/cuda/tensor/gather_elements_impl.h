@@ -10,6 +10,7 @@ namespace onnxruntime {
 namespace cuda {
 
 void GatherElementsImpl(
+    cudaStream_t stream,
     const int64_t rank,  // both inputs have same rank and this is validated in the main Compute
     const void* input_data,
     const int64_t input_dim_along_axis,

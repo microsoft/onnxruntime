@@ -32,7 +32,7 @@ class MatMulComputeHelper {
 
     size_t left_num_dims = left_shape.NumDimensions();
     size_t right_num_dims = right_shape.NumDimensions();
-    ORT_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1);
+    ORT_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1, "left_num_dims and right_num_dims must be >= 1");
 
     // Special cases below for right_shape being 2D and left_shape > 2D by flattening left_shape to 2D
     // Note that padding 1s in front of the right_shape can be flattened too
@@ -115,23 +115,25 @@ class MatMulComputeHelper {
     }
 
     if (!has_1D_input) {
-      ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2], "MatMul dimension mismatch");
+      ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2],
+                        "MatMul dimension mismatch");
       // left (...M x K), right (...K x N), output (...M x N)
-      ORT_RETURN_IF_NOT(num_dims_with_pad == num_output_dims);
+      ORT_RETURN_IF_NOT(num_dims_with_pad == num_output_dims, "num_dims_with_pad != num_output_dims");
       output_dims[num_output_dims - 2] = M_;
       output_dims[num_output_dims - 1] = N_;
     } else {
       if (num_output_dims == 0) {
         // for left and right being both vector, output is scalar thus no shape
-        ORT_RETURN_IF_NOT(M_ == 1 && N_ == 1);
+        ORT_RETURN_IF_NOT(M_ == 1 && N_ == 1, "M_ == 1 && N_ == 1 was false");
       } else {
         if (left_num_dims == 1) {
-          ORT_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims);
-          ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2], "MatMul dimension mismatch");
+          ORT_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims, "num_dims_with_pad - 1 != num_output_dims");
+          ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2],
+                            "MatMul dimension mismatch");
           // left (K), right (...K,N), output (...N)
           output_dims[num_output_dims - 1] = N_;
         } else {
-          ORT_RETURN_IF_NOT(num_dims_with_pad - 2 == num_output_dims);
+          ORT_RETURN_IF_NOT(num_dims_with_pad - 2 == num_output_dims, "num_dims_with_pad - 2 != num_output_dims");
           ORT_RETURN_IF_NOT(K_ == right_shape[0], "MatMul dimension mismatch");
           // left(...K), right (K), output (...), already assigned
         }
