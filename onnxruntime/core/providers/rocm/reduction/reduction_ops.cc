@@ -442,11 +442,23 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
         miopen_reduce_op, input_shape.GetDims(), axes, m, n);
     switch (applicable_matrix_reduction) {
       case ApplicableMatrixReduction::Rows: {
-        return reduce_matrix_rows(
-            stream,
-            reinterpret_cast<const HipT*>(input.template Data<T>()),
-            reinterpret_cast<HipT*>(output.template MutableData<T>()),
-            m, n);
+        if (miopen_reduce_op == MIOPEN_REDUCE_TENSOR_MUL) {
+          if (output_count == 1) {
+            const auto buffer_size_bytes = compute_reduction_buffer_size<HipT>(m*n);
+            auto buffer = rocm_ep.GetScratchBuffer<void>(buffer_size_bytes);
+            return reduce_mean_matrix_columns(
+                reinterpret_cast<const HipT*>(input.template Data<T>()),
+                reinterpret_cast<HipT*>(output.template MutableData<T>()),
+                1, m*n, buffer.get(), buffer_size_bytes);
+          } else {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReduceMean is not supported.");
+          }
+        } else {
+          return reduce_matrix_rows(
+              reinterpret_cast<const HipT*>(input.template Data<T>()),
+              reinterpret_cast<HipT*>(output.template MutableData<T>()),
+              m, n);
+        }
       }
       case ApplicableMatrixReduction::Columns: {
         const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<HipT>(m, n);

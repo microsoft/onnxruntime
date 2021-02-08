@@ -489,5 +489,18 @@ INSTANTIATE_REDUCE_MATRIX_COLUMNS(nv_bfloat16);
 #endif
 #undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
 
+template <typename TIn, typename TOut>
+Status reduce_mean_matrix_columns(const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size) {
+  return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, true>(
+      input, output, m, n, buffer, buffer_size);
+}
+
+#define INSTANTIATE_REDUCE_MEAN_MATRIX_COLUMNS(T) \
+  template Status reduce_mean_matrix_columns<T, T>(const T* input, T* output, int m, int n, void* buffer, size_t buffer_size)
+INSTANTIATE_REDUCE_MEAN_MATRIX_COLUMNS(half);
+INSTANTIATE_REDUCE_MEAN_MATRIX_COLUMNS(float);
+INSTANTIATE_REDUCE_MEAN_MATRIX_COLUMNS(double);
+#undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
+
 }  // namespace cuda
 }  // namespace onnxruntime

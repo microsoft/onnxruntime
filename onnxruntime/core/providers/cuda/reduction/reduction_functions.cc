@@ -101,7 +101,8 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     const cudnnReduceTensorOp_t cudnn_reduce_op,
     const std::vector<int64_t>& dims, const std::vector<int64_t>& original_axes,
     int& m_out, int& n_out) {
-  if (cudnn_reduce_op != CUDNN_REDUCE_TENSOR_ADD) {
+  if (cudnn_reduce_op != CUDNN_REDUCE_TENSOR_ADD &&
+      cudnn_reduce_op != CUDNN_REDUCE_TENSOR_MUL) {
     return ApplicableMatrixReduction::None;
   }
 

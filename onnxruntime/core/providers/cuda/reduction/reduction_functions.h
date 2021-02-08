@@ -103,5 +103,8 @@ Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, i
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
 
+template <typename TIn, typename TOut>
+Status reduce_mean_matrix_columns(const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
+
 }  // namespace cuda
 }  // namespace onnxruntime
