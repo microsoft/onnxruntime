@@ -15,6 +15,7 @@ namespace cuda {
 
 template <typename T>
 void DispatchBiasSoftmaxForwardImpl(
+    cudaStream_t stream,
     Tensor* output_tensor,
     const Tensor* input_tensor,
     const Tensor* input_bias_tensor,
@@ -25,6 +26,7 @@ void DispatchBiasSoftmaxForwardImpl(
 
 template <typename T>
 void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
+    cudaStream_t stream,
     cudnnHandle_t cudaDnnHandle,
     int element_count,
     int batch_count,
@@ -64,12 +66,12 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
     // expect thread blocks can fill SM at high occupancy without overflowing registers
     utils::MLTypeCallDispatcher<DispatchBiasSoftmaxForward, double, float, MLFloat16>
         t_disp(X->GetElementType());
-    t_disp.Invoke(Y, X, B, D, N, D, broadcast_size);
+    t_disp.Invoke(Stream(), Y, X, B, D, N, D, broadcast_size);
   } else {
     // need to fallback to add kernel + CUDA DNN library softmax call :/
     utils::MLTypeCallDispatcher<DispatchBiasSoftMaxForwardViaDnnLibrary, double, float, MLFloat16>
         t_disp(X->GetElementType());
-    t_disp.Invoke(CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y);
+    t_disp.Invoke(Stream(), CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y);
   }
 
   return Status::OK();
@@ -77,6 +79,7 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
 
 template <typename T>
 void DispatchBiasSoftmaxForward<T>::operator()(
+      cudaStream_t stream,
       Tensor* output,
       const Tensor* input,
       const Tensor* input_bias,
@@ -85,6 +88,7 @@ void DispatchBiasSoftmaxForward<T>::operator()(
       int batch_stride,
       int bias_broadcast_size_per_batch) {
     DispatchBiasSoftmaxForwardImpl<T>(
+        stream,
         output,
         input,
         input_bias,
@@ -96,6 +100,7 @@ void DispatchBiasSoftmaxForward<T>::operator()(
 
 template <typename T>
 void DispatchBiasSoftMaxForwardViaDnnLibrary<T>::operator()(
+      cudaStream_t stream,
       cudnnHandle_t cudaDnnHandle,
       int element_count,
       int batch_count,
@@ -107,6 +112,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibrary<T>::operator()(
       const onnxruntime::Tensor* B,
       onnxruntime::Tensor* Y) {
     DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>(
+        stream,
         cudaDnnHandle,
         element_count,
         batch_count,

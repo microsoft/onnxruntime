@@ -73,6 +73,7 @@ int compute_max_tensor_size_per_launch(int element_count_per_thread) {
 
 template <int TensorGroupSize, typename TMultiTensorFunctor, typename... TFunctorParams>
 void launch_multi_tensor_functor(
+    cudaStream_t stream,
     const int chunk_size,
     std::vector<int>& tensor_sizes,
     std::vector<std::vector<void*>>& grouped_tensor_pointers,
@@ -121,7 +122,7 @@ void launch_multi_tensor_functor(
       chunk_group.chunk_count = block_index;
 
       if (block_index == chunk_group.max_block_count) {
-        multipleTensorKernel(chunk_group, std::forward<TFunctorParams>(kernelParams)...);
+        multipleTensorKernel(stream, chunk_group, std::forward<TFunctorParams>(kernelParams)...);
         block_index = 0;
       }
     }
@@ -129,7 +130,7 @@ void launch_multi_tensor_functor(
     // After ++tensor_group_index, tensor_group_index becomes the count of tensor group in chunk_group.
     ++tensor_group_index;
     if (tensor_group_index == chunk_group.max_tensor_group_count) {
-      multipleTensorKernel(chunk_group, std::forward<TFunctorParams>(kernelParams)...);
+      multipleTensorKernel(stream, chunk_group, std::forward<TFunctorParams>(kernelParams)...);
       block_index = 0;
       tensor_group_index = 0;
     }
@@ -138,7 +139,7 @@ void launch_multi_tensor_functor(
   // This round of processing tensor group is finished.
   // All the groups remain in chunk group should be processed right now.
   if (block_index != 0) {
-    multipleTensorKernel(chunk_group, std::forward<TFunctorParams>(kernelParams)...);
+    multipleTensorKernel(stream, chunk_group, std::forward<TFunctorParams>(kernelParams)...);
     block_index = 0;
     tensor_group_index = 0;
   }

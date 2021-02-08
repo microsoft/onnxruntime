@@ -125,9 +125,9 @@ Status TransposeNCHWToNHWC(ModelBuilder& model_builder,
 }
 
 // Convert the input from nchw to nhwc
+// Caller should ensure input is currently in nchw format using ModelBuilder::IsOperandNHWC
 Status GetNHWCInput(ModelBuilder& model_builder, const Node& node, size_t input_index, std::string& input) {
   const auto& nchw_input = node.InputDefs()[input_index]->Name();
-  ORT_RETURN_IF(model_builder.IsOperandNHWC(input));
   if (!model_builder.GetNHWCOperand(nchw_input, input)) {
     input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
     ORT_RETURN_IF_ERROR(TransposeNCHWToNHWC(model_builder, nchw_input, input));
@@ -136,9 +136,9 @@ Status GetNHWCInput(ModelBuilder& model_builder, const Node& node, size_t input_
 }
 
 // Convert the input from nhwc to nchw
+// Caller should ensure input is currently in nhwc format using ModelBuilder::IsOperandNHWC
 Status GetNCHWInput(ModelBuilder& model_builder, const Node& node, size_t input_index, std::string& input) {
   const auto& nhwc_input = node.InputDefs()[input_index]->Name();
-  ORT_RETURN_IF_NOT(model_builder.IsOperandNHWC(input));
   if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
     input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
     ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(model_builder, nhwc_input, input));

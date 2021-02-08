@@ -44,14 +44,14 @@ class SliceBase {
                                   SliceOp::PrepareForComputeMetadata& compute_metadata);
 
   // Slice V10 & DynamicSlice
-  static void FillVectorsFromInput(const Tensor& start_tensor,
-                                   const Tensor& ends_tensor,
-                                   const Tensor* axes_tensor,
-                                   const Tensor* steps_tensor,
-                                   std::vector<int64_t>& input_starts,
-                                   std::vector<int64_t>& input_ends,
-                                   std::vector<int64_t>& input_axes,
-                                   std::vector<int64_t>& input_steps);
+  static Status FillVectorsFromInput(const Tensor& start_tensor,
+                                     const Tensor& ends_tensor,
+                                     const Tensor* axes_tensor,
+                                     const Tensor* steps_tensor,
+                                     std::vector<int64_t>& input_starts,
+                                     std::vector<int64_t>& input_ends,
+                                     std::vector<int64_t>& input_axes,
+                                     std::vector<int64_t>& input_steps);
 
  protected:
   SliceBase(const OpKernelInfo& info, bool dynamic = false)
