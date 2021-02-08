@@ -16,7 +16,7 @@ class All final : public CudaKernel {
 };
 
 template<typename T>
-void LaunchAllKernel(const T* data, const int size, bool* output);
+void LaunchAllKernel(cudaStream_t stream, const T* data, const int size, bool* output);
 
 }  // namespace cuda
 }  // namespace onnxruntime

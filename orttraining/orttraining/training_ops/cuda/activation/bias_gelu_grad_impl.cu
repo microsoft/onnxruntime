@@ -56,6 +56,7 @@ __global__ void BiasGeluGradDxKernel(int64_t bias_size, const T* dY, const T* X,
 
 template <typename T, typename GeluComputationMode>
 void LaunchBiasGeluGradDxKernel(
+    cudaStream_t stream,
     int64_t input_size, int64_t bias_size,
     const T* dY, const T* X, const T* B, T* dX) {
   // given a 2D grid of blocks:
@@ -70,13 +71,13 @@ void LaunchBiasGeluGradDxKernel(
   const dim3 grid_dim{static_cast<uint32_t>(grid_width), static_cast<uint32_t>(grid_height)};
 
   BiasGeluGradDxKernel<T, GeluComputationMode, num_elements_per_thread>
-      <<<grid_dim, num_threads_per_block>>>(bias_size, dY, X, B, dX);
+      <<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, dY, X, B, dX);
 }
 
 // explicit instantiations
 #define SPECIALIZED_BIAS_GELU_GRAD_IMPL(T, GeluComputationMode)     \
   template void LaunchBiasGeluGradDxKernel<T, GeluComputationMode>( \
-      int64_t input_size, int64_t bias_size,                        \
+      cudaStream_t stream, int64_t input_size, int64_t bias_size,   \
       const T* dY, const T* X, const T* B, T* dX)
 
 SPECIALIZED_BIAS_GELU_GRAD_IMPL(half, gelu_computation_mode::Default);
