@@ -221,18 +221,15 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
   BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
   float* col_buffer_data = static_cast<float*>(col_buffer.get());
 
+  auto extra_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
+  BufferUniquePtr extra_buffer(extra_data, BufferDeleter(alloc));
+  float* extra_buffer_data = static_cast<float*>(extra_buffer.get());
+
   const float* Xdata = p.X->template Data<float>();
-  bool use_prepacked_filter = !dynamic_padding && packed_filter_ && input_image_size <= 16 && kernel_dim > input_image_size;
+  bool use_prepacked_filter = packed_filter_ && input_image_size <= 16;
   const float* filter_data = use_prepacked_filter ? static_cast<float*>(packed_filter_.get()) : p.F->template Data<float>();
   float* Ydata = p.Y->template MutableData<float>();
   TensorShape output_shape = p.Y->Shape().Slice(2);
-
-  BufferUniquePtr extra_buffer;
-  if (use_prepacked_filter) {
-    auto extra_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
-    extra_buffer = BufferUniquePtr(extra_data, BufferDeleter(alloc));
-  }
-  float* extra_buffer_data = static_cast<float*>(extra_buffer.get());
 
   for (auto image_id = 0; image_id < p.N; ++image_id) {
     for (int group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
