@@ -20,6 +20,7 @@ class CUDAAllocator : public IAllocator {
 
  private:
   void CheckDevice(bool throw_when_fail) const;
+  void SetDevice(bool throw_when_fail) const;
 };
 
 //TODO: add a default constructor
