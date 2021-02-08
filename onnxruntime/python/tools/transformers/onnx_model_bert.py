@@ -132,7 +132,6 @@ class BertOnnxModel(OnnxModel):
 
         new_graph_inputs = []
         casted_bert_graph_inputs = self.get_graph_inputs_from_fused_nodes(casted=True)
-        
 
         for input in graph.input:
             if input.name in casted_bert_graph_inputs:
@@ -178,13 +177,13 @@ class BertOnnxModel(OnnxModel):
     def preprocess(self):
         self.adjust_reshape_and_expand()
         return
-    
+
     def adjust_reshape_and_expand(self):
         nodes_to_remove = []
         for node in self.nodes():
-            if node.op_type == 'Reshape':        
+            if node.op_type == 'Reshape':
                 # Clean up unneccessary reshape nodes.
-                # Find reshape nodes with no actually data in "shape" attribute and remove. 
+                # Find reshape nodes with no actually data in "shape" attribute and remove.
                 reshape_shape = self.get_constant_value(node.input[1])
                 if reshape_shape is not None and reshape_shape.size == 0:
                     nodes_to_remove.extend([node])
@@ -192,9 +191,9 @@ class BertOnnxModel(OnnxModel):
                     continue
 
                 # Find path "Slice" -> "Reshape" -> "Expand" -> "Expand" -> current "Reshape", simplify the graph by
-                # changing current reshape's input to output of slice. 
+                # changing current reshape's input to output of slice.
                 reshape_path = self.match_parent_path(node, ['Expand', 'Expand', 'Reshape', 'Slice'], [0, 0, 0, 0],
-                                                            self.output_name_to_node())
+                                                      self.output_name_to_node())
                 if reshape_path is not None:
                     expand_node = reshape_path[-3]
                     expand_shape_value = self.get_constant_value(expand_node.input[1])
@@ -203,8 +202,9 @@ class BertOnnxModel(OnnxModel):
                     shape_value = self.get_constant_value(reshape_before_expand.input[1])
 
                     slice_node = reshape_path[-1]
-                    if expand_shape_value is not None and shape_value is not None and len(expand_shape_value) is 2 and len(
-                            shape_value) is 1 and expand_shape_value[1] == shape_value[0]:
+                    if expand_shape_value is not None and shape_value is not None and len(
+                            expand_shape_value) is 2 and len(
+                                shape_value) is 1 and expand_shape_value[1] == shape_value[0]:
                         node.input[0] = slice_node.output[0]
         self.remove_nodes(nodes_to_remove)
         logger.info(f"Removed Reshape and Expand count: {len(nodes_to_remove)}")
@@ -340,6 +340,6 @@ class BertOnnxModel(OnnxModel):
             logger.debug("Embed Layer not fused")
 
         if attention == 0:
-            logger.debug("Attention not fused")
+            logger.warning("Attention not fused")
 
         return is_perfect

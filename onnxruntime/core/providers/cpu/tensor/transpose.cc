@@ -2,11 +2,29 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/transpose.h"
+
 #include "core/framework/utils.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 #include "utils.h"
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+// we're using one set of types for all opsets
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Transpose, Input, 0,
+    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+}  // namespace op_kernel_type_control
+
+namespace {
+// reduce the supported types with any global or op specific lists
+using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                        Transpose, Input, 0);
+
+const std::vector<MLDataType> type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledDataTypes>{}();
+}  // namespace
 
 /* A permutation [a,b,c,...] indicates that
    - The 0-th dimension of the output corresponds to the a-th dimension of input
@@ -152,42 +170,54 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 
 // The function does not check num_axes > 0 but this is expected.
 template <class T>
-static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+static bool TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                     const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
-  MultiIndex mindex;
-  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, sizeof(T));
+  constexpr bool enabled = utils::HasTypeWithSameSize<EnabledDataTypes, T>();
 
-  const uint8_t* local_source = source;
-  uint8_t* target_end = target + sizeof(T) * num_blocks;
-  for (; target != target_end; target += sizeof(T)) {
-    ORT_ENFORCE((local_source >= source) && (local_source < source + sizeof(T) * num_blocks));
-    CopyPrim<T>(target, local_source);
-    IncrementIndexAndComputeOffset(mindex, local_source);
+  if (enabled) {
+    MultiIndex mindex;
+    IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, sizeof(T));
+
+    const uint8_t* local_source = source;
+    uint8_t* target_end = target + sizeof(T) * num_blocks;
+    for (; target != target_end; target += sizeof(T)) {
+      ORT_ENFORCE((local_source >= source) && (local_source < source + sizeof(T) * num_blocks));
+      CopyPrim<T>(target, local_source);
+      IncrementIndexAndComputeOffset(mindex, local_source);
+    }
   }
+
+  return enabled;
 }
 
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
 // copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
-                        const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
-                        size_t element_size) {
+Status DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+                          const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
+                          size_t element_size) {
+  bool enabled = false;
   switch (element_size) {
     case sizeof(uint64_t):
-      TypedDoTransposeEltWise<uint64_t>(num_axes, target_dims, num_blocks, stride, source, target);
+      enabled = TypedDoTransposeEltWise<uint64_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     case sizeof(uint32_t):
-      TypedDoTransposeEltWise<uint32_t>(num_axes, target_dims, num_blocks, stride, source, target);
+      enabled = TypedDoTransposeEltWise<uint32_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     case sizeof(uint16_t):
-      TypedDoTransposeEltWise<uint16_t>(num_axes, target_dims, num_blocks, stride, source, target);
+      enabled = TypedDoTransposeEltWise<uint16_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     case sizeof(uint8_t):
-      TypedDoTransposeEltWise<uint8_t>(num_axes, target_dims, num_blocks, stride, source, target);
+      enabled = TypedDoTransposeEltWise<uint8_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     default:
-      assert(false);
+      // leave enabled as false
+      break;
   }
+
+  return enabled ? Status::OK()
+                 : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Transpose of element size not supported in this build. Size=",
+                                   element_size);
 }
 
 static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
@@ -235,25 +265,33 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
   for (int64_t i = rank - 1; i >= 0; --i) {
     int64_t input_axis = permutations[i];
     if (is_suffix && (input_axis == i)) {
-      suffix_blocksize *= input_dims[input_axis];
+      suffix_blocksize *= static_cast<size_t>(input_dims[input_axis]);
     } else {
       is_suffix = false;
-      prefix_blocksize *= input_dims[input_axis];
+      prefix_blocksize *= static_cast<size_t>(input_dims[input_axis]);
       ++num_axes_in_prefix;
     }
   }
 
+  Status status = Status::OK();
+
   if (is_string_type) {
-    const auto* input_data = input.template Data<std::string>();
-    auto* output_data = output.template MutableData<std::string>();
-    if (1 == prefix_blocksize) {
-      DoTransposeSingleBlock(suffix_blocksize, input_data, output_data);
-    } else if (1 == suffix_blocksize) {
-      DoTransposeEltWise(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
-                         input_data, output_data);
+    constexpr bool string_enabled = utils::HasType<EnabledDataTypes, std::string>();
+
+    if (string_enabled) {
+      const auto* input_data = input.template Data<std::string>();
+      auto* output_data = output.template MutableData<std::string>();
+      if (1 == prefix_blocksize) {
+        DoTransposeSingleBlock(suffix_blocksize, input_data, output_data);
+      } else if (1 == suffix_blocksize) {
+        DoTransposeEltWise(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
+                           input_data, output_data);
+      } else {
+        DoTransposeImpl(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
+                        input_data, output_data);
+      }
     } else {
-      DoTransposeImpl(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
-                      input_data, output_data);
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Transpose of std::string is not supported in this build.");
     }
   } else {
     const auto* input_data = reinterpret_cast<const uint8_t*>(input.DataRaw());
@@ -261,15 +299,16 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
     if (1 == prefix_blocksize) {
       DoTransposeSingleBlock(suffix_blocksize, input_data, output_data, element_size);
     } else if (1 == suffix_blocksize) {
-      DoTransposeEltWise(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
-                         input_data, output_data, element_size);
+      // this may return a failed status if the data size is not supported in this build
+      status = DoTransposeEltWise(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
+                                  input_data, output_data, element_size);
     } else {
       DoTransposeImpl(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
                       input_data, output_data, element_size);
     }
   }
 
-  return Status::OK();
+  return status;
 }
 
 /*
@@ -686,13 +725,13 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     1,
     12,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    KernelDefBuilder().TypeConstraint("T", type_constraints),
     Transpose);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Transpose,
     13,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    KernelDefBuilder().TypeConstraint("T", type_constraints),
     Transpose);
 
 }  // namespace onnxruntime

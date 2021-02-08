@@ -29,5 +29,7 @@ python3 ${ORT_ROOT}/tools/ci_build/build.py \
 python3 -m pip install gcovr
 
 # Retrieve runtime code coverage files from the emulator and analyze
-python3 ${ORT_ROOT}/tools/ci_build/coverage.py  --build_dir build_nnapi
+python3 ${ORT_ROOT}/tools/ci_build/coverage.py \
+  --build_dir build_nnapi \
+  --android_sdk_path $ANDROID_HOME
 

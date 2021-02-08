@@ -490,6 +490,11 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_CUDA(const OrtCUD
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_TensorRT(p_, &provider_options));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpenVINO(p_, &provider_options));
   return *this;
@@ -599,6 +604,12 @@ inline char* ModelMetadata::GetDomain(OrtAllocator* allocator) const {
 inline char* ModelMetadata::GetDescription(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetDescription(p_, allocator, &out));
+  return out;
+}
+
+inline char* ModelMetadata::GetGraphDescription(OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().ModelMetadataGetGraphDescription(p_, allocator, &out));
   return out;
 }
 

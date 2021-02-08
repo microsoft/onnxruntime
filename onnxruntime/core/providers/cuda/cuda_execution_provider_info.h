@@ -16,8 +16,10 @@ struct CUDAExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
   size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
-  OrtCudnnConvAlgoSearch cudnn_conv_algo{OrtCudnnConvAlgoSearch::EXHAUSTIVE};
+  OrtCudnnConvAlgoSearch cudnn_conv_algo_search{OrtCudnnConvAlgoSearch::EXHAUSTIVE};
   bool do_copy_in_default_stream{true};
+  bool has_user_compute_stream{false};
+  void* user_compute_stream{nullptr};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);

@@ -272,14 +272,15 @@ static bool IsUnsupportedOpMode(const Node* node, const GraphViewer& graph_viewe
         return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
-    if (GetInputCount(node, initializers) == 1)
-      return true;
-    if (optype == "Max" || optype == "Min") {
-      for (size_t i = 0; i < node->InputDefs().size(); i++) {
-        auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
-        if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-            dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
-          return true;
+      if (GetInputCount(node, initializers) == 1)
+        return true;
+      if (optype == "Max" || optype == "Min") {
+        for (size_t i = 0; i < node->InputDefs().size(); i++) {
+          auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
+          if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
+              dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
+            return true;
+       }
       }
     }
   } else if (optype == "Clip") {

@@ -53,6 +53,9 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+REGISTER_KERNEL_TYPED(BFloat16)
+#endif
 
 template <typename T>
 Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -83,6 +86,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (b_shape.Size() == 1) {
       // if B is (), (1,) or (1, 1), broadcast the scalar
       CUBLAS_RETURN_IF_ERROR(cublasCopyHelper(
+          Stream(),
           CublasHandle(),
           M * N,
           b_data,
@@ -115,7 +119,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           out_data, N, device_prop));
     } else {
       // B is (M, N), no broadcast needed.
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(T), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
     }
   }
 

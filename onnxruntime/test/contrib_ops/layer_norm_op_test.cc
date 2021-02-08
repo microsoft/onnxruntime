@@ -43,5 +43,28 @@ TEST(LayerNormTest, BERTLayerNorm) {
   tester.Run();
 }
 
+TEST(LayerNormTest, BERTLayerNorm_NoBias) {
+  OpTester tester("LayerNormalization", 1 /*opset_version*/);
+  tester.AddAttribute<int64_t>("axis", -1);
+  tester.AddAttribute<float>("epsilon", 1e-12f);
+
+  // create rand inputs
+  RandomValueGenerator random{};
+
+  std::vector<int64_t> X_dims{4, 128};
+  std::vector<float> X_data = random.Uniform<float>(X_dims, 0.0f, 1.0f);
+  tester.AddInput<float>("X", X_dims, X_data);
+
+  std::vector<int64_t> scale_dims{128};
+  std::vector<float> scale_data = random.Uniform<float>(scale_dims, 0.0f, 1.0f);
+  tester.AddInput<float>("Scale", scale_dims, scale_data);
+
+  tester.AddMissingOptionalInput<float>();
+
+  tester.AddReferenceOutputs("testdata/layernorm_no_bias.onnx");
+
+  tester.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
