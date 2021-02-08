@@ -125,9 +125,10 @@ def test_forward_call_single_positional_argument():
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
-    # Make sure model runs without any exception
-    output = model(x)
-    assert output is not None
+    try:
+        model(x)
+    except Exception as exception:
+        raise exception
 
 def test_forward_call_multiple_positional_arguments():
     device = 'cuda'
@@ -137,10 +138,10 @@ def test_forward_call_multiple_positional_arguments():
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
-
-    # Make sure model runs without any exception
-    output = model(x, y)
-    assert output is not None
+    try:
+        model(x, y)
+    except Exception as exception:
+        raise exception
 
 def test_forward_call_positional_arguments():
     device = 'cuda'
@@ -149,10 +150,10 @@ def test_forward_call_positional_arguments():
     model = NeuralNetPositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
     model = ORTModule(model)
     args = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
-
-    # Make sure model runs without any exception
-    output = model(*args)
-    assert output is not None
+    try:
+        model(*args)
+    except Exception as exception:
+        raise exception
 
 def test_forward_call_keyword_arguments():
     device = 'cuda'
@@ -163,10 +164,10 @@ def test_forward_call_keyword_arguments():
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
-
-    # Make sure model runs without any exception
-    output = model(x, y, z)
-    assert output is not None
+    try:
+        model(x, y, z)
+    except Exception as exception:
+        raise exception
 
 def test_forward_call_positional_and_keyword_arguments():
     device = 'cuda'
@@ -178,10 +179,10 @@ def test_forward_call_positional_and_keyword_arguments():
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
-
-    # Make sure model runs without any exception
-    output = model(a, x, y, z)
-    assert output is not None
+    try:
+        model(a, x, y, z)
+    except Exception as exception:
+        raise exception
 
 def test_model_cuda():
     original_device = 'cpu'
