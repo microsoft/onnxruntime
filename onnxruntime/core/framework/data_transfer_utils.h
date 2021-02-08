@@ -25,10 +25,8 @@ inline Status CopyTensorDataToByteSpan(
     const DataTransferManager& data_transfer_manager,
     const Tensor& src_tensor,
     const OrtMemoryInfo& dst_alloc_info, gsl::span<char> dst_span) {
-  ORT_RETURN_IF_NOT(
-      src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()));
-  Tensor dst_tensor{
-      src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), dst_alloc_info};
+  ORT_RETURN_IF_NOT(src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()), "src size != dst size");
+  Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), dst_alloc_info};
   ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(src_tensor, dst_tensor));
   return Status::OK();
 }
@@ -51,11 +49,9 @@ common::Status CopyTensorDataToSpan(
 #if !defined(__GNUC__) || __GNUC__ >= 5
   static_assert(std::is_trivially_copyable<TElement>::value, "Element type must be trivially copyable.");
 #endif
-  ORT_RETURN_IF_NOT(src_tensor.DataType() == DataTypeImpl::GetType<TElement>());
-  ORT_RETURN_IF_NOT(
-      src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()));
-  Tensor dst_tensor{
-      src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), dst_alloc_info};
+  ORT_RETURN_IF_NOT(src_tensor.DataType() == DataTypeImpl::GetType<TElement>(), "Data type mismatch");
+  ORT_RETURN_IF_NOT(src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()), "src size != dst size");
+  Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), dst_alloc_info};
   ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(src_tensor, dst_tensor));
   return Status::OK();
 }

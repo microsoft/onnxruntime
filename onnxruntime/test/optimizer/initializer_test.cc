@@ -24,7 +24,8 @@ Status WriteExternalDataFile(gsl::span<const T> data, const PathString& path, Sc
   std::vector<char> data_bytes(data.size_bytes());
   ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(data, gsl::make_span(data_bytes)));
   std::ofstream out{path, std::ios::binary | std::ios::trunc};
-  ORT_RETURN_IF_NOT(out && out.write(data_bytes.data(), data_bytes.size()));
+  ORT_RETURN_IF_NOT(out && out.write(data_bytes.data(), data_bytes.size()),
+                    "out && out.write(data_bytes.data(), data_bytes.size()) was false");
   file_deleter = ScopedFileDeleter{path};
   return Status::OK();
 }
@@ -44,10 +45,10 @@ void SetTensorProtoExternalData(
 
 TEST(OptimizerInitializerTest, LoadExternalData) {
   const std::vector<int32_t> tensor_data = []() {
-        std::vector<int32_t> tensor_data(100);
-        std::iota(tensor_data.begin(), tensor_data.end(), 0);
-        return tensor_data;
-      }();
+    std::vector<int32_t> tensor_data(100);
+    std::iota(tensor_data.begin(), tensor_data.end(), 0);
+    return tensor_data;
+  }();
   const gsl::span<const int> tensor_data_span = gsl::make_span(tensor_data);
   const auto tensor_data_dir_path = Path::Parse(ToPathString("."));
   const auto tensor_data_dir_relative_path = Path::Parse(ToPathString("OptimizerInitializerTest_LoadExternalData.bin"));

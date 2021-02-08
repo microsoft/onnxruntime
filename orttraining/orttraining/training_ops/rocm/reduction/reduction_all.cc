@@ -64,36 +64,32 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     // alternate path only for deterministic compute ..
     typedef AccumulationType_t<HipTOut> HipTAcc;
 
-    // find reduction buffer size needed by 'reduce_square_sum' for each tensor
-    size_t reduction_buffer_size = 0;
+    // find scratch buffer size needed by 'reduce_square_sum' for each tensor
+    int scratch_size = 0;
     for (int i = 0; i < total_tensor_count; ++i) {
-      reduction_buffer_size =
-          std::max(reduction_buffer_size, compute_reduction_buffer_size<HipTAcc>(tensor_sizes[i]));
+      scratch_size = std::max(scratch_size, compute_reduction_buffer_size(sizeof(HipTAcc), tensor_sizes[i]));
     }
 
-    // enlarge reduction buffer size for 'reduce_sum' over tensor square norms
-    reduction_buffer_size =
-        std::max(reduction_buffer_size, compute_reduction_buffer_size<HipTAcc>(total_tensor_count));
+    // enlarge scratch buffer size for 'reduce_sum' over tensor square norms
+    scratch_size = std::max(scratch_size, compute_reduction_buffer_size(sizeof(HipTAcc), total_tensor_count));
+
+    // add head room for final output and square norms of each tensor
+    scratch_size += (1 + total_tensor_count) * sizeof(HipTAcc);
 
     // create GPU scratch space and zero target for each tensor square norm
-    auto reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size);
+    auto scratch_buffer = GetScratchBuffer<uint8_t>(scratch_size);
+    HIP_RETURN_IF_ERROR(hipMemsetAsync(scratch_buffer.get(), 0, sizeof(HipTAcc) * (1 + total_tensor_count)));
 
-    // buffer for final output and square norms of each tensor
-    auto results_buffer = GetScratchBuffer<HipTAcc>(1 + total_tensor_count);
-
-    HIP_RETURN_IF_ERROR(hipMemsetAsync(results_buffer.get(), 0, sizeof(HipTAcc) * (1 + total_tensor_count)));
-
-    HipTAcc* p_global_sqnorm = results_buffer.get();
+    HipTAcc* p_global_sqnorm = reinterpret_cast<HipTAcc*>(scratch_buffer.get());
     HipTAcc* p_tensor_sqnorm = p_global_sqnorm + 1;
+    HipTAcc* p_reduce_buffer = p_tensor_sqnorm + total_tensor_count;
 
     // perform reduction l2norm = sqrt[sum(tensor[i][j]**2)] for i,j over all tensor elements
     for (int i = 0; i < total_tensor_count; ++i) {
       HipTIn* p_tensor_i = reinterpret_cast<HipTIn*>(grouped_tensor_pointers[i][0]);
-      ORT_RETURN_IF_ERROR(reduce_square_sum(
-          p_tensor_i, p_tensor_sqnorm + i, tensor_sizes[i], reduction_buffer.get(), reduction_buffer_size));
+      reduce_square_sum(p_tensor_i, p_tensor_sqnorm + i, tensor_sizes[i], p_reduce_buffer);
     }
-    ORT_RETURN_IF_ERROR(reduce_sum(
-        p_tensor_sqnorm, p_global_sqnorm, total_tensor_count, reduction_buffer.get(), reduction_buffer_size));
+    reduce_sum(p_tensor_sqnorm, p_global_sqnorm, total_tensor_count, p_reduce_buffer);
     ScalarSqrt(p_global_sqnorm, p_output);
   }
 

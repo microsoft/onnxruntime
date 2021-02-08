@@ -23,6 +23,7 @@ __global__ void _EyeLikeKernel(
 
 template <typename T>
 void EyeLikeImpl(
+    cudaStream_t stream,
     size_t offset,
     size_t stripe,
     T* output_data,
@@ -31,11 +32,12 @@ void EyeLikeImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(diag_count) / block_size));
   CUDA_LONG N = static_cast<CUDA_LONG>(diag_count);
 
-  _EyeLikeKernel<<<blocksPerGrid, block_size, 0>>>(offset, stripe, output_data, N);
+  _EyeLikeKernel<<<blocksPerGrid, block_size, 0, stream>>>(offset, stripe, output_data, N);
 }
 
 #define SPECIALIZED_IMPL(T)                                          \
   template void EyeLikeImpl<T>(                                      \
+    cudaStream_t stream,                                       \
     size_t offset,                                                   \
     size_t stripe,                                                   \
     T* output_data,                                                  \
