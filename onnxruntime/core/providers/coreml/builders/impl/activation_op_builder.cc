@@ -25,11 +25,9 @@ class ActivationOpBuilder : public BaseOpBuilder {
 Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                   const Node& node,
                                                   const logging::Logger& /* logger */) const {
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
+
   const auto& op_type(node.OpType());
-
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = std::make_unique<COREML_SPEC::NeuralNetworkLayer>();
-  layer->set_name(node.Name());
-
   if (op_type == "Sigmoid") {
     layer->mutable_activation()->mutable_sigmoid();
   } else if (op_type == "Tanh") {

@@ -39,12 +39,14 @@ ONNX_OPERATOR_KERNEL_EX(
 template <typename GeluComputationMode>
 template <typename T>
 void BiasGeluGrad_dX<GeluComputationMode>::KernelLaunchDispatcher<T>::operator()(
+    cudaStream_t stream,
     int64_t input_size, int64_t bias_size,
     const Tensor& dY, const Tensor& X, const Tensor& B,
     Tensor& dX) const {
   using CudaT = typename ToCudaType<T>::MappedType;
 
   LaunchBiasGeluGradDxKernel<CudaT, GeluComputationMode>(
+      stream,
       input_size, bias_size,
       reinterpret_cast<const CudaT*>(dY.template Data<T>()),
       reinterpret_cast<const CudaT*>(X.template Data<T>()),
@@ -78,7 +80,7 @@ Status BiasGeluGrad_dX<GeluComputationMode>::ComputeInternal(OpKernelContext* co
       KernelLaunchDispatcher,
       ALL_IEEE_FLOAT_DATA_TYPES>
       dispatcher{X->GetElementType()};
-  dispatcher.Invoke(input_size, bias_size, *dY, *X, *B, *dX);
+  dispatcher.Invoke(Stream(), input_size, bias_size, *dY, *X, *B, *dX);
 
   return Status::OK();
 }

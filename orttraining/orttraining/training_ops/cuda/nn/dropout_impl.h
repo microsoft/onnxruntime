@@ -10,6 +10,7 @@ namespace cuda {
 
 template <typename T>
 void DropoutGradientKernelImpl(
+  cudaStream_t stream,
   const int64_t N,
   const T* dY_data,
   const bool* mask_data,
@@ -19,6 +20,7 @@ void DropoutGradientKernelImpl(
 template <typename T>
 void BiasDropoutKernelImpl(
   const cudaDeviceProp& prop,
+  cudaStream_t stream,
   const int64_t N,
   const fast_divmod fdm_dim,
   const float ratio,

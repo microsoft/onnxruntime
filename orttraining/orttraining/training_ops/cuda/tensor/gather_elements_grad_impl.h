@@ -11,6 +11,7 @@ namespace cuda {
 
 template <typename T, typename Tin>
 Status GatherElementsGradImpl(
+    cudaStream_t stream,
     const int rank,
     TArray<int64_t>& buffer_input_dims,
     TArray<int64_t>& buffer_input_strides,

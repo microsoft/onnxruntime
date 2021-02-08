@@ -72,7 +72,7 @@ class RegistrationProcessor:
     '''
 
     def process_registration(self, lines: typing.List[str], domain: str, operator: str,
-                             start_version: int, end_version: int = None, input_type: str = None):
+                             start_version: int, end_version: int = None, type: str = None):
         '''
         Process lines that contain a kernel registration.
         :param lines: Array containing the original lines containing the kernel registration.
@@ -80,13 +80,13 @@ class RegistrationProcessor:
         :param operator: Operator type
         :param start_version: Start version
         :param end_version: End version or None if unversioned registration
-        :param input_type: Type if this is a typed registration
+        :param type: Type used in registration, if this is a typed registration
         '''
         pass
 
     def process_other_line(self, line):
         '''
-        Process a line that does not contain a kernel registation
+        Process a line that does not contain a kernel registration
         :param line: Original line
         '''
         pass
@@ -157,10 +157,10 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
         # e.g. BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(
         #          kCpuExecutionProvider, kOnnxDomain, 7, double, Sin)>,
         trim_at = code_line.index(onnx_typed_op) + onnx_typed_op_len + 1
-        *_, domain, start_version, input_type, op_type = \
+        *_, domain, start_version, type, op_type = \
             [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
         registration_processor.process_registration(lines_to_process, domain, op_type,
-                                                    int(start_version), None, input_type)
+                                                    int(start_version), None, type)
 
     elif onnx_versioned_op in code_line:
         # e.g. BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(
@@ -175,10 +175,10 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
         # e.g. BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(
         #          kCpuExecutionProvider, kOnnxDomain, 1, 10, float, LogSoftmax)>,
         trim_at = code_line.index(onnx_versioned_typed_op) + onnx_versioned_typed_op_len + 1
-        *_, domain, start_version, end_version, input_type, op_type = \
+        *_, domain, start_version, end_version, type, op_type = \
             [arg.strip() for arg in code_line[trim_at: -len(end_mark)].split(',')]
         registration_processor.process_registration(lines_to_process, domain, op_type,
-                                                    int(start_version), int(end_version), input_type)
+                                                    int(start_version), int(end_version), type)
 
     return offset + 1
 

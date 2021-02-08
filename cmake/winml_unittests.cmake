@@ -43,7 +43,7 @@ function(add_winml_test)
     list(REMOVE_DUPLICATES _UT_DEPENDS)
   endif()
 
-  add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  onnxruntime_add_executable(${_UT_TARGET} ${_UT_SOURCES})
   onnxruntime_add_include_to_target(${_UT_TARGET} onnx_proto)
   source_group(TREE ${WINML_TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_winml_target_properties(${_UT_TARGET})
@@ -283,6 +283,9 @@ if(NOT onnxruntime_ENABLE_MEMLEAK_CHECKER)
     SOURCES ${winml_test_model_src}
     LIBS winml_test_common ${winml_test_model_libs}
   )
+  if (EXISTS ${dxcore_header})
+    target_delayload(winml_test_model ext-ms-win-dxcore-l1-*.dll)
+  endif()
   target_precompiled_header(winml_test_model testPch.h)
 endif()
 
