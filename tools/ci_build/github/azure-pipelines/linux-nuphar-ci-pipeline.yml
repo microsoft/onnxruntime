@@ -3,7 +3,7 @@ jobs:
   parameters:
     AgentPool : 'Linux-CPU'
     JobName: 'Linux_CI_Dev'
-    RunDockerBuildArgs: '-o ubuntu18.04 -d cpu -r $(Build.BinariesDirectory) -x "--enable_pybind --use_nuphar"'
+    RunDockerBuildArgs: '-o ubuntu18.04 -d cpu -r $(Build.BinariesDirectory) -x "--enable_pybind --use_nuphar --build_nuget"'
     DoNugetPack:  'false'
     ArtifactName: 'drop-linux'
     TimeoutInMinutes: 180

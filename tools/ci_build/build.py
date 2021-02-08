@@ -1532,7 +1532,7 @@ def derive_linux_build_property():
         return "/p:IsLinuxBuild=\"true\""
 
 
-def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl):
+def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1555,6 +1555,8 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.DNNL\""
     elif use_cuda:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
+    elif use_nuphar:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
     else:
         pass
 
@@ -1983,7 +1985,8 @@ def main():
                 args.use_cuda,
                 args.use_openvino,
                 args.use_tensorrt,
-                args.use_dnnl
+                args.use_dnnl,
+                args.use_nuphar
             )
 
     if args.test and args.build_nuget:
