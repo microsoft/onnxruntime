@@ -94,7 +94,6 @@ stages:
                   --parallel \
                   --enable_lto \
                   --build_wheel \
-                  --use_openmp \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
@@ -118,7 +117,7 @@ stages:
 
       - template: clean-agent-build-directory-step.yml
 
-    - job: Linux_py_Wheels_no_openmp
+    - job: Linux_py_Wheels_openmp
       timeoutInMinutes: 90
       workspace:
         clean: all
@@ -417,7 +416,6 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
             --enable_pybind
-            --use_openmp
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
@@ -546,6 +544,7 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
             --enable_pybind
+            --use_openmp
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
@@ -860,7 +859,7 @@ stages:
           sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
           brew install libomp
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2
