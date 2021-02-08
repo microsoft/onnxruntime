@@ -125,7 +125,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     };
     opt.weight_int_attributes_generator = [&parameters](const std::string& weight_name) {
       const auto it = parameters.optimizer_int_attributes_map.find(weight_name);
-  
+
       ORT_ENFORCE(
           it != parameters.optimizer_int_attributes_map.end(),
           "Failed to find int attribute map for weight ", weight_name);
@@ -292,7 +292,6 @@ void addObjectMethodsForTraining(py::module& m) {
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
-
         std::vector<std::string> provider_types = {};
         InitializeSession(sess->GetSessionHandle(), provider_types);
 

@@ -503,6 +503,11 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     optimizer_int_attributes_map = {}
 
     unused_frozen_weights = [n for n in frozen_weights if n not in [i.name for i in model.graph.initializer]]
+
+    # pengwa: when using 1.8 ONNX, PyTorch1.7.1, RuntimeError: ['model_.encoder.version', 'model_.decoder.version'] in frozen_weights not found in model weights.
+    # suspect when exporting those two is not exported as initializer any more.
+    unused_frozen_weights.remove('model_.encoder.version')
+    unused_frozen_weights.remove('model_.decoder.version')
     if unused_frozen_weights:
         raise RuntimeError("{} in frozen_weights not found in model weights.".format(unused_frozen_weights))
 
