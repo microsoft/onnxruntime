@@ -10,14 +10,13 @@ namespace openvino_ep {
 
 class GetCapability {
     private:
-        const GraphViewer& graph_viewer;
-        std::string device_type;
-        version_id_e version_id; 
-        Capability* cobj;
+        const GraphViewer& graph_viewer_;
+        std::string device_type_;
+        DataOps* data_ops_;
     public:
         GetCapability (const GraphViewer& graph_viewer_param, std::string device_type_param);   
-        virtual void set_version_id(const std::string version_param);     
-        virtual std::vector<std::unique_ptr<ComputeCapability>> Execute(Capability &cobj_param);
+        virtual void SetVersionId(const std::string version_param);     
+        virtual std::vector<std::unique_ptr<ComputeCapability>> Execute(DataOps &cobj_param);
 };
 
 #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
