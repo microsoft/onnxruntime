@@ -128,7 +128,7 @@ class KernelDef {
   // The supported data types for inputs/outputs.
   // Key is input/output name defined in op schema, Value are supported types.
   // note: std::map as we need the order to be deterministic for the hash
-  // Note: supported_type_constraints_ are used to calculate the kernel hash so that the hash is 
+  // Note: supported_type_constraints_ are used to calculate the kernel hash so that the hash is
   // stable across builds with and without kernel type reduction enabled.
   std::map<std::string, std::vector<MLDataType>> supported_type_constraints_;
 

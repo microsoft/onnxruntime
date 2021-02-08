@@ -138,7 +138,20 @@ struct EnabledTypes {
       ::onnxruntime::op_kernel_type_control::OpArgDirection::ArgDirection,      \
       ArgIndex>
 
+// INTERNAL
+// the TypesHolder that contains the supported types list
+#define ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_SUPPORTED_TYPES_HOLDER(                                        \
+    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)                                        \
+  ::onnxruntime::op_kernel_type_control::TypesHolder<                                                   \
+      ::onnxruntime::op_kernel_type_control::tags::Supported<                                           \
+          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpDomain, OpName, ArgDirection, ArgIndex), \
+          ::onnxruntime::op_kernel_type_control::                                                       \
+              ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider),                     \
+          OpSet>>
+
+//
 // public macros
+//
 
 /**
  * Specifies a supported set of types for a given Op kernel argument.
@@ -196,14 +209,10 @@ struct EnabledTypes {
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  */
-#define ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(                                                          \
-    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)                                        \
-  ::onnxruntime::op_kernel_type_control::TypesHolder<                                                   \
-      ::onnxruntime::op_kernel_type_control::tags::Supported<                                           \
-          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpDomain, OpName, ArgDirection, ArgIndex), \
-          ::onnxruntime::op_kernel_type_control::                                                       \
-              ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider),                     \
-          OpSet>>::types
+#define ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(                   \
+    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex) \
+  ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_SUPPORTED_TYPES_HOLDER(       \
+      OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)::types
 
 /**
  * TypeList type with the supported types for a given Op kernel argument that are valid for all opsets.
@@ -235,12 +244,8 @@ struct EnabledTypes {
 #define ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(                                                                      \
     OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)                                                  \
   ::onnxruntime::op_kernel_type_control::EnabledTypes<                                                            \
-      ::onnxruntime::op_kernel_type_control::TypesHolder<                                                         \
-          ::onnxruntime::op_kernel_type_control::tags::Supported<                                                 \
-              ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpDomain, OpName, ArgDirection, ArgIndex),       \
-              ::onnxruntime::op_kernel_type_control::                                                             \
-                  ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider),                           \
-              OpSet>>,                                                                                            \
+      ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_SUPPORTED_TYPES_HOLDER(                                                    \
+          OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex),                                           \
       ::onnxruntime::TypeList<                                                                                    \
           ::onnxruntime::op_kernel_type_control::TypesHolder<                                                     \
               ::onnxruntime::op_kernel_type_control::tags::Allowed<                                               \
