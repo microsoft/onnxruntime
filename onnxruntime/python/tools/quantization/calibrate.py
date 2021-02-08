@@ -46,16 +46,24 @@ def smooth_distribution(p, eps=0.0001):
     return hist
 
 class CalibrationDataCollector(metaclass=abc.ABCMeta):
+    """
+    Base class for collecting data for calibration-based quantization.
+    """
 
     @abc.abstractmethod
     def collect(self, name_to_arr):
         """
-        Get histogram based on given data.
+        Collect informative data based on all given data.
             name_to_arr : dict 
-                tensor name to data as NDArray 
+                tensor name to NDArray data 
         """
 
 class HistogramCollector(CalibrationDataCollector):
+    """
+    Implementation of collecting histogram data as dict for each tensor targeting on entropy calibration.
+
+    ref: https://github.com//apache/incubator-mxnet/blob/master/python/mxnet/contrib/quantization.py
+    """
     def __init__(self, num_quantized_bins=128):
         self.histogram_dict = {}
         self.num_quantized_bins= num_quantized_bins
@@ -93,13 +101,17 @@ class HistogramCollector(CalibrationDataCollector):
             new_hist, _ = np.histogram(data_arr, len(old_hist), range=(-old_threshold, old_threshold))
             return (new_hist + old_hist, old_hist_edges, min(old_min, new_min), max(old_max, new_max), old_threshold)
         else:
-            old_num_bins = len(old_hist)
-            old_stride = 2 * old_threshold / old_num_bins
-            half_increased_bins = 0 if old_stride == 0 else int((new_threshold - old_threshold) // old_stride + 1) 
-            new_num_bins = old_num_bins + 2 * half_increased_bins
-            new_threshold = half_increased_bins * old_stride + old_threshold
-            hist, hist_edges = np.histogram(data_arr, new_num_bins, range=(-new_threshold, new_threshold))
-            hist[half_increased_bins:new_num_bins-half_increased_bins] += old_hist
+            if old_threshold == 0:
+                hist, hist_edges = np.histogram(data_arr, new_num_bins, range=(-new_threshold, new_threshold))
+                hist[len(hist) // 2] += len(old_hist)
+            else:
+                old_num_bins = len(old_hist)
+                old_stride = 2 * old_threshold / old_num_bins
+                half_increased_bins = int((new_threshold - old_threshold) // old_stride + 1) 
+                new_num_bins = old_num_bins + 2 * half_increased_bins
+                new_threshold = half_increased_bins * old_stride + old_threshold
+                hist, hist_edges = np.histogram(data_arr, new_num_bins, range=(-new_threshold, new_threshold))
+                hist[half_increased_bins:new_num_bins-half_increased_bins] += old_hist
             return (hist, hist_edges, min(old_min, new_min), max(old_max, new_max), new_threshold)
 
     def get_optimal_collection_result(self):
@@ -153,7 +165,6 @@ class HistogramCollector(CalibrationDataCollector):
                 start = index * num_merged_bins 
                 end = start + num_merged_bins
                 quantized_bins[index] = sum(sliced_distribution[start:end]) 
-                # print("start %s, end %s, sum %s" % (start, end, sum(sliced_distribution[start:end])))
             quantized_bins[-1] += sum(sliced_distribution[num_quantized_bins * num_merged_bins:])
 
             # in order to compare p and q, we need to make length of q equals to length of p
@@ -314,13 +325,12 @@ class ONNXCalibrater:
         :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
         '''
 
-        print(calib_mode)
         #conduct inference session and get intermediate outputs
         if ort_graph_optimization_enable:
             session = onnxruntime.InferenceSession(self.augmented_model_path, None) 
         else:            
             sess_options = onnxruntime.SessionOptions()
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL  #ORT_ENABLE_BASIC
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
             session = onnxruntime.InferenceSession(self.augmented_model_path,
                                                    sess_options=sess_options,
                                                    providers=providers)
@@ -378,6 +388,10 @@ class ONNXCalibrater:
                     max_value = max(value[1], final_dict[key][1])
                     final_dict[key] = (min_value, max_value)
 
+            self.calibration_cache = final_dict
+
+            return final_dict
+
         elif calib_mode == 'entropy':
             if not self.collector:
                 self.collector = HistogramCollector()
@@ -386,12 +400,8 @@ class ONNXCalibrater:
             return
 
         else:
-            raise ValueError('Unknown value for calib_mode. Currently only naive mode is supported.')
+            raise ValueError('Unknown value for calib_mode. Currently only naive and entropy modes are supported.')
 
-
-        self.calibration_cache = final_dict
-
-        return final_dict
 
     def _get_input_name_to_nodes(self, model):
         '''
