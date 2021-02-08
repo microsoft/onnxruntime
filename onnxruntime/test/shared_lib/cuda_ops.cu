@@ -15,7 +15,7 @@ __global__ void cuda_add_impl(int64_t N, float* O, const float* X, const float* 
 }
 
 void cuda_add(int64_t N, float* O, const float* X, const float* Y) {
-  cuda_add_impl<<<1, 256>>>(N, O, X, Y);
+  cuda_add_impl<<<1, 256, 0, 0>>>(N, O, X, Y);
 }
 
 template<typename T>
@@ -28,7 +28,7 @@ __global__ void cuda_slice_impl(const T* X , int64_t from, int64_t to, T* Y) {
 
 template<typename T>
 void cuda_slice(const T* X, int64_t from, int64_t to, T* Y) {
-    cuda_slice_impl<T><<<1, 256>>>(X, from, to, Y);
+    cuda_slice_impl<T><<<1, 256, 0, 0>>>(X, from, to, Y);
 }
 
 template void cuda_slice(const float*, int64_t, int64_t, float*);

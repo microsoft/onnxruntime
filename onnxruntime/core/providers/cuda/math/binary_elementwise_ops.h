@@ -219,7 +219,8 @@ class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
  public:
   CompareFunction(const OpKernelInfo& info) : BinaryElementwise(info) {}
 
-  typedef void (*ImplCompare)(int32_t output_rank_or_simple_broadcast,
+  typedef void (*ImplCompare)(cudaStream_t stream,
+                              int32_t output_rank_or_simple_broadcast,
                               const TArray<int64_t>* lhs_padded_strides,
                               const CudaT* lhs_data,
                               const TArray<int64_t>* rhs_padded_strides,

@@ -18,6 +18,7 @@ size_t GetLongformerAttentionWorkspaceSize(
 
 bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties
+    cudaStream_t stream,                // CUDA stream
     const void* input,                  // Input tensor
     const void* attention_mask,         // Attention mask with shape (B, S)
     const void* global_input,           // Global attention input, or nullptr when max_num_global == 0.

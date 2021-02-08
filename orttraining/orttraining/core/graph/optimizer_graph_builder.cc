@@ -275,8 +275,9 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping) {
-  ORT_RETURN_IF_NOT(weight_argdefs.size() == gradient_argdefs.size());
-  ORT_RETURN_IF_NOT(weight_argdefs.size() == opt_configs.size());
+  ORT_RETURN_IF_NOT(weight_argdefs.size() == gradient_argdefs.size(),
+                    "weight_argdefs.size() != gradient_argdefs.size()");
+  ORT_RETURN_IF_NOT(weight_argdefs.size() == opt_configs.size(), "weight_argdefs.size() != opt_configs.size()");
 
   std::vector<ArgDef> output_weight_argdefs;
   std::vector<ArgDef> output_gradient_argdefs;
