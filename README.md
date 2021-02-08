@@ -1,3 +1,5 @@
+
+
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
 
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20CPU%20CI%20Pipeline?label=Windows+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=9)
@@ -42,7 +44,7 @@ Many users can benefit from ONNX Runtime, including those looking to:
 
 ## Inferencing: Start
 
-To use ONNX Runtime, refer to the table on [aka.ms/onnxruntime](https://aka.ms/onnxruntime) for instructions for different build combinations. 
+To use ONNX Runtime, refer to the table on [aka.ms/onnxruntime](https://aka.ms/onnxruntime) for instructions for different build combinations.
 
 * [Compatibility](#compatibility)
 * [Binaries](#binaries)
@@ -63,7 +65,7 @@ Supporting models based on the standard [ONNX](https://onnx.ai) format, the runt
 
 * [Getting ONNX models - tutorials](https://github.com/onnx/tutorials#getting-onnx-models)
 
-ONNX Runtime is up to date and backwards compatible with all operators (both DNN and traditional ML) since ONNX v1.2.1+. [(ONNX compatibility details)](docs/Versioning.md). Newer versions of ONNX Runtime support all models that worked with prior versions, so updates should not break integrations. 
+ONNX Runtime is up to date and backwards compatible with all operators (both DNN and traditional ML) since ONNX v1.2.1+. [(ONNX compatibility details)](docs/Versioning.md). Newer versions of ONNX Runtime support all models that worked with prior versions, so updates should not break integrations.
 
 * [Supported operators/types](./docs/OperatorKernels.md)
   * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](./docs/ContribOperators.md)*
@@ -95,14 +97,14 @@ The following are required for usage of the official published packages.
 
 * Visual C++ Runtime (for Windows packages)
   * Requires [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
-* System language 
-  * Installation of the **English language package** and configuring `en_US.UTF-8 locale` is required, as certain operators makes use of system locales. 
+* System language
+  * Installation of the **English language package** and configuring `en_US.UTF-8 locale` is required, as certain operators makes use of system locales.
   * For Ubuntu, install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
     * Run the following commands:
       `locale-gen en_US.UTF-8`
       `update-locale LANG=en_US.UTF-8`
     * Follow similar procedure to configure other locales on other platforms.
-  
+
 * Default CPU
   * ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the system.
     * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
@@ -135,7 +137,7 @@ For production scenarios, it's strongly recommended to build only from an [offic
 |[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
 |[C](docs/C_API.md)| | [Samples](./samples#CC)|
 |[WinRT](docs/WinRT_API.md) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
-|[Java](docs/Java_API.md)|8+|[Samples](./samples#Java)| 
+|[Java](docs/Java_API.md)|8+|[Samples](./samples#Java)|
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.4-2.7| [Samples](https://ankane.org/tensorflow-ruby)|
 |[Javascript (node.js)](./nodejs) |12.x | [Samples](./nodejs/examples/README.md) |
 
@@ -145,7 +147,7 @@ For production scenarios, it's strongly recommended to build only from an [offic
 
 |CPU|GPU|IoT/Edge/Mobile|Other|
 |---|---|---|---|
-|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML *(build option)*</li></ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li><li>[AMD MIGraphX](./docs/execution_providers/MIGraphX-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li><li>[ARM-NN](./docs/execution_providers/ArmNN-ExecutionProvider.md) (*preview*)</li><li>[Rockchip NPU](./docs/execution_providers/RKNPU-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md) - (*preview*)</li><li>[Xilinx Vitis-AI](./docs/execution_providers/Vitis-AI-ExecutionProvider.md) (*preview*)</li></ul>| 
+|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML *(build option)*</li></ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li><li>[AMD MIGraphX](./docs/execution_providers/MIGraphX-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li><li>[ARM-NN](./docs/execution_providers/ArmNN-ExecutionProvider.md) (*preview*)</li><li>[Rockchip NPU](./docs/execution_providers/RKNPU-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md) - (*preview*)</li><li>[Xilinx Vitis-AI](./docs/execution_providers/Vitis-AI-ExecutionProvider.md) (*preview*)</li></ul>|
 
 * [Roadmap: Upcoming accelerators](./docs/Roadmap.md#accelerators-and-execution-providers)
 * [Extensibility: Add an execution provider](docs/AddingExecutionProvider.md)
@@ -186,7 +188,7 @@ The ONNX Runtime training feature enables easy integration with existing Pytorch
 ### Train PyTorch model with ONNX Runtime
 ONNX Runtime (ORT) has the capability to train existing PyTorch models through its optimized backend. For this, we have introduced an python API for PyTorch, called ORTTrainer, which can be used to switch the training backend for PyTorch models (instance of `torch.nn.Module`) to `orttrainer`. This requires some changes in the trainer code, such as replacing the PyTorch optimizer, and optionally, setting flags to enable additional features such as mixed-precision training. Here is a sample code fragment to integrate ONNX Runtime Training in your PyTorch pre-training script:
 
-_NOTE: The current API is experimental and expected to see significant changes in the near future. Our goal is to improve the interface to provide a seamless integration with PyTorch training that requires minimal changes in users’ training code._ 
+_NOTE: The current API is experimental and expected to see significant changes in the near future. Our goal is to improve the interface to provide a seamless integration with PyTorch training that requires minimal changes in users’ training code._
 
   ```python
   import torch
@@ -202,7 +204,7 @@ _NOTE: The current API is experimental and expected to see significant changes i
       ...
 
   model = NeuralNet(input_size=784, hidden_size=500, num_classes=10)
-  criterion = torch.nn.Functional.cross_entropy 
+  criterion = torch.nn.Functional.cross_entropy
   model_description = {'inputs':  [('data', ['in', 'batch_size']),
                                    ('target', ['label_x_batch_size'])],
                        'outputs': [('loss', [], True),
