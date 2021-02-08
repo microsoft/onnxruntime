@@ -8,17 +8,19 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/orttraining-linux-ci-pipeline?label=Linux+CPU+Training)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=86)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/orttraining-linux-gpu-ci-pipeline?label=Linux+GPU+Training)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=84)
 
-**ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more. **[onnxruntime.ai](https://onnxruntime.ai)**
+**ONNX Runtime** is a cross-platform **inference and training machine-learning accelerator** compatible with deep learning frameworks, PyTorch and TensorFlow/Keras, as well as classical machine learning libraries such as scikit-learn, and more. **[aka.ms/onnxruntime](https://aka.ms/onnxruntime)**
 
+ONNX Runtime uses the portable [ONNX](https://onnx.ai) computation graph format, backed by execution providers optimized for operating systems, drivers and hardware.
 
 Many users can benefit from ONNX Runtime, including those looking to:
+
 * Improve inference performance for a wide variety of ML models
 * Reduce time and cost of training large models
 * Train in Python but deploy into a C#/C++/Java app
 * Run on different hardware and operating systems
 * Support models created in several different frameworks
 
-[ONNX Runtime inferencing](./onnxruntime) APIs are stable and production-ready since the [1.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.0.0) in October 2019 and can enable faster customer experiences and lower costs.
+[ONNX Runtime inference](./onnxruntime) APIs are stable and production-ready since the [1.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.0.0) in October 2019 and can enable faster customer experiences and lower costs.
 
 [ONNX Runtime training](./orttraining) feature was introduced in May 2020 in preview. This feature supports acceleration of PyTorch training on multi-node NVIDIA GPUs for transformer models. Additional updates for this feature are coming soon.
 
@@ -40,7 +42,7 @@ Many users can benefit from ONNX Runtime, including those looking to:
 
 [Frequently Asked Questions](./docs/FAQ.md)
 
-## Inferencing: Start
+## Inference
 
 To use ONNX Runtime, refer to the table on [aka.ms/onnxruntime](https://aka.ms/onnxruntime) for instructions for different build combinations. 
 

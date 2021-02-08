@@ -62,7 +62,7 @@ Status Clip_6<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (count > 0) {
     auto* y_data = Y->template MutableData<T>();
     const auto* x_data = X.template Data<T>();
-    ClipImpl<T>(x_data, y_data, this->min_, this->max_, count);
+    ClipImpl<T>(Stream(), x_data, y_data, this->min_, this->max_, count);
   }
   return Status::OK();
 }
@@ -91,7 +91,7 @@ struct LowMax<MLFloat16> {
 
 template <typename T>
 struct Clip::ComputeImpl {
-  void operator()(const Tensor* X, const Tensor* min, const Tensor* max, Tensor* Y) const {
+  void operator()(cudaStream_t stream, const Tensor* X, const Tensor* min, const Tensor* max, Tensor* Y) const {
     auto min_val = clip_internal::LowMax<T>::low();
     auto max_val = clip_internal::LowMax<T>::max();
 
@@ -110,7 +110,7 @@ struct Clip::ComputeImpl {
     if (count > 0) {
       auto* y_data = Y->template MutableData<T>();
       const auto* x_data = X->template Data<T>();
-      ClipImpl<T>(x_data, y_data, min_val, max_val, count);
+      ClipImpl<T>(stream, x_data, y_data, min_val, max_val, count);
     }
   }
 };
@@ -124,7 +124,7 @@ Status Clip::ComputeInternal(OpKernelContext* ctx) const {
   utils::MLTypeCallDispatcher<ComputeImpl, float, double, int8_t, uint8_t, int64_t, uint64_t>
       t_disp(X->GetElementType());
 
-  t_disp.Invoke(X, min, max, Y);
+  t_disp.Invoke(Stream(), X, min, max, Y);
 
   return Status::OK();
 }

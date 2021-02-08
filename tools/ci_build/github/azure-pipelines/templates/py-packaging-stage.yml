@@ -216,16 +216,16 @@ stages:
 
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda10_2
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimegpubuild
+          Repository: onnxruntimecuda11build
 
       - task: CmdLine@2
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --gpus all --rm \
+            docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-g -O3" -e CXXFLAGS="-g -O3" --rm \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -233,16 +233,16 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimegpubuild \
+              onnxruntimecuda11build \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --enable_onnx_tests --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2 \
+                  --enable_onnx_tests --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0 \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -289,19 +289,19 @@ stages:
 
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_gpu
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-t
             --build-arg BUILD_UID=$(id -u)
-          Repository: onnxruntimegpubuild
+          Repository: onnxruntimecuda11build
 
       - task: CmdLine@2
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --rm --gpus all \
+            docker run --rm --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-g -O3" -e CXXFLAGS="-g -O3" \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -310,7 +310,7 @@ stages:
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimegpubuild \
+              onnxruntimecuda11build \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
@@ -319,8 +319,8 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                  --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+                  --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -654,7 +654,7 @@ stages:
       pool: 'Win-GPU-2019'
       timeoutInMinutes:  240
       variables:
-        CUDA_VERSION: '10.2'
+        CUDA_VERSION: '11.0'
         buildArch: x64
         EnvSetupScript: setup_env_cuda.bat
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
@@ -716,7 +716,7 @@ stages:
             --parallel
             --use_cuda --cuda_version=$(CUDA_VERSION)
             --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
-            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v8.0.3.33\cuda"
+            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.2.39\cuda"
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
 

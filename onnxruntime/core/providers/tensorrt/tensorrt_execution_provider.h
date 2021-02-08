@@ -69,6 +69,8 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 // Information needed to construct trt execution providers.
 struct TensorrtExecutionProviderInfo {
   int device_id{0};
+  bool has_user_compute_stream{false};
+  void* user_compute_stream{nullptr};
 };
 
 // Information to construct kernel function state.
@@ -120,7 +122,15 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
 
+  Status OnRunEnd() override;
+
+  Status SetComputeStream(void* stream) override;
+
+  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
+
  private:
+  bool external_stream_ = false;
+  cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;
   int min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 1 << 30;  // 1GB

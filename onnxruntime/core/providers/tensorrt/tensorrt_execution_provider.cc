@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include <fstream>
 #include <list>
 #include <unordered_set>
@@ -271,16 +270,18 @@ namespace onnxruntime {
 namespace cuda {
 template <>
 void Impl_Cast(
+    cudaStream_t stream,
     const int64_t* input_data, int32_t* output_data,
     size_t count) {
-  return g_host->cuda__Impl_Cast(input_data, output_data, count);
+  return g_host->cuda__Impl_Cast(static_cast<void*>(stream), input_data, output_data, count);
 }
 
 template <>
 void Impl_Cast(
+    cudaStream_t stream,
     const int32_t* input_data, int64_t* output_data,
     size_t count) {
-  return g_host->cuda__Impl_Cast(input_data, output_data, count);
+  return g_host->cuda__Impl_Cast(static_cast<void*>(stream), input_data, output_data, count);
 }
 
 }  // namespace cuda
@@ -374,6 +375,12 @@ TensorrtLogger& GetTensorrtLogger() {
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
+  if (info.has_user_compute_stream) {
+    external_stream_ = true;
+    stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
+  } else {
+    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+  }
 
   // Get environment variables
   const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -454,7 +461,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 }
 
-TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
+TensorrtExecutionProvider::~TensorrtExecutionProvider() {
+  if (!external_stream_ && stream_) {
+    CUDA_CALL(cudaStreamDestroy(stream_));
+  }
+}
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
@@ -488,7 +499,24 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::CreateGPUDataTransfer();
+  return onnxruntime::CreateGPUDataTransfer(static_cast<void*>(GetComputeStream()));
+}
+
+Status TensorrtExecutionProvider::OnRunEnd() {
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
+  return Status::OK();
+}
+
+Status TensorrtExecutionProvider::SetComputeStream(void* stream) {
+  if (stream != stream_) {
+    if (stream_) {
+      CUDA_RETURN_IF_ERROR(cudaStreamDestroy(stream_));
+    }
+
+    external_stream_ = true;
+    stream_ = static_cast<cudaStream_t>(stream);
+  }
+  return Status::OK();
 }
 
 // Convert GraphViewer graph to GraphProto
@@ -1197,7 +1225,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     };
 
     // Create compute function
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
@@ -1215,6 +1243,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       std::unordered_map<std::string, bool> dimension_update;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
+      cudaStream_t stream = static_cast<cudaStream_t>(this->GetComputeStream());
 
       // Load serialized engine
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
@@ -1281,7 +1310,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           }
           trt_context = trt_state->context->get();
         }
-	  }
+      }
 
       for (int i = 0, end = num_inputs; i < end; ++i) {
         auto input = trt_state->network->get()->getInput(i);
@@ -1312,7 +1341,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             switch (tensor_type) {
               case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
                 int32_t* input = new int32_t[shape_size];
-                CUDA_RETURN_IF_ERROR(cudaMemcpy(input, ort.GetTensorData<int32_t>(input_tensor), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost));
+                CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input, ort.GetTensorData<int32_t>(input_tensor), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
+                CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
                 for (int j = 0; j < shape_size; ++j) {
                   tensor_shape_values[input_name][j] = input[j];
                 }
@@ -1321,7 +1351,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
               }
               case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
                 int64_t* input = new int64_t[shape_size];
-                CUDA_RETURN_IF_ERROR(cudaMemcpy(input, ort.GetTensorData<int64_t>(input_tensor), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost));
+                CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input, ort.GetTensorData<int64_t>(input_tensor), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost, stream));
+                CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
                 for (int j = 0; j < shape_size; ++j) {
                   tensor_shape_values[input_name][j] = static_cast<int32_t>(input[j]);
                 }
@@ -1587,7 +1618,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
               }
               scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, input_dim_size * sizeof(int32_t)));
               buffers[binding_index] = scratch_buffers.back().get();
-              cuda::Impl_Cast<int64_t, int32_t>(input_tensor_ptr, reinterpret_cast<int32_t*>(buffers[binding_index]), input_dim_size);
+              cuda::Impl_Cast<int64_t, int32_t>(stream, input_tensor_ptr, reinterpret_cast<int32_t*>(buffers[binding_index]), input_dim_size);
             }
             break;
           }
@@ -1711,7 +1742,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       }
 
       // Run TRT inference
-      if (!trt_context->enqueueV2(&buffers[0], nullptr, nullptr)) {
+      if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
 
@@ -1727,7 +1758,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           auto output_tensor_ptr = ort.GetTensorMutableData<int64_t>(output_tensor[i]);
           if (output_tensor_ptr != nullptr) {
-            cuda::Impl_Cast<int32_t, int64_t>(reinterpret_cast<int32_t*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
+            cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
           }
         }
       }
