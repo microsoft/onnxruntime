@@ -22,9 +22,9 @@
 #include "ort_trt_int8_cal_table.fbs.h"
 
 #ifdef _WIN32
-#include <Windows.h>
+#include <windows.h>
 #define LIBTYPE HINSTANCE
-#define OPENLIB(libname) LoadLibraryW(L ## libname)
+#define OPENLIB(libname) LoadLibrary(libname)
 #define LIBFUNC(lib, fn) GetProcAddress((lib), (fn))
 #else
 #include <dlfcn.h>
