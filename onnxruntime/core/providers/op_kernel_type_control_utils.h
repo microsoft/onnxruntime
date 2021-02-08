@@ -24,8 +24,8 @@ using SizeOfT = boost::mp11::mp_size_t<sizeof(T)>;
 
 /**
 * Check if the set of types contains a type with the same size as T.
-* 
-* @remarks e.g. will return true if T is int32_t and the list contains any 4 byte type (i.e. sizeof(int32_t)) 
+*
+* @remarks e.g. will return true if T is int32_t and the list contains any 4 byte type (i.e. sizeof(int32_t))
 *               such as int32_t, uint32_t or float.
 */
 template <typename TypeSet, typename T>

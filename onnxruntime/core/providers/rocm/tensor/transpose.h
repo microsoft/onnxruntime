@@ -23,6 +23,7 @@ class Transpose final : public RocmKernel, public TransposeBase {
 
   //  `input_shape_override` (if provided) overrides the shape of `input` for compute purposes
   static Status DoTranspose(const hipDeviceProp_t& prop,
+                            hipStream_t stream,
                             const rocblas_handle rocblas_handle,
                             const std::vector<size_t>& permutations,
                             const Tensor& input, Tensor& output, const TensorShape* input_shape_override = nullptr);

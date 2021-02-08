@@ -35,6 +35,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #define TYPED_FUNCTION_CALL(T)                                                              \
   EyeLikeImpl<typename ToCudaType<T>::MappedType>(                                          \
+      Stream(),                                                                             \
       offset,                                                                               \
       dim1 + 1,                                                                             \
       reinterpret_cast<typename ToCudaType<T>::MappedType*>(T2->template MutableData<T>()), \
@@ -52,7 +53,7 @@ Status EyeLike::ComputeInternal(OpKernelContext* context) const {
 
   // set output tensor shape same as input tensor and set all values to zero
   auto* T2 = context->Output(0, input_dims);
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(T2->MutableDataRaw(), 0, T2->SizeInBytes()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(T2->MutableDataRaw(), 0, T2->SizeInBytes(), Stream()));
   auto dim0 = input_dims[0];
   auto dim1 = input_dims[1];
 

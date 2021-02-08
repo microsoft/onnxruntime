@@ -204,7 +204,7 @@ std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info)
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
 
 std::string GetEnvironmentVar(const std::string& var_name);
 

@@ -20,7 +20,7 @@
  * - Enabled types are the types that are supported in the actual, compiled implementation. They are obtained from the
  *   intersection of supported and allowed types.
  *
- * The types are associated with an Op kernel argument. It is also possible to specify a global list of allowed types.
+ * The types are associated with an Op argument. It is also possible to specify a global list of allowed types.
  *
  * Use of these utilities is optional. They are useful for cases where one registered Op kernel handles multiple types.
  *
@@ -239,8 +239,8 @@ struct EnabledTypes {
  * namespace onnxruntime {
  * namespace op_kernel_type_control {
  * // specify supported types, i.e., the full set of types that can be enabled
- * ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
- *     MyProvider, DomainContainingMyOp, MyOp, OpSet, Input, 0,
+ * ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ *     MyProvider, DomainContainingMyOp, MyOp, Input, 0,
  *     int, float, double);
  * }  // namespace op_kernel_type_control
  * }  // namespace onnxruntime
@@ -249,7 +249,7 @@ struct EnabledTypes {
  *
  * // get enabled types
  * using MyOpFirstInputEnabledTypes =
- *     ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(MyProvider, DomainContainingMyOp, MyOp, Input, 0);
+ *     ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(MyProvider, DomainContainingMyOp, MyOp, Input, 0);
  *
  * // ...
  *
