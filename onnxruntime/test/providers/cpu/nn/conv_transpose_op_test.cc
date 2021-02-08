@@ -20,14 +20,15 @@ struct ConvTransposeOpAttributes {
   string auto_pad;
 };
 
-void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
-                         const vector<vector<float>>& inputs,
-                         const vector<vector<int64_t>>& input_shapes,
-                         const std::initializer_list<float>& expected_output,
-                         const vector<int64_t>& expected_output_shape,
-                         OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                         const std::string& err_str = "",
-                         const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
+void TestConvTransposeOpInitializer(const ConvTransposeOpAttributes& attributes,
+                                    const vector<vector<float>>& inputs,
+                                    const vector<vector<int64_t>>& input_shapes,
+                                    const std::initializer_list<float>& expected_output,
+                                    const vector<int64_t>& expected_output_shape,
+                                    bool is_filter_initializer = false,
+                                    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
+                                    const std::string& err_str = "",
+                                    const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
   OpTester test("ConvTranspose");
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
   test.AddAttribute("group", attributes.group);
@@ -56,13 +57,29 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
 
   ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
   const char* szNames[] = {"X", "W", "B"};
+  bool isInitializers[] = {false, is_filter_initializer, false};
   for (size_t i = 0; i < inputs.size(); i++) {
-    test.AddInput<float>(szNames[i], input_shapes[i], inputs[i]);
+    test.AddInput<float>(szNames[i], input_shapes[i], inputs[i], isInitializers[i]);
   }
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
 
   test.Run(expect_result, err_str, excluded_provider_types);  // Disable TensorRT because weight as input is not supported
 }
+
+void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
+                         const vector<vector<float>>& inputs,
+                         const vector<vector<int64_t>>& input_shapes,
+                         const std::initializer_list<float>& expected_output,
+                         const vector<int64_t>& expected_output_shape,
+                         OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
+                         const std::string& err_str = "",
+                         const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
+  TestConvTransposeOpInitializer(attributes, inputs, input_shapes, expected_output, expected_output_shape,
+                                 true, expect_result, err_str, excluded_provider_types);
+  TestConvTransposeOpInitializer(attributes, inputs, input_shapes, expected_output, expected_output_shape,
+                                 false, expect_result, err_str, excluded_provider_types);
+}
+
 }  // namespace
 
 TEST(ConvTransposeTest, ConvTranspose_1D) {
