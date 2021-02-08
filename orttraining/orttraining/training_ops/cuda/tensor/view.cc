@@ -76,7 +76,7 @@ Status View::ComputeInternal(OpKernelContext* context) const {
         // View output is not sharing the underlaying buffer of input, copy instead
         const void* source = static_cast<const char*>(X_data) + y_byte_offsets[i];
         void* target = Y->MutableDataRaw();
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, Y->SizeInBytes(), cudaMemcpyDeviceToDevice));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, Y->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
       } else {
         Y->SetByteOffset(y_byte_offsets[i]);
       }
