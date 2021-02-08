@@ -111,6 +111,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchLongformerAttentionKernel(
           device_prop,
+          Stream(),
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           reinterpret_cast<const CudaT*>(mask->template Data<T>()),
           reinterpret_cast<const CudaT*>(global_gemm_buffer.get()),

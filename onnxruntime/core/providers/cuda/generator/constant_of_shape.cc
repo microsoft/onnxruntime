@@ -32,7 +32,7 @@ Status ConstantOfShape::ComputeInternal(OpKernelContext* ctx) const {
 #define CASE(TYPE)                                                                                          \
   case sizeof(TYPE):                                                                                        \
     if (size > 0) {                                                                                         \
-      cuda::Fill(reinterpret_cast<TYPE*>(output_data), *(reinterpret_cast<const TYPE*>(value_ptr)), size);  \
+      cuda::Fill(Stream(), reinterpret_cast<TYPE*>(output_data), *(reinterpret_cast<const TYPE*>(value_ptr)), size);  \
     }                                                                                                       \
     break;
 

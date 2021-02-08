@@ -10,6 +10,7 @@ namespace onnxruntime {
 namespace cuda {
 
 void DiagonalImpl(
+    cudaStream_t stream,
     const void* input_data,
     const int64_t input_rank,
     const int64_t dim_1,

@@ -166,7 +166,7 @@ ProcessNextRowM4:
         vpxor   xmm1,xmm1,xmm1
         vpxor   xmm2,xmm2,xmm2
         vpxor   xmm3,xmm3,xmm3
-        lea     r13,[r8+r8*2]               ; compute ldb * 3
+        lea     r13,[r8+r8*2]               ; compute lda * 3
         lea     rax,[r11+r11*2]             ; compute output stride * 3
         mov     rdx,rsi
         mov     rcx,rdi

@@ -31,10 +31,10 @@ __global__ void DequantizeLinearKernel(const int32_t* quantize, const T* bias, T
 }
 
 template <class T>
-Status CudaDequantizeWithBias(const int32_t* quantize, const T* bias, T* output, T scale, int m, int n) {
+Status CudaDequantizeWithBias(cudaStream_t stream, const int32_t* quantize, const T* bias, T* output, T scale, int m, int n) {
   int blocksPerGrid = static_cast<int>(CeilDiv(m * n, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(m * n);
-  DequantizeLinearKernel<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  DequantizeLinearKernel<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       quantize,
       bias,
       output,
@@ -44,8 +44,8 @@ Status CudaDequantizeWithBias(const int32_t* quantize, const T* bias, T* output,
   return Status::OK();
 }
 
-template Status CudaDequantizeWithBias<float>(const int32_t* quantize, const float* bias, float* output, float scale, int m, int n);
-template Status CudaDequantizeWithBias<half>(const int32_t* quantize, const half* bias, half* output, half scale, int m, int n);
+template Status CudaDequantizeWithBias<float>(cudaStream_t stream, const int32_t* quantize, const float* bias, float* output, float scale, int m, int n);
+template Status CudaDequantizeWithBias<half>(cudaStream_t stream, const int32_t* quantize, const half* bias, half* output, half scale, int m, int n);
 
 }  // namespace cuda
 }  // namespace contrib
