@@ -27,6 +27,8 @@ class ConvTranspose : public OpKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {}
 
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+
   Status Compute(OpKernelContext* context) const override;
 
  protected:
@@ -34,6 +36,11 @@ class ConvTranspose : public OpKernel {
 
  private:
   ConvTransposeAttributes conv_transpose_attrs_;
+
+  // for pre-packing usage
+  TensorShape filter_shape_;
+  BufferUniquePtr packed_filter_;
+  size_t packed_bytes_per_group_;
 };
 
 }  // namespace onnxruntime
