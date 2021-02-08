@@ -526,7 +526,8 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   // using the list of target devices
   bool use_create_for_devices = false;
   if (!nnapi_target_devices_.empty()) {
-    bool supported_ops[num_nnapi_ops_];
+    std::unique_ptr<bool[]> supported_ops_holder(new bool[num_nnapi_ops_]);
+    auto* supported_ops = supported_ops_holder.get();
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
             nnapi_model_->model_, nnapi_target_devices_.data(),
