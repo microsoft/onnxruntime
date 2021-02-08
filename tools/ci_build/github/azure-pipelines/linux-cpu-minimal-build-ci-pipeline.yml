@@ -43,11 +43,12 @@ jobs:
           onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
       workingDirectory: $(Build.SourcesDirectory)
+
   - task: CmdLine@2
     displayName: Build minimal onnxruntime with exceptions disabled
     inputs:
       script: |
-        # We will try to build the ORT minimal with exception disabled
+        # We will try to build minimal ORT with exceptions disabled
         # Only the building process is verified here, no test will be performed
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -66,8 +67,9 @@ jobs:
               --minimal_build \
               --disable_exceptions
       workingDirectory: $(Build.SourcesDirectory)
+
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime and run tests with exceptions enabled
+    displayName: Build minimal onnxruntime with exceptions enabled and type reduction disabled and run tests
     inputs:
       script: |
         docker run --rm \
@@ -80,6 +82,23 @@ jobs:
           onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh
       workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: Build minimal onnxruntime with exceptions enabled and type reduction enabled and run tests
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecentoscpubuild \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
+              --build-directory /build/with_type_reduction --enable-type-reduction
+      workingDirectory: $(Build.SourcesDirectory)
+
   - task: CmdLine@2
     displayName: Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
     inputs:

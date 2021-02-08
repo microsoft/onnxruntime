@@ -5,13 +5,42 @@
 # The build will run the unit tests for the minimal build, followed by running onnx_test_runner
 # for the E2E test cases.
 
-
 set -e
+
+USAGE_TEXT="Usage:
+  -b|--build-directory <build directory]
+    Specifies the build directory.
+  --enable-type-reduction
+    Builds with type reduction enabled."
+
+BUILD_DIR="/build"
+ENABLE_TYPE_REDUCTION=
+
+while [[ $# -gt 0 ]]
+do
+    OPTION_KEY="$1"
+    case $OPTION_KEY in
+        -b|--build-directory)
+            BUILD_DIR="$2"
+            shift
+            shift
+            ;;
+        --enable-type-reduction)
+            ENABLE_TYPE_REDUCTION=1
+            shift
+            ;;
+        *)
+            echo "Invalid option: $1"
+            echo "$USAGE_TEXT"
+            exit 1
+    esac
+done
+
 set -x
 
 # Perform a minimal build with required ops and run ORT minimal build UTs
 python3 /onnxruntime_src/tools/ci_build/build.py \
-    --build_dir /build --cmake_generator Ninja \
+    --build_dir ${BUILD_DIR} --cmake_generator Ninja \
     --config Debug \
     --skip_submodule_sync \
     --build_shared_lib \
@@ -19,7 +48,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --minimal_build \
     --disable_ml_ops \
     --include_ops_by_config /onnxruntime_src/onnxruntime/test/testdata/required_ops.ort_models.config \
-    --enable_reduced_operator_type_support
+    ${ENABLE_TYPE_REDUCTION:+"--enable_reduced_operator_type_support"}
 
 # Run the e2e test cases
-/build/Debug/onnx_test_runner /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data
+${BUILD_DIR}/Debug/onnx_test_runner /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data
