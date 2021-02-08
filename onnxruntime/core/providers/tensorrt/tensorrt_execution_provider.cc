@@ -450,7 +450,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 	  ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
 							 "TensorRT EP could not open shared library from " + engine_decryption_lib_path);
 	}
-	///int (*engine_decryption)(const char*, char*, size_t*);
 	engine_decryption_ = (int (*)(const char*, char*, size_t*))dlsym(handle, "decrypt");
   }
 }
@@ -1092,13 +1091,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
                                  "TensorRT EP could not deserialize engine from cache: " + engine_cache_path);
         }
       } else if (engine_decryption_enable_ && engine_cache_enable_ && !engine_file) {
-        ///void* handle = dlopen(engine_decryption_lib_path_.c_str(), RTLD_LAZY);
-        ///if (handle == nullptr) {
-        ///  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-        ///                         "TensorRT EP could not open shared library from " + engine_decryption_lib_path_);
-        ///}
-        ///int (*engine_decryption)(const char*, char*, size_t*);
-        ///engine_decryption = (int (*)(const char*, char*, size_t*))dlsym(handle, "decrypt");
         // Decrypt engine
         size_t engine_size = 0;
         if (!engine_decryption_(engine_cache_path.c_str(), nullptr, &engine_size)) {
@@ -1110,7 +1102,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not call engine decryption function decrypt");
         }
-        ///dlclose(handle);
         // Deserialize engine
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
@@ -1229,77 +1220,68 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       const std::string profile_cache_path = cache_path + ".profile";
-      std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
-      std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
-      if (engine_file && profile_file && (trt_state->engine_cache_enable && trt_engine == nullptr)) {
-        // Deserialize profile
-        shape_ranges = DeserializeProfile(profile_file);
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
-        // Deserialize engine
-        trt_state->context->reset();
-        trt_state->engine->reset();
-        engine_file.seekg(0, std::ios::end);
-        int engine_size = engine_file.tellg();
-        engine_file.seekg(0, std::ios::beg);
-        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-        engine_file.read((char*)engine_buf.get(), engine_size);
-        auto runtime_ = trt_state->runtime;
-        *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-            runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-        if (trt_state->engine->get() == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+      if (trt_state->engine_cache_enable && trt_engine == nullptr) {
+        std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
+        std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
+        if (engine_file && profile_file) {
+          // Deserialize profile
+          shape_ranges = DeserializeProfile(profile_file);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
+          // Deserialize engine
+          trt_state->context->reset();
+          trt_state->engine->reset();
+          engine_file.seekg(0, std::ios::end);
+          int engine_size = engine_file.tellg();
+          engine_file.seekg(0, std::ios::beg);
+          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+          engine_file.read((char*)engine_buf.get(), engine_size);
+          auto runtime_ = trt_state->runtime;
+          *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
+              runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+          if (trt_state->engine->get() == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+          }
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+          trt_engine = trt_state->engine->get();
+          *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+              trt_state->engine->get()->createExecutionContext());
+          if (trt_state->context->get() == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
+          }
+          trt_context = trt_state->context->get();
+        } else if (trt_state->engine_decryption_enable && !engine_file && profile_file) { 
+          shape_ranges = DeserializeProfile(profile_file);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
+          // Decrypt engine
+          size_t engine_size = 0;
+          if (!trt_state->engine_decryption(engine_cache_path.c_str(), nullptr, &engine_size)) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not get engine buffer size");
+          }
+          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+          if (!trt_state->engine_decryption(engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not call engine decryption function decrypt");
+          }
+          // Deserialize engine
+          trt_state->context->reset();
+          trt_state->engine->reset();
+          *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+          if (trt_state->engine->get() == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
+          }
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+          trt_engine = trt_state->engine->get();
+          *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+              trt_state->engine->get()->createExecutionContext());
+          if (trt_state->context->get() == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
+          }
+          trt_context = trt_state->context->get();
         }
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
-        trt_engine = trt_state->engine->get();
-        *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
-            trt_state->engine->get()->createExecutionContext());
-        if (trt_state->context->get() == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
-        }
-        trt_context = trt_state->context->get();
-      } else if (trt_state->engine_decryption_enable && trt_state->engine_cache_enable && !engine_file && profile_file && trt_engine == nullptr) {
-        ///std::cout << "Compute: decrypt/load engine and profile: " << cached_path << std::endl;
-
-        shape_ranges = DeserializeProfile(profile_file);
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
-        // Decrypt engine
-        ///void* handle = dlopen(trt_state->engine_decryption_lib_path.c_str(), RTLD_LAZY);
-        ///if (handle == nullptr) {
-        ///  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-        ///                         "TensorRT EP could not open shared library from " + trt_state->engine_decryption_lib_path);
-        ///}
-        ///int (*engine_decryption)(const char*, char*, size_t*);
-        ///engine_decryption = (int (*)(const char*, char*, size_t*))dlsym(handle, "decrypt");
-        // Deserialize profile
-        size_t engine_size = 0;
-        if (!trt_state->engine_decryption(engine_cache_path.c_str(), nullptr, &engine_size)) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not get engine buffer size");
-        }
-        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-        if (!trt_state->engine_decryption(engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not call engine decryption function decrypt");
-        }
-        ///dlclose(handle);
-        // Deserialize engine
-        trt_state->context->reset();
-        trt_state->engine->reset();
-        *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
-        if (trt_state->engine->get() == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
-        }
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
-        trt_engine = trt_state->engine->get();
-        *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
-            trt_state->engine->get()->createExecutionContext());
-        if (trt_state->context->get() == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
-        }
-        trt_context = trt_state->context->get();
-      }
+	  }
 
       for (int i = 0, end = num_inputs; i < end; ++i) {
         auto input = trt_state->network->get()->getInput(i);

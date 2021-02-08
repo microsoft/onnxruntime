@@ -81,6 +81,10 @@ There are several environment variables for TensorRT execution provider.
 
 * ORT_TENSORRT_DUMP_SUBGRAPHS: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem. This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser. 1: enabled, 0: disabled. Default value: 0.
 
+* ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE (experiment): Enable engine decryption. This is an experimental feature to decrypt TensorRT engine file if the engine is encrypted offline by users. 1: enabled, 0: disabled. Default value: 0.
+
+* ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH (experiment): Path and name of user specified shared library that includes engine decryption function. Signature of the decryption function is decrypt(const char* engine_cache_path, char* engine_buf, size_t* engine_size), where engine_cache_path is path and name of the encrypted engine file, engine_buf is a buffer to hold decrypted engine and engine_size is size of the engine buffer.
+
 One can override default values by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS, ORT_TENSORRT_MIN_SUBGRAPH_SIZE, ORT_TENSORRT_FP16_ENABLE, ORT_TENSORRT_INT8_ENABLE, ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME, ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE, ORT_TENSORRT_ENGINE_CACHE_ENABLE, ORT_TENSORRT_CACHE_PATH and ORT_TENSORRT_DUMP_SUBGRAPHS.
 e.g. on Linux
 
