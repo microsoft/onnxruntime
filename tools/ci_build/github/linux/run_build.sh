@@ -65,14 +65,14 @@ else
                 --config Release $COMMON_BUILD_ARGS \
                 --use_cuda \
                 --cuda_home /usr/local/cuda \
-                $BUILD_EXTR_PAR
+                --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
         else
             _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
             python3 $SCRIPT_DIR/../../build.py --build_dir /build \
                 --config Release $COMMON_BUILD_ARGS \
                 --use_cuda \
                 --cuda_home /usr/local/cuda \
-                $BUILD_EXTR_PAR
+                --cudnn_home /usr/local/cudnn-$_CUDNN_VERSION/cuda $BUILD_EXTR_PAR
         fi
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
@@ -80,7 +80,7 @@ else
             --config Release $COMMON_BUILD_ARGS \
             --use_tensorrt --tensorrt_home /workspace/tensorrt \
             --cuda_home /usr/local/cuda \
-            $BUILD_EXTR_PAR
+            --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
     else #cpu and openvino
         export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
