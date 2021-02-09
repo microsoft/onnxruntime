@@ -78,6 +78,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 
   // Create MLValues related maps
   auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
+    (void)model_path;
     int idx = ort_value_name_idx_map_.Add(arg.Name());
     ort_value_idx_nodearg_map_[idx] = &arg;
 
