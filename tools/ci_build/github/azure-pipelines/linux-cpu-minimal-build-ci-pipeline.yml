@@ -86,7 +86,7 @@ jobs:
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          --volume ${test_data_directory}:/home/onnxruntimedev/.test_data \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
@@ -107,7 +107,7 @@ jobs:
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          --volume ${test_data_directory}:/home/onnxruntimedev/.test_data \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
@@ -130,7 +130,7 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
-          --volume ${test_data_directory}:/home/onnxruntimedev/.test_data \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
