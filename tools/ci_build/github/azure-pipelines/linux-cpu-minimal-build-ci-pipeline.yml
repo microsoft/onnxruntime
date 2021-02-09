@@ -44,10 +44,6 @@ jobs:
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
       workingDirectory: $(Build.SourcesDirectory)
 
-  - script: |
-      git diff
-    workingDirectory: $(Build.SourcesDirectory)
-
   - task: CmdLine@2
     displayName: Build minimal onnxruntime with exceptions disabled
     inputs:
@@ -72,10 +68,6 @@ jobs:
               --disable_exceptions
       workingDirectory: $(Build.SourcesDirectory)
 
-  - script: |
-      git diff
-    workingDirectory: $(Build.SourcesDirectory)
-
   - task: CmdLine@2
     displayName: Build minimal onnxruntime with exceptions enabled and type reduction disabled and run tests
     inputs:
@@ -88,11 +80,13 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecentoscpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
+              --build-directory /build \
+              --reduced-ops-config /onnxruntime_src/onnxruntime/test/testdata/required_ops.ort_models.config
       workingDirectory: $(Build.SourcesDirectory)
 
-  - script: |
-      git diff
+  - script: git checkout -- .
+    displayName: Discard local changes to Git repository files
     workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -108,11 +102,13 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
-              --build-directory /build/with_type_reduction --enable-type-reduction
+              --build-directory /build/with_type_reduction \
+              --reduced-ops-config /onnxruntime_src/onnxruntime/test/testdata/required_ops_and_types.ort_models.config \
+              --enable-type-reduction
       workingDirectory: $(Build.SourcesDirectory)
 
-  - script: |
-      git diff
+  - script: git checkout -- .
+    displayName: Discard local changes to Git repository files
     workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2

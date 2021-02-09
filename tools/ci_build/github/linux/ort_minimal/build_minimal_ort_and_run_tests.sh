@@ -6,14 +6,18 @@
 # for the E2E test cases.
 
 set -e
+set -x
 
 USAGE_TEXT="Usage:
-  -b|--build-directory <build directory]
-    Specifies the build directory.
-  --enable-type-reduction
+  -b|--build-directory <build directory>
+    Specifies the build directory. Required.
+  -c|--reduced-ops-config <reduced Ops config file>
+    Specifies the reduced Ops configuration file path. Required.
+  [--enable-type-reduction]
     Builds with type reduction enabled."
 
-BUILD_DIR="/build"
+BUILD_DIR=
+REDUCED_OPS_CONFIG_FILE=
 ENABLE_TYPE_REDUCTION=
 
 while [[ $# -gt 0 ]]
@@ -25,6 +29,11 @@ do
             shift
             shift
             ;;
+        -c|--reduced-ops-config)
+            REDUCED_OPS_CONFIG_FILE="$2"
+            shift
+            shift
+            ;;
         --enable-type-reduction)
             ENABLE_TYPE_REDUCTION=1
             shift
@@ -33,10 +42,15 @@ do
             echo "Invalid option: $1"
             echo "$USAGE_TEXT"
             exit 1
+            ;;
     esac
 done
 
-set -x
+if [[ -z "${BUILD_DIR}" || -z "${REDUCED_OPS_CONFIG_FILE}" ]]; then
+    echo "Required option was not provided."
+    echo "$USAGE_TEXT"
+    exit 1
+fi
 
 # Perform a minimal build with required ops and run ORT minimal build UTs
 python3 /onnxruntime_src/tools/ci_build/build.py \
@@ -47,7 +61,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --parallel \
     --minimal_build \
     --disable_ml_ops \
-    --include_ops_by_config /onnxruntime_src/onnxruntime/test/testdata/required_ops.ort_models.config \
+    --include_ops_by_config ${REDUCED_OPS_CONFIG_FILE} \
     ${ENABLE_TYPE_REDUCTION:+"--enable_reduced_operator_type_support"}
 
 # Run the e2e test cases
