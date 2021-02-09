@@ -98,21 +98,40 @@ std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorP
 
 // This function doesn't support string tensors
 template <typename T>
-static Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length, size_t expected_size,
-                                      /*out*/ T* p_data) {
+static Status UnpackTensorWithRawDataImpl(const void* raw_data, size_t raw_data_length, size_t expected_size,
+                                          /*out*/ T* p_data) {
   size_t expected_size_in_bytes;
   if (!onnxruntime::IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "size overflow");
   }
-  if (raw_data_length != expected_size_in_bytes)
+
+  if (raw_data_length != expected_size_in_bytes) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
                            expected_size_in_bytes, ", got ", raw_data_length);
+  }
 
   const char* const raw_data_bytes = reinterpret_cast<const char*>(raw_data);
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(
-      gsl::make_span(raw_data_bytes, raw_data_length), gsl::make_span(p_data, expected_size)));
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(gsl::make_span(raw_data_bytes, raw_data_length),
+                                                           gsl::make_span(p_data, expected_size)));
   return Status::OK();
+}
+
+template <typename T>
+Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_len, size_t expected_size,
+                               /*out*/ T* p_data) {
+  switch (sizeof(T)) {
+    case sizeof(uint32_t):
+      return UnpackTensorWithRawDataImpl(raw_data, raw_data_len, expected_size, reinterpret_cast<uint32_t*>(p_data));
+    case sizeof(uint64_t):
+      return UnpackTensorWithRawDataImpl(raw_data, raw_data_len, expected_size, reinterpret_cast<uint64_t*>(p_data));
+    case sizeof(uint8_t):
+      return UnpackTensorWithRawDataImpl(raw_data, raw_data_len, expected_size, reinterpret_cast<uint8_t*>(p_data));
+    case sizeof(uint16_t):
+      return UnpackTensorWithRawDataImpl(raw_data, raw_data_len, expected_size, reinterpret_cast<uint16_t*>(p_data));
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported data type");
+  }
 }
 
 static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
@@ -137,8 +156,7 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
 
   file_offset = external_data_info->GetOffset();
 
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(
-      tensor_proto, &tensor_data_length));
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_data_length));
   const size_t external_data_length = external_data_info->GetLength();
 
   ORT_RETURN_IF_NOT(
@@ -182,55 +200,125 @@ static Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tenso
 namespace onnxruntime {
 namespace utils {
 #if !defined(ORT_MINIMAL_BUILD)
-#define DEFINE_UNPACK_EXTERNAL_TENSOR(T)                                                                                   \
-  template <>                                                                                                              \
-  Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,                                           \
-                                      const ORTCHAR_T* tensor_proto_dir, size_t expected_size,                             \
-                                      /*out*/ T* p_data) {                                                                 \
-    ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");                                                                 \
-                                                                                                                           \
-    std::unique_ptr<uint8_t[]> unpacked_tensor;                                                                            \
-    SafeInt<size_t> tensor_byte_size = 0;                                                                                  \
-    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(                                                                         \
-        tensor,                                                                                                            \
-        tensor_proto_dir,                                                                                                  \
-        unpacked_tensor,                                                                                                   \
-        tensor_byte_size));                                                                                                \
-                                                                                                                           \
-    size_t element_count = tensor_byte_size / sizeof(T);                                                                   \
-    ORT_RETURN_IF_NOT(expected_size == element_count, "Expected data size does not match the actual external data size."); \
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(                                                              \
-        gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.get()), tensor_byte_size),                                  \
-        gsl::make_span(p_data, expected_size)));                                                                           \
-                                                                                                                           \
-    return Status::OK();                                                                                                   \
-  }
+template <typename T>
+Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto& tensor,
+                                        const ORTCHAR_T* tensor_proto_dir, size_t expected_size,
+                                        /*out*/ T* p_data) {
+  ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");
 
-DEFINE_UNPACK_EXTERNAL_TENSOR(float)
-DEFINE_UNPACK_EXTERNAL_TENSOR(double)
-DEFINE_UNPACK_EXTERNAL_TENSOR(uint8_t)
-DEFINE_UNPACK_EXTERNAL_TENSOR(int8_t)
-DEFINE_UNPACK_EXTERNAL_TENSOR(int16_t)
-DEFINE_UNPACK_EXTERNAL_TENSOR(uint16_t)
-DEFINE_UNPACK_EXTERNAL_TENSOR(int32_t)
-DEFINE_UNPACK_EXTERNAL_TENSOR(int64_t)
-DEFINE_UNPACK_EXTERNAL_TENSOR(uint64_t)
-DEFINE_UNPACK_EXTERNAL_TENSOR(uint32_t)
-DEFINE_UNPACK_EXTERNAL_TENSOR(bool)
-DEFINE_UNPACK_EXTERNAL_TENSOR(MLFloat16)
-DEFINE_UNPACK_EXTERNAL_TENSOR(BFloat16)
+  std::unique_ptr<uint8_t[]> unpacked_tensor;
+  SafeInt<size_t> tensor_byte_size = 0;
+  ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor,
+                                                tensor_proto_dir,
+                                                unpacked_tensor,
+                                                tensor_byte_size));
+
+  size_t element_count = tensor_byte_size / sizeof(T);
+  ORT_RETURN_IF_NOT(expected_size == element_count,
+                    "Expected data size does not match the actual external data size.");
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(
+      gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.get()), tensor_byte_size),
+      gsl::make_span(p_data, expected_size)));
+
+  return Status::OK();
+}
+
+template <typename T>
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const ORTCHAR_T* tensor_proto_dir, size_t expected_size,
+                                    /*out*/ T* p_data) {
+  switch (sizeof(T)) {
+    case sizeof(uint32_t):
+      return UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_size,
+                                              reinterpret_cast<uint32_t*>(p_data));
+    case sizeof(uint64_t):
+      return UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_size,
+                                              reinterpret_cast<uint64_t*>(p_data));
+    case sizeof(uint8_t):
+      return UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_size,
+                                              reinterpret_cast<uint8_t*>(p_data));
+    case sizeof(uint16_t):
+      return UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_size,
+                                              reinterpret_cast<uint16_t*>(p_data));
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported data type");
+  }
+}
+
+#define INSTANTIATE_UNPACK_EXTERNAL_TENSOR(type) \
+  template Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto&, const ORTCHAR_T*, size_t, type*);
+
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(float)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(double)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint8_t)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int8_t)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int16_t)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint16_t)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int32_t)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int64_t)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint64_t)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint32_t)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(bool)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(MLFloat16)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(BFloat16)
 
 template <>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*/,
                                     const ORTCHAR_T* /*tensor_proto_dir*/, size_t /*expected_size*/,
                                     /*out*/ std::string* /*p_data*/) {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                         "External data type cannot be STRING.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "External data type cannot be STRING.");
 }
 #endif  //!defined(ORT_MINIMAL_BUILD)
 
-// This macro doesn't work for Float16/bool/string tensors
-#define DEFINE_UNPACK_TENSOR(T, Type, field_name, field_size)                                                      \
+// implementation of type specific unpack of data contained within the TensorProto
+template <typename T>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ T* p_data, size_t expected_size);
+
+// UnpackTensor from raw data, external data or the type specific data field.
+// Uses the model path to construct the full path for loading external data. In case when model_path is empty
+// it uses current directory.
+template <typename T>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+                    /*out*/ T* p_data, size_t expected_size) {
+#if !defined(ORT_MINIMAL_BUILD)
+  if (HasExternalData(tensor)) {
+    return UnpackTensorWithExternalData(
+        tensor,
+        model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(),
+        expected_size,
+        p_data);
+  }
+#else
+  ORT_UNUSED_PARAMETER(model_path);
+  ORT_RETURN_IF(HasExternalData(tensor), "TensorProto with external data is not supported in ORT minimal build.");
+#endif
+
+  return HasRawData(tensor)
+             ? UnpackTensor(tensor, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
+             : UnpackTensor(tensor, nullptr, 0, p_data, expected_size);
+}
+
+// instantiate the UnpackTensor variant that supports external data
+#define INSTANTIATE_UNPACK_TENSOR(type) \
+  template Status UnpackTensor(const ONNX_NAMESPACE::TensorProto&, const Path&, type* p_data, size_t);
+
+INSTANTIATE_UNPACK_TENSOR(float)
+INSTANTIATE_UNPACK_TENSOR(double)
+INSTANTIATE_UNPACK_TENSOR(uint8_t)
+INSTANTIATE_UNPACK_TENSOR(int8_t)
+INSTANTIATE_UNPACK_TENSOR(int16_t)
+INSTANTIATE_UNPACK_TENSOR(uint16_t)
+INSTANTIATE_UNPACK_TENSOR(int32_t)
+INSTANTIATE_UNPACK_TENSOR(int64_t)
+INSTANTIATE_UNPACK_TENSOR(uint64_t)
+INSTANTIATE_UNPACK_TENSOR(uint32_t)
+INSTANTIATE_UNPACK_TENSOR(bool)
+INSTANTIATE_UNPACK_TENSOR(MLFloat16)
+INSTANTIATE_UNPACK_TENSOR(BFloat16)
+INSTANTIATE_UNPACK_TENSOR(std::string)
+
+#define DEFINE_UNPACK_TENSOR_IMPL(T, Type, field_name, field_size)                                                 \
   template <>                                                                                                      \
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,        \
                       /*out*/ T* p_data, size_t expected_size) {                                                   \
@@ -255,18 +343,22 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*
   }
 
 // TODO: complex64 complex128
-DEFINE_UNPACK_TENSOR(float, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, float_data, float_data_size)
-DEFINE_UNPACK_TENSOR(double, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, double_data, double_data_size);
-DEFINE_UNPACK_TENSOR(uint8_t, ONNX_NAMESPACE::TensorProto_DataType_UINT8, int32_data, int32_data_size)
-DEFINE_UNPACK_TENSOR(int8_t, ONNX_NAMESPACE::TensorProto_DataType_INT8, int32_data, int32_data_size)
-DEFINE_UNPACK_TENSOR(int16_t, ONNX_NAMESPACE::TensorProto_DataType_INT16, int32_data, int32_data_size)
-DEFINE_UNPACK_TENSOR(uint16_t, ONNX_NAMESPACE::TensorProto_DataType_UINT16, int32_data, int32_data_size)
-DEFINE_UNPACK_TENSOR(int32_t, ONNX_NAMESPACE::TensorProto_DataType_INT32, int32_data, int32_data_size)
-DEFINE_UNPACK_TENSOR(int64_t, ONNX_NAMESPACE::TensorProto_DataType_INT64, int64_data, int64_data_size)
-DEFINE_UNPACK_TENSOR(uint64_t, ONNX_NAMESPACE::TensorProto_DataType_UINT64, uint64_data, uint64_data_size)
-DEFINE_UNPACK_TENSOR(uint32_t, ONNX_NAMESPACE::TensorProto_DataType_UINT32, uint64_data, uint64_data_size)
+DEFINE_UNPACK_TENSOR_IMPL(float, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, float_data, float_data_size)
+DEFINE_UNPACK_TENSOR_IMPL(double, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, double_data, double_data_size);
+DEFINE_UNPACK_TENSOR_IMPL(uint8_t, ONNX_NAMESPACE::TensorProto_DataType_UINT8, int32_data, int32_data_size)
+DEFINE_UNPACK_TENSOR_IMPL(int8_t, ONNX_NAMESPACE::TensorProto_DataType_INT8, int32_data, int32_data_size)
+DEFINE_UNPACK_TENSOR_IMPL(int16_t, ONNX_NAMESPACE::TensorProto_DataType_INT16, int32_data, int32_data_size)
+DEFINE_UNPACK_TENSOR_IMPL(uint16_t, ONNX_NAMESPACE::TensorProto_DataType_UINT16, int32_data, int32_data_size)
+DEFINE_UNPACK_TENSOR_IMPL(int32_t, ONNX_NAMESPACE::TensorProto_DataType_INT32, int32_data, int32_data_size)
+DEFINE_UNPACK_TENSOR_IMPL(int64_t, ONNX_NAMESPACE::TensorProto_DataType_INT64, int64_data, int64_data_size)
+DEFINE_UNPACK_TENSOR_IMPL(uint64_t, ONNX_NAMESPACE::TensorProto_DataType_UINT64, uint64_data, uint64_data_size)
+DEFINE_UNPACK_TENSOR_IMPL(uint32_t, ONNX_NAMESPACE::TensorProto_DataType_UINT32, uint64_data, uint64_data_size)
 
-// doesn't support raw data
+//
+// Specializations of UnpackTensor that need custom handling for the input type
+//
+
+// UnpackTensor<std::string>. Note: doesn't support raw data
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* /*raw_data*/, size_t /*raw_data_len*/,
                     /*out*/ std::string* p_data, size_t expected_size) {
@@ -289,6 +381,8 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* /*raw
 
   return Status::OK();
 }
+
+// UnpackTensor<bool>
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                     /*out*/ bool* p_data, size_t expected_size) {
@@ -314,6 +408,8 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 
   return Status::OK();
 }
+
+// UnpackTensor<MLFloat16>
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                     /*out*/ MLFloat16* p_data, size_t expected_size) {
@@ -346,6 +442,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   return Status::OK();
 }
 
+// UnpackTensor<BFloat16>
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                     /*out*/ BFloat16* p_data, size_t expected_size) {
@@ -472,12 +569,6 @@ static void UnInitTensor(void* param) noexcept {
   delete p;
 }
 
-#define CASE_PROTO(X, Y)                                                                                            \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                              \
-    ORT_RETURN_IF_ERROR(                                                                                            \
-        UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, static_cast<size_t>(tensor_size))); \
-    break;
-
 class AutoDelete {
  public:
   OrtCallback d{nullptr, nullptr};
@@ -530,6 +621,14 @@ static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
   from.f = nullptr;
   from.param = nullptr;
 }
+
+#define CASE_PROTO(X, Y)                                                      \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:        \
+    ORT_RETURN_IF_ERROR(                                                      \
+        UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len,                 \
+                        (Y*)preallocated, static_cast<size_t>(tensor_size))); \
+    break;
+
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 6239)
@@ -632,7 +731,8 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
             deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
           }
           ORT_RETURN_IF_ERROR(UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
-                                                        (std::string*)preallocated, static_cast<size_t>(tensor_size)));
+                                                        static_cast<std::string*>(preallocated),
+                                                        static_cast<size_t>(tensor_size)));
           break;
         default: {
           std::ostringstream ostr;
@@ -1034,34 +1134,24 @@ template common::Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const ONN
                                                                        size_t* out);
 template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
-#define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                                         \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {                \
-    if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {                \
-      ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(                                       \
-          initializer,                                                                     \
-          model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(), \
-          unpacked_tensor,                                                                 \
-          tensor_byte_size));                                                              \
-      tensor_data_length = tensor_byte_size;                                               \
-      return Status::OK();                                                                 \
-    } else {                                                                               \
-      size_t element_count = 0;                                                            \
-      if (initializer.has_raw_data()) {                                                    \
-        tensor_byte_size = initializer.raw_data().size();                                  \
-        element_count = tensor_byte_size / sizeof(ELEMENT_TYPE);                           \
-      } else {                                                                             \
-        element_count = initializer.DATA_SIZE();                                           \
-        tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                           \
-      }                                                                                    \
-      tensor_data_length = tensor_byte_size;                                               \
-      unpacked_tensor.reset(new uint8_t[tensor_data_length]);                              \
-      return onnxruntime::utils::UnpackTensor(                                             \
-          initializer,                                                                     \
-          initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,            \
-          initializer.has_raw_data() ? initializer.raw_data().size() : 0,                  \
-          reinterpret_cast<ELEMENT_TYPE*>(unpacked_tensor.get()), element_count);          \
-    }                                                                                      \
-    break;                                                                                 \
+#define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                              \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {     \
+    size_t element_count = 0;                                                   \
+    if (initializer.has_raw_data()) {                                           \
+      tensor_byte_size = initializer.raw_data().size();                         \
+      element_count = tensor_byte_size / sizeof(ELEMENT_TYPE);                  \
+    } else {                                                                    \
+      element_count = initializer.DATA_SIZE();                                  \
+      tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                  \
+    }                                                                           \
+    tensor_data_length = tensor_byte_size;                                      \
+    unpacked_tensor.reset(new uint8_t[tensor_data_length]);                     \
+    return onnxruntime::utils::UnpackTensor(                                    \
+        initializer,                                                            \
+        initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,   \
+        initializer.has_raw_data() ? initializer.raw_data().size() : 0,         \
+        reinterpret_cast<ELEMENT_TYPE*>(unpacked_tensor.get()), element_count); \
+    break;                                                                      \
   }
 
 Status UnpackInitializerData(const onnx::TensorProto& initializer,
@@ -1069,6 +1159,17 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
                              std::unique_ptr<uint8_t[]>& unpacked_tensor,
                              size_t& tensor_data_length) {
   SafeInt<size_t> tensor_byte_size = tensor_data_length;
+
+  if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
+    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
+        initializer,
+        model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(),
+        unpacked_tensor,
+        tensor_byte_size));
+    tensor_data_length = tensor_byte_size;
+    return Status::OK();
+  }
+
   switch (initializer.data_type()) {
     CASE_UNPACK(FLOAT, float, float_data_size);
     CASE_UNPACK(DOUBLE, double, double_data_size);
