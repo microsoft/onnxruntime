@@ -642,8 +642,8 @@ if (onnxruntime_DISABLE_ML_OPS)
   add_definitions(-DDISABLE_ML_OPS)
 endif()
 
-if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDA_HOME}" STREQUAL "")
-  message(FATAL_ERROR "onnxruntime_CUDA_HOME required for onnxruntime_USE_CUDA")
+if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
+  message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
 endif()
 
 
@@ -700,10 +700,11 @@ set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
 
 set(onnxruntime_LINK_DIRS )
 if(onnxruntime_USE_CUDA)
+      #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
       if (WIN32)
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/lib/x64)
+        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib/x64 ${onnxruntime_CUDA_HOME}/x64/lib64)
       else()
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/lib64)
+        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib64 ${onnxruntime_CUDA_HOME}/lib64)
       endif()
 endif()
 
@@ -1164,7 +1165,7 @@ if (onnxruntime_USE_CUDA)
   else()
     set(CMAKE_CUDA_STANDARD 11)
   endif()
-  file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} onnxruntime_CUDA_HOME)
+  file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
   if (onnxruntime_ENABLE_NVTX_PROFILE)

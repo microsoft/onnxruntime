@@ -27,7 +27,7 @@ endif()
 target_include_directories(onnxruntime_training PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR} PUBLIC ${onnxruntime_graph_header} ${MPI_INCLUDE_DIRS})
 
 if (onnxruntime_USE_CUDA)
-  target_include_directories(onnxruntime_training PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  target_include_directories(onnxruntime_training PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
 
 set_target_properties(onnxruntime_training PROPERTIES FOLDER "ONNXRuntime")
@@ -59,7 +59,7 @@ onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_traini
 
 target_include_directories(onnxruntime_training_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${PROJECT_SOURCE_DIR}/external/json PUBLIC ${onnxruntime_graph_header})
 if (onnxruntime_USE_CUDA)
-  target_include_directories(onnxruntime_training_runner PUBLIC  ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
 
 if (onnxruntime_USE_ROCM)

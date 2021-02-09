@@ -240,7 +240,7 @@ stages:
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --enable_onnx_tests --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0  \
+                  --enable_onnx_tests --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0 \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
@@ -320,7 +320,7 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                  --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0
+                  --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -656,7 +656,7 @@ stages:
       variables:
         CUDA_VERSION: '11.0'
         buildArch: x64
-        EnvSetupScript: setup_env_cuda_11.bat
+        EnvSetupScript: setup_env_cuda.bat
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
       strategy:
         matrix:
@@ -664,10 +664,6 @@ stages:
             PythonVersion: '3.6'
           Python37:
             PythonVersion: '3.7'
-          Python38:
-            PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -720,6 +716,7 @@ stages:
             --parallel
             --use_cuda --cuda_version=$(CUDA_VERSION)
             --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
+            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.2.39\cuda"
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -789,6 +786,7 @@ stages:
             --parallel
             --use_cuda --cuda_version=$(CUDA_VERSION)
             --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
+            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v8.0.3.33\cuda"
             $(TelemetryOption)
             --update
             --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON
@@ -887,8 +885,6 @@ stages:
       pool: 'Linux-CPU'
       strategy:
         matrix:
-          Py39:
-            PythonVersion: '3.9'
           Py38:
             PythonVersion: '3.8'
           Py37:
