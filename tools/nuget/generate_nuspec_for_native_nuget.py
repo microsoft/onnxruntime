@@ -424,15 +424,12 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard1.1" />')
 
-    # Process License, ThirdPartyNotices, Privacy, README
+    # Process License, ThirdPartyNotices, Privacy
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'LICENSE.txt') + '" target="LICENSE.txt" />')
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'ThirdPartyNotices.txt') +
                       '" target="ThirdPartyNotices.txt" />')
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'Privacy.md') +
                       '" target="Privacy.md" />')
-    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'C_API.md') +
-                      '" target="README.md" />')
-
     files_list.append('</files>')
 
     list += files_list
