@@ -5,7 +5,7 @@ jobs:
   timeoutInMinutes:  150
   variables:
     skipComponentGovernanceDetection: true
-  pool: 'Linux-CPU'
+  pool: 'Linux-CPU-2021'
   steps:
     - template: templates/set-version-number-variables-step.yml
 

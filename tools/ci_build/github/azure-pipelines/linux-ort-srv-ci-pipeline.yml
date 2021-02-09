@@ -1,6 +1,6 @@
 jobs:
 - job: Debug_Build
-  pool: Linux-CPU
+  pool: Linux-CPU-2021
   steps:
     - template: templates/set-test-data-variables-step.yml
 

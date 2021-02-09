@@ -144,7 +144,7 @@ jobs:
 - job: Jar_Packaging
   workspace:
     clean: all
-  pool: 'Win-CPU-2019'
+  pool: 'Win-CPU-2021'
   dependsOn:
   - Windows_Java_API_Build_GPU_x64
   - Linux_Java_API_Build_GPU_x64

@@ -49,7 +49,7 @@ stages:
       timeoutInMinutes: 90
       workspace:
         clean: all
-      pool: Linux-CPU
+      pool: Linux-CPU-2021
       strategy:
         matrix:
           Python36:
@@ -122,7 +122,7 @@ stages:
       timeoutInMinutes: 90
       workspace:
         clean: all
-      pool: Linux-CPU
+      pool: Linux-CPU-2021
       strategy:
         matrix:
           Python36:
@@ -343,7 +343,7 @@ stages:
 
   - ${{ if eq(parameters.enable_windows_cpu, true) }}:
     - job: Windows_py_Wheels
-      pool: 'Win-CPU-2019'
+      pool: 'Win-CPU-2021'
       strategy:
         matrix:
           Python36:
@@ -472,7 +472,7 @@ stages:
         condition: always()
 
     - job: Windows_py_Wheels_no_openmp
-      pool: 'Win-CPU-2019'
+      pool: 'Win-CPU-2021'
       strategy:
         matrix:
           Python36:
@@ -886,7 +886,7 @@ stages:
       timeoutInMinutes: 60
       workspace:
         clean: all
-      pool: 'Linux-CPU'
+      pool: 'Linux-CPU-2021'
       strategy:
         matrix:
           Py39:

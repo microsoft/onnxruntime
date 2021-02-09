@@ -244,7 +244,7 @@ jobs:
 - job: Publish_NuGet_Package_And_Report
   workspace:
     clean: all
-  pool: 'Win-CPU-2019'
+  pool: 'Win-CPU-2021'
   variables:
   - name: GDN_CODESIGN_TARGETDIRECTORY
     value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
