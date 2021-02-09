@@ -37,12 +37,12 @@ python3 /onnxruntime_src/tools/python/convert_onnx_models_to_ort.py \
 # Config without type reduction
 python3 /onnxruntime_src/tools/python/create_reduced_build_config.py --format ORT \
     /onnxruntime_src/onnxruntime/test/testdata \
-    /onnxruntime_src/onnxruntime/test/testdata/required_ops.ort_models.config
+    /home/onnxruntimedev/.test_data/required_ops.ort_models.config
 
 # Config with type reduction
 python3 /onnxruntime_src/tools/python/create_reduced_build_config.py --format ORT --enable_type_reduction \
     /onnxruntime_src/onnxruntime/test/testdata \
-    /onnxruntime_src/onnxruntime/test/testdata/required_ops_and_types.ort_models.config
+    /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config
 
 # Clear the build
 rm -rf /build/Debug
