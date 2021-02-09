@@ -858,8 +858,65 @@ stages:
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
           sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-          brew install libomp
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
+        displayName: 'Command Line Script'
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)/Release/dist'
+          Contents: '*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          ArtifactName: onnxruntime
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+    - job: MacOS_py_Wheels_openmp
+      workspace:
+        clean: all
+      pool:
+        vmImage: 'macOS-10.14'
+      strategy:
+        matrix:
+          Python36:
+            PythonVersion: '3.6'
+          Python37:
+            PythonVersion: '3.7'
+          Python38:
+            PythonVersion: '3.8'
+          Python39:
+            PythonVersion: '3.9'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - task: UsePythonVersion@0
+        displayName: 'Use Python'
+        inputs:
+          versionSpec: $(PythonVersion)
+
+      - script: |
+          set -e
+          pushd .
+          cd $(Build.SourcesDirectory)/cmake/external/protobuf
+          cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
+          make -j$(getconf _NPROCESSORS_ONLN)
+          make install
+          popd
+          export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
+          export ONNX_ML=1
+          export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+          sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+          sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+          brew install libomp
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }} --wheel_name_suffix=openmp
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2
