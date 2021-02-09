@@ -161,7 +161,7 @@ if (WIN32)
   if (onnxruntime_USE_CUDA)
     file(WRITE "${VERSION_INFO_FILE}" "use_cuda = True\n")
 
-    file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/lib/x64/cudnn64_*.lib")
+    file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll")
     if (NOT CUDNN_DLL_PATH)
       message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
     endif()
