@@ -801,7 +801,7 @@ set(onnxruntime_eager_mode_libs
         onnxruntime_providers
         onnxruntime_session
         re2::re2
-        tensorboard
+        nsync_cpp
         )
 target_link_libraries(onnxruntime_eager_mode_test PRIVATE ${onnxruntime_eager_mode_libs} Threads::Threads)
 
