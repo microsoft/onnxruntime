@@ -69,7 +69,7 @@ ONNX Runtime is up to date and backwards compatible with all operators (both DNN
 
 * [Supported operators/types](./docs/OperatorKernels.md)
   * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](./docs/ContribOperators.md)*
-* [Extensibility: Add a custom operator/kernel](docs/AddingCustomOp.md)
+* [Extensibility: Add a custom operator/kernel](https://www.onnxruntime.ai/docs/how-to/add-custom-op.html)
 
 ### Binaries
 
