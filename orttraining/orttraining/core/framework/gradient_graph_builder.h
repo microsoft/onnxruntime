@@ -47,7 +47,6 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Size", {0}},
         {"Reshape", {1}},
         {"Expand", {1}},
-        {"TrainableDropout", {1}},
         {"Dropout", {1, 2}},
         {"Slice", {1, 2, 3, 4}},
         {"SparseSoftmaxCrossEntropy", {1, 2}},

@@ -524,15 +524,15 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     const auto& attr_name = entry.first;
     const auto& attr_proto = entry.second;
     flatbuffers::Offset<fbs::Attribute> fbs_attr;
-    Graph* graph = nullptr;
+    Graph* subgraph = nullptr;
     if (attr_proto.has_g()) {
       const auto it = attr_to_subgraph_map_.find(attr_name);
       ORT_RETURN_IF_NOT(it != attr_to_subgraph_map_.cend(),
                         "Node [", name_, "] op_type [", op_type_, "] ", "does not have the graph for key ", attr_name);
-      graph = it->second;
+      subgraph = it->second;
     }
     ORT_RETURN_IF_ERROR(
-        experimental::utils::SaveAttributeOrtFormat(builder, attr_proto, fbs_attr, graph));
+        experimental::utils::SaveAttributeOrtFormat(builder, attr_proto, fbs_attr, ModelPath(), subgraph));
     attributes_vec.push_back(fbs_attr);
   }
   auto attributes = builder.CreateVector(attributes_vec);
@@ -2265,6 +2265,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
+  // Set the parent directory of model path to load external tensors if exist
+  ctx.set_model_dir(ToMBString(ModelPath().ParentPath().ToPathString()));
 
   LexicalScopeContext lsc;
   lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),
@@ -3389,6 +3391,31 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   return node;
 }
 
+void Graph::CancelFuseSubGraph(const Node& fused_node) {
+  auto node_idx = fused_node.Index();
+  if (!GetNode(node_idx))
+    return;
+
+  if (fused_node.NodeType() != Node::Type::Fused)
+    return;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Remove the function body from function container
+  const auto* fused_node_func = fused_node.GetFunctionBody();
+  auto it = std::find_if(
+      function_container_.begin(), function_container_.end(),
+      [fused_node_func](const std::unique_ptr<onnxruntime::Function>& func) {
+        return func.get() == fused_node_func;
+      });
+  if (it != function_container_.end()) {
+    function_container_.erase(it);
+  }
+#endif
+
+  // Remove the fused_node
+  RemoveNode(node_idx);
+}
+
 void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node) {
   const auto* func_meta_def = sub_graph.GetMetaDef();
   ORT_ENFORCE(nullptr != func_meta_def);
@@ -3429,9 +3456,7 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
         if (it != input_indexes.cend()) {
           AddEdge(producer_idx, new_node_idx, src_idx, it->second);
         }
-      } 
-      else
-      {
+      } else {
         int dst_implicit_input_idx = dst_idx - (int)node->InputDefs().size();
         ORT_ENFORCE(dst_implicit_input_idx < (int)node->ImplicitInputDefs().size());
         auto it = input_indexes.find(node->ImplicitInputDefs()[dst_implicit_input_idx]->Name());
@@ -3619,13 +3644,19 @@ std::ostream& operator<<(std::ostream& out, const Graph& graph) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
-Status Graph::LoadFromOrtFormat(
-    const onnxruntime::experimental::fbs::Graph& fbs_graph,
-    const Model& owning_model,
-    const std::unordered_map<std::string, int>& domain_to_version,
-    const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
+Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph,
+                                const Model& owning_model,
+                                const std::unordered_map<std::string, int>& domain_to_version,
+#if !defined(ORT_MINIMAL_BUILD)
+                                IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+#endif
+                                const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
   // can't use make_unique as we're calling a private ctor
-  graph.reset(new Graph(owning_model, domain_to_version, nullptr, nullptr, logger));
+  graph.reset(new Graph(owning_model, domain_to_version,
+#if !defined(ORT_MINIMAL_BUILD)
+                        schema_registry,
+#endif
+                        nullptr, nullptr, logger));
 
   ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph));
 
@@ -3636,8 +3667,6 @@ Status Graph::LoadFromOrtFormat(
   // and in InferenceSession::Initialize skip partitioning and running optimizers.
   graph->SetGraphResolveNeeded();
   ORT_RETURN_IF_ERROR(graph->Resolve());
-#else
-  // probably nothing required here. validate with model that has nested subgraphs.
 #endif
 
   return Status::OK();
@@ -3648,7 +3677,11 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs
                                 const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
   // can't use make_unique as we're calling a private ctor
   graph.reset(new Graph(parent_graph.owning_model_,
-                        parent_graph.domain_to_version_, &parent_graph, &parent_node,
+                        parent_graph.domain_to_version_,
+#if !defined(ORT_MINIMAL_BUILD)
+                        parent_graph.schema_registry_,
+#endif
+                        &parent_graph, &parent_node,
                         logger));
 
   return graph->LoadFromOrtFormat(fbs_graph);
@@ -3656,12 +3689,15 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs
 
 Graph::Graph(const Model& owning_model,
              const std::unordered_map<std::string, int>& domain_to_version,
+#if !defined(ORT_MINIMAL_BUILD)
+             IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+#endif
              Graph* parent_graph, const Node* parent_node,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(&deserialized_proto_data_),
 #if !defined(ORT_MINIMAL_BUILD)
-      schema_registry_(std::make_shared<SchemaRegistryManager>()),
+      schema_registry_(schema_registry),
 #endif
       domain_to_version_(domain_to_version),
       ir_version_(owning_model.IrVersion()),

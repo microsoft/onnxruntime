@@ -176,7 +176,7 @@ static Status SimpleHandler(Graph& graph, Node& gathernd_node, Node& target_node
 */
 static Status BinaryElementwiseHandler(Graph& graph, Node& gathernd_node, Node& target_node) {
   int target_node_input_index = GetValidInputForGatherND(target_node);
-  ORT_RETURN_IF_NOT(target_node_input_index != -1);
+  ORT_RETURN_IF(target_node_input_index == -1, "Invalid target node index");
   return SwapGatherNDWithTargetNode(graph, gathernd_node, target_node, target_node_input_index);
 }
 
@@ -202,7 +202,7 @@ static Status BinaryElementwiseHandler(Graph& graph, Node& gathernd_node, Node& 
 */
 static Status MatMulHandler(Graph& graph, Node& gathernd_node, Node& target_node) {
   int target_node_input_index = GetValidInputForGatherND(target_node);
-  ORT_RETURN_IF_NOT(target_node_input_index == 0);
+  ORT_RETURN_IF_NOT(target_node_input_index == 0, "target_node_input_index != 0");
   return SwapGatherNDWithTargetNode(graph, gathernd_node, target_node, target_node_input_index);
 }
 

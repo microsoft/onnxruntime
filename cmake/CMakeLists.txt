@@ -59,7 +59,7 @@ option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak chec
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support, generate device code line number information." OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
-option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
+option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
@@ -141,6 +141,7 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
@@ -157,6 +158,10 @@ endif()
 
 if(onnxruntime_USE_VALGRIND AND NOT WIN32)
   add_definitions(-DRE2_ON_VALGRIND=1)
+endif()
+
+if(WIN32)
+  string(APPEND CMAKE_CXX_FLAGS " /W3")
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
@@ -641,18 +646,6 @@ if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
   message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
 endif()
 
-if (onnxruntime_USE_EIGEN_FOR_BLAS)
-  add_definitions(-DUSE_EIGEN_FOR_BLAS)
-endif()
-
-if (onnxruntime_USE_OPENBLAS AND "${onnxruntime_OPENBLAS_HOME}" STREQUAL "" AND WIN32)
-  # On linux we assume blas is installed via 'apt-get install libopenblas-dev'
-  message(FATAL_ERROR "onnxruntime_OPENBLAS_HOME required for onnxruntime_USE_OPENBLAS")
-endif()
-
-if (onnxruntime_USE_OPENBLAS AND onnxruntime_USE_EIGEN_FOR_BLAS)
-  message(FATAL_ERROR "use one of onnxruntime_USE_OPENBLAS, onnxruntime_USE_EIGEN_FOR_BLAS")
-endif()
 
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
@@ -660,10 +653,6 @@ get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
-
-if(onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(re2)
-endif()
 
 set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
 add_library(safeint_interface INTERFACE)
@@ -674,6 +663,11 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
   add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
 endif()
 
+add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
+
+if(onnxruntime_PREFER_SYSTEM_LIB)
+  find_package(re2)
+endif()
 if(NOT TARGET re2::re2)
   add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
   set_target_properties(re2 PROPERTIES FOLDER "External/re2")
@@ -698,10 +692,80 @@ set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -DGSL_UNENFORCED_O
 
 include(eigen)
 
-#onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
-# dnnl/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
+#onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
+# dnnl/mklml, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
 set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
+
+
+set(onnxruntime_LINK_DIRS )
+if(onnxruntime_USE_CUDA)
+      #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
+      if (WIN32)
+        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib/x64 ${onnxruntime_CUDA_HOME}/x64/lib64)
+      else()
+        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib64 ${onnxruntime_CUDA_HOME}/lib64)
+      endif()
+endif()
+
+function(onnxruntime_add_shared_library target_name)
+  add_library(${target_name} SHARED ${ARGN})
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS}) 
+  if (MSVC)
+    target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+    target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
+    set_target_properties(${target_name} PROPERTIES VS_CA_EXCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
+  else()
+    target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
+    target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+  endif()
+  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  if(onnxruntime_ENABLE_LTO)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
+  endif()
+endfunction()
+
+#For plugins that are not linked into other targets but may be loaded dynamically at runtime using dlopen-like functionality.
+function(onnxruntime_add_shared_library_module target_name)
+  add_library(${target_name} MODULE ${ARGN})
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
+  if (MSVC)
+    target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+    target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
+    set_target_properties(${target_name} PROPERTIES VS_CA_EXCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
+  else()
+    target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
+    target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+  endif()
+  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  if(onnxruntime_ENABLE_LTO)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
+  endif()
+endfunction()
+
+#almost the same as the above function, except the first line of the body
+function(onnxruntime_add_executable target_name)  
+  add_executable(${target_name} ${ARGN})
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS}) 
+  if (MSVC)
+    target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+    target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
+    set_target_properties(${target_name} PROPERTIES VS_CA_EXCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
+  else()
+    target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
+    target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+  endif()
+  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  if(onnxruntime_ENABLE_LTO)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
+  endif()
+endfunction()
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
@@ -730,7 +794,6 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
   endif()
 
   if (NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-
     add_library(arm_compute SHARED IMPORTED)
     set_target_properties(arm_compute PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -745,11 +808,9 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-
-    link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_core arm_compute_graph)
 
 endif()
 
@@ -763,7 +824,6 @@ if (onnxruntime_USE_ARMNN)
   endif()
 
   if (NOT onnxruntime_USE_ACL AND NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-
     add_library(arm_compute SHARED IMPORTED)
     set_target_properties(arm_compute PROPERTIES
         IMPORTED_NO_SONAME 1
@@ -778,20 +838,16 @@ if (onnxruntime_USE_ARMNN)
     set_target_properties(arm_compute_graph PROPERTIES
         IMPORTED_NO_SONAME 1
         IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-
-    link_libraries(arm_compute arm_compute_core arm_compute_graph)
   endif()
 
   if (NOT ${onnxruntime_ARMNN_LIBS} STREQUAL "")
-
-    find_library(ARMNN_LIBRARY NAMES armnn
-                     PATHS ${onnxruntime_ARMNN_LIBS}
-                     NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-
-    link_libraries(armnn)
+    add_library(armnn SHARED IMPORTED)
+    set_target_properties(armnn PROPERTIES
+        IMPORTED_NO_SONAME 1
+        IMPORTED_LOCATION "${onnxruntime_ARMNN_LIBS}/libarmnn.so")
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn arm_compute arm_compute_core arm_compute_graph)
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -895,6 +951,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND Onnxruntime_GCOV_COVERAGE)
   string(APPEND CMAKE_C_FLAGS   " -g -O0 --coverage ")
 endif()
 
+set(ORT_WARNING_FLAGS )
 #Adjust warning flags
 if (WIN32)
     add_definitions(-DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES)
@@ -903,27 +960,30 @@ if (WIN32)
     endif()
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
-    string(APPEND CMAKE_CXX_FLAGS " /MP /W4")
-    string(APPEND CMAKE_C_FLAGS " /MP /W4")
-    #Compiler bug, we should get such warnings. It will be fixed in a new VC release
-    string(APPEND CMAKE_CXX_FLAGS " /wd4127")
-    # class needs to have dll-interface to be used by clients
-    string(APPEND CMAKE_CXX_FLAGS " /wd4251")
-    # issued by thrust nonstandard extension used: nameless struct/union
-    string(APPEND CMAKE_CXX_FLAGS " /wd4201")
-    if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-        string(APPEND CMAKE_CXX_FLAGS
-            " /analyze:stacksize 131072"
-            # disable warning because there are many occurrences from test macros
-            " /wd6326 " # potential comparison of a constant with another constant
-        )
+    string(APPEND CMAKE_CXX_FLAGS " /MP")
+    if(onnxruntime_USE_CUDA)
+      list(APPEND ORT_WARNING_FLAGS "/W3")
+    else()
+      list(APPEND ORT_WARNING_FLAGS "/W4")
     endif()
-
+    #Compiler bug, we should get such warnings. It will be fixed in a new VC release
+    list(APPEND ORT_WARNING_FLAGS "/wd4127")
+    # class needs to have dll-interface to be used by clients
+    list(APPEND ORT_WARNING_FLAGS "/wd4251")
+    # issued by thrust nonstandard extension used: nameless struct/union
+    list(APPEND ORT_WARNING_FLAGS "/wd4201")
+    if (onnxruntime_ENABLE_STATIC_ANALYSIS)
+        list(APPEND ORT_WARNING_FLAGS "/analyze:stacksize 131072")
+        list(APPEND ORT_WARNING_FLAGS "/wd6326") # potential comparison of a constant with another constant        
+        if(onnxruntime_USE_OPENMP)
+          list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
+        endif()
+    endif()
     # Treat warning as error if onnxruntime_DEV_MODE is ON
     # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
     if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors
-      string(APPEND CMAKE_CXX_FLAGS " /WX")
+      list(APPEND ORT_WARNING_FLAGS "/WX")
       foreach(type EXE STATIC SHARED)
         set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /WX")
       endforeach()
@@ -951,6 +1011,10 @@ if (WIN32)
         endif()
       endforeach()
     endif()
+    foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
+      string(APPEND CMAKE_CXX_FLAGS " ${ORT_FLAG}")
+      string(APPEND CMAKE_C_FLAGS " ${ORT_FLAG}")
+    endforeach()
 else()
   add_definitions(-DPLATFORM_POSIX)
   # Enable warning and enable space optimization in Linux
@@ -996,19 +1060,6 @@ else()
   endif()
 endif()
 set(onnxruntime_DELAYLOAD_FLAGS "")
-if (onnxruntime_USE_JEMALLOC)
-  if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
-    message( FATAL_ERROR "You cannot specify both jemalloc and mimalloc." )
-  endif()
-
-  if (Win32)
-    message( FATAL_ERROR "Jemalloc is not supported on Windows." )
-  endif()
-  include(jemalloc)
-  add_definitions(-DUSE_JEMALLOC=1)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${JEMALLOC_STATIC_LIBRARIES})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES jemalloc)
-endif()
 
 include_directories(
   ${ONNXRUNTIME_INCLUDE_DIR}
@@ -1029,10 +1080,7 @@ if(onnxruntime_USE_OPENVINO)
   endif()
 
   # Check OpenVINO version for support
-  if (${VER} MATCHES "2020.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.2")
-    set(OPENVINO_VERSION "2020.2")
-    add_definitions(-DOPENVINO_2020_2=1)
-  elseif (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
+  if (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
     set(OPENVINO_VERSION "2020.3")
     add_definitions(-DOPENVINO_2020_3=1)
   elseif (${VER} MATCHES "2020.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
@@ -1095,17 +1143,6 @@ if (onnxruntime_USE_VITISAI)
   endif()
 endif()
 
-if (onnxruntime_USE_OPENBLAS)
-  add_definitions(-DUSE_OPENBLAS=1)
-  if (WIN32)
-    include_directories(${onnxruntime_OPENBLAS_HOME})
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_OPENBLAS_HOME}/lib/libopenblas.lib)
-  else()
-    # on linux we assume blas is installed via 'apt-get install libopenblas-dev'
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES openblas)
-  endif()
-endif()
-
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 
 if (onnxruntime_USE_CUDA)
@@ -1137,21 +1174,6 @@ if (onnxruntime_USE_CUDA)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
 
-  if (WIN32)
-    link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
-
-    # delayload causes crash on exit, so disable for now
-    # please update cudaDelayLoadedLibs in Microsoft.ML.OnnxRuntime/SessionOptions.cs if you change delayload
-    #file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*" "${onnxruntime_CUDA_HOME}/bin/curand64_*" "${onnxruntime_CUDA_HOME}/bin/cufft64_*")
-    #set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:cudnn64_8.dll")
-    #foreach(cuda_dll_path ${cuda_dll_paths})
-    #    get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)
-    #    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:${cuda_dll_file_name}")
-    #endforeach(cuda_dll_path)
-
-  else()
-    link_directories(${onnxruntime_CUDNN_HOME}/lib64)
-  endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
@@ -1176,9 +1198,12 @@ if (onnxruntime_USE_CUDA)
       endif()
     endif()
   endif()
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --default-stream legacy")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")
+  endif()
   if (NOT WIN32)
-    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --expt-relaxed-constexpr --compiler-options -fPIC")
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC")
   endif()
   # Options passed to cudafe
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
@@ -1243,8 +1268,13 @@ if (onnxruntime_USE_DML)
   include(dml)
 endif()
 
+if (onnxruntime_ENABLE_TRAINING_OPS)
+  add_compile_definitions(ENABLE_TRAINING_OPS)
+endif()
+
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING_OPS)
 
   if (UNIX)
     # Find MPI
@@ -1367,6 +1397,7 @@ foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework o
   if (MSVC)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
+    set_target_properties(${target_name} PROPERTIES VS_CA_EXCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
   else()
     target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
     target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")

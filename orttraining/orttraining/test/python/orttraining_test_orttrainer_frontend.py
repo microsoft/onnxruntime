@@ -60,6 +60,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
                 'sliced_tensor_names': []
             },
             'allreduce_post_accumulation': False,
+            'data_parallel_size': 1,
+            'horizontal_parallel_size':1,
             'deepspeed_zero_optimization': {
                 'stage' : 0,
             },
@@ -88,7 +90,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'graph_save_paths' : {
                 'model_after_graph_transforms_path': '',
                 'model_with_gradient_graph_path': '',
-                'model_with_training_graph_path': ''                            
+                'model_with_training_graph_path': '',
+                'model_with_training_graph_after_optimization_path': ''
             }
         },
         '_internal_use': {
@@ -426,6 +429,7 @@ def testOptimizerConfigAdam():
     assert_allclose(0.0, cfg.lambda_coef, rtol=rtol,
                     err_msg="lambda_coef mismatch")
     assert_allclose(1e-8, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
+    assert_allclose(1.0, cfg.max_norm_clip, rtol=rtol, err_msg="max_norm_clip mismatch")
     assert cfg.do_bias_correction == True, "lambda_coef mismatch"
     assert cfg.weight_decay_mode == optim.AdamConfig.DecayMode.BEFORE_WEIGHT_UPDATE, "weight_decay_mode mismatch"
 
@@ -443,6 +447,7 @@ def testOptimizerConfigLamb():
     assert cfg.ratio_min == float('-inf'), "ratio_min mismatch"
     assert cfg.ratio_max == float('inf'), "ratio_max mismatch"
     assert_allclose(1e-6, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
+    assert_allclose(1.0, cfg.max_norm_clip, rtol=rtol, err_msg="max_norm_clip mismatch")
     assert cfg.do_bias_correction == False, "do_bias_correction mismatch"
 
 
@@ -1427,13 +1432,14 @@ def testORTTrainerUnusedInput():
         pytest.fail("RuntimeError doing train_step with an unused input.")
 
 @pytest.mark.parametrize("debug_files", [
-    ({'model_after_graph_transforms_path': 'transformed.onnx',
+    {'model_after_graph_transforms_path': 'transformed.onnx',
       'model_with_gradient_graph_path': 'transformed_grad.onnx',
-      'model_with_training_graph_path': 'training.onnx'
-    }),
-    ({'model_after_graph_transforms_path': 'transformed.onnx',
+      'model_with_training_graph_path': 'training.onnx',
+      'model_with_training_graph_after_optimization_path': 'training_optimized.onnx'
+    },
+    {'model_after_graph_transforms_path': 'transformed.onnx',
       'model_with_training_graph_path': ''
-    }),
+    },
     ])
 def testTrainingGraphExport(debug_files):
     device = 'cuda'
@@ -1464,7 +1470,107 @@ def testTrainingGraphExport(debug_files):
                     assert any("Grad" in n.name for n in saved_graph.node)
                 elif k == 'model_after_graph_transforms_path':
                     assert any("LayerNormalization" in n.op_type for n in saved_graph.node)
+                elif k == 'model_with_training_graph_after_optimization_path':
+                    assert any("FusedMatMul" in n.op_type for n in saved_graph.node)
                 # remove saved file
                 os.remove(path)
             else:
                 assert not os.path.isfile(path)
+
+
+def _adam_max_norm_clip_data():
+    device_capability_major = torch.cuda.get_device_capability()[0] 
+    if device_capability_major == 7:    # V100 for Dev machine
+        return [
+            (0, 'cuda', 1.0, 1, 12, [10.536802, 9.95102, 9.495312, 9.067217, 8.735067, 8.447508,\
+                8.179443, 7.903837, 7.655049, 7.409669, 7.135822, 6.931838]),
+            (0, 'cuda', 0.1, 1, 12, [10.536802, 9.951735, 9.496659, 9.069328, 8.7381115, 8.4513855,\
+                8.184143, 7.9093056, 7.661127, 7.4162436, 7.142842, 6.9388437]),
+            (42, 'cuda', 1.0, 1, 12, [10.645588, 10.0333, 9.52253, 9.108369, 8.766306, 8.497426,\
+                8.199408, 7.958235, 7.659668, 7.459833, 7.170661, 6.9139776]),
+            (42, 'cuda', 0.1, 1, 12, [10.645588, 10.03406, 9.524019, 9.110594, 8.769308, 8.501322,\
+                8.204281, 7.963957, 7.6660814, 7.46682, 7.1780496, 6.92159]),
+        ]
+    elif device_capability_major == 5:  # M60 for CI machines (Python Packaging Pipeline)
+        return [
+            (0, 'cuda', 1.0, 1, 12, [10.564176,  9.97518 ,  9.474583,  9.076513,  8.724233,  8.440754,\
+                    8.156107,  7.905789,  7.683374,  7.420595,  7.156939,  6.914139]),
+            (0, 'cuda', 0.1, 1, 12, [10.564176,  9.975904,  9.475933,  9.078633,  8.727232,  8.444615,\
+                    8.160932,  7.911339,  7.689524,  7.427308,  7.164138,  6.921518]),
+            (42, 'cuda', 1.0, 1, 12, [10.660578, 10.027208,  9.518457,  9.10457 ,  8.767458,  8.469093,\
+                    8.207001,  7.92541 ,  7.655277,  7.434964,  7.155968,  6.924634]),
+            (42, 'cuda', 0.1, 1, 12, [10.660578, 10.027987,  9.519927,  9.106762,  8.770505,  8.473034,\
+                    8.211944,  7.931111,  7.661622,  7.441899,  7.163355,  6.932114]),
+        ]
+@pytest.mark.parametrize("seed,device,max_norm_clip,gradient_accumulation_steps,total_steps,expected_loss", _adam_max_norm_clip_data())
+def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps, total_steps, expected_loss):
+    rtol = 1e-5
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # Setup ORTTrainer
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
+                                            'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
+                                            'debug' : {'deterministic_compute' : True}})
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
+    optim_config = optim.AdamConfig(lr=0.001, max_norm_clip=max_norm_clip)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    actual_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = trainer.train_step(data, targets)
+        actual_loss.append(loss.cpu().item())
+
+    # Compare legacy vs experimental APIs
+    _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=rtol)
+
+
+def _lamb_max_norm_clip_data():
+    device_capability_major = torch.cuda.get_device_capability()[0] 
+    if device_capability_major == 7:    # V100 for Dev machine
+        return [
+            (0, 'cuda', 1.0, 1, 12, [10.536802, 10.409792, 10.354762, 10.253063, 10.213676, 10.113361,\
+                10.066136, 9.977713, 9.924597, 9.858974, 9.796471, 9.794921]),
+            (0, 'cuda', 0.1, 1, 12, [10.536802, 10.3714695, 10.276415, 10.13743, 10.063246, 9.93144,\
+                9.854875, 9.739198, 9.661381, 9.570321, 9.482681, 9.457669]),
+            (42, 'cuda', 1.0, 1, 12, [10.645588, 10.51151, 10.438802, 10.356055, 10.291667, 10.232069,\
+                10.168237, 10.074414, 9.990586, 9.9324, 9.891901, 9.788895]),
+            (42, 'cuda', 0.1, 1, 12, [10.645588, 10.473022, 10.359108, 10.238948, 10.141735, 10.049339,\
+                9.953887, 9.832249, 9.722989, 9.640278, 9.572205, 9.448381]),
+        ]
+    elif device_capability_major == 5:  # M60 for CI machines (Python Packaging Pipeline)
+        return [
+            (0, 'cuda', 1.0, 1, 12, [10.564176, 10.429815, 10.331507, 10.261825, 10.19336 , 10.110986,\
+                    10.041771,  9.990074,  9.985901,  9.892414,  9.819457,  9.753627]),
+            (0, 'cuda', 0.1, 1, 12, [10.564176, 10.391491, 10.253088, 10.146585, 10.044328,  9.930671,\
+                    9.830513,  9.752279,  9.72234 ,  9.606323,  9.506898,  9.417118]),
+            (42, 'cuda', 1.0, 1, 12, [10.660578, 10.510471, 10.431763, 10.358577, 10.301462, 10.209934,\
+                    10.167318, 10.03529 ,  9.995482,  9.938999,  9.875689,  9.80955 ]),
+            (42, 'cuda', 0.1, 1, 12, [10.660578, 10.471846, 10.352203, 10.241209, 10.149426, 10.026606,\
+                    9.952093,  9.792846,  9.726216,  9.645785,  9.556379,  9.467741]),
+        ]
+@pytest.mark.parametrize("seed,device,max_norm_clip, gradient_accumulation_steps,total_steps,expected_loss", _lamb_max_norm_clip_data())
+def testORTTrainerLambMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps, total_steps, expected_loss):   
+    rtol = 1e-3
+    torch.manual_seed(seed)
+    set_seed(seed)
+
+    # Setup ORTTrainer
+    options = orttrainer.ORTTrainerOptions({'device' : {'id' : device},
+                                            'batch' : {'gradient_accumulation_steps' : gradient_accumulation_steps},
+                                            'debug' : {'deterministic_compute' : True}})
+    model, model_desc, my_loss, batcher_fn, train_data, _, _ = _test_commons._load_pytorch_transformer_model(device)
+    optim_config = optim.LambConfig(lr=0.001, max_norm_clip=max_norm_clip)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
+
+    # Training loop
+    actual_loss = []
+    for i in range(total_steps):
+        data, targets = batcher_fn(train_data, i)
+        loss, _ = trainer.train_step(data, targets)
+        actual_loss.append(loss.cpu().item())
+
+    # Compare legacy vs experimental APIs
+    _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=rtol)

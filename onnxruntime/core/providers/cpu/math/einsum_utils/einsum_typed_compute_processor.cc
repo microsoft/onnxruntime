@@ -58,13 +58,13 @@ void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_outp
     // into the buffer of the actual output given to us by the execution frame
     // We need to do this because the buffer owned by the output tensor of the op could be user provided buffer
 
-    auto status = device_data_copy_func_(*candidate_output_transposed, output);
+    auto status = device_data_copy_func_(*candidate_output_transposed, output, einsum_ep_assets_);
     ORT_ENFORCE(status.IsOK(), "Einsum op: Could not copy the intermediate output's buffer into the op's output buffer. Error: ",
                 status.ErrorMessage());
 
   } else {
     // Copy the output candidate into the op's output
-    auto status = device_data_copy_func_(candidate_output, output);
+    auto status = device_data_copy_func_(candidate_output, output, einsum_ep_assets_);
     ORT_ENFORCE(status.IsOK(), "Einsum op: Could not copy the intermediate output's buffer into the op's output buffer. Error: ",
                 status.ErrorMessage());
   }

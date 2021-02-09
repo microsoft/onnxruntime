@@ -31,16 +31,16 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
     T3& m2_new) {
   // Actual gradient. The scale is a product of loss' scale and
   // global gradient norm (if the norm > 1).
-  const T3 g_scaled = T3(T1(g) / g_scale);
+  const T3 g_unscaled = T3(T1(g) / g_scale);
 
   // A constant in Lamb's equation.
   const T3 one = T3(1.0f);
 
   // Update exponentially-averaged historical gradient
-  const T3 m1_new_tmp = alpha * m1 + (one - alpha) * g_scaled;
+  const T3 m1_new_tmp = alpha * m1 + (one - alpha) * g_unscaled;
 
   // Update exponentially-averaged historical squared gradient
-  const T3 m2_new_tmp = beta * m2 + (one - beta) * g_scaled * g_scaled;
+  const T3 m2_new_tmp = beta * m2 + (one - beta) * g_unscaled * g_unscaled;
 
   // Compute unbiased 1st-order momentom.
   // The value alpha_correction is usually (1-alpha^t),
@@ -80,6 +80,7 @@ __global__ void _LambComputeDirectionImpl(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T1 max_norm,
     T3 alpha_correction,
     T3 beta_correction,
     T2* update_direction,
@@ -88,7 +89,7 @@ __global__ void _LambComputeDirectionImpl(
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
-  const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm);
+  const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm, max_norm);
 
   _LambComputeDirectionRule(
       scale,
@@ -109,6 +110,7 @@ __global__ void _LambComputeDirectionImpl(
 
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 void LambComputeDirection(
+    cudaStream_t stream,
     const T1* weights,
     const T2* grads,
     const T3* moment_1,
@@ -119,6 +121,7 @@ void LambComputeDirection(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T1 max_norm,
     T3 alpha_correction,
     T3 beta_correction,
     T2* update_direction,
@@ -128,7 +131,7 @@ void LambComputeDirection(
   int blocksPerGrid =
       (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _LambComputeDirectionImpl<T1, T2, T3, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _LambComputeDirectionImpl<T1, T2, T3, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       weights,
       grads,
       moment_1,
@@ -139,6 +142,7 @@ void LambComputeDirection(
       beta,
       lambda,
       epsilon,
+      max_norm,
       alpha_correction,
       beta_correction,
       update_direction,
@@ -149,6 +153,7 @@ void LambComputeDirection(
 
 #define SPECIALIZED_LAMB_COMPUTE_DIRECTION(T1, T2, T3, T_GRAD_NORM) \
   template void LambComputeDirection(                               \
+      cudaStream_t stream,                                          \
       const T1* weights,                                            \
       const T2* grads,                                              \
       const T3* moment_1,                                           \
@@ -159,6 +164,7 @@ void LambComputeDirection(
       T3 beta,                                                      \
       T1 lambda,                                                    \
       T3 epsilon,                                                   \
+      T1 max_norm,                                                   \
       T3 alpha_correction,                                          \
       T3 beta_correction,                                           \
       T2* weights_out,                                              \
@@ -252,6 +258,7 @@ __global__ void _LambUpdateImpl(
 
 template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 void LambUpdate(
+    cudaStream_t stream,
     const T1* eta,
     const float ratio_min,
     const float ratio_max,
@@ -266,7 +273,7 @@ void LambUpdate(
   int blocksPerGrid =
       (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _LambUpdateImpl<T1, T2, T3, T_MIXED_PRECISION_FP><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _LambUpdateImpl<T1, T2, T3, T_MIXED_PRECISION_FP><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       eta,
       ratio_min,
       ratio_max,
@@ -282,6 +289,7 @@ void LambUpdate(
 
 #define INSTANTIATE_LAMB_UPDATE(T1, T2, T3, T_MIXED_PRECISION_FP) \
   template void LambUpdate(                                       \
+      cudaStream_t stream,                                        \
       const T1* eta,                                              \
       const float ratio_min,                                      \
       const float ratio_max,                                      \
@@ -315,6 +323,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
     const T3 alpha,
     const T3 beta,
     const T3 epsilon,
+    const T1 max_norm,
     const T3 alpha_correction,
     const T3 beta_correction) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
@@ -327,7 +336,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
   const T3* m2 = reinterpret_cast<const T3*>(chunk_group.tensor_ptrs[3][group_index]) + chunk_start;
   T3* m1_new = reinterpret_cast<T3*>(chunk_group.tensor_ptrs[4][group_index]) + chunk_start;
   T3* m2_new = reinterpret_cast<T3*>(chunk_group.tensor_ptrs[5][group_index]) + chunk_start;
-  const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm);
+  const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm, max_norm);
 
 #pragma unroll
   for (int i = threadIdx.x; i < chunk_size && i + chunk_start < tensor_size; i += blockDim.x) {
@@ -351,6 +360,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
 
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()(
+    cudaStream_t stream,
     ChunkGroup<6> chunk_group,
     const T1* loss_scale,
     const T_GRAD_NORM* g_norm,
@@ -358,12 +368,13 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
     const T3 alpha,
     const T3 beta,
     const T3 epsilon,
+    const T1 max_norm,
     const T3 alpha_correction,
     const T3 beta_correction) {
   const int thread_count = ChunkGroup<6>::thread_count_per_block;
   const int block_count = chunk_group.chunk_count;
 
-  LambMultiTensorComputeDirectionImpl<T1, T2, T3><<<block_count, thread_count, 0>>>(
+  LambMultiTensorComputeDirectionImpl<T1, T2, T3><<<block_count, thread_count, 0, stream>>>(
       chunk_group,
       loss_scale,
       g_norm,
@@ -371,12 +382,14 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
       alpha,
       beta,
       epsilon,
+      max_norm,
       alpha_correction,
       beta_correction);
 }
 
 #define INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(T1, T2, T3, T_GRAD_NORM)                \
   template void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()( \
+      cudaStream_t stream,                                                                   \
       ChunkGroup<6> chunk_group,                                                             \
       const T1* loss_scale,                                                                  \
       const T_GRAD_NORM* g_norm,                                                             \
@@ -384,6 +397,7 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
       const T3 alpha,                                                                        \
       const T3 beta,                                                                         \
       const T3 epsilon,                                                                      \
+      const T1 max_norm,                                                                     \
       const T3 alpha_correction,                                                             \
       const T3 beta_correction);
 
@@ -437,6 +451,7 @@ __global__ void LambMultiTensorUpdateImpl(
 
 template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 void LambMultiTensorUpdateFunctor<T1, T2, T3, T_MIXED_PRECISION_FP>::operator()(
+    cudaStream_t stream,
     ChunkGroup<7> chunk_group,
     const T1* eta,
     const float ratio_min,
@@ -444,7 +459,7 @@ void LambMultiTensorUpdateFunctor<T1, T2, T3, T_MIXED_PRECISION_FP>::operator()(
   const int thread_count = ChunkGroup<7>::thread_count_per_block;
   const int block_count = chunk_group.chunk_count;
 
-  LambMultiTensorUpdateImpl<T1, T2, T3, T_MIXED_PRECISION_FP><<<block_count, thread_count, 0>>>(
+  LambMultiTensorUpdateImpl<T1, T2, T3, T_MIXED_PRECISION_FP><<<block_count, thread_count, 0, stream>>>(
       chunk_group,
       eta,
       ratio_min,
@@ -453,6 +468,7 @@ void LambMultiTensorUpdateFunctor<T1, T2, T3, T_MIXED_PRECISION_FP>::operator()(
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(T1, T2, T3, T_MIXED_PRECISION_FP)      \
   template void LambMultiTensorUpdateFunctor<T1, T2, T3, T_MIXED_PRECISION_FP>::operator()( \
+      cudaStream_t stream,                                                                  \
       ChunkGroup<7> chunk_group,                                                            \
       const T1* eta,                                                                        \
       const float ratio_min,                                                                \
@@ -608,7 +624,7 @@ CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> compute_tensor_rang
 }
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
-void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel& kernel, void* reduction_buffer, size_t reduction_buffer_size) {
+void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(cudaStream_t stream, ChunkGroup<4> chunk_group, const CudaKernel& kernel, void* reduction_buffer, size_t reduction_buffer_size) {
   // thread count per block.
   constexpr int thread_count = ChunkGroup<4>::thread_count_per_block;
   // shared memory's size per block.
@@ -628,12 +644,12 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
   TOut2* d_buffer = reinterpret_cast<TOut2*>(w_buffer + num_blocks);
 
   auto sync_range_and_lock = compute_tensor_range_and_lock(chunk_group, kernel);
-  LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size>>>(
+  LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf><<<chunk_group.chunk_count, thread_count, shared_memory_size, stream>>>(
       chunk_group, w_buffer, d_buffer, sync_range_and_lock.GpuPtr());
 }
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(TIn1, TIn2, TOut1, TOut2, TBuf) \
-  template void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(ChunkGroup<4> chunk_group, const CudaKernel& kernel, void* reduction_buffer, size_t reduction_buffer_size);
+  template void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(cudaStream_t stream, ChunkGroup<4> chunk_group, const CudaKernel& kernel, void* reduction_buffer, size_t reduction_buffer_size);
 
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, float, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(double, double, double, double, double)

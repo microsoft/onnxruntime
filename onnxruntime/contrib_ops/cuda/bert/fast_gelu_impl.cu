@@ -33,11 +33,11 @@ namespace contrib {
 namespace cuda {
 
 // constants for approximating the normal cdf
-constexpr float A = 0.5;
+constexpr float A = 0.5f;
 
-constexpr float B = 0.7978845608028654;  // sqrt(2.0/M_PI)
+constexpr float B = 0.7978845608028654f;  // sqrt(2.0/M_PI)
 
-constexpr float C = 0.035677408136300125;  // 0.044715 * sqrt(2.0/M_PI)
+constexpr float C = 0.035677408136300125f;  // 0.044715 * sqrt(2.0/M_PI)
 
 template <typename T, unsigned TPB>
 __global__ void FastGeluKernel(const T a, const T b, const T c, int input_length, int bias_length, const T* input, const T* bias, T* output) {

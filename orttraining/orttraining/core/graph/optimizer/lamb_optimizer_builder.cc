@@ -89,6 +89,7 @@ Status LambOptimizerBuilder::Build(
   std::vector<float> beta;
   std::vector<float> lambda;
   std::vector<float> epsilon;
+  std::vector<float> max_norm_clip;
   float ratio_min = -std::numeric_limits<float>::infinity();
   float ratio_max = std::numeric_limits<float>::infinity();
   int64_t do_bias_correction = 0;
@@ -157,6 +158,12 @@ Status LambOptimizerBuilder::Build(
       else
         epsilon.emplace_back(1e-6f);
 
+      auto max_norm_clip_iter = attrs.find("max_norm_clip");
+      if (max_norm_clip_iter != attrs.end())
+        max_norm_clip.emplace_back(max_norm_clip_iter->second);
+      else
+        max_norm_clip.emplace_back(1.0f);
+
       auto ratio_min_iter = attrs.find("ratio_min");
       if (ratio_min_iter != attrs.end()) {
         // All weight tensors should have the same min ratio.
@@ -179,10 +186,10 @@ Status LambOptimizerBuilder::Build(
       const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
       const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
       std::vector<int64_t> weight_dims;
-      ORT_RETURN_IF_NOT(
-          weight_argdefs[i].type_proto &&
-          weight_argdefs[i].type_proto->has_tensor_type() &&
-          weight_argdefs[i].type_proto->tensor_type().has_shape());
+      ORT_RETURN_IF_NOT(weight_argdefs[i].type_proto &&
+                            weight_argdefs[i].type_proto->has_tensor_type() &&
+                            weight_argdefs[i].type_proto->tensor_type().has_shape(),
+                        "weight_argsdefs[", i, "] did not have tensor with shape");
       for (const auto& dim : weight_argdefs[i].type_proto->tensor_type().shape().dim()) {
         weight_dims.push_back(dim.dim_value());
       }
@@ -202,9 +209,7 @@ Status LambOptimizerBuilder::Build(
         output_argdefs.push_back(output_gradient_argdef);  // g_new
       }
 
-      const auto element_type = opt_configs[i].use_mixed_precision_moments ?
-                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : 
-                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
+      const auto element_type = opt_configs[i].use_mixed_precision_moments ? ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
 
       weight_to_opt_mapping[weight_name] = {};
       // m1 & m2 & m1_new & m2_new
@@ -245,11 +250,11 @@ Status LambOptimizerBuilder::Build(
       // w_mixed_precision & w_mixed_precision_new
       if (opt_configs[i].update_weight && opt_configs[i].mixed_precision_weight_arg != nullptr) {
         input_argdefs.emplace_back(ArgDef(
-          opt_configs[i].mixed_precision_weight_arg->Name(),
-          opt_configs[i].mixed_precision_weight_arg->TypeAsProto()));
+            opt_configs[i].mixed_precision_weight_arg->Name(),
+            opt_configs[i].mixed_precision_weight_arg->TypeAsProto()));
         output_weight_argdef = ArgDef(
-          opt_configs[i].mixed_precision_weight_arg->Name() + "_Lamb_out",
-          opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
+            opt_configs[i].mixed_precision_weight_arg->Name() + "_Lamb_out",
+            opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
         output_argdefs.push_back(output_weight_argdef);
       } else {
         input_argdefs.emplace_back(ArgDef());
@@ -266,6 +271,7 @@ Status LambOptimizerBuilder::Build(
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("beta", beta));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("lambda", lambda));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("epsilon", epsilon));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("max_norm_clip", max_norm_clip));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_min", ratio_min));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_max", ratio_max));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("do_bias_correction", do_bias_correction));

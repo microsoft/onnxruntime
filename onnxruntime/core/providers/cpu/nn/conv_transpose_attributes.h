@@ -210,9 +210,10 @@ struct ConvTransposeAttributes : public ConvAttributes {
 
     // Compute padding if the auto_pad attribute is SAME_UPPER/SAME_LOWER
     if (pad_type == AutoPadType::SAME_UPPER || pad_type == AutoPadType::SAME_LOWER) {
-      // total pad
+      // The ONNX spec says if `auto_pad` attribute is set, pad until the `out_size`
+      // is `in_size * stride`
       auto total_pad = ComputeTotalPad(in_size, stride, adj,
-                                       kernel, dilation, in_size);
+                                       kernel, dilation, /*out_size = */ in_size * stride);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
     }
 

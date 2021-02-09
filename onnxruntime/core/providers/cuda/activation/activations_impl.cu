@@ -84,14 +84,15 @@ struct OP_ThresholdedRelu : public CtxThresholdedRelu {
 
 #define UNARY_ACTIVATION_IMPL(name)                                        \
   UNARY_ACTIVATION_IMPL_DECLARATION(name) {                                \
-    UnaryElementWiseImpl(input_data,                                       \
+    UnaryElementWiseImpl(stream,                                           \
+                         input_data,                                       \
                          output_data,                                      \
                          *reinterpret_cast<const OP_##name<T>*>(func_ctx), \
                          count);                                           \
   }
 
 #define SPECIALIZED_UNARY_ACTIVATION_IMPL(name, T) \
-  template void Impl_##name<T>(const T* input_data, T* output_data, const Ctx##name* func_ctx, size_t count);
+  template void Impl_##name<T>(cudaStream_t stream, const T* input_data, T* output_data, const Ctx##name* func_ctx, size_t count);
 
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 #define SPECIALIZED_UNARY_ACTIVATION_IMPL_BF16(name) SPECIALIZED_UNARY_ACTIVATION_IMPL(name, nv_bfloat16)

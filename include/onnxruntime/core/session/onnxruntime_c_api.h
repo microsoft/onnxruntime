@@ -173,10 +173,10 @@ typedef OrtStatus* OrtStatusPtr;
 #endif
 
 // __VA_ARGS__ on Windows and Linux are different
-#define ORT_API(RETURN_TYPE, NAME, ...) ORT_EXPORT RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+#define ORT_API(RETURN_TYPE, NAME, ...) RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_API_STATUS(NAME, ...) \
-  ORT_EXPORT _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
+  _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
 
 // XXX: Unfortunately, SAL annotations are known to not work with function pointers
 #define ORT_API2_STATUS(NAME, ...) \
@@ -184,7 +184,7 @@ typedef OrtStatus* OrtStatusPtr;
 
 // Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT and ORT_EXPORT
 #define ORT_API_STATUS_IMPL(NAME, ...) \
-  _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+  _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_CLASS_RELEASE(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X * input)
 
@@ -266,7 +266,18 @@ typedef struct OrtCUDAProviderOptions {
   size_t cuda_mem_limit;                          // default cuda memory limitation to maximum finite value of size_t.
   int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
   int do_copy_in_default_stream;
+  int has_user_compute_stream;
+  void* user_compute_stream;
 } OrtCUDAProviderOptions;
+
+/// <summary>
+/// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
+/// </summary>
+typedef struct OrtTensorRTProviderOptions {
+  int device_id;
+  int has_user_compute_stream;
+  void* user_compute_stream;
+} OrtTensorRTProviderOptions;
 
 /// <summary>
 /// Options for the OpenVINO provider that are passed to SessionOptionsAppendExecutionProvider_OpenVINO
@@ -934,7 +945,7 @@ struct OrtApi {
   // Release instance of OrtAllocator obtained from CreateAllocator API
   ORT_CLASS_RELEASE(Allocator);
 
-  ORT_API2_STATUS(RunWithBinding, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
+  ORT_API2_STATUS(RunWithBinding, _Inout_ OrtSession* sess, _In_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
 
   // Creates an IoBinding instance that allows one to bind pre-allocated OrtValues
   // to input names. Thus if you want to use a raw on device buffer as input or output
@@ -1146,6 +1157,23 @@ struct OrtApi {
   */
   ORT_API2_STATUS(ModelMetadataGetGraphDescription, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+  /**
+   * Append TensorRT execution provider to the session options
+   * If TensorRT is not available (due to a non TensorRT enabled build), this function will return failure.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_TensorRT,
+                  _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options);
+
+  /**
+  * Set the current device id of the GPU execution provider (cuda/tensorrt/rocm). The device id should be less
+  * than the total number of devices available. Using this API makes sense only when doing multi-GPU inferencing.
+  */
+  ORT_API2_STATUS(SetCurrentGpuDeviceId, _In_ int device_id);
+
+  /**
+   * Get the current device id of the GPU execution provider (cuda/tensorrt/rocm).
+   */
+  ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
 };
 
 /*

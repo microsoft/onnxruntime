@@ -4,6 +4,7 @@
 #include "core/providers/cuda/tensor/tile.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "tile_impl.h"
+
 using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
@@ -51,22 +52,114 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
 
   // Calculate the shape of the output tensor
   auto* repeats = repeats_tensor.template Data<int64_t>();
-  const auto& input_shape = input_tensor.Shape().GetDims();
-  std::vector<int64_t> output_dims(input_shape);
+  const auto& input_shape = input_tensor.Shape();
+  const auto& input_dims = input_shape.GetDims();
+  std::vector<int64_t> output_dims(input_dims);
   for (auto axis = 0; axis < rank; axis++)
     output_dims[axis] *= repeats[axis];
-  TensorShape outputShape(output_dims);
-  auto& output_tensor = *ctx->Output(0, outputShape);
+  TensorShape output_shape(output_dims);
+  auto& output_tensor = *ctx->Output(0, output_shape);
 
   void* output_data = output_tensor.MutableDataRaw();
   const void* input_data = input_tensor.DataRaw();
 
-  TensorPitches input_pitches(input_shape);
+  // Repeat tensor input can have 0 as a valid value
+  // check if the computed output_shape size is 0 and
+  // return an empty tensor if so.
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  // Repeat tensor has all 1s in it
+  if (output_shape == input_shape) {
+    cudaMemcpyAsync(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
+    return Status::OK();
+  }
+
+  bool is_batched_memcpy = false;
+  size_t num_of_elements_per_batch = 1;
+  size_t num_of_copies_per_batch = 1;
+  size_t num_of_batch_copies = 1;
+  if (TileOp::IsTileMemcpy(input_shape,
+                           repeats,
+                           rank,
+                           is_batched_memcpy,
+                           num_of_elements_per_batch,
+                           num_of_copies_per_batch,
+                           num_of_batch_copies)) {
+    if (!is_batched_memcpy) {
+      if (input_tensor.IsDataType<float>() ||
+          input_tensor.IsDataType<int32_t>()) {
+        TileMemcpyImpl(
+            Stream(),
+            reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input_data),
+            input_shape.Size(),
+            reinterpret_cast<typename ToCudaType<float>::MappedType*>(output_data),
+            output_shape.Size());
+      } else if (input_tensor.IsDataType<double>() ||
+                 input_tensor.IsDataType<int64_t>()) {
+        TileMemcpyImpl(
+            Stream(),
+            reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input_data),
+            input_shape.Size(),
+            reinterpret_cast<typename ToCudaType<double>::MappedType*>(output_data),
+            output_shape.Size());
+      } else if (input_tensor.IsDataType<MLFloat16>()) {
+        TileMemcpyImpl(
+            Stream(),
+            reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input_data),
+            input_shape.Size(),
+            reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output_data),
+            output_shape.Size());
+      } else {
+        // Won't hit this as the kernel doesn't claim support for any type that will trigger this
+        ORT_THROW("Tile doesn't have an implementation yet for the type: ", input_tensor.DataType());
+      }
+    } else {
+      if (input_tensor.IsDataType<float>() ||
+          input_tensor.IsDataType<int32_t>()) {
+        TileBatchedMemcpyImpl(
+            Stream(),
+            reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input_data),
+            num_of_elements_per_batch,
+            input_shape[0],  // The tensor is atleast 1-D- this is safe
+            fast_divmod(static_cast<int>(num_of_elements_per_batch * num_of_copies_per_batch)),
+            reinterpret_cast<typename ToCudaType<float>::MappedType*>(output_data),
+            output_shape.Size());
+      } else if (input_tensor.IsDataType<double>() ||
+                 input_tensor.IsDataType<int64_t>()) {
+        TileBatchedMemcpyImpl(
+            Stream(),
+            reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input_data),
+            num_of_elements_per_batch,
+            input_shape[0],  // The tensor is atleast 1-D- this is safe
+            fast_divmod(static_cast<int>(num_of_elements_per_batch * num_of_copies_per_batch)),
+            reinterpret_cast<typename ToCudaType<double>::MappedType*>(output_data),
+            output_shape.Size());
+      } else if (input_tensor.IsDataType<MLFloat16>()) {
+        TileBatchedMemcpyImpl(
+            Stream(),
+            reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input_data),
+            num_of_elements_per_batch,
+            input_shape[0],  // The tensor is atleast 1-D- this is safe
+            fast_divmod(static_cast<int>(num_of_elements_per_batch * num_of_copies_per_batch)),
+            reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output_data),
+            output_shape.Size());
+      } else {
+        // Won't hit this as the kernel doesn't claim support for any type that will trigger this
+        ORT_THROW("Tile doesn't have an implementation yet for the type: ", input_tensor.DataType());
+      }
+    }
+
+    return Status::OK();
+  }
+
+  TensorPitches input_pitches(input_dims);
   TArray<int64_t> input_strides(input_pitches);
 
   TArray<fast_divmod> fdm_input_shape(rank);
-  for (int32_t i = 0; i < input_shape.size(); ++i) {
-    fdm_input_shape[i] = fast_divmod(gsl::narrow_cast<int>(input_shape[i]));
+  for (int32_t i = 0; i < input_dims.size(); ++i) {
+    fdm_input_shape[i] = fast_divmod(gsl::narrow_cast<int>(input_dims[i]));
   }
 
   TArray<fast_divmod> fdm_output_strides(rank);
@@ -82,6 +175,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
     if (input_tensor.IsDataType<float>() ||
         input_tensor.IsDataType<int32_t>()) {
       TileImpl(
+          Stream(),
           rank,
           fdm_input_shape,
           input_strides,
@@ -92,6 +186,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
     } else if (input_tensor.IsDataType<double>() ||
                input_tensor.IsDataType<int64_t>()) {
       TileImpl(
+          Stream(),
           rank,
           fdm_input_shape,
           input_strides,
@@ -101,6 +196,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
           output_tensor.Shape().Size());
     } else if (input_tensor.IsDataType<MLFloat16>()) {
       TileImpl(
+          Stream(),
           rank,
           fdm_input_shape,
           input_strides,

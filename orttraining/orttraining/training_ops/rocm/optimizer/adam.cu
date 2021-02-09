@@ -22,6 +22,7 @@ __global__ void _AdamOptimizer_mode0(
     const T4 beta,
     const T4 lambda,
     const T4 epsilon,
+    const T4 max_norm,
     const T4 alpha_correction,
     const T4 beta_correction,
     T4* moment_1_out,
@@ -31,7 +32,7 @@ __global__ void _AdamOptimizer_mode0(
     T_MIXED_PRECISION_FP* mixed_precision_weights_out,
     HIP_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm);
+  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm, max_norm);
 
   // Gradient scaling/clipping.
   const T4 g = T4(grads[id]) / actual_scale;
@@ -83,6 +84,7 @@ __global__ void _AdamOptimizer_mode1(
     const T4 beta,
     const T4 lambda,
     const T4 epsilon,
+    const T4 max_norm,
     const T4 alpha_correction,
     const T4 beta_correction,
     T4* moment_1_out,
@@ -92,7 +94,7 @@ __global__ void _AdamOptimizer_mode1(
     T_MIXED_PRECISION_FP* mixed_precision_weights_out,
     HIP_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm);
+  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm, max_norm);
 
   // Gradient scaling/clipping.
   const T4 g = T4(grads[id]) / actual_scale;
@@ -137,6 +139,7 @@ __global__ void _AdamOptimizer_mode1(
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>
 void AdamOptimizerImpl(
+    hipStream_t stream,
     const T1* eta,
     const T2 update_count,
     const T3* weights,
@@ -149,6 +152,7 @@ void AdamOptimizerImpl(
     const T4 beta,
     const T4 lambda,
     const T4 epsilon,
+    const T4 max_norm,
     const bool do_bias_correction,
     const int64_t weight_decay_mode,
     T4* moment_1_out,
@@ -173,7 +177,7 @@ void AdamOptimizerImpl(
   //         bias correction is applied on learning rate,
   //         weight decay is applied after weight is updated.
   if (weight_decay_mode == 0) {
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(_AdamOptimizer_mode0<T1, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_AdamOptimizer_mode0<T1, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, stream, 
       eta,
       weights,
       grads,
@@ -185,6 +189,7 @@ void AdamOptimizerImpl(
       beta,
       lambda,
       epsilon,
+      max_norm,
       alpha_correction,
       beta_correction,
       moment_1_out,
@@ -195,7 +200,7 @@ void AdamOptimizerImpl(
       N);
   }
   else if (weight_decay_mode == 1) {
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(_AdamOptimizer_mode1<T1, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_AdamOptimizer_mode1<T1, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, stream, 
       eta,
       weights,
       grads,
@@ -207,6 +212,7 @@ void AdamOptimizerImpl(
       beta,
       lambda,
       epsilon,
+      max_norm,
       alpha_correction,
       beta_correction,
       moment_1_out,
@@ -224,6 +230,7 @@ void AdamOptimizerImpl(
 
 #define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP)  \
   template void AdamOptimizerImpl(                                                                \
+      hipStream_t stream,                                                                         \
       const T1* eta,                                                                              \
       const T2 update_count,                                                                      \
       const T3* weights,                                                                          \
@@ -236,6 +243,7 @@ void AdamOptimizerImpl(
       const T4 beta,                                                                              \
       const T4 lambda,                                                                            \
       const T4 epsilon,                                                                           \
+      const T4 max_norm,                                                                          \
       const bool do_bias_correction,                                                              \
       const int64_t weight_decay_mode,                                                            \
       T4* moment_1_out,                                                                           \
