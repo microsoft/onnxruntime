@@ -68,7 +68,45 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, ""));
+  std::string device_type = "";
+  bool enable_vpu_fast_compile = false;
+  std::string device_id = "";
+
+  // Parse settings string
+  std::stringstream iss;
+  iss << performance_test_config.run_config.ov_config_file;
+  std::string token;
+  while (std::getline(iss, token)) {
+    if(token == "") {
+      continue;
+    }
+    auto pos = token.find("|");
+    if(pos == std::string::npos || pos == 0 || pos == token.length()) {
+      continue;
+    }
+
+    auto key = token.substr(0,pos);
+    auto value = token.substr(pos+1);
+
+    if ( key == "device_type") {
+      device_type = value;
+    } else if (key == "enable_vpu_fast_compile") {
+      if(value == "true" || value == "True"){
+        enable_vpu_fast_compile = true;
+      }
+    } else if(key == "device_id") {
+      device_id = value;
+    }
+  }
+  
+  OrtOpenVINOProviderOptions options;
+  options.device_type = device_type.c_str(); //To set the device_type
+  options.device_id = device_id.c_str(); // To set the device_id
+  options.enable_vpu_fast_compile = enable_vpu_fast_compile; // To enable_vpu_fast_compile, default is false
+  //options.num_of_threads = performance_test_config.run_config.ov_num_of_threads; // To set number of free InferRequests, default is 8
+  session_options.AppendExecutionProvider_OpenVINO(options);
+    
+  //Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, ""));
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif

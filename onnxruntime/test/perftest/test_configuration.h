@@ -53,6 +53,7 @@ struct RunConfig {
   int cudnn_conv_algo{0};
   bool do_cuda_copy_in_separate_stream{false};
   bool set_denormal_as_zero{false};
+  std::basic_string<ORTCHAR_T> ov_config_file;
 };
 
 struct PerformanceTestConfig {
