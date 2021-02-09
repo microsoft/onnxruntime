@@ -15,7 +15,6 @@ namespace coreml {
 
 class BatchNormalizationOpBuilder : public BaseOpBuilder {
   // Add operator related
-  // Add operator related
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
@@ -25,8 +24,8 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
-                         const logging::Logger& /* logger */) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const logging::Logger& logger) const override;
 
   // BatchNormalization opset 6- has unsupported attributes
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 7; }

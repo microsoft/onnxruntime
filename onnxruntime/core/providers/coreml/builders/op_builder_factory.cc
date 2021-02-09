@@ -33,8 +33,12 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConvOpBuilder("Conv", op_registrations);
   }
 
-  {  // Conv
+  {  // Batch Normalization
     CreateBatchNormalizationOpBuilder("BatchNormalization", op_registrations);
+  }
+
+  {  // Reshape
+    CreateReshapeOpBuilder("Reshape", op_registrations);
   }
 
   return op_registrations;
