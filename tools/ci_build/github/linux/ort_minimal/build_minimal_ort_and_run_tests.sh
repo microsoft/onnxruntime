@@ -66,3 +66,11 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
 
 # Run the e2e test cases
 ${BUILD_DIR}/Debug/onnx_test_runner /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data
+
+# Print binary size info
+python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/check_build_binary_size.py \
+    --arch "$(uname -m)" --os "$(uname -o)" \
+    ${BUILD_DIR}/Debug/libonnxruntime.so
+
+echo "Binary size info:"
+cat ${BUILD_DIR}/Debug/binary_size_data.txt

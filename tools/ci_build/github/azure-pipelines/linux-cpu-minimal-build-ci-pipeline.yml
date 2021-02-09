@@ -56,7 +56,7 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime with exceptions disabled
+    displayName: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED]
     inputs:
       script: |
         # We will try to build minimal ORT with exceptions disabled
@@ -80,7 +80,7 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime with exceptions enabled and type reduction disabled and run tests
+    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED] and run tests
     inputs:
       script: |
         docker run --rm \
@@ -101,7 +101,7 @@ jobs:
     workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime with exceptions enabled and type reduction enabled and run tests
+    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
     inputs:
       script: |
         docker run --rm \
