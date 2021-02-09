@@ -33,6 +33,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConvOpBuilder("Conv", op_registrations);
   }
 
+  {  // Conv
+    CreateBatchNormalizationOpBuilder("BatchNormalization", op_registrations);
+  }
+
   return op_registrations;
 }
 
