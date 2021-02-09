@@ -44,6 +44,10 @@ jobs:
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
       workingDirectory: $(Build.SourcesDirectory)
 
+  - script: |
+      git diff
+    workingDirectory: $(Build.SourcesDirectory)
+
   - task: CmdLine@2
     displayName: Build minimal onnxruntime with exceptions disabled
     inputs:
@@ -68,6 +72,10 @@ jobs:
               --disable_exceptions
       workingDirectory: $(Build.SourcesDirectory)
 
+  - script: |
+      git diff
+    workingDirectory: $(Build.SourcesDirectory)
+
   - task: CmdLine@2
     displayName: Build minimal onnxruntime with exceptions enabled and type reduction disabled and run tests
     inputs:
@@ -82,6 +90,10 @@ jobs:
           onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh
       workingDirectory: $(Build.SourcesDirectory)
+
+  - script: |
+      git diff
+    workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     displayName: Build minimal onnxruntime with exceptions enabled and type reduction enabled and run tests
@@ -98,6 +110,10 @@ jobs:
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
               --build-directory /build/with_type_reduction --enable-type-reduction
       workingDirectory: $(Build.SourcesDirectory)
+
+  - script: |
+      git diff
+    workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     displayName: Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
@@ -120,6 +136,10 @@ jobs:
           onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh
       workingDirectory: $(Build.SourcesDirectory)
+
+  - script: |
+      git diff
+    workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
