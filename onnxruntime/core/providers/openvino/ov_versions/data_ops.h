@@ -15,9 +15,9 @@ enum versionNum{
 using VersionNum = enum versionNum;
 
 struct supportedOp {
+  std::string optype;
   VersionNum version;
   std::vector<std::string> device_type;  
-  std::string optype;
 };
 
 struct unsupportedOpMode{
@@ -35,7 +35,7 @@ private:
 const GraphViewer& graph_viewer_;
 VersionNum version_id_;
 std::string device_id_;
-std::multimap<std::string, UnsupportedOpMode &> op_list_;
+std::multimap<std::string, UnsupportedOpMode> op_list_;
 std::vector<SupportedOp> subgraph_supported_;
 std::vector<SupportedOp> no_dimension_supported_;
 std::set<Pairs> supported_types_vpu_; 

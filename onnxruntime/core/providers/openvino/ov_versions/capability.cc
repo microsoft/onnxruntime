@@ -25,13 +25,9 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 //Constructor 
-GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param):
+GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param,
+                             const std::string version_param):
                 graph_viewer_(graph_viewer_param), device_type_(device_type_param){
- 
-}
-
-//Set current version id of Openvino
-void GetCapability::SetVersionId(const std::string version_param) {
   if (version_param == "V_2021_2") {
     data_ops_ = new DataOps(graph_viewer_, V_2021_2, device_type_);
   } else if (version_param == "V_2021_1") {
@@ -41,10 +37,9 @@ void GetCapability::SetVersionId(const std::string version_param) {
   } else {
     data_ops_ = new DataOps(graph_viewer_, V_2021_2, device_type_);
   }
-  Execute(*data_ops_);
 }
 
-std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute(DataOps& data_ops_) {
+std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
@@ -64,7 +59,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute(DataOps& 
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
 
-  const auto unsupported_nodes = data_ops_.GetUnsupportedNodeIndices(ng_required_initializers);
+  const auto unsupported_nodes = data_ops_->GetUnsupportedNodeIndices(ng_required_initializers);
   #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
@@ -93,10 +88,10 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute(DataOps& 
     //Nodes that work well in models but not as a single node
     if (nodes.size() == 1) {
       const auto& node = graph_viewer_.GetNode(nodes[0]);
-      if (data_ops_.IsOpSupportedOnlyInModel(node->OpType()))
+      if (data_ops_->IsOpSupportedOnlyInModel(node->OpType()))
         return result;
       //If reshape is not an intermediate node, shape needs to be an initializer
-      if(data_ops_.SpecialConditionForClusterSizeOne(ng_required_initializers, node)) {
+      if(data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node)) {
         const auto& shape_arg = node->InputDefs()[1];
         if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
           return result;
@@ -126,7 +121,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute(DataOps& 
       } else {
         auto node = graph_viewer_.GetNode(node_idx);
         const auto& optype = node->OpType();
-        if (data_ops_.InsertNode(node, optype)) {
+        if (data_ops_->InsertNode(node, optype)) {
           modified_unsupported_nodes.push_back(node_idx);
         }
       }
@@ -156,7 +151,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute(DataOps& 
         if (IsOpSupportedOnlyInModel(node->OpType()))
           continue;
         //If reshape is not an intermediate node, shape needs to be an initializer
-        if(data_ops_.SpecialConditionForClusterSizeOne(ng_required_initializers, node))
+        if(data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node))
           continue;
       }
 
@@ -166,7 +161,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute(DataOps& 
       //Omitting zero dim subgraphs
       for (auto index : this_cluster) {
          const Node* node = graph_viewer_.GetNode(index);
-        if (data_ops_.DoNotOmitSubGraph(node->OpType())) {
+        if (data_ops_->DoNotOmitSubGraph(node->OpType())) {
           for (const auto& input : node->InputDefs()) {
             auto input_name = input->Name();
             auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);

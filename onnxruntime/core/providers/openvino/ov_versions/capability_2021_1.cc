@@ -280,9 +280,8 @@ static bool IsUnsupportedOpMode(const Node* node, const GraphViewer& graph_viewe
           if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
               dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
             return true;
-       }
+        }
       }
-    }
   } else if (optype == "Clip") {
     //Only float 16, float and double data types are supported
     const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;

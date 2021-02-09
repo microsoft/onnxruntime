@@ -61,16 +61,16 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
                                              openvino_ep::BackendManager::GetGlobalContext().device_type);
 #elif defined (OPENVINO_2020_4)
   openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type);
-  obj.SetVersionId("V_2020_4");
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2020_4");
+  result = obj.Execute();
 #elif defined (OPENVINO_2021_1)
-  openvino_ep::GetCapability obj(graph_vieloiit9t9itiiiuyu8776i98j7gikgjkkuuuuuukkugjghu87tk8<gj97hj6httwer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type);
-  obj.SetVersionId("V_2021_1");
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_1");
+  result = obj.Execute();
 #elif defined (OPENVINO_2021_2)
   openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type);
-  obj.SetVersionId("V_2021_2");
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_2");
+  result = obj.Execute();
 #endif
 
   return result;

@@ -53,112 +53,112 @@ std::set<std::string> ops_supported_only_in_model = {
 }; 
 
 std::vector<SupportedOp> supported_op_mode = {
-    {V_2020_4,{"CPU", "GPU"},"Abs"},
-    {V_2020_4,{"CPU"},"Acos"},
-    {V_2020_4,{"CPU"},"Acosh"},
-    {V_2020_4,{"All"},"Add"},
-    {V_2020_4,{"All"},"And"},
-    {V_2020_4,{"CPU"},"ArgMax"},
-    {V_2021_1,{"All"},"ArgMax"},
-    {V_2020_4,{"CPU"},"ArgMin"},
-    {V_2021_2,{"CPU","MYRIAD"},"ArgMin"},
-    {V_2020_4,{"CPU", "GPU"},"Asin"},
-    {V_2020_4,{"CPU", "GPU"},"Asinh"},
-    {V_2020_4,{"CPU", "GPU"},"Atan"},
-    {V_2020_4,{"CPU"},"Atanh"},
-    {V_2020_4,{"All"},"AveragePool"},
-    {V_2020_4,{"All"},"BatchNormalization"},
-    {V_2020_4,{"All"},"Cast"},
-    {V_2020_4,{"GPU"},"Ceil"},
-    {V_2021_2,{"GPU","MYRIAD"},"Ceil"},
-    {V_2020_4,{"All"},"Clip"},
-    {V_2020_4,{"All"},"Concat"},
-    {V_2020_4,{"All"},"Constant"},
-    {V_2020_4,{"All"},"ConstantOfShape"},
-    {V_2020_4,{"All"},"Conv"},
-    {V_2020_4,{"All"},"ConvTranspose"},
-    {V_2020_4,{"CPU"},"Cos"},
-    {V_2020_4,{"CPU"},"Cosh"},
-    {V_2020_4,{"All"},"DepthToSpace"},
-    {V_2020_4,{"All"},"Div"},
-    {V_2020_4,{"All"},"Dropout"},
-    {V_2020_4,{"All"},"Elu"},
-    {V_2020_4,{"All"},"Equal"},
-    {V_2020_4,{"All"},"Erf"},
-    {V_2020_4,{"All"},"Exp"},
-    {V_2021_1,{"MYRIAD"},"Expand"},
-    {V_2020_4,{"All"},"Flatten"},
-    {V_2020_4,{"All"},"Floor"},
-    {V_2020_4,{"All"},"Gather"},
-    {V_2021_2,{"MYRIAD"},"GatherND"},
-    {V_2020_4,{"All"},"Gemm"},
-    {V_2020_4,{"All"},"GlobalAveragePool"},
-    {V_2020_4,{"CPU", "GPU"},"GlobalLpPool"},
-    {V_2020_4,{"All"},"Greater"},
-    {V_2020_4,{"All"},"Identity"},
-    {V_2020_4,{"All"},"InstanceNormalization"},
-    {V_2020_4,{"CPU", "GPU"},"HardSigmoid"},
-    {V_2020_4,{"All"},"LeakyRelu"},
-    {V_2020_4,{"All"},"Less"},
-    {V_2020_4,{"All"},"Log"},
-    {V_2021_2,{"MYRIAD"},"Loop"},
-    {V_2020_4,{"All"},"LRN"},
-    {V_2020_4,{"All"},"LSTM"},
-    {V_2020_4,{"All"},"MatMul"},
-    {V_2020_4,{"All"},"Max"},
-    {V_2020_4,{"All"},"MaxPool"},
-    {V_2020_4,{"All"},"Mean"},
-    {V_2020_4,{"All"},"Min"},
-    {V_2020_4,{"All"},"Mul"},
-    {V_2020_4,{"All"},"Neg"},
-    {V_2021_1,{"All"},"NonMaxSuppression"},
-    {V_2021_1,{"CPU", "MYRIAD"},"NonZero"},
-    {V_2021_1,{"All"},"Not"},
-    {V_2020_4,{"CPU", "GPU"},"Not"},
-    {V_2020_4,{"All"},"OneHot"},
-    {V_2020_4,{"All"},"Pad"},
-    {V_2020_4,{"All"},"Pow"},
-    {V_2020_4,{"All"},"PRelu"},
-    {V_2021_2,{"MYRIAD"},"Range"},
-    {V_2020_4,{"All"},"Reciprocal"},
-    {V_2020_4,{"CPU", "MYRIAD"},"ReduceLogSum"},
-    {V_2020_4,{"All"},"ReduceMax"},
-    {V_2020_4,{"All"},"ReduceMean"},
-    {V_2020_4,{"All"},"ReduceMin"},
-    {V_2020_4,{"CPU"},"ReduceProd"},
-    {V_2020_4,{"All"},"ReduceSum"},
-    {V_2020_4,{"CPU", "MYRIAD"},"ReduceSumSquare"},
-    {V_2020_4,{"All"},"Relu"},
-    {V_2020_4,{"CPU"},"Resize"},
-    {V_2020_4,{"All"},"Reshape"},
-    {V_2021_1,{"All"},"RoiAlign"},
-    {V_2021_2,{"MYRIAD"},"Round"},
-    {V_2021_1,{"MYRIAD"},"Scatter"},
-    {V_2021_2,{"MYRIAD"},"ScatterElements"},
-    {V_2020_4,{"CPU", "GPU"},"Selu"},
-    {V_2020_4,{"All"},"Shape"},
-    {V_2020_4,{"All"},"Sigmoid"},
-    {V_2020_4,{"CPU"},"Sign"},
-    {V_2020_4,{"CPU"},"Sign"},
-    {V_2020_4,{"CPU"},"Sinh"},
-    {V_2020_4,{"MYRIAD"},"SinFloat"},
-    {V_2020_4,{"All"},"Slice"},
-    {V_2020_4,{"All"},"Softmax"},
-    {V_2020_4,{"All"},"SpaceToDepth"},
-    {V_2020_4,{"All"},"Split"},
-    {V_2020_4,{"All"},"Sqrt"},
-    {V_2020_4,{"All"},"Squeeze"},
-    {V_2020_4,{"CPU"},"Softsign"},
-    {V_2020_4,{"All"},"Sub"},
-    {V_2020_4,{"All"},"Sum"},
-    {V_2020_4,{"CPU", "GPU"},"Tan"},
-    {V_2020_4,{"All"},"Tanh"},
-    {V_2021_2,{"MYRIAD"},"Tile"},
-    {V_2020_4,{"All"},"Transpose"},
-    {V_2020_4,{"All"},"TopK"},
-    {V_2020_4,{"All"},"Unsqueeze"},
-    {V_2021_1,{"CPU", "GPU"},"Upsample"},
-    {V_2021_2,{"MYRIAD"},"Where"},
+    {"Abs", V_2020_4,{"CPU", "GPU"}},
+    {"Acos", V_2020_4,{"CPU"}},
+    {"Acosh", V_2020_4,{"CPU"}},
+    {"Add", V_2020_4,{"All"}},
+    {"And", V_2020_4,{"All"}},
+    {"ArgMax", V_2020_4,{"CPU"}},
+    {"ArgMax", V_2021_1,{"All"}},
+    {"ArgMin", V_2020_4,{"CPU"}},
+    {"ArgMin", V_2021_2,{"CPU","MYRIAD"}},
+    {"Asin", V_2020_4,{"CPU", "GPU"}},
+    {"Asinh", V_2020_4,{"CPU", "GPU"}},
+    {"Atan", V_2020_4,{"CPU", "GPU"}},
+    {"Atanh", V_2020_4,{"CPU"}},
+    {"AveragePool", V_2020_4,{"All"}},
+    {"BatchNormalization", V_2020_4,{"All"}},
+    {"Cast", V_2020_4,{"All"}},
+    {"Ceil", V_2020_4,{"GPU"}},
+    {"Ceil", V_2021_2,{"GPU","MYRIAD"}},
+    {"Clip", V_2020_4,{"All"}},
+    {"Concat", V_2020_4,{"All"}},
+    {"Constant", V_2020_4,{"All"}},
+    {"ConstantOfShape", V_2020_4,{"All"}},
+    {"Conv", V_2020_4,{"All"}},
+    {"ConvTranspose", V_2020_4,{"All"}},
+    {"Cos", V_2020_4,{"CPU"}},
+    {"Cosh", V_2020_4,{"CPU"}},
+    {"DepthToSpace", V_2020_4,{"All"}},
+    {"Div", V_2020_4,{"All"}},
+    {"Dropout", V_2020_4,{"All"}},
+    {"Elu", V_2020_4,{"All"}},
+    {"Equal", V_2020_4,{"All"}},
+    {"Erf", V_2020_4,{"All"}},
+    {"Exp", V_2020_4,{"All"}},
+    {"Expand", V_2021_1,{"MYRIAD"}},
+    {"Flatten", V_2020_4,{"All"}},
+    {"Floor", V_2020_4,{"All"}},
+    {"Gather", V_2020_4,{"All"}},
+    {"GatherND", V_2021_2,{"MYRIAD"}},
+    {"Gemm", V_2020_4,{"All"}},
+    {"GlobalAveragePool", V_2020_4,{"All"}},
+    {"GlobalLpPool", V_2020_4,{"CPU", "GPU"}},
+    {"Greater", V_2020_4,{"All"}},
+    {"Identity", V_2020_4,{"All"}},
+    {"InstanceNormalization", V_2020_4,{"All"}},
+    {"HardSigmoid", V_2020_4,{"CPU", "GPU"}},
+    {"LeakyRelu", V_2020_4,{"All"}},
+    {"Less", V_2020_4,{"All"}},
+    {"Log", V_2020_4,{"All"}},
+    {"Loop", V_2021_2,{"MYRIAD"}},
+    {"LRN", V_2020_4,{"All"}},
+    {"LSTM", V_2020_4,{"All"}},
+    {"MatMul", V_2020_4,{"All"}},
+    {"Max", V_2020_4,{"All"}},
+    {"MaxPool", V_2020_4,{"All"}},
+    {"Mean", V_2020_4,{"All"}},
+    {"Min", V_2020_4,{"All"}},
+    {"Mul", V_2020_4,{"All"}},
+    {"Neg", V_2020_4,{"All"}},
+    {"NonMaxSuppression", V_2021_1,{"All"}},
+    {"NonZero", V_2021_1,{"CPU", "MYRIAD"}},
+    {"Not", V_2021_1,{"All"}},
+    {"Not", V_2020_4,{"CPU", "GPU"}},
+    {"OneHot", V_2020_4,{"All"}},
+    {"Pad", V_2020_4,{"All"}},
+    {"Pow", V_2020_4,{"All"}},
+    {"PRelu", V_2020_4,{"All"}},
+    {"Range", V_2021_2,{"MYRIAD"}},
+    {"Reciprocal", V_2020_4,{"All"}},
+    {"ReduceLogSum", V_2020_4,{"CPU", "MYRIAD"}},
+    {"ReduceMax", V_2020_4 ,{"All"}},
+    {"ReduceMean", V_2020_4,{"All"}},
+    {"ReduceMin", V_2020_4,{"All"}},
+    {"ReduceProd", V_2020_4,{"CPU"}},
+    {"ReduceSum", V_2020_4,{"All"}},
+    {"ReduceSumSquare", V_2020_4,{"CPU", "MYRIAD"}},
+    {"Relu", V_2020_4,{"All"}},
+    {"Resize", V_2020_4,{"CPU"}},
+    {"Reshape", V_2020_4,{"All"}},
+    {"RoiAlign", V_2021_1,{"All"}},
+    {"Round", V_2021_2,{"MYRIAD"}},
+    {"Scatter", V_2021_1,{"MYRIAD"}},
+    {"ScatterElements", V_2021_2,{"MYRIAD"}},
+    {"Selu", V_2020_4,{"CPU", "GPU"}},
+    {"Shape", V_2020_4,{"All"}},
+    {"Sigmoid", V_2020_4,{"All"}},
+    {"Sign", V_2020_4,{"CPU"}},
+    {"Sign", V_2020_4,{"CPU"}},
+    {"Sinh", V_2020_4,{"CPU"}},
+    {"SinFloat", V_2020_4,{"MYRIAD"}},
+    {"Slice", V_2020_4,{"All"}},
+    {"Softmax", V_2020_4,{"All"}},
+    {"SpaceToDepth", V_2020_4,{"All"}},
+    {"Split", V_2020_4,{"All"}},
+    {"Sqrt", V_2020_4,{"All"}},
+    {"Squeeze", V_2020_4,{"All"}},
+    {"Softsign", V_2020_4,{"CPU"}},
+    {"Sub", V_2020_4,{"All"}},
+    {"Sum", V_2020_4,{"All"}},
+    {"Tan", V_2020_4,{"CPU", "GPU"}},
+    {"Tanh", V_2020_4,{"All"}},
+    {"Tile", V_2021_2,{"MYRIAD"}},
+    {"Transpose", V_2020_4,{"All"}},
+    {"TopK", V_2020_4,{"All"}},
+    {"Unsqueeze", V_2020_4,{"All"}},
+    {"Upsample", V_2021_1,{"CPU", "GPU"}},
+    {"Where", V_2021_2,{"MYRIAD"}},
 };
 
 void DataOps::populate_types_supported() {
@@ -196,38 +196,38 @@ void DataOps::populate_types_supported() {
 
 void DataOps::populate_op_mode_supported() {
 
-  no_dimension_supported_.push_back({V_2020_4,{"All"},"Unsqueeze"});
-  no_dimension_supported_.push_back({V_2020_4,{"All"},"Squeeze"});
-  no_dimension_supported_.push_back({V_2020_4,{"All"},"Cast"});
-  no_dimension_supported_.push_back({V_2020_4,{"All"},"Gather"});
-  no_dimension_supported_.push_back({V_2020_4,{"All"},"Mul"});
-  no_dimension_supported_.push_back({V_2020_4,{"All"},"Sub"});
-  no_dimension_supported_.push_back({V_2020_4,{"All"},"Min"});
-  no_dimension_supported_.push_back({V_2020_4,{"All"},"Div"});
-  no_dimension_supported_.push_back({V_2020_4,{"All"},"Floor"});
-  no_dimension_supported_.push_back({V_2021_2,{"All"},"Where"});
-  no_dimension_supported_.push_back({V_2021_2,{"All"},"Range"});
-  no_dimension_supported_.push_back({V_2021_2,{"Myriad"},"ArgMin"});
-  no_dimension_supported_.push_back({V_2021_2,{"Myriad"},"Max"});
-  no_dimension_supported_.push_back({V_2021_2,{"Myriad"},"Add"});
-  no_dimension_supported_.push_back({V_2021_2,{"Myriad"},"Less"});
-  no_dimension_supported_.push_back({V_2021_2,{"Myriad"},"Greater"});
-  no_dimension_supported_.push_back({V_2021_2,{"Myriad"},"Clip"});
-  no_dimension_supported_.push_back({V_2021_2,{"Myriad"},"Resize"});
-  no_dimension_supported_.push_back({V_2021_2,{"Myriad"},"Equal"});
+  no_dimension_supported_.push_back({"Unsqueeze", V_2020_4,{"All"}});
+  no_dimension_supported_.push_back({"Squeeze", V_2020_4,{"All"}});
+  no_dimension_supported_.push_back({"Cast", V_2020_4,{"All"}});
+  no_dimension_supported_.push_back({"Gather", V_2020_4,{"All"}});
+  no_dimension_supported_.push_back({"Mul", V_2020_4,{"All"}});
+  no_dimension_supported_.push_back({"Sub", V_2020_4,{"All"}});
+  no_dimension_supported_.push_back({"Min", V_2020_4,{"All"}});
+  no_dimension_supported_.push_back({"Div", V_2020_4,{"All"}});
+  no_dimension_supported_.push_back({"Floor", V_2020_4,{"All"}});
+  no_dimension_supported_.push_back({"Where", V_2021_2,{"All"}});
+  no_dimension_supported_.push_back({"Range", V_2021_2,{"All"}});
+  no_dimension_supported_.push_back({"ArgMin", V_2021_2,{"Myriad"}});
+  no_dimension_supported_.push_back({"Max", V_2021_2,{"Myriad"}});
+  no_dimension_supported_.push_back({"Add", V_2021_2,{"Myriad"}});
+  no_dimension_supported_.push_back({"Less", V_2021_2,{"Myriad"}});
+  no_dimension_supported_.push_back({"Greater", V_2021_2,{"Myriad"}});
+  no_dimension_supported_.push_back({"Clip", V_2021_2,{"Myriad"}});
+  no_dimension_supported_.push_back({"Resize", V_2021_2,{"Myriad"}});
+  no_dimension_supported_.push_back({"Equal", V_2021_2,{"Myriad"}});
 
 
-  subgraph_supported_.push_back({V_2020_4,{"All"},"Mul"});
-  subgraph_supported_.push_back({V_2020_4,{"All"},"Transpose"});
-  subgraph_supported_.push_back({V_2020_4,{"All"},"Unsqueeze"});
-  subgraph_supported_.push_back({V_2020_4,{"All"},"Cast"});
-  subgraph_supported_.push_back({V_2020_4,{"All"},"Concat"});
-  subgraph_supported_.push_back({V_2020_4,{"All"},"Gather"});
-  subgraph_supported_.push_back({V_2020_4,{"Myriad"},"Div"});
-  subgraph_supported_.push_back({V_2020_4,{"Myriad"},"Sub"});
-  subgraph_supported_.push_back({V_2021_1,{"CPU"},"Identity"});
-  subgraph_supported_.push_back({V_2021_1,{"CPU"},"Div"});
-  subgraph_supported_.push_back({V_2021_1,{"CPU"},"Sub"});
+  subgraph_supported_.push_back({"Mul", V_2020_4,{"All"}});
+  subgraph_supported_.push_back({"Transpose", V_2020_4,{"All"}});
+  subgraph_supported_.push_back({"Unsqueeze", V_2020_4,{"All"}});
+  subgraph_supported_.push_back({"Cast", V_2020_4,{"All"}});
+  subgraph_supported_.push_back({"Concat", V_2020_4,{"All"}});
+  subgraph_supported_.push_back({"Gather", V_2020_4,{"All"}});
+  subgraph_supported_.push_back({"Div", V_2020_4,{"Myriad"}});
+  subgraph_supported_.push_back({"Sub", V_2020_4,{"Myriad"}});
+  subgraph_supported_.push_back({"Identity", V_2021_1,{"CPU"}});
+  subgraph_supported_.push_back({"Div", V_2021_1,{"CPU"}});
+  subgraph_supported_.push_back({"Sub", V_2021_1,{"CPU"}});
     
   
   //populate unsupportedmode_t
@@ -244,12 +244,14 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Abs", obj});
   }
   {
-     UnsupportedOpMode obj = {{V_2020_4},
+     UnsupportedOpMode obj = {{V_2020_4,V_2021_1,V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet&) {
+        //tensor type does not support select last index
         auto& attributes = node->GetAttributes();
         auto last_index_arg = attributes.count("select_last_index") > 0 ? attributes.at("select_last_index").i() : 0;
         if (last_index_arg != 0)
           return true;
+        // tensor type supports float as input for argmax and argmin  
         if (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
           return true;
         return false;  
@@ -261,8 +263,10 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2020_4},
       [this](const Node* node, const Provider_InitializedTensorSet&) {
+         // ceil_mode attribute is not supported in nGraph
         const auto& attributes = node->GetAttributes();
         auto ceil_attr = attributes.find("ceil_mode");
+        // default value of ceil_mode (0) is supported.
         if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0) return true;
         return dimension_unsupported(node);
       }
@@ -272,11 +276,13 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2021_1,V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet&) {
+        //auto pad null value is not supported
         const auto& attributes = node->GetAttributes();
         auto auto_attr = attributes.find("auto_pad");
         if (auto_attr->second().s() == "") {
           return true;
         }
+        // default value of ceil_mode (0) is supported.
         auto ceil_attr = attributes.find("ceil_mode");
         if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0) return true;
         return dimension_unsupported(node);
@@ -287,6 +293,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2020_4,V_2021_1,V_2021_2}, 
      [this](const Node* node, const Provider_InitializedTensorSet&) {
+      //Only float 16, float and double data types are supported 
       const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
       const bool data_is_float16 = node->InputDefs()[0]->Type()->find("float16") != std::string::npos;
       const bool data_is_double = node->InputDefs()[0]->Type()->find("double") != std::string::npos;
@@ -334,6 +341,7 @@ void DataOps::populate_op_mode_supported() {
   {
      UnsupportedOpMode obj = {{V_2020_4,V_2021_1,V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet& initializers) {
+        // all ConvInteger zero points need to be constants
         if (node->InputDefs().size() == 3) {
           return (initializers.find(node->InputDefs()[2]->Name()) == initializers.end());
         } else if (node->InputDefs().size() == 4) {
@@ -418,15 +426,19 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2020_4,V_2021_1,V_2021_2}, 
      [this](const Node* node, const Provider_InitializedTensorSet&) {
+      //MaxPool "indices" output is not currently supported.  
       if (node->OutputDefs().size() > 1)
         return true;
       const auto& attributes = node->GetAttributes();
+      // default value of ceil_mode (0) is supported.
       auto ceil_attr = attributes.find("ceil_mode");
       if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0)
         return true;
       auto auto_attr = attributes.find("auto_pad");
+      //auto pad null value is not supported
       if (auto_attr->second().s() == "") 
         return true;
+      // dilations attrs are not supported in nGraph  
       if (attributes.find("dilations") != attributes.end()) 
         return true;
       return(this->dimension_unsupported(node));
@@ -480,6 +492,7 @@ void DataOps::populate_op_mode_supported() {
   {
       UnsupportedOpMode obj = {{V_2020_4,V_2021_2,V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet&) {
+        //All matmuls except float have computation missmatch
         const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
         const bool B_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
         return (A_is_float && B_is_float) ? false : true;
@@ -490,9 +503,12 @@ void DataOps::populate_op_mode_supported() {
    {
     UnsupportedOpMode obj = {{V_2020_4,V_2021_1,V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet& initializers) {
+        // all MatMulInteger zero points need to be constants
         if (node->InputDefs().size() == 3) {
+          // not found in initializers -> not const
           return initializers.find(node->InputDefs()[2]->Name()) == initializers.end();
         } else if (node->InputDefs().size() == 4) {
+          // not found in initializers -> not const
           return ((initializers.find(node->InputDefs()[2]->Name()) == initializers.end()) ||
                   (initializers.find(node->InputDefs()[2]->Name()) == initializers.end())) ;
         }
@@ -504,9 +520,11 @@ void DataOps::populate_op_mode_supported() {
    {
     UnsupportedOpMode obj = {{V_2020_4,V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet&) {
+         //Only FP32 data type is allowed
         auto& attributes = node->GetAttributes();
         auto fmod = attributes.count("fmod") > 0 ? attributes.at("fmod").i() : 0;
         if (fmod != 1) return true;
+        //Only FP32 data type is allowed
         for (const auto& input : node->InputDefs()) {
           if (input->Type()->find("float") == std::string::npos)
             return true;
@@ -532,6 +550,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2020_4,V_2021_1},
       [this](const Node* node, const Provider_InitializedTensorSet&) {
+        //Only supported if the data type of both inputs is same
         auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
         auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
         return x_data_type != y_data_type;
@@ -593,6 +612,7 @@ void DataOps::populate_op_mode_supported() {
   {
       UnsupportedOpMode obj = {{V_2020_4,V_2021_1}, 
       [this](const Node* node, const Provider_InitializedTensorSet&) {
+        //Only FP32, INT32 and U8 data types are supported
         const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
         const bool data_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
         const bool data_is_u8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
@@ -604,6 +624,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2020_4,V_2021_1}, 
       [this](const Node* node, const Provider_InitializedTensorSet&) {
+        //Resize opset 11 is not supported
         if (node->InputDefs().size() > 2)
           return true;
         return false;
@@ -626,8 +647,9 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ScatterElements", obj}); 
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4,V_2021_2},
+    UnsupportedOpMode obj = {{V_2020_4,V_2021_1, V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet& initializers) {
+        //start, end, axes need to be a initializer
         bool cond_for_slice = false;
         if (node->InputDefs().size() > 1) {
           const auto& start_arg = node->InputDefs()[1];
@@ -645,8 +667,9 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Slice", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4,V_2021_2},
+    UnsupportedOpMode obj = {{V_2020_4,V_2021_1,V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet&) {
+        //Shape can't have empty axes attribute
         const auto& attributes = node->GetAttributes();
         if (attributes.count("axes") == 0)
           return true;
@@ -996,6 +1019,7 @@ bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>&
           if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
             return true;
     } else if (node->OpType() == "Expand") {
+        // nGraph only supports constant shape input values
         const auto& output = node->OutputDefs()[0];
         if (output->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
           return true;
