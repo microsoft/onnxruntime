@@ -24,16 +24,19 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
 }  // namespace op_kernel_type_control
 
 namespace {
+using SupportedDataTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                            Slice, Input, 0);
+using SupportedIndicesTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                               Slice, Input, 1);
 using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                         Slice, Input, 0);
 using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                            Slice, Input, 1);
 
-const std::vector<MLDataType> dataTypeConstraints =
-    BuildKernelDefConstraintsFunctorFromTypeList<EnabledDataTypes>{}();
-
-const std::vector<MLDataType> indicesTypeConstraints =
-    BuildKernelDefConstraintsFunctorFromTypeList<EnabledIndicesTypes>{}();
+const auto supported_data_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<SupportedDataTypes>{}();
+const auto supported_indices_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<SupportedIndicesTypes>{}();
+const auto enabled_data_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledDataTypes>{}();
+const auto enabled_indices_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledIndicesTypes>{}();
 
 // std::clamp doesn't exist until C++17 so create a local version
 template <typename T>
@@ -47,15 +50,15 @@ const T& clamp(const T& v, const T& lo, const T& hi) {
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     1, 9,
-    KernelDefBuilder().TypeConstraint("T", dataTypeConstraints),
+    KernelDefBuilder().TypeConstraint("T", supported_data_type_constraints, enabled_data_type_constraints),
     Slice1);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     10, 10,
     KernelDefBuilder()
-        .TypeConstraint("T", dataTypeConstraints)
-        .TypeConstraint("Tind", indicesTypeConstraints),
+        .TypeConstraint("T", supported_data_type_constraints, enabled_data_type_constraints)
+        .TypeConstraint("Tind", supported_indices_type_constraints, enabled_indices_type_constraints),
     Slice10);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -63,16 +66,16 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", dataTypeConstraints)
-        .TypeConstraint("Tind", indicesTypeConstraints),
+        .TypeConstraint("T", supported_data_type_constraints, enabled_data_type_constraints)
+        .TypeConstraint("Tind", supported_indices_type_constraints, enabled_indices_type_constraints),
     Slice10);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Slice,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", dataTypeConstraints)
-        .TypeConstraint("Tind", indicesTypeConstraints),
+        .TypeConstraint("T", supported_data_type_constraints, enabled_data_type_constraints)
+        .TypeConstraint("Tind", supported_indices_type_constraints, enabled_indices_type_constraints),
     Slice10);
 
 // Check if it's possible to combine innermost dimensions so we copy larger blocks.
