@@ -25,6 +25,7 @@ void CreateBatchNormalizationOpBuilder(const std::string& op_type, OpBuilderRegi
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace coreml
 }  // namespace onnxruntime
