@@ -809,13 +809,44 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * The NNAPI option to use.
+     * Needs to be kept in sync with the NNAPIFlags enum in
+     * include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h
+     */
+    public enum NNAPIFlags {
+      NNAPI_FLAG_USE_NONE(0),
+      NNAPI_FLAG_USE_FP16(1),
+      NNAPI_FLAG_USE_NCHW(2),
+      NNAPI_FLAG_CPU_DISABLED(4);
+
+      private final int id;
+
+      NNAPIFlags(int id) {
+        this.id = id;
+      }
+
+      /**
+       * Gets the int id used in native code for the NNAPI option.
+       *
+       * @return The int id.
+       */
+      public int getID() {
+        return id;
+      }
+    }
+
+    /**
      * Adds Android's NNAPI as an execution backend.
      *
+     * @param nnapiFlags The execute options for NNAPI EP, see enum NNAPIFlags
+     *     To generate a nnapiFlags, use the steps below
+     *     int nnapiFlags = NNAPIFlags.NNAPI_FLAG_USE_NONE.getID();
+     *     nnapiFlags |= NNAPIFlags.NNAPI_FLAG_USE_FP16.getID();
      * @throws OrtException If there was an error in native code.
      */
-    public void addNnapi() throws OrtException {
+    public void addNnapi(int nnapiFlags) throws OrtException {
       checkClosed();
-      addNnapi(OnnxRuntime.ortApiHandle, nativeHandle, 0);
+      addNnapi(OnnxRuntime.ortApiHandle, nativeHandle, nnapiFlags);
     }
 
     /**
