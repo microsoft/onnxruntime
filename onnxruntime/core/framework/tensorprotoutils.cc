@@ -253,49 +253,6 @@ template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                     /*out*/ T* p_data, size_t expected_num_elements);
 
-// UnpackTensor from raw data, external data or the type specific data field.
-// Uses the model path to construct the full path for loading external data. In case when model_path is empty
-// it uses current directory.
-template <typename T>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
-                    /*out*/ T* p_data, size_t expected_num_elements) {
-#if !defined(ORT_MINIMAL_BUILD)
-  if (HasExternalData(tensor)) {
-    return UnpackTensorWithExternalData(
-        tensor,
-        model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(),
-        expected_num_elements,
-        p_data);
-  }
-#else
-  ORT_UNUSED_PARAMETER(model_path);
-  ORT_RETURN_IF(HasExternalData(tensor), "TensorProto with external data is not supported in ORT minimal build.");
-#endif
-
-  return HasRawData(tensor)
-             ? UnpackTensor(tensor, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_num_elements)
-             : UnpackTensor(tensor, nullptr, 0, p_data, expected_num_elements);
-}
-
-// instantiate the UnpackTensor variant that supports external data
-#define INSTANTIATE_UNPACK_TENSOR(type) \
-  template Status UnpackTensor(const ONNX_NAMESPACE::TensorProto&, const Path&, type* p_data, size_t);
-
-INSTANTIATE_UNPACK_TENSOR(float)
-INSTANTIATE_UNPACK_TENSOR(double)
-INSTANTIATE_UNPACK_TENSOR(uint8_t)
-INSTANTIATE_UNPACK_TENSOR(int8_t)
-INSTANTIATE_UNPACK_TENSOR(int16_t)
-INSTANTIATE_UNPACK_TENSOR(uint16_t)
-INSTANTIATE_UNPACK_TENSOR(int32_t)
-INSTANTIATE_UNPACK_TENSOR(int64_t)
-INSTANTIATE_UNPACK_TENSOR(uint64_t)
-INSTANTIATE_UNPACK_TENSOR(uint32_t)
-INSTANTIATE_UNPACK_TENSOR(bool)
-INSTANTIATE_UNPACK_TENSOR(MLFloat16)
-INSTANTIATE_UNPACK_TENSOR(BFloat16)
-INSTANTIATE_UNPACK_TENSOR(std::string)
-
 #define DEFINE_UNPACK_TENSOR_IMPL(T, Type, field_name, field_size)                                          \
   template <>                                                                                               \
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, \
@@ -455,6 +412,49 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 
   return Status::OK();
 }
+
+// UnpackTensor from raw data, external data or the type specific data field.
+// Uses the model path to construct the full path for loading external data. In case when model_path is empty
+// it uses current directory.
+template <typename T>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+                    /*out*/ T* p_data, size_t expected_num_elements) {
+#if !defined(ORT_MINIMAL_BUILD)
+  if (HasExternalData(tensor)) {
+    return UnpackTensorWithExternalData(
+        tensor,
+        model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(),
+        expected_num_elements,
+        p_data);
+  }
+#else
+  ORT_UNUSED_PARAMETER(model_path);
+  ORT_RETURN_IF(HasExternalData(tensor), "TensorProto with external data is not supported in ORT minimal build.");
+#endif
+
+  return HasRawData(tensor)
+             ? UnpackTensor(tensor, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_num_elements)
+             : UnpackTensor(tensor, nullptr, 0, p_data, expected_num_elements);
+}
+
+// instantiate the UnpackTensor variant that supports external data
+#define INSTANTIATE_UNPACK_TENSOR(type) \
+  template Status UnpackTensor(const ONNX_NAMESPACE::TensorProto&, const Path&, type* p_data, size_t);
+
+INSTANTIATE_UNPACK_TENSOR(float)
+INSTANTIATE_UNPACK_TENSOR(double)
+INSTANTIATE_UNPACK_TENSOR(uint8_t)
+INSTANTIATE_UNPACK_TENSOR(int8_t)
+INSTANTIATE_UNPACK_TENSOR(int16_t)
+INSTANTIATE_UNPACK_TENSOR(uint16_t)
+INSTANTIATE_UNPACK_TENSOR(int32_t)
+INSTANTIATE_UNPACK_TENSOR(int64_t)
+INSTANTIATE_UNPACK_TENSOR(uint64_t)
+INSTANTIATE_UNPACK_TENSOR(uint32_t)
+INSTANTIATE_UNPACK_TENSOR(bool)
+INSTANTIATE_UNPACK_TENSOR(MLFloat16)
+INSTANTIATE_UNPACK_TENSOR(BFloat16)
+INSTANTIATE_UNPACK_TENSOR(std::string)
 
 #define CASE_PROTO_TRACE(X, Y)                                                                     \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                             \
