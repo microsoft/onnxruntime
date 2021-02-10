@@ -103,10 +103,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #ifdef USE_ROCM
     OrtROCMProviderOptions rocm_options{
         0,
-        static_cast<OrtMIOpenConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
-        std::numeric_limits<size_t>::max(),
         0,
-        !performance_test_config.run_config.do_cuda_copy_in_separate_stream};
+        std::numeric_limits<size_t>::max(),
+        0};
     session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     ORT_THROW("ROCM is not supported in this build\n");
