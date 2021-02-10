@@ -14,7 +14,7 @@ namespace test {
 
 TEST(EndianTest, EndiannessDetection) {
   const uint16_t test_value = 0x1234;
-  const char* test_value_first_byte = reinterpret_cast<const char*>(&test_value);
+  const uint8_t* test_value_first_byte = reinterpret_cast<const uint8_t*>(&test_value);
   if (endian::native == endian::little) {
     EXPECT_EQ(*test_value_first_byte, 0x34);
   } else if (endian::native == endian::big) {
@@ -23,13 +23,13 @@ TEST(EndianTest, EndiannessDetection) {
 }
 
 TEST(EndianTest, SwapByteOrderCopy) {
-  const auto src = std::vector<char>{
+  const auto src = std::vector<uint8_t>{
       'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'};
 
-  auto result = std::vector<char>(src.size());
+  auto result = std::vector<uint8_t>(src.size());
   {
     SwapByteOrderCopy(3, gsl::make_span(src), gsl::make_span(result));
-    const auto expected = std::vector<char>{
+    const auto expected = std::vector<uint8_t>{
         'c', 'b', 'a',
         'f', 'e', 'd',
         'i', 'h', 'g',
@@ -39,7 +39,7 @@ TEST(EndianTest, SwapByteOrderCopy) {
 
   {
     SwapByteOrderCopy(4, gsl::make_span(src), gsl::make_span(result));
-    const auto expected = std::vector<char>{
+    const auto expected = std::vector<uint8_t>{
         'd', 'c', 'b', 'a',
         'h', 'g', 'f', 'e',
         'l', 'k', 'j', 'i'};

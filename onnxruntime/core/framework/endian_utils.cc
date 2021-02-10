@@ -26,9 +26,8 @@ OutputIt ReverseCopy(BidirIt first, BidirIt last, OutputIt d_first) {
 
 }  // namespace
 
-void SwapByteOrderCopy(
-    size_t element_size_in_bytes,
-    gsl::span<const char> source_bytes, gsl::span<char> destination_bytes) {
+void SwapByteOrderCopy(size_t element_size_in_bytes,
+                       gsl::span<const uint8_t> source_bytes, gsl::span<uint8_t> destination_bytes) {
   assert(element_size_in_bytes > 0);
   assert(source_bytes.size_bytes() % element_size_in_bytes == 0);
   assert(source_bytes.size_bytes() == destination_bytes.size_bytes());
@@ -53,15 +52,28 @@ void SwapByteOrderCopy(
 
 namespace detail {
 
-void CopyLittleEndian(size_t element_size_in_bytes, gsl::span<const char> source_bytes, gsl::span<char> destination_bytes) {
+Status CopyLittleEndian(size_t element_size_in_bytes,
+                        gsl::span<const uint8_t> source_bytes,
+                        gsl::span<uint8_t> destination_bytes) {
+  ORT_RETURN_IF(source_bytes.size_bytes() != destination_bytes.size_bytes(),
+                "source and destination buffer size mismatch");
+
   if (endian::native == endian::little) {
     std::memcpy(destination_bytes.data(), source_bytes.data(), source_bytes.size_bytes());
   } else {
     SwapByteOrderCopy(element_size_in_bytes, source_bytes, destination_bytes);
   }
+
+  return Status::OK();
 }
 
 }  // namespace detail
+
+common::Status ReadLittleEndian(size_t element_size,
+                                gsl::span<const uint8_t> source_bytes,
+                                gsl::span<uint8_t> destination_bytes) {
+  return detail::CopyLittleEndian(element_size, source_bytes, destination_bytes);
+}
 
 }  // namespace utils
 }  // namespace onnxruntime
