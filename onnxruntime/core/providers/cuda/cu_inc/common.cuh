@@ -133,11 +133,47 @@ template <>
 __device__ __inline__ double _Round(double a) { return rint(a); }
 
 template <>
-__device__ __inline__ half _Round(half a) { 
+__device__ __inline__ half _Round(half a) {
 #if __CUDA_ARCH__ < 530
   return half(rintf((float)a));
 #else
   return hrint(a);
+#endif
+}
+
+template <typename T>
+__device__ __inline__ T _Cos(T a);
+
+template <>
+__device__ __inline__ float _Cos(float a) { return cosf(a); }
+
+template <>
+__device__ __inline__ double _Cos(double a) { return cos(a); }
+
+template <>
+__device__ __inline__ half _Cos(half a) {
+#if __CUDA_ARCH__ < 530
+  return half(cosf((float)a));
+#else
+  return hcos(a);
+#endif
+}
+
+template <typename T>
+__device__ __inline__ T _Sin(T a);
+
+template <>
+__device__ __inline__ float _Sin(float a) { return sinf(a); }
+
+template <>
+__device__ __inline__ double _Sin(double a) { return sin(a); }
+
+template <>
+__device__ __inline__ half _Sin(half a) {
+#if __CUDA_ARCH__ < 530
+  return half(sinf((float)a));
+#else
+  return hsin(a);
 #endif
 }
 
@@ -270,10 +306,9 @@ struct GridDim {
   };
 };
 
-
-#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)          \
-  CUDA_LONG id = blockDim.x * blockIdx.x + threadIdx.x;     \
-  if (id >= N)                                              \
+#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)      \
+  CUDA_LONG id = blockDim.x * blockIdx.x + threadIdx.x; \
+  if (id >= N)                                          \
     return;
 
 // CUDA_KERNEL_ASSERT is a macro that wraps an assert() call inside cuda kernels.
@@ -281,16 +316,15 @@ struct GridDim {
 // See http://docs.nvidia.com/cuda/cuda-c-programming-guide/#assertion
 #if defined(__APPLE__) || defined(__HIP_PLATFORM_HCC__)
 #define CUDA_KERNEL_ASSERT(...)
-#else // __APPLE__
+#else  // __APPLE__
 #define CUDA_KERNEL_ASSERT(...) assert(__VA_ARGS__)
-#endif // __APPLE__
+#endif  // __APPLE__
 
 // WARP related definitions and functions
 constexpr int GPU_WARP_SIZE = 32;
 
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
+__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
 #if CUDA_VERSION >= 9000
   return __shfl_sync(mask, value, srcLane, width);
 #else
@@ -299,8 +333,7 @@ __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WAR
 }
 
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
+__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
 #if CUDA_VERSION >= 9000
   return __shfl_xor_sync(mask, value, laneMask, width);
 #else
@@ -309,8 +342,7 @@ __device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GP
 }
 
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
+__device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
 #if CUDA_VERSION >= 9000
   return __shfl_up_sync(mask, value, delta, width);
 #else
@@ -319,8 +351,7 @@ __device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width
 }
 
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
+__device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
 #if CUDA_VERSION >= 9000
   return __shfl_down_sync(mask, value, delta, width);
 #else
