@@ -536,8 +536,9 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
             nnapi_target_devices_.size(), supported_ops),
         "on getSupportedOperationsForDevices");
 
-    auto* it = std::find(supported_ops, supported_ops + num_nnapi_ops_, false);
-    if (it != supported_ops + num_nnapi_ops_) {
+    bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
+                                         [](bool is_supported) { return is_supported; });
+    if (!all_ops_supported) {
       // There are some ops not supported by the list of the target devices
       // Fail the Compile
       //
