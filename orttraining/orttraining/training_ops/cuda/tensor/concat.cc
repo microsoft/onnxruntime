@@ -60,7 +60,8 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
   int block_size_inside_axis_dim = static_cast<int>(p.output_axis_pitch / p.output_tensor->Shape()[p.axis]);
   int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
   auto element_bytes = p.output_tensor->DataType()->Size();
-  ORT_RETURN_IF_ERROR(ConcatImpl(element_bytes,
+  ORT_RETURN_IF_ERROR(ConcatImpl(Stream(),
+                                 element_bytes,
                                  block_size_including_axis_dim,
                                  block_size_inside_axis_dim,
                                  concat_sizes_gpu.GpuPtr(),
@@ -71,7 +72,7 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
                                  p.output_num_elements));
 
   Tensor* output_1_tensor = ctx->Output(1, {input_count});
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_1_tensor->template MutableData<int64_t>(), concat_sizes_gpu.GpuPtr(), input_count * sizeof(int64_t), cudaMemcpyDeviceToDevice));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_1_tensor->template MutableData<int64_t>(), concat_sizes_gpu.GpuPtr(), input_count * sizeof(int64_t), cudaMemcpyDeviceToDevice, Stream()));
 
   return Status::OK();
 }

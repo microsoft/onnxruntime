@@ -8,12 +8,21 @@
 namespace onnxruntime {
 namespace coreml {
 
+struct OpBuilderRegistrations {
+  std::vector<std::unique_ptr<IOpBuilder>> builders;
+  std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
+};
+
 // Get the lookup table with IOpBuilder delegates for different onnx operators
 // Note, the lookup table should have same number of entries as the result of CreateOpSupportCheckers()
 // in op_support_checker.h
 const std::unordered_map<std::string, const IOpBuilder*>& GetOpBuilders();
 
-std::unique_ptr<IOpBuilder> CreateBinaryOpBuilder();
+void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace coreml
 }  // namespace onnxruntime

@@ -322,8 +322,15 @@ static Status PadImpl(OpKernelContext* ctx,
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
-          PadAxisConstant(axisStart - prePad, *axisStart, prePad);
-          PadAxisConstant(output, *(output - 1), postPad);
+          if (inner_no_pad_size == 1) {
+            PadAxisConstant(axisStart - prePad, *axisStart, prePad);
+            PadAxisConstant(output, *(output - 1), postPad);
+          } else {
+            // When inner_most axis(es) do not need pad, above PadAxisConstant() do not fit for Edge mode.
+            // Also general loop below after handling first pad axis with non-pad axis works fine.
+            PadAxis(axisStart - prePad, axisStart, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, pads[inner_axis]);
+            PadAxis(output, output - inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, pads[inner_axis + data_rank]);
+          }
           output += postPad;
           alignSkip = prePad;
         }
@@ -353,8 +360,14 @@ static Status PadImpl(OpKernelContext* ctx,
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
-          PadInnermostAxis(axisStart - prePad, axisStart + prePad, -1 /* inputDelta */, prePad);
-          PadInnermostAxis(output, output - 2, -1 /* inputDelta */, postPad);
+          if (inner_no_pad_size == 1) {
+            PadInnermostAxis(axisStart - prePad, axisStart + prePad, -1 /* inputDelta */, prePad);
+            PadInnermostAxis(output, output - 2, -1 /* inputDelta */, postPad);
+          } else {
+            // When inner_most axis(es) do not need pad, Above PadInnermostAxis() do not fit for Reflect mode.
+            PadAxis(axisStart - prePad, axisStart + prePad, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, pads[inner_axis]);
+            PadAxis(output, output - 2 * inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, pads[inner_axis + data_rank]);
+          }
           output += postPad;
           alignSkip = prePad;
         }

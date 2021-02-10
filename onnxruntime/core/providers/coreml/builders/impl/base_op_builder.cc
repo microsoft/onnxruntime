@@ -48,6 +48,13 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
   return Status::OK();
 }
 
+/* static */ std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> BaseOpBuilder::CreateNNLayer(const Node& node) {
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer =
+      onnxruntime::make_unique<COREML_SPEC::NeuralNetworkLayer>();
+  layer->set_name(node.Name());
+  return layer;
+}
+
 // Operator support related
 
 bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
@@ -66,11 +73,9 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
 }
 
 bool BaseOpBuilder::HasSupportedInputs(const Node& node, const logging::Logger& logger) const {
-  // We do not support unknown(null) input shape
+  const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
-    if (!input->Shape()) {
-      LOGS(logger, VERBOSE) << "Node [" << node.Name() << "] type [" << node.OpType()
-                            << "] Input [" << input->Name() << "] has no shape";
+    if (!IsInputSupported(*input, node_name, logger)) {
       return false;
     }
   }

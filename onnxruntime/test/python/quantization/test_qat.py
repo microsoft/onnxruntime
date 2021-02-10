@@ -111,25 +111,25 @@ def generate_qat_model(model_names):
     graph = helper.make_graph(
         [
             #nodes
-            helper.make_node("MaxPool", ["A"], ["maxpool_out"], "maxpool"),
+            helper.make_node("MaxPool", ["A"], ["maxpool_out"], "maxpool", kernel_shape = [1, 1]),
             helper.make_node("QuantizeLinear", ["maxpool_out", "quant0_scale_const", "quant0_zp_const"], ["quant0_out"],
                              "qlinear0"),
             helper.make_node("DequantizeLinear", ["quant0_out", "dequant0_scale_const", "dequant0_zp_const"],
                              ["dequant0_out"], "dqlinear0"),
-            helper.make_node("Conv", ["dequant0_out"], ["conv0_out"], "conv0"),
+            helper.make_node("Conv", ["dequant0_out", "conv_weight_0", "conv_bias_0"], ["conv0_out"], "conv0"),
             helper.make_node("QuantizeLinear", ["maxpool_out", "quant1_scale_const", "quant1_zp_const"], ["quant1_out"],
                              "qlinear1"),
             helper.make_node("DequantizeLinear", ["quant1_out", "dequant1_scale_const", "dequant1_zp_const"],
                              ["dequant1_out"], "dqlinear1"),
-            helper.make_node("Conv", ["dequant1_out"], ["conv1_out"], "conv1"),
+            helper.make_node("Conv", ["dequant1_out", "conv_weight_1", "conv_bias_1"], ["conv1_out"], "conv1"),
             helper.make_node("Add", ["conv0_out", "conv1_out"], ["B"], "add"),
         ],
         "QAT_model_2",  #name
         [  #input
-            helper.make_tensor_value_info('A', TensorProto.FLOAT, ['unk_1'])
+            helper.make_tensor_value_info('A', TensorProto.FLOAT, [1, 64, 256, 256])
         ],
         [  #output
-            helper.make_tensor_value_info('B', TensorProto.FLOAT, [256, 64, 1, 1])
+            helper.make_tensor_value_info('B', TensorProto.FLOAT, [1, 256, 256, 256])
         ],
         [  #initializers
             helper.make_tensor('quant0_scale_const', TensorProto.FLOAT, [], [0.2062656134366989]),
@@ -225,16 +225,16 @@ def generate_qat_support_model(model_names, test_initializers):
     graph = helper.make_graph(
         [  #nodes
             helper.make_node("MaxPool", ["A"], ["maxpool_out"], "maxpool"),
-            helper.make_node("Conv", ["maxpool_out"], ["conv0_out"], "conv0"),
-            helper.make_node("Conv", ["maxpool_out"], ["conv1_out"], "conv1"),
+            helper.make_node("Conv", ["maxpool_out", "conv_weight_0", "conv_bias_0"], ["conv0_out"], "conv0"),
+            helper.make_node("Conv", ["maxpool_out", "conv_weight_1", "conv_bias_1"], ["conv1_out"], "conv1"),
             helper.make_node("Add", ["conv0_out", "conv1_out"], ["B"], "add"),
         ],
         "QAT_support_model_2",  #name
         [  #input
-            helper.make_tensor_value_info('A', TensorProto.FLOAT, ['unk_1'])
+            helper.make_tensor_value_info('A', TensorProto.FLOAT, [1, 64, 256, 256])
         ],
         [  #output
-            helper.make_tensor_value_info('B', TensorProto.FLOAT, [256, 64, 1, 1])
+            helper.make_tensor_value_info('B', TensorProto.FLOAT, [1, 256, 256, 256])
         ])
 
     #initializers
@@ -309,7 +309,7 @@ class TestQAT(unittest.TestCase):
         qat_support_models_expected = generate_qat_support_model(qat_support_model_names, test_initializers)
 
         for i in range(len(test_models)):
-            quantizer = ONNXQuantizer(test_models[i], False, QuantizationMode.IntegerOps, False, True, TensorProto.INT8,
+            quantizer = ONNXQuantizer(test_models[i], False, False,QuantizationMode.IntegerOps, False, TensorProto.INT8,
                                       TensorProto.INT8, None, None, None, ['Conv', 'MatMul', 'MaxPool'])
             #test remove editting to the graph
             qat_support_model_actual = quantizer.remove_fake_quantized_nodes()
