@@ -101,7 +101,6 @@ std::vector<SupportedOp> supported_op_mode = {
     {"LeakyRelu", V_2020_4,{"All"}},
     {"Less", V_2020_4,{"All"}},
     {"Log", V_2020_4,{"All"}},
-    {"Loop", V_2021_2,{"MYRIAD"}},
     {"LRN", V_2020_4,{"All"}},
     {"LSTM", V_2020_4,{"All"}},
     {"MatMul", V_2020_4,{"All"}},
@@ -153,7 +152,6 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Sum", V_2020_4,{"All"}},
     {"Tan", V_2020_4,{"CPU", "GPU"}},
     {"Tanh", V_2020_4,{"All"}},
-    {"Tile", V_2021_2,{"MYRIAD"}},
     {"Transpose", V_2020_4,{"All"}},
     {"TopK", V_2020_4,{"All"}},
     {"Unsqueeze", V_2020_4,{"All"}},
@@ -1052,6 +1050,12 @@ bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>&
             return true;
           }
         }
+    } else if (node->OpType() == "MaxPool" && device_id_.find("MYRIAD") != std::string::npos) {
+      auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+      if (output_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT ||
+        output_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+        return result;
+      }
     }
     return false;
 }
