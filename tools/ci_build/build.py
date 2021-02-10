@@ -1747,7 +1747,9 @@ def main():
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
     if not (args.update or args.clean or args.build or args.test):
-        log.debug("Defaulting to running update, build [and test for native builds].")
+        log.debug(
+            "Defaulting to running update, build "
+            "[and test for native builds].")
         args.update = True
         args.build = True
         if cross_compiling:
@@ -1758,7 +1760,7 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.include_ops_by_config and args.update:
+    if args.include_ops_by_config:
         from exclude_unused_ops_and_types import exclude_unused_ops_and_types
         exclude_unused_ops_and_types(args.include_ops_by_config,
                                      args.enable_reduced_operator_type_support,

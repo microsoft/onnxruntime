@@ -52,15 +52,12 @@ def get_kernel_registration_files(ort_root=None, include_cuda=False):
 
     provider_path = ort_root + '/onnxruntime/core/providers/{ep}/{ep}_execution_provider.cc'
     contrib_provider_path = ort_root + '/onnxruntime/contrib_ops/{ep}/{ep}_contrib_kernels.cc'
-    training_provider_path = ort_root + '/orttraining/orttraining/training_ops/{ep}/{ep}_training_kernels.cc'
     provider_paths = [provider_path.format(ep='cpu'),
-                      contrib_provider_path.format(ep='cpu'),
-                      training_provider_path.format(ep='cpu')]
+                      contrib_provider_path.format(ep='cpu')]
 
     if include_cuda:
         provider_paths.append(provider_path.format(ep='cuda'))
         provider_paths.append(contrib_provider_path.format(ep='cuda'))
-        provider_paths.append(training_provider_path.format(ep='cuda'))
 
     provider_paths = [os.path.abspath(p) for p in provider_paths]
 

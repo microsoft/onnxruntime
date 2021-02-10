@@ -133,13 +133,13 @@ For production scenarios, it's strongly recommended to build only from an [offic
 |API|Supported Versions|Samples|
 |---|---|---|
 [Python](https://aka.ms/onnxruntime-python)| 3.6, 3.7, 3.8, 3.9 (3.8/3.9 excludes Win GPU and Linux ARM)<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
-|[C#](https://www.onnxruntime.ai/docs/reference/api/csharp-api.html)| | [Samples](./samples#C)|
+|[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
 |[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
-|[C](https://www.onnxruntime.ai/docs/reference/api/c-api.html)| | [Samples](./samples#CC)|
-|[WinRT](https://www.onnxruntime.ai/docs/reference/api/winrt-api.html) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
-|[Java](https://www.onnxruntime.ai/docs/reference/api/java-api.html)|8+|[Samples](./samples#Java)| 
+|[C](docs/C_API.md)| | [Samples](./samples#CC)|
+|[WinRT](docs/WinRT_API.md) | [Windows.AI.MachineLearning](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| [Samples](https://github.com/microsoft/windows-Machine-Learning)|
+|[Java](docs/Java_API.md)|8+|[Samples](./samples#Java)| 
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.4-2.7| [Samples](https://ankane.org/tensorflow-ruby)|
-|[Javascript (node.js)](https://www.onnxruntime.ai/docs/reference/api/nodejs-api.html) |12.x | [Samples](./samples/nodejs) |
+|[Javascript (node.js)](./nodejs) |12.x | [Samples](./samples/nodejs) |
 
 ### Supported Accelerators
 

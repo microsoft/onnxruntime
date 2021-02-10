@@ -308,7 +308,10 @@ TEST(OrtModelOnlyTests, SparseInitializerHandling) {
   SaveAndCompareModels("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx", ort_file);
 
   SessionOptions so;
-  so.session_logid = "SparseInitializerHandling";
+  so.session_logid = "LoadOrtFormat";
+  // not strictly necessary - type should be inferred from the filename, but to be sure we're testing what we
+  // think we're testing set it.
+  so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(ort_file));
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -318,13 +321,6 @@ TEST(OrtModelOnlyTests, SparseInitializerHandling) {
   ASSERT_EQ(init_list->size(), 1U);
   const auto& init_def = *init_list->front();
   ASSERT_EQ(init_def.Name(), "x");
-}
-
-// regression test to make sure the model path is correctly passed through when serializing a tensor attribute
-TEST(OrtModelOnlyTests, TensorAttributeSerialization) {
-  const std::basic_string<ORTCHAR_T> ort_file =
-      ORT_TSTR("testdata/ort_minimal_test_models/tensor_attribute.onnx.test_output.ort");
-  SaveAndCompareModels("testdata/ort_minimal_test_models/tensor_attribute.onnx", ort_file);
 }
 
 #if !defined(DISABLE_ML_OPS)

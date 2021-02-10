@@ -224,11 +224,10 @@ inline bool IsPrimitiveDataType(const PrimitiveDataTypeBase* prim_type) {
 // GCC until very recently does not support template parameter pack expansion within lambda context.
 namespace mltype_dispatcher_internal {
 // T - type handled by this helper
-class CallableDispatchableHelper {
+struct CallableDispatchableHelper {
   int32_t dt_type_;  // Type currently dispatched
   size_t called_;
 
- public:
   explicit CallableDispatchableHelper(int32_t dt_type) noexcept : dt_type_(dt_type), called_(0) {}
 
   // Must return integer to be in a expandable context
@@ -239,11 +238,6 @@ class CallableDispatchableHelper {
       ++called_;
     }
     return 0;
-  }
-
-  void CheckCalledOnce() {
-    ORT_ENFORCE(called_ < 2, "Check for duplicate types in MLTypeCallDispatcher");
-    ORT_ENFORCE(called_ == 1, "Unsupported data type: ", dt_type_);
   }
 };
 
@@ -257,12 +251,11 @@ struct UnsupportedTypeDefaultPolicy {
 
 // Helper with the result type
 template <class Ret, class UnsupportedPolicy = UnsupportedTypeDefaultPolicy<Ret>>
-class CallableDispatchableRetHelper {
+struct CallableDispatchableRetHelper {
   int32_t dt_type_;  // Type currently dispatched
   size_t called_;
   Ret result_;
 
- public:
   explicit CallableDispatchableRetHelper(int32_t dt_type) noexcept : dt_type_(dt_type), called_(0), result_() {}
 
   Ret Get() {
@@ -319,7 +312,8 @@ class MLTypeCallDispatcher {
     mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
     int results[] = {0, helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
     ORT_UNUSED_PARAMETER(results);
-    helper.CheckCalledOnce();
+    ORT_ENFORCE(helper.called_ < 2, "Check for duplicate types in MLTypeCallDispatcher");
+    ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
   }
 };
 
@@ -376,7 +370,7 @@ class MLTypeCallDispatcher2 {
     // avoid "unused parameter" warning for the case where Types is empty
     static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});
 
-    helper.CheckCalledOnce();
+    ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
   }
 
   template <template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
@@ -391,7 +385,7 @@ class MLTypeCallDispatcher2 {
     // avoid "unused parameter" warning for the case where Types is empty
     static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});
 
-    helper.CheckCalledOnce();
+    ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
   }
 };
 
