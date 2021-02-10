@@ -56,6 +56,9 @@
 #include "core/session/custom_ops.h"
 #endif
 
+#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "orttraining/training_ops/cpu/controlflow/message_queue.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
 using namespace onnxruntime::common;
@@ -373,6 +376,14 @@ InferenceSession::~InferenceSession() {
     ORT_CATCH(...) {
       LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
     }
+  }
+
+  // TODO: find a better way to terminate the background thread
+  // backward is not completed yet, set terminate_flag to True
+  if (task_.bg_thread_future_.valid()) {
+    *(task_.terminate_flag_) = true;
+    Status s = ContinueRunInBackground({});
+    ORT_UNUSED_PARAMETER(s);
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -1715,6 +1726,60 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
 common::Status InferenceSession::Run(IOBinding& io_binding) {
   RunOptions run_options;
   return Run(run_options, io_binding);
+}
+
+common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
+                                                                std::vector<OrtValue>& user_outputs) {
+  const int64_t main_thread_event_id = 0;
+  onnxruntime::contrib::OrtEventPool::GetInstance().ResetEvent(0);
+
+  task_.terminate_flag_ = &(run_options.terminate);
+  task_.bg_thread_promise_ = std::promise<Status>();
+  task_.bg_thread_future_ = task_.bg_thread_promise_.get_future();
+  task_.bg_thread_ = std::thread([&](std::promise<common::Status> result_promise) {
+    common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
+                           &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
+
+    result_promise.set_value(s);
+
+    // signal main thread for background thread completion
+    const int64_t main_thread_event_id = 0;
+    onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
+  },
+                                 std::move(task_.bg_thread_promise_));
+
+  // Wait for events from
+  // 1. Yield op, if the bg thread sucessfully reached Yield's signal point
+  // 2. The end of bg thread, if it hit execptions and returned earlier
+  onnxruntime::contrib::OrtEventPool::GetInstance().WaitAndResetEvent(main_thread_event_id);
+
+  // background thread has completed without hitting Yield Op
+  if (task_.bg_thread_future_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+    Status bg_thread_status = task_.bg_thread_future_.get();
+    task_.bg_thread_.join();
+    return bg_thread_status;
+  }
+
+  onnxruntime::contrib::OrtMessageQueue::GetInstance().PopAll(user_outputs);
+  return Status::OK();
+}
+
+common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) {
+  for (const auto& ort_value : backward_output_grads) {
+    onnxruntime::contrib::OrtMessageQueue::GetInstance().Push(ort_value);
+  }
+
+  // resume background thread
+  const int64_t background_thread_event_id = 1;
+  onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(background_thread_event_id);
+
+  Status bg_thread_status = task_.bg_thread_future_.get();
+  // wait for bg_thread to complete
+  if (task_.bg_thread_.joinable()) {
+    task_.bg_thread_.join();
+  }
+
+  return bg_thread_status;
 }
 
 template <typename T>

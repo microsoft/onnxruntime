@@ -65,9 +65,7 @@ def _create_iobinding(io_binding, inputs, model, device):
                               inputs[idx].data_ptr())
 
     for value_info in model.graph.output:
-        io_binding.bind_output(value_info.name, device.type,
-                               device_id=_get_device_index(device))
-
+        io_binding.bind_output(value_info.name, device.type, device_id=_get_device_index(device))
 
 def _onnx_value_info_to_buffer_tensor(value_info, device):
     '''Create a torch zeroed tensor with the same shape and type of `value_info`'''
@@ -113,10 +111,9 @@ def _extract_input_information(module, *inputs, **kwargs):
 class ORTModule(torch.nn.Module):
 
     def __init__(self, module):
-        assert isinstance(module, torch.nn.Module), "'module' mst be a torch.nn.Module"
+        assert isinstance(module, torch.nn.Module), "'module' must be a torch.nn.Module"
         super(ORTModule, self).__init__()
 
-        self._export_again = False
         # TODO: This is incorrect when different layers may be in different devices
         self._device = next(module.parameters()).device
         self._device_changed = False
@@ -124,21 +121,18 @@ class ORTModule(torch.nn.Module):
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
         self._onnx_training = None
+        self._is_training = True
 
         # Related to training graph split/shape inference
         self._current_input_shape = None
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
 
-        # Forward pass
-        self._onnx_forward = None
-        self._forward_session = None
-        self._forward_io_binding = None
-
-        # Backward pass
-        self._onnx_backward = None
-        self._backward_session = None
-        self._backward_io_binding = None
+        # Gradient model
+        self._onnx_gradient = None
+        self._gradient_session = None
+        self._gradient_io_binding = None
+        self._run_options = None
 
         # Log level
         self._loglevel = getattr(logging, 'WARNING')
@@ -148,21 +142,21 @@ class ORTModule(torch.nn.Module):
         self._save_onnx_prefix = ''
 
     def _initialize_module_gradient_graph_builder(self):
-
         # TODO: PyTorch exporter bug: changes the initializer order
         initializer_names = [p[0] for p in self._original_module.named_parameters()]
 
-        # Build full training graph and split in forward/backward
+        # Build full training graph
         grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
         grad_builder_config.initializer_names_to_train = initializer_names
         grad_builder_config.input_names_require_grad = self._input_names_require_grad
         self._module_gradient_graph_builder = C.ModuleGradientGraphBuilder()
         self._module_gradient_graph_builder.initialize(self._onnx_training.SerializeToString(), grad_builder_config)
 
-    def _build_training_graph(self, *inputs, **kwargs):
+    def _get_forward_graph_and_init_gradient_graph_builder(self, *inputs, **kwargs):
         input_names, dynamic_axes, self._input_names_require_grad = \
                 _extract_input_information(self._original_module, *inputs, **kwargs)
         self._onnx_training = self._get_forward_graph(input_names, dynamic_axes, *inputs, **kwargs)
+
         if self._save_onnx:
             onnx.save(self._onnx_training, self._save_onnx_prefix + '_full_training.onnx')
 
@@ -179,27 +173,29 @@ class ORTModule(torch.nn.Module):
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
 
-        self._forward_session = onnxruntime.InferenceSession(
-            self._onnx_forward.SerializeToString(), providers=providers, provider_options=provider_options)
-        self._backward_session = onnxruntime.InferenceSession(
-            self._onnx_backward.SerializeToString(), providers=providers, provider_options=provider_options)
+        session_options = onnxruntime.SessionOptions()
+        session_options.enable_mem_pattern = False
+        session_options.use_deterministic_compute = False
+        # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
+        session_options.log_severity_level = 1
+
+        self._gradient_session = onnxruntime.InferenceSession(
+            self._onnx_gradient.SerializeToString(), session_options, providers=providers, provider_options=provider_options)
+        
+        # Use this global run_options for now
+        self._run_options = C.RunOptions()
 
         # IO binding
         # TODO: we should try to reuse the output buffers as some of the output tensors are same sizes, expecially the backward graph outputs.
-        self._forward_io_binding = self._forward_session.io_binding()
-        self._backward_io_binding = self._backward_session.io_binding()
+        self._gradient_io_binding = self._gradient_session.io_binding()
 
-    def _split_training_graph(self, *inputs, **kwargs):
-        # Perform shape inference and re-split forward/backward graph for batches with different shapes
-        self._module_gradient_graph_builder.build_and_split(self._current_input_shape)
-        self._onnx_forward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_forward_model())
-        self._onnx_backward = onnx.load_model_from_string(self._module_gradient_graph_builder.get_backward_model())
+    def _build_training_graph(self, *inputs, **kwargs):
+        self._module_gradient_graph_builder.build(self._current_input_shape)
+        self._onnx_gradient = onnx.load_model_from_string(self._module_gradient_graph_builder.get_gradient_model())
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_split_graphs_info()
-        self._create_training_session()
 
         if self._save_onnx:
-            onnx.save(self._onnx_forward, self._save_onnx_prefix + '_forward.onnx')
-            onnx.save(self._onnx_backward, self._save_onnx_prefix + '_backward.onnx')
+            onnx.save(self._onnx_gradient, self._save_onnx_prefix + '_gradient.onnx')
 
     def cpu(self: T) -> T:
         '''Thin layer to capture device for ORTModule IO bindings'''
@@ -248,17 +244,28 @@ class ORTModule(torch.nn.Module):
                 self._device = torch.device(device_str)
         return super(ORTModule, self).to(*args, **kwargs)
 
+    def eval(self: T) -> T:
+        self._is_training = False
+        self._original_module.eval()
+
+    def train(self: T, mode: bool = True) -> T:
+        self._is_training = mode
+        self._original_module.train(mode)
+
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
 
         ONNX model is exported the first time this method is executed.
-        Next, a full training graph is splitted in forward and backward graph which are used
-        to instantiate ONNX Runtime InferenceSession`s
+        Next, we build a full training graph with module_gradient_graph_builder. 
+        Finally, we instantiate the ONNX Runtime InferenceSession.
         '''
+        # TODO: using pytorch for evaluation for now. We will use ORT for evaluation latter. 
+        if not self._is_training:
+            return self._original_module(*inputs, **kwargs)
 
         # Exporting module to ONNX for the first time
         if not self._onnx_training:
-            self._build_training_graph(*inputs, **kwargs)
+            self._get_forward_graph_and_init_gradient_graph_builder(*inputs, **kwargs)
 
         _, _, input_names_require_grad = _extract_input_information(self._original_module, *inputs, **kwargs)
         # If inputs requiring gradient change from one call to forward to the next, the module_gradient_graph_builder
@@ -270,10 +277,13 @@ class ORTModule(torch.nn.Module):
         new_input_shape = [list(input.size()) for input in inputs if input is not None]
         if self._current_input_shape is None or self._current_input_shape != new_input_shape:
             self._current_input_shape = new_input_shape
-            self._split_training_graph(*inputs, **kwargs)
-        elif self._device_changed:
+            self._build_training_graph()
             self._create_training_session()
-            self._device_changed = False
+        # TODO: disabled for now, since it caused a bug in NVBert fp32 run
+        # When creating a new InferenceSession, there is a bug for destructing the original InferenceSession 
+        # elif self._device_changed:
+        #     self._create_training_session()
+        #     self._device_changed = False
 
         # Use a custom torch.autograd.Function to associate self.backward_graph as the
         # gradient implementation for self.forward_graph.
@@ -284,80 +294,57 @@ class ORTModule(torch.nn.Module):
 
                 TODO: **kwargs are not supported
 
-                Model outputs are returned to the user
-                The following tensors are stashed (in order) for backward pass
-                    * (Partial) user input
-                    * (Partial) Initializers
-                    * Intermediate tensors
+                Module outputs are returned to the user
                 '''
 
                 # Use IO binding
-                _create_iobinding(self._forward_io_binding, inputs,
-                                  self._onnx_forward,
-                                  self._device)
+                _create_iobinding(self._gradient_io_binding, inputs, self._onnx_gradient, self._device)
 
-                # Run
-                self._forward_session.run_with_iobinding(self._forward_io_binding)
-                forward_outputs = self._forward_io_binding.get_outputs()
-
-                # Stash tensors needed by backward
-                forward_input_dict = self._convert_forward_input_list_to_dict(*inputs)
-                ctx_inputs = tuple(forward_input_dict[name] \
-                    for name in self._onnx_graphs_info.backward_user_input_names)
-                ctx_initializers = tuple(forward_input_dict[name] \
-                    for name in self._onnx_graphs_info.backward_intializer_names_as_input)
-                ctx_intermediates = tuple(_ort_output_to_torch_tensor(forward_output) \
-                    for forward_output in forward_outputs[len(self._onnx_graphs_info.user_output_names):])
-                ctx.save_for_backward(*[*ctx_inputs, *ctx_initializers, *ctx_intermediates])
-
-                # Return model output
+                # Run and return module outputs.
                 user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) \
-                    for forward_output in forward_outputs[:len(self._onnx_graphs_info.user_output_names)])
+                    for forward_output in self._gradient_session.run_forward(self._gradient_io_binding, self._run_options))
                 return user_outputs[0] if len(user_outputs) == 1 else user_outputs
 
             @staticmethod
             def backward(ctx, *grad_output):
-                '''Performs backward pass based on grad wrt output and internal state
-
-                Internal state is composed of:
-                    * Tensor stashed (in a particular order) during forward:
-                        * (partial) user input, (partial) initializers and intermediate tensors
-
-                TODO: Input gradient is hard-coded to torch.tensor([1.])
+                '''Performs backward pass based on grad wrt module output
                 '''
 
                 # Use IO binding
-                grad_output_dict = dict(zip(self._onnx_graphs_info.user_output_grad_names, grad_output))
-                backward_grad_output = tuple(grad_output_dict[name] for name in self._onnx_graphs_info.backward_output_grad_names)
-                _create_iobinding(self._backward_io_binding, [*ctx.saved_tensors, *backward_grad_output],
-                                   self._onnx_backward,
-                                   self._device)
+                # Push user output grads to ONNX backend.
+                backward_grad_output_ortvalue = []
+                for grad_output in grad_output[:len(self._onnx_graphs_info.backward_output_grad_names)]:
+                    backward_grad_output_ortvalue.append(onnxruntime.OrtValue.ortvalue_from_data_ptr(list(grad_output.size()), _utils.dtype_torch_to_numpy(
+                        grad_output.dtype), grad_output.device.type, _get_device_index(grad_output.device), grad_output.data_ptr()))
 
-                # Run
-                self._backward_session.run_with_iobinding(self._backward_io_binding)
-                backward_outputs = self._backward_io_binding.get_outputs()
+                # Run and get results
+                self._gradient_session.run_backward(backward_grad_output_ortvalue)
+                backward_outputs = self._gradient_io_binding.get_outputs()
 
                 # Return input and initializer gradients
-                num_initializers = len(self._onnx_graphs_info.initializer_grad_names_to_train)
+                num_user_input_grads = len(self._input_names_require_grad)
+
                 results = []
                 for input_name in self._onnx_graphs_info.user_input_names:
                     try:
                         # Append to the results the backward output for each input that required grad
                         results.append(_ort_output_to_torch_tensor(
-                            backward_outputs[num_initializers + self._input_names_require_grad.index(input_name)]))
+                            backward_outputs[self._input_names_require_grad.index(input_name)]))
                     except ValueError:
+                        # input_name is not found in the self._input_names_require_grad list
                         # Append None to results for each input that did not require grad
                         results.append(None)
-                # Append backward ouput for all trained initializers
-                results += [_ort_output_to_torch_tensor(backward_output)
-                            for backward_output in backward_outputs[:num_initializers]]
+                # Append gradients of initializer to results
+                results += [_ort_output_to_torch_tensor(backward_output) 
+                            for backward_output in backward_outputs[num_user_input_grads:]]
                 return tuple(results)
 
         proc_inputs = [data for data in inputs if data is not None]
-        return _ORTModuleFunction.apply(*self._convert_forward_input_to_list(*proc_inputs, **kwargs))
+
+        return _ORTModuleFunction.apply(*self._convert_gradient_graph_input_to_list(*proc_inputs, **kwargs))
 
     @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
-    def _convert_forward_input_to_list(self, *inputs, **kwargs):
+    def _convert_gradient_graph_input_to_list(self, *inputs, **kwargs):
         '''Creates forward `*inputs` list from user input and PyTorch initializers
 
         TODO: **kwargs is not supported
@@ -376,63 +363,6 @@ class ORTModule(torch.nn.Module):
         # Initializers
         for param in self._original_module.named_parameters():
             result.append(param[1])
-
-        return result
-
-    @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
-    def _convert_forward_input_list_to_dict(self, *inputs):
-        '''Convert forward `*inputs` list to dict
-
-        TODO: Input gradient is being ignored for MVP
-        '''
-        # Dictionary containing both inputs and initializers
-        forward_input_names = [*self._onnx_graphs_info.user_input_names,
-                               *self._onnx_graphs_info.initializer_names_to_train]
-        return dict(zip(forward_input_names, inputs))
-
-    @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
-    def _convert_backward_input_list_to_dict(self, *inputs):
-        '''Convert backward `*inputs` list to dict
-
-        ONNX Runtime backward requires dict as input, which is composed of:
-            * User input
-                Although not necessary, all user inputs are used for simplicity
-            * (Partial) Initializers
-                    init_begin = len(user_input)
-                    init_count = len(Pre-computed list of initializer)
-            * Intermediate tensors
-            * Gradient wrt outputs
-        '''
-
-        # Dictionary containing both inputs and initializers
-        result = {}
-
-        backward_user_input = self._onnx_graphs_info.backward_user_input_names
-        backward_intializer = self._onnx_graphs_info.backward_intializer_names_as_input
-        intermediate = self._onnx_graphs_info.intermediate_tensor_names
-        backward_output_grad_names = self._onnx_graphs_info.backward_output_grad_names
-
-        # Extract info about stashed input and grad output
-        # Inputs
-        inputs_pos = 0
-        for idx, name in enumerate(backward_user_input):
-            result.update({ name : inputs[idx]})
-            inputs_pos += 1
-
-        # Initializers
-        for idx, name in enumerate(backward_intializer, inputs_pos):
-            result.update({name: inputs[idx]})
-            inputs_pos += 1
-
-        # Intermediate
-        for idx, name in enumerate(intermediate, inputs_pos):
-            result.update({name: inputs[idx]})
-            inputs_pos += 1
-
-        # Grad outputs
-        for idx, name in enumerate(backward_output_grad_names, inputs_pos):
-            result.update({name: inputs[idx]})
-            inputs_pos += 1
 
         return result
 
@@ -467,5 +397,9 @@ class ORTModule(torch.nn.Module):
                               do_constant_folding=False,
                               training=torch.onnx.TrainingMode.TRAINING,
                               dynamic_axes=dynamic_axes)
+        
+        # TODO: this step might not be needed when we use the torch external allocator
+        # clear cache after model export
+        torch.cuda.empty_cache()
 
         return onnx.load_model_from_string(f.getvalue())
