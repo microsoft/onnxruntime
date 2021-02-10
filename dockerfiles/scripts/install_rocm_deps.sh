@@ -50,3 +50,30 @@ make install
 cd ../..
 rm -rf rocRAND-rocm-4.0.0
 
+#hipcub
+wget --quiet https://github.com/ROCmSoftwarePlatform/hipCUB/archive/rocm-4.0.0.tar.gz
+tar -xzvf rocm-4.0.0.tar.gz
+rm rocm-4.0.0.tar.gz
+cd hipCUB-rocm-4.0.0
+mkdir build
+cd build
+CXX=/opt/rocm/bin/hipcc cmake -DCMAKE_INSTALL_PREFIX=$prefix ..
+make -j8
+make package
+make install
+cd ../..
+rm -rf hipCUB-rocm-4.0.0
+
+#rocprim
+wget --quiet https://github.com/ROCmSoftwarePlatform/rocPRIM/archive/rocm-4.0.0.tar.gz
+tar -xzvf rocm-4.0.0.tar.gz
+rm rocm-4.0.0.tar.gz
+cd rocPRIM-rocm-4.0.0
+mkdir build
+cd build
+CXX=/opt/rocm/bin/hipcc cmake -DCMAKE_INSTALL_PREFIX=$prefix ..
+make -j8
+make install
+cd ../..
+rm -rf rocPRIM-rocm-4.0.0
+
