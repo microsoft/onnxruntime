@@ -92,9 +92,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
         return result;
       //If reshape is not an intermediate node, shape needs to be an initializer
       if(data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node)) {
-        const auto& shape_arg = node->InputDefs()[1];
-        if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
-          return result;
+        return result;
       }
     }
 
