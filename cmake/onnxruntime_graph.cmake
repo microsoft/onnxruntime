@@ -98,8 +98,8 @@ if (onnxruntime_ENABLE_TRAINING)
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${orttraining_graph_src})
 endif()
 
-if (onnxruntime_BUILD_EXPERIMENTAL)
-  target_compile_definitions(onnxruntime_graph PRIVATE BUILD_EXPERIMENTAL=1)
+if (onnxruntime_BUILD_MS_EXPERIMENTAL_OPS)
+  target_compile_definitions(onnxruntime_graph PRIVATE BUILD_MS_EXPERIMENTAL_OPS=1)
 endif()
 
 if (WIN32)

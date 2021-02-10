@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef BUILD_EXPERIMENTAL
+#ifdef BUILD_MS_EXPERIMENTAL_OPS
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"

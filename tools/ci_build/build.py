@@ -472,7 +472,7 @@ def parse_arguments():
     parser.add_argument("--code_coverage", action='store_true',
                         help="Generate code coverage when targetting Android (only).")
     parser.add_argument(
-        "--experimental", action='store_true', help="Build experimental APIs and operators.")
+        "--ms_experimental", action='store_true', help="Build microsot experimental operators.")
     return parser.parse_args()
 
 
@@ -691,7 +691,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
-        "-Donnxruntime_BUILD_EXPERIMENTAL=" + ("ON" if args.experimental else "OFF"),
+        "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + (
             "ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),

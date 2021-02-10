@@ -61,8 +61,8 @@ function(add_winml_test)
     target_compile_definitions(${_UT_TARGET} PRIVATE "BUILD_INBOX=1")
   endif()
 
-  target_compile_definitions(${_UT_TARGET} PRIVATE "BUILD_EXPERIMENTAL=1")
-  if (onnxruntime_BUILD_EXPERIMENTAL)
+  target_compile_definitions(${_UT_TARGET} PRIVATE "BUILD_MS_EXPERIMENTAL_OPS=1")
+  if (onnxruntime_BUILD_MS_EXPERIMENTAL_OPS)
   endif()
 
   add_test(NAME ${_UT_TARGET}
