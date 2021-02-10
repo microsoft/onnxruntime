@@ -541,21 +541,10 @@ TEST(CApiTest, create_session_without_session_option) {
 #endif
 
 #ifdef REDUCED_OPS_BUILD
-TEST(ReducedOpsBuildTest, test_included_ops) {
-  // In reduce-ops build, test a model containing
-  // ops specified in reduced_ops_via_config.config
-  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_included_ops");
-  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
-  std::vector<int64_t> expected_dims_y = {1};
-  std::vector<float> expected_values_y = {0.75};
-  TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                       nullptr, nullptr);
-}
-
 TEST(ReducedOpsBuildTest, test_excluded_ops) {
-  // In reduce-ops build, test a model containing
-  // ops not referred by reduced_ops_via_config.config
-  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_excluded_ops");
+  // In reduced ops build, test a model containing ops not included in required_ops.config cannot be loaded.
+  // See onnxruntime/test/testdata/reduced_build_test.readme.txt for more details of the setup
+  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_build_test.onnx_model_with_excluded_ops");
   std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
   std::vector<int64_t> expected_dims_y = {3};
   std::vector<float> expected_values_y = {0.1f, 0.1f, 0.1f};
@@ -708,11 +697,7 @@ TEST(CApiTest, io_binding_cuda) {
 #endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
-#ifdef USE_TENSORRT
-  Ort::MemoryInfo info_cuda("Tensorrt", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#else
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#endif
 
   Ort::Allocator cuda_allocator(session, info_cuda);
   auto allocator_info = cuda_allocator.GetInfo();
@@ -738,6 +723,9 @@ TEST(CApiTest, io_binding_cuda) {
   // Create an OrtValue tensor backed by data on CUDA memory
   Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
                                                 expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+
+  // Sychronize to make sure the copy on default stream is done since TensorRT isn't using default stream.
+  cudaStreamSynchronize(nullptr);
 
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
@@ -1153,7 +1141,7 @@ TEST(CApiTest, get_available_providers) {
   char** providers;
   ASSERT_EQ(g_ort->GetAvailableProviders(&providers, &len), nullptr);
   ASSERT_GT(len, 0);
-  ASSERT_STREQ(providers[len-1], "CPUExecutionProvider");
+  ASSERT_STREQ(providers[len - 1], "CPUExecutionProvider");
   ASSERT_EQ(g_ort->ReleaseAvailableProviders(providers, len), nullptr);
 }
 

@@ -4,6 +4,10 @@
 // Public wrappers around internal ort interfaces (currently)
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
+#ifdef USE_TENSORRT
+#include <cuda_runtime.h>
+#endif
+
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
   TypeName() = delete;                      \
   TypeName(const TypeName&) = delete;       \
@@ -127,10 +131,10 @@ struct ProviderHost {
 #ifdef USE_TENSORRT
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
 
-  virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
-  virtual void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
 
   virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
@@ -159,6 +163,7 @@ struct ProviderHost {
   // IExecutionProvider
   virtual AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) = 0;
   virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
+  virtual void IExecutionProvider__TryInsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const std::vector<const KernelRegistry*>& kernel_registries) = 0;
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
@@ -167,6 +172,7 @@ struct ProviderHost {
 
   virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) = 0;
 
+  virtual void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) = 0;
   // Status
   virtual std::string Status__ToString(const Status* p) = 0;
 
@@ -483,6 +489,10 @@ struct ProviderHost {
   virtual const TensorShape& Tensor__Shape(const Tensor* p) = 0;
   virtual size_t Tensor__SizeInBytes(const Tensor* p) = 0;
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
+
+  // AllocatorManager
+  virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
+  virtual AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type) = 0;
 };
 
 extern ProviderHost* g_host;

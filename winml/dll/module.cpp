@@ -6,6 +6,9 @@
 #include <Hstring.h>
 #include "LearningModelDevice.h"
 #include "OnnxruntimeProvider.h"
+
+#ifndef BUILD_INBOX
+
 #include "Dummy.h"
 #include "LearningModelSessionOptionsExperimental.h"
 #include "LearningModelSessionExperimental.h"
@@ -13,19 +16,9 @@
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
 
-using namespace winmlp;
+#endif
 
-void __stdcall OnErrorReported(bool alreadyReported, wil::FailureInfo const& failure) WI_NOEXCEPT {
-  if (!alreadyReported) {
-    winrt::hstring message(failure.pszMessage ? failure.pszMessage : L"");
-    telemetry_helper.LogRuntimeError(
-        failure.hr,
-        winrt::to_string(message),
-        failure.pszFile,
-        failure.pszFunction,
-        failure.uLineNumber);
-  }
-}
+using namespace winmlp;
 
 extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ void* lpvReserved) {
   switch (dwReason) {
@@ -35,7 +28,6 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
       // Register the TraceLogging provider feeding telemetry.  It's OK if this fails;
       // trace logging calls just become no-ops.
       telemetry_helper.Register();
-      wil::SetResultTelemetryFallback(&OnErrorReported);
       break;
     case DLL_PROCESS_DETACH:
       telemetry_helper.LogWinMLShutDown();
@@ -69,6 +61,7 @@ extern "C" HRESULT WINAPI MLCreateOperatorRegistry(_COM_Outptr_ IMLOperatorRegis
 }
 CATCH_RETURN();
 
+__control_entrypoint(DllExport)
 STDAPI DllCanUnloadNow() {
   // This dll should not be freed by
   // CoFreeUnusedLibraries since there can be outstanding COM object
@@ -90,6 +83,7 @@ STDAPI DllCanUnloadNow() {
   return S_FALSE;
 }
 
+#ifndef BUILD_INBOX
 STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexcept {
   try {
     *factory = nullptr;
@@ -116,11 +110,16 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
     return winrt::to_hresult();
   }
 }
+#endif
 
 STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
   auto ret = WINRT_GetActivationFactory(classId, factory);
-  if (ret != 0)
-    return DllGetExperimentalActivationFactory(classId, factory);
 
-  return 0;
+#ifndef BUILD_INBOX
+  if (ret != 0) {
+    return DllGetExperimentalActivationFactory(classId, factory);
+  }
+#endif
+
+  return ret;
 }

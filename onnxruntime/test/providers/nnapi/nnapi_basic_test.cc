@@ -72,6 +72,39 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
 #endif
 }
 
+// This is to test the uint8 handling of operators without "QLinear" such as Concat and Transpose
+// NNAPI will require scale and zero point for inputs of all quantized operations
+// For these operators without "Qlinear", there is no information about the scale and zero point, we can
+// only fetch these from the output of the previous node
+// So uint8 support of these operators will only be enabled when they are internal to the graph
+// by not consuming graph inputs
+TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/nnapi_internal_uint8_support.onnx");
+
+#if defined(__ANDROID__)
+  std::vector<int64_t> dims_x = {1, 3};
+  std::vector<float> values_x = {0.0f, 256.0f, 512.0f};
+  OrtValue ml_value_x;
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x,
+                       &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.InternalUint8SupportTest",
+                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            feeds);
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+      << "Some nodes should have been taken by the NNAPI EP";
+#endif
+}
+
 #if defined(__ANDROID__)
 // This is to verify the op_builders and op_support_checkers are consistent
 TEST(NnapiExecutionProviderTest, CreateOpBuilderAndOpSupportCheckerTest) {

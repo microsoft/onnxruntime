@@ -275,6 +275,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
+  allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
@@ -397,6 +398,8 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 
   const std::string& provider_type = p_exec_provider->Type();
 
+  p_exec_provider->RegisterAllocator(allocator_manager_);
+
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
   if (provider_type == onnxruntime::kDmlExecutionProvider) {
@@ -425,6 +428,11 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
           << "Parallel execution mode does not support the CUDA Execution Provider. "
           << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
       session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    }
+
+    auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);
+    if (trt_ep) {
+      p_exec_provider->SetComputeStream(trt_ep->GetComputeStream());
     }
   }
 
@@ -1001,7 +1009,7 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
 
   // Verify the ort_format_model_bytes_ is a valid InferenceSessionBuffer before we access the data
   flatbuffers::Verifier verifier(ort_format_model_bytes_.data(), ort_format_model_bytes_.size());
-  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier));
+  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier), "ORT model verification failed.");
 
   const auto* fbs_session = fbs::GetInferenceSession(ort_format_model_bytes_.data());
   ORT_RETURN_IF(nullptr == fbs_session, "InferenceSession is null. Invalid ORT format model.");

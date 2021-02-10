@@ -55,16 +55,28 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
   CommonDeviceHelpers::AdapterEnumerationSupport support;
   WINML_THROW_IF_FAILED(CommonDeviceHelpers::GetAdapterEnumerationSupport(&support));
 
-  const char errStr[] = "No hardware adapters available";
+  const char noHardwareAdaptersAvailableErrStr[] = "No hardware adapters available";
+  const char failedToObtainHardwareAdaptersErrStr[] = "Failed to obtain hardware adapters.";
+  HRESULT hardwareAdapterSuccessfullyObtained = S_OK;
   if (support.has_dxgi) {
     winrt::com_ptr<IDXGIAdapter1> spAdapter;
-    WINML_THROW_IF_FAILED_MSG(GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
+    hardwareAdapterSuccessfullyObtained = GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put());
+    if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
+      WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
+    } else {
+      WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
+    }
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   }
 #ifdef ENABLE_DXCORE
   if (support.has_dxgi == false) {
     winrt::com_ptr<IDXCoreAdapter> spAdapter;
-    WINML_THROW_IF_FAILED_MSG(GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
+    hardwareAdapterSuccessfullyObtained = GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put());
+    if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
+      WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
+    } else {
+      WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
+    }
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   }
 #endif
@@ -309,11 +321,11 @@ ID3D12RootSignature* D3DDeviceCache::GetTensorizeRootSignature() {
 
     // Compute root signature.
     {
-      CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+      CD3DX12_DESCRIPTOR_RANGE1 ranges[2] = {};
       ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
       ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 
-      CD3DX12_ROOT_PARAMETER1 rootParameters[3];
+      CD3DX12_ROOT_PARAMETER1 rootParameters[3] = {};
       rootParameters[0].InitAsConstants(4, 0);
       rootParameters[1].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
       rootParameters[2].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_ALL);
@@ -354,11 +366,11 @@ ID3D12RootSignature* D3DDeviceCache::GetDetensorizeRootSignature() {
 
     // Compute root signature.
     {
-      CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+      CD3DX12_DESCRIPTOR_RANGE1 ranges[2] = {};
       ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
       ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 
-      CD3DX12_ROOT_PARAMETER1 rootParameters[3];
+      CD3DX12_ROOT_PARAMETER1 rootParameters[3] = {};
       rootParameters[0].InitAsConstants(4, 0);
       rootParameters[1].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
       rootParameters[2].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_ALL);

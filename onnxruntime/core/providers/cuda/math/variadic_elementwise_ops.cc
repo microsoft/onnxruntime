@@ -17,7 +17,7 @@ namespace cuda {
 template <typename VariadicElementwiseOpTag, typename... SupportedElementTypes>
 template <typename T>
 Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::
-    NoBroadcastBatchImplDispatchTarget<T>::operator()(const InputTensorVector& inputs, Tensor& output) const {
+    NoBroadcastBatchImplDispatchTarget<T>::operator()(cudaStream_t stream, const InputTensorVector& inputs, Tensor& output) const {
   assert(inputs.size() > 1);
 
   using CudaT = typename ToCudaType<T>::MappedType;
@@ -30,7 +30,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   CudaT* output_data = reinterpret_cast<CudaT*>(output.template MutableData<T>());
 
   Impl_NoBroadcastInputBatch<CudaT, VariadicElementwiseOpTag>(
-      input_data_batch, output_data, output.Shape().Size());
+      stream, input_data_batch, output_data, output.Shape().Size());
 
   return Status::OK();
 }
@@ -39,13 +39,14 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 template <typename VariadicElementwiseOpTag, typename... SupportedElementTypes>
 template <typename T>
 Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::
-    BinaryImplDispatchTarget<T>::operator()(const Tensor& lhs, const Tensor& rhs, Tensor& output) const {
+    BinaryImplDispatchTarget<T>::operator()(cudaStream_t stream, const Tensor& lhs, const Tensor& rhs, Tensor& output) const {
   using CudaT = typename ToCudaType<T>::MappedType;
 
   BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&lhs, &rhs, &output, &prepare));
 
   Impl_General<CudaT, VariadicElementwiseOpTag>(
+      stream,
       prepare.output_rank_or_simple_broadcast,
       &prepare.lhs_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -64,17 +65,18 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 template <typename VariadicElementwiseOpTag, typename... SupportedElementTypes>
 template <typename T>
 Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::
-    GeneralImplDispatchTarget<T>::operator()(const InputTensorVector& inputs, Tensor& output) const {
+    GeneralImplDispatchTarget<T>::operator()(cudaStream_t stream, const InputTensorVector& inputs, Tensor& output) const {
   assert(inputs.size() > 1);
 
   using CudaT = typename ToCudaType<T>::MappedType;
 
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
 
   BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[0].get(), &output, &prepare));
 
   Impl_Add(
+      stream,
       prepare.output_rank_or_simple_broadcast,
       &prepare.lhs_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -90,6 +92,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
     ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[index].get(), &output, &prepare));
 
     Impl_General<CudaT, VariadicElementwiseOpTag>(
+        stream,
         prepare.output_rank_or_simple_broadcast,
         &prepare.lhs_padded_strides,
         reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -132,7 +135,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
     if (first_input_tensor.DataRaw() != output_tensor.DataRaw()) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
           output_tensor.MutableDataRaw(), first_input_tensor.DataRaw(), first_input_tensor.SizeInBytes(),
-          cudaMemcpyDeviceToDevice));
+          cudaMemcpyDeviceToDevice, Stream()));
     }
 
     return Status::OK();
@@ -152,14 +155,14 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
     // special case for no broadcasting and 2 inputs
     if (input_count == 2) {
       utils::MLTypeCallDispatcherRet<Status, BinaryImplDispatchTarget, SupportedElementTypes...> dispatcher(element_type);
-      ORT_RETURN_IF_ERROR(dispatcher.Invoke(input_tensors[0], input_tensors[1], output_tensor));
+      ORT_RETURN_IF_ERROR(dispatcher.Invoke(Stream(), input_tensors[0], input_tensors[1], output_tensor));
 
       return Status::OK();
     }
 
     utils::MLTypeCallDispatcherRet<Status, NoBroadcastBatchImplDispatchTarget, SupportedElementTypes...> dispatcher(
         element_type);
-    ORT_RETURN_IF_ERROR(dispatcher.Invoke(input_tensors, output_tensor));
+    ORT_RETURN_IF_ERROR(dispatcher.Invoke(Stream(), input_tensors, output_tensor));
 
     return Status::OK();
   }
@@ -177,7 +180,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   // special case for 2 inputs
   if (input_count == 2) {
     utils::MLTypeCallDispatcherRet<Status, BinaryImplDispatchTarget, SupportedElementTypes...> dispatcher(element_type);
-    ORT_RETURN_IF_ERROR(dispatcher.Invoke(input_tensors[0], input_tensors[1], output_tensor));
+    ORT_RETURN_IF_ERROR(dispatcher.Invoke(Stream(), input_tensors[0], input_tensors[1], output_tensor));
 
     return Status::OK();
   }
@@ -186,7 +189,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   {
     utils::MLTypeCallDispatcherRet<Status, GeneralImplDispatchTarget, SupportedElementTypes...> dispatcher(
         element_type);
-    ORT_RETURN_IF_ERROR(dispatcher.Invoke(input_tensors, output_tensor));
+    ORT_RETURN_IF_ERROR(dispatcher.Invoke(Stream(), input_tensors, output_tensor));
   }
 
   return Status::OK();

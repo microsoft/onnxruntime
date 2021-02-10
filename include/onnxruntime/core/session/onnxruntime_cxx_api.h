@@ -327,6 +327,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);
   SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);
   SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);
+  SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
