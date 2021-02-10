@@ -36,7 +36,7 @@ class PosixEnvTime : public EnvTime {
 
 }  // namespace
 
-#if defined(PLATFORM_POSIX) || defined(__ANDROID__)
+#if defined(PLATFORM_POSIX) || defined(__ANDROID__) || defined(ENABLE_ORT_WASM)
 EnvTime* EnvTime::Default() {
   static PosixEnvTime default_env_time;
   return &default_env_time;

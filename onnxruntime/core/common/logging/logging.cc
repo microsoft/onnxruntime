@@ -214,6 +214,9 @@ unsigned int GetThreadId() {
   long tid;
   thr_self(&tid);
   return static_cast<unsigned int>(tid);
+#elif defined(ENABLE_ORT_WASM)
+  // WebAssembly doesn't support a function to get a thread id
+  return 0;
 #else
   return static_cast<unsigned int>(syscall(SYS_gettid));
 #endif
@@ -225,7 +228,7 @@ unsigned int GetThreadId() {
 unsigned int GetProcessId() {
 #ifdef _WIN32
   return static_cast<unsigned int>(GetCurrentProcessId());
-#elif defined(__MACH__)
+#elif defined(__MACH__) || defined(ENABLE_ORT_WASM)
   return static_cast<unsigned int>(getpid());
 #else
   return static_cast<unsigned int>(syscall(SYS_getpid));
