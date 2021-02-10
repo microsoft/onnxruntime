@@ -314,7 +314,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {  
     UnsupportedOpMode obj = {{V_2021_1,V_2021_2},
-     [this](const Node* node, const Provider_InitializedTensorSet& initializers) {
+     [this](const Node* node, const Provider_InitializedTensorSet& ) {
        auto& attributes = node->GetAttributes();
       if (attributes.count("auto_pad") == 0 || attributes.at("auto_pad").s() == "") {
         return true;
@@ -326,7 +326,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {  
     UnsupportedOpMode obj = {{V_2021_2}, 
-     [this](const Node* node, const Provider_InitializedTensorSet& initializers) {
+     [this](const Node* node, const Provider_InitializedTensorSet& ) {
       if (device_id_.find("MYRIAD") != std::string::npos) { 
         const auto& input_arg = node->InputDefs()[0];
         auto shape = input_arg->Shape();
@@ -391,7 +391,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2021_1,V_2021_2},
-      [this](const Node* node, const Provider_InitializedTensorSet& initializers) {
+      [this](const Node* node, const Provider_InitializedTensorSet& ) {
         if (device_id_.find("GPU") != std::string::npos) {
         const auto& input = node->InputDefs()[0];
         auto graph_inputs = graph_viewer_.GetInputs();
@@ -696,7 +696,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2021_1}, 
-      [this](const Node* node, const Provider_InitializedTensorSet& initializers) {
+      [this](const Node* node, const Provider_InitializedTensorSet& ) {
       //check for attributes
       auto& upsample_attr = node->GetAttributes();
       if (upsample_attr.count("scales") > 0) {
@@ -729,7 +729,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2021_2},
-      [this](const Node* node, const Provider_InitializedTensorSet& initializers) {
+      [this](const Node* node, const Provider_InitializedTensorSet& ) {
       //float data type is not supported
       const bool data_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
       return data_is_float;
@@ -739,12 +739,9 @@ void DataOps::populate_op_mode_supported() {
 }  
 
 bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_list) {
-  for (size_t i=0; i < sizeof(op_list); i++) {
+  for (size_t i=0; i < op_list.size(); i++) {
     if (op_list[i].optype == name) {
-      std::cout << "check_if_op_is_supported for: " << version_id_ << "\n";
       if (op_list[i].version <= version_id_) {
-        std::cout << "name" << name << "\n";
-        std::cout << "version_id_" << op_list[i].version << "\n";
         auto it = op_list[i].device_type.begin();
         while (it != op_list[i].device_type.end()) {
           
@@ -942,7 +939,10 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
     auto shape = node_arg.Shape();
     if (shape != nullptr) {
       //Can't have no dimensions
-      if ((shape->dim_size() == 0) && (op_is_supported(optype, no_dimension_supported_))) {
+      if (shape->dim_size() == 0) {
+        if (op_is_supported(optype, no_dimension_supported_)) {
+          return;
+        }
         has_unsupported_dimension = true;
         return;
       } else {
@@ -975,7 +975,6 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
       std::cout << "Failed in unsupported op mode" << std::endl;
     }
 #endif
-
     return false;
   }
 
@@ -1015,9 +1014,10 @@ bool DataOps::IsOpSupportedOnlyInModel(std::string name) {
 
 bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node) {
     if (node->OpType() == "Reshape") {
-          const auto& shape_arg = node->InputDefs()[1];
-          if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
-            return true;
+      const auto& shape_arg = node->InputDefs()[1];
+      if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end()) {
+        return true;
+      }
     } else if (node->OpType() == "Expand") {
         // nGraph only supports constant shape input values
         const auto& output = node->OutputDefs()[0];
