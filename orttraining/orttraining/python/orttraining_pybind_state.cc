@@ -475,47 +475,45 @@ void addObjectMethodsForTraining(py::module& m) {
       });
 
   py::class_<ModuleGradientGraphBuilderConfiguration> module_gradient_graph_builder_config(
-      m, "ModuleGradientGraphBuilderConfiguration", R"pbdoc(Configuration information for module gradient graph builder.)pbdoc");
+      m, "ModuleGradientGraphBuilderConfiguration",
+      R"pbdoc(Configuration information for module gradient graph builder.)pbdoc");
   module_gradient_graph_builder_config.def(py::init())
       .def_readwrite("initializer_names_to_train", &ModuleGradientGraphBuilderConfiguration::initializer_names_to_train)
       .def_readwrite("input_names_require_grad", &ModuleGradientGraphBuilderConfiguration::input_names_require_grad)
-      .def_readwrite("use_invertible_layernorm_grad", &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad)
-      .def_readwrite("set_gradients_as_graph_outputs", &ModuleGradientGraphBuilderConfiguration::set_gradients_as_graph_outputs);
+      .def_readwrite("use_invertible_layernorm_grad",
+                     &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad);
 
-  py::class_<SplitGraphsInfo> split_graphs_info(
-      m, "SplitGraphsInfo", R"pbdoc(The information of split graphs for frontend.)pbdoc");
+  py::class_<SplitGraphsInfo> split_graphs_info(m, "SplitGraphsInfo",
+                                                R"pbdoc(The information of split graphs for frontend.)pbdoc");
   split_graphs_info.def(py::init())
       .def_readwrite("user_input_names", &SplitGraphsInfo::user_input_names)
+      .def_readwrite("user_input_grad_names", &SplitGraphsInfo::user_input_grad_names)
       .def_readwrite("initializer_names_to_train", &SplitGraphsInfo::initializer_names_to_train)
       .def_readwrite("initializer_grad_names_to_train", &SplitGraphsInfo::initializer_grad_names_to_train)
       .def_readwrite("user_output_names", &SplitGraphsInfo::user_output_names)
-      .def_readwrite("backward_user_input_names", &SplitGraphsInfo::backward_user_input_names)
-      .def_readwrite("backward_intializer_names_as_input", &SplitGraphsInfo::backward_intializer_names_as_input)
-      .def_readwrite("intermediate_tensor_names", &SplitGraphsInfo::intermediate_tensor_names)
-      .def_readwrite("user_output_grad_names", &SplitGraphsInfo::user_output_grad_names)
       .def_readwrite("backward_output_grad_names", &SplitGraphsInfo::backward_output_grad_names);
 
   py::class_<ModuleGradientGraphBuilder> module_gradient_graph_builder(m, "ModuleGradientGraphBuilder");
-  module_gradient_graph_builder
-      .def(py::init([]() {
-        return onnxruntime::make_unique<ModuleGradientGraphBuilder>();
-      }))
-      .def("initialize", [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
-                            const py::bytes& serialized_model,
-                            const ModuleGradientGraphBuilderConfiguration& config) {
-        std::istringstream buffer(serialized_model);
-        ORT_THROW_IF_ERROR(module_gradient_graph_builder->Initialize(buffer, config));
-      })
-      .def("build_and_split", [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
-                                 const std::vector<std::vector<int64_t>>& input_shapes) {
-        ORT_THROW_IF_ERROR(module_gradient_graph_builder->BuildAndSplit(input_shapes));
-      })
-      .def("get_forward_model", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
-        return py::bytes(module_gradient_graph_builder->GetForwardModel());
-      })
-      .def("get_backward_model", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
-        return py::bytes(module_gradient_graph_builder->GetBackwardModel());
-      })
+  module_gradient_graph_builder.def(py::init([]() { return onnxruntime::make_unique<ModuleGradientGraphBuilder>(); }))
+      .def("initialize",
+           [](ModuleGradientGraphBuilder* module_gradient_graph_builder, const py::bytes& serialized_model,
+              const ModuleGradientGraphBuilderConfiguration& config) {
+             std::istringstream buffer(serialized_model);
+             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Initialize(buffer, config));
+           })
+      .def("build",
+           [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
+             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Build());
+           })
+      .def("build",
+           [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
+              const std::vector<std::vector<int64_t>>& input_shapes) {
+             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Build(&input_shapes));
+           })
+      .def("get_gradient_model",
+           [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
+             return py::bytes(module_gradient_graph_builder->GetGradientModel());
+           })
       .def("get_split_graphs_info", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
         return module_gradient_graph_builder->GetSplitGraphsInfo();
       });

@@ -6,6 +6,9 @@
 #include <string>
 #include <unordered_set>
 
+#include "core/common/status.h"
+#include "core/graph/model.h"
+
 namespace onnxruntime {
 namespace training {
 
@@ -20,47 +23,77 @@ struct ModuleGradientGraphBuilderConfiguration {
 
   // Gradient graph configuration.
   bool use_invertible_layernorm_grad = false;
-  bool set_gradients_as_graph_outputs = false;
 
   // TODO: add GraphTransformerConfiguration
-  // TODO: add mixed precision config
-  // TODO: do we need to support graph with loss?
 };
 
 /**
  * The information of split graphs for frontend.
  */
 struct SplitGraphsInfo {
+  // The user inputs.
   std::vector<std::string> user_input_names{};
+  // Map from user input names to corresponding user input grad names for those user inputs that require grad.
+  std::unordered_map<std::string, std::string> user_input_grad_names{};
+  // Trainable initializers.
   std::vector<std::string> initializer_names_to_train{};
+  // Trainable initializer grad names, ordered according to initializer_names_to_train.
   std::vector<std::string> initializer_grad_names_to_train{};
+  // The user outputs.
   std::vector<std::string> user_output_names{};
-  std::vector<std::string> backward_user_input_names{};
-  std::vector<std::string> backward_intializer_names_as_input{};
-  std::vector<std::string> intermediate_tensor_names{};
-  std::vector<std::string> user_output_grad_names{};
+  // The user output grad names that are actual required by the backward graph.
   std::vector<std::string> backward_output_grad_names{};
 };
 
 class ModuleGradientGraphBuilder {
  public:
+  /**
+   * Initialize the builder. It saves the initial model and the configuration.
+   * It also removes the trainable initializers from initial model and move them to graph inputs.
+   * @param model_istream The initial model as input stream.
+   * @param config The configuration to control the builder.
+   * @return The status of the initialization.
+   */
   Status Initialize(std::istream& model_istream, const ModuleGradientGraphBuilderConfiguration& config);
-  Status BuildAndSplit(const std::vector<std::vector<int64_t>>& input_shapes);
 
-  std::string GetForwardModel() const;
-  std::string GetBackwardModel() const;
+  /**
+   * Build the gradient graph and split it to forward and backward graphs.
+   * @param input_shapes_ptr The pointer to vector of concrete shapes of the user inputs.
+   * @return The status of the gradient graph building and forward/backward graphs splitting.
+   */
+  Status Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
+
+  /**
+   * Get gradient model.
+   * @return The gradient model serialized to string.
+   */
+  std::string GetGradientModel() const;
+
+  /**
+   * Get the split graphs information.
+   * @return The split graphs information.
+   */
   SplitGraphsInfo GetSplitGraphsInfo() const { return split_graphs_info_; }
 
  private:
-  Status Split();
+  // Set concrete shapes for graph inputs.
+  void SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes);
+
+  // Build gradient graph.
+  Status BuildGradientGraph();
+
+  // Add Yield Op.
+  void AddYieldOp();
+
+  // Reorder gradient graph outputs.
+  void ReorderOutputs();
 
   std::shared_ptr<onnxruntime::Model> model_;
-  std::shared_ptr<onnxruntime::Model> forward_model_;
-  std::shared_ptr<onnxruntime::Model> backward_model_;
+  std::shared_ptr<onnxruntime::Model> gradient_model_;
   SplitGraphsInfo split_graphs_info_;
 
   ModuleGradientGraphBuilderConfiguration config_;
-  const logging::Logger* logger_ = &logging::LoggingManager::DefaultLogger(); // use default logger for now.
+  const logging::Logger* logger_ = &logging::LoggingManager::DefaultLogger();  // use default logger for now.
 };
 
 }  // namespace training
