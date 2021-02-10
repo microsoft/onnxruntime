@@ -69,7 +69,7 @@ ${BUILD_DIR}/Debug/onnx_test_runner /onnxruntime_src/onnxruntime/test/testdata/o
 
 # Print binary size info
 python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/check_build_binary_size.py \
-    --arch "$(uname -m)" --os "$(uname -o)" \
+    --arch "$(uname -m)" --os "$(uname -o)" --build_config "minimal-reduced" \
     ${BUILD_DIR}/Debug/libonnxruntime.so
 
 echo "Binary size info:"
