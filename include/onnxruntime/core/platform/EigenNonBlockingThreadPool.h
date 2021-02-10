@@ -878,14 +878,20 @@ void SummonWorkers(PerThread &pt,
   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
   if (n > current_dop) {
     unsigned extra_needed = n - current_dop;
-
-    // Obtain hints for which worker threads to push the tasks to.
-    // This uses a best-effort assessment of which threads are
-    // spinning.
+    for (auto i = 0u; i < extra_needed; i++) {
+      auto q_idx = i % num_threads_;
+      WorkerData& td = worker_data_[q_idx];
+      Queue& q = td.queue;
+      unsigned w_idx;
+      Task t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
+      if (!t) {
+        ps.tasks.push_back({q_idx, w_idx});
+        td.EnsureAwake();
+      }
+    }
+    /*
     std::vector<unsigned> good_hints, alt_hints;
     GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
-
-    // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
       Task t;
       int q_idx;
@@ -899,13 +905,6 @@ void SummonWorkers(PerThread &pt,
           q_idx = Rand(&pt.rand) % num_threads_;
         }
       }
-
-      // If the worker's queue accepts the task, then record it in
-      // the vector of tasks that we will need to synchronize with on
-      // exiting the parallel section.  If the queue rejects the task
-      // (perhaps because it is full) then we take no further action:
-      // in a parallel loop we will always be running work on the
-      // main thread, providing progress.
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
@@ -914,7 +913,7 @@ void SummonWorkers(PerThread &pt,
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
-    }
+    }*/
   }
 }
 
