@@ -1,0 +1,27 @@
+{
+    "degree_of_parallelism": 10,
+    "ensemble": [
+        {
+            "model_name": "first_model",
+            "model_file_path": "/bert_ort/pranav/onnxruntime/onnxruntime/test/testdata/mul_1.onnx",
+            "output_input_map": [
+                [
+                    "Y",
+                    "X"
+                ]
+            ],
+            "device_id": 2
+        },
+        {
+            "model_name": "second_model",
+            "model_file_path": "/bert_ort/pranav/onnxruntime/onnxruntime/test/testdata/mul_1.onnx",
+            "output_input_map": [
+                [
+                    "Y",
+                    "X"
+                ]
+            ],
+            "device_id": 3
+        }
+    ]
+}
