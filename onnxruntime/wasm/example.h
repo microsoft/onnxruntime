@@ -5,7 +5,7 @@
 
 class Example {
   public:
-    void Run();
+    void Run(int multiplier);
 };
 
 EMSCRIPTEN_BINDINGS(Example) {

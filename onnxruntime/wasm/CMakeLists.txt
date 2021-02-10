@@ -106,7 +106,7 @@ set(WASM_SRC "${ONNXRUNTIME_ROOT}/core/common/cpuid_info.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/execution_provider.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/kernel_def_builder.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/kernel_registry.cc"
-             "${ONNXRUNTIME_ROOT}/core/framework/kernel_registry_manager.cc"
+             #"${ONNXRUNTIME_ROOT}/core/framework/kernel_registry_manager.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/mldata_type_utils.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/murmurhash3.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/node_index_info.cc"
@@ -117,8 +117,8 @@ set(WASM_SRC "${ONNXRUNTIME_ROOT}/core/common/cpuid_info.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/random_seed.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/random_generator.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/session_options.cc"
-             "${ONNXRUNTIME_ROOT}/core/framework/session_state.cc"
-             "${ONNXRUNTIME_ROOT}/core/framework/session_state_utils.cc"
+             #"${ONNXRUNTIME_ROOT}/core/framework/session_state.cc"
+             #"${ONNXRUNTIME_ROOT}/core/framework/session_state_utils.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/simple_tensor_allocator.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/sparse_tensor.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/tensor.cc"
@@ -126,8 +126,7 @@ set(WASM_SRC "${ONNXRUNTIME_ROOT}/core/common/cpuid_info.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/tensor_external_data_info.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/tensor_shape.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/tensorprotoutils.cc"
-             #"${ONNXRUNTIME_ROOT}/core/framework/utils.cc"
-             #"${ONNXRUNTIME_ROOT}/core/framework/wasm_kernel_registry_manager.cc"
+             "${ONNXRUNTIME_ROOT}/core/framework/utils.cc"
              "${ONNXRUNTIME_ROOT}/core/graph/function.cc"
              "${ONNXRUNTIME_ROOT}/core/graph/graph.cc"
              "${ONNXRUNTIME_ROOT}/core/graph/graph_viewer.cc"
@@ -138,10 +137,11 @@ set(WASM_SRC "${ONNXRUNTIME_ROOT}/core/common/cpuid_info.cc"
              #"${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp"
              #"${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp"
              #"${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp"
-             #"${ONNXRUNTIME_ROOT}/core/mlas/lib/platform.cpp"
+             "${ONNXRUNTIME_ROOT}/core/mlas/lib/platform.cpp"
              #"${ONNXRUNTIME_ROOT}/core/mlas/lib/sgemm.cpp"
              #"${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/sgemmc.cpp"
              #"${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp"
+             "${ONNXRUNTIME_ROOT}/core/optimizer/optimizer_execution_frame.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/env.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/env_time.cc"
              #"${ONNXRUNTIME_ROOT}/core/platform/posix/ort_mutex.cc"
@@ -158,7 +158,7 @@ set(WASM_SRC "${ONNXRUNTIME_ROOT}/core/common/cpuid_info.cc"
              "${ONNXRUNTIME_ROOT}/core/providers/cpu/wasm_execution_provider.cc"
              #"${ONNXRUNTIME_ROOT}/core/providers/cpu/activation/activations.cc"
              #"${ONNXRUNTIME_ROOT}/core/providers/cpu/math/gemm.cc"
-             #"${ONNXRUNTIME_ROOT}/core/providers/cpu/math/element_wise_ops.cc"
+             "${ONNXRUNTIME_ROOT}/core/providers/cpu/math/element_wise_ops.cc"
              #"${ONNXRUNTIME_ROOT}/core/providers/cpu/math/matmul.cc"
              #"${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/conv.cc"
              "${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/concat.cc"
@@ -169,7 +169,6 @@ set(WASM_SRC "${ONNXRUNTIME_ROOT}/core/common/cpuid_info.cc"
              #"${ONNXRUNTIME_ROOT}/core/providers/shared_library/provider_bridge_provider.cc"
              #"${ONNXRUNTIME_ROOT}/core/util/math_cpu.cc"
              "${ONNXRUNTIME_ROOT}/wasm/example.cc" 
-             "${ONNXRUNTIME_ROOT}/wasm/utils.cc"
 )
 
 # compile the executables
@@ -181,22 +180,21 @@ add_executable(onnxruntime_wasm
   ${WASM_SRC}
 )
         
-# compile option with __wasm__
 target_compile_definitions(onnxruntime_wasm PUBLIC
   -DENABLE_ORT_WASM
   -DDISABLE_ML_OPS
   -DONNX_ML=1
   -DONNX_NAMESPACE=onnx
   -DEIGEN_MPL2_ONLY
-  #-DORT_MINIMAL_BUILD
-  #-DORT_EXTENDED_MINIMAL_BUILD
   -DMLAS_NO_ONNXRUNTIME_THREADPOOL
   -DMLAS_TARGET_WASM
   -DONNX_USE_LITE_PROTO
   -DHAVE_PTHREAD
+  -DDISABLE_EXCEPTION_CATCHING=0
 )
 
-add_definitions("-pthread")
+SET(CMAKE_CXX_FLAGS_DEBUG "-g4")
+
 remove_definitions(ENABLE_ORT_FORMAT_LOAD)
 
 # add all these include directory to the WebAssembly
@@ -217,23 +215,9 @@ target_include_directories(onnxruntime_wasm
   PUBLIC ${ONNXRUNTIME_BINARY_DIR}/external/onnx
 )
 
-# add the appropriate include directory and compilation flags
-#target_compile_options(onnxruntime_wasm PRIVATE
-#  "/wd4018"
-#  "/wd4100"
-#  "/wd4244"
-#  "/wd4267"
-#  "/wd4389"
-#  "/wd4456"
-#  "/wd4505"
-#  "/wd4702"
-#  "/wd4996"
-#)
-
-#if (WIN32)
-#  target_link_libraries(onnxruntime_wasm PRIVATE debug dbghelp advapi32)
-#endif()
-
-set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "-s DEMANGLE_SUPPORT=1 -s LLD_REPORT_UNDEFINED -o out_wasm_main.js --no-entry --bind")
-
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "-s DEMANGLE_SUPPORT=1 -s ASYNCIFY=1 -s EXPORT_NAME=onnxjs -s WASM=1 -s NO_EXIT_RUNTIME=0 -s ALLOW_MEMORY_GROWTH=1 -s SAFE_HEAP=0 -s MODULARIZE=1 -s SAFE_HEAP_LOG=0 -s STACK_OVERFLOW_CHECK=0 -s EXPORT_ALL=0 -s LLD_REPORT_UNDEFINED -s VERBOSE=0 -s ASSERTIONS=1 --source-map-base http://localhost:8000/ --no-entry -o onnxruntime_wasm.js --bind")
+else()
+  set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "-s DEMANGLE_SUPPORT=1 -s ASYNCIFY=1 -s EXPORT_NAME=onnxjs -s WASM=1 -s NO_EXIT_RUNTIME=0 -s ALLOW_MEMORY_GROWTH=1 -s SAFE_HEAP=0 -s MODULARIZE=1 -s SAFE_HEAP_LOG=0 -s STACK_OVERFLOW_CHECK=0 -s EXPORT_ALL=0 -s LLD_REPORT_UNDEFINED --no-entry -o onnxruntime_wasm.js --bind")
+endif()
 

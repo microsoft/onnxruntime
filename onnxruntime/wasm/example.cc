@@ -4,13 +4,8 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
-#include "core/framework/data_transfer_manager.h"
-#include "core/framework/execution_frame.h"
-#include "core/framework/fuse_nodes_funcs.h"
-#include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/ort_value_name_idx_map.h"
-#include "core/framework/session_state.h"
+#include "core/optimizer/optimizer_execution_frame.h"
 #include "core/providers/cpu/wasm_execution_provider.h"
 #include "example.h"
 
@@ -33,13 +28,11 @@ class MockSink : public ISink {
 
 using namespace onnxruntime;
 
-void Example::Run() {
-  std::cout << "Starting an example..." << std::endl;
-
+void Example::Run(int multiplier) {
   const std::string default_logger_id{"wasm_test"};
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<logging::ISink>{new logging::MockSink()}, logging::Severity::kWARNING, false,
-      logging::LoggingManager::InstanceType::Default, &default_logger_id, /*default_max_vlog_level*/ -1);
+      logging::LoggingManager::InstanceType::Default, &default_logger_id, -1);
 
   Model model("Wasm Test",
               false,
@@ -79,66 +72,37 @@ void Example::Run() {
   std::vector<NodeArg*> tmp_inputs{inputs[0].get(), inputs[1].get()};
   std::vector<NodeArg*> tmp_outputs{outputs[0].get()};
 
-  auto& node = graph.AddNode("Test_Concat", "Concat", "Test Concat", tmp_inputs, tmp_outputs);
-  node.AddAttribute("axis", 1ll);
-  node.SetExecutionProviderType(kCpuExecutionProvider);
-
+  graph.AddNode("Test_Add", "Add", "Test Add", tmp_inputs, tmp_outputs);
   graph.Resolve();
+
+  std::vector<const Node*> nodes;
+  for (auto& node : graph.Nodes()) {
+    nodes.push_back(&node);
+  }
 
   std::unique_ptr<WasmExecutionProvider> wasm_execution_provider =
       std::make_unique<WasmExecutionProvider>(WasmExecutionProviderInfo{false});
-  DataTransferManager data_transfer_mgr;
-  data_transfer_mgr.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
-
-  std::shared_ptr<KernelRegistry> kernel_registry = wasm_execution_provider->GetKernelRegistry();
-
-  profiling::Profiler profiler;
-  ExecutionProviders execution_providers;
-  execution_providers.Add(kCpuExecutionProvider, std::move(wasm_execution_provider));
-
-  KernelRegistryManager kernel_registry_manager;
-  kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
-  auto status = kernel_registry_manager.RegisterKernels(execution_providers);
-
-  SessionState session_state(graph,
-                             execution_providers,
-                             false,
-                             nullptr,
-                             nullptr,
-                             data_transfer_mgr,
-                             logging::LoggingManager::DefaultLogger(),
-                             profiler);
-  session_state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, nullptr, false);
-
-  ExecutionFrame execution_frame(std::vector<int>{},
-                                 std::vector<OrtValue>{},
-                                 std::vector<int>{},
-                                 std::vector<OrtValue>{},
-                                 std::unordered_map<size_t, IExecutor::CustomAllocator>{},
-                                 session_state);
+  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set, graph.ModelPath(), *wasm_execution_provider.get());
+  std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
+  OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
 
   for (auto& node : graph.Nodes()) {
-    const auto& kci = session_state.GetNodeKernelCreateInfo(node.Index());
-    onnxruntime::ProviderType exec_provider_name = node.GetExecutionProviderType();
-    const IExecutionProvider& exec_provider = *execution_providers.Get(exec_provider_name);
+    auto kernel = info.CreateKernel(&node);
+    OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, logging::LoggingManager::DefaultLogger());
 
-    auto op_kernel = kernel_registry_manager.CreateKernel(node, exec_provider, session_state, kci);
-    if (op_kernel != nullptr) {
-      std::cout << "Op name: " << op_kernel->KernelDef().OpName() << std::endl
-                << "Domain:  " << op_kernel->KernelDef().Domain() << std::endl
-                << "Index:   " << op_kernel->Node().Index() << std::endl;
+    auto st = kernel->Compute(&op_kernel_context);
+    if (!st.IsOK()) {
+      std::cout << st.ErrorMessage() << std::endl;
     }
 
-    OpKernelContext op_kernel_context(&execution_frame,
-                                      op_kernel.get(),
-                                      nullptr,
-                                      logging::LoggingManager::DefaultLogger());
-
-    auto status = op_kernel->Compute(&op_kernel_context);
-    if (!status.IsOK()) {
-      std::cout << "Can't compute" << std::endl;
+    std::vector<OrtValue> fetches;
+    frame.GetOutputs(fetches);
+    auto& tensor = fetches[0].Get<Tensor>();
+    const std::vector<int32_t> found(tensor.template Data<int32_t>(), tensor.template Data<int32_t>() + tensor_dim);
+    std::cout << "[";
+    for (int j = 0; j < tensor_dim; j++) {
+      std::cout << (multiplier * j) << ", " << std::endl;
     }
+    std::cout << "]" << std::endl;
   }
-
-  std::cout << "Done" << std::endl;
 }
