@@ -398,6 +398,7 @@ class ORTModule(torch.nn.Module):
                               training=torch.onnx.TrainingMode.TRAINING,
                               dynamic_axes=dynamic_axes)
         
+        # TODO: this step might not be needed when we use the torch external allocator
         # clear cache after model export
         torch.cuda.empty_cache()
 
