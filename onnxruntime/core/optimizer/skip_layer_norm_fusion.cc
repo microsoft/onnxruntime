@@ -217,18 +217,13 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       continue;
     }
 
-    std::vector<NodeArg*> ln_node_inputs_defs = ln_node.MutableInputDefs();
+    NodeArg beta_place_holder("", nullptr);
 
     // Get the inputs for the new SkipLayerNormalization node.
     std::vector<NodeArg*> skip_layer_norm_input_defs{p_add1->MutableInputDefs()[0],
                                                      p_add1->MutableInputDefs()[1],
-                                                     ln_node_inputs_defs[1]};
-
-    NodeArg beta_place_holder("", nullptr);
-    if (ln_node_inputs_defs.size() == 2) { // No beta
-      ln_node_inputs_defs.push_back(&beta_place_holder);
-    }
-    skip_layer_norm_input_defs.push_back(ln_node_inputs_defs[2]); // Add Beta or the corresponding placeholder
+                                                     ln_node.MutableInputDefs()[1],
+                                                     ln_node.MutableInputDefs().size() == 2 ? &beta_place_holder : ln_node.MutableInputDefs()[2]};
 
     if (matched_format == Format::Format1) {
       skip_layer_norm_input_defs[0] = p_add2->MutableInputDefs()[0];
