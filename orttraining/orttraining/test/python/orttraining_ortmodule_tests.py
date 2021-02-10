@@ -26,10 +26,29 @@ def parse_arguments():
 def run_ortmodule_api_tests(cwd, log):
     log.debug('Running: ORTModule-API tests')
 
-    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_ortmodule_api.py']
+    class TestNameCollecterPlugin:
+        def __init__(self):
+            self.collected = set()
 
-    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+        def pytest_collection_modifyitems(self, items):
+            for item in items:
+                print('item.name: ', item.name)
+                self.collected.add(item.name)
+    
+    import os
+    import pytest
+    plugin = TestNameCollecterPlugin()
+    print(cwd)
+    test_script_filename = os.path.join("orttraining_test_ortmodule_api.py")
+    pytest.main(['--collect-only', test_script_filename], plugins=[plugin])
 
+    # TODO: FIX THIS! 
+    # Running tests in a loop one after another, 
+    # because ORTModule doesn't support multiple run call at the same time
+    for test_name in plugin.collected:
+        run_subprocess([
+            sys.executable, '-m', 'pytest',
+            'orttraining_test_ortmodule_api.py', '-sv', '-k', test_name], cwd=cwd).check_returncode()
 
 def run_ortmodule_poc_net(cwd, log, no_cuda, data_dir):
     log.debug('Running: ORTModule POCNet for MNIST with --no-cuda arg {}.'.format(no_cuda))

@@ -2208,6 +2208,33 @@ Return true if all elements are true and false otherwise.
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(YieldOp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Yield Op.")
+      .Input(0, "outputs", "Module outputs to be returned to pytorch.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs_grad", "Gradient of outputs returned from pytorch.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Assume the outputs and gradients are one-to-one matching
+        // TODO: The contrain is relaxed for now 
+        // ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs(), "Yield op doesn't have the same number of inputs and output");
+
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, i, i);
+          auto typeProto = ctx.getInputType(i);
+          if (!hasShape(*typeProto)) {
+            continue;
+          }
+          propagateShapeFromInputToOutput(ctx, i, i);
+        }
+      });
 }
 }  // namespace training
 }  // namespace onnxruntime
