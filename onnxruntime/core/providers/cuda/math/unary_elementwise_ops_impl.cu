@@ -79,6 +79,8 @@ SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Log)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Exp)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Erf)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Round)
+SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Sin)
+SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Cos)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL(Not, bool)
 
 // When casting, half needs to be converted via float type from most other types
@@ -121,11 +123,11 @@ void Impl_Cast(
     const InT* input_data,
     OutT* output_data,
     size_t count) {
-    UnaryElementWiseImpl(stream,
-                         input_data,
-                         output_data,
-                         OP_Cast<InT, OutT>(),
-                         count);
+  UnaryElementWiseImpl(stream,
+                       input_data,
+                       output_data,
+                       OP_Cast<InT, OutT>(),
+                       count);
 }
 
 #define SPECIALIZED_CAST_IMPL2(InT, OutT) \
