@@ -65,7 +65,6 @@ def yolov3_preprocess_func(images_folder, height, width, start_index=0, size_lim
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data, batch_filenames, image_size_list
 
-
 def yolov3_variant_preprocess_func(images_folder, height, width, start_index=0, size_limit=0):
     '''
     Loads a batch of images and preprocess them
@@ -115,7 +114,7 @@ def yolov3_variant_preprocess_func(images_folder, height, width, start_index=0, 
         model_image_size = (height, width)
 
         img = cv2.imread(image_filepath)
-        image_data = _preprocess_yolo(img, tuple(model_image_size))
+        image_data = _preprocess_yolo(img, tuple(model_image_size)) 
         image_data = np.ascontiguousarray(image_data)
         image_data = np.expand_dims(image_data, 0)
         unconcatenated_batch_data.append(image_data)

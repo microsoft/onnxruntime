@@ -1,12 +1,11 @@
 import os
-from onnxruntime.quantization import create_calibrator, write_calibration_table
+from onnxruntime.quantization import get_calibrator, write_calibration_table, generate_calibration_table
 from data_reader import YoloV3DataReader, YoloV3VariantDataReader
 from evaluate import YoloV3Evaluator, YoloV3VariantEvaluator
 
-
 def get_calibration_table(model_path, augmented_model_path, calibration_dataset):
 
-    calibrator = create_calibrator(model_path, None, augmented_model_path=augmented_model_path)
+    calibrator = get_calibrator(model_path, None, augmented_model_path=augmented_model_path)
 
     # DataReader can handle dataset with batch or serial processing depends on its implementation
     # Following examples show two different ways to generate calibration table
@@ -29,7 +28,8 @@ def get_calibration_table(model_path, augmented_model_path, calibration_dataset)
                                        stride=stride,
                                        batch_size=1,
                                        model_path=augmented_model_path)
-        calibrator.collect_data(data_reader)
+        calibrator.set_data_reader(data_reader)
+        generate_calibration_table(calibrator, model_path, augmented_model_path, False, data_reader)
         start_index += stride
     '''
     2. Use batch processing (much faster)
@@ -40,11 +40,11 @@ def get_calibration_table(model_path, augmented_model_path, calibration_dataset)
     '''
 
     # data_reader = YoloV3DataReader(calibration_dataset, stride=1000, batch_size=20, model_path=augmented_model_path)
-    # calibrator.collect_data(data_reader)
+    # calibrator.set_data_reader(data_reader)
+    # generate_calibration_table(calibrator, model_path, augmented_model_path, True, data_reader)
 
-    write_calibration_table(calibrator.compute_range())
+    write_calibration_table(calibrator.get_calibration_cache())
     print('calibration table generated and saved.')
-
 
 def get_prediction_evaluation(model_path, validation_dataset, providers):
     data_reader = YoloV3DataReader(validation_dataset,
@@ -61,10 +61,9 @@ def get_prediction_evaluation(model_path, validation_dataset, providers):
     print(result)
     evaluator.evaluate(result, annotations)
 
-
 def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calibration_dataset):
 
-    calibrator = create_calibrator(model_path, None, augmented_model_path=augmented_model_path)
+    calibrator = get_calibrator(model_path, None, augmented_model_path=augmented_model_path)
 
     # DataReader can handle dataset with batch or serial processing depends on its implementation
     # Following examples show two different ways to generate calibration table
@@ -79,17 +78,18 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
 
     total_data_size = len(os.listdir(calibration_dataset))
     start_index = 0
-    stride = 25
+    stride = 25 
     for i in range(0, total_data_size, stride):
         data_reader = YoloV3VariantDataReader(calibration_dataset,
-                                              width=608,
-                                              height=608,
-                                              start_index=start_index,
-                                              end_index=start_index + stride,
-                                              stride=stride,
-                                              batch_size=1,
-                                              model_path=augmented_model_path)
-        calibrator.collect_data(data_reader)
+                                       width=608,
+                                       height=608,
+                                       start_index=start_index,
+                                       end_index=start_index + stride,
+                                       stride=stride,
+                                       batch_size=1,
+                                       model_path=augmented_model_path)
+        calibrator.set_data_reader(data_reader)
+        generate_calibration_table(calibrator, model_path, augmented_model_path, False, data_reader)
         start_index += stride
     '''
     2. Use batch processing (much faster)
@@ -100,20 +100,14 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
     '''
 
     # data_reader = YoloV3VariantDataReader(calibration_dataset, width=608, height=608, stride=1000, batch_size=20, model_path=augmented_model_path)
-    # calibrator.collect_data(data_reader)
+    # calibrator.set_data_reader(data_reader)
+    # generate_calibration_table(calibrator, model_path, augmented_model_path, True, data_reader)
 
-    write_calibration_table(calibrator.compute_range())
+    write_calibration_table(calibrator.get_calibration_cache())
     print('calibration table generated and saved.')
 
-
 def get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, providers):
-    data_reader = YoloV3VariantDataReader(validation_dataset,
-                                          width=608,
-                                          height=608,
-                                          stride=1000,
-                                          batch_size=1,
-                                          model_path=model_path,
-                                          is_evaluation=True)
+    data_reader = YoloV3VariantDataReader(validation_dataset, width=608, height=608, stride=1000, batch_size=1, model_path=model_path, is_evaluation=True)
     evaluator = YoloV3VariantEvaluator(model_path, data_reader, width=608, height=608, providers=providers)
 
     evaluator.predict()
@@ -122,7 +116,6 @@ def get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, pro
     annotations = './annotations/instances_val2017.json'
     print(result)
     evaluator.evaluate(result, annotations)
-
 
 if __name__ == '__main__':
 
@@ -142,3 +135,6 @@ if __name__ == '__main__':
         model_path = 'yolov3-608.onnx'
         get_calibration_table_yolov3_variant(model_path, augmented_model_path, calibration_dataset)
         get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, ["TensorrtExecutionProvider"])
+
+
+

@@ -22,7 +22,7 @@ class Node;
 class Path;
 
 namespace logging {
-class Logger;
+  class Logger;
 }
 
 namespace experimental {
@@ -45,12 +45,11 @@ onnxruntime::common::Status SaveSparseInitializerOrtFormat(
 
 // Convert a given AttributeProto into fbs::Attribute
 // Note, we current do not support graphs, and sparse_tensor(s)
-//       If the attribute type is a graph, we need to use the supplied Graph instance,
+//       If the attribute type is a graph, we need to use the supplied graph,
 //       instead of the GraphProto in attr_proto
 onnxruntime::common::Status SaveAttributeOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::AttributeProto& attr_proto,
-    flatbuffers::Offset<fbs::Attribute>& fbs_attr, const Path& model_path,
-    const onnxruntime::Graph* subgraph);
+    flatbuffers::Offset<fbs::Attribute>& fbs_attr, const onnxruntime::Graph* graph);
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 

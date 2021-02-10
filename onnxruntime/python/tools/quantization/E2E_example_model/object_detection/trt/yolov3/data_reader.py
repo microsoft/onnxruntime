@@ -189,7 +189,7 @@ class YoloV3VariantDataReader(YoloV3DataReader):
         nchw_data_list, filename_list, image_size_list = yolov3_variant_preprocess_func(
             self.image_folder, height, width, self.start_index, self.stride)
         # nchw_data_list, filename_list, image_size_list = yolov3_variant_2_preprocess_func(
-        # self.image_folder, height, width, self.start_index, self.stride)
+            # self.image_folder, height, width, self.start_index, self.stride)
 
         data = []
         if self.is_evaluation:

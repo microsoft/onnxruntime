@@ -7,7 +7,7 @@
 # --------------------------------------------------------------------------
 
 import onnxruntime
-from onnxruntime.quantization.calibrate import CalibrationDataReader
+from onnxruntime.quantization.calibrate import CalibrationDataReader, calibrate
 import numpy as np
 
 
@@ -184,22 +184,19 @@ class YoloV3Evaluator:
         cocoEval.accumulate()
         cocoEval.summarize()
 
+class YoloV3VariantEvaluator(YoloV3Evaluator): 
+    def __init__(self, model_path,
+                       data_reader: CalibrationDataReader,
+                       width=608,
+                       height=384,
+                       providers=["CUDAExecutionProvider"],
+                       ground_truth_object_class_file="./coco-object-categories-2017.json",
+                       onnx_object_class_file="./onnx_coco_classes.txt"):
 
-class YoloV3VariantEvaluator(YoloV3Evaluator):
-    def __init__(self,
-                 model_path,
-                 data_reader: CalibrationDataReader,
-                 width=608,
-                 height=384,
-                 providers=["CUDAExecutionProvider"],
-                 ground_truth_object_class_file="./coco-object-categories-2017.json",
-                 onnx_object_class_file="./onnx_coco_classes.txt"):
-
-        YoloV3Evaluator.__init__(self, model_path, data_reader, width, height, providers,
-                                 ground_truth_object_class_file, onnx_object_class_file)
+        YoloV3Evaluator.__init__(self, model_path, data_reader,width, height, providers, ground_truth_object_class_file, onnx_object_class_file)
 
     def predict(self):
-        from postprocessing import PostprocessYOLOWrapper
+        from postprocessing import PostprocessYOLOWrapper 
         session = onnxruntime.InferenceSession(self.model_path, providers=self.providers)
         outputs = []
 
@@ -224,24 +221,25 @@ class YoloV3VariantEvaluator(YoloV3Evaluator):
                 image_size_list = [image_size_list]
                 image_id_list = [image_id_list]
 
+
             image_size_batch.append(image_size_list)
             image_id_batch.append(image_id_list)
             outputs.append(session.run(None, inputs))
 
         for i in range(len(outputs)):
             output = outputs[i]
-
+            
             for batch_i in range(self.data_reader.get_batch_size()):
 
-                if batch_i > len(image_size_batch[i]) - 1 or batch_i > len(image_id_batch[i]) - 1:
+                if batch_i > len(image_size_batch[i])-1 or batch_i > len(image_id_batch[i])-1:
                     continue
 
                 image_height = image_size_batch[i][batch_i][0]
-                image_width = image_size_batch[i][batch_i][1]
+                image_width= image_size_batch[i][batch_i][1]
                 image_id = image_id_batch[i][batch_i]
 
-                boxes, classes, scores = postprocess_yolo.postprocessor.process(output, (image_width, image_height),
-                                                                                0.01)
+                boxes, classes, scores = postprocess_yolo.postprocessor.process(
+                output, (image_width, image_height), 0.01)
 
                 for j in range(len(boxes)):
                     box = boxes[j]
@@ -253,13 +251,7 @@ class YoloV3VariantEvaluator(YoloV3Evaluator):
                     y = float(box[1])
                     w = float(box[2] - box[0] + 1)
                     h = float(box[3] - box[1] + 1)
-                    self.prediction_result_list.append({
-                        "image_id": int(image_id),
-                        "category_id": int(id),
-                        "bbox": [x, y, w, h],
-                        "score": scores[j]
-                    })
-
+                    self.prediction_result_list.append({"image_id":int(image_id), "category_id":int(id), "bbox":[x,y,w,h], "score":scores[j]})
 
 class YoloV3Variant2Evaluator(YoloV3Evaluator):
     def __init__(self,
