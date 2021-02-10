@@ -788,12 +788,6 @@ static void ModelBuilding_StandardDeviationNormalization() {
 static void ModelBuilding_Gemm() {
 #ifndef BUILD_INBOX
   std::vector<int64_t> shape = {3, 3};
-  std::vector<float> x =
-  {
-    1, 0, 0,
-    0, 1, 0,
-    0, 0, 1
-  };
   auto model =
     LearningModelBuilder::Create(13)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"InputA", TensorKind::Float, shape))
