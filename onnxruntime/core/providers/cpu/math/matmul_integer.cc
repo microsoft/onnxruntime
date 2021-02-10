@@ -35,7 +35,7 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), packed_b_ ? b_shape_ : b->Shape()));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b ? b->Shape() : b_shape_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -61,9 +61,9 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   const auto* a_data = a->template Data<uint8_t>();
   auto* y_data = y->template MutableData<int32_t>();
 
-  for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-    if (packed_b_) {
+  if (packed_b_) {
+    for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
       MlasGemm(static_cast<size_t>(helper.M()),
                static_cast<size_t>(helper.N()),
                static_cast<size_t>(helper.K()),
@@ -76,25 +76,33 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
                y_data + helper.OutputOffsets()[i],
                static_cast<size_t>(helper.N()),
                thread_pool);
-      continue;
     }
-#endif
-    const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
-    const bool b_is_signed = b->IsDataType<int8_t>();
-    MlasGemm(static_cast<size_t>(helper.M()),
-             static_cast<size_t>(helper.N()),
-             static_cast<size_t>(helper.K()),
-             a_data + helper.LeftOffsets()[i],
-             static_cast<size_t>(helper.K()),
-             a_offset,
-             b_data + helper.RightOffsets()[i],
-             static_cast<size_t>(helper.N()),
-             b_offset,
-             b_is_signed,
-             y_data + helper.OutputOffsets()[i],
-             static_cast<size_t>(helper.N()),
-             thread_pool);
+    return Status::OK();
   }
+#endif
+
+  if (b != nullptr) {
+    for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
+      const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
+      const bool b_is_signed = b->IsDataType<int8_t>();
+      MlasGemm(static_cast<size_t>(helper.M()),
+               static_cast<size_t>(helper.N()),
+               static_cast<size_t>(helper.K()),
+               a_data + helper.LeftOffsets()[i],
+               static_cast<size_t>(helper.K()),
+               a_offset,
+               b_data + helper.RightOffsets()[i],
+               static_cast<size_t>(helper.N()),
+               b_offset,
+               b_is_signed,
+               y_data + helper.OutputOffsets()[i],
+               static_cast<size_t>(helper.N()),
+               thread_pool);
+    }
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B should not be null.");
+  }
+
   return Status::OK();
 }
 

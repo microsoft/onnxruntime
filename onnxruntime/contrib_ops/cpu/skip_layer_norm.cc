@@ -61,14 +61,16 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                            "Last dimension of gamma and input does not match");
   }
 
-  const auto& beta_dims = beta->Shape().GetDims();
-  if (beta_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "beta is expected to have 1 dimension, got ", beta_dims.size());
-  }
-  if (beta_dims[0] != input_dims[2]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Last dimension of beta and input does not match");
+  if (nullptr != beta) {
+    const auto& beta_dims = beta->Shape().GetDims();
+    if (beta_dims.size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "beta is expected to have 1 dimension, got ", beta_dims.size());
+    }
+    if (beta_dims[0] != input_dims[2]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Last dimension of beta and input does not match");
+    }
   }
 
   if (nullptr != bias) {
@@ -91,7 +93,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   const T* input_data = input->Data<T>();
   const T* skip_data = skip->Data<T>();
   const T* gamma_data = gamma->Data<T>();
-  const T* beta_data = beta->Data<T>();
+  const T* beta_data = beta == nullptr ? nullptr : beta->Data<T>();
   const T* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   T* output_data = output->MutableData<T>();
@@ -119,7 +121,11 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                                                  mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
 
                                                  for (int64_t h = 0; h < hidden_size; h++) {
-                                                   p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
+                                                   if (nullptr == beta_data) {
+                                                     p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h];
+                                                   } else {
+                                                     p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
+                                                   }
                                                  }
                                                }, 0);
 

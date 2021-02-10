@@ -654,7 +654,8 @@ class Graph {
 
   /** Return true if "node_arg" is a input or an initializer. Otherwise, returns false. */
   bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept {
-    return std::find(graph_inputs_including_initializers_.begin(), graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
+    return std::find(graph_inputs_including_initializers_.begin(),
+                     graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
   }
 
   /** Gets the Graph inputs that are initializers
@@ -920,10 +921,17 @@ class Graph {
   @returns Node with fused subgraph.
   @remarks As a new Graph instance for the fused nodes is not created, a GraphViewer can be constructed with the
            IndexedSubGraph information to provide a view of the subgraph. The original nodes are left in place
-           while this is in use. 
+           while this is in use.
 		   Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
+
+  /**
+  If we have BeginFuseSubGraph, but somehow hit errors, such as Compile of an EP failed on thesub_graph.
+  We can call CancelFuseSubGraph to undo the changes of BeginFuseSubGraph
+  @param fused_node The fused node and it's function body to be removed from the graph
+  */
+  void CancelFuseSubGraph(const Node& fused_node);
 
   void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
 #endif
@@ -1085,6 +1093,9 @@ class Graph {
   static common::Status LoadFromOrtFormat(
       const onnxruntime::experimental::fbs::Graph& fbs_graph, const Model& owning_model,
       const std::unordered_map<std::string, int>& domain_to_version,
+#if !defined(ORT_MINIMAL_BUILD)
+      IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+#endif
       const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
   // deserialize a subgraph
@@ -1104,6 +1115,9 @@ class Graph {
   // Create empty Graph instance to re-create from ORT format serialized data.
   Graph(const Model& owning_model,
         const std::unordered_map<std::string, int>& domain_to_version,
+#if !defined(ORT_MINIMAL_BUILD)
+        IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+#endif
         Graph* parent_graph, const Node* parent_node,
         const logging::Logger& logger);
 

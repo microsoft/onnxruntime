@@ -14,6 +14,7 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/customregistry.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -43,6 +44,7 @@
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
+#include "core/session/custom_ops.h"
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -50,10 +52,6 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
-#if !defined(ORT_MINIMAL_BUILD)
-#include "core/framework/customregistry.h"
-#include "core/session/custom_ops.h"
-#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
@@ -277,6 +275,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
+  allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
@@ -399,6 +398,8 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 
   const std::string& provider_type = p_exec_provider->Type();
 
+  p_exec_provider->RegisterAllocator(allocator_manager_);
+
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
   if (provider_type == onnxruntime::kDmlExecutionProvider) {
@@ -427,6 +428,11 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
           << "Parallel execution mode does not support the CUDA Execution Provider. "
           << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
       session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    }
+
+    auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);
+    if (trt_ep) {
+      p_exec_provider->SetComputeStream(trt_ep->GetComputeStream());
     }
   }
 
@@ -468,6 +474,7 @@ common::Status InferenceSession::AddCustomTransformerList(const std::vector<std:
 
   return Status::OK();
 }
+#endif
 
 common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
   std::shared_ptr<CustomRegistry> custom_registry;
@@ -486,10 +493,13 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
   // Insert session-level customized kernel registry.
   kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
 
+#if !defined(ORT_MINIMAL_BUILD)
   custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
+#endif
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-edian machines");
 
@@ -999,7 +1009,7 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
 
   // Verify the ort_format_model_bytes_ is a valid InferenceSessionBuffer before we access the data
   flatbuffers::Verifier verifier(ort_format_model_bytes_.data(), ort_format_model_bytes_.size());
-  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier));
+  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier), "ORT model verification failed.");
 
   const auto* fbs_session = fbs::GetInferenceSession(ort_format_model_bytes_.data());
   ORT_RETURN_IF(nullptr == fbs_session, "InferenceSession is null. Invalid ORT format model.");
@@ -1016,7 +1026,15 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
 
   // need to go from unique_ptr to shared_ptr when moving into model_
   std::unique_ptr<Model> tmp_model;
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model,
+                                               HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                               *session_logger_, tmp_model));
+
+#else
   ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, *session_logger_, tmp_model));
+#endif
+
   ORT_RETURN_IF_ERROR(SaveModelMetadata(*tmp_model));
   model_ = std::move(tmp_model);
 

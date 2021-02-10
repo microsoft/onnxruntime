@@ -284,7 +284,7 @@ __global__ void reduce_matrix_columns_kernel(
 
 template <typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>
 Status call_reduce_matrix_columns(
-    const TIn* input, TOut* output, const int num_rows, const int num_cols, void* buffer, size_t buffer_size) {
+    cudaStream_t stream, const TIn* input, TOut* output, const int num_rows, const int num_cols, void* buffer, size_t buffer_size) {
   ORT_ENFORCE(num_rows >= 0 && num_cols >= 0);
 
   using TBuf = AccumulationType_t<TIn>;
@@ -301,12 +301,12 @@ Status call_reduce_matrix_columns(
 
   // If more than one block is used per grid row, then inter-block reduction is needed.
   if (grid_dim.x > 1) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(block_done_counts_buffer, 0, num_rows * sizeof(int)));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(block_done_counts_buffer, 0, num_rows * sizeof(int), stream));
   }
 
   const int shared_mem_size = sizeof(TBuf) * block_dim.x * block_dim.y / GPU_WARP_SIZE;
   reduce_matrix_columns_kernel<TIn, TOut, TBuf, TOp, TFinalOp, DivideResultBySize>
-      <<<grid_dim, block_dim, shared_mem_size>>>(
+      <<<grid_dim, block_dim, shared_mem_size, stream>>>(
           num_rows, num_cols, input, output, block_reductions_buffer, block_done_counts_buffer);
 
   return Status::OK();
@@ -315,41 +315,41 @@ Status call_reduce_matrix_columns(
 
 template <typename TIn, typename TOut>
 Status reduce_sum(
-    const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
+    cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, false>(
-      input, output, 1, size, buffer, buffer_size);
+    stream, input, output, 1, size, buffer, buffer_size);
 }
 
 template <typename TIn, typename TOut>
 Status reduce_square_sum(
-    const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
+    cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Square, Identity, false>(
-      input, output, 1, size, buffer, buffer_size);
+    stream, input, output, 1, size, buffer, buffer_size);
 }
 
 template <typename TIn, typename TOut>
 Status reduce_l2_norm(
-    const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
+    cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Square, Sqrt, false>(
-      input, output, 1, size, buffer, buffer_size);
+    stream, input, output, 1, size, buffer, buffer_size);
 }
 
 template <typename TIn, typename TOut>
 Status reduce_mean(
-    const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
+    cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, true>(
-      input, output, 1, size, buffer, buffer_size);
+    stream, input, output, 1, size, buffer, buffer_size);
 }
 
 #define INSTANTIATE_REDUCE_SUM(TIn, TOut) \
-  template Status reduce_sum<TIn, TOut>(const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size)
+  template Status reduce_sum<TIn, TOut>(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size)
 INSTANTIATE_REDUCE_SUM(half, float);
 INSTANTIATE_REDUCE_SUM(float, float);
 INSTANTIATE_REDUCE_SUM(double, double);
 #undef INSTANTIATE_REDUCE_SUM
 
 #define INSTANTIATE_REDUCE_SQUARE_SUM(TIn, TOut) \
-  template Status reduce_square_sum<TIn, TOut>(const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size)
+  template Status reduce_square_sum<TIn, TOut>(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size)
 INSTANTIATE_REDUCE_SQUARE_SUM(half, float);
 INSTANTIATE_REDUCE_SQUARE_SUM(float, float);
 INSTANTIATE_REDUCE_SQUARE_SUM(double, double);
@@ -359,14 +359,14 @@ INSTANTIATE_REDUCE_SQUARE_SUM(nv_bfloat16, float);
 #undef INSTANTIATE_REDUCE_SQUARE_SUM
 
 #define INSTANTIATE_REDUCE_L2_NORM(TIn, TOut) \
-  template Status reduce_l2_norm<TIn, TOut>(const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size)
+  template Status reduce_l2_norm<TIn, TOut>(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size)
 INSTANTIATE_REDUCE_L2_NORM(half, float);
 INSTANTIATE_REDUCE_L2_NORM(float, float);
 INSTANTIATE_REDUCE_L2_NORM(double, double);
 #undef INSTANTIATE_REDUCE_L2_NORM
 
 #define INSTANTIATE_REDUCE_MEAN(TIn, TOut) \
-  template Status reduce_mean<TIn, TOut>(const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size)
+  template Status reduce_mean<TIn, TOut>(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size)
 INSTANTIATE_REDUCE_MEAN(half, float);
 INSTANTIATE_REDUCE_MEAN(float, float);
 INSTANTIATE_REDUCE_MEAN(double, double);
@@ -431,11 +431,11 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
 }
 
 template <typename TIn, typename TOut, typename TBuf>
-Status call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
+Status call_reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
   ORT_ENFORCE(m >= 0 && n >= 0);
 
   if (reset_initial_output) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output, 0, n * sizeof(TOut)));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output, 0, n * sizeof(TOut), stream));
   }
 
   constexpr int max_num_threads_in_block = 512;
@@ -450,7 +450,7 @@ Status call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, boo
   const dim3 grid(grid_x_dim, grid_y_dim, 1);
   const dim3 block(block_x_dim, block_y_dim, 1);
 
-  reduce_matrix_rows_kernel<TIn, TOut, TBuf><<<grid, block, block.y * block.x * sizeof(TBuf)>>>(
+  reduce_matrix_rows_kernel<TIn, TOut, TBuf><<<grid, block, block.y * block.x * sizeof(TBuf), stream>>>(
       input, output, m, n);
 
   return Status::OK();
@@ -458,13 +458,13 @@ Status call_reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, boo
 }  // namespace detail
 
 template <typename TIn, typename TOut>
-Status reduce_matrix_rows(const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
+Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
   using TBuf = AccumulationType_t<TIn>;
-  return detail::call_reduce_matrix_rows<TIn, TOut, TBuf>(input, output, m, n, reset_initial_output);
+  return detail::call_reduce_matrix_rows<TIn, TOut, TBuf>(stream, input, output, m, n, reset_initial_output);
 }
 
 #define INSTANTIATE_REDUCE_MATRIX_ROWS(T) \
-  template Status reduce_matrix_rows<T, T>(const T* input, T* output, int m, int n, bool reset_initial_output)
+  template Status reduce_matrix_rows<T, T>(cudaStream_t stream, const T* input, T* output, int m, int n, bool reset_initial_output)
 INSTANTIATE_REDUCE_MATRIX_ROWS(half);
 INSTANTIATE_REDUCE_MATRIX_ROWS(float);
 INSTANTIATE_REDUCE_MATRIX_ROWS(double);
@@ -474,13 +474,13 @@ INSTANTIATE_REDUCE_MATRIX_ROWS(nv_bfloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_ROWS
 
 template <typename TIn, typename TOut>
-Status reduce_matrix_columns(const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size) {
+Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, false>(
-      input, output, m, n, buffer, buffer_size);
+    stream, input, output, m, n, buffer, buffer_size);
 }
 
 #define INSTANTIATE_REDUCE_MATRIX_COLUMNS(T) \
-  template Status reduce_matrix_columns<T, T>(const T* input, T* output, int m, int n, void* buffer, size_t buffer_size)
+  template Status reduce_matrix_columns<T, T>(cudaStream_t stream, const T* input, T* output, int m, int n, void* buffer, size_t buffer_size)
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(half);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(float);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);

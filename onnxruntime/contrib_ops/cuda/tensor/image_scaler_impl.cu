@@ -30,6 +30,7 @@ __global__ void _ImageScalerKernel(
 
 template <typename T>
 void ImageScalerImpl(
+    cudaStream_t stream,
     const T* input_data,
     const float scale,
     const float* bias_data,
@@ -40,17 +41,17 @@ void ImageScalerImpl(
   fast_divmod fdm_HW((int)(dims[2] * dims[3]));
   fast_divmod fdm_C;
   if (dims[0] == 1) {
-    _ImageScalerKernel<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ImageScalerKernel<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         input_data, scale, bias_data, fdm_C, fdm_HW, output_data, N);
   } else {
     fdm_C = fast_divmod((int)dims[1]);
-    _ImageScalerKernel<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ImageScalerKernel<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         input_data, scale, bias_data, fdm_C, fdm_HW, output_data, N);
   }
 }
 
 #define SPECIALIZED_IMPL(T) \
-  template void ImageScalerImpl<T>(const T* input_data, const float scale, const float* bias_data, const int64_t dims[4], T* output_data, const size_t N);
+  template void ImageScalerImpl<T>(cudaStream_t stream, const T* input_data, const float scale, const float* bias_data, const int64_t dims[4], T* output_data, const size_t N);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

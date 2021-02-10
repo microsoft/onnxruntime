@@ -57,7 +57,7 @@ Status SetupOptimizerParams(
     OptimizerGraphConfig& opt_graph_config_result,
     std::unordered_map<std::string, OptimizerNodeConfig>& opt_node_configs_result,
     std::unordered_map<std::string, std::string>& weight_name_map_after_graph_transform) {
-  ORT_RETURN_IF_NOT(config.optimizer_config.has_value());
+  ORT_RETURN_IF_NOT(config.optimizer_config.has_value(), "config.optimizer_config.has_value() was false");
   const auto& optimizer_config = config.optimizer_config.value();
 
   // This is the mapping from the new weight name to the original weight name
@@ -354,7 +354,7 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    MemoryInfo::SetLocalRank(config.distributed_config.world_rank);
+  MemoryInfo::SetLocalRank(config.distributed_config.world_rank);
 #endif
 
 #ifdef USE_MPI
@@ -798,7 +798,7 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
 
   GraphTransformerManager graph_transformation_mgr{1};
   std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register;
-  // Creating the CPU EP here to be used to get the 
+  // Creating the CPU EP here to be used to get the
   // CPU allocator for partitioning the optimizer state by column.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
@@ -863,7 +863,7 @@ Status TrainingSession::ConfigureLossFunction(
 
     loss_graph_builder_ = LossFunctionBuilder::Build(loss_function_info_value.op_def.type);
 
-    ORT_RETURN_IF_NOT(loss_graph_builder_);
+    ORT_RETURN_IF_NOT(loss_graph_builder_, "loss_graph_builder_ == nullptr");
   }
 
   try {
@@ -1094,7 +1094,7 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
     } else {
       opt_state_tensors[weight.first] = it->second;
       opt_state_tensors.erase(it);
-    }   
+    }
   }
   return Status::OK();
 }
@@ -1107,7 +1107,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   // Add sharded weights
   for (const auto& weight : weight_partition_info_) {
     if (weight.second.weight_partitioned) {
-      fp_tensor_names.erase(weight.first); // remove the original name
+      fp_tensor_names.erase(weight.first);  // remove the original name
       fp_tensor_names.insert(weight.second.partition_name);
     }
   }
@@ -1124,7 +1124,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
         fp_weights[weight.first] = it->second;
         fp_weights.erase(it);
       }
-    }   
+    }
   }
 
   model_state_tensors["full_precision"] = fp_weights;
@@ -1219,8 +1219,6 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
 }
 
 static const std::unordered_set<std::string> Nodes_Need_Eval_Feeds = {
-    // TODO remove this once ONNX TrainableDropout is completely deprecated.
-    "TrainableDropout",
     "Dropout",
 };
 
@@ -1235,19 +1233,7 @@ Status TrainingSession::SetEvalFeedNames() {
     auto it = Nodes_Need_Eval_Feeds.find(node.OpType());
     if (it != Nodes_Need_Eval_Feeds.cend()) {
       // The opset is < 12, add each ratio input to graph inputs for overriding.
-      // Needs to be removed when TrainableDropout is deprecated.
-      if (it->compare("TrainableDropout") == 0) {
-        auto& ratio_name = node.InputDefs()[1]->Name();
-        dropout_eval_feeds_.insert(ratio_name);
-        ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
-                    "Input: " + ratio_name + " should not have any producer node.");
-        if (def_graph_input_names.find(ratio_name) == def_graph_input_names.end()) {
-          defs.AddGraphInputs({ratio_name});
-          def_graph_input_names.insert(ratio_name);
-        }
-      }
-      // Found an opset-12 dropout node, replace initializer name.
-      else if (node.InputArgCount().size() > 2) {
+      if (node.InputArgCount().size() > 2) {
         auto& mode_input = node.MutableInputDefs()[2];
         const ONNX_NAMESPACE::TensorProto* mode_initializer = nullptr;
         if (!graph.GetInitializedTensor(training_mode_string_, mode_initializer)) {
