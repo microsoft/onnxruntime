@@ -77,6 +77,30 @@ __device__ __inline__ half _Round(half a) {
 }
 
 template <typename T>
+__device__ __inline__ T _Cos(T a);
+
+template <>
+__device__ __inline__ float _Cos(float a) { return cosf(a); }
+
+template <>
+__device__ __inline__ double _Cos(double a) { return cos(a); }
+
+template <>
+__device__ __inline__ half _Cos(half a) { return hcos(a); }
+
+template <typename T>
+__device__ __inline__ T _Sin(T a);
+
+template <>
+__device__ __inline__ float _Sin(float a) { return sinf(a); }
+
+template <>
+__device__ __inline__ double _Sin(double a) { return sin(a); }
+
+template <>
+__device__ __inline__ half _Sin(half a) { return hsin(a); }
+
+template <typename T>
 __device__ __inline__ T _Exp(T a);
 
 template <>
