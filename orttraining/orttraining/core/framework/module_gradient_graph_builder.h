@@ -77,7 +77,7 @@ class ModuleGradientGraphBuilder {
 
  private:
   // Set concrete shapes for graph inputs.
-  void SetConcreteInputShapes(const std::vector<std::vector<int64_t>> input_shapes);
+  void SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes);
 
   // Build gradient graph.
   Status BuildGradientGraph();

@@ -126,6 +126,7 @@ class ORTModule(torch.nn.Module):
         # Related to training graph split/shape inference
         self._current_input_shape = None
         self._module_gradient_graph_builder = None
+        self._input_names_require_grad = None
 
         # Gradient model
         self._onnx_gradient = None
@@ -250,8 +251,6 @@ class ORTModule(torch.nn.Module):
     def train(self: T, mode: bool = True) -> T:
         self._is_training = mode
         self._original_module.train(mode)
-        if self._is_training and self._device.type == 'cuda':
-            torch.cuda.empty_cache()
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -260,6 +259,7 @@ class ORTModule(torch.nn.Module):
         Next, we build a full training graph with module_gradient_graph_builder. 
         Finally, we instantiate the ONNX Runtime InferenceSession.
         '''
+        # TODO: using pytorch for evaluation for now. We will use ORT for evaluation latter. 
         if not self._is_training:
             return self._original_module(*inputs, **kwargs)
 
@@ -280,6 +280,7 @@ class ORTModule(torch.nn.Module):
             self._build_training_graph()
             self._create_training_session()
         # TODO: disabled for now, since it caused a bug in NVBert fp32 run
+        # When creating a new InferenceSession, there is a bug for destructing the original InferenceSession 
         # elif self._device_changed:
         #     self._create_training_session()
         #     self._device_changed = False
@@ -396,5 +397,8 @@ class ORTModule(torch.nn.Module):
                               do_constant_folding=False,
                               training=torch.onnx.TrainingMode.TRAINING,
                               dynamic_axes=dynamic_axes)
+        
+        # clear cache after model export
+        torch.cuda.empty_cache()
 
         return onnx.load_model_from_string(f.getvalue())

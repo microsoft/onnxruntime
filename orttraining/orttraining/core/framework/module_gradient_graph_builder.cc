@@ -94,7 +94,7 @@ std::string ModuleGradientGraphBuilder::GetGradientModel() const {
   return model_str;
 }
 
-void ModuleGradientGraphBuilder::SetConcreteInputShapes(const std::vector<std::vector<int64_t>> input_shapes) {
+void ModuleGradientGraphBuilder::SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes) {
   ORT_ENFORCE(input_shapes.size() == split_graphs_info_.user_input_names.size(),
               "The size of concrete input shapes and the size of user inputs does not match.");
   Graph& gradient_graph = gradient_model_->MainGraph();
