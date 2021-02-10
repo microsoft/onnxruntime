@@ -229,6 +229,20 @@ void ThreadPool::Schedule(std::function<void()> fn) {
   }
 }
 
+void ThreadPool::StartProfiling() const {
+  if (underlying_threadpool_) {
+    underlying_threadpool_->StartProfiling();
+  }
+}
+
+std::string ThreadPool::StopProfiling() const {
+  if (underlying_threadpool_) {
+    return underlying_threadpool_->StopProfiling();
+  } else {
+    return "";
+  }
+}
+
 thread_local ThreadPool::ParallelSection *ThreadPool::ParallelSection::current_parallel_section{nullptr};
 
 ThreadPool::ParallelSection::ParallelSection(ThreadPool *tp) {
@@ -392,6 +406,20 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
   // tp, plus 1 for the thread entering a loop.
   return tp ? (tp->NumThreads()+1) : 1;
 #endif
+}
+
+void ThreadPool::StartProfiling(const concurrency::ThreadPool* tp) {
+  if (tp) {
+    tp->StartProfiling();
+  }
+}
+
+std::string ThreadPool::StopProfiling(const concurrency::ThreadPool* tp) {
+  if (tp) {
+    return tp->StopProfiling();
+  } else {
+    return "";
+  }
 }
 
 // Return the number of threads created by the pool.
