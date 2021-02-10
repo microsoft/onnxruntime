@@ -127,11 +127,11 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
   Tensor* Y = const_cast<OpKernelContext*>(context)->Output(0, TensorShape(output_dims));
   auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-
+  CUFFT_RETURN_IF_ERROR(cufftSetStream(plan_info.plan, Stream()));
   CUFFT_RETURN_IF_ERROR(cufftXtExec(plan_info.plan, const_cast<CudaT*>(x_data), y_data, inverse ? CUFFT_INVERSE : CUFFT_FORWARD));
 
   if (inverse) {
-    PostProcess(signal_dims, output_size, y_data);
+    PostProcess(Stream(), signal_dims, output_size, y_data);
   }
 
   return Status::OK();

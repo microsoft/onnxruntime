@@ -160,6 +160,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument(
+        "--enable_training_ops", action='store_true', help="Enable training ops in inference graph.")
+    parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
@@ -484,7 +486,7 @@ def resolve_executable_path(command_or_path):
     if executable_path is None:
         raise BuildError("Failed to resolve executable path for "
                          "'{}'.".format(command_or_path))
-    return os.path.realpath(executable_path)
+    return os.path.abspath(executable_path)
 
 
 def get_linux_distro():
@@ -718,6 +720,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_OPS=" + (
+            "ON" if args.enable_training_ops else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + (
             "ON" if args.enable_training else "OFF"),
@@ -1753,9 +1757,7 @@ def main():
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
     if not (args.update or args.clean or args.build or args.test):
-        log.debug(
-            "Defaulting to running update, build "
-            "[and test for native builds].")
+        log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
         if cross_compiling:
@@ -1766,7 +1768,7 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.include_ops_by_config:
+    if args.include_ops_by_config and args.update:
         from exclude_unused_ops_and_types import exclude_unused_ops_and_types
         exclude_unused_ops_and_types(args.include_ops_by_config,
                                      args.enable_reduced_operator_type_support,

@@ -19,7 +19,7 @@ class IsFiniteOp final : public CudaKernel {
 };
 
 template <typename TSrc>
-void IsFinite(const TSrc* input, bool* output, size_t N);
+void IsFinite(cudaStream_t stream, const TSrc* input, bool* output, size_t N);
 
 template <typename TSrc>
 class IsAllFiniteOp final : public CudaKernel {
@@ -32,7 +32,7 @@ class IsAllFiniteOp final : public CudaKernel {
 
 template <typename T>
 struct IsAllFiniteFunctor {
-  void operator()(ChunkGroup<1> chunks, bool* output); 
+  void operator()(cudaStream_t stream, ChunkGroup<1> chunks, bool* output); 
 };
 
 }  // namespace cuda

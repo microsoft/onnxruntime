@@ -87,7 +87,7 @@ class OpKernel {
   // @param tensor: The initialized constant tensor
   // @param input_idx: The input index of the tensor in this kernel
   // @param is_packed: Set it to true if the kernel packed the tensor or to false
-  //                   The kernel is responsible keep the packed data and related metadata if is_packed is set to true
+  //                   The kernel is responsible for keeping the packed data and related metadata if is_packed is true,
   //                   And the original initialized constant tensor will be released and not accessible anymore in Compute function.
   virtual Status PrePack(const Tensor& /*tensor*/, const PrepackParam& /* param */, bool& is_packed) {
     is_packed = false;
@@ -457,44 +457,50 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 #define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name) \
   provider##_##name##_##domain##_ver##startver##_##endver##_##type
 
-#define ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(name, startver, endver, type, builder, ...) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, kOnnxDomain, startver, endver, type, kCpuExecutionProvider, builder, __VA_ARGS__)
+#define ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(name, startver, endver, type, builder, ...)                         \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, kOnnxDomain, startver, endver, type, kCpuExecutionProvider, builder, \
+                                          __VA_ARGS__)
 
-#define ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(name, startver, endver, type, builder, ...) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, kMLDomain, startver, endver, type, kCpuExecutionProvider, builder, __VA_ARGS__)
+#define ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(name, startver, endver, type, builder, ...)                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, kMLDomain, startver, endver, type, kCpuExecutionProvider, builder, \
+                                          __VA_ARGS__)
 
-#define ONNX_CPU_OPERATOR_VERSIONED_TYPED_MS_KERNEL(name, startver, endver, type, builder, ...) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, kMSDomain, startver, endver, type, kCpuExecutionProvider, builder, __VA_ARGS__)
+#define ONNX_CPU_OPERATOR_VERSIONED_TYPED_MS_KERNEL(name, startver, endver, type, builder, ...)                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, kMSDomain, startver, endver, type, kCpuExecutionProvider, builder, \
+                                          __VA_ARGS__)
 
-#define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, domain, startver, endver, type, provider, builder, ...)                \
-  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name);                     \
-  template <>                                                                                                                \
-  KernelCreateInfo                                                                                                           \
-  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name)>() { \
-    return KernelCreateInfo(                                                                                                 \
-        builder.SetName(#name)                                                                                               \
-            .SetDomain(domain)                                                                                               \
-            .SinceVersion(startver, endver)                                                                                  \
-            .Provider(provider)                                                                                              \
-            .Build(),                                                                                                        \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));        \
+#define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, domain, startver, endver, type, provider, builder, ...)         \
+  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name);              \
+  template <>                                                                                                         \
+  KernelCreateInfo                                                                                                    \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver,           \
+                                                                        type, name)>() {                              \
+    return KernelCreateInfo(                                                                                          \
+        builder.SetName(#name)                                                                                        \
+            .SetDomain(domain)                                                                                        \
+            .SinceVersion(startver, endver)                                                                           \
+            .Provider(provider)                                                                                       \
+            .Build(),                                                                                                 \
+        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
   }
 
 #define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name) \
   provider##_##name##_##domain##_ver##startver##_##endver##_##type1##_##type2
 
-#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(name, domain, startver, endver, type1, type2, provider, builder, ...)                \
-  class ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name);                     \
-  template <>                                                                                                                            \
-  KernelCreateInfo                                                                                                                       \
-  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name)>() { \
-    return KernelCreateInfo(                                                                                                             \
-        builder.SetName(#name)                                                                                                           \
-            .SetDomain(domain)                                                                                                           \
-            .SinceVersion(startver, endver)                                                                                              \
-            .Provider(provider)                                                                                                          \
-            .Build(),                                                                                                                    \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));                    \
+#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(name, domain, startver, endver, type1, type2,                     \
+                                                    provider, builder, ...)                                           \
+  class ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name);  \
+  template <>                                                                                                         \
+  KernelCreateInfo                                                                                                    \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver,       \
+                                                                            type1, type2, name)>() {                  \
+    return KernelCreateInfo(                                                                                          \
+        builder.SetName(#name)                                                                                        \
+            .SetDomain(domain)                                                                                        \
+            .SinceVersion(startver, endver)                                                                           \
+            .Provider(provider)                                                                                       \
+            .Build(),                                                                                                 \
+        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
   }
 
 // Use within macro definitions to create a custom vector of constraints.
@@ -515,7 +521,6 @@ struct BuildKernelDefConstraintsFunctor {
 
 // the type BuildKernelDefConstraintsFunctor<T...> given a type list L<T...>
 template <typename L>
-using BuildKernelDefConstraintsFunctorFromTypeList =
-    boost::mp11::mp_apply<BuildKernelDefConstraintsFunctor, L>;
+using BuildKernelDefConstraintsFunctorFromTypeList = boost::mp11::mp_apply<BuildKernelDefConstraintsFunctor, L>;
 
 }  // namespace onnxruntime

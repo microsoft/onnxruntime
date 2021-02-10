@@ -1823,6 +1823,16 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
   ORT_UNUSED_PARAMETER(cuda_options);
   return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
+  ORT_UNUSED_PARAMETER(device_id);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
+  ORT_UNUSED_PARAMETER(device_id);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+}
 #endif
 
 #if defined(ORT_MINIMAL_BUILD)
@@ -1849,6 +1859,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
 ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
 }
+
+#if defined(ORT_MINIMAL_BUILD)
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
+                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
+}
+#endif
 
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
@@ -2085,6 +2104,9 @@ static constexpr OrtApi ort_api_1_to_7 = {
     // Version 7 - In development, feel free to add/remove/rearrange here
     &OrtApis::ModelMetadataGetGraphDescription,
     &OrtApis::SetConstantInitializerTo2x4SparseFormat
+    &OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
+    &OrtApis::SetCurrentGpuDeviceId,
+    &OrtApis::GetCurrentGpuDeviceId,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

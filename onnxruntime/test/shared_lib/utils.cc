@@ -27,6 +27,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   // Do computation
 #ifdef USE_CUDA
   cuda_add(size, out, X, Y);
+  cudaStreamSynchronize(nullptr);
 #else
   for (int64_t i = 0; i < size; i++) {
     out[i] = X[i] + Y[i];
