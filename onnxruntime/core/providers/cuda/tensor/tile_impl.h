@@ -10,6 +10,7 @@ namespace cuda {
 
 template <typename T>
 void TileImpl(
+    cudaStream_t stream,
     const size_t shape_rank,
     const TArray<fast_divmod>& input_shape,
     const TArray<int64_t>& input_strides,
@@ -20,6 +21,7 @@ void TileImpl(
 
 template <typename T>
 void TileMemcpyImpl(
+    cudaStream_t stream,
     const T* input_data,
     const size_t num_input_elements,
     T* output_data,
@@ -27,6 +29,7 @@ void TileMemcpyImpl(
 
 template <typename T>
 void TileBatchedMemcpyImpl(
+    cudaStream_t stream,
     const T* input_data,
     const size_t num_of_elements_per_input_batch,
     const size_t num_input_batch_count,

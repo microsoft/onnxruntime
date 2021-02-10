@@ -106,6 +106,7 @@ void check_inputs_and_outputs(
 
 template <typename TWeight, typename TGradient, typename TMomentum, typename TMixedPrecision>
 Status copy_inputs_to_outputs(
+    hipStream_t stream,
     OpKernelContext* ctx,
     const int non_grouped_input_count,
     const int non_grouped_output_count,
@@ -144,16 +145,16 @@ Status copy_inputs_to_outputs(
       w_mixed_precision_new->SetByteOffset(w_mixed_precision->ByteOffset());
 
     if (w_new) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(w, *w_new));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(stream, w, *w_new));
     }
     if (g_new) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TGradient>(g, *g_new));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TGradient>(stream, g, *g_new));
     }
-    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m1, m1_new));
-    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m2, m2_new));
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(stream, m1, m1_new));
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(stream, m2, m2_new));
 
     if (w_mixed_precision_new) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMixedPrecision>(*w_mixed_precision, *w_mixed_precision_new));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMixedPrecision>(stream, *w_mixed_precision, *w_mixed_precision_new));
     }
   }
 
@@ -162,6 +163,7 @@ Status copy_inputs_to_outputs(
 
 template <typename HipT2, typename HipT3, typename HipT4, typename HipT_GRAD_NORM>
 Status launch_lamb_compute_direction(
+    hipStream_t stream,
     const int64_t update_count,
     const int group_count,
     const HipT2* p_loss_scale,
@@ -210,6 +212,7 @@ Status launch_lamb_compute_direction(
           do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
 
       LambComputeDirection(
+          stream,
           p_ws[i],
           p_gs[i],
           p_m1s[i],
@@ -257,6 +260,7 @@ Status launch_lamb_compute_direction(
     LambStage1 lamb_stage1;
 
     launch_multi_tensor_functor<tensor_count_per_group, LambStage1>(
+        stream,
         2048 * 32,
         tensor_sizes_in_buckets[key],
         buckets[key],
@@ -287,7 +291,7 @@ Status launch_lamb_reduction(
   ORT_ENFORCE(group_count == static_cast<int>(p_ds.size()));
 
   constexpr int tensor_count_per_group = 4;
-
+  hipStream_t stream = kernel.Stream();
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::vector<std::vector<void*>> buckets;
@@ -296,12 +300,14 @@ Status launch_lamb_reduction(
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       ORT_RETURN_IF_ERROR(reduce_square_sum(
+          stream,
           p_ws[i],
           p_w_norms[i],
           tensor_sizes[i],
           reduction_buffer,
           reduction_buffer_size));
       ORT_RETURN_IF_ERROR(reduce_square_sum(
+          stream,
           p_ds[i],
           p_d_norms[i],
           tensor_sizes[i],
@@ -332,6 +338,7 @@ Status launch_lamb_reduction(
     typedef LambMultiTensorReductionFunctor<HipTIn1, HipTIn2, HipTNorm, HipTNorm, HipTNorm> TReducer;
     TReducer reducer;
     launch_multi_tensor_functor<tensor_count_per_group, TReducer>(
+        stream,
         2048 * 32,
         tensor_sizes_in_buckets,
         buckets,
@@ -346,6 +353,7 @@ Status launch_lamb_reduction(
 
 template <typename HipT1, typename HipT2, typename HipT3, typename HipT_MIXED_PRECISION_FP>
 Status launch_lamb_update(
+    hipStream_t stream,
     const int group_count,
     const HipT1* eta,
     const float ratio_min,
@@ -378,6 +386,7 @@ Status launch_lamb_update(
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       LambUpdate(
+          stream,
           eta,
           ratio_min,
           ratio_max,
@@ -419,6 +428,7 @@ Status launch_lamb_update(
     LambStage2 lamb_stage2;
 
     launch_multi_tensor_functor<tensor_count_per_group, LambStage2>(
+        stream,
         2048 * 32,
         tensor_sizes_in_bucket,
         buckets,
@@ -493,6 +503,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     auto update_signal = *update_signal_tensor->template Data<bool>();
     if (!update_signal) {
       return copy_inputs_to_outputs<T2, T3, T4, T_MIXED_PRECISION_FP>(
+          Stream(),
           ctx,
           non_grouped_input_count,
           non_grouped_output_count,
@@ -529,14 +540,14 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   // and T2=float.
   IAllocatorUniquePtr<T2> d_norm_buffer = GetScratchBuffer<T2>(group_count);
   HipT2* d_norm_data = reinterpret_cast<HipT2*>(d_norm_buffer.get());
-  HIP_RETURN_IF_ERROR(hipMemsetAsync(d_norm_data, 0, group_count * sizeof(T2)));
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(d_norm_data, 0, group_count * sizeof(T2), Stream()));
 
   // Allocate buffer for reduction computation of weight tensor.
   // The i-th weight's norm is stored at the i-th element.
   // We reduce type T2 tensor to type T2 scalar. An example is that T2=float.
   IAllocatorUniquePtr<T2> w_norm_buffer = GetScratchBuffer<T2>(group_count);
   HipT2* w_norm_data = reinterpret_cast<HipT2*>(w_norm_buffer.get());
-  HIP_RETURN_IF_ERROR(hipMemsetAsync(w_norm_data, 0, group_count * sizeof(T2)));
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(w_norm_data, 0, group_count * sizeof(T2), Stream()));
 
   // Find the max size of updated weight tensors.
   int max_tensor_size = 0;
@@ -642,6 +653,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   }
 
   ORT_RETURN_IF_ERROR(launch_lamb_compute_direction(
+      Stream(),
       step_data ? *step_data : 0,
       group_count,
       loss_scale_data,
@@ -665,6 +677,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       reduction_buffer_size));
 
   ORT_RETURN_IF_ERROR(launch_lamb_update(
+      Stream(),
       group_count,
       eta_data,
       ratio_min_,

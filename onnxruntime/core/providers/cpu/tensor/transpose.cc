@@ -20,10 +20,13 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
 
 namespace {
 // reduce the supported types with any global or op specific lists
+using SupportedDataTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                            Transpose, Input, 0);
 using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                         Transpose, Input, 0);
 
-const std::vector<MLDataType> dataTypeConstraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledDataTypes>{}();
+const auto supported_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<SupportedDataTypes>{}();
+const auto enabled_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledDataTypes>{}();
 }  // namespace
 
 /* A permutation [a,b,c,...] indicates that
@@ -725,13 +728,13 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     1,
     12,
-    KernelDefBuilder().TypeConstraint("T", dataTypeConstraints),
+    KernelDefBuilder().TypeConstraint("T", supported_type_constraints, enabled_type_constraints),
     Transpose);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Transpose,
     13,
-    KernelDefBuilder().TypeConstraint("T", dataTypeConstraints),
+    KernelDefBuilder().TypeConstraint("T", supported_type_constraints, enabled_type_constraints),
     Transpose);
 
 }  // namespace onnxruntime

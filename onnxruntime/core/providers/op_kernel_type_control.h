@@ -20,7 +20,7 @@
  * - Enabled types are the types that are supported in the actual, compiled implementation. They are obtained from the
  *   intersection of supported and allowed types.
  *
- * The types are associated with an Op kernel argument. It is also possible to specify a global list of allowed types.
+ * The types are associated with an Op argument. It is also possible to specify a global list of allowed types.
  *
  * Use of these utilities is optional. They are useful for cases where one registered Op kernel handles multiple types.
  *
@@ -138,7 +138,20 @@ struct EnabledTypes {
       ::onnxruntime::op_kernel_type_control::OpArgDirection::ArgDirection,      \
       ArgIndex>
 
+// INTERNAL
+// the TypesHolder that contains the supported types list
+#define ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_SUPPORTED_TYPES_HOLDER(                                        \
+    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)                                        \
+  ::onnxruntime::op_kernel_type_control::TypesHolder<                                                   \
+      ::onnxruntime::op_kernel_type_control::tags::Supported<                                           \
+          ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpDomain, OpName, ArgDirection, ArgIndex), \
+          ::onnxruntime::op_kernel_type_control::                                                       \
+              ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider),                     \
+          OpSet>>
+
+//
 // public macros
+//
 
 /**
  * Specifies a supported set of types for a given Op kernel argument.
@@ -187,6 +200,36 @@ struct EnabledTypes {
                                             ArgDirection, ArgIndex, __VA_ARGS__)
 
 /**
+ * TypeList type with the supported types for a given Op kernel argument.
+ *
+ * @param OpProvider The Op provider.
+ * @param OpDomain The Op domain.
+ * @param OpName The Op name.
+ * @param OpSet The opset to use for the supported types list.
+ * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
+ * @param ArgIndex Index of the given Op kernel argument.
+ */
+#define ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(                   \
+    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex) \
+  ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_SUPPORTED_TYPES_HOLDER(       \
+      OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)::types
+
+/**
+ * TypeList type with the supported types for a given Op kernel argument that are valid for all opsets.
+ *
+ * @param OpProvider The Op provider.
+ * @param OpDomain The Op domain.
+ * @param OpName The Op name.
+ * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
+ * @param ArgIndex Index of the given Op kernel argument.
+ */
+#define ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(                                  \
+    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex)                                  \
+  ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(OpProvider, OpDomain, OpName,                      \
+                                        ::onnxruntime::op_kernel_type_control::kAllOpSets, \
+                                        ArgDirection, ArgIndex)
+
+/**
  * TypeList type with the enabled types for a given Op kernel argument.
  * This is created by intersecting the supported types with any type restrictions coming from the allowed or global
  * type lists.
@@ -201,12 +244,8 @@ struct EnabledTypes {
 #define ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(                                                                      \
     OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)                                                  \
   ::onnxruntime::op_kernel_type_control::EnabledTypes<                                                            \
-      ::onnxruntime::op_kernel_type_control::TypesHolder<                                                         \
-          ::onnxruntime::op_kernel_type_control::tags::Supported<                                                 \
-              ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_KERNEL_ARG_TAG(OpDomain, OpName, ArgDirection, ArgIndex),       \
-              ::onnxruntime::op_kernel_type_control::                                                             \
-                  ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider),                           \
-              OpSet>>,                                                                                            \
+      ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_SUPPORTED_TYPES_HOLDER(                                                    \
+          OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex),                                           \
       ::onnxruntime::TypeList<                                                                                    \
           ::onnxruntime::op_kernel_type_control::TypesHolder<                                                     \
               ::onnxruntime::op_kernel_type_control::tags::Allowed<                                               \
@@ -239,8 +278,8 @@ struct EnabledTypes {
  * namespace onnxruntime {
  * namespace op_kernel_type_control {
  * // specify supported types, i.e., the full set of types that can be enabled
- * ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
- *     MyProvider, DomainContainingMyOp, MyOp, OpSet, Input, 0,
+ * ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ *     MyProvider, DomainContainingMyOp, MyOp, Input, 0,
  *     int, float, double);
  * }  // namespace op_kernel_type_control
  * }  // namespace onnxruntime
@@ -249,7 +288,7 @@ struct EnabledTypes {
  *
  * // get enabled types
  * using MyOpFirstInputEnabledTypes =
- *     ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(MyProvider, DomainContainingMyOp, MyOp, Input, 0);
+ *     ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(MyProvider, DomainContainingMyOp, MyOp, Input, 0);
  *
  * // ...
  *
