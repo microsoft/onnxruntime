@@ -110,7 +110,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
-  model_builder.AddLayer(layer.release());
+  model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
 

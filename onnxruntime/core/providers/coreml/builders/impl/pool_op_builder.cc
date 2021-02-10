@@ -46,7 +46,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
-  model_builder.AddLayer(layer.release());
+  model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
 
@@ -54,6 +54,11 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                                       const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
+  if (op_type != "GlobalAveragePool" && op_type != "GlobalMaxPool") {
+    LOGS(logger, VERBOSE) << "[" << op_type << "] is not supported";
+    return false;
+  }
+
   std::vector<int64_t> input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape, logger))
     return false;

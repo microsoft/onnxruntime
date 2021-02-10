@@ -72,7 +72,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
-  model_builder.AddLayer(layer.release());
+  model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
 
@@ -93,6 +93,7 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& 
 
   const auto input_size = input_shape.size();
   // TODO, support 1d batch normalization (input is 3d)
+  // To map 1d input {N,C,H} to 2d {N,C,H,1} first and then squeeze back after
   if (input_size != 4) {
     LOGS(logger, VERBOSE) << "BN only support 4d shape for now, input is "
                           << input_size << "d shape";
