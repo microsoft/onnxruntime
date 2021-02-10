@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'Win-CPU-2019'
+  pool: 'onnxruntimewin2019cpu'
   strategy:
     maxParallel: 2
     matrix:
@@ -165,7 +165,7 @@ jobs:
     condition: always()
 
 - job: 'x86_build'
-  pool: 'Win-CPU-2019'
+  pool: 'onnxruntimewin2019cpu'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -299,7 +299,7 @@ jobs:
     condition: always()
    
 - job: 'x86_no_contrib_ops'
-  pool: 'Win-CPU-2019'
+  pool: 'onnxruntimewin2019cpu'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -422,7 +422,7 @@ jobs:
     condition: always()
 
 - job: 'build_x64_no_contrib_ops'
-  pool: 'Win-CPU-2019'
+  pool: 'onnxruntimewin2019cpu'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
