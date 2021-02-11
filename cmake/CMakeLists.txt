@@ -57,7 +57,6 @@ option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 # Enable it may cause LNK1169 error
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
-option(onnxruntime_USE_SPARSE_LT "Build with CUDA cuSparse_lt support" OFF)
 option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support, generate device code line number information." OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
@@ -1169,22 +1168,15 @@ if (onnxruntime_USE_CUDA)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
+  include_directories(onnxruntime_sparse_initializer_main_adjustment.cmake)
+
   if (onnxruntime_ENABLE_NVTX_PROFILE)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft nvToolsExt)
   else()
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
   
-  # This is only supported on Linux although you can code on Windows
-  # With include headers avaiable.
-  if(onnxruntime_USE_SPARSE_LT)
-    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cusparseLt_static)
-    if(NOT WIN32)
-      link_directories(${onnxruntime_CUSPARSELT_HOME}/lib64)
-     endif()
-  endif()
-
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices

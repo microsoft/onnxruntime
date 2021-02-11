@@ -260,11 +260,6 @@ void SessionState::CleanInitializedTensorsFromGraph() {
 
 Status SessionState::PrepackConstantInitializedTensors(const SessionOptions& session_options,
                                                        std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
-  // XXX: This is only needed for A100 related code.
-  uint32_t sparse_flags = 0U;
-  if (session_options.treat_constant_initializers_as_2x4) {
-    sparse_flags |= static_cast<uint32_t>(OpKernel::SparseFlags::kTreatAs2x4);
-  }
 
   for (auto& node : GetGraphViewer().Nodes()) {
     auto kernel = GetMutableKernel(node.Index());
@@ -280,7 +275,7 @@ Status SessionState::PrepackConstantInitializedTensors(const SessionOptions& ses
           if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
             std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
             if (constant_initialized_tensors.count(ort_value_idx)) {
-              OpKernel::PrepackParam pre_param{input_idx, sparse_flags, input_name};
+              OpKernel::PrepackParam pre_param{input_idx, session_options.constant_initializers_sparse_flags, input_name};
               bool is_packed = false;
               const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
               ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, pre_param, is_packed));

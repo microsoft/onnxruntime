@@ -1502,7 +1502,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           R"pbdoc(Graph optimization level for this session.)pbdoc")
       .def_readwrite("use_deterministic_compute", &PySessionOptions::use_deterministic_compute,
                      R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc")
-      .def_readwrite("treat_constant_initializers_as_2x4", &PySessionOptions::treat_constant_initializers_as_2x4,
+      .def_readwrite("constant_initializers_sparse_flags", &PySessionOptions::constant_initializers_sparse_flags,
                      R"pbdoc(Advise that constant initializers are in 2:4 sparse format. Default is false.)pbdoc")
       .def(
           "add_free_dimension_override_by_denotation",

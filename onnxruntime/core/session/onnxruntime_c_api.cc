@@ -2103,7 +2103,7 @@ static constexpr OrtApi ort_api_1_to_7 = {
 
     // Version 7 - In development, feel free to add/remove/rearrange here
     &OrtApis::ModelMetadataGetGraphDescription,
-    &OrtApis::SetConstantInitializerTo2x4SparseFormat,
+    &OrtApis::SetConstantInitializerSparseFlags,
     &OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
     &OrtApis::SetCurrentGpuDeviceId,
     &OrtApis::GetCurrentGpuDeviceId,

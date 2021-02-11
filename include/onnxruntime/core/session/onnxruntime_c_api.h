@@ -227,6 +227,11 @@ typedef enum OrtLanguageProjection {
   ORT_PROJECTION_NODEJS = 6,
 } OrtLanguageProjection;
 
+typedef enum OrtSparseFlags {
+  NOTHING = 0,
+  FORMAT_2x4 = 0x1  // 2:4 dense format
+} OrtSparseFlags;
+
 struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
 struct OrtKernelContext;
@@ -1159,16 +1164,12 @@ struct OrtApi {
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 
   /**
-  * Use this API to advise Onnxruntime that the model sparse constant initializers are in 2:4 NVIDIA format.
-  * Onnxruntime will detect a presence of A100 architecture and will attempt to use it to
-  * sparsify/compress the initializer values and to speed up certain computations.
-  * Sparse Constant initializers are those that do not share any of the model input names and,
-  * therefore, can not be overridden.
+  * Use this API to set a OR combination of flags.
   * 
   * \param options - an instance of OrtSessionOptions
-  * \param treat_as_2x4 - a boolean integer true if not 0 if constant initializers are in 2:4 NVIDIA format.
+  * \param sparse_flags - an bit-wise combination of flags.
   */
-  void(ORT_API_CALL* SetConstantInitializerTo2x4SparseFormat)(_Inout_ OrtSessionOptions* options, int treat_as_2x4) NO_EXCEPTION;
+  void(ORT_API_CALL* SetConstantInitializerSparseFlags)(_Inout_ OrtSessionOptions* options, int sparse_flags) NO_EXCEPTION;
 
   /**
    * Append TensorRT execution provider to the session options

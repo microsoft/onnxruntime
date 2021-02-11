@@ -140,6 +140,9 @@ else()
   set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\$ORIGIN")
 endif()
 
+### XXX: Experimental
+include(onnxruntime_sparse_initializer_python_adjustment.cmake)
+
 set_target_properties(onnxruntime_pybind11_state PROPERTIES PREFIX "")
 set_target_properties(onnxruntime_pybind11_state PROPERTIES FOLDER "ONNXRuntime")
 if(onnxruntime_ENABLE_LTO)

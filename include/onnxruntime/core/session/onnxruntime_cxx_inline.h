@@ -470,8 +470,8 @@ inline SessionOptions& SessionOptions::SetLogSeverityLevel(int level) {
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetConstantInitializerTo2x4SparseFormat(bool treat_as_2x4) noexcept {
-  GetApi().SetConstantInitializerTo2x4SparseFormat(p_, static_cast<int>(treat_as_2x4));
+inline SessionOptions& SessionOptions::SetConstantInitializerSparseFlags(int flags) noexcept {
+  GetApi().SetConstantInitializerSparseFlags(p_, flags);
   return *this;
 }
 

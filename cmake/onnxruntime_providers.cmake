@@ -265,6 +265,8 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
+  # XXX: Experimental
+  include(onnxruntime_sparse_initializer_cuda_adjustment.cmake)
   
   #target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"/analyze:stacksize 131072\">")
   if (HAS_GUARD_CF)
@@ -296,11 +298,6 @@ if (onnxruntime_USE_CUDA)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cuda  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
-
-  if(onnxruntime_USE_SPARSE_LT)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUSPARSELT_HOME}/include)
-    target_compile_definitions(onnxruntime_providers_cuda PRIVATE -DUSE_CUSPARSELT)
-  endif()
 
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${PROJECT_SOURCE_DIR}/external/cub)

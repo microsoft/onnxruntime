@@ -68,7 +68,7 @@ ORT_API_STATUS_IMPL(SetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* op
                     GraphOptimizationLevel graph_optimization_level);
 ORT_API_STATUS_IMPL(SetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, int intra_op_num_threads);
 ORT_API_STATUS_IMPL(SetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads);
-ORT_API(void, SetConstantInitializerTo2x4SparseFormat, _Inout_ OrtSessionOptions* options, int treat_as_2x4);
+ORT_API(void, SetConstantInitializerSparseFlags, _Inout_ OrtSessionOptions* options, int sparse_flags);
 
 ORT_API_STATUS_IMPL(CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out);
 ORT_API_STATUS_IMPL(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ const OrtCustomOp* op);
@@ -256,6 +256,7 @@ ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* option
 ORT_API_STATUS_IMPL(CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
                     int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out);
 ORT_API(void, ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg*);
+
 ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_TensorRT,
                     _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options);
 ORT_API_STATUS_IMPL(SetCurrentGpuDeviceId, _In_ int device_id);
