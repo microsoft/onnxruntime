@@ -14,7 +14,8 @@ size_t GetLongformerAttentionWorkspaceSize(
     int num_heads,
     int head_size,
     int sequence_length,
-    int max_num_global);
+    int max_num_global,
+    int window);
 
 bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties

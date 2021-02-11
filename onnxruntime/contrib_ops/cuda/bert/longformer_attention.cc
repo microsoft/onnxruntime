@@ -86,7 +86,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   // TODO: calculate the exact value from global flags.
-  int max_num_global = sequence_length;
+  int max_num_global = window_;
 
   // Fully connection for global projection.
   // Note that Q only need handle global query tokens if we split GEMM to global Q/K/V separately.
@@ -107,7 +107,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         &one, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
   }
 
-  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global);
+  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchLongformerAttentionKernel(
           device_prop,
