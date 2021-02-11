@@ -68,59 +68,59 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-  std::string device_type = ""; // [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.
-  bool enable_vpu_fast_compile = false; // [device_id]: Selects a particular hardware device for inference.
-  std::string device_id = ""; // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
-  size_t num_of_threads = 8; // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
+    std::string device_type = ""; // [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.
+    bool enable_vpu_fast_compile = false; // [device_id]: Selects a particular hardware device for inference.
+    std::string device_id = ""; // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
+    size_t num_of_threads = 8; // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
 
-  std::istringstream ss(performance_test_config.run_config.ov_config_file);
-  std::string token;
-  while (ss >> token) {
-    if(token == "") {
-      continue;
-    }
-    auto pos = token.find("|");
-    if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-      continue;
-    }
-
-    auto key = token.substr(0,pos);
-    auto value = token.substr(pos+1);
-
-    if (key == "device_type") {
-      std::set<std::string> ov_supported_device_types = {"CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"};
-      if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
-        device_type = value;
+    std::istringstream ss(performance_test_config.run_config.ov_config_file);
+    std::string token;
+    while (ss >> token) {
+      if(token == "") {
+        continue;
       }
-      else {
-        ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. select from 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from Hetero/Multi options available. \n");
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [OpenVINO] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
       }
-    } else if (key == "device_id") {
-      device_id = value;
-    } else if (key == "enable_vpu_fast_compile") {
-      if(value == "true" || value == "True"){
-        enable_vpu_fast_compile = true;
-      } else if (value == "false" || value == "False") {
-        enable_vpu_fast_compile = false;
+
+      auto key = token.substr(0,pos);
+      auto value = token.substr(pos+1);
+
+      if (key == "device_type") {
+        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"};
+        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+          device_type = value;
+        }
+        else {
+          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. select from 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from Hetero/Multi options available. \n");
+        }
+      } else if (key == "device_id") {
+        device_id = value;
+      } else if (key == "enable_vpu_fast_compile") {
+        if(value == "true" || value == "True"){
+          enable_vpu_fast_compile = true;
+        } else if (value == "false" || value == "False") {
+          enable_vpu_fast_compile = false;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "num_of_threads") {
+        std::stringstream sstream(value);
+        sstream >> num_of_threads;
+        if ((int)num_of_threads <=0) {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
+        }
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
+          ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads'] \n");
       }
-    } else if (key == "num_of_threads") {
-      std::stringstream sstream(value);
-      sstream >> num_of_threads;
-      if ((int)num_of_threads <=0) {
-        ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
-      }
-    } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads'] \n");
     }
-  }
-  OrtOpenVINOProviderOptions options;
-  options.device_type = device_type.c_str(); //To set the device_type
-  options.device_id = device_id.c_str(); // To set the device_id
-  options.enable_vpu_fast_compile = enable_vpu_fast_compile; // To enable_vpu_fast_compile, default is false
-  options.num_of_threads = num_of_threads; // To set number of free InferRequests, default is 8
-  session_options.AppendExecutionProvider_OpenVINO(options);
+    OrtOpenVINOProviderOptions options;
+    options.device_type = device_type.c_str(); //To set the device_type
+    options.device_id = device_id.c_str(); // To set the device_id
+    options.enable_vpu_fast_compile = enable_vpu_fast_compile; // To enable_vpu_fast_compile, default is false
+    options.num_of_threads = num_of_threads; // To set number of free InferRequests, default is 8
+    session_options.AppendExecutionProvider_OpenVINO(options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
