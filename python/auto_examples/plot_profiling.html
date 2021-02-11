@@ -4,25 +4,25 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profile the execution of a simple model &#8212; ONNX Runtime 1.4.0 documentation</title>
-    <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
-    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
-    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery-binder.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery-dataframe.css" />
-    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
-    <script src="../_static/jquery.js"></script>
-    <script src="../_static/underscore.js"></script>
-    <script src="../_static/doctools.js"></script>
-    <script src="../_static/language_data.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Profile the execution of a simple model &#8212; ONNX Runtime 1.6.0 documentation</title>
+    <link rel="stylesheet" href="../static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery-rendered-html.css" />
+    <script id="documentation_options" data-url_root="../" src="../static/documentation_options.js"></script>
+    <script src="../static/jquery.js"></script>
+    <script src="../static/underscore.js"></script>
+    <script src="../static/doctools.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="ONNX Runtime for Keras" href="plot_dl_keras.html" />
+    <link rel="next" title="Train, convert and predict with ONNX Runtime" href="plot_convert_pipeline_vectorizer.html" />
     <link rel="prev" title="Metadata" href="plot_metadata.html" />
    
-  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  <link rel="stylesheet" href="../static/custom.css" type="text/css" />
   
   
   <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
@@ -94,7 +94,7 @@ before running the predictions.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>onnxruntime_profile__2020-07-22_14-19-07.json
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>onnxruntime_profile__2020-12-03_00-54-48.json
 </pre></div>
 </div>
 <p>The results are stored un a file in JSON format.
@@ -109,29 +109,29 @@ Let’s see what it contains.</p>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{&#39;args&#39;: {},
   &#39;cat&#39;: &#39;Session&#39;,
-  &#39;dur&#39;: 1220,
-  &#39;name&#39;: &#39;model_loading_from_saved_proto&#39;,
+  &#39;dur&#39;: 205,
+  &#39;name&#39;: &#39;model_loading_array&#39;,
   &#39;ph&#39;: &#39;X&#39;,
-  &#39;pid&#39;: 21276,
-  &#39;tid&#39;: 12600,
-  &#39;ts&#39;: 62},
+  &#39;pid&#39;: 22648,
+  &#39;tid&#39;: 6000,
+  &#39;ts&#39;: 6},
  {&#39;args&#39;: {},
   &#39;cat&#39;: &#39;Session&#39;,
-  &#39;dur&#39;: 7306,
+  &#39;dur&#39;: 737,
   &#39;name&#39;: &#39;session_initialization&#39;,
   &#39;ph&#39;: &#39;X&#39;,
-  &#39;pid&#39;: 21276,
-  &#39;tid&#39;: 12600,
-  &#39;ts&#39;: 1450}]
+  &#39;pid&#39;: 22648,
+  &#39;tid&#39;: 6000,
+  &#39;ts&#39;: 269}]
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.029 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.038 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-profiling-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
-<p><a class="reference download internal" download="" href="../_downloads/e4ee07af6afb721729db3bf156693fa2/plot_profiling.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_profiling.py</span></code></a></p>
+<p><a class="reference download internal" download="" href="../downloads/e4ee07af6afb721729db3bf156693fa2/plot_profiling.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_profiling.py</span></code></a></p>
 </div>
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
-<p><a class="reference download internal" download="" href="../_downloads/a8a3fe6bdcf0fdfbed17a5a0f2384419/plot_profiling.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_profiling.ipynb</span></code></a></p>
+<p><a class="reference download internal" download="" href="../downloads/a8a3fe6bdcf0fdfbed17a5a0f2384419/plot_profiling.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_profiling.ipynb</span></code></a></p>
 </div>
 </div>
 <p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
@@ -145,7 +145,7 @@ Let’s see what it contains.</p>
       <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
         <div class="sphinxsidebarwrapper">
             <p class="logo"><a href="../index.html">
-              <img class="logo" src="../_static/ONNX_Runtime_icon.png" alt="Logo"/>
+              <img class="logo" src="../static/ONNX_Runtime_icon.png" alt="Logo"/>
             </a></p>
 <h1 class="logo"><a href="../index.html">ONNX Runtime</a></h1>
 
@@ -157,10 +157,10 @@ Let’s see what it contains.</p>
 
 
 <h3>Navigation</h3>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_summary.html">API Summary</a></li>
-<li class="toctree-l1"><a class="reference internal" href="index.html">Gallery of examples</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Gallery of examples</a></li>
 </ul>
 
 <div class="relations">
@@ -169,7 +169,7 @@ Let’s see what it contains.</p>
   <li><a href="../index.html">Documentation overview</a><ul>
   <li><a href="index.html">Gallery of examples</a><ul>
       <li>Previous: <a href="plot_metadata.html" title="previous chapter">Metadata</a></li>
-      <li>Next: <a href="plot_dl_keras.html" title="next chapter">ONNX Runtime for Keras</a></li>
+      <li>Next: <a href="plot_convert_pipeline_vectorizer.html" title="next chapter">Train, convert and predict with ONNX Runtime</a></li>
   </ul></li>
   </ul></li>
 </ul>
@@ -197,14 +197,14 @@ Let’s see what it contains.</p>
       <div class="clearer"></div>
     </div>
     <div class="footer">
-      &copy;2018-2019, Microsoft.
+      &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.4.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
-      <a href="../_sources/auto_examples/plot_profiling.rst.txt"
+      <a href="../sources/auto_examples/plot_profiling.rst.txt"
           rel="nofollow">Page source</a>
     </div>
 

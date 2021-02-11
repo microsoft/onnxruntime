@@ -4,24 +4,24 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.4.0 documentation</title>
-    <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
-    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
-    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery-binder.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/gallery-dataframe.css" />
-    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
-    <script src="../_static/jquery.js"></script>
-    <script src="../_static/underscore.js"></script>
-    <script src="../_static/doctools.js"></script>
-    <script src="../_static/language_data.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.6.0 documentation</title>
+    <link rel="stylesheet" href="../static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="../static/gallery-rendered-html.css" />
+    <script id="documentation_options" data-url_root="../" src="../static/documentation_options.js"></script>
+    <script src="../static/jquery.js"></script>
+    <script src="../static/underscore.js"></script>
+    <script src="../static/doctools.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="prev" title="Common errors with onnxruntime" href="plot_common_errors.html" />
    
-  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  <link rel="stylesheet" href="../static/custom.css" type="text/css" />
   
   
   <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
@@ -83,9 +83,9 @@ and we show the confusion matrix.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[11  0  0]
- [ 0 13  0]
- [ 0  0 14]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[15  0  0]
+ [ 0 11  1]
+ [ 0  2  9]]
 </pre></div>
 </div>
 </div>
@@ -129,9 +129,9 @@ output name=&#39;output_label&#39; and shape=[None]
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[11  0  0]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[15  0  0]
  [ 0 13  0]
- [ 0  0 14]]
+ [ 0  0 10]]
 </pre></div>
 </div>
 <p>The prediction are perfectly identical.</p>
@@ -147,9 +147,9 @@ scikit-learn.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[1.91824904e-05 3.92373474e-02 9.60743470e-01]
- [2.01308118e-02 8.63567570e-01 1.16301618e-01]
- [9.78657084e-01 2.13427283e-02 1.88123801e-07]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[1.73218830e-01 8.23426993e-01 3.35417635e-03]
+ [7.42494153e-02 9.21910775e-01 3.83980986e-03]
+ [9.74276732e-01 2.57231679e-02 9.98201855e-08]]
 </pre></div>
 </div>
 <p>And then with ONNX Runtime.
@@ -162,9 +162,9 @@ The probabilies appear to be</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 1.9182492906111293e-05, 1: 0.0392373725771904, 2: 0.9607434272766113},
- {0: 0.02013082429766655, 1: 0.8635676503181458, 2: 0.1163015067577362},
- {0: 0.978657066822052, 1: 0.021342728286981583, 2: 1.881237352563403e-07}]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 0.17321892082691193, 1: 0.8234269618988037, 2: 0.003354174317792058},
+ {0: 0.07424944639205933, 1: 0.9219107627868652, 2: 0.0038398131728172302},
+ {0: 0.9742767214775085, 1: 0.025723155587911606, 2: 9.982016280218886e-08}]
 </pre></div>
 </div>
 <p>Let’s benchmark.</p>
@@ -187,11 +187,11 @@ The probabilies appear to be</p>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 7.01e-05 min=6.33e-05 max=8.76e-05
+Average 7.59e-05 min=4.75e-05 max=0.000155
 Execution time for ONNX Runtime
-Average 0.00123 min=0.000807 max=0.00149
+Average 3.9e-05 min=3.67e-05 max=6.01e-05
 
-0.0012285225000000111
+3.902899999999931e-05
 </pre></div>
 </div>
 <p>Let’s benchmark a scenario similar to what a webservice
@@ -217,11 +217,11 @@ as opposed to a batch of prediction.</p>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 0.00421 min=0.00408 max=0.00438
+Average 0.00598 min=0.005 max=0.00753
 Execution time for sess_predict
-Average 0.0422 min=0.0417 max=0.043
+Average 0.00315 min=0.00248 max=0.00516
 
-0.042171193
+0.003146542500000038
 </pre></div>
 </div>
 <p>Let’s do the same for the probabilities.</p>
@@ -237,11 +237,11 @@ Average 0.0422 min=0.0417 max=0.043
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.00612 min=0.00598 max=0.00655
+Average 0.00812 min=0.00658 max=0.0116
 Execution time for sess_predict_proba
-Average 0.0432 min=0.0426 max=0.0444
+Average 0.00287 min=0.00238 max=0.00362
 
-0.04324414049999999
+0.0028650640000000395
 </pre></div>
 </div>
 <p>This second comparison is better as
@@ -277,11 +277,11 @@ in every case.</p>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.594 min=0.588 max=0.607
+Average 0.594 min=0.506 max=0.727
 Execution time for sess_predict_proba
-Average 0.0518 min=0.0511 max=0.0531
+Average 0.00329 min=0.00265 max=0.00614
 
-0.05180173199999999
+0.0032889064999999107
 </pre></div>
 </div>
 <p>Let’s see with different number of trees.</p>
@@ -313,49 +313,49 @@ Average 0.0518 min=0.0511 max=0.0531
 <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
 </pre></div>
 </div>
-<img alt="Speed comparison between scikit-learn and ONNX Runtime For a random forest on Iris dataset" class="sphx-glr-single-img" src="../_images/sphx_glr_plot_train_convert_predict_001.png" />
+<img alt="Speed comparison between scikit-learn and ONNX Runtime For a random forest on Iris dataset" class="sphx-glr-single-img" src="../images/sphx_glr_plot_train_convert_predict_001.png" />
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>5
-Average 0.054 min=0.0512 max=0.0648
-Average 0.0422 min=0.0414 max=0.0436
+Average 0.0719 min=0.0581 max=0.079
+Average 0.00291 min=0.00257 max=0.00326
 10
-Average 0.0828 min=0.0797 max=0.0937
-Average 0.042 min=0.0417 max=0.0423
+Average 0.0919 min=0.0727 max=0.106
+Average 0.00241 min=0.00232 max=0.00248
 15
-Average 0.109 min=0.107 max=0.112
-Average 0.0438 min=0.0425 max=0.0486
+Average 0.129 min=0.119 max=0.141
+Average 0.00296 min=0.00266 max=0.00327
 20
-Average 0.14 min=0.137 max=0.143
-Average 0.0432 min=0.0427 max=0.0437
+Average 0.148 min=0.126 max=0.17
+Average 0.00345 min=0.00309 max=0.00387
 25
-Average 0.167 min=0.164 max=0.177
-Average 0.044 min=0.0435 max=0.0448
+Average 0.184 min=0.155 max=0.206
+Average 0.00298 min=0.00254 max=0.00355
 30
-Average 0.196 min=0.191 max=0.206
-Average 0.0442 min=0.0434 max=0.0453
+Average 0.208 min=0.162 max=0.256
+Average 0.00242 min=0.00238 max=0.00249
 35
-Average 0.225 min=0.219 max=0.231
-Average 0.0447 min=0.0441 max=0.0458
+Average 0.268 min=0.242 max=0.325
+Average 0.00326 min=0.00272 max=0.00449
 40
-Average 0.253 min=0.249 max=0.263
-Average 0.0455 min=0.045 max=0.0467
+Average 0.513 min=0.422 max=0.796
+Average 0.00399 min=0.00352 max=0.00489
 45
-Average 0.284 min=0.279 max=0.294
-Average 0.0466 min=0.0459 max=0.0483
+Average 0.44 min=0.399 max=0.499
+Average 0.00344 min=0.00336 max=0.00355
 50
-Average 0.31 min=0.306 max=0.321
-Average 0.0467 min=0.0458 max=0.048
+Average 0.503 min=0.447 max=0.584
+Average 0.00342 min=0.00318 max=0.00368
 
-&lt;matplotlib.legend.Legend object at 0x0000012207A74C50&gt;
+&lt;matplotlib.legend.Legend object at 0x000001878B902EB8&gt;
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 3 minutes  27.577 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 3 minutes  9.986 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-train-convert-predict-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
-<p><a class="reference download internal" download="" href="../_downloads/d83345a79a181a29892287297803aeec/plot_train_convert_predict.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_train_convert_predict.py</span></code></a></p>
+<p><a class="reference download internal" download="" href="../downloads/d83345a79a181a29892287297803aeec/plot_train_convert_predict.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_train_convert_predict.py</span></code></a></p>
 </div>
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
-<p><a class="reference download internal" download="" href="../_downloads/3a0c2ba94405e579c84b6f356705659d/plot_train_convert_predict.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_train_convert_predict.ipynb</span></code></a></p>
+<p><a class="reference download internal" download="" href="../downloads/3a0c2ba94405e579c84b6f356705659d/plot_train_convert_predict.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_train_convert_predict.ipynb</span></code></a></p>
 </div>
 </div>
 <p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
@@ -370,7 +370,7 @@ Average 0.0467 min=0.0458 max=0.048
       <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
         <div class="sphinxsidebarwrapper">
             <p class="logo"><a href="../index.html">
-              <img class="logo" src="../_static/ONNX_Runtime_icon.png" alt="Logo"/>
+              <img class="logo" src="../static/ONNX_Runtime_icon.png" alt="Logo"/>
             </a></p>
 <h1 class="logo"><a href="../index.html">ONNX Runtime</a></h1>
 
@@ -382,10 +382,10 @@ Average 0.0467 min=0.0458 max=0.048
 
 
 <h3>Navigation</h3>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_summary.html">API Summary</a></li>
-<li class="toctree-l1"><a class="reference internal" href="index.html">Gallery of examples</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Gallery of examples</a></li>
 </ul>
 
 <div class="relations">
@@ -421,14 +421,14 @@ Average 0.0467 min=0.0458 max=0.048
       <div class="clearer"></div>
     </div>
     <div class="footer">
-      &copy;2018-2019, Microsoft.
+      &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.4.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
-      <a href="../_sources/auto_examples/plot_train_convert_predict.rst.txt"
+      <a href="../sources/auto_examples/plot_train_convert_predict.rst.txt"
           rel="nofollow">Page source</a>
     </div>
 
