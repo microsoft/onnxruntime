@@ -2,7 +2,7 @@
 title: WinRT API
 parent: API docs
 grand_parent: Reference
-nav_order: 5
+nav_order: 6
 ---
 
 # Windows Machine Learning WinRT API
