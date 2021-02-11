@@ -16,9 +16,9 @@ def parse_arguments():
     return args 
 
 def get_table_condition(table, fp, ep, tol): 
-    ep = ep_map[args.ep]
-    col1 = ep + " " + fp + " \n mean (ms)_x"
-    col2 = ep + " " + fp + " \n mean (ms)_y"
+    ep = ep_map[ep]
+    col1 = ep + " " + fp + " \nmean (ms)_x"
+    col2 = ep + " " + fp + " \nmean (ms)_y"
     condition = table[col1] > (table[col2] + tol)
     return condition
 
@@ -29,14 +29,15 @@ def main():
     
     common = a.merge(b, on=['Model'])
     
-    condition_fp32 = get_table_condition(common, "fp32", args.ep, args.tol)
-    condition_fp16 = get_table_condition(common, "fp16", args.ep, args.tol)
+    condition_fp32 = get_table_condition(common, "fp32", args.ep, args.tolerance)
+    condition_fp16 = get_table_condition(common, "fp16", args.ep, args.tolerance)
     
-    common['greater'] = np.where([condition_fp32 | condition_fp16], True, False)
+    common['greater'] = np.where((condition_fp32 | condition_fp16), True, False)
     greater = common[common['greater'] == True].drop(['greater'], axis=1) 
     
-    keys = greater.keys().sort_values()
-    keys = keys.insert(0, keys.pop(keys.index('Model')))
+    # arrange columns
+    keys = list(greater.keys().sort_values())
+    keys.insert(0, keys.pop(keys.index('Model')))
     greater = greater[keys]
     
     greater.to_csv(args.output_csv)
