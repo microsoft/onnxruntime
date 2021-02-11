@@ -9,17 +9,17 @@ jobs:
     #- template: templates/set-test-data-variables-step.yml
     #
 
-    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_images.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfiles.tensorrt -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf' -b master -i onnxruntime-trt-perf
-    #   displayName: 'Build latest ORT Images'
-    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_images.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfiles.tensorrt -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b master -i onnxruntime-trt-perf'
+      displayName: 'Build latest ORT Images'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -o "onnx-zoo-models"'
-    #   displayName: 'Onnx Zoo Models Perf'
-    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -o "onnx-zoo-models"'
+      displayName: 'Onnx Zoo Models Perf'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "many-models"'
-    #   displayName: 'Many Models Perf'
-    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "many-models"'
+      displayName: 'Many Models Perf'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
     - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "partner-models"'
       displayName: 'Partner Models Perf'
