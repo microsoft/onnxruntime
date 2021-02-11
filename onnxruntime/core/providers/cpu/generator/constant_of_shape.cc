@@ -14,6 +14,10 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
 
 namespace {
 
+using SupportedOutputTypes =
+    ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+        kCpuExecutionProvider, kOnnxDomain, ConstantOfShape, Output, 0);
+
 using EnabledOutputTypes =
     ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
         kCpuExecutionProvider, kOnnxDomain, ConstantOfShape, Output, 0);
@@ -65,7 +69,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     9,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T2", BuildKernelDefConstraintsFunctorFromTypeList<EnabledOutputTypes>{}()),
+        .TypeConstraint("T2",
+                        BuildKernelDefConstraintsFunctorFromTypeList<SupportedOutputTypes>{}(),
+                        BuildKernelDefConstraintsFunctorFromTypeList<EnabledOutputTypes>{}()),
     ConstantOfShape);
 
 }  // namespace onnxruntime
