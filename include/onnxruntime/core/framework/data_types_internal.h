@@ -17,11 +17,6 @@
 #include "core/framework/data_types.h"
 #include "core/graph/onnx_protobuf.h"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-//TODO: fix the warning in CallableDispatchableRetHelper
-#pragma warning(disable : 4702)
-#endif
 namespace onnxruntime {
 namespace utils {
 
