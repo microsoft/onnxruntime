@@ -34,6 +34,22 @@ class NeuralNetSinglePositionalArgument(torch.nn.Module):
         out = self.fc2(out)
         return out
 
+class NeuralNetMultiplePositionalArgumentsMultipleOutputs(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(NeuralNetMultiplePositionalArgumentsMultipleOutputs, self).__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+    def forward(self, input1, input2):
+        model_input = input1 + input2
+        out1 = self.fc1(model_input)
+        out1 = self.relu(out1)
+        out2 = self.fc2(out1)
+
+        return out1, out2
+
 class NeuralNetMultiplePositionalArguments(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNetMultiplePositionalArguments, self).__init__()
@@ -549,6 +565,53 @@ def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder
     module_gradient_graph_builder = model._module_gradient_graph_builder
     model(x)
     assert module_gradient_graph_builder != model._module_gradient_graph_builder
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_input_requires_grad_backward_creates_input_grad_as_required(device):
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = NeuralNetMultiplePositionalArgumentsMultipleOutputs(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x1 = torch.randn(N, D_in, device=device, requires_grad=True)
+    x2 = torch.randn(N, D_in, device=device, requires_grad=False)
+    y1, y2 = model(x1, x2)
+    s = y2.sum()
+    s.backward()
+    assert x1.grad is not None and x2.grad is None
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_input_requires_grad_backward_creates_input_grad_as_required2(device):
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = NeuralNetMultiplePositionalArgumentsMultipleOutputs(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x1 = torch.randn(N, D_in, device=device, requires_grad=True)
+    x2 = torch.randn(N, D_in, device=device, requires_grad=True)
+    y1, y2 = model(x1, x2)
+    s = y2.sum()
+    s.backward()
+    assert x1.grad is not None and x2.grad is not None
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_input_requires_grad_backward_creates_input_grad_as_required3(device):
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = NeuralNetMultiplePositionalArgumentsMultipleOutputs(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x1 = torch.randn(N, D_in, device=device, requires_grad=False)
+    x2 = torch.randn(N, D_in, device=device, requires_grad=True)
+    y1, y2 = model(x1, x2)
+    s = y2.sum()
+    s.backward()
+    assert x1.grad is None and x2.grad is not None
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_input_requires_grad_backward_creates_input_grad_as_required4(device):
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = NeuralNetMultiplePositionalArgumentsMultipleOutputs(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x1 = torch.randn(N, D_in, device=device, requires_grad=False)
+    x2 = torch.randn(N, D_in, device=device, requires_grad=False)
+    y1, y2 = model(x1, x2)
+    s = y2.sum()
+    s.backward()
+    assert x1.grad is None and x2.grad is None
 
 def test_gpu_reserved_memory_with_torch_no_grad():
     device = 'cuda'

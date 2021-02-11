@@ -2220,13 +2220,23 @@ Return true if all elements are true and false otherwise.
       .Output(0, "outputs_grad", "Gradient of outputs returned from pytorch.", "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
+      .Attr(
+        "RequiredGrad",
+        "Indices of the inputs with require_glad flag set.",
+        AttributeProto::INT,
+        static_cast<int64_t>(0))
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Assume the outputs and gradients are one-to-one matching
         // TODO: The contrain is relaxed for now 
         // ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs(), "Yield op doesn't have the same number of inputs and output");
-
-        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+        const std::string attribute_name = "RequiredGrad";
+        auto attr_proto = ctx.getAttribute(attribute_name);
+        if (nullptr == attr_proto) {  // attribute not present
+          fail_type_inference("Value of attribute ", attribute_name, " not specified");
+        }
+        size_t required_grad = static_cast<size_t> (attr_proto->i());
+        for (size_t i = 0; i < ctx.getNumOutputs() && i < required_grad; ++i) {
           propagateElemTypeFromInputToOutput(ctx, i, i);
           auto typeProto = ctx.getInputType(i);
           if (!hasShape(*typeProto)) {

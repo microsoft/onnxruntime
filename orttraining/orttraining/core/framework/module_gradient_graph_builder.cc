@@ -223,7 +223,15 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
     yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
 
-  gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, {}, kMSDomain);
+  ONNX_NAMESPACE::AttributeProto required_grad;
+  const std::string attribute_name = "RequiredGrad";
+  required_grad.set_name(attribute_name);
+  required_grad.set_type(ONNX_NAMESPACE::AttributeProto::INT);
+  required_grad.set_i(static_cast<int64_t> (user_output_names_require_grad.size()));
+
+  NodeAttributes attributes({{attribute_name, required_grad}});
+
+  gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes, kMSDomain);
 }
 
 void ModuleGradientGraphBuilder::ReorderOutputs() {
