@@ -30,7 +30,6 @@ jobs:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
         submodules: ${{ parameters.SubmoduleCheckoutMode }}
-    - template: linux-set-variables-and-download.yml
     - task: NodeTool@0
       inputs:
         versionSpec: '12.16.3'

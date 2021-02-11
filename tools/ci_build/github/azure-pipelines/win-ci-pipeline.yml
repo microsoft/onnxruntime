@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'onnxruntimewin2019cpu'
+  pool: 'Win-CPU-2019'
   strategy:
     maxParallel: 2
     matrix:
@@ -106,7 +106,6 @@ jobs:
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
-  - template: templates/set-test-data-variables-step.yml
 
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
@@ -165,7 +164,7 @@ jobs:
     condition: always()
 
 - job: 'x86_build'
-  pool: 'onnxruntimewin2019cpu'
+  pool: 'Win-CPU-2019'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -235,7 +234,6 @@ jobs:
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
-  - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
@@ -299,7 +297,7 @@ jobs:
     condition: always()
    
 - job: 'x86_no_contrib_ops'
-  pool: 'onnxruntimewin2019cpu'
+  pool: 'Win-CPU-2019'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -369,8 +367,6 @@ jobs:
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
-  - template: templates/set-test-data-variables-step.yml
-
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
     inputs:
@@ -422,7 +418,7 @@ jobs:
     condition: always()
 
 - job: 'build_x64_no_contrib_ops'
-  pool: 'onnxruntimewin2019cpu'
+  pool: 'Win-CPU-2019'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -491,8 +487,6 @@ jobs:
       scriptPath: '$(Build.SourcesDirectory)\setup.py'
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-
-  - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0

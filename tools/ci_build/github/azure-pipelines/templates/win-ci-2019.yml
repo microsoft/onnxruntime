@@ -128,7 +128,6 @@ jobs:
          @echo ##vso[task.setvariable variable=Configuration]$(BuildConfig)
         displayName: 'Set Configuration variable'
 
-    - template: set-test-data-variables-step.yml
 
     - ${{ if eq(parameters.BuildCSharp, true) }}:
       - task: NuGetToolInstaller@0

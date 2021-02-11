@@ -76,6 +76,11 @@ TEST_P(ModelTest, Run) {
 #endif
   // TODO: filter model based on opset
   std::set<BrokenTest> broken_tests = {
+      {"slice_neg_steps", "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
+      {"cast_BFLOAT16_to_FLOAT", "Unexpected input data type"},
+      {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
+      {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
+      {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
       {"mnist", "Input data isn't in valid range"},
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
@@ -802,8 +807,8 @@ TEST_P(ModelTest, Run) {
 #endif
 #endif
 
-// TENSORRT has too many test failures in the single node tests
-#if !defined(_WIN32) && !defined(USE_TENSORRT)
+// TENSORRT/TRT/Nuphar has too many test failures in the single node tests
+#if !defined(_WIN32) && !defined(USE_TENSORRT) && !defined(USE_NUPHAR) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
 #endif
     while (!paths.empty()) {

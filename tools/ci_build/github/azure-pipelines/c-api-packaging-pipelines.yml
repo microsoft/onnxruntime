@@ -150,3 +150,91 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
+    
+
+- job: Final_Jar_Testing_Windows_GPU
+  workspace:
+    clean: all
+  pool: 'Win-GPU-2019'
+  timeoutInMinutes: 60
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
+  dependsOn:
+    Jar_Packaging_GPU
+  steps:
+  - template: templates/set-version-number-variables-step.yml
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda_11.bat'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Jar'
+    inputs:
+        buildType: 'current'
+        artifactName: 'onnxruntime-java-gpu'
+        targetPath: '$(Build.BinariesDirectory)\final-jar'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        mkdir test 
+        pushd test
+        jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
+        popd
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -OutFile protobuf-java-3.9.2.jar"
+        java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+      workingDirectory: '$(Build.BinariesDirectory)\final-jar'
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+- job: Final_Jar_Testing_Linux_GPU
+  workspace:
+    clean: all
+  pool: 'Linux-GPU-CUDA10'
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
+  timeoutInMinutes: 60
+  dependsOn:
+    Jar_Packaging_GPU
+  steps:
+  - template: templates/set-version-number-variables-step.yml
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Jar'
+    inputs:
+      buildType: 'current'
+      artifactName: 'onnxruntime-java-gpu'
+      targetPath: '$(Build.BinariesDirectory)/final-jar'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        echo "Java Version"
+        java -version
+        mkdir test
+        pushd test
+        jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
+        popd
+        wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
+        wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
+        LD_LIBRARY_PATH=./test:${LD_LIBRARY_PATH}
+        java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+      workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
