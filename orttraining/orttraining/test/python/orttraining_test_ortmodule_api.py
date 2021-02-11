@@ -440,22 +440,8 @@ def test_dynamic_axes_config():
     del model, output
 
     # Model 2
-    config = AutoConfig.from_pretrained(
-            "bert-base-uncased",
-            num_labels=2,
-            num_hidden_layers=1,
-            output_attentions = False,
-            output_hidden_states = False,
-    )
-    model = BertForSequenceClassification.from_pretrained(
-        "bert-base-uncased",
-        config=config,
-    )
-    model = ORTModule(model).to(device)
-
-    x = torch.randint(0, 100, (32, 64), dtype=torch.long, device=device)
-    y = torch.randint(0, 100, (32, 64), dtype=torch.long, device=device)
-    z = torch.randint(0, 1, (32,), dtype=torch.long, device=device)
-    output = model(x, y, None, None, None, None, z)
+    model_with_no_grad = _get_bert_for_sequence_classification_model(device)
+    x, y, z = _get_bert_for_sequence_classification_sample_data(device)
+    output = model_with_no_grad(x, y, None, None, None, None, z)
     assert output is not None
-    assert _test_helpers.is_dynamic_axes(model)
+    assert _test_helpers.is_dynamic_axes(model_with_no_grad)
