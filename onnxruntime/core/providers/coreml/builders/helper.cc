@@ -81,7 +81,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
   return true;
 }
 
-std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const logging::Logger& logger) {
+std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer, const logging::Logger& logger) {
   std::vector<std::vector<size_t>> supported_node_vecs;
   if (!util::HasRequiredBaseOS()) {
     LOGS(logger, WARNING) << "All ops will fallback to CPU EP, because we do not have supported OS";
