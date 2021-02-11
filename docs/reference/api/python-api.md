@@ -2,7 +2,7 @@
 title: Python API
 parent: API docs
 grand_parent: Reference
-nav_order: 1
+nav_order: 5
 ---
 
 # ONNX Runtime Python API
