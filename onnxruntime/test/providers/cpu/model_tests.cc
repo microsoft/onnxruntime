@@ -807,8 +807,8 @@ TEST_P(ModelTest, Run) {
 #endif
 #endif
 
-// TENSORRT/TRT/Nuphar has too many test failures in the single node tests
-#if !defined(_WIN32) && !defined(USE_TENSORRT) && !defined(USE_NUPHAR) && !defined(USE_OPENVINO)
+// TENSORRT/OpenVino has too many test failures in the single node tests
+#if !defined(_WIN32) && !defined(USE_TENSORRT) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
 #endif
     while (!paths.empty()) {
