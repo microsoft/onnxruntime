@@ -1123,8 +1123,8 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
       element_count = initializer.DATA_SIZE();                                  \
       tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                  \
     }                                                                           \
-    unpacked_tensor.reset(new uint8_t[tensor_byte_size]);                       \
     tensor_byte_size_out = tensor_byte_size;                                    \
+    unpacked_tensor.reset(new uint8_t[tensor_byte_size_out]);                   \
     return onnxruntime::utils::UnpackTensor(                                    \
         initializer,                                                            \
         initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,   \
