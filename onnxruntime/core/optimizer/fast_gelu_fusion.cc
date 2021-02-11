@@ -239,7 +239,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     if (p_mul5_input_node == nullptr) continue;
 
     // if this is second formula and if pow node has Cast parent, expect mul5_node has Cast parent as well
-    NodeArg* cast_input_arg;
+    NodeArg* cast_input_arg = nullptr;
     if (second_formula) {
       const Node* p_cast1_node = graph_utils::FirstParentByType(node, "Cast");   
       if (p_cast1_node != nullptr) {
