@@ -33,6 +33,20 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConvOpBuilder("Conv", op_registrations);
   }
 
+  {  // Batch Normalization
+    CreateBatchNormalizationOpBuilder("BatchNormalization", op_registrations);
+  }
+
+  {  // Reshape
+    CreateReshapeOpBuilder("Reshape", op_registrations);
+  }
+
+  {  // Pool
+     // TODO support AveragePool and MaxPool
+    CreatePoolOpBuilder("GlobalAveragePool", op_registrations);
+    CreatePoolOpBuilder("GlobalMaxPool", op_registrations);
+  }
+
   return op_registrations;
 }
 

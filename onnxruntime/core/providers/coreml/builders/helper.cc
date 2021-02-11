@@ -13,17 +13,19 @@
 namespace onnxruntime {
 namespace coreml {
 
-Status GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape) {
-  const auto& input_name = node_arg.Name();
+bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {
   const auto* shape_proto = node_arg.Shape();
-  ORT_RETURN_IF_NOT(shape_proto, "shape_proto cannot be null for input: ", input_name);
+  if (!shape_proto) {
+    LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has no shape info";
+    return false;
+  }
 
   // We already checked the shape has no dynamic dimension
   for (const auto& dim : shape_proto->dim()) {
     shape.push_back(dim.dim_value());
   }
 
-  return Status::OK();
+  return true;
 }
 
 // TODO, move this to shared_library
