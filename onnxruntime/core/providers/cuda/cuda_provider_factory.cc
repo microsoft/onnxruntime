@@ -63,3 +63,31 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
 
   return nullptr;
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
+  int num_devices;
+  auto cuda_err = cudaGetDeviceCount(&num_devices);
+  if (cuda_err != cudaSuccess) {
+    return CreateStatus(ORT_FAIL, "Failed to set device id since cudaGetDeviceCount failed.");
+  }
+
+  if (device_id >= num_devices) {
+    std::ostringstream ostr;
+    ostr << "Invalid device id. Device id should be less than total number of devices (" << num_devices << ")";
+    return CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str());
+  }
+
+  cuda_err = cudaSetDevice(device_id);
+  if (cuda_err != cudaSuccess) {
+    return CreateStatus(ORT_FAIL, "Failed to set device id.");
+  }
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
+  auto cuda_err = cudaGetDevice(device_id);
+  if (cuda_err != cudaSuccess) {
+    return CreateStatus(ORT_FAIL, "Failed to get device id.");
+  }
+  return nullptr;
+}
