@@ -226,7 +226,7 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
   float* extra_buffer_data = static_cast<float*>(extra_buffer.get());
 
   const float* Xdata = p.X->template Data<float>();
-  bool use_prepacked_filter = packed_filter_ && input_image_size <= 16;
+  bool use_prepacked_filter = packed_filter_ && input_image_size <= 16 && kernel_dim > input_image_size;
   const float* filter_data = use_prepacked_filter ? static_cast<float*>(packed_filter_.get()) : p.F->template Data<float>();
   float* Ydata = p.Y->template MutableData<float>();
   TensorShape output_shape = p.Y->Shape().Slice(2);

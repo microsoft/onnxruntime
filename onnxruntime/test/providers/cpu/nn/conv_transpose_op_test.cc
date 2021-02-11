@@ -254,6 +254,59 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
+TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_tranpose_path) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{3, 3},        // kernel_shape
+      {},                           // output_padding
+      vector<int64_t>{1, 6, 4, 4},  // output_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      "NOTSET"                      // auto_pad
+  };
+  int image_size = 4 * 4;
+  int input_channels = 3 * 2;
+  int output_channels = 3;
+  std::vector<float> X;
+  for (int i = 0; i < input_channels * image_size; i++)
+    X.push_back(1.0f);
+  std::vector<float> W;
+  int kernel_size = output_channels * input_channels * 3 * 3;
+  for (int i = 0; i < kernel_size; i++)
+    W.push_back(1.0f);
+
+  vector<int64_t> X_shape = {1, 6, 4, 4};
+  vector<int64_t> W_shape = {6, 3, 3, 3};
+
+  vector<int64_t> Y_shape = {1, 6, 4, 4};
+  auto expected_vals = {12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f, // duplicate below
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        18.0f, 27.0f, 27.0f, 18.0f,
+                        12.0f, 18.0f, 18.0f, 12.0f,};
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{1, 5},         // kernel_shape
