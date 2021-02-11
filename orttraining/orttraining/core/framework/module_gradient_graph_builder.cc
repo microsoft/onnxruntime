@@ -31,25 +31,25 @@ Status ModuleGradientGraphBuilder::Initialize(std::istream& model_istream,
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
   for (auto& node_arg : graph_inputs) {
     if (initializer_names_to_train_set.find(node_arg->Name()) == initializer_names_to_train_set.end()) {
-      split_graphs_info_.user_input_names.emplace_back(node_arg->Name());
+      training_graph_info_.user_input_names.emplace_back(node_arg->Name());
     }
   }
 
   const std::vector<const NodeArg*>& graph_outputs = graph.GetOutputs();
   for (auto& node_arg : graph_outputs) {
-    split_graphs_info_.user_output_names.emplace_back(node_arg->Name());
+    training_graph_info_.user_output_names.emplace_back(node_arg->Name());
   }
 
-  split_graphs_info_.initializer_names_to_train.assign(config.initializer_names_to_train.begin(),
+  training_graph_info_.initializer_names_to_train.assign(config.initializer_names_to_train.begin(),
                                                        config.initializer_names_to_train.end());
 
   std::vector<const NodeArg*> input_args;
-  for (const auto& input_name : split_graphs_info_.user_input_names) {
+  for (const auto& input_name : training_graph_info_.user_input_names) {
     input_args.emplace_back(graph.GetNodeArg(input_name));
   }
 
   // Remove the training initializers from the graph and move them to graph inputs.
-  for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
+  for (const auto& initializer_name : training_graph_info_.initializer_names_to_train) {
     input_args.emplace_back(graph.GetNodeArg(initializer_name));
     graph.RemoveInitializedTensor(initializer_name);
   }
@@ -95,12 +95,12 @@ std::string ModuleGradientGraphBuilder::GetGradientModel() const {
 }
 
 void ModuleGradientGraphBuilder::SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes) {
-  ORT_ENFORCE(input_shapes.size() == split_graphs_info_.user_input_names.size(),
+  ORT_ENFORCE(input_shapes.size() == training_graph_info_.user_input_names.size(),
               "The size of concrete input shapes and the size of user inputs does not match.");
   Graph& gradient_graph = gradient_model_->MainGraph();
   std::vector<const NodeArg*> input_args;
   size_t input_index = 0;
-  for (const auto& input_name : split_graphs_info_.user_input_names) {
+  for (const auto& input_name : training_graph_info_.user_input_names) {
     NodeArg* input_node_arg = gradient_graph.GetNodeArg(input_name);
     ONNX_NAMESPACE::TensorShapeProto new_shape;
     for (size_t i = 0; i < input_shapes[input_index].size(); i++) {
@@ -159,8 +159,8 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   GradientGraphConfiguration gradient_graph_config{};
   gradient_graph_config.use_invertible_layernorm_grad = config_.use_invertible_layernorm_grad;
   gradient_graph_config.set_gradients_as_graph_outputs = true;
-  std::unordered_set<std::string> y_node_arg_names(split_graphs_info_.user_output_names.begin(),
-                                                   split_graphs_info_.user_output_names.end());
+  std::unordered_set<std::string> y_node_arg_names(training_graph_info_.user_output_names.begin(),
+                                                   training_graph_info_.user_output_names.end());
   GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "",
                                           gradient_graph_config, *logger_);
 
@@ -173,7 +173,7 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   GraphViewer gradient_graph_viewer(gradient_graph);
   const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
   std::unordered_set<std::string> user_output_grad_names_set;
-  for (const auto& name : split_graphs_info_.user_output_names) {
+  for (const auto& name : training_graph_info_.user_output_names) {
     user_output_grad_names_set.insert(name + "_grad");
   }
 
@@ -192,34 +192,34 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   // to infer Op output shapes.
   std::vector<std::string> user_output_names_require_grad;
   std::vector<std::string> user_output_names_no_grad;
-  split_graphs_info_.backward_output_grad_names.clear();
-  for (const auto& name : split_graphs_info_.user_output_names) {
+  training_graph_info_.backward_output_grad_names.clear();
+  for (const auto& name : training_graph_info_.user_output_names) {
     std::string grad_name = name + "_grad";
     if (non_backward_user_output_grad_names.find(grad_name) == non_backward_user_output_grad_names.end()) {
       user_output_names_require_grad.emplace_back(name);
-      split_graphs_info_.backward_output_grad_names.emplace_back(grad_name);
+      training_graph_info_.backward_output_grad_names.emplace_back(grad_name);
     } else {
       user_output_names_no_grad.emplace_back(name);
     }
   }
 
   // Reorder the user outputs.
-  split_graphs_info_.user_output_names.clear();
+  training_graph_info_.user_output_names.clear();
   for (const auto& name : user_output_names_require_grad) {
-    split_graphs_info_.user_output_names.emplace_back(name);
+    training_graph_info_.user_output_names.emplace_back(name);
   }
 
   for (const auto& name : user_output_names_no_grad) {
-    split_graphs_info_.user_output_names.emplace_back(name);
+    training_graph_info_.user_output_names.emplace_back(name);
   }
 
   std::vector<NodeArg*> yield_input_node_args;
   std::vector<NodeArg*> yield_output_node_args;
-  for (const auto& name : split_graphs_info_.user_output_names) {
+  for (const auto& name : training_graph_info_.user_output_names) {
     yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
 
-  for (const auto& name : split_graphs_info_.backward_output_grad_names) {
+  for (const auto& name : training_graph_info_.backward_output_grad_names) {
     yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
 
@@ -241,24 +241,24 @@ void ModuleGradientGraphBuilder::ReorderOutputs() {
                                                               config_.input_names_require_grad.end());
 
   std::vector<const NodeArg*> new_output_args;
-  split_graphs_info_.user_input_grad_names.clear();
-  for (const auto& input_name : split_graphs_info_.user_input_names) {
+  training_graph_info_.user_input_grad_names.clear();
+  for (const auto& input_name : training_graph_info_.user_input_names) {
     if (user_input_require_grad_set.find(input_name) != user_input_require_grad_set.end()) {
       std::string input_gradient_name = input_name + "_grad";
       ORT_ENFORCE(gradient_output_arg_map.find(input_gradient_name) != gradient_output_arg_map.end(),
                   "Required user input grad is not found on gradient graph.");
-      split_graphs_info_.user_input_grad_names[input_name] = input_gradient_name;
+      training_graph_info_.user_input_grad_names[input_name] = input_gradient_name;
       new_output_args.emplace_back(gradient_output_arg_map[input_gradient_name]);
     }
   }
 
   // Add initializer gradients to graph outputs.
-  split_graphs_info_.initializer_grad_names_to_train.clear();
-  for (const auto& initializer_name : split_graphs_info_.initializer_names_to_train) {
+  training_graph_info_.initializer_grad_names_to_train.clear();
+  for (const auto& initializer_name : training_graph_info_.initializer_names_to_train) {
     std::string initializer_gradient_name = initializer_name + "_grad";
     ORT_ENFORCE(gradient_output_arg_map.find(initializer_gradient_name) != gradient_output_arg_map.end(),
                 "Trainable initializer grad is not found on gradient graph.");
-    split_graphs_info_.initializer_grad_names_to_train.emplace_back(initializer_gradient_name);
+    training_graph_info_.initializer_grad_names_to_train.emplace_back(initializer_gradient_name);
     new_output_args.emplace_back(gradient_output_arg_map[initializer_gradient_name]);
   }
 
