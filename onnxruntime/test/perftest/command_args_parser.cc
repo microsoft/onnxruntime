@@ -52,11 +52,12 @@ namespace perftest {
       "\t-q: [CUDA only] use separate stream for copy. \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-i: [OpenVINO only] Specify OpenVINO runtime options as key value pairs. Different options available are: \n"
-      "\t    [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
-      "\t    [device_id]: Selects a particular hardware device for inference.\n"
-      "\t    [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.\n"
-      "\t    [num_of_threads]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
-      "\t    Example: -e openvino -i 'device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5'\n"
+      "\t\t  [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
+      "\t\t  [device_id]: Selects a particular hardware device for inference.\n"
+      "\t\t  [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to \n"
+      "\t\t\t\t\tVPU device specific format.\n"
+      "\t\t  [num_of_threads]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
+      "\tExample: -e openvino -i 'device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5'\n"
       "\t-h: help\n");
 }
 

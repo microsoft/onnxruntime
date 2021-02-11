@@ -6,7 +6,6 @@
 #include <random>
 #include "test_configuration.h"
 #include "test_session.h"
-
 class TestModelInfo;
 namespace onnxruntime {
 namespace perftest {
