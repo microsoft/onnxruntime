@@ -63,7 +63,7 @@ def main():
             p1 = subprocess.Popen(["git", "pull", "origin", "master"])
         p1.wait()
 
-        p1 = subprocess.Popen(["./build.sh", "--config", "Release", "--use_tensorrt", "--tensorrt_home", args.tensorrt_home, "--cuda_home", args.cuda_home, "--cudnn", "/usr/lib/x86_64-linux-gnu/", "--build_wheel", "--skip_tests", "--parallel"])
+        p1 = subprocess.Popen(["./build.sh", "--config", "Release", "--use_tensorrt", "--tensorrt_home", args.tensorrt_home, "--cuda_home", args.cuda_home, "--cudnn", "/usr/lib/x86_64-linux-gnu", "--build_wheel", "--skip_tests", "--parallel"])
         p1.wait()
 
         ort_wheel_file = install_new_ort_wheel(ort_master_path)

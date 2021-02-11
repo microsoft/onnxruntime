@@ -352,7 +352,12 @@ def generate_onnx_model_random_input(test_times, ref_input):
 
     return inputs
 
-def validate(all_ref_outputs, all_outputs, rtol=0, atol=1.5):
+def percentage_in_allowed_threshold(e, percent_mismatch):
+    percent_string = re.search(r'([\d]*\.[\d]*%)', str(e)).group()
+    percentage_wrong = float(percent_string.replace("%",""))
+    return percentage_wrong < percent_mismatch
+
+def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
     if len(all_ref_outputs) == 0:
         logger.info("No reference output provided.")
         return True, None
@@ -361,22 +366,24 @@ def validate(all_ref_outputs, all_outputs, rtol=0, atol=1.5):
     logger.info('Predicted {} results.'.format(len(all_outputs)))
     logger.info('rtol: {}, atol: {}'.format(rtol, atol))
 
-    try:
-        for i in range(len(all_outputs)):
-            ref_outputs = all_ref_outputs[i]
-            outputs = all_outputs[i]
+    for i in range(len(all_outputs)):
+        ref_outputs = all_ref_outputs[i]
+        outputs = all_outputs[i]
 
-            for j in range(len(outputs)):
-                ref_output = ref_outputs[j]
-                output = outputs[j]
+        for j in range(len(outputs)):
+            ref_output = ref_outputs[j]
+            output = outputs[j]
 
+            try: 
                 # Compare the results with reference outputs
                 for ref_o, o in zip(ref_output, output):
                     # abs(desired-actual) < rtol * abs(desired) + atol
                     np.testing.assert_allclose(ref_o, o, rtol, atol)
-    except Exception as e:
-        logger.error(e)
-        return False, e
+            except Exception as e:
+                if percentage_in_allowed_threshold(e, percent_mismatch):    
+                    continue
+                logger.error(e)
+                return False, e
 
     logger.info('ONNX Runtime outputs are similar to reference outputs!')
     return True, None
@@ -415,7 +422,7 @@ def remove_profiling_files(path):
     for f in files:
         if "custom_test_data" in f:
             continue
-        subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
+        subprocess.Popen(["sudo","rm","-rf", f], stdout=subprocess.PIPE)
 
 
 def update_fail_report(fail_results, model, ep, e_type, e):
@@ -887,10 +894,6 @@ def run_onnxruntime(args, models):
         os.chdir(path)
         path = os.getcwd()
 
-        # cleanup files before running a new inference
-        #if args.running_mode == "validate":
-        #    remove_profiling_files(path)
-
         inputs = []
         ref_outputs = []
         all_inputs_shape = [] # use for standalone trt
@@ -964,7 +967,10 @@ def run_onnxruntime(args, models):
                 logger.info("\n----------------------------- benchmark -------------------------------------")
 
                 options = onnxruntime.SessionOptions()
-                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                if ep == cuda_fp16: 
+                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+                else: 
+                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
                 # create onnxruntime inference session
                 try:
@@ -1027,7 +1033,10 @@ def run_onnxruntime(args, models):
                 # enable profiling to generate profiling file for analysis
                 options = onnxruntime.SessionOptions()
                 options.enable_profiling = True
-                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                if ep == cuda_fp16: 
+                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+                else: 
+                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
                 time.sleep(1) # avoid to generate same profile file name
 
                 # create onnxruntime inference session
@@ -1059,7 +1068,7 @@ def run_onnxruntime(args, models):
                     try:
                         ort_outputs = inference_ort_and_get_prediction(name, sess, inputs)
 
-                        status = validate(ref_outputs, ort_outputs)
+                        status = validate(ref_outputs, ort_outputs, args.rtol, args.atol, args.percent_mismatch)
                         if not status[0]:
                             update_fail_model_map(model_to_fail_ep, name, ep, 'result accuracy issue', status[1])
                             continue
@@ -1481,6 +1490,11 @@ def parse_arguments():
 
     parser.add_argument("--trtexec", required=False, default=None, help="trtexec executable path.")
 
+    # Validation options
+    parser.add_argument("--percent_mismatch", required=False, default=20.0, help="Allowed percentage of mismatched elements in validation.")
+    parser.add_argument("--rtol", required=False, default=0, help="Relative tolerance for validating outputs.")
+    parser.add_argument("--atol", required=False, default=20, help="Absolute tolerance for validating outputs.")
+    
     parser.add_argument("-t",
                         "--test_times",
                         required=False,

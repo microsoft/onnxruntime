@@ -49,8 +49,10 @@ def main():
         
         model_list_file = os.path.join(os.getcwd(), model +'.json')
         write_model_info_to_file([model_info], model_list_file)
-
-        ep_list = get_ep_list(args.comparison)
+        if args.ep: 
+            ep_list = [args.ep]
+        else:
+            ep_list = get_ep_list(args.comparison)
         for ep in ep_list:
             if args.running_mode == "validate":
                 p = subprocess.run(["python3",
