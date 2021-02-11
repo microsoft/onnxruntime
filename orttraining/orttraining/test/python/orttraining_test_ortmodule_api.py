@@ -50,6 +50,22 @@ class NeuralNetMultiplePositionalArgumentsMultipleOutputs(torch.nn.Module):
 
         return out1, out2
 
+class NeuralNetMultiplePositionalArgumentsMultipleOutputs2(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(NeuralNetMultiplePositionalArgumentsMultipleOutputs2, self).__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu1 = torch.nn.ReLU()
+        self.relu2 = torch.nn.ReLU()
+
+    def forward(self, input1, input2):
+        model_input = input1 + input2
+        out = self.fc1(model_input)
+        out1 = self.relu1(out)
+        out2 = self.relu2(out)
+
+        return out1, out2
+
 class NeuralNetMultiplePositionalArguments(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNetMultiplePositionalArguments, self).__init__()
@@ -566,7 +582,22 @@ def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder
     model(x)
     assert module_gradient_graph_builder != model._module_gradient_graph_builder
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
-def test_input_requires_grad_backward_creates_input_grad_as_required(device):
+def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = NeuralNetMultiplePositionalArgumentsMultipleOutputs2(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    model._save_onnx_prefix = 'test0'
+    model._save_onnx = True
+    x1 = torch.randn(N, D_in, device=device, requires_grad=True)
+    x2 = torch.randn(N, D_in, device=device, requires_grad=True)
+    y1, y2 = model(x1, x2)
+    s = y2.sum()
+    s.backward()
+    assert x1.grad is not None and x2.grad is not None
+
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_input_requires_grad_backward_creates_input_grad_as_required1(device):
     N, D_in, H, D_out = 32, 784, 500, 10
     model = NeuralNetMultiplePositionalArgumentsMultipleOutputs(D_in, H, D_out).to(device)
     model = ORTModule(model)

@@ -2222,7 +2222,7 @@ Return true if all elements are true and false otherwise.
               /*min_arity*/ 1)
       .Attr(
         "RequiredGrad",
-        "Indices of the inputs with require_glad flag set.",
+        "The number of inputs with require_glad flag set.",
         AttributeProto::INT,
         static_cast<int64_t>(0))
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
