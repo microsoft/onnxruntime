@@ -875,8 +875,9 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     void* sparse_data = sparse_data_storage.get();
     size_t element_size = 0;
     // We want to this list to match the one used below in DenseTensorToSparseTensorProto()
-    MLTypeCallDispatcherRet<Status, GetElementSize, float, int8_t, uint8_t> type_disp(type);
-    ORT_RETURN_IF_ERROR(type_disp.InvokeWithUnsupportedPolicy<UnsupportedSparseDataType>(element_size));
+    MLTypeCallDispatcher<float, int8_t, uint8_t> type_disp(type);
+    ORT_RETURN_IF_ERROR(
+        (type_disp.InvokeRetWithUnsupportedPolicy<Status, GetElementSize, UnsupportedSparseDataType>(element_size)));
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto. however to actually write to the buffer we have created in the std::string we need
@@ -997,8 +998,9 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   std::unique_ptr<uint8_t[]> dense_raw_data;
   ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, model_path, dense_raw_data, tensor_bytes_size));
   size_t element_size = 0;
-  MLTypeCallDispatcherRet<Status, GetElementSize, float, int8_t, uint8_t> type_disp(data_type);
-  ORT_RETURN_IF_ERROR(type_disp.InvokeWithUnsupportedPolicy<UnsupportedSparseDataType>(element_size));
+  MLTypeCallDispatcher<float, int8_t, uint8_t> type_disp(data_type);
+  ORT_RETURN_IF_ERROR(
+      (type_disp.InvokeRetWithUnsupportedPolicy<Status, GetElementSize, UnsupportedSparseDataType>(element_size)));
 
   switch (element_size) {
     case 1: {
