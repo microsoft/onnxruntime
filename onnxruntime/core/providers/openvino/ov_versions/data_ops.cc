@@ -155,7 +155,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Transpose", V_2020_4,{"All"}},
     {"TopK", V_2020_4,{"All"}},
     {"Unsqueeze", V_2020_4,{"All"}},
-    {"Upsample", V_2021_1,{"CPU", "GPU"}},
+    {"Upsample", V_2021_1,{"CPU"}},
     {"Where", V_2021_2,{"MYRIAD"}},
 };
 
