@@ -441,6 +441,7 @@ def test_dynamic_axes_config():
 
     # Model 2
     model_with_no_grad = _get_bert_for_sequence_classification_model(device)
+    model_with_no_grad = ORTModule(model_with_no_grad)
     x, y, z = _get_bert_for_sequence_classification_sample_data(device)
     output = model_with_no_grad(x, y, None, None, None, None, z)
     assert output is not None
