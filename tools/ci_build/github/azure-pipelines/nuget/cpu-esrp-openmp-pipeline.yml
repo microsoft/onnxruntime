@@ -30,6 +30,6 @@ jobs:
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
-    AdditionalBuildFlags: ''
+    AdditionalBuildFlags: '--use_openmp'
     AdditionalWinBuildFlags: '--use_openmp --enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
