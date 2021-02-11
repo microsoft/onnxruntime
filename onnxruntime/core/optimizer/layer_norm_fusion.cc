@@ -199,7 +199,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (p_cast_node != nullptr) {
       Node& cast_node = *graph.GetNode(pow_node.InputNodesBegin()->Index());
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9, 13}) ||
-          cast_node.GetExecutionProviderType() != cast_node.GetExecutionProviderType() ||
+          cast_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
           !optimizer_utils::CheckOutputEdges(graph, cast_node, 1) ||
           !IsSupportedDataType(cast_node)) {
         continue;
