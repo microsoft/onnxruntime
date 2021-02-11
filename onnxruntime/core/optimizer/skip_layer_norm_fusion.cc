@@ -217,11 +217,13 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       continue;
     }
 
+    NodeArg beta_place_holder("", nullptr);
+
     // Get the inputs for the new SkipLayerNormalization node.
     std::vector<NodeArg*> skip_layer_norm_input_defs{p_add1->MutableInputDefs()[0],
                                                      p_add1->MutableInputDefs()[1],
                                                      ln_node.MutableInputDefs()[1],
-                                                     ln_node.MutableInputDefs()[2]};
+                                                     ln_node.MutableInputDefs().size() == 2 ? &beta_place_holder : ln_node.MutableInputDefs()[2]};
 
     if (matched_format == Format::Format1) {
       skip_layer_norm_input_defs[0] = p_add2->MutableInputDefs()[0];
@@ -241,7 +243,6 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
                                                "fused SkipLayerNorm subgraphs ",
                                                skip_layer_norm_input_defs,
                                                ln_node.MutableOutputDefs(), {}, kMSDomain);
-
     // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
     // will be used.
     NodeAttributes ln_attrs = ln_node.GetAttributes();
