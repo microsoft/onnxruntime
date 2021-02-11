@@ -206,7 +206,7 @@ class ORTModule(torch.nn.Module):
     def _get_inference_graph_and_init_gradient_graph_builder(self, *inputs, **kwargs):
         input_names, dynamic_axes, self._input_names_require_grad = \
                 _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
-        self._onnx_training = self._get_forward_graph(*inputs, **kwargs)
+        self._onnx_inference = self._get_inference_graph(*inputs, **kwargs)
 
         if self._save_onnx:
             onnx.save(self._onnx_inference, self._save_onnx_prefix + '_inference.onnx')
@@ -417,7 +417,7 @@ class ORTModule(torch.nn.Module):
 
         return result
 
-    def _get_forward_graph(self, *inputs, **kwargs):
+    def _get_inference_graph(self, *inputs, **kwargs):
         '''Exports PyTorch `module` to ONNX with training flag, using `*inputs` as input
 
         TODO: How to support dynamic axes? Dimensions are determined by samples
