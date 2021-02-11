@@ -568,7 +568,3 @@ bool IsOpaqueType(MLDataType ml_type, const char* domain, const char* name);
 
 }  // namespace utils
 }  // namespace onnxruntime
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
