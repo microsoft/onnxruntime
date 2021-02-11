@@ -5,7 +5,7 @@
 
 class Example {
   public:
-    void Run(int multiplier);
+    void Run(const emscripten::val& model_data);
 };
 
 EMSCRIPTEN_BINDINGS(Example) {
