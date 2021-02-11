@@ -81,7 +81,7 @@ static Status cosine_sum_window(Tensor* Y, size_t size, float a0, float a1, floa
 
 template <typename T>
 static T get_scalar_value_from_tensor(const Tensor* tensor) {
-  ORT_ENFORCE(tensor->Shape().Size() == 1, "ratio input should have a single value.");
+  ORT_ENFORCE(tensor->Shape().Size() == 1, "Tensor input should have a single value.");
   auto data_type = tensor->DataType()->AsPrimitiveDataType()->GetDataType();
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -116,6 +116,10 @@ static Status create_cosine_sum_window(
     }
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
       ORT_RETURN_IF_ERROR((cosine_sum_window<double>(Y, size, a0, a1, a2)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      ORT_RETURN_IF_ERROR((cosine_sum_window<int8_t>(Y, size, a0, a1, a2)));
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
@@ -272,6 +276,10 @@ static Status create_mel_weight_matrix(OpKernelContext* ctx, onnx::TensorProto_D
     }
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
       ORT_RETURN_IF_ERROR((create_mel_weight_matrix<double>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      ORT_RETURN_IF_ERROR((create_mel_weight_matrix<int8_t>(ctx, num_mel_bins, dft_length, sample_rate, lower_edge_hertz, upper_edge_hertz)));
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {

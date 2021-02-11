@@ -472,7 +472,7 @@ def parse_arguments():
     parser.add_argument("--code_coverage", action='store_true',
                         help="Generate code coverage when targetting Android (only).")
     parser.add_argument(
-        "--ms_experimental", action='store_true', help="Build microsot experimental operators.")
+        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")
     return parser.parse_args()
 
 
