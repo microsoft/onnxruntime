@@ -16,7 +16,7 @@ class Logger;
 
 namespace coreml {
 
-common::Status GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape);
+bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
 // TODO, move this to shared_library
 bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logger);
