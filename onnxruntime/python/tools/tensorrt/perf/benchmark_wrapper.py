@@ -6,7 +6,6 @@ import argparse
 import copy
 import json
 import re
-import sys
 import pprint
 from benchmark import *
 from perf_utils import get_latest_commit_hash
@@ -127,9 +126,8 @@ def main():
             model_fail = read_map_from_file(FAIL_MODEL_FILE)
             is_fail = True
             model_status = build_status(model_status, model_fail, is_fail)
-        
-        pp.pprint(model_status)
-        sys.stdout.flush()
+       
+        pretty_print(pp, model_status)
         
         output_status(model_status, os.path.join(path, benchmark_status_csv)) 
         logger.info("\nSaved model status results to {}".format(benchmark_status_csv)) 
@@ -142,8 +140,7 @@ def main():
             model_to_latency = read_map_from_file(LATENCY_FILE)
             add_improvement_information(model_to_latency)
             
-            pp.pprint(model_to_latency)
-            sys.stdout.flush()
+            pretty_print(pp, model_to_latency)
             
             output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
             logger.info("\nSaved model status results to {}".format(benchmark_latency_csv)) 
@@ -152,8 +149,7 @@ def main():
     logger.info("=========== System information  ===========")
     logger.info("===========================================")
     info = get_system_info()
-    pp.pprint(info)
-    sys.stdout.flush()
+    pretty_print(pp, info)
 
 if __name__ == "__main__":
     main()

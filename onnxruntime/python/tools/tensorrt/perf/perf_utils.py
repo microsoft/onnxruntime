@@ -4,6 +4,7 @@ import pprint
 import logging
 import coloredlogs
 import re
+import sys
 
 debug = False
 debug_verbose = False 
@@ -18,6 +19,10 @@ def find(regex_string):
     results = glob.glob(regex_string)
     results.sort()
     return results
+
+def pretty_print(pp, json_object):
+    pp.pprint(json_object)
+    sys.stdout.flush()
 
 def get_latest_commit_hash():
     return ""
