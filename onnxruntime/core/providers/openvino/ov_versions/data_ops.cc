@@ -1053,8 +1053,8 @@ bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>&
     } else if (node->OpType() == "MaxPool" && device_id_.find("MYRIAD") != std::string::npos) {
       auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
       if (output_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT ||
-        output_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-        return result;
+          output_data_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+        return true;
       }
     }
     return false;
