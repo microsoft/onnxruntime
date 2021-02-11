@@ -1163,6 +1163,17 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_TensorRT,
                   _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options);
+
+  /**
+  * Set the current device id of the GPU execution provider (cuda/tensorrt/rocm). The device id should be less
+  * than the total number of devices available. Using this API makes sense only when doing multi-GPU inferencing.
+  */
+  ORT_API2_STATUS(SetCurrentGpuDeviceId, _In_ int device_id);
+
+  /**
+   * Get the current device id of the GPU execution provider (cuda/tensorrt/rocm).
+   */
+  ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
 };
 
 /*
