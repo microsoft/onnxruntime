@@ -177,7 +177,7 @@ class ORTModule(torch.nn.Module):
         session_options.enable_mem_pattern = False
         session_options.use_deterministic_compute = False
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
-        session_options.log_severity_level = 1
+        session_options.log_severity_level = 2
 
         self._training_session = onnxruntime.InferenceSession(
             self._onnx_training.SerializeToString(), session_options, providers=providers, provider_options=provider_options)
