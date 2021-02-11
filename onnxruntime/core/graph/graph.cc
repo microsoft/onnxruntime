@@ -524,15 +524,15 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     const auto& attr_name = entry.first;
     const auto& attr_proto = entry.second;
     flatbuffers::Offset<fbs::Attribute> fbs_attr;
-    Graph* graph = nullptr;
+    Graph* subgraph = nullptr;
     if (attr_proto.has_g()) {
       const auto it = attr_to_subgraph_map_.find(attr_name);
       ORT_RETURN_IF_NOT(it != attr_to_subgraph_map_.cend(),
                         "Node [", name_, "] op_type [", op_type_, "] ", "does not have the graph for key ", attr_name);
-      graph = it->second;
+      subgraph = it->second;
     }
     ORT_RETURN_IF_ERROR(
-        experimental::utils::SaveAttributeOrtFormat(builder, attr_proto, fbs_attr, graph));
+        experimental::utils::SaveAttributeOrtFormat(builder, attr_proto, fbs_attr, ModelPath(), subgraph));
     attributes_vec.push_back(fbs_attr);
   }
   auto attributes = builder.CreateVector(attributes_vec);
@@ -2267,7 +2267,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
   ctx.set_model_dir(ToMBString(ModelPath().ParentPath().ToPathString()));
-
 
   LexicalScopeContext lsc;
   lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),
