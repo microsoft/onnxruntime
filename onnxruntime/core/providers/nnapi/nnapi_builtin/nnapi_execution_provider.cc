@@ -256,6 +256,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     nnapi::ModelBuilder builder(graph_viewer);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
+    if (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED) {
+      builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_DISABLED);
+    }
+
     std::unique_ptr<nnapi::Model> nnapi_model;
     ORT_RETURN_IF_ERROR(builder.Compile(nnapi_model));
 

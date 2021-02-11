@@ -1,6 +1,15 @@
-parameters:
-  gitCommitHash: ''
-  downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+parameters:    
+- name: gitCommitHash
+  type: string
+  default: ''
+
+- name: downloadPath
+  type: string
+  default: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+
+- name: buildVariant
+  type: string
+  default: 'openmp'
 
 steps:
 - task: DownloadPipelineArtifact@0
@@ -36,10 +45,10 @@ steps:
         echo listing lib files in the zip 
         REM use a single .csv file to put the data 
         echo os,arch,build_config,size > binary_size_data.txt
-        7z.exe l -slt %%~ni.zip runtimes\linux-x64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,x64,openmp,%%a >> binary_size_data.txt
-        7z.exe l -slt %%~ni.zip runtimes\osx-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,openmp,%%a >> binary_size_data.txt
-        7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,openmp,%%a >> binary_size_data.txt
-        7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,openmp,%%a >> binary_size_data.txt
+        7z.exe l -slt %%~ni.zip runtimes\linux-x64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,x64,${{ parameters.buildVariant }},%%a >> binary_size_data.txt
+        7z.exe l -slt %%~ni.zip runtimes\osx-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,${{ parameters.buildVariant }},%%a >> binary_size_data.txt
+        7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,${{ parameters.buildVariant }},%%a >> binary_size_data.txt
+        7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,${{ parameters.buildVariant }},%%a >> binary_size_data.txt
         echo calling python script to post to database
         python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{ parameters.gitCommitHash }} --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
          )

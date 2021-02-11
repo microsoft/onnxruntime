@@ -481,7 +481,7 @@ def resolve_executable_path(command_or_path):
     if executable_path is None:
         raise BuildError("Failed to resolve executable path for "
                          "'{}'.".format(command_or_path))
-    return os.path.realpath(executable_path)
+    return os.path.abspath(executable_path)
 
 
 def get_linux_distro():
@@ -1747,9 +1747,7 @@ def main():
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
     if not (args.update or args.clean or args.build or args.test):
-        log.debug(
-            "Defaulting to running update, build "
-            "[and test for native builds].")
+        log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
         if cross_compiling:
@@ -1760,7 +1758,7 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.include_ops_by_config:
+    if args.include_ops_by_config and args.update:
         from exclude_unused_ops_and_types import exclude_unused_ops_and_types
         exclude_unused_ops_and_types(args.include_ops_by_config,
                                      args.enable_reduced_operator_type_support,
