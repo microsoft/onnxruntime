@@ -2,7 +2,7 @@
 title: Node.js API
 parent: API docs
 grand_parent: Reference
-nav_order: 4
+nav_order: 5
 ---
 
 # ONNX Runtime Node.js API
