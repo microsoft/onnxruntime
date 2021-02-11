@@ -490,15 +490,15 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("use_invertible_layernorm_grad",
                      &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad);
 
-  py::class_<SplitGraphsInfo> split_graphs_info(m, "SplitGraphsInfo",
+  py::class_<TrainingGraphInfo> split_graphs_info(m, "TrainingGraphInfo",
                                                 R"pbdoc(The information of split graphs for frontend.)pbdoc");
   split_graphs_info.def(py::init())
-      .def_readwrite("user_input_names", &SplitGraphsInfo::user_input_names)
-      .def_readwrite("user_input_grad_names", &SplitGraphsInfo::user_input_grad_names)
-      .def_readwrite("initializer_names_to_train", &SplitGraphsInfo::initializer_names_to_train)
-      .def_readwrite("initializer_grad_names_to_train", &SplitGraphsInfo::initializer_grad_names_to_train)
-      .def_readwrite("user_output_names", &SplitGraphsInfo::user_output_names)
-      .def_readwrite("backward_output_grad_names", &SplitGraphsInfo::backward_output_grad_names);
+      .def_readwrite("user_input_names", &TrainingGraphInfo::user_input_names)
+      .def_readwrite("user_input_grad_names", &TrainingGraphInfo::user_input_grad_names)
+      .def_readwrite("initializer_names_to_train", &TrainingGraphInfo::initializer_names_to_train)
+      .def_readwrite("initializer_grad_names_to_train", &TrainingGraphInfo::initializer_grad_names_to_train)
+      .def_readwrite("user_output_names", &TrainingGraphInfo::user_output_names)
+      .def_readwrite("backward_output_grad_names", &TrainingGraphInfo::backward_output_grad_names);
 
   py::class_<ModuleGradientGraphBuilder> module_gradient_graph_builder(m, "ModuleGradientGraphBuilder");
   module_gradient_graph_builder.def(py::init([]() { return onnxruntime::make_unique<ModuleGradientGraphBuilder>(); }))
@@ -517,12 +517,12 @@ void addObjectMethodsForTraining(py::module& m) {
               const std::vector<std::vector<int64_t>>& input_shapes) {
              ORT_THROW_IF_ERROR(module_gradient_graph_builder->Build(&input_shapes));
            })
-      .def("get_gradient_model",
+      .def("get_training_model",
            [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
              return py::bytes(module_gradient_graph_builder->GetGradientModel());
            })
-      .def("get_split_graphs_info", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
-        return module_gradient_graph_builder->GetSplitGraphsInfo();
+      .def("get_training_graph_info", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
+        return module_gradient_graph_builder->GetTrainingGraphInfo();
       });
 }
 }  // namespace python

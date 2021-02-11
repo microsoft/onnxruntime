@@ -28,9 +28,9 @@ struct ModuleGradientGraphBuilderConfiguration {
 };
 
 /**
- * The information of split graphs for frontend.
+ * The information of training graphs for frontend.
  */
-struct SplitGraphsInfo {
+struct TrainingGraphInfo {
   // The user inputs.
   std::vector<std::string> user_input_names{};
   // Map from user input names to corresponding user input grad names for those user inputs that require grad.
@@ -73,7 +73,7 @@ class ModuleGradientGraphBuilder {
    * Get the split graphs information.
    * @return The split graphs information.
    */
-  SplitGraphsInfo GetSplitGraphsInfo() const { return split_graphs_info_; }
+  TrainingGraphInfo GetTrainingGraphInfo() const { return training_graph_info_; }
 
  private:
   // Set concrete shapes for graph inputs.
@@ -90,7 +90,7 @@ class ModuleGradientGraphBuilder {
 
   std::shared_ptr<onnxruntime::Model> model_;
   std::shared_ptr<onnxruntime::Model> gradient_model_;
-  SplitGraphsInfo split_graphs_info_;
+  TrainingGraphInfo training_graph_info_;
 
   ModuleGradientGraphBuilderConfiguration config_;
   const logging::Logger* logger_ = &logging::LoggingManager::DefaultLogger();  // use default logger for now.
