@@ -2751,6 +2751,23 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
   }
 }
 
+TEST_F(GraphTransformationTests, SkipLayerNormFusion_NoBeta) {
+  auto model_uri = MODEL_FOLDER "fusion/skip_layer_norm_no_beta.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<SkipLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 1);
+}
+
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
   auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format1.onnx";
   std::shared_ptr<Model> p_model;

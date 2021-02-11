@@ -22,9 +22,12 @@ class ModelBuilder {
 
   enum class TargetDeviceOption : int8_t {
     ALL_DEVICES,  // use all avaliable target devices
-    /* TODO support this option
-    SINGLE_DEVICE,  // use a single target device, must be given
+
+    /* TODO support these options
+    PREFERRED_DEVICES,  // Use one or more preferred devices (must be given)
+    EXCLUDED_DEVICES,   // Exclude one or more devices (must be given)
      */
+
     CPU_DISABLED,  // use all avaliable target devices except CPU
     CPU_ONLY,      // use CPU only
   };
@@ -73,6 +76,8 @@ class ModelBuilder {
   // Relax fp32 computation to fp16
   // It is off by default
   void SetUseFp16(bool use_fp16) { use_fp16_ = use_fp16; }
+
+  void SetTargetDeviceOption(TargetDeviceOption option) { target_device_option_ = option; }
 
   // Set NNAPI execution preference
   // Default preference is PREFER_SUSTAINED_SPEED
@@ -148,7 +153,10 @@ class ModelBuilder {
 
   TargetDeviceOption target_device_option_{TargetDeviceOption::ALL_DEVICES};
   std::vector<ANeuralNetworksDevice*> nnapi_target_devices_;
+  std::string nnapi_target_devices_detail_;  // Debug info for target devices
 
+  // The number of nnapi operations in this model
+  size_t num_nnapi_ops_ = 0;
   uint32_t next_index_ = 0;
 
   // Convert the onnx model to ANeuralNetworksModel
