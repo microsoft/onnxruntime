@@ -13,9 +13,11 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
+                                 bool skip_dequantize_linear,
                                  const std::unordered_set<std::string>& compatible_execution_providers,
                                  const std::unordered_set<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
+      skip_dequantize_linear_(skip_dequantize_linear),
       excluded_initializers_(excluded_initializers),
       execution_provider_(execution_provider) {
 }
@@ -63,6 +65,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);
     if (!node) {
+      continue;
+    }
+
+    // avoid to constant fold DequantizeLinear for QDQ format
+    if (skip_dequantize_linear_ && node->OpType().compare("DequantizeLinear") == 0) {
       continue;
     }
 
