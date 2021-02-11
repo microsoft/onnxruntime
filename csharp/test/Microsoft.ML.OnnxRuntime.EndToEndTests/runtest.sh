@@ -11,7 +11,7 @@ PackageName=${PackageName:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
 
-set -x
+set -x -e
 
 OldDir=`pwd`
 cd $BUILD_SOURCESDIRECTORY
@@ -19,9 +19,9 @@ cd $BUILD_SOURCESDIRECTORY
 echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 
 if [ $RunTestCsharp = "true" ]; then
-  if [ $IsMacOS = "true" ]; then
+  if [[ $IsMacOS == "True" || $IsMacOS == "true" ]]; then
     mkdir -p $BUILD_BINARIESDIRECTORY/models
-	ln -s $BUILD_SOURCESDIRECTORY/cmake/external/onnx/onnx/backend/test/data/node $BUILD_BINARIESDIRECTORY/models/opset14
+    ln -s $BUILD_SOURCESDIRECTORY/cmake/external/onnx/onnx/backend/test/data/node $BUILD_BINARIESDIRECTORY/models/opset14
   fi
   # Run C# tests
   dotnet restore $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json
@@ -48,7 +48,7 @@ if [ $RunTestNative = "true" ]; then
 
   inc="-I build/native/include"
 
-  if [ $IsMacOS = "true" ]; then
+  if [[ $IsMacOS == "True" || $IsMacOS == "true" ]]; then
     export DYLD_FALLBACK_LIBRARY_PATH=$LocalNuGetRepo/_tmp:${DYLD_FALLBACK_LIBRARY_PATH}
     libs="-L runtimes/osx-x64/native -l onnxruntime"
     g++ -std=c++11 $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp $inc $libs -Wunused-result -Wformat=0 -o sampletest
