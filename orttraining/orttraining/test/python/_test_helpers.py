@@ -114,6 +114,24 @@ def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
             assert_allclose(v, expected_state[param_name][k], rtol=rtol, atol=atol,
                             err_msg=f"Optimizer state mismatch for param {param_name}, key {k}")
 
+def is_dynamic_axes(model):
+    # Check inputs
+    for inp in model._onnx_training.graph.input:
+        shape = inp.type.tensor_type.shape
+        if shape:
+            for dim in shape.dim:
+                if dim.dim_param and not isinstance(dim.dim_param, str):
+                    return False
+
+    # Check outputs
+    for out in model._onnx_training.graph.output:
+        shape = out.type.tensor_type.shape
+        if shape:
+            for dim in shape.dim:
+                if dim.dim_param and not isinstance(dim.dim_param, str):
+                    return False
+    return True
+
 # TODO: thiagofc: Checkpoint related for redesign
 def _get_name(name):
     if os.path.exists(name):

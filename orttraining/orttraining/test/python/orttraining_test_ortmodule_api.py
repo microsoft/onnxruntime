@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import onnxruntime
 from onnxruntime.training import ORTModule
+import _test_helpers
 
 # PyTorch model definitions for tests
 
@@ -268,8 +269,7 @@ def test_model_to_device_and_back_to_original(original_device, to_device):
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == original_device
 
-# TODO: Fix the following Unit Test
-# @pytest.mark.skip(reason="TODO: ORTModule.to(device) is disabled for now")
+# TODO: Re-enable this Test when .to(), .cpu() and .cuda() are fixed
 # def test_model_with_different_devices_same_session():
 #     N, D_in, H, D_out = 64, 784, 500, 10
 #     model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
@@ -285,6 +285,7 @@ def test_model_to_device_and_back_to_original(original_device, to_device):
 #         x = torch.randn(N, D_in, device=device)
 #         y = model(x)
 
+# TODO: Re-enable this Test when .to(), .cpu() and .cuda() are fixed
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_input_requires_grad_saved(device):
     N, D_in, H, D_out = 32, 784, 500, 10
@@ -306,9 +307,8 @@ def test_input_requires_grad_backward_creates_input_grad(device):
     s.backward()
     assert x.grad is not None
 
-# TODO: Fix the following Unit Test
+# TODO: Re-enable this Test when .to(), .cpu() and .cuda() are fixed
 # @pytest.mark.parametrize("device", ['cuda', 'cpu'])
-# @pytest.mark.skip(reason="ORTModule doesn't support multiple consecutive forward calls.")
 # def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder(device):
 #     N, D_in, H, D_out = 32, 784, 500, 10
 #     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
@@ -331,9 +331,7 @@ def test_gpu_reserved_memory_with_torch_no_grad():
     model_with_no_grad = ORTModule(model_with_no_grad)
     mem_reserved_before_export = torch.cuda.memory_reserved(device)
     model_with_no_grad(x, y, None, None, None, None, z)
-    mem_reserved_after_export = torch.cuda.memory_reserved(device)
-    assert mem_reserved_before_export == mem_reserved_after_export
-    
+    mem_reserved_after_export_with_torch_no_grad = torch.cuda.memory_reserved(device)
     del model_with_no_grad
     torch.cuda.empty_cache()
     mem_reserved_after_cache_empty = torch.cuda.memory_reserved(device)
@@ -350,7 +348,7 @@ def test_gpu_reserved_memory_with_torch_no_grad():
         mem_reserved_after_export_without_torch_no_grad = torch.cuda.memory_reserved(device)
 
     assert mem_reserved_after_export_with_torch_no_grad < mem_reserved_after_export_without_torch_no_grad
-    assert mem_reserved_before_export < mem_reserved_after_export_with_torch_no_grad
+    assert mem_reserved_before_export == mem_reserved_after_export_with_torch_no_grad
 
 @pytest.mark.parametrize("device", ['cpu', 'cuda'])
 def test_exception_raised_for_dict_return_value_module(device):
@@ -424,30 +422,12 @@ def test_exception_raised_for_custom_class_return_value_module(device):
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
 
-    with pytest.raises(RuntimeError) as runtime_error:
+    with pytest.raises(TypeError) as runtime_error:
         model(x, y, z)
     assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
 
 def test_dynamic_axes_config():
     device = 'cuda'
-
-    def assert_is_dynamic_axes(model):
-        # Check inputs
-        for inp in model._onnx_training.graph.input:
-            shape = inp.type.tensor_type.shape
-            if shape:
-                for dim in shape.dim:
-                    if dim.dim_param and not isinstance(dim.dim_param, str):
-                        return False
-
-        # Check outputs
-        for out in model._onnx_training.graph.output:
-            shape = out.type.tensor_type.shape
-            if shape:
-                for dim in shape.dim:
-                    if dim.dim_param and not isinstance(dim.dim_param, str):
-                        return False
-        return True
 
     # Model 1
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -456,7 +436,7 @@ def test_dynamic_axes_config():
     x = torch.randn(N, D_in, device=device)
     output = model(x)
     assert output is not None
-    assert assert_is_dynamic_axes(model)
+    assert _test_helpers.is_dynamic_axes(model)
     del model, output
 
     # Model 2
@@ -478,4 +458,4 @@ def test_dynamic_axes_config():
     z = torch.randint(0, 1, (32,), dtype=torch.long, device=device)
     output = model(x, y, None, None, None, None, z)
     assert output is not None
-    assert assert_is_dynamic_axes(model)
+    assert _test_helpers.is_dynamic_axes(model)
