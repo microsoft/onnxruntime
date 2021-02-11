@@ -130,6 +130,17 @@
 namespace onnxruntime {
 namespace concurrency {
 
+struct SpinLock {
+  std::atomic_flag lock_ = ATOMIC_FLAG_INIT;
+  void lock() {
+    while (lock_.test_and_set(std::memory_order_acquire))
+      ;
+  }
+  void unlock() {
+    lock_.clear(std::memory_order_release);
+  }
+};
+
 class Profiler {
   bool profiling_ = false;
   std::list<std::string> events_;
@@ -365,7 +376,7 @@ class RunQueue {
   // PushBack adds w at the end of the queue.
   // If queue is full returns w, otherwise returns default-constructed Work.
   Work PushBack(Work w) {
-    std::unique_lock<OrtMutex> lock(mutex_);
+    std::unique_lock<SpinLock> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     Elem& e = array_[(back - 1) & kMask];
     ElemState s = e.state.load(std::memory_order_relaxed);
@@ -387,7 +398,7 @@ class RunQueue {
   //
   // If the queue is full, returns w, otherwise returns default-constructed work.
   Work PushBackWithTag(Work w, Tag tag, unsigned &w_idx) {
-    std::unique_lock<OrtMutex> lock(mutex_);
+    std::unique_lock<SpinLock> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back-1) & kMask;
     Elem& e = array_[w_idx];
@@ -407,7 +418,7 @@ class RunQueue {
   Work PopBack() {
     if (Empty())
       return Work();
-    std::unique_lock<OrtMutex> lock(mutex_);
+    std::unique_lock<SpinLock> lock(mutex_);
     unsigned back;
     Elem *e;
     ElemState s;
@@ -449,7 +460,7 @@ class RunQueue {
 
   bool RevokeWithTag(Tag tag, unsigned w_idx) {
     bool revoked = false;
-    std::unique_lock<OrtMutex> lock(mutex_);
+    std::unique_lock<SpinLock> lock(mutex_);
     Elem& e = array_[w_idx];
     ElemState s = e.state.load(std::memory_order_relaxed);
 
@@ -528,7 +539,7 @@ class RunQueue {
     Work w;
   };
 
-  OrtMutex mutex_;
+  SpinLock mutex_;
 
   // Low log(kSize) + 1 bits in front_ and back_ contain rolling index of
   // front/back, respectively. The remaining bits contain modification counters
@@ -1206,7 +1217,7 @@ int CurrentThreadId() const EIGEN_FINAL {
 
   private:
     std::atomic<ThreadStatus> status{ThreadStatus::Spinning};
-    OrtMutex mutex;
+   OrtMutex mutex;
     OrtCondVar cv;
   };
 
