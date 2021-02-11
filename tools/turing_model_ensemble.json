@@ -1,5 +1,6 @@
 {
     "degree_of_parallelism": 10,
+    "batch_size": 1,
     "ensemble": [
         {
             "model_name": "first_model",
