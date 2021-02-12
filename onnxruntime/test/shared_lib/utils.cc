@@ -55,7 +55,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
     }
   } else if (Y_double) {
     for (int64_t i = 0; i < size; i++) {
-      out[i] = X[i] + Y_double[i];
+      out[i] = static_cast<float>(X[i] + Y_double[i]);
     }
   }
 #endif
