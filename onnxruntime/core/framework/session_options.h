@@ -104,7 +104,7 @@ struct SessionOptions {
   // Deterministic compute is likely not as performant. This option is default to false.
   bool use_deterministic_compute = false;
 
-  // An bitwise OR combination of 
+  // An bitwise OR combination of OrtSparseFlags
   int constant_initializers_sparse_flags = OrtSparseFlags::NOTHING;
 
   // Stores the configurations for this session

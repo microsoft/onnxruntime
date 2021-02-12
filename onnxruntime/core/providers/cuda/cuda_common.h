@@ -27,10 +27,12 @@ namespace cuda {
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUSPARSE error executing ", #expr))
 
+#ifdef USE_CUSPARSELT
 #define CUSPARSELT_RETURN_IF_ERROR(expr)           \
   ORT_RETURN_IF_ERROR(CUSPARSELT_CALL(expr)        \
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUSPARSE error executing ", #expr))
+#endif
 
 
 #define CURAND_RETURN_IF_ERROR(expr)             \

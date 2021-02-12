@@ -274,10 +274,11 @@ Status SessionState::PrepackConstantInitializedTensors(const SessionOptions& ses
           int ort_value_idx;
           if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
             std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
-            if (constant_initialized_tensors.count(ort_value_idx)) {
+            auto init_hit = constant_initialized_tensors.find(ort_value_idx);
+            if (init_hit != constant_initialized_tensors.end()) {
               OpKernel::PrepackParam pre_param{input_idx, session_options.constant_initializers_sparse_flags, input_name};
               bool is_packed = false;
-              const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
+              const Tensor& const_initialized_tensor = init_hit->second.Get<Tensor>();
               ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, pre_param, is_packed));
               if (is_packed && constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
                 // release the constant initialized tensor

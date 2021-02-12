@@ -86,6 +86,12 @@ const char* CudaErrString<ncclResult_t>(ncclResult_t e) {
 }
 #endif
 
+template <>
+const char* CudaErrString<cusparseStatus_t>(cusparseStatus_t status) {
+  cudaDeviceSynchronize();
+  return cusparseGetErrorString(status);
+}
+
 template <typename ERRTYPE, bool THRW>
 bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
@@ -140,6 +146,9 @@ template bool CudaCall<curandStatus_t, false>(curandStatus_t retCode, const char
 template bool CudaCall<curandStatus_t, true>(curandStatus_t retCode, const char* exprString, const char* libName, curandStatus_t successCode, const char* msg);
 template bool CudaCall<cufftResult, false>(cufftResult retCode, const char* exprString, const char* libName, cufftResult successCode, const char* msg);
 template bool CudaCall<cufftResult, true>(cufftResult retCode, const char* exprString, const char* libName, cufftResult successCode, const char* msg);
+// For both cuSparse and cuSparseLt
+template bool CudaCall<cusparseStatus_t, false>(cusparseStatus_t retCode, const char* exprString, const char* libName, cusparseStatus_t successCode, const char* msg);
+template bool CudaCall<cusparseStatus_t, true>(cusparseStatus_t retCode, const char* exprString, const char* libName, cusparseStatus_t successCode, const char* msg);
 
 #ifdef ORT_USE_NCCL
 template bool CudaCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg);

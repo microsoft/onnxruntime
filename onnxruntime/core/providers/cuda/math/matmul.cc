@@ -81,8 +81,6 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
   return true;
 }
 
-#ifdef USE_CUSPARSELT
-
 /// <summary>
 /// Captures Prepack() information along the data and its shape
 /// </summary>
@@ -91,10 +89,12 @@ template <typename T>
 struct MatMul<T>::SparseInfo {
   OpKernel::PrepackParam param_;
   TensorShape shape_;
-  IAllocatorUniquePtr<T> device_dense_buffer_;
-  SparseInfo(const OpKernel::PrepackParam& p, const TensorShape& shape,
-             IAllocatorUniquePtr<T>&& device_dense_buffer) : param_(p), shape_(shape), device_dense_buffer_(std::move(device_dense_buffer)) {}
+  std::vector<IAllocatorUniquePtr<T>> prepack_buffers_;
+  SparseInfo(const OpKernel::PrepackParam& p, const TensorShape& shape)
+      : param_(p), shape_(shape), prepack_buffers_() {}
 };
+
+#ifdef USE_CUSPARSELT
 
 static Status MakeDescriptors(const cusparseLtHandle_t* handle, cudaDataType cuda_type, size_t data_type_size, cusparseComputeType precision,
                               int64_t m, int64_t k, int64_t n, bool transa, bool transb,
@@ -181,7 +181,6 @@ class Sparse2x4ComputeHelper {
                                                                CUSPARSELT_MATMUL_ALG_CONFIG_ID,
                                                                &alg_id, sizeof(alg_id)));
 
-
     size_t workspace_size;
     CUSPARSELT_RETURN_IF_ERROR(cusparseLtMatmulGetWorkspace(handle, &alg_selection, &workspace_size));
     auto workspace_buffer = kernel->GetScratchBuffer<T>(workspace_size);
@@ -205,7 +204,7 @@ class Sparse2x4ComputeHelper {
     // Batches
     if (helper.OutputOffsets().size() == 1) {
       // No batches, we compress the whole buffer as a single matrix
-      CUSPARSELT_RETURN_IF_ERROR(cusparseLtSpMMACompress(handle, &plan, sparse_info.device_dense_buffer_.get(),
+      CUSPARSELT_RETURN_IF_ERROR(cusparseLtSpMMACompress(handle, &plan, sparse_info.prepack_buffers_.front().get(),
                                                          compressed_buffer.get(), nullptr /* default stream */));
 
       // We swapping arguments in hopes that the next release of the library supports the feature
@@ -214,11 +213,10 @@ class Sparse2x4ComputeHelper {
                                                   &beta, output, output, workspace_buffer.get(), streams, 0));
       return Status::OK();
     } else if (CanUseStridedBatchedGemm(left->Shape(), sparse_info.shape_,
-              transa, transb, stride_A, stride_B, stride_C, batch_count)) {
-
+                                        transa, transb, stride_A, stride_B, stride_C, batch_count)) {
       // XXX: Consider parallelizing it
       const T* a_data = left->Data<T>();
-      const T* b_data = sparse_info.device_dense_buffer_.get();
+      const T* b_data = sparse_info.prepack_buffers_.front().get();
       T* y_data = Y->MutableData<T>();
 
       // compress once
@@ -247,7 +245,7 @@ class Sparse2x4ComputeHelper {
       std::vector<T*> output_arrays(helper.OutputOffsets().size());
 
       MatMulComputeHelper::OffsetToArrays(left->template Data<T>(), helper.LeftOffsets(), gsl::make_span(left_arrays));
-      MatMulComputeHelper::OffsetToArrays(sparse_info.device_dense_buffer_.get(), helper.RightOffsets(), gsl::make_span(right_arrays));
+      MatMulComputeHelper::OffsetToArrays(sparse_info.prepack_buffers_.front().get(), helper.RightOffsets(), gsl::make_span(right_arrays));
       MatMulComputeHelper::OffsetToArrays(Y->template MutableData<T>(), helper.OutputOffsets(), gsl::make_span(output_arrays));
 
       // XXX: Consider parallelizing it
@@ -279,7 +277,7 @@ class Sparse2x4ComputeHelper {
     is_packed = false;
 
     if (!tensor.IsDataType<T>()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name + " : wrong data type for the constant initializer");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name.get() + " : wrong data type for the constant initializer");
     }
 
     const auto& right_shape = tensor.Shape();
@@ -326,10 +324,41 @@ class Sparse2x4ComputeHelper {
                                                          static_cast<cudaStream_t>(0)));
 
     if (valid == 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name + " : 2:4 data format validation failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name.get() + " : 2:4 data format validation failed");
     }
 
-    sparse_info = onnxruntime::make_unique<typename MatMul<T>::SparseInfo>(param, right_shape, std::move(device_buffer));
+    sparse_info = onnxruntime::make_unique<typename MatMul<T>::SparseInfo>(param, right_shape);
+    sparse_info->prepack_buffers_.push_back(std::move(device_buffer));
+
+    is_packed = true;
+    return Status::OK();
+  }
+};
+
+#endif
+
+template <class T>
+class CuSparseHelper {
+ public:
+  Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::PrepackParam& param,
+                 bool transa, bool transb, std::unique_ptr<MatMul<T>::SparseInfo>& sparse_info, bool& is_packed) {
+
+    is_packed = false;
+    if (!tensor.IsDataType<T>()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name.get() + " : wrong data type for the constant initializer");
+    }
+
+    cusparseSpMatDescr_t B_mat;
+
+    // Compute the dims and batches if they exist
+    const auto& right_shape = tensor.Shape();
+    const auto right_num_dims = right_shape.NumDimensions();
+    int64_t 
+
+
+    sparse_info = onnxruntime::make_unique<typename MatMul<T>::SparseInfo>(param, right_shape);
+    // Add device buffers for all of the matrices in the batch.
+    // This will be 3 buffers. For batches, each matrix data will be back to back.
 
     is_packed = true;
     return Status::OK();
@@ -344,61 +373,119 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
   // However, we will feed this to cuSparseLT as the first argument.
   // cuSparseLt only handles 2-D matrices
   if (IsAmpereAvaiable()) {
-    if (param.input_idx == 1 && param.Is2x4Format()) {
-      ORT_RETURN_IF_ERROR(Sparse2x4ComputeHelper<T>::PrePack(this, tensor, param, trans_A_, trans_B_, sparse_info_, is_packed));
-    }
-  }
-  return Status::OK();
-}
-
+    if (param.input_idx == 1)) {
+#ifdef USE_CURSPARSELT
+        if (param.Is2x4Format()) {
+          ORT_RETURN_IF_ERROR(Sparse2x4ComputeHelper<T>::PrePack(this, tensor, param, trans_A_, trans_B_, sparse_info_, is_packed));
+        }
 #endif
-
-template <typename T>
-Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-
-  const Tensor* left_X = ctx->Input<Tensor>(0);
-  const Tensor* right_X = ctx->Input<Tensor>(1);
-
-  // Ignore the transpose flag if rank of input being 1.
-  // Be noted: numpy.transpose on vector does not change anything.
-  bool transa = trans_A_;
-  bool transb = trans_B_;
-  if (left_X->Shape().NumDimensions() == 1) {
-    transa = false;
-  }
-  if (right_X->Shape().NumDimensions() == 1) {
-    transb = false;
-  }
-
-  MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb));
-
-  Tensor* Y = ctx->Output(0, helper.OutputShape());
-
-  // Bail out early if the output is going to be empty
-  if (Y->Shape().Size() == 0)
+        if (param.UseCsrFormat() && param.UseCooFormat()) {
+          // XXX: Call helper
+        }
+      }
     return Status::OK();
+  }
+
+  template <typename T>
+  Status MatMul<T>::ComputeInternal(OpKernelContext * ctx) const {
+    typedef typename ToCudaType<T>::MappedType CudaT;
+
+    const Tensor* left_X = ctx->Input<Tensor>(0);
+    const Tensor* right_X = ctx->Input<Tensor>(1);
+
+    // Ignore the transpose flag if rank of input being 1.
+    // Be noted: numpy.transpose on vector does not change anything.
+    bool transa = trans_A_;
+    bool transb = trans_B_;
+    if (left_X->Shape().NumDimensions() == 1) {
+      transa = false;
+    }
+    if (right_X->Shape().NumDimensions() == 1) {
+      transb = false;
+    }
+
+    MatMulComputeHelper helper;
+    ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb));
+
+    Tensor* Y = ctx->Output(0, helper.OutputShape());
+
+    // Bail out early if the output is going to be empty
+    if (Y->Shape().Size() == 0)
+      return Status::OK();
 
 #ifdef USE_CUSPARSELT
-  if (sparse_info_) {
-    Sparse2x4ComputeHelper<T> sparse_helper;
-    return sparse_helper.Compute(this, *sparse_info_, helper, alpha_, transa, transb, left_X, Y);
-  }
+    if (sparse_info_) {
+      Sparse2x4ComputeHelper<T> sparse_helper;
+      return sparse_helper.Compute(this, *sparse_info_, helper, alpha_, transa, transb, left_X, Y);
+    }
 #endif
 
-  const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
-  const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
+    const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
+    const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
-  cublasOperation_t transA = transa ? CUBLAS_OP_T : CUBLAS_OP_N;
-  cublasOperation_t transB = transb ? CUBLAS_OP_T : CUBLAS_OP_N;
-  const int lda = transa ? static_cast<int>(helper.M()) : static_cast<int>(helper.K());
-  const int ldb = transb ? static_cast<int>(helper.K()) : static_cast<int>(helper.N());
-  const int ldc = static_cast<int>(helper.N());
-  int64_t stride_A, stride_B, stride_C, batch_count;
-  auto& device_prop = GetDeviceProp();
-  if (helper.OutputOffsets().size() == 1) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+    cublasOperation_t transA = transa ? CUBLAS_OP_T : CUBLAS_OP_N;
+    cublasOperation_t transB = transb ? CUBLAS_OP_T : CUBLAS_OP_N;
+    const int lda = transa ? static_cast<int>(helper.M()) : static_cast<int>(helper.K());
+    const int ldb = transb ? static_cast<int>(helper.K()) : static_cast<int>(helper.N());
+    const int ldc = static_cast<int>(helper.N());
+    int64_t stride_A, stride_B, stride_C, batch_count;
+    auto& device_prop = GetDeviceProp();
+    if (helper.OutputOffsets().size() == 1) {
+      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+          Base::CublasHandle(),
+          transB,
+          transA,
+          static_cast<int>(helper.N()),
+          static_cast<int>(helper.M()),
+          static_cast<int>(helper.K()),
+          &alpha,
+          reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+          ldb,
+          reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+          lda,
+          &zero,
+          reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+          ldc,
+          device_prop));
+      return Status::OK();
+    } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
+                                        transa, transb, stride_A, stride_B, stride_C, batch_count)) {
+      CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(Base::CublasHandle(),
+                                                            transB,
+                                                            transA,
+                                                            static_cast<int>(helper.N()),
+                                                            static_cast<int>(helper.M()),
+                                                            static_cast<int>(helper.K()),
+                                                            &alpha,
+                                                            reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+                                                            ldb,
+                                                            stride_B,
+                                                            reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+                                                            lda,
+                                                            stride_A,
+                                                            &zero,
+                                                            reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+                                                            ldc,
+                                                            stride_C,
+                                                            static_cast<int>(batch_count),
+                                                            device_prop));
+
+      return Status::OK();
+    }
+
+    CudaAsyncBuffer<const CudaT*> left_arrays(this, helper.LeftOffsets().size());
+    CudaAsyncBuffer<const CudaT*> right_arrays(this, helper.RightOffsets().size());
+    CudaAsyncBuffer<CudaT*> output_arrays(this, helper.OutputOffsets().size());
+    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
+    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
+    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
+    ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
+    ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
+    ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
+
+    // note that onnxruntime OrtValue is row major, while cublas is column major,
+    // so swap left/right operands
+    CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
         Base::CublasHandle(),
         transB,
         transA,
@@ -406,72 +493,18 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
         &alpha,
-        reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+        right_arrays.GpuPtr(),
         ldb,
-        reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+        left_arrays.GpuPtr(),
         lda,
         &zero,
-        reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+        output_arrays.GpuPtr(),
         ldc,
+        static_cast<int>(helper.OutputOffsets().size()),
         device_prop));
-    return Status::OK();
-  } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
-                                      transa, transb, stride_A, stride_B, stride_C, batch_count)) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(Base::CublasHandle(),
-                                                          transB,
-                                                          transA,
-                                                          static_cast<int>(helper.N()),
-                                                          static_cast<int>(helper.M()),
-                                                          static_cast<int>(helper.K()),
-                                                          &alpha,
-                                                          reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
-                                                          ldb,
-                                                          stride_B,
-                                                          reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
-                                                          lda,
-                                                          stride_A,
-                                                          &zero,
-                                                          reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-                                                          ldc,
-                                                          stride_C,
-                                                          static_cast<int>(batch_count),
-                                                          device_prop));
 
     return Status::OK();
   }
 
-  CudaAsyncBuffer<const CudaT*> left_arrays(this, helper.LeftOffsets().size());
-  CudaAsyncBuffer<const CudaT*> right_arrays(this, helper.RightOffsets().size());
-  CudaAsyncBuffer<CudaT*> output_arrays(this, helper.OutputOffsets().size());
-  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
-  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
-  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
-
-  // note that onnxruntime OrtValue is row major, while cublas is column major,
-  // so swap left/right operands
-  CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
-      Base::CublasHandle(),
-      transB,
-      transA,
-      static_cast<int>(helper.N()),
-      static_cast<int>(helper.M()),
-      static_cast<int>(helper.K()),
-      &alpha,
-      right_arrays.GpuPtr(),
-      ldb,
-      left_arrays.GpuPtr(),
-      lda,
-      &zero,
-      output_arrays.GpuPtr(),
-      ldc,
-      static_cast<int>(helper.OutputOffsets().size()),
-      device_prop));
-
-  return Status::OK();
-}
-
 }  // namespace cuda
-}  // namespace onnxruntime
+}  // namespace cuda

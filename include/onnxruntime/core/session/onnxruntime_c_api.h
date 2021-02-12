@@ -229,7 +229,9 @@ typedef enum OrtLanguageProjection {
 
 typedef enum OrtSparseFlags {
   NOTHING = 0,
-  FORMAT_2x4 = 0x1  // 2:4 dense format
+  FORMAT_2x4 = 0x1,           // 2:4 pruned
+  USE_CSR_FORMAT = 0x2,       // use cuSparse library with CSR
+  USE_COO_FORMAT = 0x4        //  use cuSparse library with COO
 } OrtSparseFlags;
 
 struct OrtKernelInfo;

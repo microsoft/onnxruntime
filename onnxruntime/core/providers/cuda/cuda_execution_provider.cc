@@ -68,6 +68,9 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+
+  CUSPARSE_CALL_THROW(cusparseCreate(&cusparse_handle_));
+  CUSPARSE_CALL_THROW(cusparseSetStream(cusparse_handle_, stream));
   
 #ifdef USE_CUSPARSELT
   CUSPARSELT_CALL_THROW(cusparseLtInit(&cusparse_lt_handle_));
@@ -101,6 +104,12 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
     CUDNN_CALL(cudnnDestroy(cudnn_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
+  }
+
+  try {
+    CUSPARSE_CALL(cusparseDestroy(cusparse_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "cusparseDestroy threw:" << ex.what();
   }
 
 #ifdef USE_CUSPARSELT

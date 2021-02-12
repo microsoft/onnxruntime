@@ -112,8 +112,13 @@ class CUDAExecutionProvider : public IExecutionProvider {
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
     }
+
+    cusparseHandle_t CusparseHandle() const noexcept {
+      return cusparse_handle_;
+    }
+
 #ifdef USE_CUSPARSELT
-    const cusparseLtHandle_t* CusparseLightHandle() const {
+    const cusparseLtHandle_t* CusparseLightHandle() const noexcept {
       return &cusparse_lt_handle_;
     }
 #endif
@@ -159,6 +164,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     cudaStream_t stream_ = nullptr;
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
+    cusparseHandle_t cusparse_handle_ = nullptr;
 #ifdef USE_CUSPARSELT
     cusparseLtHandle_t cusparse_lt_handle_;
 #endif
