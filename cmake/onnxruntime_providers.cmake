@@ -651,12 +651,15 @@ if (onnxruntime_USE_OPENVINO)
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-  if(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime/capi/)
-    add_custom_command(
-      TARGET onnxruntime_providers_openvino POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-            ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime_providers_openvino.so
-            ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime/capi/)
+  if(NOT WIN32)
+    if(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime/capi/)
+      add_custom_command(
+        TARGET onnxruntime_providers_openvino POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy
+              ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime_providers_openvino.so
+              ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime_providers_shared.so
+              ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime/capi/)
+    endif()
   endif()
 endif()
 
