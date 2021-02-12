@@ -19,8 +19,7 @@ def get_ep_list(comparison):
         ep_list = [cpu, acl]
     else:   
         # test with cuda and trt
-        ep_list = [cuda_fp16]
-        #ep_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
+        ep_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
     return ep_list 
 
 def main():

@@ -968,10 +968,7 @@ def run_onnxruntime(args, models):
                 logger.info("\n----------------------------- benchmark -------------------------------------")
 
                 options = onnxruntime.SessionOptions()
-                if ep == cuda_fp16: 
-                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-                else: 
-                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
                 # create onnxruntime inference session
                 try:
@@ -1034,10 +1031,7 @@ def run_onnxruntime(args, models):
                 # enable profiling to generate profiling file for analysis
                 options = onnxruntime.SessionOptions()
                 options.enable_profiling = True
-                if ep == cuda_fp16: 
-                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-                else: 
-                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
                 time.sleep(1) # avoid to generate same profile file name
 
                 # create onnxruntime inference session
