@@ -7,6 +7,7 @@
 #    and the models from <repo root>/onnxruntime/test/testdata/, run UT, and use onnx_test_runner to
 #    test the ort format models generated in step 1.
 #    Exceptions are enabled in this step to help debugging in case of CI failure.
+#    This step builds and tests ORT with and without type reduction enabled.
 # 4. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions
 #    This step is to report the baseline binary size for Android
 jobs:
@@ -15,10 +16,22 @@ jobs:
   workspace:
     clean: all
   pool: Linux-CPU
+
+  variables:
+    test_data_directory: $(Build.SourcesDirectory)/.test_data
+
   steps:
   - checkout: self
     clean: true
     submodules: recursive
+
+  - task: CmdLine@2
+    displayName: Create test data directory
+    inputs:
+      script: |
+        # Create a folder for all test data
+        mkdir -p $(test_data_directory)
+      workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/get-docker-image-steps.yml
     parameters:
@@ -31,23 +44,22 @@ jobs:
     displayName: Build full onnxruntime and generate ORT format test files
     inputs:
       script: |
-        # Create a folder for all test data
-        mkdir -p $HOME/.test_data
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
       workingDirectory: $(Build.SourcesDirectory)
+
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime with exceptions disabled
+    displayName: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED]
     inputs:
       script: |
-        # We will try to build the ORT minimal with exception disabled
+        # We will try to build minimal ORT with exceptions disabled
         # Only the building process is verified here, no test will be performed
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -66,31 +78,59 @@ jobs:
               --minimal_build \
               --disable_exceptions
       workingDirectory: $(Build.SourcesDirectory)
+
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime and run tests with exceptions enabled
+    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED] and run tests
     inputs:
       script: |
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecentoscpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
+              --build-directory /build/without_type_reduction \
+              --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops.ort_models.config
       workingDirectory: $(Build.SourcesDirectory)
+
+  - script: git checkout -- .
+    displayName: Discard local changes to Git repository files
+    workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecentoscpubuild \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
+              --build-directory /build/with_type_reduction \
+              --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config \
+              --enable-type-reduction
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - script: git checkout -- .
+    displayName: Discard local changes to Git repository files
+    workingDirectory: $(Build.SourcesDirectory)
+
   - task: CmdLine@2
     displayName: Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
     inputs:
       script: |
-        # Create a folder for all test data
-        mkdir -p $HOME/.test_data
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
-          --volume $HOME/.test_data:/home/onnxruntimedev/.test_data \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
