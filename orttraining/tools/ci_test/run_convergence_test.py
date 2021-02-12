@@ -20,8 +20,8 @@ def parse_args():
                       help="Path to the training data root directory.")
   parser.add_argument("--model_root", required=True,
                       help="Path to the model root directory.")
-  parser.add_argument("--gpu_sku", default='V100_16G', required=False,
-                      help="GPU SKU (e.g. V100_16G, MI100_32G).") 
+  parser.add_argument("--gpu_sku", choices=['V100_16G', 'MI100_32G'], default='V100_16G', required=False, 
+                      help="GPU model (e.g. V100_16G, MI100_32G).")
   return parser.parse_args()
 
 def main():
