@@ -439,8 +439,7 @@ def parse_arguments():
         help="Build ONNXRuntime micro-benchmarks.")
 
     # options to reduce binary size
-    parser.add_argument("--minimal_build", action='store',
-                        const='on', default='off', nargs='?', type=str.lower,
+    parser.add_argument("--minimal_build", default=None, nargs='*', type=str.lower,
                         help="Create a build that only supports ORT format models. "
                         "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information. "
                         "RTTI is automatically disabled in a minimal build. "
@@ -448,7 +447,7 @@ def parse_arguments():
                         "as a parameter. e.g. '--minimal_build extended'. "
                         "To enable support for custom operators pass 'custom_ops' as a parameter. "
                         "e.g. '--minimal_build custom_ops'. This can be combined with an 'extended' build by passing "
-                        "'--minimal_build extended,custom_ops'")
+                        "'--minimal_build extended custom_ops'")
     parser.add_argument("--include_ops_by_config", type=str,
                         help="include ops from config file. "
                         "See /docs/Reduced_Operator_Kernel_build.md for more information.")
@@ -683,7 +682,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
         "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
-        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build != 'off' else "OFF"),
+        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build else "OFF"),
         "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if 'extended' in args.minimal_build else "OFF"),
         "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if 'custom_ops' in args.minimal_build else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if args.include_ops_by_config else "OFF"),
@@ -1378,7 +1377,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run
-            if args.include_ops_by_config or args.minimal_build != 'off':
+            if args.include_ops_by_config or args.minimal_build:
                 return
 
             if is_windows():
