@@ -8,22 +8,28 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+ size_t GetPinnedBufferSize(
+    int batch_size);
+
 size_t GetLongformerAttentionWorkspaceSize(
     size_t element_size,
-    int batchsize,
+    int batch_size,
     int num_heads,
     int head_size,
     int sequence_length,
     int max_num_global,
     int window);
 
-bool LaunchLongformerAttentionKernel(
+  bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties
     cudaStream_t stream,                // CUDA stream
     const void* input,                  // Input tensor
     const void* attention_mask,         // Attention mask with shape (B, S)
     const void* global_input,           // Global attention input, or nullptr when max_num_global == 0.
     const int* global_attention,        // Global attention flags with shape (B, S)
+    const int* global_index,            // Global index
+    const int* batch_global_num,        // Number of global tokens per batch. It is in device memory.
+    void* pinned_buffer,                // Number of global tokens per batch. It is in pinned memory of CPU.
     void* output,                       // Output tensor
     int batch_size,                     // Batch size (B)
     int sequence_length,                // Sequence length (S)

@@ -16,8 +16,7 @@ limitations under the License.
 
 // Limitations of current Longformer Attention CUDA Kernels:
 // (1) Does not support global tokens in the middle. All global tokens shall be in the beginning of sequence.
-// (2) Batch size <= 128 (defined in MAX_LONGFORMER_BATCH_SIZE)
-// (3) Maximum number of global tokens <= one-sided attention window
+// (2) Maximum number of global tokens <= one-sided attention window
 
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
@@ -44,14 +43,20 @@ using namespace cub;
     return false;         \
   }
 
-constexpr int MAX_LONGFORMER_BATCH_SIZE = 128;
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 size_t GetScratch1Size(size_t element_size, int batch_size, int num_heads, int sequence_length, int window) {
   return (5 * sequence_length - 3 * window) * window * num_heads * batch_size * element_size;
+}
+
+constexpr size_t GetScratch2Size() {
+  return 10 * (sizeof(void*) + sizeof(size_t));
+}
+
+size_t GetPinnedBufferSize(int batch_size) {
+  return sizeof(int) * batch_size + GetScratch2Size();
 }
 
 // Denote: batch size (B), sequence length (S), number of heads (N), dimension per head (H), max number of global tokens (G)
@@ -63,15 +68,11 @@ size_t GetScratch1Size(size_t element_size, int batch_size, int num_heads, int s
 // It is feasible to use compact format for Global_Q with shape BxNxGxH to save space. We do not use compact format for now.
 //
 // SoftmaxSpace layout:
-//   [Global_Idx: int BxS][batch_global_num: int BxS][sequence_index: int BxS][tmp_storage: int 1024x1]
-//                                                                            [scratch1: (5S-3W)*W*N*B][scratch2: size_t 20]
-//
-// Temporary storage for global index calculation could use up to total space of scratch1, scratch2, Q and K. It will
-// be overwritten by data of scratch1. Note that tmp_storage and scratch1 have same start address.
+//    [scratch1: (5S-3W)*W*N*B][scratch2: size_t 20]
 //
 // Scratch1 has 5 buffers for local and global attention calculation.
 // Scratch2 has 5 input pointers, 5 output pointers, 5 buffer sizes and 5 strides related to scratch1.
-// 
+//
 // Allocated size could be slightly larger than needed: batch_global_num uses only Bx1 and allocated BxS.
 
 size_t GetLongformerSoftmaxWorkspaceSize(
@@ -80,10 +81,9 @@ size_t GetLongformerSoftmaxWorkspaceSize(
     int num_heads,
     int sequence_length,
     int window) {
-  size_t temp_size = sizeof(int) * 1024;
   size_t scratch1_size = GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
   size_t scratch2_size = 10 * (sizeof(void*) + sizeof(size_t));
-  return 3 * batch_size * sequence_length * sizeof(int) + std::max(scratch1_size + scratch2_size, temp_size);
+  return scratch1_size + scratch2_size;
 }
 
 size_t GetLongformerAttentionWorkspaceSize(
@@ -98,37 +98,6 @@ size_t GetLongformerAttentionWorkspaceSize(
   size_t qkv_size = 3 * batch_size * sequence_length * num_heads * head_size * element_size;
   size_t global_qkv_size = max_num_global > 0 ? qkv_size : 0;
   return softmax_size + qkv_size + global_qkv_size;
-}
-
-__global__ void InitSequenceIndexKernel(int* sequence_index, int sequence_length) {
-  int batch_index = blockIdx.x;
-  for (int i = threadIdx.x; i < sequence_length; i += blockDim.x) {
-    sequence_index[batch_index * sequence_length + i] = i;
-  }
-}
-
-// TODO: Move this to its own plugin that can be run once for all layers.
-size_t BuildGlobalIndex(cudaStream_t stream, const int* global_attention, int batch_size, int sequence_length, void* workspace) {
-  int* global_index = reinterpret_cast<int*>(workspace);
-  int* batch_global_num = global_index + batch_size * sequence_length;  // Number of global tokens in each batch, shape is (batch_size)
-  int* sequence_index = batch_global_num + batch_size * sequence_length;
-  int* tmp_storage = sequence_index + batch_size * sequence_length;
-
-  InitSequenceIndexKernel<<<batch_size, 128, 0, stream>>>(sequence_index, sequence_length);
-
-  // Determine temporary device storage requirements
-  // Find the global attention indices and number of global attention tokens
-  size_t temp_storage_bytes = 0;
-  cub::DevicePartition::Flagged(NULL, temp_storage_bytes, sequence_index,
-                                global_attention, global_index, batch_global_num, sequence_length, stream);
-
-  for (int i = 0; i < batch_size; ++i) {
-    cub::DevicePartition::Flagged(reinterpret_cast<void*>(tmp_storage), temp_storage_bytes, sequence_index,
-                                  global_attention + i * sequence_length, global_index + i * sequence_length,
-                                  batch_global_num + i, sequence_length, stream);
-  }
-
-  return temp_storage_bytes;
 }
 
 template <typename T, int blockSize>
@@ -398,6 +367,9 @@ bool launchSoftmaxKernel(
     const void* global_k,         // K for global tokens with shape (B, N, S, H)
     const void* global_v,         // V for global tokens with shape (B, N, S, H)
     const int* global_attention,  // global attention with shape (B, S), with value 0 for local attention and 1 for global attention.
+    const int* global_index,      // Global index with shape (B, S)
+    const int* batch_global_num,  // Number of global tokens per batch with shape (B, 1)
+    void* pinned_buffer,          // Pinned memory in CPU. It has two parts: Number of global tokens per batch with shape (B, 1), and a buffer to copy data to scratch2
     void* output,                 // output with shape (B, N, S, H)
     float scaler,                 // scalar
     int batch_size,               // batch size
@@ -407,34 +379,13 @@ bool launchSoftmaxKernel(
     int window,                   // one sided window size
     int max_num_global,           // maximum number of global tokens (G) in all batches
     size_t element_size) {        // size of element: 2 for half, and 4 for float
-  if (batch_size > MAX_LONGFORMER_BATCH_SIZE) {
-    ORT_THROW("LongformerAttention CUDA operator does not support batch size > 128.");
-  }
+  assert(max_num_global <= window);
 
-  if (max_num_global > window) {
-    ORT_THROW("LongformerAttention CUDA operator does not support number of global tokens > attention window.");
-  }
+  const int* pinned_global_num = reinterpret_cast<const int*>(pinned_buffer);
 
   bool is_fp16 = (element_size == 2);
-  void* scratch1 = reinterpret_cast<char*>(workspace) + 3 * sizeof(int) * batch_size * sequence_length;
-
-  // Build index for global tokens
-  size_t temp_storage_bytes = BuildGlobalIndex(stream, global_attention, batch_size, sequence_length, workspace);
-  assert(temp_storage_bytes <= softmax_workspace_size - static_cast<size_t>(3 * batch_size * sequence_length));
-
-  int* global_index = (int*)workspace;
-  int* batch_global_num = global_index + batch_size * sequence_length;
-
-  cudaEvent_t canFreeVector;
-  CHECK_CUDA(cudaEventCreate(&canFreeVector));
-
-  int num_global[MAX_LONGFORMER_BATCH_SIZE] = {-1};
-  CHECK_CUDA(cudaMemcpyAsync(&num_global[0], batch_global_num, batch_size * sizeof(int), cudaMemcpyDeviceToHost, stream));
-  for (int i = 0; i < batch_size; ++i) {
-    if (num_global[i] > window) {
-      ORT_THROW("LongformerAttention CUDA operator does not support number of global tokens > attention window.");
-    }
-  }
+  void* scratch1 = reinterpret_cast<char*>(workspace);
+  char* scratch2 = (char*)scratch1 + GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
 
   // Setup shared parameters for two strided batched matrix multiplies
   cudaDataType_t Atype;
@@ -518,28 +469,26 @@ bool launchSoftmaxKernel(
       static_cast<size_t>(w),  // global tokens are assumed to be smaller than window size
       static_cast<size_t>(sequence_length)};
 
-  void* buffer_pointers[11];  //0~4: input pointers; 5~9: output pointers; 10: pointer to right after those 5 buffers
+  void* input_pointers[5];
+  void* output_pointers[5];
 
-  char* buffer_pointer = (char*)scratch1;
+  char* current_pointer = (char*)scratch1;
   for (int i = 0; i < 5; ++i) {
-    buffer_pointers[i] = (void*)buffer_pointer;
-    buffer_pointers[i + 5] = (void*)buffer_pointer;  // output pointer is same as input
-    buffer_pointer += buffer_sizes[i] * num_heads * batch_size * element_size;
+    input_pointers[i] = (void*)current_pointer;
+    output_pointers[i] = (void*)current_pointer;  // output pointer is same as input
+    current_pointer += buffer_sizes[i] * num_heads * batch_size * element_size;
   }
-  assert(buffer_pointer == (char*)scratch1 + GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window));
-
-  buffer_pointers[10] = buffer_pointer;
+  assert(current_pointer == scratch2);
 
   // Copy to a continues buffer first so that we only need call cudaMemcpyAsync once
+
   constexpr size_t totalBytes = 10 * (sizeof(size_t) + sizeof(void*));
-  char temp_buffer[totalBytes];
-  memcpy(temp_buffer, &buffer_pointers[0], 10 * sizeof(void*));
+  char* temp_buffer = reinterpret_cast<char*>(pinned_buffer) + sizeof(int) * batch_size;
+  memcpy(temp_buffer, &input_pointers[0], 5 * sizeof(void*));
+  memcpy(temp_buffer + 5 * sizeof(void*), &output_pointers[0], 5 * sizeof(void*));
   memcpy(temp_buffer + 10 * sizeof(void*), &buffer_sizes[0], 5 * sizeof(size_t));
   memcpy(temp_buffer + 10 * sizeof(void*) + 5 * sizeof(size_t), &buffer_strides[0], 5 * sizeof(size_t));
-  CHECK_CUDA(cudaMemcpyAsync(buffer_pointers[10], temp_buffer, totalBytes, cudaMemcpyHostToDevice, stream));
-
-  // Create an event to make sure the async copy is finished before this function exits, otherwise temp_buffer will disappear.
-  CHECK_CUDA(cudaEventRecord(canFreeVector, stream));
+  CHECK_CUDA(cudaMemcpyAsync(scratch2, temp_buffer, totalBytes, cudaMemcpyHostToDevice, stream));
 
   // Local attention part
   {
@@ -548,7 +497,7 @@ bool launchSoftmaxKernel(
         for (int j = 0; j < num_heads; ++j) {
           void* q_head = (char*)q + (i * elements_per_batch + j * sequence_length * head_size + w * head_size) * element_size;
           void* k_head = (char*)k + (i * elements_per_batch + j * sequence_length * head_size) * element_size;
-          void* qk_head = (char*)buffer_pointers[1] + (i * num_heads + j) * buffer_sizes[1] * element_size;
+          void* qk_head = (char*)input_pointers[1] + (i * num_heads + j) * buffer_sizes[1] * element_size;
           CHECK(cublasGemmStridedBatchedEx(cublas,
                                            CUBLAS_OP_T,
                                            CUBLAS_OP_N,
@@ -592,7 +541,7 @@ bool launchSoftmaxKernel(
                                      head_size,               // ldb
                                      stride_per_head,         // strideB
                                      beta_0,                  // beta
-                                     buffer_pointers[0],      // C
+                                     input_pointers[0],       // C
                                      Ctype,                   // C type
                                      2 * w,                   // ldc
                                      buffer_sizes[0],         // strideC
@@ -619,7 +568,7 @@ bool launchSoftmaxKernel(
                                      head_size,               // ldb
                                      stride_per_head,         // strideB
                                      beta_0,                  // beta
-                                     buffer_pointers[2],      // C
+                                     input_pointers[2],       // C
                                      Ctype,                   // C type
                                      2 * w,                   // ldc
                                      buffer_sizes[2],         // strideC
@@ -630,63 +579,63 @@ bool launchSoftmaxKernel(
 
   // Global attention part
   for (int i = 0; i < batch_size; ++i) {
-    if (num_global[i] > 0) {
+    if (pinned_global_num[i] > 0) {
       void* q_batch = (char*)q + (i * elements_per_batch + w * head_size) * element_size;
       void* k_batch = (char*)k + (i * elements_per_batch) * element_size;
-      void* qk_batch = (char*)buffer_pointers[3] + (i * buffer_sizes[3]) * num_heads * element_size;
+      void* qk_batch = (char*)input_pointers[3] + (i * buffer_sizes[3]) * num_heads * element_size;
 
       // Local tokens attending global tokens
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_T,
                                        CUBLAS_OP_N,
-                                       num_global[i],        // m
-                                       sequence_length - w,  // n
-                                       head_size,            // k
-                                       alpha,                // alpha
-                                       k_batch,              // A
-                                       Atype,                // A type
-                                       head_size,            // lda
-                                       stride_per_head,      // strideA
-                                       q_batch,              // B
-                                       Btype,                // B type
-                                       head_size,            // ldb
-                                       stride_per_head,      // strideB
-                                       beta_0,               // beta
-                                       qk_batch,             // C
-                                       Ctype,                // C type
-                                       w,                    // ldc
-                                       buffer_sizes[3],      // strideC
-                                       num_heads,            // batch count
+                                       pinned_global_num[i],  // m
+                                       sequence_length - w,   // n
+                                       head_size,             // k
+                                       alpha,                 // alpha
+                                       k_batch,               // A
+                                       Atype,                 // A type
+                                       head_size,             // lda
+                                       stride_per_head,       // strideA
+                                       q_batch,               // B
+                                       Btype,                 // B type
+                                       head_size,             // ldb
+                                       stride_per_head,       // strideB
+                                       beta_0,                // beta
+                                       qk_batch,              // C
+                                       Ctype,                 // C type
+                                       w,                     // ldc
+                                       buffer_sizes[3],       // strideC
+                                       num_heads,             // batch count
                                        resultType,
                                        algo));
 
       void* global_q_batch = (char*)global_q + (i * elements_per_batch) * element_size;  // For compact format: replace elements_per_batch by num_heads * max_num_global * head_size
       void* global_k_batch = (char*)global_k + (i * elements_per_batch) * element_size;
-      qk_batch = (char*)buffer_pointers[4] + (i * buffer_sizes[4] * num_heads) * element_size;
+      qk_batch = (char*)input_pointers[4] + (i * buffer_sizes[4] * num_heads) * element_size;
 
       // Global tokens attending everything
       // This GEMMs need to be last to make sure all global token entries are re-written.
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_T,
                                        CUBLAS_OP_N,
-                                       sequence_length,  // m
-                                       num_global[i],    // n
-                                       head_size,        // k
-                                       alpha,            // alpha
-                                       global_k_batch,   // A
-                                       Atype,            // A type
-                                       head_size,        // lda
-                                       stride_per_head,  // strideA
-                                       global_q_batch,   // B
-                                       Btype,            // B type
-                                       head_size,        // ldb
-                                       stride_per_head,  // strideB. For compact format: max_num_global * head_size.
-                                       beta_0,           // beta
-                                       qk_batch,         // C
-                                       Ctype,            // C type
-                                       sequence_length,  // ldc
-                                       buffer_sizes[4],  // strideC
-                                       num_heads,        // batch count
+                                       sequence_length,       // m
+                                       pinned_global_num[i],  // n
+                                       head_size,             // k
+                                       alpha,                 // alpha
+                                       global_k_batch,        // A
+                                       Atype,                 // A type
+                                       head_size,             // lda
+                                       stride_per_head,       // strideA
+                                       global_q_batch,        // B
+                                       Btype,                 // B type
+                                       head_size,             // ldb
+                                       stride_per_head,       // strideB. For compact format: max_num_global * head_size.
+                                       beta_0,                // beta
+                                       qk_batch,              // C
+                                       Ctype,                 // C type
+                                       sequence_length,       // ldc
+                                       buffer_sizes[4],       // strideC
+                                       num_heads,             // batch count
                                        resultType,
                                        algo));
     }
@@ -702,7 +651,7 @@ bool launchSoftmaxKernel(
         global_attention,
         global_index,
         batch_global_num,
-        buffer_pointers[10],
+        scratch2,
         static_cast<const __half*>(attention_mask),
         scaler, dim0, dim1, window, num_heads);
   } else {
@@ -710,7 +659,7 @@ bool launchSoftmaxKernel(
         global_attention,
         global_index,
         batch_global_num,
-        buffer_pointers[10],
+        scratch2,
         static_cast<const float*>(attention_mask),
         scaler, dim0, dim1, window, num_heads);
   }
@@ -726,7 +675,7 @@ bool launchSoftmaxKernel(
       for (int i = 0; i < batch_size; ++i) {
         for (int j = 0; j < num_heads; ++j) {
           void* v_head = (char*)v + (i * elements_per_batch + j * head_size * sequence_length) * element_size;
-          void* prob_head = (char*)buffer_pointers[5 + 1] + (i * num_heads * buffer_sizes[1] + j * buffer_sizes[1]) * element_size;
+          void* prob_head = (char*)output_pointers[1] + (i * num_heads * buffer_sizes[1] + j * buffer_sizes[1]) * element_size;
           void* out_head = (char*)output + (i * elements_per_batch + j * head_size * sequence_length + w * head_size) * element_size;
           CHECK(cublasGemmStridedBatchedEx(cublas,
                                            CUBLAS_OP_N,
@@ -766,7 +715,7 @@ bool launchSoftmaxKernel(
                                      Atype,                   // A type
                                      head_size,               // lda
                                      stride_per_head,         // strideA
-                                     buffer_pointers[5 + 0],  // B
+                                     output_pointers[0],      // B
                                      Btype,                   // B type
                                      (int)buffer_strides[0],  // ldb
                                      buffer_sizes[0],         // strideB
@@ -793,7 +742,7 @@ bool launchSoftmaxKernel(
                                      Atype,                   // A type
                                      head_size,               // lda
                                      stride_per_head,         // strideA
-                                     buffer_pointers[5 + 2],  // B
+                                     output_pointers[2],      // B
                                      Btype,                   // B type
                                      (int)buffer_strides[2],  // ldb
                                      buffer_sizes[2],         // strideB
@@ -808,11 +757,11 @@ bool launchSoftmaxKernel(
   }
 
   for (int i = 0; i < batch_size; ++i) {
-    if (num_global[i] > 0) {
+    if (pinned_global_num[i] > 0) {
       int glob_longdim_mm = sequence_length - 2 * w;
 
       void* v_head = (char*)v + (i * elements_per_batch) * element_size;
-      void* prob_head = (char*)buffer_pointers[5 + 3] + (i * buffer_sizes[3] * num_heads + w * buffer_strides[3]) * element_size;
+      void* prob_head = (char*)output_pointers[3] + (i * buffer_sizes[3] * num_heads + w * buffer_strides[3]) * element_size;
       void* out_head = (char*)output + (i * elements_per_batch + 2 * w * head_size) * element_size;
 
       CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -820,7 +769,7 @@ bool launchSoftmaxKernel(
                                        CUBLAS_OP_N,
                                        head_size,               // m
                                        glob_longdim_mm,         // n
-                                       num_global[i],           // k
+                                       pinned_global_num[i],    // k
                                        alpha,                   // alpha
                                        v_head,                  // A
                                        Atype,                   // A type
@@ -841,20 +790,20 @@ bool launchSoftmaxKernel(
 
       // Global tokens
       v_head = (char*)global_v + (i * elements_per_batch) * element_size;
-      prob_head = (char*)buffer_pointers[5 + 4] + (i * buffer_sizes[4] * num_heads) * element_size;
+      prob_head = (char*)output_pointers[4] + (i * buffer_sizes[4] * num_heads) * element_size;
       out_head = (char*)output + (i * elements_per_batch) * element_size;
 
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_N,
                                        CUBLAS_OP_N,
                                        head_size,               // m
-                                       num_global[i],           // n
+                                       pinned_global_num[i],    // n
                                        sequence_length,         // k: re-write entries completely
                                        alpha,                   // alpha
                                        v_head,                  // A
                                        Atype,                   // A type
                                        head_size,               // lda
-                                       stride_per_head,         //strideA
+                                       stride_per_head,         // strideA
                                        prob_head,               // B
                                        Btype,                   // B type
                                        (int)buffer_strides[4],  // ldb
@@ -870,10 +819,6 @@ bool launchSoftmaxKernel(
     }
   }
 
-  // Make sure we do not exit function before async copy is finished
-  CHECK_CUDA(cudaStreamWaitEvent(stream, canFreeVector, 0));
-  CHECK_CUDA(cudaEventDestroy(canFreeVector));
-
   return true;
 }
 
@@ -883,8 +828,8 @@ bool LongformerQkvToContext(
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const int window, const size_t element_size,
     const T* input, const T* attention_mask,
-    const T* global_input, const int* global_attention, const int max_num_global,
-    T* workspace,
+    const T* global_input, const int* global_attention, const int* global_index, const int* batch_global_num, const int max_num_global,
+    void* pinned_buffer, T* workspace,
     T* output) {
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window);
   T* qkv = reinterpret_cast<T*>((char*)workspace + softmax_workspace_size);
@@ -920,8 +865,6 @@ bool LongformerQkvToContext(
   // Q*K' are scaled by 1/sqrt(H)
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
 
-  cudaDeviceSynchronize();
-
   T* temp_output = qkv;  // Q will be overwritten
   if (!launchSoftmaxKernel(
           stream,
@@ -936,6 +879,9 @@ bool LongformerQkvToContext(
           global_k,          // Transposed global K with shape B x N x S x H
           global_v,          // Transposed global V with shape B x N x S x H
           global_attention,  // Global attention flags with shape B x S
+          global_index,      // Global index with shape B x S
+          batch_global_num,  // Number of global token per batch with shape B x 1
+          pinned_buffer,     // Pinned Memory Buffer
           temp_output,       // Output with shape B x N x S x H
           rsqrt_head_size,   // Scaler
           batch_size,        // Batch size
@@ -959,6 +905,9 @@ bool LaunchLongformerAttentionKernel(
     const void* attention_mask,
     const void* global_input,
     const int* global_attention,
+    const int* global_index,
+    const int* batch_global_num,
+    void* pinned_buffer,
     void* output,
     int batch_size,
     int sequence_length,
@@ -976,7 +925,10 @@ bool LaunchLongformerAttentionKernel(
                                   reinterpret_cast<const half*>(attention_mask),
                                   reinterpret_cast<const half*>(global_input),
                                   global_attention,
+                                  global_index,
+                                  batch_global_num,
                                   max_num_global,
+                                  pinned_buffer,
                                   reinterpret_cast<half*>(workspace),
                                   reinterpret_cast<half*>(output));
   } else {
@@ -986,7 +938,10 @@ bool LaunchLongformerAttentionKernel(
                                   reinterpret_cast<const float*>(attention_mask),
                                   reinterpret_cast<const float*>(global_input),
                                   global_attention,
+                                  global_index,
+                                  batch_global_num,
                                   max_num_global,
+                                  pinned_buffer,
                                   reinterpret_cast<float*>(workspace),
                                   reinterpret_cast<float*>(output));
   }
