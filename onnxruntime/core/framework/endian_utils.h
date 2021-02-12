@@ -27,8 +27,9 @@ namespace utils {
  * @param source_bytes The source byte span.
  * @param destination_bytes The destination byte span.
  */
-void SwapByteOrderCopy(
-    size_t element_size_in_bytes, gsl::span<const uint8_t> source_bytes, gsl::span<uint8_t> destination_bytes);
+void SwapByteOrderCopy(size_t element_size_in_bytes,
+                       gsl::span<const unsigned char> source_bytes,
+                       gsl::span<unsigned char> destination_bytes);
 
 namespace detail {
 
@@ -36,8 +37,9 @@ namespace detail {
  * Copies between two buffers where one is little-endian and the other has
  * native endian-ness.
  */
-Status CopyLittleEndian(
-    size_t element_size_in_bytes, gsl::span<const uint8_t> source_bytes, gsl::span<uint8_t> destination_bytes);
+Status CopyLittleEndian(size_t element_size_in_bytes,
+                        gsl::span<const unsigned char> source_bytes,
+                        gsl::span<unsigned char> destination_bytes);
 
 }  // namespace detail
 
@@ -45,19 +47,20 @@ Status CopyLittleEndian(
  * Reads from a little-endian source.
  */
 common::Status ReadLittleEndian(size_t element_size,
-                                gsl::span<const uint8_t> source_bytes,
-                                gsl::span<uint8_t> destination_bytes);
+                                gsl::span<const unsigned char> source_bytes,
+                                gsl::span<unsigned char> destination_bytes);
 
 /**
  * Reads from a little-endian source with check that T is trivially copyable.
+ * @remarks Check is skipped for if building with gcc v4
  */
 template <typename T>
-common::Status ReadLittleEndian(gsl::span<const uint8_t> source_bytes, gsl::span<T> destination) {
+common::Status ReadLittleEndian(gsl::span<const unsigned char> source_bytes, gsl::span<T> destination) {
 // std::is_trivially_copyable is not implemented in older versions of GCC
 #if !defined(__GNUC__) || __GNUC__ >= 5
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
 #endif
-  const auto destination_bytes = gsl::make_span(reinterpret_cast<uint8_t*>(destination.data()),
+  const auto destination_bytes = gsl::make_span(reinterpret_cast<unsigned char*>(destination.data()),
                                                 destination.size_bytes());
   return ReadLittleEndian(sizeof(T), source_bytes, destination_bytes);
 }
@@ -66,12 +69,12 @@ common::Status ReadLittleEndian(gsl::span<const uint8_t> source_bytes, gsl::span
  * Writes to a little-endian destination.
  */
 template <typename T>
-common::Status WriteLittleEndian(gsl::span<const T> source, gsl::span<uint8_t> destination_bytes) {
+common::Status WriteLittleEndian(gsl::span<const T> source, gsl::span<unsigned char> destination_bytes) {
 // std::is_trivially_copyable is not implemented in older versions of GCC
 #if !defined(__GNUC__) || __GNUC__ >= 5
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
 #endif
-  const auto source_bytes = gsl::make_span(reinterpret_cast<const uint8_t*>(source.data()), source.size_bytes());
+  const auto source_bytes = gsl::make_span(reinterpret_cast<const unsigned char*>(source.data()), source.size_bytes());
   return detail::CopyLittleEndian(sizeof(T), source_bytes, destination_bytes);
 }
 
