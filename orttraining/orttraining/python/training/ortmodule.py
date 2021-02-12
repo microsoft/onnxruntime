@@ -107,6 +107,8 @@ def _parse_outputs_for_onnx_export(module, inputs):
     def _create_output_dim_names_from_mapping(output):
         output_names, dynamic_axes = [], {}
         for name, value in output.items():
+            if not isinstance(value, torch.Tensor):
+                raise TypeError('ORTModule does not support the following model output type {} within a Mapping'.format(type(output)))
             output_names.append(name)
             dynamic_axes[name] = {}
             for dim_idx in range(len(value.shape)):
@@ -115,7 +117,7 @@ def _parse_outputs_for_onnx_export(module, inputs):
 
     def _create_output_dim_names(output, output_idx, from_sequence):
         if from_sequence and not isinstance(output, torch.Tensor):
-            raise TypeError('ORTModule does not support the following model output type {} within a Sequence'.format(type(sample_outputs)))
+            raise TypeError('ORTModule does not support the following model output type {} within a Sequence'.format(type(output)))
         output_names, dynamic_axes = [], {}
         name = 'output{}'.format(output_idx)
         output_names.append(name)
