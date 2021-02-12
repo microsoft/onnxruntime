@@ -16,36 +16,16 @@ set(ONNXRUNTIME_BINARY_DIR ${REPO_ROOT}/build/${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_
 # add WebAssbmly Build Configuration 
 message(STATUS "Building webassembly")
 
-# set WebAssembly root directory
+file(GLOB_RECURSE WASM_PROVIDERS_SRC CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc")
+list(REMOVE_ITEM WASM_PROVIDERS_SRC
+  "${ONNXRUNTIME_ROOT}/core/providers/cpu/cpu_provider_factory.cc"
+  "${ONNXRUNTIME_ROOT}/core/providers/cpu/wasm_execution_provider.cc"
+)
 
-#file(GLOB_RECURSE WASM_PROVIDERS_SRC CONFIGURE_DEPENDS
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/activation/*.h"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/activation/*.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/generator/*.h"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/generator/*.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/math/*.h"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/math/*.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/*.h"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/*.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/object_detection/*.h"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/object_detection/*.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/reduction/*.h"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/reduction/*.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/sequence/*.h"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/sequence/*.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/*.h"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/*.cc"
-#)
-# Mlas dependency
-#list(REMOVE_ITEM WASM_PROVIDERS_SRC
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/math/matmul_integer.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/math/quantize_linear_matmul.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/conv_integer.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/qlinearconv.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/cast_op.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/dynamicquantizelinear.cc"
-#  "${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/quantize_linear.cc"
-#)
+file(GLOB MLAS_SRC CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/mlas/lib/*.cpp")
+list(APPEND MLAS_SRC "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/sgemmc.cpp")
+
+file(GLOB_RECURSE CONTRIB_OPS_SRC CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc")
 
 # Protobuf src file reference
 set(PROTOBUF_SRC "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/arena.cc"
@@ -82,6 +62,12 @@ set(ONNX_SRC "${ONNXRUNTIME_BINARY_DIR}/onnx/onnx-data.pb.cc"
 )
 file(GLOB_RECURSE ONNX_DEFS_SRC "${REPO_ROOT}/cmake/external/onnx/onnx/defs/*.cc")
 
+# re2 src file reference
+file(GLOB RE2_SRC "${REPO_ROOT}/cmake/external/re2/re2/*.cc")
+list(APPEND RE2_SRC "${REPO_ROOT}/cmake/external/re2/util/rune.cc"
+                    "${REPO_ROOT}/cmake/external/re2/util/strutil.cc"
+)
+
 # WebAssembly src file reference 
 set(WASM_SRC "${ONNXRUNTIME_ROOT}/core/common/cpuid_info.cc"
              "${ONNXRUNTIME_ROOT}/core/common/denormal.cc"
@@ -104,6 +90,7 @@ set(WASM_SRC "${ONNXRUNTIME_ROOT}/core/common/cpuid_info.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/ex_lib_loader.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/execution_frame.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/execution_provider.cc"
+             "${ONNXRUNTIME_ROOT}/core/framework/feeds_fetches_manager.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/kernel_def_builder.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/kernel_registry.cc"
              #"${ONNXRUNTIME_ROOT}/core/framework/kernel_registry_manager.cc"
@@ -114,11 +101,14 @@ set(WASM_SRC "${ONNXRUNTIME_ROOT}/core/common/cpuid_info.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/op_kernel.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/op_kernel_info.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/op_node_proto_helper.cc"
+             "${ONNXRUNTIME_ROOT}/core/framework/ort_value_tensor_slicer.cc"
+             "${ONNXRUNTIME_ROOT}/core/framework/parallel_executor.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/random_seed.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/random_generator.cc"
+             "${ONNXRUNTIME_ROOT}/core/framework/sequential_executor.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/session_options.cc"
-             #"${ONNXRUNTIME_ROOT}/core/framework/session_state.cc"
-             #"${ONNXRUNTIME_ROOT}/core/framework/session_state_utils.cc"
+             "${ONNXRUNTIME_ROOT}/core/framework/session_state.cc"
+             "${ONNXRUNTIME_ROOT}/core/framework/session_state_utils.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/simple_tensor_allocator.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/sparse_tensor.cc"
              "${ONNXRUNTIME_ROOT}/core/framework/tensor.cc"
@@ -132,50 +122,26 @@ set(WASM_SRC "${ONNXRUNTIME_ROOT}/core/common/cpuid_info.cc"
              "${ONNXRUNTIME_ROOT}/core/graph/graph_viewer.cc"
              "${ONNXRUNTIME_ROOT}/core/graph/model.cc"
              "${ONNXRUNTIME_ROOT}/core/graph/schema_registry.cc"
-             #"${ONNXRUNTIME_ROOT}/core/mlas/lib/activate.cpp"
-             #"${ONNXRUNTIME_ROOT}/core/mlas/lib/compute.cpp"
-             #"${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp"
-             #"${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp"
-             #"${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp"
-             "${ONNXRUNTIME_ROOT}/core/mlas/lib/platform.cpp"
-             #"${ONNXRUNTIME_ROOT}/core/mlas/lib/sgemm.cpp"
-             #"${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/sgemmc.cpp"
-             #"${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp"
              "${ONNXRUNTIME_ROOT}/core/optimizer/optimizer_execution_frame.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/env.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/env_time.cc"
-             #"${ONNXRUNTIME_ROOT}/core/platform/posix/ort_mutex.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/env_time.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc"
-             #"${ONNXRUNTIME_ROOT}/core/platform/windows/env.cc"
-             #"${ONNXRUNTIME_ROOT}/core/platform/windows/env_time.cc"
-             #"${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry.cc"
-             #"${ONNXRUNTIME_ROOT}/core/platform/windows/stacktrace.cc"
-             #"${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry.cc"
-             "${ONNXRUNTIME_ROOT}/core/providers/cpu/wasm_execution_provider.cc"
-             #"${ONNXRUNTIME_ROOT}/core/providers/cpu/activation/activations.cc"
-             #"${ONNXRUNTIME_ROOT}/core/providers/cpu/math/gemm.cc"
-             "${ONNXRUNTIME_ROOT}/core/providers/cpu/math/element_wise_ops.cc"
-             #"${ONNXRUNTIME_ROOT}/core/providers/cpu/math/matmul.cc"
-             #"${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/conv.cc"
-             "${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/concat.cc"
-             #"${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/gather.cc"
-             #"${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/reshape.cc"
-             #"${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/slice.cc"
-             #"${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/unsqueeze.cc"
-             #"${ONNXRUNTIME_ROOT}/core/providers/shared_library/provider_bridge_provider.cc"
-             #"${ONNXRUNTIME_ROOT}/core/util/math_cpu.cc"
+             "${ONNXRUNTIME_ROOT}/core/util/math_cpu.cc"
              "${ONNXRUNTIME_ROOT}/wasm/example.cc" 
 )
 
 # compile the executables
 add_executable(onnxruntime_wasm
+  ${CONTRIB_OPS_SRC}
+  ${MLAS_SRC}
   ${ONNX_DEFS_SRC}
   ${ONNX_SRC}
   ${PROTOBUF_SRC}
+  ${RE2_SRC}
   ${WASM_PROVIDERS_SRC}
   ${WASM_SRC}
 )
@@ -190,7 +156,6 @@ target_compile_definitions(onnxruntime_wasm PUBLIC
   -DMLAS_TARGET_WASM
   -DONNX_USE_LITE_PROTO
   -DHAVE_PTHREAD
-  -DDISABLE_EXCEPTION_CATCHING=0
 )
 
 SET(CMAKE_CXX_FLAGS_DEBUG "-g4")
@@ -209,6 +174,7 @@ target_include_directories(onnxruntime_wasm
   ${REPO_ROOT}/cmake/external/optional-lite/include
   ${REPO_ROOT}/cmake/external/onnx
   ${REPO_ROOT}/cmake/external/protobuf/src
+  ${REPO_ROOT}/cmake/external/re2
   ${REPO_ROOT}/cmake/external/SafeInt
   ${REPO_ROOT}/cmake/external/wil/include
   PUBLIC ${ONNXRUNTIME_BINARY_DIR}
@@ -216,8 +182,8 @@ target_include_directories(onnxruntime_wasm
 )
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "-s DEMANGLE_SUPPORT=1 -s ASYNCIFY=1 -s EXPORT_NAME=onnxjs -s WASM=1 -s NO_EXIT_RUNTIME=0 -s ALLOW_MEMORY_GROWTH=1 -s SAFE_HEAP=0 -s MODULARIZE=1 -s SAFE_HEAP_LOG=0 -s STACK_OVERFLOW_CHECK=0 -s EXPORT_ALL=0 -s LLD_REPORT_UNDEFINED -s VERBOSE=0 -s ASSERTIONS=1 --source-map-base http://localhost:8000/ --no-entry -o onnxruntime_wasm.js --bind")
+  set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "-s DEMANGLE_SUPPORT=1 -s ASYNCIFY=1 -s EXPORT_NAME=onnxjs -s WASM=1 -s NO_EXIT_RUNTIME=0 -s ALLOW_MEMORY_GROWTH=1 -s SAFE_HEAP=0 -s MODULARIZE=1 -s SAFE_HEAP_LOG=0 -s STACK_OVERFLOW_CHECK=0 -s EXPORT_ALL=0 -s LLD_REPORT_UNDEFINED -s VERBOSE=0 -s ASSERTIONS=1 -s NO_FILESYSTEM=1 -s DISABLE_EXCEPTION_CATCHING=1 --source-map-base http://localhost:8000/ --no-entry --bind")
 else()
-  set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "-s DEMANGLE_SUPPORT=1 -s ASYNCIFY=1 -s EXPORT_NAME=onnxjs -s WASM=1 -s NO_EXIT_RUNTIME=0 -s ALLOW_MEMORY_GROWTH=1 -s SAFE_HEAP=0 -s MODULARIZE=1 -s SAFE_HEAP_LOG=0 -s STACK_OVERFLOW_CHECK=0 -s EXPORT_ALL=0 -s LLD_REPORT_UNDEFINED --no-entry -o onnxruntime_wasm.js --bind")
+  set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "-s DEMANGLE_SUPPORT=1 -s ASYNCIFY=1 -s EXPORT_NAME=onnxjs -s WASM=1 -s NO_EXIT_RUNTIME=0 -s ALLOW_MEMORY_GROWTH=1 -s SAFE_HEAP=0 -s MODULARIZE=1 -s SAFE_HEAP_LOG=0 -s STACK_OVERFLOW_CHECK=0 -s EXPORT_ALL=0 -s LLD_REPORT_UNDEFINED -s NO_FILESYSTEM=1 -s DISABLE_EXCEPTION_CATCHING=1 --no-entry --bind")
 endif()
 

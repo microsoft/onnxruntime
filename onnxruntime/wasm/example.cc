@@ -6,7 +6,7 @@
 #include "core/graph/model.h"
 #include "core/framework/op_kernel.h"
 #include "core/optimizer/optimizer_execution_frame.h"
-#include "core/providers/cpu/wasm_execution_provider.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "example.h"
 
 namespace onnxruntime {
@@ -28,27 +28,39 @@ class MockSink : public ISink {
 
 using namespace onnxruntime;
 
-void Example::Run(const emscripten::val& model_jsarray) {
-  std::vector<uint8_t> model_data = emscripten::vecFromJSArray<uint8_t>(model_jsarray);
-
+Example::Example() : cpu_execution_provider_{new CPUExecutionProvider{CPUExecutionProviderInfo{false}}} {
   const std::string default_logger_id{"wasm_test"};
-  auto logging_manager = std::make_unique<logging::LoggingManager>(
+  logging_manager_ = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<logging::ISink>{new logging::MockSink()}, logging::Severity::kWARNING, false,
       logging::LoggingManager::InstanceType::Default, &default_logger_id, -1);
 
-  std::shared_ptr<Model> model;
+  std::cout << "Example constructor" << std::endl;
+};
+
+bool Example::Load(const emscripten::val& model_jsarray) {
+  std::vector<uint8_t> model_data = emscripten::vecFromJSArray<uint8_t>(model_jsarray);
+
   IOnnxRuntimeOpSchemaRegistryList schema_registry;
   auto status = Model::LoadFromBytes(static_cast<int>(model_data.size()),
                                      static_cast<void*>(model_data.data()),
-                                     model,
+                                     model_,
                                      &schema_registry,
                                      logging::LoggingManager::DefaultLogger());
   if (!status.IsOK()) {
       std::cout << status.ErrorMessage() << std::endl;
-      return;
+      return false;
   }
 
-  auto& graph = model->MainGraph();
+  auto& graph = model_->MainGraph();
+  for (auto& node : graph.Nodes()) {
+    nodes_.push_back(&node);
+  }
+
+  return true;
+}
+
+bool Example::Run() {
+  auto& graph = model_->MainGraph();
 
   const int tensor_dim = 5;
   const int input_num = 2;
@@ -66,14 +78,7 @@ void Example::Run(const emscripten::val& model_jsarray) {
     initialized_tensor_set[input_names[i]] = &initializer_tensor[i];
   }
 
-  std::vector<const Node*> nodes;
-  for (auto& node : graph.Nodes()) {
-    nodes.push_back(&node);
-  }
-
-  std::unique_ptr<WasmExecutionProvider> wasm_execution_provider =
-      std::make_unique<WasmExecutionProvider>(WasmExecutionProviderInfo{false});
-  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set, graph.ModelPath(), *wasm_execution_provider.get());
+  OptimizerExecutionFrame::Info info(nodes_, initialized_tensor_set, graph.ModelPath(), *cpu_execution_provider_.get());
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("C")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
 
@@ -96,4 +101,6 @@ void Example::Run(const emscripten::val& model_jsarray) {
     std::cout << found[i] << ", " << std::endl;
   }
   std::cout << "]" << std::endl;
+
+  return true;
 }
