@@ -295,7 +295,7 @@ using UndefinedTensorProtoElementTypeConstant =
  *
  * The constructor accepts a value corresponding to a tensor element type.
  * For example, it can be obtained from:
- *   input_tensor->DataType()->AsPrimitiveType()->GetDataType()
+ *   input_tensor->GetElementType()
  *
  * The Invoke member functions will instantiate and invoke the provided
  * function object template, Fn. Fn must be default constructible. Fn must also
@@ -330,8 +330,8 @@ class MLTypeCallDispatcher {
    * Constructor.
    * @param dt_type The value corresponding to the tensor element type to be
    *        dispatched to. This can be obtained from
-   *        utils::ToTensorProtoElementType<T>() or
-   *        input_tensor->DataType()->AsPrimitiveType()->GetDataType().
+   *        input_tensor->GetElementType() or
+   *        utils::ToTensorProtoElementType<T>().
    */
   explicit MLTypeCallDispatcher(int32_t dt_type) noexcept : dt_type_(dt_type) {}
 
@@ -343,7 +343,7 @@ class MLTypeCallDispatcher {
    */
   template <template <typename> class Fn, typename... Args>
   void Invoke(Args&&... args) const {
-    InvokeWithLeadingTemplateArgs<Fn, onnxruntime::TypeList<>>(std::forward<Args>(args)...);
+    InvokeWithLeadingTemplateArgs<Fn, TypeList<>>(std::forward<Args>(args)...);
   }
 
   /**
@@ -357,10 +357,12 @@ class MLTypeCallDispatcher {
   void InvokeWithLeadingTemplateArgs(Args&&... args) const {
     static_assert(
         boost::mp11::mp_is_list<LeadingTemplateArgTypeList>::value,
-        "LeadingTemplateArgTypeList must be a type list (e.g., onnxruntime::TypeList<...>).");
+        "LeadingTemplateArgTypeList must be a type list (e.g., onnxruntime::TypeList<T1, T2, ...>).");
 
     mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
 
+    // given LeadingTemplateArgTypeList is a type list L<U1, U2, ...>,
+    //   call helper.Invoke() with Fn<U1, U2, ..., T> for each T in Types
     static_cast<void>(std::array<int, sizeof...(Types)>{
         helper.template Invoke<Types>(
             boost::mp11::mp_apply<Fn, boost::mp11::mp_push_back<LeadingTemplateArgTypeList, Types>>(),
@@ -400,6 +402,7 @@ class MLTypeCallDispatcher {
   Ret InvokeRetWithUnsupportedPolicy(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableRetHelper<Ret, UnsupportedPolicy> helper(dt_type_);
 
+    // call helper.Invoke() with Fn<T> for each T in Types
     static_cast<void>(std::array<int, sizeof...(Types)>{
         helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...});
 
