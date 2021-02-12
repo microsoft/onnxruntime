@@ -18,6 +18,16 @@ parameters:
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
   type: boolean
   default: false
+  
+- name: AdditionalBuildFlags
+  displayName: Additional build flags for build.py
+  type: string
+  default: ''
+
+- name: OrtNugetPackageId
+  displayName: Package name for nuget
+  type: string
+  default: 'Microsoft.ML.OnnxRuntime'
 
 jobs:
 - template: templates/c-api-cpu.yml
@@ -26,8 +36,8 @@ jobs:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
-    AdditionalBuildFlags: ''
+    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
+    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
 
 - job: Linux_C_API_Packaging_GPU_x64
