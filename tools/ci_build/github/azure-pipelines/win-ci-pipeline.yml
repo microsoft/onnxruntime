@@ -106,7 +106,6 @@ jobs:
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
-  - template: templates/set-test-data-variables-step.yml
 
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
@@ -235,7 +234,6 @@ jobs:
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
-  - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
@@ -369,8 +367,6 @@ jobs:
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
-  - template: templates/set-test-data-variables-step.yml
-
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
     inputs:
@@ -491,8 +487,6 @@ jobs:
       scriptPath: '$(Build.SourcesDirectory)\setup.py'
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-
-  - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0

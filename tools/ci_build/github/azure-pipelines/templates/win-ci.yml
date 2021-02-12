@@ -62,7 +62,7 @@ parameters:
 - name: ort_build_pool_name
   displayName: job name for nuget
   type: string
-  default: 'Win-CPU-2019'
+  default: 'Win-CPU-2021'
 
 jobs:
 - job: Windows_Packaging_CPU_${{ parameters.job_name_suffix }}
@@ -100,7 +100,6 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'      
       displayName: 'Install ONNX'    
 
-    - template: set-test-data-variables-step.yml
     - template: set-version-number-variables-step.yml
 
     - task: PythonScript@0
