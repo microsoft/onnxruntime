@@ -3,13 +3,13 @@ jobs:
   pool: Linux-GPU-TensorRT-Perf 
   variables:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-    image: 'only-randy-fix'
+    image: 'master-branch'
   timeoutInMinutes: 1200 
   steps:
     #- template: templates/set-test-data-variables-step.yml
     #
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_images.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b ExcludeTypeFromFuzed -i $(image)'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_images.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b master -i $(image)'
       displayName: 'Build latest ORT Images'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
