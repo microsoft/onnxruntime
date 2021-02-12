@@ -10,7 +10,7 @@ import numpy as np
 from inspect import signature
 
 from torch.utils.dlpack import from_dlpack
-from torch._six import container_abcs
+from collections import abc
 
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
@@ -134,9 +134,9 @@ def _parse_outputs_for_onnx_export(module, inputs):
         output_dynamic_axes = {}
         if isinstance(sample_outputs, torch.Tensor):
             output_names, output_dynamic_axes = _create_output_dim_names(sample_outputs, 0, False)
-        elif isinstance(sample_outputs, container_abcs.Mapping):
+        elif isinstance(sample_outputs, abc.Mapping):
             raise NotImplementedError('Dictionaries are not supported as output yet')
-        elif isinstance(sample_outputs, container_abcs.Sequence):
+        elif isinstance(sample_outputs, abc.Sequence):
             for idx, out in enumerate(sample_outputs):
                 tmp_output_names, tmp_output_dynamic_axes = _create_output_dim_names(out, idx, True)
                 output_names += tmp_output_names
