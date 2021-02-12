@@ -1216,8 +1216,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         return ml_value;
       })
-      .def_static("ortvalue_from_data_ptr", [](std::vector<int64_t>& shape, py::object& element_type,
-                                               OrtDevice& device, int64_t data_ptr) {
+      .def_static("ortvalue_from_data_ptr", [](std::vector<int64_t>& shape, py::object& element_type, OrtDevice& device, int64_t data_ptr) {
         ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is invalid");
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
@@ -1826,9 +1825,13 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })
-      .def("run_forward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options) -> std::vector<OrtValue> {
+      .def("run_forward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options, int64_t& run_id) -> std::vector<OrtValue> {
         std::vector<OrtValue> module_outputs;
-        Status status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(run_options, *io_binding.Get(), module_outputs);
+        Status status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(run_options, *io_binding.Get(), module_outputs, run_id);
+
+        const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
+        LOGS(default_logger, WARNING) << "run_id in pybind: " << run_id;
+
         if (!status.IsOK()) {
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }

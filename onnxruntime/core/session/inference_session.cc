@@ -1720,8 +1720,7 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 }
 
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
-                                                                std::vector<OrtValue>& user_outputs) {
-
+                                                                std::vector<OrtValue>& user_outputs, int64_t& run_id) {
   onnxruntime::contrib::OrtTasks::GetInstance().PrepareForegroundWait();
 
   task_.terminate_flag_ = &(run_options.terminate);
@@ -1749,6 +1748,9 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
     task_.bg_thread_.join();
     return bg_thread_status;
   }
+
+  std::hash<std::thread::id> hasher;
+  run_id = hasher(task_.bg_thread_.get_id());
 
   onnxruntime::contrib::OrtMessageQueue::GetInstance().PopAll(user_outputs);
   return Status::OK();
