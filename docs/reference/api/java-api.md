@@ -37,8 +37,9 @@ The Javadoc is available [here](https://javadoc.io/doc/com.microsoft.onnxruntime
 
 An example implementation is located in
 [src/test/java/sample/ScoreMNIST.java](https://github.com/microsoft/onnxruntime/tree/master/java/src/test/java/sample/ScoreMNIST.java).
+
 Once compiled the sample code expects the following arguments `ScoreMNIST
-<path-to-mnist-model> <path-to-mnist> <scikit-learn-flag>`.  MNIST is expected
+[path-to-mnist-model] [path-to-mnist] [scikit-learn-flag]`.  MNIST is expected
 to be in libsvm format. If the optional scikit-learn flag is supplied the model
 is expected to be produced by skl2onnx (so expects a flat feature vector, and
 produces a structured output), otherwise the model is expected to be a CNN from
