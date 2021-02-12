@@ -212,7 +212,7 @@ jobs:
 - job: NuGet_Packaging
   workspace:
     clean: all
-  pool: 'Win-CPU-2019'
+  pool: 'Win-CPU-2021'
   variables:
     OrtPackageId: ${{ parameters.OrtNugetPackageId }}
     breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
@@ -407,7 +407,7 @@ jobs:
   - group: Dashboard_MySQL_Secret
   - name: GDN_CODESIGN_TARGETDIRECTORY
     value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-  pool: 'Win-CPU-2019'
+  pool: 'Win-CPU-2021'
   condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))))
   dependsOn:
   - NuGet_Test_Win
