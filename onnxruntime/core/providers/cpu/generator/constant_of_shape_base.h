@@ -87,23 +87,21 @@ class ConstantOfShapeBase {
     }
   }
 
-  template <typename T>
-  struct FetchValueDispatchTarget;
-
   void SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto&);
 };
 
-template <typename EnabledOutputTypeList>
-template <typename T>
-struct ConstantOfShapeBase<EnabledOutputTypeList>::FetchValueDispatchTarget {
-  void operator()(
-      ConstantOfShapeBase& instance,
-      const ONNX_NAMESPACE::TensorProto& t_proto, const void* raw_data, size_t raw_data_len) const {
-    T val;
-    ORT_THROW_IF_ERROR(utils::UnpackTensor(t_proto, raw_data, raw_data_len, &val, 1));
-    instance.SetValue(sizeof(T), reinterpret_cast<void*>(&val));
+#define CASE_FETCH_VALUE_DATA(c_type)                                                                       \
+  case utils::ToTensorProtoElementType<c_type>(): {                                                         \
+    if (utils::HasType<EnabledOutputTypeList, c_type>()) {                                                  \
+      c_type val;                                                                                           \
+      auto unpack_status = utils::UnpackTensor(t_proto, raw_data, raw_data_len, &val, 1);                   \
+      ORT_ENFORCE(unpack_status.IsOK(), "Value attribute unpacking failed:", unpack_status.ErrorMessage()); \
+      SetValue(sizeof(c_type), reinterpret_cast<void*>(&val));                                              \
+    } else {                                                                                                \
+      ORT_THROW("Value attribute datatype is not enabled in this build: ", tensor_type);                    \
+    }                                                                                                       \
+    break;                                                                                                  \
   }
-};
 
 template <typename EnabledOutputTypeList>
 void ConstantOfShapeBase<EnabledOutputTypeList>::SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto& t_proto) {
@@ -114,8 +112,24 @@ void ConstantOfShapeBase<EnabledOutputTypeList>::SetValueFromTensorProto(const O
   const auto tensor_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(t_proto.data_type());
   const void* const raw_data = utils::HasRawData(t_proto) ? t_proto.raw_data().data() : nullptr;
   const size_t raw_data_len = utils::HasRawData(t_proto) ? t_proto.raw_data().size() : 0;
-  utils::MLTypeCallDispatcherFromTypeList<EnabledOutputTypeList> dispatcher{tensor_type};
-  dispatcher.template Invoke<FetchValueDispatchTarget>(*this, t_proto, raw_data, raw_data_len);
+  switch (tensor_type) {
+    CASE_FETCH_VALUE_DATA(bool)
+    CASE_FETCH_VALUE_DATA(float)
+    CASE_FETCH_VALUE_DATA(MLFloat16)
+    CASE_FETCH_VALUE_DATA(double)
+    CASE_FETCH_VALUE_DATA(int8_t)
+    CASE_FETCH_VALUE_DATA(int16_t)
+    CASE_FETCH_VALUE_DATA(int32_t)
+    CASE_FETCH_VALUE_DATA(int64_t)
+    CASE_FETCH_VALUE_DATA(uint8_t)
+    CASE_FETCH_VALUE_DATA(uint16_t)
+    CASE_FETCH_VALUE_DATA(uint32_t)
+    CASE_FETCH_VALUE_DATA(uint64_t)
+    default:
+      ORT_THROW("Unsupported value attribute datatype: ", tensor_type);
+  }
 }
+
+#undef CASE_FETCH_VALUE_DATA
 
 }  // namespace onnxruntime
