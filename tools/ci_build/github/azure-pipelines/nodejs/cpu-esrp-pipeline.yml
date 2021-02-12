@@ -12,6 +12,3 @@ jobs:
     AgentPool : 'Win-CPU-2021'
     DoEsrp: 'true'
     DoCompliance: 'true'
-    AdditionalBuildFlags: ''
-    ArtifactSuffix: ''
-    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
