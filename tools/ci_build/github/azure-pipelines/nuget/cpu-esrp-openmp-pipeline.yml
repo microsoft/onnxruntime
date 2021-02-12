@@ -26,5 +26,5 @@ jobs:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.NoOpenMP'
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.OpenMP'
     AdditionalBuildFlags: '--use_openmp'
