@@ -52,7 +52,7 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "orttraining/training_ops/cpu/controlflow/ort_tasks.h"
 #include "orttraining/training_ops/cpu/controlflow/message_queue.h"
 
 using namespace ONNX_NAMESPACE;
@@ -1721,8 +1721,8 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs) {
-  const int64_t main_thread_event_id = 0;
-  onnxruntime::contrib::OrtEventPool::GetInstance().ResetEvent(0);
+
+  onnxruntime::contrib::OrtTasks::GetInstance().PrepareForegroundWait();
 
   task_.terminate_flag_ = &(run_options.terminate);
   task_.bg_thread_promise_ = std::promise<Status>();
@@ -1734,15 +1734,14 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
     result_promise.set_value(s);
 
     // signal main thread for background thread completion
-    const int64_t main_thread_event_id = 0;
-    onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
+    onnxruntime::contrib::OrtTasks::GetInstance().WakeupForegroundThread();
   },
                                  std::move(task_.bg_thread_promise_));
 
   // Wait for events from
   // 1. Yield op, if the bg thread sucessfully reached Yield's signal point
   // 2. The end of bg thread, if it hit execptions and returned earlier
-  onnxruntime::contrib::OrtEventPool::GetInstance().WaitAndResetEvent(main_thread_event_id);
+  onnxruntime::contrib::OrtTasks::GetInstance().WaitInForegroundThread();
 
   // background thread has completed without hitting Yield Op
   if (task_.bg_thread_future_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
@@ -1761,8 +1760,7 @@ common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtVa
   }
 
   // resume background thread
-  const int64_t background_thread_event_id = 1;
-  onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(background_thread_event_id);
+  onnxruntime::contrib::OrtTasks::GetInstance().WakeupBackgroundThread();
 
   Status bg_thread_status = task_.bg_thread_future_.get();
   // wait for bg_thread to complete

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "orttraining/training_ops/cpu/controlflow/ort_tasks.h"
 #include "orttraining/training_ops/cpu/controlflow/message_queue.h"
 #include "core/framework/op_kernel_context_internal.h"
 
@@ -26,15 +26,13 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
   }
 
   // Reset background event before returning to main thread
-  const int64_t background_thread_event_id = 1;
-  onnxruntime::contrib::OrtEventPool::GetInstance().ResetEvent(background_thread_event_id);
+  OrtTasks::GetInstance().PrepareBackgroundWait();
 
   // single event for InferenceSession::RunInBackgroundAndWaitForYield() that FW graph is done
-  const int64_t main_thread_event_id = 0;
-  OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
+  OrtTasks::GetInstance().WakeupForegroundThread();
 
   // wait for event from InferenceSession::ContinueRunInBackground() to continue the BW graph
-  OrtEventPool::GetInstance().WaitAndResetEvent(background_thread_event_id);
+  OrtTasks::GetInstance().WaitInBackgroundThread();
 
   if (ctx_internal->GetTerminateFlag()) {
     LOGS(ctx->Logger(), WARNING) << "Resumed executing backward subgraph, terminate_flag is set to true.";
