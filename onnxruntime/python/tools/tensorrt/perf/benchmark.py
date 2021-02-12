@@ -353,7 +353,7 @@ def generate_onnx_model_random_input(test_times, ref_input):
     return inputs
 
 def percentage_in_allowed_threshold(e, percent_mismatch):
-    percent_string = re.search(r'([\d]*\.[\d]*%)', str(e)).group()
+    percent_string = re.search(r'\(([^)]+)', str(e)).group(1)
     percentage_wrong = float(percent_string.replace("%",""))
     return percentage_wrong < percent_mismatch
 
@@ -380,6 +380,7 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
                     # abs(desired-actual) < rtol * abs(desired) + atol
                     np.testing.assert_allclose(ref_o, o, rtol, atol)
             except Exception as e:
+                logger.info(e)
                 if percentage_in_allowed_threshold(e, percent_mismatch):    
                     continue
                 logger.error(e)
