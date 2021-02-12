@@ -78,6 +78,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kCoreMLExecutionProvider) {
+#ifdef USE_COREML
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, 0));
+#else
+    ORT_THROW("COREML is not supported in this build\n");
+#endif
   } else if (provider_name == onnxruntime::kDmlExecutionProvider) {
 #ifdef USE_DML
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
