@@ -6,7 +6,7 @@ parameters:
 jobs:
 - template: ../../templates/win-ci-2019.yml
   parameters:
-    AgentPool : 'Win-CPU-2019'
+    AgentPool : 'Win-CPU-2021'
     ArtifactName: 'drop-nodejs-win32${{ parameters.ArtifactSuffix }}'
     JobName: 'Windows_CI'
     BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync ${{ parameters.AdditionalBuildFlags }} --build_nodejs --enable_onnx_tests --enable_wcos --use_telemetry --cmake_generator "Visual Studio 16 2019"'
@@ -37,7 +37,6 @@ jobs:
   pool: $(AgentPoolLinux)
   steps:    
     - template: ../../templates/set-version-number-variables-step.yml
-    - template: ../../templates/linux-set-variables-and-download.yml
     - template: ../../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos

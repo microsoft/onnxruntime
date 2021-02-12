@@ -21,18 +21,17 @@ namespace test {
 namespace {
 template <typename T>
 Status WriteExternalDataFile(gsl::span<const T> data, const PathString& path, ScopedFileDeleter& file_deleter) {
-  std::vector<char> data_bytes(data.size_bytes());
+  std::vector<unsigned char> data_bytes(data.size_bytes());
   ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(data, gsl::make_span(data_bytes)));
   std::ofstream out{path, std::ios::binary | std::ios::trunc};
-  ORT_RETURN_IF_NOT(out && out.write(data_bytes.data(), data_bytes.size()),
+  ORT_RETURN_IF_NOT(out && out.write(reinterpret_cast<const char*>(data_bytes.data()), data_bytes.size()),
                     "out && out.write(data_bytes.data(), data_bytes.size()) was false");
   file_deleter = ScopedFileDeleter{path};
   return Status::OK();
 }
 
-void SetTensorProtoExternalData(
-    const std::string& key, const std::string& value,
-    ONNX_NAMESPACE::TensorProto& tensor_proto) {
+void SetTensorProtoExternalData(const std::string& key, const std::string& value,
+                                ONNX_NAMESPACE::TensorProto& tensor_proto) {
   auto* external_data = tensor_proto.mutable_external_data();
   auto kvp_it = std::find_if(
       external_data->begin(), external_data->end(),
