@@ -81,7 +81,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
   return true;
 }
 
-std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const logging::Logger& logger) {
+std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer, const logging::Logger& logger) {
   std::vector<std::vector<size_t>> supported_node_vecs;
   if (!util::HasRequiredBaseOS()) {
     LOGS(logger, WARNING) << "All ops will fallback to CPU EP, because we do not have supported OS";
@@ -97,15 +97,16 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
   std::vector<size_t> supported_node_vec;
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer.GetNode(node_indices[i]));
+    auto node_idx = node_indices[i];
+    const auto* node(graph_viewer.GetNode(node_idx));
     bool supported = IsNodeSupported(*node, graph_viewer, logger);
     LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType()
-                          << "] index: [" << i
+                          << "] index: [" << node_idx
                           << "] name: [" << node->Name()
                           << "] supported: [" << supported
                           << "]";
     if (supported) {
-      supported_node_vec.push_back(i);
+      supported_node_vec.push_back(node_idx);
     } else {
       if (!supported_node_vec.empty()) {
         supported_node_vecs.push_back(supported_node_vec);

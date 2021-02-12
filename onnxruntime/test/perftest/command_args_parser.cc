@@ -34,7 +34,7 @@ namespace perftest {
       "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'nuphar', 'dml' or 'acl'. "
+      "'openvino', 'nuphar', 'dml', 'acl', 'nnapi' or 'coreml'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -93,6 +93,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNupharExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {

@@ -238,16 +238,6 @@ inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
   return node_proto.has_name();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
-// Unpack tensor which contains external data. Uses the tensor_proto_dir to construct the full path for external data.
-// If tensor_proto_dir == nullptr then uses the current directory instead.
-// This function does not unpack string_data of a tensor
-template <typename T>
-Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
-                                    const ORTCHAR_T* tensor_proto_dir, size_t expected_size,
-                                    /*out*/ T* p_data);
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
 // UnpackTensor from raw data or the type specific data field. Does not handle external data.
 // If the tensor does not contain raw data then raw_data should be nullptr and raw_data_len should be 0.
 template <typename T>
@@ -258,37 +248,21 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 // Uses the model path to construct the full path for loading external data. In case when model_path is empty
 // it uses current directory.
 template <typename T>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path, /*out*/ T* p_data, size_t expected_size) {
-#if !defined(ORT_MINIMAL_BUILD)
-  if (HasExternalData(tensor)) {
-    return UnpackTensorWithExternalData(
-        tensor,
-        model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(),
-        expected_size,
-        p_data);
-  }
-#else
-  ORT_UNUSED_PARAMETER(model_path);
-  ORT_RETURN_IF(HasExternalData(tensor), "TensorProto with external data is not supported in ORT minimal build.");
-#endif
-
-  return HasRawData(tensor)
-             ? UnpackTensor(tensor, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
-             : UnpackTensor(tensor, nullptr, 0, p_data, expected_size);
-}
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+                    /*out*/ T* p_data, size_t expected_size);
 
 /**
  * Unpack the data from an initializer tensor
  * Please note, this function does not unpack string_data of an initializer tensor
  * @param initializer       given initializer tensor
  * @param initializer_dir   model_path to construct external data dir path. When this is empty, current dir is used.
- * @param unpacked_tensor   the data from the initaizlier in uint8_t* form
+ * @param unpacked_tensor   the data from the initializer in byte form
  * @param tensor_byte_size  the byte size of the unpacked_tensor
  * @returns                 Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                      const Path& model_path,
-                                     std::unique_ptr<uint8_t[]>& unpacked_tensor,
+                                     std::unique_ptr<unsigned char[]>& unpacked_tensor,
                                      size_t& tensor_byte_size) ORT_MUST_USE_RESULT;
 
 }  // namespace utils
