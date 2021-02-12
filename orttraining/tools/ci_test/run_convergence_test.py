@@ -20,8 +20,8 @@ def parse_args():
                       help="Path to the training data root directory.")
   parser.add_argument("--model_root", required=True,
                       help="Path to the model root directory.")
-  parser.add_argument("--gpu_sku", default='V100', required=False,
-                      help="GPU SKU (e.g. V100, MI100).") 
+  parser.add_argument("--gpu_sku", default='V100_16G', required=False,
+                      help="GPU SKU (e.g. V100_16G, MI100_32G).") 
   return parser.parse_args()
 
 def main():
@@ -63,8 +63,10 @@ def main():
     # reference data
     if args.gpu_sku == 'MI100_32G':
         reference_csv = "bert_base.convergence.baseline.mi100.csv"
-    else:
+    elif args.gpu_sku == 'V100_16G':
         reference_csv = "bert_base.convergence.baseline.csv"
+    else:
+        raise ValueError('Unrecognized gpu_sku {}'.format(args.gpu_sku))
 
     # verify output
     comparison_result = compare_results_files(

@@ -33,7 +33,6 @@ using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
-static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions session_options = {
     ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
     ExecutionOrder::PRIORITY_BASED,    //execution_order
@@ -49,7 +48,7 @@ static SessionOptions session_options = {
     TransformerLevel::Level1,          //graph_optimization_level
     {},                                //intra_op_param
     {},                                //inter_op_param
-    overrides,                         //free_dimension_overrides
+    {},                                //free_dimension_overrides
     true,                              //use_per_session_threads
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
