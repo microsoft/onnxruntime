@@ -79,8 +79,6 @@ class NhwcMaxPoolOpTester {
 
     const int64_t input_image_size = std::accumulate(
         input_shape, input_shape + kernel_rank, 1LL, std::multiplies<int64_t>());
-    const int64_t kernel_size = std::accumulate(
-        kernel_shape_.data(), kernel_shape_.data() + kernel_rank, 1LL, std::multiplies<int64_t>());
 
     const T* Xdata = X_data_.data();
     T* Ydata = Y_data.data();
