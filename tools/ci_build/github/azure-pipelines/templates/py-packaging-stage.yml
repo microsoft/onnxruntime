@@ -485,7 +485,7 @@ stages:
           Python39:
             PythonVersion: '3.9'
       variables:
-        OrtPackageId: 'Microsoft.ML.OnnxRuntime'
+        OrtPackageId: 'Microsoft.ML.OnnxRuntime.OpenMP'
         MsbuildArguments: '-maxcpucount'
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat
@@ -929,7 +929,6 @@ stages:
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/Release/dist'
-          Contents: '*.whl'
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
