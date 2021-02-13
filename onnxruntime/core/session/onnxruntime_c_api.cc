@@ -439,11 +439,12 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
         env->GetEnvironment());
   }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains
-  Status status;
   if (options && !options->custom_op_domains_.empty()) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
   }
+#endif
 
   // Finish load
   if (load_config_from_model) {
