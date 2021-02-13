@@ -930,6 +930,7 @@ stages:
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/Release/dist'
           Contents: '*.whl'
+          Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
       - task: PublishBuildArtifacts@1
