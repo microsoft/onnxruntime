@@ -23,7 +23,7 @@ variables:
   PackageName: 'Microsoft.ML.OnnxRuntime'
 
 jobs:
-- template: ../templates/c-api-cpu.yml
+- template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/c-api-cpu.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -42,8 +42,8 @@ jobs:
   variables:    
     CUDA_VERSION: '11.0'
   steps:
-    - template: ../templates/set-version-number-variables-step.yml 
-    - template: ../templates/get-docker-image-steps.yml
+    - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/set-version-number-variables-step.yml 
+    - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
         Context: tools/ci_build/github/linux/docker
@@ -59,7 +59,7 @@ jobs:
           --skip_submodule_sync  --parallel --build_shared_lib --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr/local/cuda-$(CUDA_VERSION) --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc
         workingDirectory: $(Build.SourcesDirectory)
 
-    - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
+    - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/java-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           arch: 'linux-x64'
           buildConfig: 'Release'
@@ -68,7 +68,7 @@ jobs:
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
 
-    - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
+    - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
           artifactName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion)'
@@ -76,13 +76,13 @@ jobs:
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)
 
-    - template: ../templates/component-governance-component-detection-steps.yml
+    - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - template: ../templates/clean-agent-build-directory-step.yml
+    - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/clean-agent-build-directory-step.yml
 
 
-- template: ../templates/win-ci.yml
+- template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/win-ci.yml
   parameters:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ort_build_pool_name: 'Win-GPU-2019'
@@ -109,7 +109,7 @@ jobs:
   steps:
   - checkout: self
     submodules: false
-  - template: ../templates/set-version-number-variables-step.yml 
+  - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/set-version-number-variables-step.yml 
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Win x64'
@@ -148,7 +148,7 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
       artifact: 'onnxruntime-java-gpu'
 
-  - template: ../templates/component-governance-component-detection-steps.yml
+  - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -167,7 +167,7 @@ jobs:
   dependsOn:
     Jar_Packaging_GPU
   steps:
-  - template: ../templates/set-version-number-variables-step.yml 
+  - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/set-version-number-variables-step.yml 
 
   - task: BatchScript@1
     displayName: 'setup env'
@@ -195,7 +195,7 @@ jobs:
         java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
-  - template: templates/component-governance-component-detection-steps.yml
+  - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -213,7 +213,7 @@ jobs:
   dependsOn:
     Jar_Packaging_GPU
   steps:
-  - template: ../templates/set-version-number-variables-step.yml 
+  - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/set-version-number-variables-step.yml 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Final Jar'
     inputs:
@@ -236,7 +236,7 @@ jobs:
         java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
-  - template: templates/component-governance-component-detection-steps.yml
+  - template: $(Build.SourcesDirectory)/tools/ci_build/github/azure-pipelines/templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
