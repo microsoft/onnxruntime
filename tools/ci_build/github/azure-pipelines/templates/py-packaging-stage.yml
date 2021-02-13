@@ -45,7 +45,7 @@ stages:
 
   jobs:
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
-    - job: Linux_py_Wheels
+    - job: Linux_py_Wheels_OpenMP
       timeoutInMinutes: 90
       workspace:
         clean: all
@@ -118,7 +118,7 @@ stages:
 
       - template: clean-agent-build-directory-step.yml
 
-    - job: Linux_py_Wheels_no_openmp
+    - job: Linux_py_Wheels
       timeoutInMinutes: 90
       workspace:
         clean: all
@@ -342,7 +342,7 @@ stages:
       - template: clean-agent-build-directory-step.yml
 
   - ${{ if eq(parameters.enable_windows_cpu, true) }}:
-    - job: Windows_py_Wheels
+    - job: Windows_py_Wheels_OpenMP
       pool: 'Win-CPU-2021'
       strategy:
         matrix:
@@ -471,7 +471,7 @@ stages:
         displayName: 'Clean Agent Directories'
         condition: always()
 
-    - job: Windows_py_Wheels_no_openmp
+    - job: Windows_py_Wheels
       pool: 'Win-CPU-2021'
       strategy:
         matrix:
@@ -823,7 +823,7 @@ stages:
         condition: always()
 
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
-    - job: MacOS_py_Wheels
+    - job: MacOS_py_Wheels_OpenMP
       workspace:
         clean: all
       pool:
