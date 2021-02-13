@@ -26,13 +26,12 @@ def timeit(enabled=True):
     return inner if enabled else noop_inner
 
 def get_device_index(device):
-    '''Returns device index from a device'''
-
-    if type(device) == str:
-        # Could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
+    if isinstance(device, str):
+        # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
         device = torch.device(device)
+    elif isinstance(device, int):
+        return device
     return 0 if device.index is None else device.index
-
 
 def get_device_index_from_input(input):
     '''Returns device index from a input PyTorch Tensor'''
@@ -43,6 +42,53 @@ def get_device_index_from_input(input):
         device_index = get_device_index(input.device)
     return device_index
 
+def get_device_from_input_args_kwargs(*args, **kwargs):
+    '''Returns device index from first PyTorch Tensor within *args or **kwargs'''
+
+    device = None
+    if args:
+        device = torch.device(args[0].device)
+    if not device and kwargs:
+        device = torch.device(next(iter(kwargs.values())).device)
+    return device
+
+def get_device_from_module(module):
+    '''Returns the first device found in the `module`'s parameters or None'''
+    device = None
+    try:
+        device = next(module.parameters()).device
+        for param in module.parameters():
+            if param.device != device:
+                raise RuntimeError('ORTModule supports a single device per model for now')
+    except StopIteration:
+        # Model doesn't have a device set to any of the model parameters
+        pass
+    return device
+
+def get_device_str(device):
+    if isinstance(device, str):
+        # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
+        if device.find(':') == -1:
+            device += ':' + str(torch.cuda.current_device())
+    elif isinstance(device, int):
+        device = 'cuda:' + str(device)
+    elif isinstance(device, torch.device):
+        if device.index is None:
+            device = device.type + ':' + str(torch.cuda.current_device())
+        else:
+            device = device.type + ':' + str(device.index)
+    else:
+        raise RuntimeError('Unsupported device type')
+    return device
+
+def get_default_device_str(type):
+    if isinstance(type, str):
+        if type == 'cuda':
+            return 'cuda:' + str(torch.cuda.current_device())
+        else:
+            return 'cpu'
+    else:
+        raise RuntimeError('Unsupported device type')
 
 def get_all_gradients_finite_name_from_session(session):
     '''Find all_gradients_finite node on Session graph and return its name'''
