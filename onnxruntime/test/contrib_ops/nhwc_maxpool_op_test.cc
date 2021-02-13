@@ -111,6 +111,9 @@ class NhwcMaxPoolOpTester {
   }
 
  public:
+  NhwcMaxPoolOpTester() {
+  }
+
   void GenerateRandomInput(const std::vector<int64_t>& shape) {
     std::uniform_int_distribution<int32_t> distribution(0, 255);
     size_t shape_size = ShapeSize(shape);
