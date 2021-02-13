@@ -724,9 +724,9 @@ Status Min_8::Compute(OpKernelContext* context) const {
       return MinMaxMLFloat16<true>(*this, context);
       break;
     default:
-      utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, int32_t, uint32_t, int64_t, uint64_t>
+      utils::MLTypeCallDispatcher<float, double, int32_t, uint32_t, int64_t, uint64_t>
           t_disp(dt_type);
-      return t_disp.Invoke(*this, context);
+      return t_disp.InvokeRet<Status, ComputeImpl>(*this, context);
   }
 }
 
@@ -784,9 +784,9 @@ Status Max_8::Compute(OpKernelContext* context) const {
       return MinMaxMLFloat16<false>(*this, context);
       break;
     default:
-      utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, int32_t, uint32_t, int64_t, uint64_t>
+      utils::MLTypeCallDispatcher<float, double, int32_t, uint32_t, int64_t, uint64_t>
           t_disp(dt_type);
-      return t_disp.Invoke(*this, context);
+      return t_disp.InvokeRet<Status, ComputeImpl>(*this, context);
   }
 }
 
@@ -1671,10 +1671,10 @@ Status Mod::Compute(OpKernelContext* context) const {
       mod_internal::BroadCastMFloat16FMod(context);
       break;
     default:
-      utils::MLTypeCallDispatcher<mod_internal::CallModImpl, uint8_t, int8_t, uint16_t, int16_t,
-                                  uint32_t, int32_t, uint64_t, int64_t>
+      utils::MLTypeCallDispatcher<uint8_t, int8_t, uint16_t, int16_t,
+                                   uint32_t, int32_t, uint64_t, int64_t>
           t_disp(dt_type);
-      t_disp.Invoke(fmod_, context);
+      t_disp.Invoke<mod_internal::CallModImpl>(fmod_, context);
       break;
   }
 

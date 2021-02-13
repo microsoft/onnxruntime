@@ -95,10 +95,9 @@ struct CallRangeImpl {
 Status Range::Compute(OpKernelContext* ctx) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   if (input_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-  utils::MLTypeCallDispatcherRet<Status, range_internal::CallRangeImpl,
-                                 int32_t, float, int64_t, double, int16_t>
+  utils::MLTypeCallDispatcher<int32_t, float, int64_t, double, int16_t>
       t_disp(input_tensor->GetElementType());
-  return t_disp.Invoke(ctx);
+  return t_disp.InvokeRet<Status, range_internal::CallRangeImpl>(ctx);
 }
 
 }  // namespace onnxruntime
