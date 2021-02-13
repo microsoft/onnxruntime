@@ -383,11 +383,11 @@ TEST(CApiTest, varied_input_custom_op_handler) {
 #endif
 }
 
-TEST(CApiTest, varied_input_custom_op_handler_2) {
+TEST(CApiTest, multiple_varied_input_custom_op_handler) {
 #ifdef USE_CUDA
-  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
+  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCudaExecutionProvider};
 #else
-  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
   Ort::CustomOpDomain custom_op_domain("");

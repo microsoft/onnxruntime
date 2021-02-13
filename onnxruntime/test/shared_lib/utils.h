@@ -36,7 +36,28 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
 
   size_t GetInputTypeCount() const { return 2; };
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;  // input may be of float or double and the kernel can handle them
+    // Both the inputs can only be float type
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+
+ private:
+  const char* provider_;
+};
+
+struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDynamicInputs, MyCustomKernel> {
+  explicit MyCustomOpMultipleDynamicInputs(const char* provider) : provider_(provider) {}
+
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
+  const char* GetName() const { return "Foo"; };
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const {
+    // Both the inputs are dynamic typed
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   };
 
   size_t GetOutputTypeCount() const { return 1; };

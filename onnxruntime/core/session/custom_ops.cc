@@ -101,6 +101,9 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
   for (const auto& domain : op_domains) {
     // Create an OpSchema for each op and register them
 
+    // Container to hold type template parameters
+    std::unordered_map<const OrtCustomOp*, std::vector<std::string>> type_constraint_ids;
+
 #if !defined(ORT_MINIMAL_BUILD)
     // Domain is not empty - add it to the DomainToVersion ONNX map
     // If domain is empty, it is assumed to be part of the ONNX domain
@@ -116,7 +119,6 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
     }
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
-    std::unordered_map<const OrtCustomOp*, std::vector<std::string>> type_constraint_ids;
     for (const auto* op : domain->custom_ops_) {
       ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
 
@@ -161,7 +163,21 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
                                               1 /* baseline opset version */,
                                               1000 /* opset version */));
 
+#else
+    // For a minimal build, we may not need any of the ONNX schema stuff but we still need to track
+    // the type template parameters to be used during the kernel def building step below
+    for (const auto* op : domain->custom_ops_) {
+      size_t type_id_counter = 0;
+      auto input_count = op->GetInputTypeCount(op);
+      for (size_t i = 0; i < input_count; i++) {
+        auto type = op->GetInputType(op, i);
+        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
+          type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
+        }
+      }
+    }
 #endif
+
     // create the KernelDef for each op and register it
     for (const auto* op : domain->custom_ops_) {
       KernelDefBuilder def_builder;
@@ -193,4 +209,3 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-

@@ -7,6 +7,20 @@
 #include <cuda_runtime.h>
 template <typename T1, typename T2, typename T3>
 void cuda_add(int64_t, T3*, const T1*, const T2*);
+#else
+template <typename T1, typename T2, typename T3>
+void cpu_add(int64_t size, T3* out, const T1* X, const T2* Y) {
+  for (int64_t i = 0; i < size; i++) {
+    out[i] = X[i] + Y[i];
+  }
+}
+
+template <>
+void cpu_add(int64_t size, float* out, const float* X, const double* Y) {
+  for (int64_t i = 0; i < size; i++) {
+    out[i] = static_cast<float>(X[i] + Y[i]);
+  }
+}
 #endif
 
 void MyCustomKernel::Compute(OrtKernelContext* context) {
@@ -50,13 +64,9 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   cudaStreamSynchronize(nullptr);
 #else
   if (Y_float) {
-    for (int64_t i = 0; i < size; i++) {
-      out[i] = X[i] + Y_float[i];
-    }
+    cpu_add<float, float, float>(size, out, X, Y_float);
   } else if (Y_double) {
-    for (int64_t i = 0; i < size; i++) {
-      out[i] = static_cast<float>(X[i] + Y_double[i]);
-    }
+    cpu_add<float, double, float>(size, out, X, Y_double);
   }
 #endif
 }
