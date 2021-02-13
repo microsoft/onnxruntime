@@ -439,11 +439,12 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
         env->GetEnvironment());
   }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains
-  Status status;
   if (options && !options->custom_op_domains_.empty()) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
   }
+#endif
 
   // Finish load
   if (load_config_from_model) {
@@ -1283,10 +1284,11 @@ ORT_STATUS_PTR OrtGetValueImplSeqOfTensors(_In_ const OrtValue* p_ml_value, int 
   auto& one_tensor = data.Get(index);
 
   using namespace c_api_internal;
-  utils::MLTypeCallDispatcherRet<OrtStatusPtr, CallGetValueImpl, float, double, MLFloat16, BFloat16, bool, std::string,
-                                 int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+  utils::MLTypeCallDispatcher<float, double, MLFloat16, BFloat16, bool, std::string,
+                              int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
       t_disp(one_tensor.GetElementType());
-  return t_disp.template InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(allocator, one_tensor, out);
+  return t_disp.template InvokeRetWithUnsupportedPolicy<OrtStatusPtr, CallGetValueImpl, UnsupportedReturnFailStatus>(
+      allocator, one_tensor, out);
 }
 
 #ifdef _MSC_VER
@@ -1489,11 +1491,12 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelper(const OrtValue* const* in, siz
     }
 
     OrtStatus* st{};
-    utils::MLTypeCallDispatcherRet<OrtStatus*, CallCreateValueImpl, bool, float, double, std::string,
-                                   MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+    utils::MLTypeCallDispatcher<bool, float, double, std::string,
+                                MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
         t_disp(one_tensor.GetElementType());
 
-    st = t_disp.InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(one_tensor, tensors[idx]);
+    st = t_disp.InvokeRetWithUnsupportedPolicy<OrtStatus*, CallCreateValueImpl, UnsupportedReturnFailStatus>(
+        one_tensor, tensors[idx]);
 
     if (st) {
       return st;
