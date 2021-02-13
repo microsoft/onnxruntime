@@ -1825,9 +1825,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })
-      .def("run_forward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options, int64_t& run_id) -> std::vector<OrtValue> {
+      .def("run_forward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options, py::list& run_id_container) -> std::vector<OrtValue> {
         std::vector<OrtValue> module_outputs;
+        int64_t run_id;
         Status status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(run_options, *io_binding.Get(), module_outputs, run_id);
+        run_id_container.append(run_id);
 
         const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
         LOGS(default_logger, WARNING) << "run_id in pybind: " << run_id;
@@ -1838,8 +1840,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         return module_outputs;
       })
-      .def("run_backward", [](PyInferenceSession* sess, const std::vector<OrtValue>& backward_output_grads) -> void {
-        Status status = sess->GetSessionHandle()->ContinueRunInBackground(backward_output_grads);
+      .def("run_backward", [](PyInferenceSession* sess, const std::vector<OrtValue>& backward_output_grads, int64_t run_id) -> void {
+        Status status = sess->GetSessionHandle()->ContinueRunInBackground(backward_output_grads, run_id);
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });

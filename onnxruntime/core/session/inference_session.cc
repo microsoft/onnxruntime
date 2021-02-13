@@ -376,11 +376,11 @@ InferenceSession::~InferenceSession() {
 
   // TODO: find a better way to terminate the background thread
   // backward is not completed yet, set terminate_flag to True
-  if (task_.bg_thread_future_.valid()) {
-    *(task_.terminate_flag_) = true;
-    Status s = ContinueRunInBackground({});
-    ORT_UNUSED_PARAMETER(s);
-  }
+  // if (task_.bg_thread_future_.valid()) {
+  //   *(task_.terminate_flag_) = true;
+  //   Status s = ContinueRunInBackground({});
+  //   ORT_UNUSED_PARAMETER(s);
+  // }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -1752,14 +1752,19 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
   std::hash<std::thread::id> hasher;
   run_id = hasher(task_.bg_thread_.get_id());
 
+
+  LOGS(*session_logger_, WARNING) << "Session::Forward" << run_id;
+
   onnxruntime::contrib::OrtMessageQueue::GetInstance().PopAll(user_outputs);
   return Status::OK();
 }
 
-common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) {
+common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads, int64_t run_id) {
   for (const auto& ort_value : backward_output_grads) {
     onnxruntime::contrib::OrtMessageQueue::GetInstance().Push(ort_value);
   }
+
+  LOGS(*session_logger_, WARNING) << "Session::Backward" << run_id;
 
   // resume background thread
   onnxruntime::contrib::OrtTasks::GetInstance().WakeupBackgroundThread();
