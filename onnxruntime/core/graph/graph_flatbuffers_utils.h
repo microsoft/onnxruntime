@@ -22,7 +22,7 @@ class Node;
 class Path;
 
 namespace logging {
-  class Logger;
+class Logger;
 }
 
 namespace experimental {

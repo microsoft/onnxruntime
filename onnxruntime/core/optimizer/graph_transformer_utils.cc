@@ -39,7 +39,7 @@
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
-#include "orttraining/core/optimizer/bias_dropout_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
