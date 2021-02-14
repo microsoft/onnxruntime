@@ -56,8 +56,10 @@
 #include "core/session/custom_ops.h"
 #endif
 
+#ifdef ENABLE_TRAINING
 #include "core/providers/cpu/controlflow/event_pool.h"
 #include "core/providers/cpu/controlflow/message_queue.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
@@ -378,6 +380,7 @@ InferenceSession::~InferenceSession() {
     }
   }
 
+#ifdef ENABLE_TRAINING
   // TODO: find a better way to terminate the background thread
   // backward is not completed yet, set terminate_flag to True
   if (task_.bg_thread_future_.valid()) {
@@ -385,6 +388,7 @@ InferenceSession::~InferenceSession() {
     Status s = ContinueRunInBackground({});
     ORT_UNUSED_PARAMETER(s);
   }
+#endif
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -1728,6 +1732,7 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
   return Run(run_options, io_binding);
 }
 
+#ifdef ENABLE_TRAINING
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs) {
   const int64_t main_thread_event_id = 0;
@@ -1781,6 +1786,7 @@ common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtVa
 
   return bg_thread_status;
 }
+#endif
 
 template <typename T>
 void InferenceSession::StartProfiling(const std::basic_string<T>& file_prefix) {
