@@ -56,8 +56,8 @@
 #include "core/session/custom_ops.h"
 #endif
 
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
-#include "orttraining/training_ops/cpu/controlflow/message_queue.h"
+#include "core/providers/cpu/controlflow/event_pool.h"
+#include "core/providers/cpu/controlflow/message_queue.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
