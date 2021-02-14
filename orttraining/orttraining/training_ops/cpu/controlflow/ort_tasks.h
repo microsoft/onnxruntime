@@ -25,16 +25,17 @@ class OrtTasks final {
   void WaitInForegroundThread();
   void WakeupForegroundThread();
 
+  void CreateBackgroundTask();
   void PrepareBackgroundWait();
   void WaitInBackgroundThread();
-  void WakeupBackgroundThread();
+  void WakeupBackgroundThread(int64_t run_id);
 
  private:
-  OrtTasks() = default;
+   OrtTasks() = default;
   ~OrtTasks() = default;
   OrtTasks(const OrtTasks&) = delete;
   OrtTasks& operator=(const OrtTasks&) = delete;
-
+  
   struct Item {
     std::atomic<bool> signaled;
     mutable std::mutex mutex;
@@ -45,8 +46,9 @@ class OrtTasks final {
     }
   };
 
-  Item fg_event_;
-  Item bg_event_;
+  std::hash<std::thread::id> hasher_;
+  Item fg_event_; 
+  std::unordered_map<int64_t, std::unique_ptr<Item>> bg_events_;
 };
 
 }  // namespace contrib

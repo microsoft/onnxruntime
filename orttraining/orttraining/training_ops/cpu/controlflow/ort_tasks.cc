@@ -24,22 +24,32 @@ void OrtTasks::WakeupForegroundThread() {
   fg_event_.cv.notify_all();
 }
 
+void OrtTasks::CreateBackgroundTask() {
+  int64_t run_id = hasher_(std::this_thread::get_id());
+
+  bg_events_.emplace(run_id, std::make_unique<Item>());
+}
+
 void OrtTasks::PrepareBackgroundWait() {
-  std::unique_lock<std::mutex> lock(bg_event_.mutex);
-  bg_event_.signaled.store(false);
+  int64_t run_id = hasher_(std::this_thread::get_id());
+
+  std::unique_lock<std::mutex> lock(bg_events_[run_id]->mutex);
+  bg_events_[run_id]->signaled.store(false);
 }
 
 void OrtTasks::WaitInBackgroundThread() {
-  std::unique_lock<std::mutex> lock(bg_event_.mutex);
-  bg_event_.cv.wait(lock, [this] { return bg_event_.signaled.load(); });
-  bg_event_.signaled.store(false);
+  int64_t run_id = hasher_(std::this_thread::get_id());
+
+  std::unique_lock<std::mutex> lock(bg_events_[run_id]->mutex);
+  bg_events_[run_id]->cv.wait(lock, [this, run_id] { return bg_events_[run_id]->signaled.load(); });
+  bg_events_[run_id]->signaled.store(false);
 }
 
-void OrtTasks::WakeupBackgroundThread() {
-  std::unique_lock<std::mutex> lock(bg_event_.mutex);
-  bg_event_.signaled.store(true);
+void OrtTasks::WakeupBackgroundThread(int64_t run_id) {
+  std::unique_lock<std::mutex> lock(bg_events_[run_id]->mutex);
+  bg_events_[run_id]->signaled.store(true);
   lock.unlock();
-  bg_event_.cv.notify_all();
+  bg_events_[run_id]->cv.notify_all();
 }
 
 }  // namespace contrib

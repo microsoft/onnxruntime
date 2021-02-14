@@ -1727,6 +1727,8 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
   task_.bg_thread_promise_ = std::promise<Status>();
   task_.bg_thread_future_ = task_.bg_thread_promise_.get_future();
   task_.bg_thread_ = std::thread([&](std::promise<common::Status> result_promise) {
+
+    onnxruntime::contrib::OrtTasks::GetInstance().CreateBackgroundTask();
     common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                            &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
 
@@ -1736,6 +1738,10 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
     onnxruntime::contrib::OrtTasks::GetInstance().WakeupForegroundThread();
   },
                                  std::move(task_.bg_thread_promise_));
+
+  std::hash<std::thread::id> hasher;
+  run_id = hasher(task_.bg_thread_.get_id());
+  LOGS(*session_logger_, WARNING) << "Session::Forward" << run_id;
 
   // Wait for events from
   // 1. Yield op, if the bg thread sucessfully reached Yield's signal point
@@ -1749,12 +1755,6 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
     return bg_thread_status;
   }
 
-  std::hash<std::thread::id> hasher;
-  run_id = hasher(task_.bg_thread_.get_id());
-
-
-  LOGS(*session_logger_, WARNING) << "Session::Forward" << run_id;
-
   onnxruntime::contrib::OrtMessageQueue::GetInstance().PopAll(user_outputs);
   return Status::OK();
 }
@@ -1767,7 +1767,7 @@ common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtVa
   LOGS(*session_logger_, WARNING) << "Session::Backward" << run_id;
 
   // resume background thread
-  onnxruntime::contrib::OrtTasks::GetInstance().WakeupBackgroundThread();
+  onnxruntime::contrib::OrtTasks::GetInstance().WakeupBackgroundThread(run_id);
 
   Status bg_thread_status = task_.bg_thread_future_.get();
   // wait for bg_thread to complete
