@@ -10,7 +10,7 @@ import numpy as np
 from inspect import signature
 
 from torch.utils.dlpack import from_dlpack
-from torch._six import container_abcs
+import collections.abc as container_abcs
 
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
