@@ -21,8 +21,10 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status YieldOp::Compute(OpKernelContext* ctx) const {
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+
+  int64_t run_id = std::hash<std::thread::id>()(std::this_thread::get_id());
   for (int i_in = 0; i_in < ctx->InputCount(); ++i_in) {
-    onnxruntime::contrib::OrtMessageQueue::GetInstance().Push(*ctx_internal->GetInputMLValue(i_in));
+    OrtTasks::GetInstance().Push(run_id, *ctx_internal->GetInputMLValue(i_in));
   }
 
   // Reset background event before returning to main thread
@@ -39,7 +41,7 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
   } else {
     // Get output grad from somewhere and prepare Op outputs.
     for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-      ctx_internal->SetOutputMLValue(i_out, OrtMessageQueue::GetInstance().Pop());
+      ctx_internal->SetOutputMLValue(i_out, OrtTasks::GetInstance().Pop(run_id));
     }
   }
 

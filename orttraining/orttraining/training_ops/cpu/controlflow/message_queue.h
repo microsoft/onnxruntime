@@ -14,12 +14,8 @@ namespace contrib {
 
 class OrtMessageQueue final {
  public:
-  static OrtMessageQueue& GetInstance() {
-    static OrtMessageQueue instance_;
-    return instance_;
-  }
-
   void Push(const OrtValue& ort_value) { ort_values.emplace(ort_value); }
+
   OrtValue Pop() {
     OrtValue ort_value = ort_values.front();
     ort_values.pop();
@@ -35,11 +31,6 @@ class OrtMessageQueue final {
   }
 
  private:
-  OrtMessageQueue() = default;
-  ~OrtMessageQueue() = default;
-  OrtMessageQueue(const OrtMessageQueue&) = delete;
-  OrtMessageQueue& operator=(const OrtMessageQueue&) = delete;
-
   std::queue<OrtValue> ort_values;
 };
 

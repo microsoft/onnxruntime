@@ -1755,13 +1755,13 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
     return bg_thread_status;
   }
 
-  onnxruntime::contrib::OrtMessageQueue::GetInstance().PopAll(user_outputs);
+  onnxruntime::contrib::OrtTasks::GetInstance().PopAll(run_id, user_outputs);
   return Status::OK();
 }
 
 common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads, int64_t run_id) {
   for (const auto& ort_value : backward_output_grads) {
-    onnxruntime::contrib::OrtMessageQueue::GetInstance().Push(ort_value);
+    onnxruntime::contrib::OrtTasks::GetInstance().Push(run_id, ort_value);
   }
 
   LOGS(*session_logger_, WARNING) << "Session::Backward" << run_id;

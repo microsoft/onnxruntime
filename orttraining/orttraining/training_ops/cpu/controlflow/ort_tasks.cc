@@ -52,5 +52,17 @@ void OrtTasks::WakeupBackgroundThread(int64_t run_id) {
   bg_events_[run_id]->cv.notify_all();
 }
 
+void OrtTasks::Push(int64_t run_id, const OrtValue& ort_value) {
+  bg_events_[run_id]->message_queue_.Push(ort_value);
+}
+
+OrtValue OrtTasks::Pop(int64_t run_id) {
+  return bg_events_[run_id]->message_queue_.Pop();
+}
+
+void OrtTasks::PopAll(int64_t run_id, std::vector<OrtValue>& results) {
+  bg_events_[run_id]->message_queue_.PopAll(results);
+}
+
 }  // namespace contrib
 }  // namespace onnxruntime
