@@ -11,6 +11,7 @@
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/module_gradient_graph_builder.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 namespace onnxruntime {
@@ -95,7 +96,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     LOGS(*(sess->GetLogger()), WARNING) << msg;
   }
 
-  training::PipelineTrainingSession::TrainingConfiguration config{};
+  training::TrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
@@ -471,6 +472,50 @@ void addObjectMethodsForTraining(py::module& m) {
       })
       .def("is_output_fp32_node", [](PyTrainingSession* sess, const std::string& output_name) {
         return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
+      });
+
+  py::class_<ModuleGradientGraphBuilderConfiguration> module_gradient_graph_builder_config(
+      m, "ModuleGradientGraphBuilderConfiguration",
+      R"pbdoc(Configuration information for module gradient graph builder.)pbdoc");
+  module_gradient_graph_builder_config.def(py::init())
+      .def_readwrite("initializer_names_to_train", &ModuleGradientGraphBuilderConfiguration::initializer_names_to_train)
+      .def_readwrite("input_names_require_grad", &ModuleGradientGraphBuilderConfiguration::input_names_require_grad)
+      .def_readwrite("use_invertible_layernorm_grad",
+                     &ModuleGradientGraphBuilderConfiguration::use_invertible_layernorm_grad);
+
+  py::class_<TrainingGraphInfo> split_graphs_info(m, "TrainingGraphInfo",
+                                                R"pbdoc(The information of split graphs for frontend.)pbdoc");
+  split_graphs_info.def(py::init())
+      .def_readwrite("user_input_names", &TrainingGraphInfo::user_input_names)
+      .def_readwrite("user_input_grad_names", &TrainingGraphInfo::user_input_grad_names)
+      .def_readwrite("initializer_names_to_train", &TrainingGraphInfo::initializer_names_to_train)
+      .def_readwrite("initializer_grad_names_to_train", &TrainingGraphInfo::initializer_grad_names_to_train)
+      .def_readwrite("user_output_names", &TrainingGraphInfo::user_output_names)
+      .def_readwrite("backward_output_grad_names", &TrainingGraphInfo::backward_output_grad_names);
+
+  py::class_<ModuleGradientGraphBuilder> module_gradient_graph_builder(m, "ModuleGradientGraphBuilder");
+  module_gradient_graph_builder.def(py::init([]() { return onnxruntime::make_unique<ModuleGradientGraphBuilder>(); }))
+      .def("initialize",
+           [](ModuleGradientGraphBuilder* module_gradient_graph_builder, const py::bytes& serialized_model,
+              const ModuleGradientGraphBuilderConfiguration& config) {
+             std::istringstream buffer(serialized_model);
+             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Initialize(buffer, config));
+           })
+      .def("build",
+           [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
+             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Build());
+           })
+      .def("build",
+           [](ModuleGradientGraphBuilder* module_gradient_graph_builder,
+              const std::vector<std::vector<int64_t>>& input_shapes) {
+             ORT_THROW_IF_ERROR(module_gradient_graph_builder->Build(&input_shapes));
+           })
+      .def("get_training_model",
+           [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
+             return py::bytes(module_gradient_graph_builder->GetGradientModel());
+           })
+      .def("get_training_graph_info", [](ModuleGradientGraphBuilder* module_gradient_graph_builder) {
+        return module_gradient_graph_builder->GetTrainingGraphInfo();
       });
 }
 }  // namespace python

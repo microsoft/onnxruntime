@@ -2,9 +2,28 @@ import importlib.util
 import numpy as np
 import os
 import sys
+import time
 import torch
 from onnx import TensorProto
 
+from functools import wraps
+
+def timeit(enabled=True):
+    def noop_inner(my_func):
+        return my_func
+
+    def inner(my_func):
+        @wraps(my_func)
+        def timed(*args, **kw):
+            tstart = time.time()
+            output = my_func(*args, **kw)
+            tend = time.time()
+
+            print('{}: took {:.3f}ms to execute'.format(my_func.__name__, (tend - tstart) * 1000))
+            return output
+        return timed
+
+    return inner if enabled else noop_inner
 
 def get_device_index(device):
     '''Returns device index from a device'''

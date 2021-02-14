@@ -25,6 +25,7 @@
 #include "core/platform/env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
+#include "python/dlpack_convertor.h"
 
 // execution provider factory creator headers
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
@@ -640,7 +641,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
  *
  * @param providers vector of excution providers. [ep1, ep2, ...]
  * @param provider_options_vector vector of excution provider options. [option1, option2 ...]
- * @param provider_options_map an unordered map for mapping excution provider to excution provider options. 
+ * @param provider_options_map an unordered map for mapping excution provider to excution provider options.
  *        {'ep1' -> option1, 'ep2' -> option2 ...}
  *
  */
@@ -1056,6 +1057,18 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
+void dlpack_capsule_destructor(PyObject* data) {
+  DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
+  if (dlmanged_tensor) {
+    // the dlmanged_tensor has not been consumed, call deleter ourselves.
+    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
+  } else {
+    // the dlmanged_tensor has been consumed,
+    // PyCapsule_GetPointer has set an error indicator.
+    PyErr_Clear();
+  }
+}
+
 void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
@@ -1208,6 +1221,27 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         return ml_value;
       })
+      .def_static("ortvalue_from_data_ptr", [](std::vector<int64_t>& shape, py::object& element_type,
+                                               OrtDevice& device, int64_t data_ptr) {
+        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is invalid");
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
+          throw std::runtime_error("Not a valid numpy type");
+        }
+
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape,
+                                                                            reinterpret_cast<void*>(data_ptr), info);
+
+        auto ort_value = onnxruntime::make_unique<OrtValue>();
+        ort_value->Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+                        DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+        return ort_value;
+      })
       .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
@@ -1269,6 +1303,11 @@ void addObjectMethods(py::module& m, Environment& env) {
     GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif
         return obj;
+      })
+      .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
+        DLManagedTensor* dlmanaged_tensor = ort_value_to_dlpack(*ort_value);
+        return py::reinterpret_steal<py::object>(
+            PyCapsule_New(dlmanaged_tensor, "dltensor", dlpack_capsule_destructor));
       });
 
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
@@ -1427,7 +1466,7 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
                      R"pbdoc(The prefix of the profile file. The current time will be appended to the file name.)pbdoc")
       .def_readwrite("optimized_model_filepath", &PySessionOptions::optimized_model_filepath,
                      R"pbdoc(
-File path to serialize optimized model to. 
+File path to serialize optimized model to.
 Optimized model is not serialized unless optimized_model_filepath is set.
 Serialized model format will default to ONNX unless:
  - add_session_config_entry is used to set 'session.save_model_format' to 'ORT', or
@@ -1789,6 +1828,20 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           status = sess->GetSessionHandle()->Run(*io_binding.Get());
         else
           status = sess->GetSessionHandle()->Run(*run_options, *io_binding.Get());
+        if (!status.IsOK())
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+      })
+      .def("run_forward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options) -> std::vector<OrtValue> {
+        std::vector<OrtValue> module_outputs;
+        Status status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(run_options, *io_binding.Get(), module_outputs);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+        }
+
+        return module_outputs;
+      })
+      .def("run_backward", [](PyInferenceSession* sess, const std::vector<OrtValue>& backward_output_grads) -> void {
+        Status status = sess->GetSessionHandle()->ContinueRunInBackground(backward_output_grads);
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });

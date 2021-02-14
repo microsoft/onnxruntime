@@ -2667,6 +2667,23 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest) {
 #endif
 }
 
+TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_2) {
+  auto model_uri = MODEL_FOLDER "fusion/layer_norm_with_cast_2.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_TRUE(op_to_count["Cast"] == 0);
+  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+}
+
 TEST_F(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/layer_norm_sub_dup.onnx";
   std::shared_ptr<Model> p_model;
