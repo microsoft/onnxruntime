@@ -390,8 +390,9 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs,
 
     if use_external_data_format:
         dirpath = tempfile.mkdtemp()
-        print("start exporting model to ", dirpath)
-        torch.onnx._export(model, tuple(sample_inputs_copy), dirpath,
+        modelpath = os.path.join(dirpath, "model.onnx")
+        print("start exporting model to ", modelpath)
+        torch.onnx._export(model, tuple(sample_inputs_copy), modelpath,
                         input_names=input_names,
                         output_names=output_names,
                         opset_version=opset_version,
@@ -401,7 +402,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs,
                         do_constant_folding=False,
                         use_external_data_format=True,
                         **other_export_options)
-        onnx_model = onnx.load(dirpath)
+        onnx_model = onnx.load(modelpath)
         print("finish exporting model")
         shutil.rmtree(dirpath)
     else:
@@ -453,7 +454,9 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                pipeline_parallel_size=1,
                                                output_model_path="",
                                                use_external_data_format=True,
-                                               checkpoint_path=None):
+                                               checkpoint_path=None,
+                                               _onnx_model_cache_key=None,
+                                               _init_onnx_model_file_name=None):
     is_onnx_model_updated = False
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
@@ -580,30 +583,30 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     file_name_or_serialized_string = None
     if ort_parameters.use_external_data_format:
         if is_onnx_model_updated is True:
-            self._init_session_lock.acquire()
             postfix=""
             if checkpoint_path is not None:
                 postfix = "_" + checkpoint_path.split('/')[-1]
 
-            init_session_cache_root = os.path.join(self._onnx_model_cache_folder, "session" + postfix)
-            init_session_weight_dir = os.path.join(init_session_cache_root, "model")
-            init_session_file_name = os.path.join(init_session_weight_dir,  "model.onnx")
-
-            if path.exists(init_session_file_name):
-                print("reuse existing session model at ", init_session_file_name)
-                self._init_session_lock.release()
-                file_name_or_serialized_string = init_session_file_name
+            _init_session_lock_file = os.path.join("/tmp/", _onnx_model_cache_key + postfix + ".init_session.lock")
+            _init_session_lock = FileLock(_init_session_lock_file)
+            dirpath = os.path.join("/tmp/", _onnx_model_cache_key + postfix)
+            _init_session_lock.acquire()
+            init_session_model_file_name = os.path.join(dirpath,  "model.onnx")
+            if path.exists(init_session_model_file_name):
+                print("reuse existing session model at ", init_session_model_file_name)
+                _init_session_lock.release()
+                file_name_or_serialized_string = init_session_model_file_name
             else:
-                print("start saving model to ", init_session_file_name)
-                os.makedirs(init_session_weight_dir, exist_ok=True)
+                print("start saving session model to ", init_session_model_file_name)
+                os.makedirs(dirpath, exist_ok=True)
                 external_data_helper.convert_model_to_external_data(model, all_tensors_to_one_file=False)
-                onnx.save_model(model, init_session_file_name)
-                print("finish saving model to ", init_session_file_name)
-                file_name_or_serialized_string = init_session_file_name
-                self._init_session_lock.release()
+                onnx.save_model(model, init_session_model_file_name)
+                print("finish saving session model to ", init_session_model_file_name)
+                file_name_or_serialized_string = init_session_model_file_name
+                _init_session_lock.release()
         else:
             print("use init_model since there is no modification in init_session")
-            file_name_or_serialized_string =  self._init_model_file_name
+            file_name_or_serialized_string =  _init_onnx_model_file_name
     else:
         file_name_or_serialized_string = model.SerializeToString()
 
@@ -717,7 +720,7 @@ def load_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", s
 
 class ORTTrainer():
 
-    def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
+    def __init__(self, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
                  learning_rate_description, device, gradient_accumulation_steps=1,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
@@ -735,13 +738,6 @@ class ORTTrainer():
 
         Args:
 
-            model: one of
-               - a combined PyTorch model and loss function.
-                  Inputs to this combined PyTorch model are a concatenation of the
-                  model's input and the loss function's label input.
-                  Outputs are a concatenation of the loss function's output and the
-                  model's output.
-               - a combined ONNX model and loss function.
             loss_fn: one of
                - a PyTorch loss function if 'model' is a PyTorch model. A loss
                  function takes two inputs (prediction, label) and outputs a loss
@@ -810,36 +806,38 @@ class ORTTrainer():
         self._enable_internal_postprocess = _enable_internal_postprocess
         self._extra_postprocess = _extra_postprocess
 
+        if pytorch_model_builder is None or onnx_model_cache_key is None:
+            raise ValueError("pytorch_model_builder or onnx_model_cache_key cannot be None when model is None")   
         self._pytorch_model_builder = pytorch_model_builder
-        if model is None:
-            print("no onnx model is provided, going to build PyTorch model first and do exporting.")
-            if pytorch_model_builder is None or onnx_model_cache_key is None:
-                raise ValueError("pytorch_model_builder or onnx_model_cache_key cannot be None when model is None")
-            self._onnx_model_cache_folder = os.path.join(onnx_model_cache_root, "onnx_model_cache", onnx_model_cache_key)
-            self._onnx_model_cache_key = onnx_model_cache_key
-            self._model_export_lock_file = os.path.join(onnx_model_cache_root, onnx_model_cache_key + ".exported_model.lock")
-            self._model_export_lock = FileLock(self._model_export_lock_file)
+        self._onnx_model_cache_key = onnx_model_cache_key
 
-            self._init_session_lock_file = os.path.join(onnx_model_cache_root, onnx_model_cache_key + ".init_session.lock")
-            self._init_session_lock = FileLock(self._init_session_lock_file)
-             
+        self._onnx_model_cache_folder = os.path.join(onnx_model_cache_root, "onnx_model_cache", onnx_model_cache_key)
+        self._init_onnx_model_cache_root = os.path.join(self._onnx_model_cache_folder, "init")
+        self._init_onnx_model_weight_dir = os.path.join(self._init_onnx_model_cache_root, "model")
+        self._init_onnx_model_file_name = os.path.join(self._init_onnx_model_weight_dir,  "model.onnx")
+
+        self._init_onnx_model_export_lock_file = os.path.join(onnx_model_cache_root, onnx_model_cache_key + ".exported_model.lock")
+        self._init_onnx_model_export_lock = FileLock(self._init_onnx_model_export_lock_file)
+        self.loss_fn_ = None
+        self._torch_state_dict_keys = []
+
         # elif isinstance(model, torch.nn.Module):
         #     self.torch_model_ = model
         #     self.loss_fn_ = loss_fn
         #     self._torch_state_dict_keys = list(model.state_dict().keys())
-        else:
-            self._torch_state_dict_keys = []
-            self.onnx_model_ = model
-            if loss_fn is not None:
-                warnings.warn("loss_fn is not used when creating ORTTrainer because an ONNX model is provided.")
-            # TODO: accept loss_fn as an onnx model. build self.onnx_model_ with model and loss_fn
-            self.loss_fn_ = None
+        # else:
+        #     self._torch_state_dict_keys = []
+        #     # self.onnx_model_ = model
+        #     # if loss_fn is not None:
+        #     #     warnings.warn("loss_fn is not used when creating ORTTrainer because an ONNX model is provided.")
+        #     # # TODO: accept loss_fn as an onnx model. build self.onnx_model_ with model and loss_fn
+        #     self.loss_fn_ = None
 
-            if self._enable_internal_postprocess:
-                postprocess.run_postprocess(self.onnx_model_)
+        #     # if self._enable_internal_postprocess:
+        #     #     postprocess.run_postprocess(self.onnx_model_)
 
-            if self._extra_postprocess:
-                self._extra_postprocess(self.onnx_model_)
+        #     # if self._extra_postprocess:
+        #     #     self._extra_postprocess(self.onnx_model_)
 
         self.model_desc_ = model_desc
         self.input_desc_with_lr = [*self.model_desc_.inputs_, learning_rate_description]
@@ -923,7 +921,9 @@ class ORTTrainer():
                 pipeline_parallel_size=self.pipeline_parallel_size,
                 output_model_path=self.output_model_path,
                 use_external_data_format=self.use_external_data_format,
-                checkpoint_path=self.checkpoint_path)
+                checkpoint_path=self.checkpoint_path,
+                _onnx_model_cache_key=self._onnx_model_cache_key,
+                _init_onnx_model_file_name=self._init_onnx_model_file_name)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -975,20 +975,15 @@ class ORTTrainer():
         if self.onnx_model_ is not None:
             return
 
-        self._model_export_lock.acquire()
+        self._init_onnx_model_export_lock.acquire()
 
-        init_model_cache_root = os.path.join(self._onnx_model_cache_folder, "init")
-        init_model_weight_dir = os.path.join(init_model_cache_root, "model")
-        init_model_file_name = os.path.join(init_model_weight_dir,  "model.onnx")
-        self._init_model_file_name = init_model_file_name
-
-        if path.exists(init_model_file_name):
-            print("reuse existing exported model at ", init_model_file_name)
-            self._model_export_lock.release()
-            self.onnx_model_ = onnx.load(init_model_file_name)
-            print("load torch model states from pickled files at ", init_model_cache_root)
-            self._torch_state_dict_keys = pickle.load(open(os.path.join(init_model_cache_root, "_torch_state_dict_keys.p"), "rb"))
-            self.frozen_weights_ = pickle.load(open(os.path.join(init_model_cache_root, "frozen_weights_.p"), "rb"))
+        if path.exists(self._init_onnx_model_file_name):
+            print("reuse existing exported model at ", self._init_onnx_model_file_name)
+            self._init_onnx_model_export_lock.release()
+            self.onnx_model_ = onnx.load(self._init_onnx_model_file_name)
+            print("load torch model states from pickled files at ", self._init_onnx_model_cache_root)
+            self._torch_state_dict_keys = pickle.load(open(os.path.join(self._init_onnx_model_cache_root, "_torch_state_dict_keys.p"), "rb"))
+            self.frozen_weights_ = pickle.load(open(os.path.join(self._init_onnx_model_cache_root, "frozen_weights_.p"), "rb"))
         else:
             print("start building PyTorch model with pytorch_model_builder")
             self.torch_model_ = self._pytorch_model_builder()
@@ -1014,17 +1009,17 @@ class ORTTrainer():
                 self._extra_postprocess(self.onnx_model_)
 
 
-            print("start saving model to onnx model cache ", init_model_file_name)
-            os.makedirs(init_model_weight_dir, exist_ok=True)
+            print("start saving model to onnx model cache ", self._init_onnx_model_file_name)
+            os.makedirs(self._init_onnx_model_weight_dir, exist_ok=True)
 
-            pickle.dump(self._torch_state_dict_keys, open(os.path.join(init_model_cache_root, "_torch_state_dict_keys.p"), "wb"))
-            pickle.dump(self.frozen_weights_, open(os.path.join(init_model_cache_root, "frozen_weights_.p"), "wb"))
+            pickle.dump(self._torch_state_dict_keys, open(os.path.join(self._init_onnx_model_cache_root, "_torch_state_dict_keys.p"), "wb"))
+            pickle.dump(self.frozen_weights_, open(os.path.join(self._init_onnx_model_cache_root, "frozen_weights_.p"), "wb"))
 
             external_data_helper.convert_model_to_external_data(self.onnx_model_, all_tensors_to_one_file=False)
-            onnx.save_model(self.onnx_model_, init_model_file_name)
-            print("finish saving model to ", init_model_file_name)
+            onnx.save_model(self.onnx_model_, self._init_onnx_model_file_name)
+            print("finish saving model to ", self._init_onnx_model_file_name)
 
-            self._model_export_lock.release()
+            self._init_onnx_model_export_lock.release()
 
         self._init_session()
 
