@@ -375,14 +375,14 @@ InferenceSession::~InferenceSession() {
 
   // TODO: find a better way to terminate the background thread
   // backward is not completed yet, set terminate_flag to True
-  // if (task_.bg_thread_future_.valid()) {
-  //   *(task_.terminate_flag_) = true;
-  //   Status s = ContinueRunInBackground({});
-  //   ORT_UNUSED_PARAMETER(s);
-  // }
+  if (task_.bg_thread_future_.valid()) {
+    *(task_.terminate_flag_) = true;
+    Status s = ContinueRunInBackground({}, std::hash<std::thread::id>()(task_.bg_thread_.get_id()));
+    ORT_UNUSED_PARAMETER(s);
+  }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-  if (session_activity_started_)
+if (session_activity_started_)
     TraceLoggingWriteStop(session_activity, "OrtInferenceSessionActivity");
 #endif
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -1742,9 +1742,7 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
     // signal main thread for background thread completion
     onnxruntime::contrib::OrtTasks::GetInstance().WakeupForegroundThread();
   },
-                                 std::move(task_.bg_thread_promise_), 
-                                 std::move(task_.forward_output_promise_),
-                                 std::move(task_.backward_input_promise_));
+                                 std::move(task_.bg_thread_promise_), std::move(task_.forward_output_promise_), std::move(task_.backward_input_promise_));
 
   std::hash<std::thread::id> hasher;
   run_id = hasher(task_.bg_thread_.get_id());
