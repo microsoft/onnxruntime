@@ -70,8 +70,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2",
-                        BuildKernelDefConstraintsFunctorFromTypeList<SupportedOutputTypes>{}(),
-                        BuildKernelDefConstraintsFunctorFromTypeList<EnabledOutputTypes>{}()),
+                        BuildKernelDefConstraintsFromTypeList<SupportedOutputTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledOutputTypes>()),
     ConstantOfShape);
 
 }  // namespace onnxruntime
