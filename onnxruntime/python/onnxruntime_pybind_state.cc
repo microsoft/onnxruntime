@@ -25,7 +25,10 @@
 #include "core/platform/env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
+
+#ifdef ENABLE_TRAINING
 #include "python/dlpack_convertor.h"
+#endif
 
 // execution provider factory creator headers
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
@@ -1057,6 +1060,7 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
+#ifdef ENABLE_TRAINING
 void dlpack_capsule_destructor(PyObject* data) {
   DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
   if (dlmanged_tensor) {
@@ -1068,6 +1072,7 @@ void dlpack_capsule_destructor(PyObject* data) {
     PyErr_Clear();
   }
 }
+#endif
 
 void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
@@ -1221,6 +1226,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         return ml_value;
       })
+#ifdef ENABLE_TRAINING
       .def_static("ortvalue_from_data_ptr", [](std::vector<int64_t>& shape, py::object& element_type,
                                                OrtDevice& device, int64_t data_ptr) {
         ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is invalid");
@@ -1242,6 +1248,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         return ort_value;
       })
+#endif
       .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
@@ -1304,11 +1311,14 @@ void addObjectMethods(py::module& m, Environment& env) {
 #endif
         return obj;
       })
+#ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
         DLManagedTensor* dlmanaged_tensor = ort_value_to_dlpack(*ort_value);
         return py::reinterpret_steal<py::object>(
             PyCapsule_New(dlmanaged_tensor, "dltensor", dlpack_capsule_destructor));
-      });
+      })
+#endif
+;
 
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
   session_io_binding
@@ -1831,6 +1841,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })
+#ifdef ENABLE_TRAINING
       .def("run_forward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options) -> std::vector<OrtValue> {
         std::vector<OrtValue> module_outputs;
         Status status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(run_options, *io_binding.Get(), module_outputs);
@@ -1844,7 +1855,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         Status status = sess->GetSessionHandle()->ContinueRunInBackground(backward_output_grads);
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-      });
+      })
+#endif
+;
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
