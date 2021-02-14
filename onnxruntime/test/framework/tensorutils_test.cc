@@ -192,56 +192,6 @@ TEST(TensorProtoUtilsTest, UnpackTensorWithExternalData) {
 }
 
 template <typename T>
-static void CreateTensorWithExternalData(
-    TensorProto_DataType type,
-    const std::vector<T>& test_data,
-    std::basic_string<ORTCHAR_T>& filename,
-    TensorProto& tensor_proto) {
-  // Create external data
-  FILE* fp;
-  CreateTestFile(fp, filename);
-  size_t size_in_bytes = test_data.size() * sizeof(T);
-  ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
-  ASSERT_EQ(0, fclose(fp));
-
-  // set the tensor_proto to reference this external data
-  onnx::StringStringEntryProto* location = tensor_proto.mutable_external_data()->Add();
-  location->set_key("location");
-  location->set_value(ToMBString(filename));
-  tensor_proto.mutable_dims()->Add(test_data.size());
-  tensor_proto.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
-  tensor_proto.set_data_type(type);
-}
-
-template <typename T>
-static void TestUnpackExternalTensor(TensorProto_DataType type, const Path& model_path) {
-  // Create external data
-  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
-  TensorProto tensor_proto;
-  auto test_data = CreateValues<T>();
-  CreateTensorWithExternalData<T>(type, test_data, filename, tensor_proto);
-  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
-                                                                         DeleteFileFromDisk);
-
-  // Unpack tensor with external data
-  std::vector<T> val(test_data.size());
-  auto st = utils::UnpackTensor(tensor_proto, model_path, val.data(), test_data.size());
-  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-
-  // Validate data
-  for (size_t i = 0; i < test_data.size(); i++) {
-    ASSERT_EQ(val[i], test_data[i]);
-  }
-}
-
-TEST(TensorProtoUtilsTest, UnpackTensorWithExternalData) {
-  Path model_path;
-  TestUnpackExternalTensor<float>(TensorProto_DataType_FLOAT, model_path);
-  TestUnpackExternalTensor<double>(TensorProto_DataType_DOUBLE, model_path);
-  TestUnpackExternalTensor<int32_t>(TensorProto_DataType_INT32, model_path);
-}
-
-template <typename T>
 static NodeProto CreateConstantNode(const std::string& attrib_name, AttributeProto_AttributeType type,
                                     std::function<void(AttributeProto&)> add_data) {
   NodeProto constant_node;
