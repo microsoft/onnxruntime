@@ -33,10 +33,10 @@ using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExec
 using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                            Slice, Input, 1);
 
-const auto supported_data_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<SupportedDataTypes>{}();
-const auto supported_indices_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<SupportedIndicesTypes>{}();
-const auto enabled_data_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledDataTypes>{}();
-const auto enabled_indices_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledIndicesTypes>{}();
+const auto supported_data_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedDataTypes>();
+const auto supported_indices_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedIndicesTypes>();
+const auto enabled_data_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>();
+const auto enabled_indices_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>();
 
 // std::clamp doesn't exist until C++17 so create a local version
 template <typename T>
