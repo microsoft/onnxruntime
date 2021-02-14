@@ -5,8 +5,11 @@
 
 #include <string>
 #include <unordered_map>
+
+#ifdef ENABLE_TRAINING
 #include <thread>
 #include <future>
+#endif
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -299,12 +302,14 @@ class InferenceSession {
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
+#ifdef ENABLE_TRAINING
   // For ORTModule.forward()
   virtual common::Status RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
                                                         std::vector<OrtValue>& user_outputs) ORT_MUST_USE_RESULT;
 
   // For ORTModule.backward()
   common::Status ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
+#endif
 
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
@@ -670,6 +675,7 @@ class InferenceSession {
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
   std::vector<uint8_t> ort_format_model_bytes_;
 
+#ifdef ENABLE_TRAINING
   // background thread for RunInBackgroundAndWaitForYield
   struct Task {
     std::thread bg_thread_;
@@ -677,9 +683,10 @@ class InferenceSession {
     std::future<Status> bg_thread_future_;
     bool* terminate_flag_ = nullptr;
   } task_;
-
+#endif
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };
+
 
 struct SessionIOBinding {
  public:
