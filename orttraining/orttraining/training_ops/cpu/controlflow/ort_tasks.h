@@ -9,8 +9,9 @@
 #include <mutex>
 #include <memory>
 #include <thread>
+#include <future>
 #include <condition_variable>
-#include "message_queue.h"
+#include "core/framework/ml_value.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,14 +27,17 @@ class OrtTasks final {
   void WaitInForegroundThread();
   void WakeupForegroundThread();
 
-  void CreateBackgroundTask();
+  void CreateBackgroundTask(std::promise<std::vector<OrtValue>> forward_output_promise,
+                            std::promise<std::vector<OrtValue>> backward_input_promise);
   void PrepareBackgroundWait();
   void WaitInBackgroundThread();
   void WakeupBackgroundThread(int64_t run_id);
 
-  void Push(int64_t run_id, const OrtValue& ort_value);
-  OrtValue Pop(int64_t run_id);
-  void PopAll(int64_t run_id, std::vector<OrtValue>& results);
+  void SetForwardOutputs(const std::vector<OrtValue>& forward_outputs);
+  std::vector<OrtValue> GetForwardOutputs(int64_t run_id);
+
+  void SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs);
+  std::vector<OrtValue> GetBackwardInputs();
 
  private:
   OrtTasks() = default;
@@ -46,7 +50,8 @@ class OrtTasks final {
     mutable std::mutex mutex;
     mutable std::condition_variable cv;
 
-    OrtMessageQueue message_queue_;
+    std::promise<std::vector<OrtValue>> forward_output_promise_;
+    std::promise<std::vector<OrtValue>> backward_input_promise_;
 
     Item() {
       signaled.store(false);

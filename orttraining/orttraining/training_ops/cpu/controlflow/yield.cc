@@ -3,7 +3,6 @@
 
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "orttraining/training_ops/cpu/controlflow/ort_tasks.h"
-#include "orttraining/training_ops/cpu/controlflow/message_queue.h"
 #include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
@@ -22,10 +21,11 @@ ONNX_OPERATOR_KERNEL_EX(
 Status YieldOp::Compute(OpKernelContext* ctx) const {
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
 
-  int64_t run_id = std::hash<std::thread::id>()(std::this_thread::get_id());
-  for (int i_in = 0; i_in < ctx->InputCount(); ++i_in) {
-    OrtTasks::GetInstance().Push(run_id, *ctx_internal->GetInputMLValue(i_in));
+  std::vector<OrtValue> forward_outputs;
+  for (int i = 0; i < ctx->InputCount(); ++i) {
+    forward_outputs.push_back(*ctx_internal->GetInputMLValue(i));
   }
+  OrtTasks::GetInstance().SetForwardOutputs(forward_outputs);
 
   // Reset background event before returning to main thread
   OrtTasks::GetInstance().PrepareBackgroundWait();
@@ -40,8 +40,11 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
     LOGS(ctx->Logger(), WARNING) << "Resumed executing backward subgraph, terminate_flag is set to true.";
   } else {
     // Get output grad from somewhere and prepare Op outputs.
-    for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-      ctx_internal->SetOutputMLValue(i_out, OrtTasks::GetInstance().Pop(run_id));
+    std::vector<OrtValue> backward_inputs = OrtTasks::GetInstance().GetBackwardInputs();
+    ORT_ENFORCE(backward_inputs.size() == static_cast<size_t>(ctx->OutputCount()));
+
+    for (int i = 0; i < ctx->OutputCount(); ++i) {
+      ctx_internal->SetOutputMLValue(i, backward_inputs[i]);
     }
   }
 

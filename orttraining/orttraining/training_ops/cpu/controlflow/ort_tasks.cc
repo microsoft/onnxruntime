@@ -24,10 +24,13 @@ void OrtTasks::WakeupForegroundThread() {
   fg_event_.cv.notify_all();
 }
 
-void OrtTasks::CreateBackgroundTask() {
+void OrtTasks::CreateBackgroundTask(std::promise<std::vector<OrtValue>> forward_output_promise,
+                                    std::promise<std::vector<OrtValue>> backward_input_promise) {
   int64_t run_id = hasher_(std::this_thread::get_id());
 
   bg_events_.emplace(run_id, std::make_unique<Item>());
+  bg_events_[run_id]->forward_output_promise_ = std::move(forward_output_promise);
+  bg_events_[run_id]->backward_input_promise_ = std::move(backward_input_promise);
 }
 
 void OrtTasks::PrepareBackgroundWait() {
@@ -52,16 +55,22 @@ void OrtTasks::WakeupBackgroundThread(int64_t run_id) {
   bg_events_[run_id]->cv.notify_all();
 }
 
-void OrtTasks::Push(int64_t run_id, const OrtValue& ort_value) {
-  bg_events_[run_id]->message_queue_.Push(ort_value);
+void OrtTasks::SetForwardOutputs(const std::vector<OrtValue>& forward_outputs) {
+  int64_t run_id = hasher_(std::this_thread::get_id());
+  bg_events_[run_id]->forward_output_promise_.set_value(forward_outputs);
 }
 
-OrtValue OrtTasks::Pop(int64_t run_id) {
-  return bg_events_[run_id]->message_queue_.Pop();
+std::vector<OrtValue> OrtTasks::GetForwardOutputs(int64_t run_id) {
+  return bg_events_[run_id]->forward_output_promise_.get_future().get();
 }
 
-void OrtTasks::PopAll(int64_t run_id, std::vector<OrtValue>& results) {
-  bg_events_[run_id]->message_queue_.PopAll(results);
+void OrtTasks::SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs) {
+  bg_events_[run_id]->backward_input_promise_.set_value(backward_inputs);
+}
+
+std::vector<OrtValue> OrtTasks::GetBackwardInputs() {
+  int64_t run_id = hasher_(std::this_thread::get_id());
+  return bg_events_[run_id]->backward_input_promise_.get_future().get();
 }
 
 }  // namespace contrib

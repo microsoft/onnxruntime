@@ -53,7 +53,6 @@
 #include "core/util/thread_utils.h"
 
 #include "orttraining/training_ops/cpu/controlflow/ort_tasks.h"
-#include "orttraining/training_ops/cpu/controlflow/message_queue.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
@@ -1726,9 +1725,15 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
   task_.terminate_flag_ = &(run_options.terminate);
   task_.bg_thread_promise_ = std::promise<Status>();
   task_.bg_thread_future_ = task_.bg_thread_promise_.get_future();
-  task_.bg_thread_ = std::thread([&](std::promise<common::Status> result_promise) {
 
-    onnxruntime::contrib::OrtTasks::GetInstance().CreateBackgroundTask();
+  task_.forward_output_promise_ = std::promise<std::vector<OrtValue>>();
+  task_.backward_input_promise_ = std::promise<std::vector<OrtValue>>();
+
+  task_.bg_thread_ = std::thread([&](std::promise<common::Status> result_promise,
+                                     std::promise<std::vector<OrtValue>> forward_output_promise,
+                                     std::promise<std::vector<OrtValue>> backward_input_promise) {
+    onnxruntime::contrib::OrtTasks::GetInstance().CreateBackgroundTask(std::move(forward_output_promise),
+                                                                       std::move(backward_input_promise));
     common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                            &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
 
@@ -1737,7 +1742,9 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
     // signal main thread for background thread completion
     onnxruntime::contrib::OrtTasks::GetInstance().WakeupForegroundThread();
   },
-                                 std::move(task_.bg_thread_promise_));
+                                 std::move(task_.bg_thread_promise_), 
+                                 std::move(task_.forward_output_promise_),
+                                 std::move(task_.backward_input_promise_));
 
   std::hash<std::thread::id> hasher;
   run_id = hasher(task_.bg_thread_.get_id());
@@ -1755,14 +1762,12 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
     return bg_thread_status;
   }
 
-  onnxruntime::contrib::OrtTasks::GetInstance().PopAll(run_id, user_outputs);
+  user_outputs = onnxruntime::contrib::OrtTasks::GetInstance().GetForwardOutputs(run_id);
   return Status::OK();
 }
 
 common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads, int64_t run_id) {
-  for (const auto& ort_value : backward_output_grads) {
-    onnxruntime::contrib::OrtTasks::GetInstance().Push(run_id, ort_value);
-  }
+  onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, backward_output_grads);
 
   LOGS(*session_logger_, WARNING) << "Session::Backward" << run_id;
 

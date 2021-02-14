@@ -671,6 +671,10 @@ class InferenceSession {
     std::promise<Status> bg_thread_promise_;
     std::future<Status> bg_thread_future_;
     bool* terminate_flag_ = nullptr;
+
+    std::promise<std::vector<OrtValue>> forward_output_promise_;
+    std::promise<std::vector<OrtValue>> backward_input_promise_;
+
   } task_;
 
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
