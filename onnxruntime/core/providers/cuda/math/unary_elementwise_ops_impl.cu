@@ -139,12 +139,6 @@ void Impl_Cast(
 #define SPECIALIZED_CAST_IMPL2_BF16(T)
 #endif
 
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-#define SPECIALIZED_CAST_IMPL2_BF16(T) SPECIALIZED_CAST_IMPL2(T, nv_bfloat16)
-#else
-#define SPECIALIZED_CAST_IMPL2_BF16(T)
-#endif
-
 #define SPECIALIZED_CAST_FROM(T)      \
   SPECIALIZED_CAST_IMPL2(T, half)     \
   SPECIALIZED_CAST_IMPL2_BF16(T)      \
