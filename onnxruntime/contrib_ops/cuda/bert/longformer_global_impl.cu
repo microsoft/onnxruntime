@@ -25,6 +25,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+size_t GetGlobalScratchSize(int batch_size, int sequence_length) {
+  // Global Index scratch layout:
+  //   [sequence_index: int BxS][tmp_storage: int 1024x1]
+  return sizeof(int) * (batch_size * sequence_length + 1024);
+}
+
 __global__ void InitSequenceIndexKernel(int* sequence_index, int sequence_length) {
   int batch_index = blockIdx.x;
   for (int i = threadIdx.x; i < sequence_length; i += blockDim.x) {
@@ -41,22 +47,21 @@ void BuildGlobalIndex(
     int* batch_global_num,
     void* scratch,
     size_t scratch_size) {
-  // Global Index scratch layout:
-  //   [sequence_index: int BxS][tmp_storage: int 1024x1]
   int* sequence_index = (int*)scratch;
   int* tmp_storage = sequence_index + batch_size * sequence_length;
 
   InitSequenceIndexKernel<<<batch_size, 128, 0, stream>>>(sequence_index, sequence_length);
 
-  // Determine temporary device storage requirements
-  // Find the global attention indices and number of global attention tokens
+  // Determine temporary device storage size.
+  // For int* inputs/outputs, it need 767 bytes. When data type changes, its size will be different.
   size_t temp_storage_bytes = 0;
   cub::DevicePartition::Flagged(NULL, temp_storage_bytes, sequence_index,
                                 global_attention, global_index, batch_global_num, sequence_length, stream);
-  if (temp_storage_bytes + batch_size * sequence_length > scratch_size) {
+  if (temp_storage_bytes + sizeof(int) * batch_size * sequence_length > scratch_size) {
     ORT_THROW("LongformerAttention scratch space is not large enough. Temp storage bytes are", temp_storage_bytes);
   }
 
+  // Find the global attention indices and number of global attention tokens
   for (int i = 0; i < batch_size; ++i) {
     cub::DevicePartition::Flagged(reinterpret_cast<void*>(tmp_storage), temp_storage_bytes, sequence_index,
                                   global_attention + i * sequence_length, global_index + i * sequence_length,

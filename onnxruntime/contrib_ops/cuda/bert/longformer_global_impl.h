@@ -7,6 +7,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// Size of global Index scratch in bytes.
+size_t GetGlobalScratchSize(int batch_size, int sequence_length);
+
+// Find the global attention indices and number of global attention tokens
 void BuildGlobalIndex(
     cudaStream_t stream,
     const int* global_attention,

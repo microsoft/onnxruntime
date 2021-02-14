@@ -47,23 +47,11 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-size_t GetScratch1Size(size_t element_size, int batch_size, int num_heads, int sequence_length, int window) {
-  return (5 * sequence_length - 3 * window) * window * num_heads * batch_size * element_size;
-}
-
-constexpr size_t GetScratch2Size() {
-  return 10 * (sizeof(void*) + sizeof(size_t));
-}
-
-size_t GetPinnedBufferSize(int batch_size) {
-  return sizeof(int) * batch_size + GetScratch2Size();
-}
-
 // Denote: batch size (B), sequence length (S), number of heads (N), dimension per head (H), max number of global tokens (G)
 //
-// Workspace layout (by default, the data type T is float or half):
+// Workspace layout (default data type T is float or half):
 //   [SoftmaxSpace: see below] [Q:BxNxSxH] [K:BxNxSxH] [V:BxNxSxH] [Global_Q:BxNxSxH] [Global_K:BxNxSxH] [Global_V:BxNxSxH]
-// where Global_Q, Global_K and Global_V are optional. They are not allocated when there is no any global token.
+// where Global_Q, Global_K and Global_V are optional. They are not allocated when there is no global token.
 //
 // It is feasible to use compact format for Global_Q with shape BxNxGxH to save space. We do not use compact format for now.
 //
@@ -72,8 +60,14 @@ size_t GetPinnedBufferSize(int batch_size) {
 //
 // Scratch1 has 5 buffers for local and global attention calculation.
 // Scratch2 has 5 input pointers, 5 output pointers, 5 buffer sizes and 5 strides related to scratch1.
-//
-// Allocated size could be slightly larger than needed: batch_global_num uses only Bx1 and allocated BxS.
+
+size_t GetScratch1Size(size_t element_size, int batch_size, int num_heads, int sequence_length, int window) {
+  return (5 * sequence_length - 3 * window) * window * num_heads * batch_size * element_size;
+}
+
+constexpr size_t GetScratch2Size() {
+  return 10 * (sizeof(void*) + sizeof(size_t));
+}
 
 size_t GetLongformerSoftmaxWorkspaceSize(
     size_t element_size,
@@ -98,6 +92,12 @@ size_t GetLongformerAttentionWorkspaceSize(
   size_t qkv_size = 3 * batch_size * sequence_length * num_heads * head_size * element_size;
   size_t global_qkv_size = max_num_global > 0 ? qkv_size : 0;
   return softmax_size + qkv_size + global_qkv_size;
+}
+
+// Size of buffer of pinned memory in CPU. The buffer is used to copy memory between CPU and GPU.
+// The buffer includes two parts: [global_count (copy of batch_global_num): int Bx1] [copy of scratch2]
+size_t GetPinnedBufferSize(int batch_size) {
+  return sizeof(int) * batch_size + GetScratch2Size();
 }
 
 template <typename T, int blockSize>
@@ -245,9 +245,9 @@ __launch_bounds__(blockSize)
       output_global = outputs[3] + (row_index - window) * input_strides[3] + head_index * input_sizes[3];
     }
 
-    for (int i = local_start + tid, ii = col_start + tid; i < local_end; i += blockSize, ii += blockSize) {
+    for (int i = local_start + tid, j = col_start + tid; i < local_end; i += blockSize, j += blockSize) {
       float x = input_block[i];
-      x = x * scaler + (float)mask_block[ii];
+      x = x * scaler + (float)mask_block[j];
       if (max_input < x)
         max_input = x;
     }
@@ -261,31 +261,29 @@ __launch_bounds__(blockSize)
       }
     }
 
-    // __syncthreads();
-    float max_blk = BlockReduce(block_reduce_temp).Reduce(max_input, cub::Max());
+    float max_block = BlockReduce(block_reduce_temp).Reduce(max_input, cub::Max());
     if (tid == 0) {
-      max_shared = max_blk;
+      max_shared = max_block;
     }
     __syncthreads();
 
-    for (int i = local_start + tid, ii = col_start + tid; i < local_end; i += blockSize, ii += blockSize) {
+    for (int i = local_start + tid, j = col_start + tid; i < local_end; i += blockSize, j += blockSize) {
       float x = input_block[i];
-      x = expf((x)*scaler + (float)mask_block[ii] - max_shared);
+      x = expf((x)*scaler + (float)mask_block[j] - max_shared);
       sum_input += x;
     }
 
     if (input_global != nullptr) {
-      for (int i = tid, ii = col_start + tid; i < local_global; i += blockSize, ii += blockSize) {
+      for (int i = tid, j = col_start + tid; i < local_global; i += blockSize, j += blockSize) {
         float x = input_global[global_index_block[i]];
-        x = expf((x)*scaler + (float)mask_block[ii] - max_shared);
+        x = expf((x)*scaler + (float)mask_block[j] - max_shared);
         sum_input += x;
       }
     }
 
-    // __syncthreads();
-    float sum_blk = BlockReduce(block_reduce_temp).Reduce(sum_input, cub::Sum());
+    float sum_block = BlockReduce(block_reduce_temp).Reduce(sum_input, cub::Sum());
     if (tid == 0) {
-      sum_shared = sum_blk;
+      sum_shared = sum_block;
     }
     __syncthreads();
     float recip_sum = 1.f / sum_shared;
@@ -300,9 +298,9 @@ __launch_bounds__(blockSize)
 
     __syncthreads();
 
-    for (int i = local_start + tid, ii = col_start + tid; i < local_end; i += blockSize, ii += blockSize) {
+    for (int i = local_start + tid, j = col_start + tid; i < local_end; i += blockSize, j += blockSize) {
       float x = input_block[i];
-      x = expf((x)*scaler + (float)mask_block[ii] - max_shared);
+      x = expf((x)*scaler + (float)mask_block[j] - max_shared);
       output_block[i] = (T)(recip_sum * x);
     }
 
@@ -325,10 +323,9 @@ __launch_bounds__(blockSize)
         max_input = x;
     }
 
-    // __syncthreads();
-    float max_blk = BlockReduce(block_reduce_temp).Reduce(max_input, cub::Max());
+    float max_block = BlockReduce(block_reduce_temp).Reduce(max_input, cub::Max());
     if (tid == 0) {
-      max_shared = max_blk;
+      max_shared = max_block;
     }
     __syncthreads();
 
@@ -338,10 +335,9 @@ __launch_bounds__(blockSize)
       sum_input += x;
     }
 
-    // __syncthreads();
-    float sum_blk = BlockReduce(block_reduce_temp).Reduce(sum_input, cub::Sum());
+    float sum_block = BlockReduce(block_reduce_temp).Reduce(sum_input, cub::Sum());
     if (tid == 0) {
-      sum_shared = sum_blk;
+      sum_shared = sum_block;
     }
     __syncthreads();
     float recip_sum = 1.f / sum_shared;
@@ -381,7 +377,7 @@ bool launchSoftmaxKernel(
     size_t element_size) {        // size of element: 2 for half, and 4 for float
   assert(max_num_global <= window);
 
-  const int* pinned_global_num = reinterpret_cast<const int*>(pinned_buffer);
+  const int* global_count = reinterpret_cast<const int*>(pinned_buffer);
 
   bool is_fp16 = (element_size == 2);
   void* scratch1 = reinterpret_cast<char*>(workspace);
@@ -579,7 +575,7 @@ bool launchSoftmaxKernel(
 
   // Global attention part
   for (int i = 0; i < batch_size; ++i) {
-    if (pinned_global_num[i] > 0) {
+    if (global_count[i] > 0) {
       void* q_batch = (char*)q + (i * elements_per_batch + w * head_size) * element_size;
       void* k_batch = (char*)k + (i * elements_per_batch) * element_size;
       void* qk_batch = (char*)input_pointers[3] + (i * buffer_sizes[3]) * num_heads * element_size;
@@ -588,24 +584,24 @@ bool launchSoftmaxKernel(
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_T,
                                        CUBLAS_OP_N,
-                                       pinned_global_num[i],  // m
-                                       sequence_length - w,   // n
-                                       head_size,             // k
-                                       alpha,                 // alpha
-                                       k_batch,               // A
-                                       Atype,                 // A type
-                                       head_size,             // lda
-                                       stride_per_head,       // strideA
-                                       q_batch,               // B
-                                       Btype,                 // B type
-                                       head_size,             // ldb
-                                       stride_per_head,       // strideB
-                                       beta_0,                // beta
-                                       qk_batch,              // C
-                                       Ctype,                 // C type
-                                       w,                     // ldc
-                                       buffer_sizes[3],       // strideC
-                                       num_heads,             // batch count
+                                       global_count[i],      // m
+                                       sequence_length - w,  // n
+                                       head_size,            // k
+                                       alpha,                // alpha
+                                       k_batch,              // A
+                                       Atype,                // A type
+                                       head_size,            // lda
+                                       stride_per_head,      // strideA
+                                       q_batch,              // B
+                                       Btype,                // B type
+                                       head_size,            // ldb
+                                       stride_per_head,      // strideB
+                                       beta_0,               // beta
+                                       qk_batch,             // C
+                                       Ctype,                // C type
+                                       w,                    // ldc
+                                       buffer_sizes[3],      // strideC
+                                       num_heads,            // batch count
                                        resultType,
                                        algo));
 
@@ -618,24 +614,24 @@ bool launchSoftmaxKernel(
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_T,
                                        CUBLAS_OP_N,
-                                       sequence_length,       // m
-                                       pinned_global_num[i],  // n
-                                       head_size,             // k
-                                       alpha,                 // alpha
-                                       global_k_batch,        // A
-                                       Atype,                 // A type
-                                       head_size,             // lda
-                                       stride_per_head,       // strideA
-                                       global_q_batch,        // B
-                                       Btype,                 // B type
-                                       head_size,             // ldb
-                                       stride_per_head,       // strideB. For compact format: max_num_global * head_size.
-                                       beta_0,                // beta
-                                       qk_batch,              // C
-                                       Ctype,                 // C type
-                                       sequence_length,       // ldc
-                                       buffer_sizes[4],       // strideC
-                                       num_heads,             // batch count
+                                       sequence_length,  // m
+                                       global_count[i],  // n
+                                       head_size,        // k
+                                       alpha,            // alpha
+                                       global_k_batch,   // A
+                                       Atype,            // A type
+                                       head_size,        // lda
+                                       stride_per_head,  // strideA
+                                       global_q_batch,   // B
+                                       Btype,            // B type
+                                       head_size,        // ldb
+                                       stride_per_head,  // strideB. For compact format: max_num_global * head_size.
+                                       beta_0,           // beta
+                                       qk_batch,         // C
+                                       Ctype,            // C type
+                                       sequence_length,  // ldc
+                                       buffer_sizes[4],  // strideC
+                                       num_heads,        // batch count
                                        resultType,
                                        algo));
     }
@@ -757,7 +753,7 @@ bool launchSoftmaxKernel(
   }
 
   for (int i = 0; i < batch_size; ++i) {
-    if (pinned_global_num[i] > 0) {
+    if (global_count[i] > 0) {
       int glob_longdim_mm = sequence_length - 2 * w;
 
       void* v_head = (char*)v + (i * elements_per_batch) * element_size;
@@ -769,7 +765,7 @@ bool launchSoftmaxKernel(
                                        CUBLAS_OP_N,
                                        head_size,               // m
                                        glob_longdim_mm,         // n
-                                       pinned_global_num[i],    // k
+                                       global_count[i],         // k
                                        alpha,                   // alpha
                                        v_head,                  // A
                                        Atype,                   // A type
@@ -797,7 +793,7 @@ bool launchSoftmaxKernel(
                                        CUBLAS_OP_N,
                                        CUBLAS_OP_N,
                                        head_size,               // m
-                                       pinned_global_num[i],    // n
+                                       global_count[i],         // n
                                        sequence_length,         // k: re-write entries completely
                                        alpha,                   // alpha
                                        v_head,                  // A
@@ -824,15 +820,19 @@ bool launchSoftmaxKernel(
 
 template <typename T>
 bool LongformerQkvToContext(
-    const cudaDeviceProp& prop, cublasHandle_t& cublas, cudaStream_t stream,
+    cublasHandle_t& cublas, cudaStream_t stream,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const int window, const size_t element_size,
     const T* input, const T* attention_mask,
-    const T* global_input, const int* global_attention, const int* global_index, const int* batch_global_num, const int max_num_global,
+    const T* global_input, const int* global_attention,
+    const int* global_index, const int* batch_global_num, const int max_num_global,
     void* pinned_buffer, T* workspace,
     T* output) {
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window);
   T* qkv = reinterpret_cast<T*>((char*)workspace + softmax_workspace_size);
+
+  // Number of elements in Q, K, V, Global_Q, Global_K or Global_V are same: BxNxSxH
+  const int elements = batch_size * num_heads * sequence_length * head_size;
 
   // Input should be BxSx3xNxH => qkv: 3xBxNxSxH
   if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, input, qkv)) {
@@ -840,7 +840,7 @@ bool LongformerQkvToContext(
   }
 
   // Input 'global_input' should be BxSx3xNxH => global_qkv: 3xBxNxSxH
-  T* global_qkv = qkv + 3 * batch_size * sequence_length * num_heads * head_size * element_size;
+  T* global_qkv = qkv + 3 * elements;
 
   // When there is no global token, no need to process global Q, K and V
   if (max_num_global > 0 && nullptr != global_input) {
@@ -850,7 +850,6 @@ bool LongformerQkvToContext(
   }
 
   // Now qkv has Q, K, V: each has size BxNxSxH
-  const int elements = batch_size * num_heads * sequence_length * head_size;
   const T* q = qkv;
   const T* k = q + elements;
   const T* v = k + elements;
@@ -858,9 +857,6 @@ bool LongformerQkvToContext(
   const T* global_q = global_qkv;
   const T* global_k = global_q + elements;
   const T* global_v = global_k + elements;
-
-  cublasSetStream(cublas, stream);
-  CublasMathModeSetter helper(prop, cublas, CUBLAS_TENSOR_OP_MATH);
 
   // Q*K' are scaled by 1/sqrt(H)
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
@@ -899,7 +895,8 @@ bool LongformerQkvToContext(
 }
 
 bool LaunchLongformerAttentionKernel(
-    const cudaDeviceProp& prop,
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
     cudaStream_t stream,
     const void* input,
     const void* attention_mask,
@@ -908,6 +905,7 @@ bool LaunchLongformerAttentionKernel(
     const int* global_index,
     const int* batch_global_num,
     void* pinned_buffer,
+    void* workspace,
     void* output,
     int batch_size,
     int sequence_length,
@@ -915,11 +913,10 @@ bool LaunchLongformerAttentionKernel(
     int head_size,
     int window,
     int max_num_global,
-    void* workspace,
-    cublasHandle_t& cublas,
     const size_t element_size) {
+  CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
   if (element_size == 2) {
-    return LongformerQkvToContext(prop, cublas, stream,
+    return LongformerQkvToContext(cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const half*>(input),
                                   reinterpret_cast<const half*>(attention_mask),
@@ -932,7 +929,7 @@ bool LaunchLongformerAttentionKernel(
                                   reinterpret_cast<half*>(workspace),
                                   reinterpret_cast<half*>(output));
   } else {
-    return LongformerQkvToContext(prop, cublas, stream,
+    return LongformerQkvToContext(cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const float*>(input),
                                   reinterpret_cast<const float*>(attention_mask),

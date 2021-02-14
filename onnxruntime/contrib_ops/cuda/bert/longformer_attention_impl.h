@@ -22,6 +22,7 @@ size_t GetLongformerAttentionWorkspaceSize(
 
   bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties
+    cublasHandle_t& cublas,             // Cublas handle
     cudaStream_t stream,                // CUDA stream
     const void* input,                  // Input tensor
     const void* attention_mask,         // Attention mask with shape (B, S)
@@ -29,7 +30,8 @@ size_t GetLongformerAttentionWorkspaceSize(
     const int* global_attention,        // Global attention flags with shape (B, S)
     const int* global_index,            // Global index
     const int* batch_global_num,        // Number of global tokens per batch. It is in device memory.
-    void* pinned_buffer,                // Number of global tokens per batch. It is in pinned memory of CPU.
+    void* pinned_buffer,                // Buffer in pinned memory of CPU with two parts: a copy of batch_global_num, and buffer for copy to scratch2.
+    void* workspace,                    // Temporary buffer
     void* output,                       // Output tensor
     int batch_size,                     // Batch size (B)
     int sequence_length,                // Sequence length (S)
@@ -37,8 +39,6 @@ size_t GetLongformerAttentionWorkspaceSize(
     int head_size,                      // Hidden layer size per head (H)
     int window,                         // One sided attention window (W)
     int max_num_global,                 // Maximum number of global tokens (G)
-    void* workspace,                    // Temporary buffer
-    cublasHandle_t& cublas,             // Cublas handle
     const size_t element_size           // Element size of input tensor
 );
 

@@ -65,9 +65,9 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Build Global Index
   auto global_index_buffer = GetScratchBuffer<int>(batch_size * sequence_length);
   auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
-  
-  size_t global_scratch_length = batch_size * sequence_length + 1024;
-  auto global_scratch_buffer = GetScratchBuffer<int>(global_scratch_length);
+
+  size_t global_scratch_bytes = GetGlobalScratchSize(batch_size, sequence_length);
+  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes);
 
   BuildGlobalIndex(
       stream,
@@ -77,15 +77,15 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       global_index_buffer.get(),
       batch_global_num_buffer.get(),
       global_scratch_buffer.get(),
-      sizeof(int) * global_scratch_length);
+      global_scratch_bytes);
 
-  // Copy batch_global_num to CPU, so as to know the maximum number of global tokens
+  // Copy batch_global_num to CPU
   size_t pinned_buffer_bytes = GetPinnedBufferSize(batch_size);
   auto pinned_buffer = AllocateBufferOnCPUPinned<void>(pinned_buffer_bytes);
   int* batch_global_num_pinned = reinterpret_cast<int*>(pinned_buffer.get());
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(batch_global_num_pinned, batch_global_num_buffer.get(), batch_size * sizeof(int), cudaMemcpyDeviceToHost, stream));
-  
-  // Create an event to make sure the async copy is finished before reading copied data.
+
+  // Create an event to make sure the async copy is finished before reading the data.
   cudaEvent_t isCopyDone;
   CUDA_RETURN_IF_ERROR(cudaEventCreate(&isCopyDone));
   CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, stream));
@@ -128,6 +128,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       max_num_global = batch_global_num_pinned[i];
     }
   }
+
   // Cuda kernel implementation has a limitation of number of global tokens.
   if (max_num_global > window_) {
     ORT_THROW("LongformerAttention CUDA operator does not support number of global tokens > attention window.");
@@ -156,6 +157,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchLongformerAttentionKernel(
           device_prop,
+          cublas,
           stream,
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           reinterpret_cast<const CudaT*>(mask->template Data<T>()),
@@ -164,6 +166,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           global_index_buffer.get(),
           batch_global_num_buffer.get(),
           pinned_buffer.get(),
+          workspace_buffer.get(),
           output->template MutableData<T>(),
           batch_size,
           sequence_length,
@@ -171,14 +174,13 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           head_size,
           window_,
           max_num_global,
-          workspace_buffer.get(),
-          cublas,
           element_size)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
   return Status::OK();
 }
