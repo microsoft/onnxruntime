@@ -29,6 +29,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
+#include "onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/framework/data_types.h"
@@ -1121,6 +1122,28 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetOverridableInitializerName, _In_ const Or
   API_IMPL_END
 }
 
+
+ORT_API_STATUS_IMPL(OrtApis::CreateCustomDeviceAllocator,
+    uint32_t version, void* AllocFunc(OrtAllocator*, size_t), void FreeFunc(OrtAllocator*, void*),
+    const OrtMemoryInfo* InfoFunc(const OrtAllocator*), _Outptr_ OrtAllocator** out) {
+  API_IMPL_BEGIN
+  OrtAllocator *ortAllocator = new OrtAllocator{version, AllocFunc, FreeFunc, InfoFunc};
+  *out = ortAllocator;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateCustomArenaAllocator,
+    _In_ OrtAllocator* device_allocator, void* AllocFunc(size_t), void FreeFunc(void*), void* ReserveFunc(size_t),
+                    size_t UsedFunc(void), size_t MaxFunc(void), _Outptr_ OrtAllocatorArena** out) {
+  API_IMPL_BEGIN
+    OrtAllocatorArena *ortAllocatorArena = new OrtAllocatorArena {device_allocator, AllocFunc, FreeFunc, ReserveFunc,
+                                                               UsedFunc, MaxFunc};
+    *out = ortAllocatorArena;
+    return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::AllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Outptr_ void** out) {
   API_IMPL_BEGIN
   *out = ptr->Alloc(ptr, size);
@@ -2084,6 +2107,10 @@ static constexpr OrtApi ort_api_1_to_7 = {
 
     // Version 7 - In development, feel free to add/remove/rearrange here
     &OrtApis::ModelMetadataGetGraphDescription,
+    &OrtApis::CreateCustomDeviceAllocator,
+    &OrtApis::CreateCustomArenaAllocator,
+    &OrtApis::RegisterCustomDeviceAllocator,
+    &OrtApis::RegisterCustomArenaAllocator,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

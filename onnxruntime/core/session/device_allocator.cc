@@ -5,6 +5,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
 #include "core/session/allocator_impl.h"
+#include "core/session/arena_allocator_impl.h"
 
 #ifndef ORT_NO_EXCEPTIONS
 
@@ -46,6 +47,34 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _I
   }
 
   auto st = env->CreateAndRegisterAllocator(*mem_info, arena_cfg);
+
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+  }
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomDeviceAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator *CustomAllocator) {
+  using namespace onnxruntime;
+  if (!env) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
+  }
+  IAllocator  *allocator = new AllocatorWrapper(CustomAllocator);
+  auto st = env->RegisterAllocator(AllocatorPtr(allocator));
+
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+  }
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomArenaAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocatorArena *CustomArenaAllocator) {
+  using namespace onnxruntime;
+  if (!env) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
+  }
+  IArenaAllocator *allocator = new ArenaAllocatorWrapper(CustomArenaAllocator);
+  auto st = env->RegisterAllocator(AllocatorPtr(allocator));
 
   if (!st.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
