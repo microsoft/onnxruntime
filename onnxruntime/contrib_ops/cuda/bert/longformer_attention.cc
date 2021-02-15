@@ -30,6 +30,24 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+// A wrapper class of cudaEvent_t to destroy the event automatically for avoiding memory leak.
+class AutoDestoryCudaEvent {
+ public:
+  AutoDestoryCudaEvent() : cuda_event_(nullptr) {
+  }
+
+  ~AutoDestoryCudaEvent() {
+    if (cuda_event_ != nullptr)
+      cudaEventDestroy(cuda_event_);
+  }
+
+  cudaEvent_t& Get() {
+    return cuda_event_;
+  }
+ private:
+  cudaEvent_t cuda_event_;
+};
+
 template <typename T>
 LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info) : CudaKernel(info), LongformerAttentionBase(info) {}
 
@@ -86,7 +104,9 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(batch_global_num_pinned, batch_global_num_buffer.get(), batch_size * sizeof(int), cudaMemcpyDeviceToHost, stream));
 
   // Create an event to make sure the async copy is finished before reading the data.
-  cudaEvent_t isCopyDone;
+  AutoDestoryCudaEvent new_event;
+  cudaEvent_t& isCopyDone = new_event.Get();
+
   CUDA_RETURN_IF_ERROR(cudaEventCreate(&isCopyDone));
   CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, stream));
 
@@ -119,7 +139,6 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Wait for async copy of batch_global_num
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
-  CUDA_RETURN_IF_ERROR(cudaEventDestroy(isCopyDone));
 
   // Find the maximum number of global tokens in all batches
   int max_num_global = 0;
