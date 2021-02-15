@@ -1122,6 +1122,28 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetOverridableInitializerName, _In_ const Or
   API_IMPL_END
 }
 
+
+ORT_API_STATUS_IMPL(OrtApis::CreateCustomDeviceAllocator,
+    uint32_t version, void* AllocFunc(OrtAllocator*, size_t), void FreeFunc(OrtAllocator*, void*),
+    const OrtMemoryInfo* InfoFunc(const OrtAllocator*), _Outptr_ OrtAllocator** out) {
+  API_IMPL_BEGIN
+  OrtAllocator *ortAllocator = new OrtAllocator{version, AllocFunc, FreeFunc, InfoFunc};
+  *out = ortAllocator;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateCustomArenaAllocator,
+    _In_ OrtAllocator* device_allocator, void* AllocFunc(size_t), void FreeFunc(void*), void* ReserveFunc(size_t),
+                    size_t UsedFunc(void), size_t MaxFunc(void), _Outptr_ OrtAllocatorArena** out) {
+  API_IMPL_BEGIN
+    OrtAllocatorArena *ortAllocatorArena = new OrtAllocatorArena {device_allocator, AllocFunc, FreeFunc, ReserveFunc,
+                                                               UsedFunc, MaxFunc};
+    *out = ortAllocatorArena;
+    return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::AllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Outptr_ void** out) {
   API_IMPL_BEGIN
   *out = ptr->Alloc(ptr, size);
@@ -2111,6 +2133,10 @@ static constexpr OrtApi ort_api_1_to_8 = {
     // End of Version 7 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 8 - In development, feel free to add/remove/rearrange here
+    &OrtApis::CreateCustomDeviceAllocator,
+    &OrtApis::CreateCustomArenaAllocator,
+    &OrtApis::RegisterCustomDeviceAllocator,
+    &OrtApis::RegisterCustomArenaAllocator,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
