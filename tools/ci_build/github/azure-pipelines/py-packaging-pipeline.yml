@@ -1,4 +1,4 @@
 trigger: none
 
 stages:
-- template: templates/py-packaging-stage.yml
+- template: templates/py-packaging-stage-win-python38.yml
