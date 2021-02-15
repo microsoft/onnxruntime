@@ -76,7 +76,7 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(list, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.4.0"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.4.1"/>'
 
     if (package_name == 'Microsoft.AI.MachineLearning'):
         list.append('<dependencies>')
@@ -278,6 +278,10 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
                                                             'microsoft.ai.machinelearning.winmd') +
                           '" target="lib\\uap\\Microsoft.AI.MachineLearning.winmd" />')
+        # Process microsoft.ai.machinelearning.experimental.winmd
+        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
+                                                            'microsoft.ai.machinelearning.experimental.winmd') +
+                          '" target="lib\\uap\\Microsoft.AI.MachineLearning.Experimental.winmd" />')
         if args.target_architecture == 'x64' and not args.is_store_build:
             interop_dll_path = 'Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.19041.0'
             interop_dll = interop_dll_path + '\\Microsoft.AI.MachineLearning.Interop.dll'
@@ -424,15 +428,12 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard1.1" />')
 
-    # Process License, ThirdPartyNotices, Privacy, README
+    # Process License, ThirdPartyNotices, Privacy
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'LICENSE.txt') + '" target="LICENSE.txt" />')
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'ThirdPartyNotices.txt') +
                       '" target="ThirdPartyNotices.txt" />')
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'Privacy.md') +
                       '" target="Privacy.md" />')
-    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'C_API.md') +
-                      '" target="README.md" />')
-
     files_list.append('</files>')
 
     list += files_list

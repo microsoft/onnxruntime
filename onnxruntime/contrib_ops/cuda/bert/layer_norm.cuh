@@ -1,7 +1,7 @@
 /*
  The implementation of this file is based on bert plugins in TensorRT demo:
  https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
- 
+
 Copyright 2019 NVIDIA Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -79,7 +79,7 @@ struct KeyValuePairSum {
 
 template <typename T, int TPB>
 __device__ inline void LayerNorm(
-    const cub::KeyValuePair<T, T>& thread_data, const int ld, const int offset, const T* beta, 
+    const cub::KeyValuePair<T, T>& thread_data, const int ld, const int offset, const T* beta,
     const T* gamma, const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
 
@@ -101,7 +101,7 @@ __device__ inline void LayerNorm(
     const int idx = offset + i;
     const T val = output[idx];
     const T g(gamma[i]);
-    const T b(beta[i]);
+    const T b = (nullptr == beta) ? (T)0 : beta[i];
     output[idx] = g * (val - mu) * rsigma + b;
   }
 }
@@ -129,7 +129,7 @@ __device__ inline void LayerNormSmall(const T val, const cub::KeyValuePair<T, T>
 
   if (threadIdx.x < ld) {
     const T g(gamma[threadIdx.x]);
-    const T b(beta[threadIdx.x]);
+    const T b = (nullptr == beta) ? (T)0 : beta[threadIdx.x];
     output[idx] = g * (val - mu) * rsigma + b;
   }
 }

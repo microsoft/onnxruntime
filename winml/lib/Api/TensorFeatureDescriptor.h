@@ -4,11 +4,13 @@
 #pragma once
 
 #include "TensorFeatureDescriptor.g.h"
+#include "iengine.h"
 
 namespace WINMLP {
 struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
                                      TensorFeatureDescriptor,
-                                     ILearningModelFeatureDescriptorNative> {
+                                     ILearningModelFeatureDescriptorNative,
+                                     _winml::IDescriptorInfoProvider> {
   TensorFeatureDescriptor() = delete;
   TensorFeatureDescriptor(
       const char* name,
@@ -17,6 +19,12 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
       const std::vector<int64_t>& shape,
       bool is_required,
       bool has_unsuppored_image_metadata);
+  
+  TensorFeatureDescriptor(
+      hstring const& name,
+      hstring const& description,
+      winml::TensorKind const& kind,
+      array_view<int64_t const> shape);
 
   // ITensorDescriptor
   winml::TensorKind
@@ -51,6 +59,12 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
       const wchar_t** description,
       uint32_t* cchDescription) override;
 
+  
+  STDMETHOD(GetDescriptorInfo)
+  (
+      _winml::IEngineFactory* engine_factory, 
+      _winml::IDescriptorInfo** info) override;
+
  private:
   winrt::hstring name_;
   winrt::hstring description_;
@@ -59,4 +73,4 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
   bool is_required_;
   bool has_unsupported_image_metadata_;
 };
-}  // namespace WINMLP
+}  // WINMLP

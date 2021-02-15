@@ -14,7 +14,7 @@ namespace DeviceHelpers {
 namespace CpuDeviceHelpers {
 
 // CPU specific Data copy helper
-Status DataCopy(const Tensor& input, Tensor& output) {
+Status DataCopy(const Tensor& input, Tensor& output, void* /*einsum_cuda_assets*/) {
   ORT_ENFORCE(output.SizeInBytes() == input.SizeInBytes(),
               "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors in Einsum's case - so safely use memcpy
@@ -156,7 +156,7 @@ static std::unique_ptr<Tensor> DiagonalInnermostDims(const Tensor& input,
   return output;
 }
 
-std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator) {
+std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator, void* /*einsum_cuda_assets*/) {
   const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
   auto rank = static_cast<int64_t>(input_dims.size());
