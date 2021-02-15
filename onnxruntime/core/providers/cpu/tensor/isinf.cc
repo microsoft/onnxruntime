@@ -21,6 +21,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
 
 class IsInf final : public OpKernel {
  public:
+  using SupportedTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                          IsInf, Input, 0);
+
   using EnabledTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                       IsInf, Input, 0);
 
@@ -36,8 +39,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     IsInf,
     10,
     KernelDefBuilder()
-        .TypeConstraint(
-            "T1", BuildKernelDefConstraintsFunctorFromTypeList<IsInf::EnabledTypes>{}())
+        .TypeConstraint("T1",
+                        BuildKernelDefConstraintsFromTypeList<IsInf::SupportedTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<IsInf::EnabledTypes>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     IsInf);
 

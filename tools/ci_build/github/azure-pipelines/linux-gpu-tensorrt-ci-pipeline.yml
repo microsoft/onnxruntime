@@ -5,7 +5,6 @@ jobs:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
   timeoutInMinutes: 90
   steps:
-    - template: templates/set-test-data-variables-step.yml
     
     - template: templates/run-docker-build-steps.yml
       parameters:

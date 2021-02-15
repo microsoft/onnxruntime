@@ -16,11 +16,13 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
 }
 
 namespace {
-using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1);
+using SupportedIndexTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                             Gather, Input, 1);
+using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                         Gather, Input, 1);
 
-const auto index_type_constraints =
-    BuildKernelDefConstraintsFunctorFromTypeList<EnabledIndexTypes>{}();
+const auto supported_index_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedIndexTypes>();
+const auto enabled_index_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>();
 }  // namespace
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -29,7 +31,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     10,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", index_type_constraints),
+        .TypeConstraint("Tind", supported_index_type_constraints, enabled_index_type_constraints),
     Gather);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -38,7 +40,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", index_type_constraints),
+        .TypeConstraint("Tind", supported_index_type_constraints, enabled_index_type_constraints),
     Gather);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -46,7 +48,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", index_type_constraints),
+        .TypeConstraint("Tind", supported_index_type_constraints, enabled_index_type_constraints),
     Gather);
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {

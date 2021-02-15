@@ -42,7 +42,7 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                            const logging::Logger& /* logger */) const {
+                                            const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
   const auto input_defs = node.InputDefs();
@@ -72,7 +72,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // Usually using autopadding is more efficient than using explicit padding
   // Try to see if we can map explicit padding to auto padding
   std::vector<int64_t> input_shape;
-  ORT_RETURN_IF_ERROR(GetShape(*input_defs[0], input_shape));
+  ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   AutoPadType auto_pad_type;
   ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3],
                                     onnx_pads, strides, dilations,
@@ -110,7 +110,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
-  model_builder.AddLayer(layer.release());
+  model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
 

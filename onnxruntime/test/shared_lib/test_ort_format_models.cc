@@ -4,6 +4,9 @@
 // if we can't load an ORT format model we can't really test anything
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 
+// custom ops are only supported in a minimal build if explicitly enabled
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
 #include "core/common/make_unique.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -130,5 +133,7 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
 }
 #endif
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #endif  // #if defined(ENABLE_ORT_FORMAT_LOAD)

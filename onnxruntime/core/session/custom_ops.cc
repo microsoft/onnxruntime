@@ -5,7 +5,6 @@
 #pragma warning(disable : 4267)
 #endif
 
-#include "core/framework/customregistry.h"
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -14,8 +13,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
-
-// ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
@@ -69,6 +66,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
   return onnxruntime::ToOrtStatus(status);
 }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#include "core/framework/customregistry.h"
 namespace onnxruntime {
 
 struct CustomOpKernel : OpKernel {
@@ -178,3 +177,5 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 }
 
 }  // namespace onnxruntime
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+

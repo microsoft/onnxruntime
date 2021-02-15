@@ -40,3 +40,9 @@ static const char* const kOrtSessionOptionsConfigSaveModelFormat = "session.save
 // Note that an alternative way not using this option at runtime is to train and export a model without denormals
 // and that's recommended because turning this option on may hurt model accuracy.
 static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.set_denormal_as_zero";
+
+// It controls to run quantization model in QDQ (QuantizelinearDeQuantizelinear) format or not.
+// "0": disable. ORT doesn't do fusion logic for QDQ format.
+// "1": enable. ORT does fusion logic for QDQ format.
+// Its default value is "1"
+static const char* const kOrtSessionOptionsEnableQuantQDQ = "session.enable_quant_qdq";
