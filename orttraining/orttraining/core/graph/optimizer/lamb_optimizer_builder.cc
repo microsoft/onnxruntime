@@ -186,10 +186,10 @@ Status LambOptimizerBuilder::Build(
       const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
       const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
       std::vector<int64_t> weight_dims;
-      ORT_RETURN_IF_NOT(
-          weight_argdefs[i].type_proto &&
-          weight_argdefs[i].type_proto->has_tensor_type() &&
-          weight_argdefs[i].type_proto->tensor_type().has_shape());
+      ORT_RETURN_IF_NOT(weight_argdefs[i].type_proto &&
+                            weight_argdefs[i].type_proto->has_tensor_type() &&
+                            weight_argdefs[i].type_proto->tensor_type().has_shape(),
+                        "weight_argsdefs[", i, "] did not have tensor with shape");
       for (const auto& dim : weight_argdefs[i].type_proto->tensor_type().shape().dim()) {
         weight_dims.push_back(dim.dim_value());
       }

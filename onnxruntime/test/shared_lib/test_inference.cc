@@ -724,6 +724,9 @@ TEST(CApiTest, io_binding_cuda) {
   Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
                                                 expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
+  // Sychronize to make sure the copy on default stream is done since TensorRT isn't using default stream.
+  cudaStreamSynchronize(nullptr);
+
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);

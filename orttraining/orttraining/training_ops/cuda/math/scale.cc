@@ -37,8 +37,8 @@ Status Scale<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   float scale_value;
   auto scale_tensor = context->Input<Tensor>(1);
-  utils::MLTypeCallDispatcher<GetScaleValueImpl, float, double, MLFloat16, int64_t, int32_t> t_disp(scale_tensor->GetElementType());
-  t_disp.Invoke(scale_tensor, scale_value);
+  utils::MLTypeCallDispatcher<float, double, MLFloat16, int64_t, int32_t> t_disp(scale_tensor->GetElementType());
+  t_disp.Invoke<GetScaleValueImpl>(scale_tensor, scale_value);
 
   if (scale_down_) {
     scale_value = 1.0f / scale_value;
@@ -47,6 +47,7 @@ Status Scale<T>::ComputeInternal(OpKernelContext* context) const {
   auto lhs_tensor = context->Input<Tensor>(0);
   auto output_tensor = context->Output(0, lhs_tensor->Shape());
   Impl_Scale<CudaT>(
+      Stream(),
       reinterpret_cast<const CudaT*>(lhs_tensor->template Data<T>()),
       scale_value,
       reinterpret_cast<CudaT*>(output_tensor->template MutableData<T>()),

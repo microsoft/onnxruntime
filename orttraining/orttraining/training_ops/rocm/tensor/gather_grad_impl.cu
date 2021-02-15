@@ -131,12 +131,13 @@ void GatherGradImpl(
     ) {
   // allocate intermediate buffers
   auto original_indices = rocm_kernel.template GetScratchBuffer<Tin>(num_indices);
+  hipStream_t stream = rocm_kernel.Stream();
 
   // initialize original_indices with [0, num_indices)
   {
     const auto blocks_per_grid = CeilDiv(num_indices, GridDim::maxThreadsPerBlock);
     hipcub::CountingInputIterator<Tin> counting_input(Tin{});
-    hipLaunchKernelGGL(_Iota, dim3(blocks_per_grid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+    hipLaunchKernelGGL(_Iota, dim3(blocks_per_grid), dim3(GridDim::maxThreadsPerBlock), 0, stream,
         counting_input, num_indices, original_indices.get());
   }
 
@@ -149,7 +150,7 @@ void GatherGradImpl(
       nullptr, sort_temp_storage_size_bytes,
       indices_data, indices_data_sorted.get(),
       original_indices.get(), original_indices_sorted.get(),
-      num_indices));
+      num_indices, 0, sizeof(Tin)*8, stream));
 
   auto sort_temp_storage = rocm_kernel.GetScratchBuffer<void>(sort_temp_storage_size_bytes);
 
@@ -157,13 +158,13 @@ void GatherGradImpl(
       sort_temp_storage.get(), sort_temp_storage_size_bytes,
       indices_data, indices_data_sorted.get(),
       original_indices.get(), original_indices_sorted.get(),
-      num_indices));
+      num_indices, 0, sizeof(Tin)*8, stream));
 
   dim3 block(GPU_WARP_SIZE, 4);
   dim3 grid(CeilDiv(num_indices, 4), CeilDiv(stride, GridDim::maxElementsPerThread * GPU_WARP_SIZE));
   if (param_itrs == 1)
   {
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherAxis0GradImpl<T, Tin, GridDim::maxElementsPerThread>), dim3(grid), dim3(block), 0, 0,
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherAxis0GradImpl<T, Tin, GridDim::maxElementsPerThread>), dim3(grid), dim3(block), 0, stream,
       indices_data_sorted.get(),
       original_indices_sorted.get(),
       grad_data,
@@ -172,7 +173,7 @@ void GatherGradImpl(
       num_inputs,
       stride); 
   } else {
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherGradImpl<T, Tin, GridDim::maxElementsPerThread>), dim3(grid), dim3(block), 0, 0,
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_GatherGradImpl<T, Tin, GridDim::maxElementsPerThread>), dim3(grid), dim3(block), 0, stream,
         indices_data_sorted.get(),
         original_indices_sorted.get(),
         grad_data,

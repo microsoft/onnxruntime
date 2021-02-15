@@ -29,7 +29,6 @@ jobs:
     CUDA_VERSION: ${{ parameters.CudaVersion }}
 
   steps:
-    - template: set-test-data-variables-step.yml
     - powershell: |
         if($env:TELEMETRYGUID)
         {
