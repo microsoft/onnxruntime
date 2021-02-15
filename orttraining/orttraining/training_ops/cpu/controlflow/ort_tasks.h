@@ -27,8 +27,7 @@ class OrtTasks final {
   void WaitInForegroundThread();
   void WakeupForegroundThread();
 
-  void CreateBackgroundTask(std::promise<std::vector<OrtValue>> forward_output_promise,
-                            std::promise<std::vector<OrtValue>> backward_input_promise);
+  void CreateBackgroundTask();
   void PrepareBackgroundWait();
   void WaitInBackgroundThread();
   void WakeupBackgroundThread(int64_t run_id);
@@ -39,28 +38,34 @@ class OrtTasks final {
   void SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs);
   std::vector<OrtValue> GetBackwardInputs();
 
+  void SetStatus(const Status& status);
+  bool StatusIsReady(int64_t run_id);
+  Status GetStatus(int64_t run_id);
+
  private:
   OrtTasks() = default;
   ~OrtTasks() = default;
   OrtTasks(const OrtTasks&) = delete;
   OrtTasks& operator=(const OrtTasks&) = delete;
 
-  struct Item {
+  struct Task {
     std::atomic<bool> signaled;
     mutable std::mutex mutex;
     mutable std::condition_variable cv;
 
     std::promise<std::vector<OrtValue>> forward_output_promise_;
     std::promise<std::vector<OrtValue>> backward_input_promise_;
+    std::promise<Status> status_promise_;
+    std::future<Status> status_future_;
 
-    Item() {
+    Task() {
       signaled.store(false);
     }
   };
 
   std::hash<std::thread::id> hasher_;
-  Item fg_event_;
-  std::unordered_map<int64_t, std::unique_ptr<Item>> bg_events_;
+  Task fg_event_;
+  std::unordered_map<int64_t, std::unique_ptr<Task>> bg_events_;
 };
 
 }  // namespace contrib
