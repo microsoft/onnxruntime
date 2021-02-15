@@ -183,6 +183,7 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
+          .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
           .SinceVersion(1);
 
       for (auto& id : type_constraint_ids[op]) {
