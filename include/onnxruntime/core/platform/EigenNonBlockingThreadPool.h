@@ -37,8 +37,9 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
+#include "concurrentqueue.h"
 
-// ORT thread pool overview
+    // ORT thread pool overview
 // ------------------------
 //
 // The ORT thread pool implementation is split into two layers.  This
@@ -253,6 +254,66 @@ class ThreadPoolLoop {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolLoop);
 };
+
+template <typename Work, typename Tag, unsigned kSize>
+class RunQueueX {
+  moodycamel::ConcurrentQueue<Work> que_;
+ public:
+  RunQueueX() {}
+  ~RunQueueX() {}
+  Work PushFront(Work w) {
+    if (que_.try_enqueue(w)) {
+      return Work();
+    } else {
+      return w;
+    }
+  }
+  Work PopFront() {
+    Work w;
+    if (que_.try_dequeue(w)) {
+      return w;
+    } else {
+      return Work();
+    }
+  }
+  Work PushBack(Work w) {
+    if (que_.try_enqueue(w)) {
+      return Work();
+    } else {
+      return w;
+    }
+  }
+  Work PushBackWithTag(Work w, Tag, unsigned&) {
+    if (que_.try_enqueue(w)) {
+      return Work();
+    } else {
+      return w;
+    }
+  }
+  Work PopBack() {
+    Work w;
+    if (que_.try_dequeue(w)) {
+      return w;
+    } else {
+      return Work();
+    }
+  }
+  bool RevokeWithTag(Tag, unsigned) {
+    return false;
+  }
+  unsigned Size() const {
+    return static_cast<unsigned int>(que_.size_approx());
+  }
+  bool Empty() const {
+    return Size() == 0;
+  }
+  void Flush() {
+    while (!Empty()) {
+      PopFront();
+    }
+  }
+};
+
 
 template <typename Work, typename Tag, unsigned kSize>
 class RunQueue {
@@ -597,7 +658,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   };
 
   typedef std::function<void()> Task;
-  typedef RunQueue<Task, Tag, 1024> Queue;
+  //typedef RunQueue<Task, Tag, 1024> Queue;
+  typedef RunQueueX<Task, Tag, 1024> Queue;
 #ifdef _WIN32
   using CHAR_TYPE = wchar_t;
 #else
