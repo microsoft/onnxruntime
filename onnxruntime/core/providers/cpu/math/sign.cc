@@ -115,10 +115,10 @@ Status Sign::Compute(OpKernelContext* ctx) const {
       SignMLFloat16(input, output);
       break;
     default:
-      utils::MLTypeCallDispatcher<CallSignImpl, float, double, int8_t, uint8_t,
+      utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t,
                                   int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
           t_disp(dtype);
-      t_disp.Invoke(input, output);
+      t_disp.Invoke<CallSignImpl>(input, output);
       break;
   }
   return Status::OK();

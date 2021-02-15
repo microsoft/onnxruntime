@@ -28,6 +28,8 @@ docker run --gpus all --rm \
         -e "PackageName=$PackageName" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
+        -e "BUILD_BINARIESDIRECTORY=/home/onnxruntimedev" \
+        -e "BUILD_SOURCESDIRECTORY=/onnxruntime_src" \
         "$DockerImage" \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $CurrentOnnxRuntimeVersion

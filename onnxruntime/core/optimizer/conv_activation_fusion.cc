@@ -49,7 +49,7 @@ static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& m
           //  value = static_cast<float>(*i.data<double>());
           //  break;
           case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-            value = math::halfToFloat(i.data<BFloat16>()->val);
+            value = math::halfToFloat(i.data<MLFloat16>()->val);
             break;
           default:
             ORT_THROW("Unexpected data type for Clip input of ", initializer->data_type());
@@ -101,6 +101,10 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     if (node->GetExecutionProviderType() == onnxruntime::kCudaExecutionProvider) {
+      if (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() != 
+          ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        continue;
+      }
       if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Relu", {6, 13})) {
         Node& conv_node = *node;
         Node& act_node = *graph.GetNode(next_node.Index());

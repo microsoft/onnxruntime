@@ -9,6 +9,6 @@
 jobs: 
 - template: templates/cpu.yml
   parameters:
-    AgentPool : 'Win-CPU-2019'
+    AgentPool : 'Win-CPU-2021'
     DoEsrp: 'true'
     DoCompliance: 'true'
