@@ -29,8 +29,6 @@ static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 #endif
 }
 
-// Leaf 7 EDX bit 15 - Hybrid
-
 static inline int XGETBV() {
 #if defined(_MSC_VER)
   return static_cast<int>(_xgetbv(0));
