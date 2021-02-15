@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <functional>
+
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 
@@ -130,6 +133,17 @@ inline Status ComputePadAndOutputShape(const int64_t in_dim,
       ComputePad(in_dim, stride, kernel, dilation, pad_type, pad_head, pad_tail, force_symmetric_auto_padding));
   out_dim = ComputeOutputShape(in_dim, stride, kernel, dilation, pad_head, pad_tail);
   return Status::OK();
+}
+
+template <class Map, class Key>
+inline bool Contains(const Map& map, const Key& key) {
+  return map.find(key) != map.end();
+}
+
+// Note: This helper function will not have overflow protection
+template <template <typename...> class Container, typename T>
+T Product(const Container<T>& c) {
+  return accumulate(c.cbegin(), c.cend(), 1, std::multiplies<T>());
 }
 
 }  // namespace onnxruntime

@@ -34,7 +34,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy
+     python -m pip install -q pyopenssl setuptools wheel numpy flatbuffers
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -43,7 +43,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
-     python -m pip uninstall -y onnx
+     python -m pip uninstall -y onnx -qq
      Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
@@ -52,7 +52,7 @@ jobs:
     displayName: 'Build and test'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_cuda --cuda_version=10.2 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2" --cudnn_home="C:\local\cudnn-10.2-windows10-x64-v8.0.3.33\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --include_ops_by_model="$(Build.SourcesDirectory)\onnxruntime\test\testdata" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\reduced_ops_via_config.config"'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_cuda --cuda_version=10.2 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2" --cudnn_home="C:\local\cudnn-10.2-windows10-x64-v8.0.3.33\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - template: templates/component-governance-component-detection-steps.yml

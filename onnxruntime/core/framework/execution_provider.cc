@@ -74,6 +74,20 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   allocator_list_.push_back(allocator);
 }
 
+void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
+  const OrtMemoryInfo& info = allocator->Info();
+  auto ite = mem_info_set_.find(info);
+  if (ite != mem_info_set_.end()) {
+    LOGS_DEFAULT(WARNING) << "duplicated allocator: " << info.ToString();
+    return;
+  }
+  InsertAllocator(allocator);
+}
+
+void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> ) {
+  return;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {

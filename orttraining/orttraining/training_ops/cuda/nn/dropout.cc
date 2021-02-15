@@ -3,7 +3,6 @@
 
 #include "core/framework/random_seed.h"
 #include "orttraining/training_ops/cuda/nn/dropout.h"
-#include "core/providers/cuda/nn/dropout.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/common.h"
 
@@ -21,19 +20,6 @@ namespace cuda {
 #define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double
 #endif
 
-// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
-// opset-12.
-ONNX_OPERATOR_KERNEL_EX(
-    TrainableDropout,
-    kOnnxDomain,
-    9,
-    kCudaExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
-        .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
-        .InputMemoryType<OrtMemTypeCPUInput>(1),
-    Dropout<true>);
-
 #define REGISTER_GRADIENT_KERNEL(OpName)                                 \
   ONNX_OPERATOR_KERNEL_EX(                                               \
       OpName,                                                            \
@@ -49,13 +35,10 @@ ONNX_OPERATOR_KERNEL_EX(
 
 REGISTER_GRADIENT_KERNEL(DropoutGrad)
 
-// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
-// opset-12.
-REGISTER_GRADIENT_KERNEL(TrainableDropoutGrad)
-
 template <typename T>
 struct DropoutGradComputeImpl {
-  void operator()(const int64_t N,
+  void operator()(cudaStream_t stream,
+                  const int64_t N,
                   const Tensor& dY,
                   const bool* mask_data,
                   const float ratio_data,
@@ -64,7 +47,16 @@ struct DropoutGradComputeImpl {
 
     const CudaT* dY_data = reinterpret_cast<const CudaT*>(dY.template Data<T>());
     CudaT* dX_data = reinterpret_cast<CudaT*>(dX.template MutableData<T>());
-    DropoutGradientKernelImpl<CudaT>(N, dY_data, mask_data, ratio_data, dX_data);
+    DropoutGradientKernelImpl<CudaT>(stream, N, dY_data, mask_data, ratio_data, dX_data);
+  }
+};
+
+// REVIEW(codemzs): Common out this structure because it is also used in Dropout forward op.
+template <typename T>
+struct GetRatioDataImpl {
+  void operator()(const Tensor* ratio, float& ratio_data) const {
+    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
   }
 };
 
@@ -81,14 +73,14 @@ Status DropoutGrad::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(2);
   if (ratio) {
-    utils::MLTypeCallDispatcher<GetRatioDataImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
-    t_disp.Invoke(ratio, ratio_data);
+    utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
+    t_disp.Invoke<GetRatioDataImpl>(ratio, ratio_data);
   }
 
   auto dX = context->Output(0, shape);
 
-  utils::MLTypeCallDispatcher<DropoutGradComputeImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(dY->GetElementType());
-  t_disp.Invoke(N, *dY, mask_data, ratio_data, *dX);
+  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(dY->GetElementType());
+  t_disp.Invoke<DropoutGradComputeImpl>(Stream(), N, *dY, mask_data, ratio_data, *dX);
 
   return Status::OK();
 }
@@ -109,6 +101,7 @@ ONNX_OPERATOR_KERNEL_EX(
 template <typename T>
 struct BiasDropoutComputeImpl {
   Status operator()(const cudaDeviceProp& prop,
+                    cudaStream_t stream,
                     const int64_t N,
                     const fast_divmod fdm_dim,
                     const float ratio_data,
@@ -133,7 +126,7 @@ struct BiasDropoutComputeImpl {
 
     CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
 
-    BiasDropoutKernelImpl<CudaT>(prop, N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data);
+    BiasDropoutKernelImpl<CudaT>(prop, stream, N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data);
 
     return Status::OK();
   }
@@ -172,13 +165,13 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(3);
   if (ratio) {
-    utils::MLTypeCallDispatcher<GetRatioDataImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
-    t_disp.Invoke(ratio, ratio_data);
+    utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
+    t_disp.Invoke<GetRatioDataImpl>(ratio, ratio_data);
   }
 
   //Check for inference mode.
   const Tensor* training_mode = context->Input<Tensor>(4);
-  bool is_training_mode = (training_mode != nullptr) && training_mode->Data<bool>();
+  bool is_training_mode = (training_mode != nullptr) && *(training_mode->Data<bool>());
   if (!is_training_mode) {
     ratio_data = 0.0f;
   }
@@ -193,8 +186,9 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   const fast_divmod fdm_dim(gsl::narrow_cast<int>(dim));
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
-  utils::MLTypeCallDispatcherRet<Status, BiasDropoutComputeImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(X->GetElementType());
-  return t_disp.Invoke(GetDeviceProp(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data);
+  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(X->GetElementType());
+  return t_disp.InvokeRet<Status, BiasDropoutComputeImpl>(
+      GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data);
 }
 
 }  // namespace cuda

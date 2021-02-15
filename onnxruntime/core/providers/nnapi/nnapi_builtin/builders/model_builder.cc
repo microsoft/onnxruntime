@@ -4,6 +4,7 @@
 #include <core/common/logging/logging.h>
 #include <core/common/safeint.h>
 
+#include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "helper.h"
 #include "model_builder.h"
@@ -86,17 +87,23 @@ Status ModelBuilder::GetTargetDevices() {
   for (uint32_t i = 0; i < num_devices; i++) {
     ANeuralNetworksDevice* device = nullptr;
     const char* device_name = nullptr;
+    int32_t device_type;
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworks_getDevice(i, &device), "Getting " + std::to_string(i) + "th device");
 
     RETURN_STATUS_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getName(device, &device_name),
                                      "Getting " + std::to_string(i) + "th device's name");
 
+    RETURN_STATUS_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getType(device, &device_type),
+                                     "Getting " + std::to_string(i) + "th device's type");
+
     bool device_is_cpu = nnapi_cpu == device_name;
     if ((target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
         (target_device_option_ == TargetDeviceOption::CPU_ONLY && device_is_cpu)) {
       nnapi_target_devices_.push_back(device);
-      LOGS_DEFAULT(VERBOSE) << "Target device [" << device_name << "] added";
+      const auto device_detail = MakeString("[Name: [", device_name, "], Type [", device_type, "]], ");
+      nnapi_target_devices_detail_ += device_detail;
+      LOGS_DEFAULT(VERBOSE) << "Target device " << device_detail << " is added";
     }
   }
 
@@ -142,7 +149,13 @@ std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(con
   for (const auto& node_idx : node_indices) {
     const auto* node(graph_viewer.GetNode(node_idx));
     auto qlinear_op_type = GetQLinearOpType(*node);
-    if (qlinear_op_type == QLinearOpType::DequantizeLinear || IsQLinearBinaryOp(qlinear_op_type)) {
+
+    // Not a qlinear op
+    if (qlinear_op_type == QLinearOpType::Unknown)
+      continue;
+
+    // All qlinear ops EXCEPT QuantizeLinear has quantized input
+    if (qlinear_op_type != QLinearOpType::QuantizeLinear) {
       const auto& input_name = node->InputDefs()[0]->Name();
       if (Contains(all_quantized_op_inputs, input_name))
         all_quantized_op_inputs.at(input_name).push_back(node);
@@ -292,7 +305,7 @@ Status ModelBuilder::RegisterModelInputs() {
           if (!Contains(all_quantized_op_inputs, input_name)) {
             // We current do not support uint8 input if it is not a quantized input
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "The input of graph doesn't have valid type, name: ", input_name,
+                                   "The input of graph has unsupported quantized type, name: ", input_name,
                                    " type: ", type_proto->tensor_type().elem_type());
           }
 
@@ -304,7 +317,7 @@ Status ModelBuilder::RegisterModelInputs() {
         default: {
           // TODO: support other type
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "The input of graph doesn't have valid type, name: ", input_name,
+                                 "The input of graph has unsupported type, name: ", input_name,
                                  " type: ", type_proto->tensor_type().elem_type());
         }
       }
@@ -368,6 +381,7 @@ void ModelBuilder::RegisterModelShaper() {
 Status ModelBuilder::AddNewOperand(const std::string& name,
                                    const OperandType& operand_type,
                                    bool is_nhwc, uint32_t& index) {
+  LOGS_DEFAULT(VERBOSE) << "operand name: " << name;
   ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operand_type, index));
   RegisterOperand(name, index, operand_type, is_nhwc);
   return Status::OK();
@@ -481,6 +495,7 @@ Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_ind
           output_indices.size(), &output_indices[0]),
       "op = " + std::to_string(op));
 
+  num_nnapi_ops_++;
   return Status::OK();
 }
 
@@ -507,7 +522,38 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       nnapi_->ANeuralNetworksModel_finish(nnapi_model_->model_),
       "on model finish");
 
+  // We have a list of target devices, try to see if the model can be run entirely
+  // using the list of target devices
+  // This is only available on API 29+, for API 28- the nnapi_target_devices_ will
+  // be empty so we will not check API level here, see GetTargetDevices()
+  bool use_create_for_devices = false;
   if (!nnapi_target_devices_.empty()) {
+    std::unique_ptr<bool[]> supported_ops_holder = onnxruntime::make_unique<bool[]>(num_nnapi_ops_);
+    auto* supported_ops = supported_ops_holder.get();
+    RETURN_STATUS_ON_ERROR_WITH_NOTE(
+        nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
+            nnapi_model_->model_, nnapi_target_devices_.data(),
+            nnapi_target_devices_.size(), supported_ops),
+        "on getSupportedOperationsForDevices");
+
+    bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
+                                         [](bool is_supported) { return is_supported; });
+    if (!all_ops_supported) {
+      // There are some ops not supported by the list of the target devices
+      // Fail the Compile
+      //
+      // TODO, add some logic to not fail for some cases
+      // Such as, if there are some acceptable fall back to cpu (nnapi-reference)
+      // and cpu is not in the target devices list
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "The model cannot run using current set of target devices, ",
+                             nnapi_target_devices_detail_);
+    } else {
+      use_create_for_devices = true;
+    }
+  }
+
+  if (use_create_for_devices) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksCompilation_createForDevices(
             nnapi_model_->model_, nnapi_target_devices_.data(),
@@ -534,6 +580,12 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
 int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+
+  // We do not support activation fusion for quantized operators for now
+  auto qlinear_op_type = GetQLinearOpType(node);
+  if (qlinear_op_type != QLinearOpType::Unknown)
+    return fuse_code;
+
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];

@@ -89,5 +89,31 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8) {
   std::fesetround(origin_round_mode);
 }
 
+// NNAPI can only take 0 as Y_zero_point
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_UInt8_0_Y_ZP) {
+  auto run_test = [](bool scales_and_zp_are_initializers) {
+    OpTester test("QLinearSigmoid", 1, onnxruntime::kMSDomain);
+    float X_scale = 0.025f;
+    uint8_t X_zero_point = 128;
+    float Y_scale = 1.0f / 256.0f;
+    uint8_t Y_zero_point = 0;
+
+    std::vector<int64_t> dims = {16};
+    test.AddInput<uint8_t>("X", dims, {0, 16, 17, 18, 19, 90, 91, 127, 128, 136, 137, 138, 216, 217, 218, 255});
+    test.AddInput<float>("X_scale", {}, {X_scale}, scales_and_zp_are_initializers);
+    test.AddInput<uint8_t>("X_zero_point", {}, {X_zero_point}, scales_and_zp_are_initializers);
+    test.AddInput<float>("Y_scale", {}, {Y_scale}, scales_and_zp_are_initializers);
+    test.AddInput<uint8_t>("Y_zero_point", {}, {Y_zero_point}, scales_and_zp_are_initializers);
+    test.AddOutput<uint8_t>("Y", dims, {10, 15, 15, 15, 16, 71, 73, 126, 128, 141, 142, 144, 230, 231, 232, 246});
+    auto origin_round_mode = std::fegetround();
+    std::fesetround(FE_TONEAREST);
+    test.Run();
+    std::fesetround(origin_round_mode);
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

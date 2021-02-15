@@ -1,5 +1,5 @@
 from onnxruntime.quantization import CalibrationDataReader
-from preprocessing import yolov3_preprocess_func, yolov3_vision_preprocess_func
+from preprocessing import yolov3_preprocess_func, yolov3_variant_preprocess_func
 import onnxruntime
 from argparse import Namespace
 import os
@@ -165,7 +165,7 @@ class YoloV3DataReader(ObejctDetectionDataReader):
         return batches
 
 
-class YoloV3VisionDataReader(YoloV3DataReader):
+class YoloV3VariantDataReader(YoloV3DataReader):
     def __init__(self,
                  calibration_image_folder,
                  width=608,
@@ -179,14 +179,17 @@ class YoloV3VisionDataReader(YoloV3DataReader):
                  annotations='./annotations/instances_val2017.json'):
         YoloV3DataReader.__init__(self, calibration_image_folder, width, height, start_index, end_index, stride,
                                   batch_size, model_path, is_evaluation, annotations)
-        self.input_name = 'images'
+        self.input_name = '000_net'
+        # self.input_name = 'images'
 
     def load_serial(self):
         width = self.width
         height = self.height
         input_name = self.input_name
-        nchw_data_list, filename_list, image_size_list = yolov3_vision_preprocess_func(
+        nchw_data_list, filename_list, image_size_list = yolov3_variant_preprocess_func(
             self.image_folder, height, width, self.start_index, self.stride)
+        # nchw_data_list, filename_list, image_size_list = yolov3_variant_2_preprocess_func(
+        # self.image_folder, height, width, self.start_index, self.stride)
 
         data = []
         if self.is_evaluation:
