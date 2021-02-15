@@ -1327,7 +1327,7 @@ Return Value:
     // Schedule the operation across a set of worker threads.
     //
 
-    WorkBlock.tids = MlasGetGranularThreadCount(ThreadPool);
+    WorkBlock.tids = MlasGetMaximumThreadCount(ThreadPool);
 
     MlasExecuteThreaded(ThreadedRoutine, &WorkBlock, WorkBlock.tids, ThreadPool);
 }

@@ -314,7 +314,7 @@ class ThreadPool {
     }
 
     if (num_batches <= 0) {
-      num_batches = std::min<ptrdiff_t>(total, DegreeOfGranularParallelism(tp));
+      num_batches = std::min<ptrdiff_t>(total, DegreeOfParallelism(tp));
     }
 
     if (num_batches <= 1) {
@@ -377,8 +377,6 @@ class ThreadPool {
   // Currently, a loop with degree-of-parallelism N is supported by a pool of N-1 threads
   // working in combination with the thread initiating the loop.
   static int DegreeOfParallelism(const ThreadPool* tp);
-
-  static int DegreeOfGranularParallelism(const ThreadPool* tp);
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
