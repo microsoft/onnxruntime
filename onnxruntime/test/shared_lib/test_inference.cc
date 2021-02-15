@@ -1317,3 +1317,184 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
   ASSERT_TRUE(exception_thrown);
 }
 #endif
+
+std::atomic<size_t> memory_inuse{0};
+
+void* myAlloc(OrtAllocator *ptr, size_t size) {
+  ORT_UNUSED_PARAMETER(ptr);
+  constexpr size_t extra_len = sizeof(size_t);
+  memory_inuse.fetch_add(size += extra_len);
+  void* p = ::malloc(size);
+  if (p == nullptr)
+    return p;
+  *(size_t*)p = size;
+  return (char*)p + extra_len;
+}
+
+void myFree(OrtAllocator *ptr, void* p) {
+  ORT_UNUSED_PARAMETER(ptr);
+  constexpr size_t extra_len = sizeof(size_t);
+  if (!p) return;
+  p = (char*)p - extra_len;
+  size_t len = *(size_t*)p;
+  memory_inuse.fetch_sub(len);
+  return ::free(p);
+}
+
+const OrtMemoryInfo* myInfo(const OrtAllocator* allocator) {
+  ORT_UNUSED_PARAMETER(allocator);
+  const auto& api = Ort::GetApi();
+  OrtMemoryInfo* mem_info = nullptr;
+  if (api.CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &mem_info) != nullptr) {
+    return nullptr;
+  }
+  return mem_info;
+}
+
+// This test uses the CreateCustomDeviceAllocator and RegisterCustomDeviceAllocator APIs to register an external allocator with the env,
+// that overrides the default Alloc and Free function
+TEST(CApiTest, TestCustomDeviceAllocator) {
+
+  // simple inference test
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
+
+  const auto& api = Ort::GetApi();
+  OrtAllocator *my_allocator = nullptr;
+  ASSERT_TRUE(api.CreateCustomDeviceAllocator(ORT_API_VERSION, myAlloc, myFree, myInfo, &my_allocator) == nullptr);
+  ASSERT_TRUE(api.RegisterCustomDeviceAllocator(env_ptr, my_allocator) == nullptr);
+
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  session_options.DisableCpuMemArena();
+
+  // create session while allocating the model with the custom allocator.
+  ASSERT_EQ(memory_inuse, 0);
+  size_t model_size = 256;
+  {
+    Ort::Session session1(*ort_env, MODEL_URI, session_options);
+    ASSERT_EQ(memory_inuse, model_size+sizeof(size_t));
+    RunSession<float>(my_allocator,
+                      session1,
+                      inputs,
+                      "Y",
+                      expected_dims_y,
+                      expected_values_y,
+                      nullptr);
+  }
+  ASSERT_EQ(memory_inuse, 0);
+  delete my_allocator;
+}
+
+OrtAllocator *my_device_allocator = nullptr;
+std::unordered_map<void*, size_t> reserved_chunks;
+
+void* ArenaDeviceAlloc(OrtAllocator *ptr, size_t size) {
+  ORT_UNUSED_PARAMETER(ptr);
+  void* p = malloc(size);
+  return p;
+}
+
+void ArenaDeviceFree(OrtAllocator *ptr, void* p) {
+  ORT_UNUSED_PARAMETER(ptr);
+  free(p);
+}
+
+const OrtMemoryInfo* myArenaInfo(const OrtAllocator* allocator) {
+  ORT_UNUSED_PARAMETER(allocator);
+  const auto& api = Ort::GetApi();
+  OrtMemoryInfo* mem_info = nullptr;
+  if (api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info) != nullptr) {
+    return nullptr;
+  }
+  return mem_info;
+}
+
+void* ArenaAlloc(size_t size) {
+  for (auto & reserved_chunk : reserved_chunks) {
+    if (reserved_chunk.second == size) {
+      return reserved_chunk.first;
+    }
+  }
+  void* p = ArenaDeviceAlloc(my_device_allocator, size);
+  reserved_chunks.insert({p, size});
+  memory_inuse += size;
+  return p;
+}
+
+void ArenaFree(void* p) {
+  auto it = reserved_chunks.find(p);
+  ArenaDeviceFree(my_device_allocator, it->first);
+  memory_inuse -= it->second;
+}
+
+void *ArenaReserve(size_t size) {
+  void *p = ArenaDeviceAlloc(my_device_allocator, size);
+  reserved_chunks.insert({p, size});
+  memory_inuse += size;
+  return p;
+}
+
+size_t ArenaUsed() {
+  return memory_inuse;
+}
+
+size_t ArenaMax() {
+  return SIZE_MAX;
+}
+
+// This test uses the CreateCustomArenaAllocator and RegisterCustomArenaAllocator APIs to register an external allocator with the env,
+// that overrides the default Alloc and Free function
+TEST(CApiTest, TestCustomArenaAllocator) {
+
+  // simple inference test
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
+
+  const auto& api = Ort::GetApi();
+  ASSERT_TRUE(api.CreateCustomDeviceAllocator(ORT_API_VERSION, ArenaDeviceAlloc, ArenaDeviceFree, myArenaInfo, &my_device_allocator) == nullptr);
+  OrtAllocatorArena *my_arena_allocator = nullptr;
+  ASSERT_TRUE(api.CreateCustomArenaAllocator(my_device_allocator, ArenaAlloc, ArenaFree, ArenaReserve, ArenaUsed,
+                                             ArenaMax, &my_arena_allocator) == nullptr);
+  ASSERT_TRUE(api.RegisterCustomArenaAllocator(env_ptr, my_arena_allocator) == nullptr);
+
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+
+  // create session while allocating the model with the custom arena allocator.
+  ASSERT_EQ(ArenaUsed(), 0);
+  size_t model_size = 256;
+  {
+    Ort::Session session1(*ort_env, MODEL_URI, session_options);
+    ASSERT_EQ(ArenaUsed(), model_size);
+    ASSERT_EQ(reserved_chunks.size(), 1);
+    RunSession<float>(my_device_allocator,
+        session1,
+        inputs,
+        "Y",
+        expected_dims_y,
+        expected_values_y,
+        nullptr);
+  }
+  ASSERT_EQ(ArenaUsed(), 0);
+  delete my_device_allocator;
+  delete my_arena_allocator;
+}
