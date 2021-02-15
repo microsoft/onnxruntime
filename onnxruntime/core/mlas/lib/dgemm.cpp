@@ -872,7 +872,7 @@ Return Value:
         TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
     }
 
-    int32_t MaximumThreadCount = MlasGetGranularThreadCount(ThreadPool);
+    int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
