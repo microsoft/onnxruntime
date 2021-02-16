@@ -7,7 +7,6 @@ import glob
 import os
 import pathlib
 import re
-import tempfile
 
 import onnxruntime as ort
 
