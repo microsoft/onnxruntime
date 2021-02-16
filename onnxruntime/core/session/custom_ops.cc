@@ -138,7 +138,7 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       auto output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
         auto type = op->GetOutputType(op, i);
-        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
+        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
           ORT_ENFORCE(type_id_counter == 1,
                       "There must be one (and only one) dynamic typed input to the custom op. "
                       "Its type info at runtime will be used to infer the type info of this dynamic typed output "
