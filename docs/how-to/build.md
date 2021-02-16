@@ -1263,7 +1263,7 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --enable_training
 ```
 
-#### GPU / CUDA
+### GPU / CUDA
 #### Prerequisites
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
