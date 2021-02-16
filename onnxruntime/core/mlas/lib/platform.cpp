@@ -144,6 +144,9 @@ Return Value:
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 
+    this->MaximumThreadCount = 16;
+    this->GemmThreadComplexity = 64 * 1024;
+
 #endif
 
     //
@@ -222,6 +225,14 @@ Return Value:
                 this->QLinearAddU8Kernel = MlasQLinearAddU8KernelAvx2;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
                 
+                //
+                // Check if the processor supports Hybrid core architecture.
+                //
+
+                if ((Cpuid7[3] & 0x8000) != 0) {
+                  this->MaximumThreadCount = 64;
+                }
+
                 //
                 // Check if the processor supports AVXVNNI features.
                 //

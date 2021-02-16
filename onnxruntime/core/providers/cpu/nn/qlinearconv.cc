@@ -3,6 +3,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
+#include "core/common/cpuid_info.h"
 #include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
@@ -352,7 +353,12 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
   // Replicate the logic from MlasGemmU8X8Schedule to control the number of
   // worker threads used for the convolution.
-  constexpr int32_t maximum_thread_count = 64;
+  int32_t maximum_thread_count;
+  if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
+    maximum_thread_count = 64;
+  } else {
+    maximum_thread_count = 16;
+  }
   constexpr double thread_complexity = static_cast<double>(64 * 1024);
 
   const double complexity = static_cast<double>(output_image_size) *

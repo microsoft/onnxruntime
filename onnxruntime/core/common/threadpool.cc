@@ -22,8 +22,6 @@ limitations under the License.
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
 
-#define MLAS_GRANULARITY_FACTOR 4
-
 namespace onnxruntime {
 
 namespace concurrency {
@@ -43,6 +41,8 @@ namespace concurrency {
 
 static constexpr int CACHE_LINE_BYTES = 64;
 static constexpr unsigned MAX_SHARDS = 8;
+
+static constexpr int TaskGranularityFactor = 4;
 
 struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
   ::std::atomic<uint64_t> _next{0};
@@ -395,7 +395,7 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
   // tp, plus 1 for the thread entering a loop.
   if (tp) {
     if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
-      return ((tp->NumThreads() + 1)) * MLAS_GRANULARITY_FACTOR;
+      return ((tp->NumThreads() + 1)) * TaskGranularityFactor;
     } else {
       return ((tp->NumThreads() + 1));
     }
