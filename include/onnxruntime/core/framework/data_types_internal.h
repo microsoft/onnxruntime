@@ -264,7 +264,15 @@ class CallableDispatchableRetHelper {
   Ret Get() {
     // No type was invoked
     if (called_ == 0) {
+#ifdef _MSC_VER
+#pragma warning(push)
+// TODO: fix this warning
+#pragma warning(disable : 4702)
+#endif
       result_ = UnsupportedPolicy()(dt_type_);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
     }
     return result_;
   }
