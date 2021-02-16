@@ -1215,10 +1215,9 @@ Return Value:
 
         int32_t TargetThreadCount;
         double Complexity = double(FilterCount) * double(OutputSize) * double(K);
-        const double GemmThreadComplexity = MlasPlatform.MaximumThreadCount * MlasPlatform.GemmThreadComplexity;
-
-        if (Complexity < GemmThreadComplexity) {
-            TargetThreadCount = int32_t(Complexity / MlasPlatform.GemmThreadComplexity) + 1;
+        
+        if (Complexity < MlasPlatform.GemmThreadComplexity) {
+            TargetThreadCount = int32_t(Complexity / MlasPlatform.GemmComplexity) + 1;
         } else {
             TargetThreadCount = MlasPlatform.MaximumThreadCount;
         }

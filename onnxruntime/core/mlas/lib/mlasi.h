@@ -788,6 +788,7 @@ struct MLAS_PLATFORM {
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     uint32_t MaximumThreadCount;
+    uint32_t GemmComplexity;
     double GemmThreadComplexity;
 #endif
 };
