@@ -1263,9 +1263,7 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --enable_training
 ```
 
-### Training Enabled Execution Providers
-
-#### CUDA
+#### GPU / CUDA
 #### Prerequisites
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
@@ -1300,7 +1298,7 @@ These dependency versions should reflect what is in [Dockerfile.training](https:
 
     This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
 
-### ROCM
+### GPU / ROCM
 #### Prerequisites
 
 The default AMD GPU build requires ROCM software toolkit installed on the system:
