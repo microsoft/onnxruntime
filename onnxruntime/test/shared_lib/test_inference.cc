@@ -1470,14 +1470,20 @@ TEST(CApiTest, TestCustomArenaAllocator) {
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-  OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
 
+  // Reset the env so it won't have a registered allocator of type arena.
   const auto& api = Ort::GetApi();
-  ASSERT_TRUE(api.CreateCustomDeviceAllocator(ORT_API_VERSION, ArenaDeviceAlloc, ArenaDeviceFree, myArenaInfo, &my_device_allocator) == nullptr);
+  ort_env.reset();
+  OrtEnv *my_env_ptr = nullptr;
+  ASSERT_TRUE(api.CreateEnv(ORT_LOGGING_LEVEL_WARNING, "my_env", &my_env_ptr) == nullptr);
+  Ort::Env* env = new Ort::Env(my_env_ptr);
+  ort_env.reset(env);
+  ASSERT_TRUE(api.CreateCustomDeviceAllocator(ORT_API_VERSION, ArenaDeviceAlloc,
+                                              ArenaDeviceFree, myArenaInfo, &my_device_allocator) == nullptr);
   OrtAllocatorArena *my_arena_allocator = nullptr;
   ASSERT_TRUE(api.CreateCustomArenaAllocator(my_device_allocator, ArenaAlloc, ArenaFree, ArenaReserve, ArenaUsed,
                                              ArenaMax, &my_arena_allocator) == nullptr);
-  ASSERT_TRUE(api.RegisterCustomArenaAllocator(env_ptr, my_arena_allocator) == nullptr);
+  ASSERT_TRUE(api.RegisterCustomArenaAllocator(my_env_ptr, my_arena_allocator) == nullptr);
 
   Ort::SessionOptions session_options;
   session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
