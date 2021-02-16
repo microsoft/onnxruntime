@@ -76,9 +76,10 @@ class WindowsThread : public EnvThread {
   typedef HRESULT(WINAPI* SetThreadDescriptionFunc)(HANDLE hThread, PCWSTR lpThreadDescription);
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
+    // HACK: see comment below on binding the main thread
     // TODO: should I try to use SetThreadSelectedCpuSets?
     if (!p->thread_options.affinity.empty())
-      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
+      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index+1]);
 #if WINVER >= _WIN32_WINNT_WIN10
     constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
@@ -116,6 +117,15 @@ class WindowsEnv : public Env {
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
+    //......................................................................
+    //
+    // HACK: this is a quick test to force the main thread to bind
+    // to affinity[0], and for the workers to bind to affinity[1]
+    // upwards.  The format of the affinity vectors comes from when
+    // ORT would create the entire thread pool (N) rather than the
+    // current approach (N-1)
+    if (!p->thread_options.affinity.empty())
+      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[0]);
     return new WindowsThread(name_prefix, index, start_address, param, thread_options);
   }
 
