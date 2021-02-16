@@ -25,11 +25,15 @@ jobs:
         "
       DisplayName: 'Build performance tests'
 
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_gpt2_test_data.sh $(orttrainingtestdata-storage-key)
+    displayName: 'Map test data'
+    condition: succeededOrFailed() # ensure all tests are run
+
   - script: >
       docker run --gpus all --rm --name onnxruntime-gpu-perf
       --volume $(Build.SourcesDirectory):/onnxruntime_src
       --volume $(Build.BinariesDirectory):/build
-      --volume /bert_ort/bert_models:/build/bert_models:ro
+      --volume /bert_data/bert_models:/build/bert_models:ro
       --volume /bert_data:/build/bert_data:ro
       -e NIGHTLY_BUILD onnxruntime_perf_test_image
       /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_bert_perf_test.py
@@ -42,8 +46,8 @@ jobs:
       docker run --gpus all --rm --name onnxruntime-gpu-perf
       --volume $(Build.SourcesDirectory):/onnxruntime_src
       --volume $(Build.BinariesDirectory):/build
-      --volume /bert_ort/gpt2_models:/build/gpt2_models:ro
-      --volume /bert_data/gpt2_data:/build/gpt2_data:ro
+      --volume /gpt2_data/gpt2_models:/build/gpt2_models:ro
+      --volume /gpt2_data:/build/gpt2_data:ro
       -e NIGHTLY_BUILD onnxruntime_perf_test_image
       /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
       --binary_dir /build/RelWithDebInfo
