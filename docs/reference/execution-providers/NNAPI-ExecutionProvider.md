@@ -47,7 +47,7 @@ There are several run time options for NNAPI Execution Provider.
 
 * NNAPI_FLAG_USE_NCHW
 
-   Use NCHW layout in NNAPI EP, this is only available after Android API level 29. Please note for now, NNAPI perform worse using NCHW compare to using NHWC.
+   Use NCHW layout in NNAPI EP, this is only available after Android API level 29. Please note for now, NNAPI might perform worse using NCHW compare to using NHWC.
 
 * NNAPI_FLAG_CPU_DISABLED
 
