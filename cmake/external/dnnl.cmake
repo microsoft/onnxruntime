@@ -2,7 +2,7 @@ include (ExternalProject)
 
 set(DNNL_URL https://github.com/oneapi-src/onednn)
 # If DNNL_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
-set(DNNL_TAG v1.7)
+set(DNNL_TAG v1.8.1)
 
 if(WIN32)
   set(DNNL_SHARED_LIB dnnl.dll)
