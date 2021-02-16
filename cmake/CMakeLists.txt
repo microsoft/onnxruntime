@@ -1168,15 +1168,15 @@ if (onnxruntime_USE_CUDA)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
-  include_directories(onnxruntime_sparse_initializer_main_adjustment.cmake)
-
   if (onnxruntime_ENABLE_NVTX_PROFILE)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft nvToolsExt)
   else()
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
+
+  include_directories(onnxruntime_sparse_initializer_main_adjustment.cmake)
   
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices

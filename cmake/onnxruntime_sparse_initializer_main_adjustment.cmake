@@ -6,9 +6,12 @@
 
 option(onnxruntime_USE_SPARSE_LT "Build with CUDA cuSparse_lt support" OFF)
 
-if(onnxruntime_USE_CUDA AND onnxruntime_USE_SPARSE_LT)
+if(onnxruntime_USE_CUDA)
+  list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cusparse)
+  if(onnxruntime_USE_SPARSE_LT)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cusparseLt_static)
     if(NOT WIN32)
         link_directories(${onnxruntime_CUSPARSELT_HOME}/lib64)
     endif()
+  endif()
 endif()
