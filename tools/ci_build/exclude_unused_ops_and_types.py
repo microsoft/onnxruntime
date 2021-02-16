@@ -62,20 +62,17 @@ class ExcludeOpsAndTypesRegistrationProcessor(op_registration_utils.Registration
         if domain:
             # see if entire op is excluded
             if self._should_exclude_op(domain, operator, start_version, end_version):
-                exclude_reason = "Entire op is excluded."
                 exclude = True
+                exclude_reason = "Entire op is excluded."
 
             # see if a specific typed registration can be excluded
             if not exclude and type and self._op_type_usage_manager \
-                    and not self._op_type_usage_manager.is_typed_registration_needed(domain, operator, type):
-                exclude_reason = "Specific typed registration is excluded by OperatorTypeUsageManager."
+                    and not self._op_type_usage_manager.is_typed_registration_needed(domain, operator, type,
+                                                                                     self._globally_allowed_types):
                 exclude = True
-
-        # see if a valid type can be excluded because it is not one of the globally allowed types
-        if not exclude and type and self._globally_allowed_types and type in _valid_allowed_types \
-                and type not in self._globally_allowed_types:
-            exclude_reason = "Specific typed registration is excluded by globally allowed types."
-            exclude = True
+                exclude_reason = "Specific typed registration is excluded."
+        else:
+            log.warning("Registration from unknown domain will not be excluded.")
 
         if exclude:
             log.info('Disabling {}:{}({}){} registration: {}'.format(constant_for_domain, operator, start_version,
@@ -133,7 +130,7 @@ def _generate_required_types_cpp_code(ort_root: str, op_type_usage_manager: typi
     Generate and insert the C++ code to specify per operator type requirements.
     :param ort_root: Root of the ONNX Runtime repository
     :param op_type_usage_manager: OperatorTypeUsageManager that contains the required type info
-    :param globally_allowed_types: The set of globally allowed types for any Op.
+    :param globally_allowed_types: The set of globally allowed C++ scalar types for any Op.
     '''
     # get the C++ code to insert
     cpp_lines = []
@@ -188,7 +185,7 @@ def exclude_unused_ops_and_types(config_path: str, enable_type_reduction: bool =
 
     if enable_type_reduction:
         if globally_allowed_types is None:
-            # if unspecified, allow all valid types
+            # if globally_allowed_types is unspecified, allow all valid types
             globally_allowed_types = _valid_allowed_types.copy()
 
         if not globally_allowed_types <= _valid_allowed_types:
@@ -218,7 +215,7 @@ if __name__ == "__main__":
                              "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information.")
 
     parser.add_argument("--globally-allowed-types", nargs="*", choices=sorted(_valid_allowed_types),
-                        help="Specifies the globally allowed types.")
+                        help="Specifies the globally allowed C++ scalar types.")
 
     args = parser.parse_args()
     config_path = os.path.abspath(args.config_path)
