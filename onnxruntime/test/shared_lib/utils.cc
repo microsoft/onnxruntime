@@ -40,6 +40,9 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   // Setup inputs
   const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
   const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
+  // Even though this kernel backs an operator where-in both inputs can be any type and need not be homogeneous
+  // as a proof-0f-concept, support the case where-in the first input is of float type and the second input
+  // is of double type. Users need to extend this logic to handle any arbitrary type should the need arise.
   const float* X = ort_.GetTensorData<float>(input_X);
   const double* Y = ort_.GetTensorData<double>(input_Y);
 
