@@ -969,9 +969,7 @@ void SummonWorkers(PerThread &pt,
       unsigned w_idx;
       profiler_.LogStart();
       t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
-      if (profiler_) {
-        profiler_.LogEnd("PushBackWithTag" + std::to_string(q_idx));
-      }
+      profiler_.LogEnd("PushBackWithTag");
       if (!t) {
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
