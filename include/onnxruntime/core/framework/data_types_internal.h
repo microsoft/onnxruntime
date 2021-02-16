@@ -243,10 +243,11 @@ class CallableDispatchableHelper {
   }
 };
 
-// Default policy is to throw with no return type.
+// Default policy is to throw an exception.
+// Other policies may set the second result argument accordingly.
 template <class Ret>
 struct UnsupportedTypeDefaultPolicy {
-  Ret operator()(int32_t dt_type) const {
+  void operator()(int32_t dt_type, Ret& /*result*/) const {
     ORT_THROW("Unsupported data type: ", dt_type);
   }
 };
@@ -264,15 +265,7 @@ class CallableDispatchableRetHelper {
   Ret Get() {
     // No type was invoked
     if (called_ == 0) {
-#ifdef _MSC_VER
-#pragma warning(push)
-// TODO: fix this warning
-#pragma warning(disable : 4702)
-#endif
-      result_ = UnsupportedPolicy()(dt_type_);
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+      UnsupportedPolicy()(dt_type_, result_);
     }
     return result_;
   }
