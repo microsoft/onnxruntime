@@ -54,9 +54,13 @@ class OrtTasks final {
     mutable std::condition_variable cv;
 
     std::promise<std::vector<OrtValue>> forward_output_promise_;
+    std::future<std::vector<OrtValue>> forward_output_future_ = forward_output_promise_.get_future();
+
     std::promise<std::vector<OrtValue>> backward_input_promise_;
+    std::future<std::vector<OrtValue>> backward_input_future_ = backward_input_promise_.get_future();
+
     std::promise<Status> status_promise_;
-    std::future<Status> status_future_;
+    std::future<Status> status_future_ = status_promise_.get_future();
 
     Task() {
       signaled.store(false);

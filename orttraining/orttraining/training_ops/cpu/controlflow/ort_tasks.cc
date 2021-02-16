@@ -26,13 +26,7 @@ void OrtTasks::WakeupForegroundThread() {
 
 void OrtTasks::CreateBackgroundTask() {
   int64_t run_id = hasher_(std::this_thread::get_id());
-
-  bg_events_.emplace(run_id, std::make_unique<Task>());
-  bg_events_[run_id]->forward_output_promise_ = std::promise<std::vector<OrtValue>>();
-  bg_events_[run_id]->backward_input_promise_ = std::promise<std::vector<OrtValue>>();
-  bg_events_[run_id]->status_promise_ = std::promise<Status>();
-
-  bg_events_[run_id]->status_future_ = bg_events_[run_id]->status_promise_.get_future();
+  bg_events_[run_id] = std::make_unique<Task>();
 }
 
 void OrtTasks::PrepareBackgroundWait() {
@@ -63,7 +57,7 @@ void OrtTasks::SetForwardOutputs(const std::vector<OrtValue>& forward_outputs) {
 }
 
 std::vector<OrtValue> OrtTasks::GetForwardOutputs(int64_t run_id) {
-  return bg_events_[run_id]->forward_output_promise_.get_future().get();
+  return bg_events_[run_id]->forward_output_future_.get();
 }
 
 void OrtTasks::SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs) {
@@ -72,7 +66,7 @@ void OrtTasks::SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& ba
 
 std::vector<OrtValue> OrtTasks::GetBackwardInputs() {
   int64_t run_id = hasher_(std::this_thread::get_id());
-  return bg_events_[run_id]->backward_input_promise_.get_future().get();
+  return bg_events_[run_id]->backward_input_future_.get();
 }
 
 void OrtTasks::SetStatus(const Status& status) {
