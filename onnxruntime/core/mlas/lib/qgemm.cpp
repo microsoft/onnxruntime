@@ -2241,13 +2241,14 @@ Return Value:
     //
 
     const double Complexity = double(M) * double(N) * double(K);
+    const double GemmThreadComplexity = MlasPlatform.MaximumThreadCount * MlasPlatform.GemmThreadComplexity;
 
     int32_t TargetThreadCount;
 
-    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MLAS_MAXIMUM_THREAD_COUNT)) {
-        TargetThreadCount = int32_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
+    if (Complexity < GemmThreadComplexity) {
+        TargetThreadCount = int32_t(Complexity / MlasPlatform.GemmThreadComplexity) + 1;
     } else {
-        TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+        TargetThreadCount = MlasPlatform.MaximumThreadCount;
     }
 
     int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);

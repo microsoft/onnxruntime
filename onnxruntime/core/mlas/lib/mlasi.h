@@ -109,7 +109,7 @@ Abstract:
 // Define the maximum number of threads supported by this implementation.
 //
 
-#define MLAS_MAXIMUM_THREAD_COUNT                   64
+#define MLAS_MAXIMUM_THREAD_COUNT                   16
 
 //
 // Define the default strides to step through slices of the input matrices.
@@ -667,15 +667,6 @@ extern "C" {
 #define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     32
 
 //
-// Define the target number of per-thread multiplies before using another
-// thread to perform additional work.
-//
-
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_QGEMM_THREAD_COMPLEXITY                (64 * 1024)
-
-//
 // Single-threaded single precision matrix/matrix multiply operation.
 //
 
@@ -796,6 +787,8 @@ struct MLAS_PLATFORM {
     PMLAS_QUANTIZE_LINEAR_U8_KERNEL QuantizeLinearU8Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
+    uint32_t MaximumThreadCount;
+    double GemmThreadComplexity;
 #endif
 };
 
