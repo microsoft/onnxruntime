@@ -298,7 +298,7 @@ class InferenceSession {
 
   // For ORTModule.forward()
   virtual common::Status RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
-                                                        std::vector<OrtValue>& user_outputs, 
+                                                        std::vector<OrtValue>& user_outputs,
                                                         int64_t& run_id) ORT_MUST_USE_RESULT;
 
   // For ORTModule.backward()
@@ -666,10 +666,7 @@ class InferenceSession {
   std::vector<uint8_t> ort_format_model_bytes_;
 
   // background thread for RunInBackgroundAndWaitForYield
-  struct Task {
-    std::thread bg_thread_;
-    bool* terminate_flag_ = nullptr;
-  } task_;
+  std::unordered_map<int64_t, std::thread> bg_threads_;
 
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };

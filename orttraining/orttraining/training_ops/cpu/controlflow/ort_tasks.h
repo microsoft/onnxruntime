@@ -27,7 +27,7 @@ class OrtTasks final {
   void WaitInForegroundThread();
   void WakeupForegroundThread();
 
-  void CreateBackgroundTask();
+  void CreateBackgroundTask(bool* terminate_flags);
   void PrepareBackgroundWait();
   void WaitInBackgroundThread();
   void WakeupBackgroundThread(int64_t run_id);
@@ -41,6 +41,10 @@ class OrtTasks final {
   void SetStatus(const Status& status);
   bool StatusIsReady(int64_t run_id);
   Status GetStatus(int64_t run_id);
+
+  void SetTerminateFlag(int64_t run_id) {
+    *(bg_tasks[run_id]->terminate_flags_) = true;
+  }
 
  private:
   OrtTasks() = default;
@@ -62,14 +66,16 @@ class OrtTasks final {
     std::promise<Status> status_promise_;
     std::future<Status> status_future_ = status_promise_.get_future();
 
+    bool* terminate_flags_;
+
     Task() {
       signaled.store(false);
     }
   };
 
   std::hash<std::thread::id> hasher_;
-  Task fg_event_;
-  std::unordered_map<int64_t, std::unique_ptr<Task>> bg_events_;
+  Task fg_task;
+  std::unordered_map<int64_t, std::unique_ptr<Task>> bg_tasks;
 };
 
 }  // namespace contrib
