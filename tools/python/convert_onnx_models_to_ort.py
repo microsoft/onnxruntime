@@ -12,13 +12,10 @@ import onnxruntime as ort
 
 
 def _create_config_file_from_ort_models(model_path, enable_type_reduction: bool):
-    if model_path.is_file():
-        model_path = model_path.parent
-
     filename = 'required_operators_and_types.config' if enable_type_reduction else 'required_operators.config'
-    config_file_path = os.path.join(model_path, filename)
-    print("Creating configuration file for operators required by ORT format models in {}.".format(config_file_path))
+    config_file_path = model_path.joinpath(filename)
 
+    print("Creating configuration file for operators required by ORT format models in {}.".format(config_file_path))
     from util.ort_format_model import create_config_from_models
     create_config_from_models(model_path, config_file_path, enable_type_reduction)
 
@@ -38,10 +35,7 @@ def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
 
 def _convert(model_path: pathlib.Path, optimization_level: ort.GraphOptimizationLevel, use_nnapi: bool,
              custom_op_library: pathlib.Path, create_optimized_onnx_model: bool):
-    if model_path.is_file():
-        models = [str(model_path)]
-    else:
-        models = glob.glob(os.path.join(model_path, '**', '*.onnx'), recursive=True)
+    models = glob.glob(os.path.join(model_path, '**', '*.onnx'), recursive=True)
 
     if len(models) == 0:
         raise ValueError("No .onnx files were found in " + model_path)
@@ -52,16 +46,22 @@ def _convert(model_path: pathlib.Path, optimization_level: ort.GraphOptimization
         providers.insert(0, 'NnapiExecutionProvider')
 
     for model in models:
+        # ignore any files with an extension of .optimized.onnx which are presumably from previous executions
+        # of this script
+        if re.match(r'.*\.optimized\.onnx', model, flags=re.IGNORECASE):
+            print('Ignoring ' + model)
+            continue
+
         # create .ort file in same dir as original onnx model
         ort_target_path = re.sub('.onnx$', '.ort', model)
 
         if create_optimized_onnx_model:
             # Create an ONNX file with the same optimizations that will be used for the ORT format file.
             # This allows the ONNX equivalent of the ORT format model to be easily viewed in Netron.
-            optimized_target_path = re.sub('.onnx$', '.optimized.onnx', model)
+            optimized_target_path = re.sub(r'\.onnx$', '.optimized.onnx', model, flags=re.IGNORECASE)
             so = _create_session_options(optimization_level, optimized_target_path, custom_op_library)
 
-            print("Saving optimized ONNX model {}".format(model))
+            print("Saving optimized ONNX model {} to {}".format(model, optimized_target_path))
             _ = ort.InferenceSession(model, sess_options=so, providers=providers)
 
         # Load ONNX model, optimize, and save to ORT format
@@ -133,9 +133,8 @@ def parse_args():
                              'This will have the same optimizations applied as the ORT format model.')
 
     parser.add_argument('model_path', type=pathlib.Path,
-                        help='Provide path to ONNX model/s to convert. Can be a specific model or a directory. '
-                             'All files with a .onnx extension, including in subdirectories, will be processed '
-                             'if the path is a directory.')
+                        help='Provide path to directory containing ONNX model/s to convert. '
+                             'All files with a .onnx extension, including in subdirectories, will be processed.')
 
     return parser.parse_args()
 
@@ -146,8 +145,11 @@ def main():
     model_path = args.model_path.resolve()
     custom_op_library = args.custom_op_library.resolve() if args.custom_op_library else None
 
+    if not model_path.is_dir():
+        raise FileNotFoundError('Model path {} is not a directory.'.format(model_path))
+
     if custom_op_library and not custom_op_library.is_file():
-        raise FileNotFoundError("Unable to find custom operator library '{0}'".format(custom_op_library))
+        raise FileNotFoundError("Unable to find custom operator library '{}'".format(custom_op_library))
 
     optimization_level = _get_optimization_level(args.optimization_level)
     _convert(model_path, optimization_level, args.use_nnapi, custom_op_library, args.save_optimized_onnx_model)
