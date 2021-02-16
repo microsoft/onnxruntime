@@ -11,6 +11,7 @@
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/graph/signal_ops/signal_defs.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
@@ -1122,7 +1123,7 @@ Sample echo operator.)DOC");
       .SinceVersion(1)
       .SetDoc(R"DOC()DOC")
       .Input(0, "X", "input tensor", "T")
-      .Attr("signal_ndim", "", AttributeProto::INT)
+      .Attr("signal_ndim", "", AttributeProto::INT, static_cast<int64_t>(1))
       .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
       .Output(0, "Y", "output tensor", "T")
@@ -2372,6 +2373,11 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
     RegisterNchwcSchemas();
   }
   RegisterBertSchemas();
+
+#ifdef BUILD_MS_EXPERIMENTAL_OPS
+  onnxruntime::signal::RegisterSignalSchemas();
+#endif
+
   RegisterQuantizationSchemas();
 }
 }  // namespace contrib

@@ -19,6 +19,7 @@ USAGE_TEXT="Usage:
 BUILD_DIR=
 REDUCED_OPS_CONFIG_FILE=
 ENABLE_TYPE_REDUCTION=
+MINIMAL_BUILD_ARGS=
 
 while [[ $# -gt 0 ]]
 do
@@ -36,6 +37,10 @@ do
             ;;
         --enable-type-reduction)
             ENABLE_TYPE_REDUCTION=1
+            shift
+            ;;
+        --enable-custom-ops)
+            MINIMAL_BUILD_ARGS="custom_ops"
             shift
             ;;
         *)
@@ -59,7 +64,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --skip_submodule_sync \
     --build_shared_lib \
     --parallel \
-    --minimal_build \
+    --minimal_build ${MINIMAL_BUILD_ARGS} \
     --disable_ml_ops \
     --include_ops_by_config ${REDUCED_OPS_CONFIG_FILE} \
     ${ENABLE_TYPE_REDUCTION:+"--enable_reduced_operator_type_support"}
