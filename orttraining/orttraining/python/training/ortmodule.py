@@ -108,7 +108,7 @@ def _parse_outputs_for_onnx_export(module, inputs):
         output_names, dynamic_axes = [], {}
         for name, value in output.items():
             if not isinstance(value, torch.Tensor):
-                raise TypeError('ORTModule does not support the following model output type {} within a Mapping'.format(type(output)))
+                raise TypeError('ORTModule does not support the following model output type {} within a Mapping'.format(type(value)))
             output_names.append(name)
             dynamic_axes[name] = {}
             for dim_idx in range(len(value.shape)):
@@ -205,7 +205,7 @@ class ORTModule(torch.nn.Module):
         self._current_input_shape = None
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
-        self._sample_user_output_type = None
+        self._original_module_output_type = None
 
         # Training model
         self._onnx_training = None
@@ -420,7 +420,7 @@ class ORTModule(torch.nn.Module):
 
         proc_inputs = [data for data in inputs if data is not None]
 
-        return _populate_user_output(self._sample_user_output_type, self._onnx_graphs_info.user_output_names,
+        return _populate_user_output(self._original_module_output_type, self._onnx_graphs_info.user_output_names,
             _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*proc_inputs, **kwargs)))
 
     @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
@@ -455,7 +455,7 @@ class ORTModule(torch.nn.Module):
 
         # Setup dynamic axes for onnx model
         input_names, dynamic_axes, self._input_names_require_grad = _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
-        output_names, output_dynamic_axes, self._sample_user_output_type = _parse_outputs_for_onnx_export(self._original_module, inputs)
+        output_names, output_dynamic_axes, self._original_module_output_type = _parse_outputs_for_onnx_export(self._original_module, inputs)
         dynamic_axes.update(output_dynamic_axes)
 
         # TODO: Support contrib OPs support? user model has no hint

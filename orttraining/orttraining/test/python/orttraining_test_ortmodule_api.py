@@ -395,6 +395,41 @@ def test_dict_return_value_module(return_type, device):
     assert isinstance(output, return_type)
     assert 'loss' in output and 'logits' in output and 'hidden_states' in output
 
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_dict_of_tuple_return_value_module(device):
+    class NeuralNetDictOfTuplesOutput(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetDictOfTuplesOutput, self).__init__()
+
+            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu1 = torch.nn.ReLU()
+            self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
+
+            self.fc2_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu2 = torch.nn.ReLU()
+            self.fc2_2 = torch.nn.Linear(hidden_size, num_classes)
+
+            self.fc3_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu3 = torch.nn.ReLU()
+            self.fc3_2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1, input2, input3):
+            out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
+            out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
+            out3 = self.fc3_2(self.relu3(self.fc3_1(input3)))
+            return {'loss': (out1, out2, out3)}
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetDictOfTuplesOutput(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+    y = torch.randn(N, D_in, device=device)
+    z = torch.randn(N, D_in, device=device)
+
+    with pytest.raises(TypeError) as type_error:
+        model(x, y, z)
+    assert 'ORTModule does not support the following model output type' in str(type_error.value)
+
 @pytest.mark.parametrize("device", ['cpu', 'cuda'])
 def test_named_tuple_return_value_module(device):
     ReturnValue = namedtuple('NamedTupleReturnValue', 'loss logits hidden_states')
