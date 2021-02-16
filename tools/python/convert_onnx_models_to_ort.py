@@ -11,7 +11,7 @@ import re
 import onnxruntime as ort
 
 
-def _create_config_file_from_ort_models(model_path, enable_type_reduction: bool):
+def _create_config_file_from_ort_models(model_path: pathlib.Path, enable_type_reduction: bool):
     filename = 'required_operators_and_types.config' if enable_type_reduction else 'required_operators.config'
     config_file_path = model_path.joinpath(filename)
 
@@ -48,12 +48,12 @@ def _convert(model_path: pathlib.Path, optimization_level: ort.GraphOptimization
     for model in models:
         # ignore any files with an extension of .optimized.onnx which are presumably from previous executions
         # of this script
-        if re.match(r'.*\.optimized\.onnx', model, flags=re.IGNORECASE):
+        if re.match(r'.*\.optimized\.onnx$', model, flags=re.IGNORECASE):
             print('Ignoring ' + model)
             continue
 
         # create .ort file in same dir as original onnx model
-        ort_target_path = re.sub('.onnx$', '.ort', model)
+        ort_target_path = re.sub(r'\.onnx$', '.ort', model)
 
         if create_optimized_onnx_model:
             # Create an ONNX file with the same optimizations that will be used for the ORT format file.
