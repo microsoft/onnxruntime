@@ -750,8 +750,7 @@ Also known as [x86_64](https://en.wikipedia.org/wiki/X86-64) or AMD64. This is t
 * add `--x86` argument when launching `.\build.bat`
 
 ###### Linux
-* Must be built on a x86 OS
-* add --x86 argument to build.sh
+(Not officially supported)
 
 ---
 
