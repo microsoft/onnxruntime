@@ -357,7 +357,6 @@ stages:
           Python39:
             PythonVersion: '3.9'
       variables:
-        OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat
@@ -485,7 +484,6 @@ stages:
           Python39:
             PythonVersion: '3.9'
       variables:
-        OrtPackageId: 'Microsoft.ML.OnnxRuntime.OpenMP'
         MsbuildArguments: '-maxcpucount'
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat
