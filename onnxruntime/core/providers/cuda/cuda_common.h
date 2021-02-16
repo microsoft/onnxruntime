@@ -55,6 +55,7 @@ namespace cuda {
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUFFT error executing ", #expr))
 
+#ifdef USE_CUSPARSELT
 // Default float
 template<typename T>
 struct ToCudaTypeEnum;
@@ -77,6 +78,14 @@ struct ToCudaTypeEnum<MLFloat16> {
   static constexpr cusparseComputeType at_least_precision = CUSPARSE_COMPUTE_16F;
 };
 
+template <>
+struct ToCudaTypeEnum<BFloat16> {
+  static constexpr cudaDataType type = CUDA_R_16BF;
+  static constexpr cusparseComputeType at_least_precision = CUSPARSE_COMPUTE_16F;
+};
+
+#endif // USE_CUSPARSELT
+
 // Type mapping for MLFloat16 to half
 template <typename T>
 class ToCudaType {
@@ -95,12 +104,6 @@ class ToCudaType<MLFloat16> {
     uint16_t h = math::floatToHalf(f);
     return *reinterpret_cast<MappedType*>(&h);
   }
-};
-
-template <>
-struct ToCudaTypeEnum<BFloat16> {
-  static constexpr cudaDataType type = CUDA_R_16BF;
-  static constexpr cusparseComputeType at_least_precision = CUSPARSE_COMPUTE_16F;
 };
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000

@@ -27,11 +27,13 @@ class MatMul final : public CudaKernel {
   struct SparseInfo;
 
  private:
+
 #ifdef USE_CUSPARSELT
-  Status PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) override;
   Status ComputeSparse(const MatMulComputeHelper& helper, bool transa, bool transb,
                        const Tensor* left, const Tensor* right, Tensor* C) const;
 #endif
+
+  Status PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) override;
 
   const float alpha_;
   const bool trans_A_;
