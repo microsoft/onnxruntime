@@ -923,7 +923,16 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 // onnxruntime::nnapi::Model.
 /* static */ bool ReshapeOpBuilder::CanSkipReshape(const ModelBuilder& model_builder, const Node& node,
                                                    size_t input_rank, size_t output_rank) {
+  const auto& input = node.InputDefs()[0]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
+  const auto& shaper(model_builder.GetShaper());
+
+  if (shaper[input] == shaper[output]) {
+    LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
+                          << node.Name() << "] with identical input/output shape, the output is " << output;
+    return true;
+  }
+
   // We will go through all the output edges
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& op_type = it->GetNode().OpType();

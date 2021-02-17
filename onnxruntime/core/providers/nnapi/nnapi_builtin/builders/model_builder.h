@@ -81,11 +81,11 @@ class ModelBuilder {
 
   // Set NNAPI execution preference
   // Default preference is PREFER_SUSTAINED_SPEED
-  void ExecutePreference(
-      android::nn::wrapper::ExecutePreference pref) { exe_pref_ = pref; }
+  void ExecutePreference(android::nn::wrapper::ExecutePreference pref) { exe_pref_ = pref; }
 
   // Accessors for members
   Shaper& GetShaper() { return shaper_; }
+  const Shaper& GetShaper() const { return shaper_; }
 
   const std::unordered_map<std::string, uint32_t>&
   GetOperandIndices() const { return operand_indices_; }
