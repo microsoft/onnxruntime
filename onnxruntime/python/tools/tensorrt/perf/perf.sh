@@ -1,5 +1,7 @@
 #!/bin/bash
 
+
+
 while getopts d:o:m: parameter
 do case "${parameter}"
 in 
@@ -13,6 +15,7 @@ done
 FAIL_MODEL_FILE=".fail_model_map"
 LATENCY_FILE=".latency_map"
 METRICS_FILE=".metrics_map"
+PROFILE="*onnxruntime_profile*"
 
 # files to download info
 SYMBOLIC_SHAPE_INFER="symbolic_shape_infer.py"
@@ -27,6 +30,7 @@ cleanup_files() {
     rm -f $SYMBOLIC_SHAPE_INFER
     rm -f $FLOAT_16
     rm -rf result/$OPTION
+    find -name $PROFILE -delete
 }
 
 download_files() {

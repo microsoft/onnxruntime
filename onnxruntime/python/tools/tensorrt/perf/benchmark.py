@@ -354,8 +354,11 @@ def generate_onnx_model_random_input(test_times, ref_input):
 
 def percentage_in_allowed_threshold(e, percent_mismatch):
     percent_string = re.search(r'\(([^)]+)', str(e)).group(1)
-    percentage_wrong = float(percent_string.replace("%",""))
-    return percentage_wrong < percent_mismatch
+    if "%" in percent_string:
+        percentage_wrong = float(percent_string.replace("%",""))
+        return percentage_wrong < percent_mismatch
+    else: 
+        return False # error in output 
 
 def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
     if len(all_ref_outputs) == 0:
@@ -377,10 +380,10 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
             # Compare the results with reference outputs
             for ref_o, o in zip(ref_output, output):
                 # abs(desired-actual) < rtol * abs(desired) + atol
-                try: 
+                try:
+                    logger.info("Output shape{} input shape{}".format(ref_output.shape, output.shape))
                     np.testing.assert_allclose(ref_o, o, rtol, atol)
                 except Exception as e:
-                    logger.info(e)
                     if percentage_in_allowed_threshold(e, percent_mismatch):    
                         continue
                     logger.error(e)
@@ -1028,7 +1031,7 @@ def run_onnxruntime(args, models):
                 # enable profiling to generate profiling file for analysis
                 options = onnxruntime.SessionOptions()
                 options.enable_profiling = True
-                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
                 time.sleep(1) # avoid to generate same profile file name
 
                 # create onnxruntime inference session
