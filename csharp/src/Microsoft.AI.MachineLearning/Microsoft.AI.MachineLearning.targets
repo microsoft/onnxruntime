@@ -20,6 +20,9 @@
     <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap\Microsoft.AI.MachineLearning.winmd">
       <Implementation>$(WindowsAIBinary)</Implementation>
     </Reference>
+    <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap\Microsoft.AI.MachineLearning.Experimental.winmd">
+      <Implementation>$(WindowsAIBinary)</Implementation>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

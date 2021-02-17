@@ -10,6 +10,7 @@ namespace cuda {
 
 template <typename T>
 void SGDOptimizerImpl(
+    cudaStream_t stream,
     const T* eta,
     const T* weights,
     const T* gradients,

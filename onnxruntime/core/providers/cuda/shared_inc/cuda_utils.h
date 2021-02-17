@@ -34,14 +34,14 @@ template <typename T>
 class IConstantBuffer {
  public:
   virtual ~IConstantBuffer(){};
-  virtual const T* GetBuffer(size_t count) = 0;
+  virtual const T* GetBuffer(cudaStream_t stream, size_t count) = 0;
 };
 
 template <typename T>
 std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes();
 
 template <typename T>
-void Fill(T* output, T value, int64_t count);
+void Fill(cudaStream_t stream, T* output, T value, int64_t count);
 
 /*
   This is a utility wrapper for arbitrary type array

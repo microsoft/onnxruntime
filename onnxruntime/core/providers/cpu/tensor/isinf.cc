@@ -14,14 +14,18 @@ namespace onnxruntime {
 // https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsInf
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, IsInf, Input, 0,
     float, double);
 }  // namespace op_kernel_type_control
 
 class IsInf final : public OpKernel {
  public:
-  using EnabledTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, IsInf, Input, 0);
+  using SupportedTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                          IsInf, Input, 0);
+
+  using EnabledTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                      IsInf, Input, 0);
 
   explicit IsInf(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
@@ -35,8 +39,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     IsInf,
     10,
     KernelDefBuilder()
-        .TypeConstraint(
-            "T1", BuildKernelDefConstraintsFunctorFromTypeList<IsInf::EnabledTypes>{}())
+        .TypeConstraint("T1",
+                        BuildKernelDefConstraintsFunctorFromTypeList<IsInf::SupportedTypes>{}(),
+                        BuildKernelDefConstraintsFunctorFromTypeList<IsInf::EnabledTypes>{}())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     IsInf);
 

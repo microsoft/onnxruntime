@@ -350,6 +350,7 @@ __global__ void cuApplyLayerNorm(
 template <typename T, typename U, bool simplified>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
+    cudaStream_t stream,
     T* output,
     U* mean,
     U* invvar,
@@ -367,7 +368,7 @@ void HostApplyLayerNorm(
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
-  cuApplyLayerNorm<T, U, simplified><<<blocks, threads, nshared, 0>>>(
+  cuApplyLayerNorm<T, U, simplified><<<blocks, threads, nshared, stream>>>(
       output,
       mean,
       invvar,
@@ -378,7 +379,7 @@ void HostApplyLayerNorm(
 }
 
 #define LAYERNORM_LINEAR_IMPL(T, U, simplified)                                                                                                 \
-  template void HostApplyLayerNorm<T, U, simplified>(const cudaDeviceProp& prop, T* output, U* mean, U* invvar, const T* input, int n1, int n2, \
+  template void HostApplyLayerNorm<T, U, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, T* output, U* mean, U* invvar, const T* input, int n1, int n2, \
                                                      double epsilon, const T* gamma, const T* beta);
 
 LAYERNORM_LINEAR_IMPL(float, float, true)
