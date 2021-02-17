@@ -13,6 +13,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include "core/session/onnxruntime_c_api.h"
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
@@ -125,18 +126,37 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       size_t type_id_counter = 0;
       auto input_count = op->GetInputTypeCount(op);
       for (size_t i = 0; i < input_count; i++) {
+        onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
+
+        // only since the ORT API version 8 and onwards will users have defined GetInputCharacteristic() and GetOutputCharacteristic()
+        // in their custom op structs.
+        // So, query it ONLY from API version 8 onwards
+        if (op->version >= 8 && op->GetInputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+          option = onnx::OpSchema::FormalParameterOption::Optional;
+        }
+
         auto type = op->GetInputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
-          schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter));
+          schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option);
           schema.TypeConstraint("T" + std::to_string(type_id_counter), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
           type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
         } else {
-          schema.Input(i, "Input" + std::to_string(i), "", DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+          schema.Input(i, "Input" + std::to_string(i), "",
+                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option);
         }
       }
 
       auto output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
+        onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
+
+        // only since the ORT API version 8 and onwards will users have defined GetInputCharacteristic() and GetOutputCharacteristic()
+        // in their custom op structs.
+        // So, query it ONLY from API version 8 onwards
+        if (op->version >= 8 && op->GetInputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+          option = onnx::OpSchema::FormalParameterOption::Optional;
+        }
+
         auto type = op->GetOutputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
           ORT_ENFORCE(type_id_counter == 1,
@@ -146,9 +166,10 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
                       "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
                       "cannot be inferred without which model loading cannot proceed.");
 
-          schema.Output(i, "Output" + std::to_string(i), "", "T0");
+          schema.Output(i, "Output" + std::to_string(i), "", "T0", option);
         } else {
-          schema.Output(i, "Output" + std::to_string(i), "", DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+          schema.Output(i, "Output" + std::to_string(i), "",
+                        DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option);
         }
       }
 

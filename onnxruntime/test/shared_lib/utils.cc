@@ -65,3 +65,25 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   }
 #endif
 }
+
+void MyCustomFooBarKernel::Compute(OrtKernelContext* context) {
+  // Setup inputs
+  const OrtValue* input_X1 = ort_.KernelContext_GetInput(context, 0);
+  const OrtValue* input_X2 = ort_.KernelContext_GetInput(context, 1);
+  const OrtValue* input_X3 = ort_.KernelContext_GetInput(context, 2);
+
+  const float* X1 = ort_.GetTensorData<float>(input_X1);
+  // The second input may or may not be present
+  const float* X2 = (input_X2 != nullptr) ? ort_.GetTensorData<float>(input_X2) : nullptr;
+  const float* X3 = ort_.GetTensorData<float>(input_X3);
+
+  // Setup output
+  int64_t output_dim_value = 1;
+  OrtValue* output = ort_.KernelContext_GetOutput(context, 0, &output_dim_value, 1);
+  float* out = ort_.GetTensorMutableData<float>(output);
+
+  // Only CPU EP is supported in this kernel
+  for (int64_t i = 0; i < output_dim_value; i++) {
+    out[i] = X1[i] + (X2 != nullptr ? X2[i] : 0) + X3[i];
+  }
+}
