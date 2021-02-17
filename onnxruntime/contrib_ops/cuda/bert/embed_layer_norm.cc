@@ -61,6 +61,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   size_t element_size = sizeof(T);
 
   if (!LaunchEmbedLayerNormKernel(
+          Stream(),
           output->template MutableData<T>(),
           mask_index->template MutableData<int32_t>(),
           input_ids->template Data<int32_t>(),

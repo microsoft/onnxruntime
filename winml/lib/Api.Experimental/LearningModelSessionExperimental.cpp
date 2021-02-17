@@ -5,11 +5,9 @@
 
 namespace WINML_EXPERIMENTALP {
 
-LearningModelSessionExperimental::LearningModelSessionExperimental(const winml::LearningModelSession& session) : _session(session) {
-  int i = 0;
-  i++;
+LearningModelSessionExperimental::LearningModelSessionExperimental(const winml::LearningModelSession& session) :
+  _session(session) {
 }
-
 
 WINML_EXPERIMENTAL::LearningModelSessionOptionsExperimental LearningModelSessionExperimental::Options() {
   return winrt::make<WINML_EXPERIMENTALP::LearningModelSessionOptionsExperimental>(_session);

@@ -45,14 +45,15 @@ struct OP_Gelu : public CtxGelu {
 
 #define UNARY_ACTIVATION_IMPL(name)                                        \
   UNARY_ACTIVATION_IMPL_DECLARATION(name) {                                \
-    UnaryElementWiseImpl(input_data,                                       \
+    UnaryElementWiseImpl(stream,                                           \
+                         input_data,                                       \
                          output_data,                                      \
                          *reinterpret_cast<const OP_##name<T>*>(func_ctx), \
                          count);                                           \
   }
 
 #define SPECIALIZED_UNARY_ACTIVATION_IMPL(name, T) \
-  template void Impl_##name<T>(const T* input_data, T* output_data, const Ctx##name* func_ctx, size_t count);
+  template void Impl_##name<T>(cudaStream_t stream, const T* input_data, T* output_data, const Ctx##name* func_ctx, size_t count);
 
 #define SPECIALIZED_UNARY_ACTIVATIONL_HFD(name)  \
   SPECIALIZED_UNARY_ACTIVATION_IMPL(name, half)  \

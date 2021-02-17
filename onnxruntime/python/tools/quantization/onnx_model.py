@@ -202,3 +202,54 @@ class ONNXModel:
                                                                      all_tensors_to_one_file=True,
                                                                      location=Path(output_path).name + ".data")
         onnx.save_model(self.model, output_path)
+
+    @staticmethod
+    def replace_node_input(node, old_input_name, new_input_name):
+        assert isinstance(old_input_name, str) and isinstance(new_input_name, str)
+        for j in range(len(node.input)):
+            if node.input[j] == old_input_name:
+                node.input[j] = new_input_name
+
+    def replace_input_of_all_nodes(self, old_input_name, new_input_name):
+        for node in self.model.graph.node:
+            ONNXModel.replace_node_input(node, old_input_name, new_input_name)
+
+    @staticmethod
+    def replace_node_output(node, old_output_name, new_output_name):
+        assert isinstance(old_output_name, str) and isinstance(new_output_name, str)
+        for j in range(len(node.output)):
+            if node.output[j] == old_output_name:
+                node.output[j] = new_output_name
+
+    def replace_output_of_all_nodes(self, old_output_name, new_output_name):
+        for node in self.model.graph.node:
+            ONNXModel.replace_node_output(node, old_output_name, new_output_name)
+
+    def remove_unused_constant(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+
+        #remove unused constant
+        unused_nodes = []
+        nodes = self.nodes()
+        for node in nodes:
+            if node.op_type == "Constant" and node.output[0] not in input_name_to_nodes:
+                unused_nodes.append(node)
+
+        self.remove_nodes(unused_nodes)
+
+        ununsed_weights = []
+        for w in self.initializer():
+            if w.name not in input_name_to_nodes:
+                ununsed_weights.append(w)
+                # Remove from graph.input
+                for graph_input in self.graph().input:
+                    if graph_input.name == w.name:
+                        self.graph().input.remove(graph_input)
+
+        self.remove_initializers(ununsed_weights)
+
+    def is_graph_output(self, output_name):
+        for output in self.model.graph.output:
+            if output.name == output_name:
+                return True
+        return False

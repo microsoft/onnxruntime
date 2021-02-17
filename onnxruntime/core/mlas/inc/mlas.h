@@ -422,14 +422,14 @@ MlasConv(
     MLAS_THREADPOOL* ThreadPool
     );
 
-template<typename FilterType>
 void
 MLASCALL
 MlasConvDepthwise(
-    const uint8_t* Input,
+    const uint8_t* const* Input,
     uint8_t InputZeroPoint,
-    const FilterType* Filter,
-    FilterType FilterZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    bool FilterIsSigned,
     int32_t* Output,
     size_t Channels,
     size_t OutputCount,

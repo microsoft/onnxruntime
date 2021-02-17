@@ -59,50 +59,10 @@ struct MLFloat16 {
   explicit MLFloat16(uint16_t x) : val(x) {}
   explicit MLFloat16(float f);
 
-  // Taken from https://stackoverflow.com/a/60047308/12627730
-  float AsFloat(uint32_t x) const {
-    float out = 0.0f;
-    std::memcpy(&out, &x, sizeof(x));
-    return out;
-  }
-
-  // Taken from https://stackoverflow.com/a/60047308/12627730
-  uint32_t AsUint(float x) const {
-    uint32_t out = 0;
-    std::memcpy(&out, &x, sizeof(x));
-    return out;
-  }
-
-  float HalfToFloat(const uint16_t x) const {
-    uint16_t half = x;
-    if (endian::native == endian::big) {
-      // Taken from https://stackoverflow.com/a/2182184/12627730
-      half = (x >> 8) | (x << 8);
-    }
-
-    // Taken from https://stackoverflow.com/a/60047308/12627730
-    // IEEE-754 16-bit floating-point format (without infinity): 1-5-10, exp-15, +-131008.0, +-6.1035156E-5,
-    // +-5.9604645E-8, 3.311 digits
-    const uint32_t e = (half & 0x7C00) >> 10;  // exponent
-    const uint32_t m = (half & 0x03FF) << 13;  // mantissa
-    // evil log2 bit hack to count leading zeros in denormalized format
-    const uint32_t v = AsUint(static_cast<float>(m)) >> 23;
-    uint32_t full = (half & 0x8000) << 16 | (e != 0) * ((e + 112) << 23 | m) |
-                    ((e == 0) & (m != 0)) * ((v - 37) << 23 | ((m << (150 - v)) & 0x007FE000));  // sign : normalized : denormalized
-
-    if (endian::native == endian::big) {
-      // Taken from https://stackoverflow.com/a/2182184/12627730
-      full = ((full >> 24) & 0xff) |       // move byte 3 to byte 0
-             ((full << 8) & 0xff0000) |    // move byte 1 to byte 2
-             ((full >> 8) & 0xff00) |      // move byte 2 to byte 1
-             ((full << 24) & 0xff000000);  // byte 0 to byte 3
-    }
-
-    return AsFloat(full);
-  }
+  float ToFloat() const;
 
   operator float() const {
-    return HalfToFloat(val);
+    return ToFloat();
   }
 };
 

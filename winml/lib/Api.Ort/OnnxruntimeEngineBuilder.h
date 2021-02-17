@@ -42,7 +42,7 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   bool metacommands_enabled_ = true;
   std::optional<uint32_t> batch_size_override_;
   wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides_;
-  uint32_t intra_op_num_threads_override_;
+  uint32_t intra_op_num_threads_override_ = 0;
 };
 
 }  // namespace _winml

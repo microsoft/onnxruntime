@@ -10,7 +10,7 @@
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
-#include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/core/framework/module_gradient_graph_builder.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
@@ -22,6 +22,9 @@ using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 
 struct TrainingParameters {
+  std::string model_with_loss_function_path;
+  std::string model_with_training_graph_path;
+
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
   std::unordered_set<std::string> weights_not_to_train;
@@ -96,7 +99,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     LOGS(*(sess->GetLogger()), WARNING) << msg;
   }
 
-  training::PipelineTrainingSession::TrainingConfiguration config{};
+  training::TrainingSession::TrainingConfiguration config{};
+  config.model_with_loss_function_path = parameters.model_with_loss_function_path;
+  config.model_with_training_graph_path = parameters.model_with_training_graph_path;
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
@@ -229,13 +234,13 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
-    config.model_after_graph_transforms_path = parameters.model_after_graph_transforms_path;
+    config.model_after_graph_transforms_path = ToPathString(parameters.model_after_graph_transforms_path);
   }
   if (!parameters.model_with_gradient_graph_path.empty()) {
-    config.model_with_gradient_graph_path = parameters.model_with_gradient_graph_path;
+    config.model_with_gradient_graph_path = ToPathString(parameters.model_with_gradient_graph_path);
   }
   if (!parameters.model_with_training_graph_path.empty()) {
-    config.model_with_training_graph_path = parameters.model_with_training_graph_path;
+    config.model_with_training_graph_path = ToPathString(parameters.model_with_training_graph_path);
   }
 
   training::PipelineTrainingSession::TrainingConfigurationResult config_result{};
@@ -291,6 +296,8 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
 void addObjectMethodsForTraining(py::module& m) {
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
+      .def_readwrite("model_with_loss_function_path", &TrainingParameters::model_with_loss_function_path)
+      .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
       .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
       .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
       .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)

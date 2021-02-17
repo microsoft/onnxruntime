@@ -47,7 +47,7 @@ file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
 
-add_library(onnxruntime_pybind11_state MODULE ${onnxruntime_pybind_srcs})
+onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
@@ -194,6 +194,9 @@ file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
     "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
     "${ORTTRAINING_SOURCE_DIR}/test/python/*.json"
+)
+file(GLOB onnxruntime_python_quantization_test_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/test/python/quantization/*.py"
 )
 file(GLOB onnxruntime_python_quantization_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/quantization/*.py"
