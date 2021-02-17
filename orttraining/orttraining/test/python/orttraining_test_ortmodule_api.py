@@ -196,25 +196,29 @@ def test_forward_call_positional_and_keyword_arguments():
     output = model(a, x, y, z)
     assert output is not None
 
+# TODO: change '9' and '0' to '(' and ')' when tests are not required to run one-by-one.
+# Otherwise '(' confuses '-k' switch in orttraining_ortmodule_tests.py.
 @pytest.mark.parametrize("forward_statement", [
-    "model(one)",
-    "model(x=one)",
-    "model(one, None, None)",
-    "model(one, None, z=None)",
-    "model(one, None)",
-    "model(x=one, y=one)",
-    "model(y=one, x=one)",
-    "model(y=one, z=None, x=one)",
-    "model(one, None, z=one)",
-    "model(x=one, z=one)",
-    "model(one, z=one)",
-    "model(one, z=one, y=one)",
-    "model(one, one, one)",
-    "model(one, None, one)",
-    "model(z=one, x=one, y=one)",
-    "model(z=one, x=one, y=None)"
+    "model9one0",
+    "model9x=one0",
+    "model9one, None, None0",
+    "model9one, None, z=None0",
+    "model9one, None0",
+    "model9x=one, y=one0",
+    "model9y=one, x=one0",
+    "model9y=one, z=None, x=one0",
+    "model9one, None, z=one0",
+    "model9x=one, z=one0",
+    "model9one, z=one0",
+    "model9one, z=one, y=one0",
+    "model9one, one, one0",
+    "model9one, None, one0",
+    "model9z=one, x=one, y=one0",
+    "model9z=one, x=one, y=None0"
 ])
 def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_statement):
+    # TODO: get rid of this when tests are not required to run one-by-one.
+    forward_statement = forward_statement.replace("9", "(").replace("0", ")")
     one = torch.FloatTensor([1])
 
     model = NeuralNetSimplePositionalAndKeywordArguments()
