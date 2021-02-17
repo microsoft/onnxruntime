@@ -4,9 +4,12 @@
 
 import torch
 from transformers import AutoConfig, BertForSequenceClassification
+from transformers.modeling_outputs import SequenceClassifierOutput
 import pytest
 import warnings
 from unittest.mock import patch
+from collections import OrderedDict
+from collections import namedtuple
 
 from onnxruntime.training import _utils, ORTModule
 import _test_helpers
@@ -351,8 +354,15 @@ def test_gpu_reserved_memory_with_torch_no_grad():
     assert mem_reserved_after_export_with_torch_no_grad < mem_reserved_after_export_without_torch_no_grad
     assert mem_reserved_before_export == mem_reserved_after_export_with_torch_no_grad
 
-@pytest.mark.parametrize("device", ['cpu', 'cuda'])
-def test_exception_raised_for_dict_return_value_module(device):
+@pytest.mark.parametrize("return_type, device", [
+    (dict, 'cpu'),
+    (dict, 'cuda'),
+    (OrderedDict, 'cpu'),
+    (OrderedDict, 'cuda'),
+    (SequenceClassifierOutput, 'cpu'),
+    (SequenceClassifierOutput, 'cuda')
+    ])
+def test_dict_return_value_module(return_type, device):
     class NeuralNetDictOutput(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
             super(NeuralNetDictOutput, self).__init__()
@@ -372,8 +382,8 @@ def test_exception_raised_for_dict_return_value_module(device):
         def forward(self, input1, input2, input3):
             out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
             out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
-            out3 = self.fc3_2(self.relu3(self.fc3_1(input2)))
-            return {'a': out1, 'b': out2, 'c': out3}
+            out3 = self.fc3_2(self.relu3(self.fc3_1(input3)))
+            return return_type([('loss', out1), ('logits', out2), ('hidden_states', out3)])
 
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetDictOutput(D_in, H, D_out).to(device)
@@ -382,9 +392,81 @@ def test_exception_raised_for_dict_return_value_module(device):
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
 
-    with pytest.raises(NotImplementedError) as not_implemented_error:
+    output = model(x, y, z)
+    assert isinstance(output, return_type)
+    assert 'loss' in output and 'logits' in output and 'hidden_states' in output
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_dict_of_tuple_return_value_module(device):
+    class NeuralNetDictOfTuplesOutput(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetDictOfTuplesOutput, self).__init__()
+
+            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu1 = torch.nn.ReLU()
+            self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
+
+            self.fc2_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu2 = torch.nn.ReLU()
+            self.fc2_2 = torch.nn.Linear(hidden_size, num_classes)
+
+            self.fc3_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu3 = torch.nn.ReLU()
+            self.fc3_2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1, input2, input3):
+            out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
+            out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
+            out3 = self.fc3_2(self.relu3(self.fc3_1(input3)))
+            return {'loss': (out1, out2, out3)}
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetDictOfTuplesOutput(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+    y = torch.randn(N, D_in, device=device)
+    z = torch.randn(N, D_in, device=device)
+
+    with pytest.raises(TypeError) as type_error:
         model(x, y, z)
-    assert str(not_implemented_error.value) == 'Dictionaries are not supported as output yet'
+    assert 'ORTModule does not support the following model output type' in str(type_error.value)
+
+@pytest.mark.parametrize("device", ['cpu', 'cuda'])
+def test_named_tuple_return_value_module(device):
+    ReturnValue = namedtuple('NamedTupleReturnValue', 'loss logits hidden_states')
+    class NeuralNetNamedTupleOutput(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetNamedTupleOutput, self).__init__()
+
+            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu1 = torch.nn.ReLU()
+            self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
+
+            self.fc2_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu2 = torch.nn.ReLU()
+            self.fc2_2 = torch.nn.Linear(hidden_size, num_classes)
+
+            self.fc3_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu3 = torch.nn.ReLU()
+            self.fc3_2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1, input2, input3):
+            out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
+            out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
+            out3 = self.fc3_2(self.relu3(self.fc3_1(input3)))
+
+            return ReturnValue(out1, out2, out3)
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetNamedTupleOutput(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+    y = torch.randn(N, D_in, device=device)
+    z = torch.randn(N, D_in, device=device)
+
+    output = model(x, y, z)
+    assert isinstance(output, tuple)
+    assert isinstance(output, ReturnValue)
 
 @pytest.mark.parametrize("device", ['cpu', 'cuda'])
 def test_exception_raised_for_custom_class_return_value_module(device):
@@ -413,7 +495,7 @@ def test_exception_raised_for_custom_class_return_value_module(device):
         def forward(self, input1, input2, input3):
             out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
             out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
-            out3 = self.fc3_2(self.relu3(self.fc3_1(input2)))
+            out3 = self.fc3_2(self.relu3(self.fc3_1(input3)))
             return CustomClass(out1, out2, out3)
 
     N, D_in, H, D_out = 64, 784, 500, 10
