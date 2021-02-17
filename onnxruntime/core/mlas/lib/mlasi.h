@@ -798,7 +798,7 @@ struct MLAS_PLATFORM {
     uint32_t PreferredBufferAlignment;
     uint32_t MaximumThreadCount;
 #else
-    constexpr uint32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+    static constexpr uint32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
 };
 
