@@ -11,7 +11,7 @@ The minimal build can be used with any ORT format model, provided that the kerne
 
 ## Steps to create model and minimal build
 
-You will need a script from the the ONNX Runtime repository, and to also perform a custom build, so you will need to clone the repository locally. See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#prerequisites) for initial steps.
+You will need a script from the the ONNX Runtime repository, and to also perform a custom build, so you will need to clone the repository locally. See [here](https://www.onnxruntime.ai/docs/how-to/build.html#prerequisites) for initial steps.
 
 The directory the ONNX Runtime repository was cloned into is referred to as `<ONNX Runtime repository root>` in this documentation.
 
@@ -40,7 +40,7 @@ Running `'python <ORT repository root>/tools/python/convert_onnx_models_to_ort.p
 
 You will need to build ONNX Runtime from source to reduce the included operator kernels and other aspects of the binary.
 
-See [here](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-baseline-cpu) for the general ONNX Runtime build instructions.
+See [here](https://www.onnxruntime.ai/docs/how-to/build.html#cpu) for the general ONNX Runtime build instructions.
 
 
 #### Binary size reduction options:
@@ -137,7 +137,7 @@ To limit the optimization level when creating the ORT format models using `tools
 
 For NNAPI to be used on Android with ONNX Runtime Mobile, the NNAPI Execution Provider must be included in the minimal build.
 
-First, read the general instructions for [creating an Android build with NNAPI included](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider). These provide details on setting up the components required to create an Android build of ONNX Runtime, such as the Android NDK.
+First, read the general instructions for [creating an Android build with NNAPI included](https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider). These provide details on setting up the components required to create an Android build of ONNX Runtime, such as the Android NDK.
 
 Once you have all the necessary components setup, follow the instructions to [create the minimal build](#2-Create-the-minimal-build), with the following changes:
   - Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is needed by the NNAPI Execution Provider.

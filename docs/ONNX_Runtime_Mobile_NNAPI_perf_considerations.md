@@ -72,7 +72,7 @@ For our MNIST model that would mean that after the _basic_ optimizations are app
 
 To create an NNAPI-aware ORT format model please follow these steps.
 
-1. Create a 'full' build of ONNX Runtime with the NNAPI EP by [building ONNX Runtime from source](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#start-baseline-cpu).
+1. Create a 'full' build of ONNX Runtime with the NNAPI EP by [building ONNX Runtime from source](https://www.onnxruntime.ai/docs/how-to/build.html#cpu).
 
     This build can be done on any platform, as the NNAPI EP can be used to create the ORT format model without the Android NNAPI library as there is no model execution in this process. When building add `--use_nnapi --build_shared_lib --build_wheel` to the build flags if any of those are missing.
 
