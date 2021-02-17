@@ -709,6 +709,8 @@ struct MLAS_PLATFORM {
     uint32_t MaximumThreadCount;
     uint32_t GemmComplexity;
     double GemmThreadComplexity;
+#else
+    constexpr uint32_t MaximumThreadCount = 16;
 #endif
 };
 
