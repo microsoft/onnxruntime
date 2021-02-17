@@ -42,7 +42,9 @@ namespace concurrency {
 static constexpr int CACHE_LINE_BYTES = 64;
 static constexpr unsigned MAX_SHARDS = 8;
 
+#ifndef _OPENMP
 static constexpr int TaskGranularityFactor = 4;
+#endif
 
 struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
   ::std::atomic<uint64_t> _next{0};
