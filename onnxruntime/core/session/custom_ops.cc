@@ -101,6 +101,9 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
   for (const auto& domain : op_domains) {
     // Create an OpSchema for each op and register them
 
+    // Container to hold type template parameters
+    std::unordered_map<const OrtCustomOp*, std::vector<std::string>> type_constraint_ids;
+
 #if !defined(ORT_MINIMAL_BUILD)
     // Domain is not empty - add it to the DomainToVersion ONNX map
     // If domain is empty, it is assumed to be part of the ONNX domain
@@ -119,25 +122,36 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
     for (const auto* op : domain->custom_ops_) {
       ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
 
+      size_t type_id_counter = 0;
       auto input_count = op->GetInputTypeCount(op);
       for (size_t i = 0; i < input_count; i++) {
         auto type = op->GetInputType(op, i);
-        schema.Input(i, "Input" + std::to_string(i), "",
-                     ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type
-                         ? "T"
-                         : DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
+          schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter));
+          schema.TypeConstraint("T" + std::to_string(type_id_counter), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+          type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
+        } else {
+          schema.Input(i, "Input" + std::to_string(i), "", DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        }
       }
 
       auto output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
         auto type = op->GetOutputType(op, i);
-        schema.Output(i, "Output" + std::to_string(i), "",
-                      ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type
-                          ? "T"
-                          : DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
+          ORT_ENFORCE(type_id_counter == 1,
+                      "There must be one (and only one) dynamic typed input to the custom op. "
+                      "Its type info at runtime will be used to infer the type info of this dynamic typed output "
+                      "which is required for the success of the model loading step. "
+                      "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
+                      "cannot be inferred without which model loading cannot proceed.");
+
+          schema.Output(i, "Output" + std::to_string(i), "", "T0");
+        } else {
+          schema.Output(i, "Output" + std::to_string(i), "", DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        }
       }
 
-      schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
       schema.SetDomain(domain->domain_);
       schema.SinceVersion(1);
       schema.AllowUncheckedAttributes();
@@ -149,14 +163,31 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
                                               1 /* baseline opset version */,
                                               1000 /* opset version */));
 
+#else
+    // For a minimal build, we may not need any of the ONNX schema stuff but we still need to track
+    // the type template parameters to be used during the kernel def building step below
+    for (const auto* op : domain->custom_ops_) {
+      size_t type_id_counter = 0;
+      auto input_count = op->GetInputTypeCount(op);
+      for (size_t i = 0; i < input_count; i++) {
+        auto type = op->GetInputType(op, i);
+        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
+          type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
+        }
+      }
+    }
 #endif
+
     // create the KernelDef for each op and register it
     for (const auto* op : domain->custom_ops_) {
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
-          .SinceVersion(1)
-          .TypeConstraint("T", DataTypeImpl::AllTensorTypes());
+          .SinceVersion(1);
+
+      for (auto& id : type_constraint_ids[op]) {
+        def_builder.TypeConstraint(id, DataTypeImpl::AllTensorTypes());
+      }
 
       if (const char* provider_type = op->GetExecutionProviderType(op)) {
         def_builder.Provider(provider_type);
@@ -178,4 +209,3 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-
