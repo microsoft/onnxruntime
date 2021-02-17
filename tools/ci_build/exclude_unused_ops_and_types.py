@@ -29,8 +29,31 @@ _valid_allowed_types = {
     "int8_t", "int16_t", "int32_t", "int64_t",
     "MLFloat16", "BFloat16",  # in onnxruntime namespace
     "float", "double",
-    "std::string",
+    "string",  # in std namespace
 }
+
+
+def _validated_globally_allowed_types(
+        enable_type_reduction: bool,
+        globally_allowed_types: typing.Optional[typing.Collection[str]]) -> typing.Optional[typing.Set[str]]:
+    if not enable_type_reduction and globally_allowed_types is not None:
+        raise ValueError("globally_allowed_types should not be provided when enable_type_reduction is False.")
+
+    # ensure globally_allowed_types is a set or None
+    if globally_allowed_types is not None and not isinstance(globally_allowed_types, set):
+        globally_allowed_types = set(globally_allowed_types)
+
+    if enable_type_reduction:
+        if globally_allowed_types is None:
+            # if globally_allowed_types is unspecified, allow all valid types
+            globally_allowed_types = _valid_allowed_types.copy()
+
+        if not globally_allowed_types <= _valid_allowed_types:
+            raise ValueError(
+                "Globally allowed types must be a subset of valid allowed types. Actual: {}, valid: {}".format(
+                    globally_allowed_types, sorted(_valid_allowed_types)))
+
+    return globally_allowed_types
 
 
 class ExcludeOpsAndTypesRegistrationProcessor(op_registration_utils.RegistrationProcessor):
@@ -54,6 +77,9 @@ class ExcludeOpsAndTypesRegistrationProcessor(op_registration_utils.Registration
     def process_registration(self, lines: typing.List[str], constant_for_domain: str, operator: str,
                              start_version: int, end_version: typing.Optional[int] = None,
                              type: typing.Optional[str] = None):
+        registration_identifier = '{}:{}({}){}'.format(constant_for_domain, operator, start_version,
+                                                       '<{}>'.format(type) if type else '')
+
         # convert from the ORT constant name to the domain string used in the config
         domain = op_registration_utils.map_ort_constant_to_domain(constant_for_domain)
         exclude = False
@@ -72,12 +98,10 @@ class ExcludeOpsAndTypesRegistrationProcessor(op_registration_utils.Registration
                 exclude = True
                 exclude_reason = "Specific typed registration is excluded."
         else:
-            log.warning("Registration from unknown domain will not be excluded.")
+            log.warning("Registration from unknown domain will not be excluded: {}".format(registration_identifier))
 
         if exclude:
-            log.info('Disabling {}:{}({}){} registration: {}'.format(constant_for_domain, operator, start_version,
-                                                                     '<{}>'.format(type) if type else '',
-                                                                     exclude_reason))
+            log.info('Disabling {} registration: {}'.format(registration_identifier, exclude_reason))
             for line in lines:
                 self._output_file.write('// ' + line)
 
@@ -136,7 +160,7 @@ def _generate_required_types_cpp_code(ort_root: str, op_type_usage_manager: typi
     cpp_lines = []
     if op_type_usage_manager:
         cpp_lines += op_type_usage_manager.get_cpp_entries()
-    if globally_allowed_types and globally_allowed_types < _valid_allowed_types:
+    if globally_allowed_types is not None and globally_allowed_types < _valid_allowed_types:
         cpp_lines += \
             ["ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES({});".format(", ".join(sorted(globally_allowed_types)))]
     if not cpp_lines:
@@ -179,19 +203,8 @@ def _generate_required_types_cpp_code(ort_root: str, op_type_usage_manager: typi
 
 
 def exclude_unused_ops_and_types(config_path: str, enable_type_reduction: bool = False, use_cuda: bool = True,
-                                 globally_allowed_types: typing.Optional[typing.Set[str]] = None):
-    if not enable_type_reduction and globally_allowed_types is not None:
-        raise ValueError("If enable_type_reduction is False, globally_allowed_types should not be provided.")
-
-    if enable_type_reduction:
-        if globally_allowed_types is None:
-            # if globally_allowed_types is unspecified, allow all valid types
-            globally_allowed_types = _valid_allowed_types.copy()
-
-        if not globally_allowed_types <= _valid_allowed_types:
-            raise ValueError(
-                "Globally allowed types must be a subset of valid allowed types. Global: {}, valid: {}".format(
-                    globally_allowed_types, _valid_allowed_types))
+                                 globally_allowed_types: typing.Optional[typing.Sequence[str]] = None):
+    globally_allowed_types = _validated_globally_allowed_types(enable_type_reduction, globally_allowed_types)
 
     required_ops, op_type_usage_manager = parse_config(config_path, enable_type_reduction)
 
@@ -219,7 +232,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     config_path = os.path.abspath(args.config_path)
-    globally_allowed_types = set(args.globally_allowed_types) if args.globally_allowed_types is not None else None
 
     exclude_unused_ops_and_types(config_path, enable_type_reduction=True, use_cuda=True,
-                                 globally_allowed_types=globally_allowed_types)
+                                 globally_allowed_types=args.globally_allowed_types)

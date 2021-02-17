@@ -456,6 +456,10 @@ def parse_arguments():
                              'format models with type reduction enabled, limit the types individual operators support '
                              'where possible to further reduce the build size. '
                              'See /docs/Reduced_Operator_Kernel_build.md for more information.')
+    parser.add_argument("--reduced_operator_type_support_globally_allowed_types", nargs="*",
+                        help="If --include_ops_by_config and --enable_reduced_operator_type_support are specified, "
+                        "further constrain the types individual operators support to these allowed types. "
+                        "See /docs/Reduced_Operator_Kernel_build.md for more information.")
 
     parser.add_argument("--disable_contrib_ops", action='store_true',
                         help="Disable contrib ops (reduces binary size)")
@@ -1739,9 +1743,11 @@ def main():
 
     if args.include_ops_by_config and args.update:
         from exclude_unused_ops_and_types import exclude_unused_ops_and_types
-        exclude_unused_ops_and_types(args.include_ops_by_config,
-                                     args.enable_reduced_operator_type_support,
-                                     args.use_cuda)
+        exclude_unused_ops_and_types(
+            config_path=args.include_ops_by_config,
+            enable_type_reduction=args.enable_reduced_operator_type_support,
+            use_cuda=args.use_cuda,
+            globally_allowed_types=args.reduced_operator_type_support_globally_allowed_types)
 
     if args.use_tensorrt:
         args.use_cuda = True
