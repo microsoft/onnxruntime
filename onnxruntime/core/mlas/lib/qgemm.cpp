@@ -2241,7 +2241,7 @@ Return Value:
     //
 
     const double Complexity = double(M) * double(N) * double(K);
-    
+
     int32_t TargetThreadCount;
 
     if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
