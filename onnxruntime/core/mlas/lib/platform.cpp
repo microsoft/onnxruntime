@@ -149,8 +149,6 @@ Return Value:
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 
     this->MaximumThreadCount = 16;
-    this->GemmComplexity = 64 * 1024;
-    this->GemmThreadComplexity = 64 * 1024 * 16;
 
 #endif
 
@@ -237,8 +235,7 @@ Return Value:
                 //
 
                 if ((Cpuid7[3] & 0x8000) != 0) {
-                  this->MaximumThreadCount = 64;
-                  this->GemmThreadComplexity = 64 * 1024 * 64;
+                    this->MaximumThreadCount = 64;
                 }
 
                 //
