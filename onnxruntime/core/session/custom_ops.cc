@@ -127,9 +127,9 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       for (size_t i = 0; i < input_count; i++) {
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
 
-        // only since the ORT API version 8 and onwards will users have defined GetInputCharacteristic() and GetOutputCharacteristic()
+        // only since the ORT API version 7 and onwards will users have defined GetInputCharacteristic() and GetOutputCharacteristic()
         // in their custom op structs.
-        // So, query it ONLY from API version 8 onwards
+        // So, query it ONLY from API version 7 onwards
         if (op->version >= 7 && op->GetInputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
           option = onnx::OpSchema::FormalParameterOption::Optional;
         }
@@ -149,9 +149,9 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       for (size_t i = 0; i < output_count; i++) {
         onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
 
-        // only since the ORT API version 8 and onwards will users have defined GetInputCharacteristic() and GetOutputCharacteristic()
+        // only since the ORT API version 7 and onwards will users have defined GetInputCharacteristic() and GetOutputCharacteristic()
         // in their custom op structs.
-        // So, query it ONLY from API version 8 onwards
+        // So, query it ONLY from API version 7 onwards
         if (op->version >= 7 && op->GetInputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
           option = onnx::OpSchema::FormalParameterOption::Optional;
         }
