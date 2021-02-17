@@ -19,6 +19,9 @@ parameters:
   type: boolean
   default: false
 
+variables:
+  PackageName: 'Microsoft.ML.OnnxRuntime.OpenMP'
+
 jobs:
 - template: templates/c-api-cpu.yml
   parameters:
