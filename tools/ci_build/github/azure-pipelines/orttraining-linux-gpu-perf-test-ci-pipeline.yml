@@ -46,7 +46,7 @@ jobs:
       --model_root /build/bert_models
     displayName: 'Run bert performance tests'
     condition: succeededOrFailed()
-    timeoutInMinutes: 20
+    timeoutInMinutes: 120
 
   - script: >
       docker run --gpus all --rm --name onnxruntime-gpu-perf
@@ -61,7 +61,7 @@ jobs:
       --model_root /build/gpt2_models
     displayName: 'Run gpt-2 performance tests'
     condition: succeededOrFailed()
-    timeoutInMinutes: 20
+    timeoutInMinutes: 120
 
   # generate jdbc.properties
   - script: >
