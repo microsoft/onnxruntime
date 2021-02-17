@@ -16,6 +16,7 @@ from collections import abc
 from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
 
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.training import register_custom_ops_pytorch_exporter
 from . import _utils
 
 
@@ -161,6 +162,9 @@ class ORTModule(torch.nn.Module):
     def __init__(self, module):
         assert isinstance(module, torch.nn.Module), "'module' must be a torch.nn.Module"
         super(ORTModule, self).__init__()
+
+        # Support contrib OPs
+        register_custom_ops_pytorch_exporter.register_custom_op()
 
         # TODO: Single device support for now
         self._device = _utils.get_device_from_module(module)
@@ -434,10 +438,6 @@ class ORTModule(torch.nn.Module):
         input_names, dynamic_axes, self._input_names_require_grad = _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
         output_names, output_dynamic_axes, self._original_module_output_type = _parse_outputs_for_onnx_export(self._original_module, inputs)
         dynamic_axes.update(output_dynamic_axes)
-
-        # TODO: Support contrib OPs support? user model has no hint
-        from onnxruntime.training import register_custom_ops_pytorch_exporter
-        register_custom_ops_pytorch_exporter.register_custom_op()
 
         # Export torch.nn.Module to ONNX
         f = io.BytesIO()
