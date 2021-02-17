@@ -43,7 +43,7 @@ For an overview, see this [installation matrix](https://onnxruntime.ai).
    * libcublas 11.2.0.252
    * libcudnn 8.0.4
 
-Version dependencies for older ONNX Runtime releases are listed [here](https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#Version-Dependency).
+Version dependencies for older ONNX Runtime releases are listed [here](../reference/execution-providers/CUDA-ExecutionProvider.html#version-dependency).
 
 ### Windows / CPU
 
@@ -61,7 +61,7 @@ Version dependencies for older ONNX Runtime releases are listed [here](https://w
 
 3. CUDA 11.0.3 and cuDNN 8.0.2.39
 
-Version dependencies for older ONNX Runtime releases are listed [here](https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#Version-Dependency).
+Version dependencies for older ONNX Runtime releases are listed [here](../reference/execution-providers/CUDA-ExecutionProvider.html#version-dependency).
 
 ### MacOS / CPU
 
