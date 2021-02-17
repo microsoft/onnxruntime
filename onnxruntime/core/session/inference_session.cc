@@ -377,9 +377,11 @@ InferenceSession::~InferenceSession() {
   // backward is not completed yet, set terminate_flag to True
   for (auto it = bg_threads_.begin(); it != bg_threads_.end(); ++it) {
     int64_t run_id = it->first;
-    onnxruntime::contrib::OrtTasks::GetInstance().SetTerminateFlag(run_id);
-    Status s = ContinueRunInBackground({}, run_id);
-    ORT_UNUSED_PARAMETER(s);
+    if (onnxruntime::contrib::OrtTasks::GetInstance().StatusIsValid(run_id)) {
+      onnxruntime::contrib::OrtTasks::GetInstance().SetTerminateFlag(run_id);
+      Status s = ContinueRunInBackground({}, run_id);
+      ORT_UNUSED_PARAMETER(s);
+    }
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -1748,7 +1750,6 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
   if (onnxruntime::contrib::OrtTasks::GetInstance().StatusIsReady(run_id)) {
     Status bg_thread_status = onnxruntime::contrib::OrtTasks::GetInstance().GetStatus(run_id);
     bg_threads_[run_id].join();
-    bg_threads_.erase(run_id);
     return bg_thread_status;
   }
 
@@ -1769,7 +1770,6 @@ common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtVa
   // wait for bg_thread to complete
   if (bg_threads_[run_id].joinable()) {
     bg_threads_[run_id].join();
-    bg_threads_.erase(run_id);
   }
 
   return bg_thread_status;

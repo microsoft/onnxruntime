@@ -79,6 +79,10 @@ bool OrtTasks::StatusIsReady(int64_t run_id) {
   return bg_tasks[run_id]->status_future_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready;
 }
 
+bool OrtTasks::StatusIsValid(int64_t run_id) {
+  return bg_tasks[run_id]->status_future_.valid();
+}
+
 Status OrtTasks::GetStatus(int64_t run_id) {
   return bg_tasks[run_id]->status_future_.get();
 }

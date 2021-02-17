@@ -40,6 +40,7 @@ class OrtTasks final {
 
   void SetStatus(const Status& status);
   bool StatusIsReady(int64_t run_id);
+  bool StatusIsValid(int64_t run_id);
   Status GetStatus(int64_t run_id);
 
   void SetTerminateFlag(int64_t run_id) {
