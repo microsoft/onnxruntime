@@ -10,7 +10,7 @@ import numpy as np
 from inspect import signature
 
 from torch.utils.dlpack import from_dlpack
-from torch._six import container_abcs
+from collections import abc
 
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
@@ -26,48 +26,18 @@ __TEMP_ENABLE_METHOD_TIMING__ = False
 T = TypeVar('T', bound='Module')
 
 
-def _get_device_index(device):
-    if isinstance(device, str):
-        # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
-        device = torch.device(device)
-    elif isinstance(device, int):
-        return device
-    return 0 if device.index is None else device.index
-
-def _get_device_str(device):
-    if isinstance(device, str):
-        # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
-        if device.find(':') == -1:
-            device += ':' + str(torch.cuda.current_device())
-    elif isinstance(device, int):
-        device = 'cuda:' + str(device)
-    elif isinstance(device, torch.device):
-        if device.index is None:
-            device = device.type + ':' + str(torch.cuda.current_device())
-        else:
-            device = device.type + ':' + str(device.index)
-    else:
-        raise ('Unsupported device type')
-    return device
-
-def _get_default_device_str(type):
-    if type == 'cuda':
-        return 'cuda:' + str(torch.cuda.current_device())
-    else:
-        return 'cpu'
-
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, value_info in enumerate(model.graph.input):
         io_binding.bind_input(value_info.name, inputs[idx].device.type,
-                              _get_device_index(inputs[idx].device),
+                              _utils.get_device_index(inputs[idx].device),
                               _utils.dtype_torch_to_numpy(inputs[idx].dtype),
                               list(inputs[idx].size()),
                               inputs[idx].data_ptr())
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type,
-                               device_id=_get_device_index(device))
+                               device_id=_utils.get_device_index(device))
 
 def _deepcopy_model_input(*inputs, **kwargs):
     sample_inputs_copy = []
@@ -104,9 +74,20 @@ def _parse_inputs_for_onnx_export(module, *inputs, **kwargs):
 
 def _parse_outputs_for_onnx_export(module, inputs):
 
+    def _create_output_dim_names_from_mapping(output):
+        output_names, dynamic_axes = [], {}
+        for name, value in output.items():
+            if not isinstance(value, torch.Tensor):
+                raise TypeError('ORTModule does not support the following model output type {} within a Mapping'.format(type(value)))
+            output_names.append(name)
+            dynamic_axes[name] = {}
+            for dim_idx in range(len(value.shape)):
+                dynamic_axes[name].update({dim_idx: '{}_dim{}'.format(name, dim_idx)})
+        return output_names, dynamic_axes
+
     def _create_output_dim_names(output, output_idx, from_sequence):
         if from_sequence and not isinstance(output, torch.Tensor):
-            raise TypeError('ORTModule does not support the following model output type {} within a Sequence'.format(type(sample_outputs)))
+            raise TypeError('ORTModule does not support the following model output type {} within a Sequence'.format(type(output)))
         output_names, dynamic_axes = [], {}
         name = 'output{}'.format(output_idx)
         output_names.append(name)
@@ -118,6 +99,9 @@ def _parse_outputs_for_onnx_export(module, inputs):
     #   Do an inference to grab outputs
     is_train_mode = module.training
     module.eval()
+    output_names = []
+    output_dynamic_axes = {}
+    sample_output_type = None
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy = _deepcopy_model_input(*inputs)
@@ -130,13 +114,12 @@ def _parse_outputs_for_onnx_export(module, inputs):
                             " Compute will continue, but unexpected results may occur!")
 
         sample_outputs = model_copy(*sample_inputs_copy)
-        output_names = []
-        output_dynamic_axes = {}
+        sample_output_type = type(sample_outputs)
         if isinstance(sample_outputs, torch.Tensor):
             output_names, output_dynamic_axes = _create_output_dim_names(sample_outputs, 0, False)
-        elif isinstance(sample_outputs, container_abcs.Mapping):
-            raise NotImplementedError('Dictionaries are not supported as output yet')
-        elif isinstance(sample_outputs, container_abcs.Sequence):
+        elif isinstance(sample_outputs, abc.Mapping):
+            output_names, output_dynamic_axes = _create_output_dim_names_from_mapping(sample_outputs)
+        elif isinstance(sample_outputs, abc.Sequence):
             for idx, out in enumerate(sample_outputs):
                 tmp_output_names, tmp_output_dynamic_axes = _create_output_dim_names(out, idx, True)
                 output_names += tmp_output_names
@@ -145,7 +128,21 @@ def _parse_outputs_for_onnx_export(module, inputs):
             raise TypeError('ORTModule does not support the following model output type {}'.format(type(sample_outputs)))
     if is_train_mode:
         module.train()
-    return output_names, output_dynamic_axes
+    return output_names, output_dynamic_axes, sample_output_type
+
+def _populate_user_output(user_output_type, user_output_names, user_outputs):
+    if issubclass(user_output_type, Mapping):
+        key_value_pairs = [(user_output_names[i], user_outputs[i]) for i in range(len(user_output_names))]
+        return user_output_type(key_value_pairs)
+    elif issubclass(user_output_type, tuple):
+        try:
+            # Try constructing the user named tuple from the output tuple
+            return user_output_type(*user_outputs)
+        except TypeError:
+            # The expected output type is not a namedtuple, but is a regular tuple type
+            pass
+
+    return user_outputs
 
 # TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
 # and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
@@ -165,8 +162,8 @@ class ORTModule(torch.nn.Module):
         assert isinstance(module, torch.nn.Module), "'module' must be a torch.nn.Module"
         super(ORTModule, self).__init__()
 
-        # TODO: This is incorrect when different layers may be in different devices
-        self._device = next(module.parameters()).device
+        # TODO: Single device support for now
+        self._device = _utils.get_device_from_module(module)
         self._device_changed = False
 
         # User module is wrapped to use its initializers and save computed gradients
@@ -178,6 +175,7 @@ class ORTModule(torch.nn.Module):
         self._current_input_shape = None
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
+        self._original_module_output_type = None
 
         # Training model
         self._onnx_training = None
@@ -204,8 +202,6 @@ class ORTModule(torch.nn.Module):
         self._module_gradient_graph_builder.initialize(self._onnx_inference.SerializeToString(), grad_builder_config)
 
     def _get_inference_graph_and_init_gradient_graph_builder(self, *inputs, **kwargs):
-        input_names, dynamic_axes, self._input_names_require_grad = \
-                _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
         self._onnx_inference = self._get_inference_graph(*inputs, **kwargs)
 
         if self._save_onnx:
@@ -251,7 +247,7 @@ class ORTModule(torch.nn.Module):
     def cpu(self: T) -> T:
         '''Thin layer to capture device for ORTModule IO bindings'''
 
-        if self._device.type != 'cpu':
+        if not self._device or self._device.type != 'cpu':
             self._device_changed = True
             self._device = torch.device('cpu')
 
@@ -261,12 +257,12 @@ class ORTModule(torch.nn.Module):
         '''Thin layer to capture device for ORTModule IO bindings'''
 
         if device is None:
-            if _get_device_str(self._device) != _get_default_device_str('cuda'):
+            if self._device and _utils.get_device_str(self._device) != _utils.get_default_device_str('cuda'):
                 self._device_changed = True
-                self._device = torch.device(_get_default_device_str('cuda'))
-        elif _get_device_str(self._device) != _get_device_str(device):
+                self._device = torch.device(_utils.get_default_device_str('cuda'))
+        elif not self._device or _utils.get_device_str(self._device) != _utils.get_device_str(device):
             self._device_changed = True
-            self._device = torch.device(_get_device_str(device))
+            self._device = torch.device(_utils.get_device_str(device))
 
         return super(ORTModule, self).cuda(device)
 
@@ -289,10 +285,15 @@ class ORTModule(torch.nn.Module):
 
         device, _, _, _ = torch._C._nn._parse_to(*args, **kwargs)
         if device:
-            device_str = _get_device_str(device)
-            if _get_device_str(self._device) != device_str:
+            try:
+                device_str = _utils.get_device_str(device)
+                if _utils.get_device_str(self._device) != device_str:
+                    self._device_changed = True
+                    self._device = torch.device(device_str)
+            except RuntimeError:
                 self._device_changed = True
                 self._device = torch.device(device_str)
+
         return super(ORTModule, self).to(*args, **kwargs)
 
     def eval(self: T) -> T:
@@ -315,7 +316,11 @@ class ORTModule(torch.nn.Module):
             return self._original_module(*inputs, **kwargs)
 
         # Exporting module to ONNX for the first time
-        if not self._onnx_inference:
+        if not self._onnx_training:
+            if not self._device:
+                self._device = _utils.get_device_from_input_args_kwargs(self._original_module, *inputs, **kwargs)
+                if not self._device:
+                    raise RuntimeError('A device must be specified in the model or data!')
             self._get_inference_graph_and_init_gradient_graph_builder(*inputs, **kwargs)
 
         _, _, input_names_require_grad = _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
@@ -372,7 +377,7 @@ class ORTModule(torch.nn.Module):
                 backward_grad_output_ortvalue = []
                 for grad_output in grad_output[:len(self._onnx_graphs_info.backward_output_grad_names)]:
                     backward_grad_output_ortvalue.append(onnxruntime.OrtValue.ortvalue_from_data_ptr(list(grad_output.size()), _utils.dtype_torch_to_numpy(
-                        grad_output.dtype), grad_output.device.type, _get_device_index(grad_output.device), grad_output.data_ptr()))
+                        grad_output.dtype), grad_output.device.type, _utils.get_device_index(grad_output.device), grad_output.data_ptr()))
 
                 # Run and get results
                 run_id = ctx.run_id
@@ -402,7 +407,8 @@ class ORTModule(torch.nn.Module):
 
         proc_inputs = [data for data in inputs if data is not None]
 
-        return _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*proc_inputs, **kwargs))
+        return _populate_user_output(self._original_module_output_type, self._onnx_graphs_info.user_output_names,
+            _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*proc_inputs, **kwargs)))
 
     @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
     def _convert_training_graph_input_to_list(self, *inputs, **kwargs):
@@ -436,7 +442,7 @@ class ORTModule(torch.nn.Module):
 
         # Setup dynamic axes for onnx model
         input_names, dynamic_axes, self._input_names_require_grad = _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
-        output_names, output_dynamic_axes = _parse_outputs_for_onnx_export(self._original_module, inputs)
+        output_names, output_dynamic_axes, self._original_module_output_type = _parse_outputs_for_onnx_export(self._original_module, inputs)
         dynamic_axes.update(output_dynamic_axes)
 
         # TODO: Support contrib OPs support? user model has no hint
@@ -451,16 +457,19 @@ class ORTModule(torch.nn.Module):
         # Therefore, deepcopy only the data component of the input tensors for export.
         sample_inputs_copy = _deepcopy_model_input(*inputs, **kwargs)
 
-        with torch.no_grad():
-            torch.onnx.export(self._original_module,
-                              sample_inputs_copy,
-                              f,
-                              input_names=input_names,
-                              output_names=output_names,
-                              opset_version=ONNX_OPSET_VERSION,
-                              do_constant_folding=False,
-                              training=torch.onnx.TrainingMode.TRAINING,
-                              dynamic_axes=dynamic_axes)
+        try:
+            with torch.no_grad():
+                torch.onnx.export(self._original_module,
+                                sample_inputs_copy,
+                                f,
+                                input_names=input_names,
+                                output_names=output_names,
+                                opset_version=ONNX_OPSET_VERSION,
+                                do_constant_folding=False,
+                                training=torch.onnx.TrainingMode.TRAINING,
+                                dynamic_axes=dynamic_axes)
+        except RuntimeError as e:
+            raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
         # TODO: this step might not be needed when we use the torch external allocator
         # clear cache after model export

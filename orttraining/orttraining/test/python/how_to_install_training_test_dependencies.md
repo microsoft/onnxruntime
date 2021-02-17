@@ -9,3 +9,7 @@ Due to a [bug on DeepSpeed](https://github.com/microsoft/DeepSpeed/issues/663), 
 
    ```sh
    pip install -r tools/ci_build/github/linux/docker/scripts/training/requirements.txt
+
+2. Install second set of dependencies for ortmodule:
+   ```sh
+   pip install -r tools/ci_build/github/linux/docker/scripts/training/ortmodule/requirements.txt
