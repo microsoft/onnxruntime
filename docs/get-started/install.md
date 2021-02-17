@@ -35,9 +35,16 @@ For an overview, see this [installation matrix](https://onnxruntime.ai).
     * Run `locale-gen en_US.UTF-8`
     * Run `update-locale LANG=en_US.UTF-8`
 
-2. CUDA 10.2 and cuDNN 8.0.3
+2. CUDA 11.0.3 and cuDNN 8.0.2.4
+   * libcudart 11.0.221
+   * libcufft 10.2.1.245
+   * libcurand 10.2.1.245
+   * libcublasLt 11.2.0.252
+   * libcublas 11.2.0.252
+   * libcudnn 8.0.4
 
-    * Version dependencies for older ONNX Runtime releases can be found [here](https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#Version-Dependency)
+Version dependencies for older ONNX Runtime releases are listed [here](https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#Version-Dependency).
+
 ### Windows / CPU
 
 1. English language package with the `en_US.UTF-8` locale
@@ -52,8 +59,9 @@ For an overview, see this [installation matrix](https://onnxruntime.ai).
 
 2. [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
 
-3. CUDA 10.2 and cuDNN 8.0.3
-   * Version dependencies for older ONNX Runtime releases can be found [here](https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#Version-Dependency)
+3. CUDA 11.0.3 and cuDNN 8.0.2.39
+
+Version dependencies for older ONNX Runtime releases are listed [here](https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#Version-Dependency).
 
 ### MacOS / CPU
 
