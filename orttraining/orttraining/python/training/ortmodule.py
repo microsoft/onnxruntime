@@ -74,9 +74,20 @@ def _parse_inputs_for_onnx_export(module, *inputs, **kwargs):
 
 def _parse_outputs_for_onnx_export(module, inputs):
 
+    def _create_output_dim_names_from_mapping(output):
+        output_names, dynamic_axes = [], {}
+        for name, value in output.items():
+            if not isinstance(value, torch.Tensor):
+                raise TypeError('ORTModule does not support the following model output type {} within a Mapping'.format(type(value)))
+            output_names.append(name)
+            dynamic_axes[name] = {}
+            for dim_idx in range(len(value.shape)):
+                dynamic_axes[name].update({dim_idx: '{}_dim{}'.format(name, dim_idx)})
+        return output_names, dynamic_axes
+
     def _create_output_dim_names(output, output_idx, from_sequence):
         if from_sequence and not isinstance(output, torch.Tensor):
-            raise TypeError('ORTModule does not support the following model output type {} within a Sequence'.format(type(sample_outputs)))
+            raise TypeError('ORTModule does not support the following model output type {} within a Sequence'.format(type(output)))
         output_names, dynamic_axes = [], {}
         name = 'output{}'.format(output_idx)
         output_names.append(name)
@@ -88,6 +99,9 @@ def _parse_outputs_for_onnx_export(module, inputs):
     #   Do an inference to grab outputs
     is_train_mode = module.training
     module.eval()
+    output_names = []
+    output_dynamic_axes = {}
+    sample_output_type = None
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy = _deepcopy_model_input(*inputs)
@@ -100,12 +114,11 @@ def _parse_outputs_for_onnx_export(module, inputs):
                             " Compute will continue, but unexpected results may occur!")
 
         sample_outputs = model_copy(*sample_inputs_copy)
-        output_names = []
-        output_dynamic_axes = {}
+        sample_output_type = type(sample_outputs)
         if isinstance(sample_outputs, torch.Tensor):
             output_names, output_dynamic_axes = _create_output_dim_names(sample_outputs, 0, False)
         elif isinstance(sample_outputs, abc.Mapping):
-            raise NotImplementedError('Dictionaries are not supported as output yet')
+            output_names, output_dynamic_axes = _create_output_dim_names_from_mapping(sample_outputs)
         elif isinstance(sample_outputs, abc.Sequence):
             for idx, out in enumerate(sample_outputs):
                 tmp_output_names, tmp_output_dynamic_axes = _create_output_dim_names(out, idx, True)
@@ -115,7 +128,21 @@ def _parse_outputs_for_onnx_export(module, inputs):
             raise TypeError('ORTModule does not support the following model output type {}'.format(type(sample_outputs)))
     if is_train_mode:
         module.train()
-    return output_names, output_dynamic_axes
+    return output_names, output_dynamic_axes, sample_output_type
+
+def _populate_user_output(user_output_type, user_output_names, user_outputs):
+    if issubclass(user_output_type, Mapping):
+        key_value_pairs = [(user_output_names[i], user_outputs[i]) for i in range(len(user_output_names))]
+        return user_output_type(key_value_pairs)
+    elif issubclass(user_output_type, tuple):
+        try:
+            # Try constructing the user named tuple from the output tuple
+            return user_output_type(*user_outputs)
+        except TypeError:
+            # The expected output type is not a namedtuple, but is a regular tuple type
+            pass
+
+    return user_outputs
 
 # TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
 # and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
@@ -148,6 +175,7 @@ class ORTModule(torch.nn.Module):
         self._current_input_shape = None
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
+        self._original_module_output_type = None
 
         # Training model
         self._onnx_training = None
@@ -369,7 +397,8 @@ class ORTModule(torch.nn.Module):
 
         proc_inputs = [data for data in inputs if data is not None]
 
-        return _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*proc_inputs, **kwargs))
+        return _populate_user_output(self._original_module_output_type, self._onnx_graphs_info.user_output_names,
+            _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*proc_inputs, **kwargs)))
 
     @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
     def _convert_training_graph_input_to_list(self, *inputs, **kwargs):
@@ -403,7 +432,7 @@ class ORTModule(torch.nn.Module):
 
         # Setup dynamic axes for onnx model
         input_names, dynamic_axes, self._input_names_require_grad = _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
-        output_names, output_dynamic_axes = _parse_outputs_for_onnx_export(self._original_module, inputs)
+        output_names, output_dynamic_axes, self._original_module_output_type = _parse_outputs_for_onnx_export(self._original_module, inputs)
         dynamic_axes.update(output_dynamic_axes)
 
         # TODO: Support contrib OPs support? user model has no hint
