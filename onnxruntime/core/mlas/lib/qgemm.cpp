@@ -2244,8 +2244,8 @@ Return Value:
     
     int32_t TargetThreadCount;
 
-    if (Complexity < MlasPlatform.GemmThreadComplexity) {
-        TargetThreadCount = int32_t(Complexity / MlasPlatform.GemmComplexity) + 1;
+    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
+        TargetThreadCount = int32_t(Complexity / MLAS_QGEMM_THREAD_COMPLEXITY) + 1;
     } else {
         TargetThreadCount = MlasPlatform.MaximumThreadCount;
     }

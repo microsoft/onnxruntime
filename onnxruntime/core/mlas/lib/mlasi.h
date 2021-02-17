@@ -622,6 +622,15 @@ extern "C" {
 #define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     32
 
 //
+// Define the target number of per-thread multiplies before using another
+// thread to perform additional work.
+//
+
+#define MLAS_SGEMM_THREAD_COMPLEXITY (64 * 1024)
+#define MLAS_DGEMM_THREAD_COMPLEXITY (64 * 1024)
+#define MLAS_QGEMM_THREAD_COMPLEXITY (64 * 1024)
+
+//
 // Single-threaded single precision matrix/matrix multiply operation.
 //
 
@@ -707,8 +716,6 @@ struct MLAS_PLATFORM {
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     uint32_t MaximumThreadCount;
-    uint32_t GemmComplexity;
-    double GemmThreadComplexity;
 #else
     constexpr uint32_t MaximumThreadCount = 16;
 #endif
