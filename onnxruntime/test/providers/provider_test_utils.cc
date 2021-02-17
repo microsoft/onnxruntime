@@ -251,9 +251,11 @@ void Check<MLFloat16>(const OpTester::Data& expected_data,
   threshold = 0.005f;
 #endif
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(f_expected[i]))  // Test infinity for equality
-      EXPECT_EQ(f_expected[i], f_output[i]) << "i:" << i;
-    else {
+    if (std::isnan(f_expected[i])) {
+      EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+    } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(f_expected[i], f_output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
+    } else {
       // the default for existing tests
       EXPECT_NEAR(f_expected[i], f_output[i], threshold)
           << "i:" << i << ", provider_type: " << provider_type;
@@ -284,9 +286,11 @@ void Check<BFloat16>(const OpTester::Data& expected_data,
   /// XXX: May need to adjust threshold as BFloat is coarse
   float threshold = 0.001f;
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(f_expected[i]))  // Test infinity for equality
-      EXPECT_EQ(f_expected[i], f_output[i]);
-    else {
+    if (std::isnan(f_expected[i])) {
+      EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+    } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(f_expected[i], f_output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
+    } else {
       // the default for existing tests
       const float max_value = fmax(fabs(f_expected[i]), fabs(f_output[i]));
       if (max_value != 0) {  // max_value = 0 means output and expected are 0s.

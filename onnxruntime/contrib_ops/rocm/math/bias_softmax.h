@@ -13,6 +13,7 @@ namespace rocm {
 template <typename T>
 struct DispatchBiasSoftmaxForward {
   void operator()(
+      hipStream_t stream,
       Tensor* output,
       const Tensor* input,
       const Tensor* input_bias,
@@ -25,6 +26,7 @@ struct DispatchBiasSoftmaxForward {
 template <typename T>
 struct DispatchBiasSoftMaxForwardViaDnnLibrary {
   void operator()(
+      hipStream_t stream,
       miopenHandle_t miopenHandle,
       int element_count,
       int batch_count,

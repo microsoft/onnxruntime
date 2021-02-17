@@ -127,7 +127,8 @@ Note: In order to include all tensors from the model for better calibration, ple
 #### Example
 ```
 data_reader = YoloV3DataReader(calibration_dataset, model_path=augmented_model_path)
-generate_calibration_table(model_path, augmented_model_path, data_reader, calibration_dataset=calibration_dataset, stride=1000, batch_size=20)
+calibrate.collect_data(data_reader)
+calibrate.compute_range()
 ```
 Please see ```E2E_example_model/e2e_user_yolov3_example.py``` for more details.
 ### Evaluation for qunatization

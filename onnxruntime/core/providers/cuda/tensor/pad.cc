@@ -123,7 +123,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
         output_tensor.template MutableData<T>(), input_tensor.template Data<T>(),
         sizeof(typename ToCudaType<T>::MappedType) * output_shape.Size(),
-        cudaMemcpyDeviceToDevice, 0));
+        cudaMemcpyDeviceToDevice, Stream()));
     return Status::OK();
   }
 
@@ -134,6 +134,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   PadImpl(
+      Stream(),
       dimension_count,
       input_dims,
       input_strides,

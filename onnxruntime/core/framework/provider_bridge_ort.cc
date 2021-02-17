@@ -160,14 +160,16 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name);
   }
 
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return onnxruntime::make_unique<GPUDataTransfer>(); }
-
-  void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) override {
-    return cuda::Impl_Cast(input_data, output_data, count);
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
+    return onnxruntime::make_unique<GPUDataTransfer>(static_cast<cudaStream_t>(stream));
   }
 
-  void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) override {
-    return cuda::Impl_Cast(input_data, output_data, count);
+  void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override {
+    return cuda::Impl_Cast(static_cast<cudaStream_t>(stream), input_data, output_data, count);
+  }
+
+  void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override {
+    return cuda::Impl_Cast(static_cast<cudaStream_t>(stream), input_data, output_data, count);
   }
 
   bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
@@ -684,6 +686,13 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
   return nullptr;
 }
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
+  if (auto provider = s_library_tensorrt.Get())
+    return provider->CreateExecutionProviderFactory(provider_options);
+
+  return nullptr;
+}
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* provider_options) {
   if (auto provider = s_library_openvino.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
@@ -713,6 +722,16 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
   auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(device_id);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
+  auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(tensorrt_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);

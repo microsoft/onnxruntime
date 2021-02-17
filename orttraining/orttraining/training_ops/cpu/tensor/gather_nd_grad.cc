@@ -73,9 +73,9 @@ Status GatherNDGrad::Compute(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor data type not supported");
   }
 
-  ORT_RETURN_IF_NOT(nullptr == p.input_str_base);
-  utils::MLTypeCallDispatcher<GatherNDGradComputeImpl, float, double> t_disp(update_tensor->GetElementType());
-  t_disp.Invoke(p, update_tensor);
+  ORT_RETURN_IF_NOT(nullptr == p.input_str_base, "nullptr != p.input_str_base");
+  utils::MLTypeCallDispatcher<float, double> t_disp(update_tensor->GetElementType());
+  t_disp.Invoke<GatherNDGradComputeImpl>(p, update_tensor);
 
   return Status::OK();
 }

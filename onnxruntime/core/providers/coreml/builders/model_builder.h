@@ -27,7 +27,7 @@ class ModelBuilder {
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
   const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
 
-  void AddLayer(COREML_SPEC::NeuralNetworkLayer* layer);
+  void AddLayer(std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer);
 
   // The initializer will be processed separately, skip it as an initializer
   void AddInitializerToSkip(const std::string& tensor_name);

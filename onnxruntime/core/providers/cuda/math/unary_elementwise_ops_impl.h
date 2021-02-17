@@ -24,11 +24,14 @@ namespace cuda {
   UNARY_OP_NAME_EXPR(Log, _Log(a))         \
   UNARY_OP_NAME_EXPR(Erf, _Erf(a))         \
   UNARY_OP_NAME_EXPR(Not, !a)              \
-  UNARY_OP_NAME_EXPR(Round, _Round(a))
+  UNARY_OP_NAME_EXPR(Round, _Round(a))     \
+  UNARY_OP_NAME_EXPR(Sin, _Sin(a))         \
+  UNARY_OP_NAME_EXPR(Cos, _Cos(a))
 
 #define UNARY_ELEMENTWISE_IMPL_DECLARATION(name) \
   template <typename T>                          \
   void Impl_##name(                              \
+      cudaStream_t stream,                 \
       const T* input_data,                       \
       T* output_data,                            \
       size_t count)
@@ -39,6 +42,7 @@ UNARY_OPS()
 
 template <typename InT, typename OutT>
 void Impl_Cast(
+    cudaStream_t stream,
     const InT* input_data,
     OutT* output_data,
     size_t count);
