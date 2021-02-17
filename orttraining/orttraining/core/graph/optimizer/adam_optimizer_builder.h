@@ -15,6 +15,7 @@ class AdamOptimizerBuilder final : public OptimizerBuilder {
                                              "beta",
                                              "lambda",
                                              "epsilon",
+                                             "max_norm_clip",
                                              "do_bias_correction",
                                              "weight_decay_mode"}) {}
 

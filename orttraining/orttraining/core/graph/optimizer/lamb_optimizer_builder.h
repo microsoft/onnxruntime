@@ -16,6 +16,7 @@ class LambOptimizerBuilder final : public OptimizerBuilder {
                       "beta",
                       "lambda",
                       "epsilon",
+                      "max_norm_clip",
                       "ratio_min",
                       "ratio_max",
                       "do_bias_correction"}) {}

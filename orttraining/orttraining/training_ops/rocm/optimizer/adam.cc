@@ -136,6 +136,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>:
       ToHipType<T4>::FromFloat(beta_),
       ToHipType<T4>::FromFloat(lambda_),
       ToHipType<T4>::FromFloat(epsilon_),
+      ToHipType<T4>::FromFloat(max_norm_clip_),
       do_bias_correction_,
       weight_decay_mode_,
       reinterpret_cast<HipT4*>(NM1.template MutableData<T4>()),

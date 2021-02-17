@@ -136,6 +136,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>:
       ToCudaType<T4>::FromFloat(beta_),
       ToCudaType<T4>::FromFloat(lambda_),
       ToCudaType<T4>::FromFloat(epsilon_),
+      ToCudaType<T4>::FromFloat(max_norm_clip_),
       do_bias_correction_,
       weight_decay_mode_,
       reinterpret_cast<CudaT4*>(NM1.template MutableData<T4>()),

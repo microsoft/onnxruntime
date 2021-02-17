@@ -92,6 +92,7 @@ Status LambOptimizerBuilder::Build(
   std::vector<float> beta;
   std::vector<float> lambda;
   std::vector<float> epsilon;
+  std::vector<float> max_norm_clip;
   float ratio_min = -std::numeric_limits<float>::infinity();
   float ratio_max = std::numeric_limits<float>::infinity();
   int64_t do_bias_correction = 0;
@@ -159,6 +160,12 @@ Status LambOptimizerBuilder::Build(
         epsilon.emplace_back(epsilon_iter->second);
       else
         epsilon.emplace_back(1e-6f);
+
+      auto max_norm_clip_iter = attrs.find("max_norm_clip");
+      if (max_norm_clip_iter != attrs.end())
+        max_norm_clip.emplace_back(max_norm_clip_iter->second);
+      else
+        max_norm_clip.emplace_back(1.0f);
 
       auto ratio_min_iter = attrs.find("ratio_min");
       if (ratio_min_iter != attrs.end()) {
@@ -252,6 +259,7 @@ Status LambOptimizerBuilder::Build(
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("beta", beta));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("lambda", lambda));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("epsilon", epsilon));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("max_norm_clip", max_norm_clip));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_min", ratio_min));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_max", ratio_max));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("do_bias_correction", do_bias_correction));

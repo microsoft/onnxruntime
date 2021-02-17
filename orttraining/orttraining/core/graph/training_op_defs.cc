@@ -172,6 +172,11 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           AttributeProto::FLOATS,
           std::vector<float>(1024, 1e-6f))
       .Attr(
+          "max_norm_clip",
+          "clip threshold of gradients.",
+          AttributeProto::FLOATS,
+          std::vector<float>(1024, 1.f))
+      .Attr(
           "do_bias_correction",
           "Compute unbiased 1st and 2nd momentums.",
           AttributeProto::INT,
@@ -662,6 +667,11 @@ void RegisterTrainingOpSchemas() {
           "Small scalar to avoid dividing by zero.",
           AttributeProto::FLOAT,
           1e-8f)
+      .Attr(
+          "max_norm_clip",
+          "clip threshold of gradients.",
+          AttributeProto::FLOAT,
+          1.0f)
       .Attr(
           "do_bias_correction",
           "Compute unbiased 1st and 2nd momentums.",
