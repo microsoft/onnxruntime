@@ -81,6 +81,33 @@ class CalibraterBase:
                                                           sess_options=sess_options,
                                                           providers=self.execution_providers)
 
+    def select_tensors_to_calibrate(self, model):
+        '''
+        select all quantization_candidates op type nodes' input/output tensors. 
+        returns:
+            tensors (set): set of tensor name.
+            value_infos (dict): tensor name to value info.
+        '''
+        value_infos = {vi.name: vi for vi in model.graph.value_info}
+        value_infos.update({ot.name: ot for ot in model.graph.output})
+        value_infos.update({it.name: it for it in model.graph.input})
+        initializer = set(init.name for init in model.graph.initializer)
+
+        tensors_to_calibrate = set()
+        tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
+
+        for node in model.graph.node:
+            if len(self.op_types_to_calibrate) == 0 or node.op_type in self.op_types_to_calibrate:
+                for tensor_name in itertools.chain(node.input, node.output):
+                    if tensor_name in value_infos.keys():
+                        vi = value_infos[tensor_name]
+                        if vi.type.HasField('tensor_type') and (
+                                vi.type.tensor_type.elem_type in tensor_type_to_calibrate) and (
+                                    tensor_name not in initializer):
+                            tensors_to_calibrate.add(tensor_name)
+
+        return tensors_to_calibrate, value_infos
+
     def get_augment_model(self):
         '''
         return: augmented onnx model
@@ -130,27 +157,12 @@ class MinMaxCalibrater(CalibraterBase):
         model = onnx_proto.ModelProto()
         model.CopyFrom(self.model)
         model = onnx.shape_inference.infer_shapes(model)
-        value_infos = {vi.name: vi for vi in model.graph.value_info}
-        value_infos.update({ot.name: ot for ot in model.graph.output})
-        value_infos.update({it.name: it for it in model.graph.input})
-        initializer = set(init.name for init in model.graph.initializer)
 
         added_nodes = []
         added_outputs = []
-        tensors_to_calibrate = set()
-        tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
+        tensors, _ = self.select_tensors_to_calibrate(model) 
 
-        for node in model.graph.node:
-            if len(self.op_types_to_calibrate) == 0 or node.op_type in self.op_types_to_calibrate:
-                for tensor_name in itertools.chain(node.input, node.output):
-                    if tensor_name in value_infos.keys():
-                        vi = value_infos[tensor_name]
-                        if vi.type.HasField('tensor_type') and (
-                                vi.type.tensor_type.elem_type in tensor_type_to_calibrate) and (
-                                    tensor_name not in initializer):
-                            tensors_to_calibrate.add(tensor_name)
-
-        for tensor in tensors_to_calibrate:
+        for tensor in tensors:
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
             reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'],
@@ -243,34 +255,18 @@ class EntropyCalibrater(CalibraterBase):
 
     def augment_graph(self):
         '''
-        Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
-        model and ensures their outputs are stored as part of the graph output
+        make all quantization_candidates op type nodes as part of the graph output.
         :return: augmented ONNX model
         '''
         model = onnx_proto.ModelProto()
         model.CopyFrom(self.model)
         model = onnx.shape_inference.infer_shapes(model)
-        value_infos = {vi.name: vi for vi in model.graph.value_info}
-        value_infos.update({ot.name: ot for ot in model.graph.output})
-        value_infos.update({it.name: it for it in model.graph.input})
-        initializer = set(init.name for init in model.graph.initializer)
 
         added_nodes = []
         added_outputs = []
-        tensors_to_calibrate = set()
-        tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
+        tensors, value_infos = self.select_tensors_to_calibrate(model) 
 
-        for node in model.graph.node:
-            if len(self.op_types_to_calibrate) == 0 or node.op_type in self.op_types_to_calibrate:
-                for tensor_name in itertools.chain(node.input, node.output):
-                    if tensor_name in value_infos.keys():
-                        vi = value_infos[tensor_name]
-                        if vi.type.HasField('tensor_type') and (
-                                vi.type.tensor_type.elem_type in tensor_type_to_calibrate) and (
-                                    tensor_name not in initializer):
-                            tensors_to_calibrate.add(tensor_name)
-
-        for tensor in tensors_to_calibrate:
+        for tensor in tensors:
             added_outputs.append(value_infos[tensor])
 
         model.graph.node.extend(added_nodes)
