@@ -76,8 +76,9 @@ TEST(TensorProtoUtilsTest, UnpackTensor) {
   EXPECT_FALSE(status.IsOK());
 }
 
+namespace {
 template <typename T>
-static std::vector<T> CreateValues() {
+std::vector<T> CreateValues() {
   return {1, 2, 3, 4};
 }
 
@@ -86,17 +87,49 @@ std::vector<std::string> CreateValues<std::string>() {
   return {"one", "two", "three", "four"};
 }
 
+template <>
+std::vector<bool> CreateValues() {
+  return {true, false, false, true};
+}
+
+template <>
+std::vector<MLFloat16> CreateValues<MLFloat16>() {
+  return {MLFloat16(0.f), MLFloat16(1.f), MLFloat16(2.f), MLFloat16(3.f)};
+}
+
+template <>
+std::vector<BFloat16> CreateValues<BFloat16>() {
+  return {BFloat16(0.f), BFloat16(1.f), BFloat16(2.f), BFloat16(3.f)};
+}
+
 template <typename T>
-static void CreateTensorWithExternalData(
-    TensorProto_DataType type,
-    const std::vector<T>& test_data,
-    std::basic_string<ORTCHAR_T>& filename,
-    TensorProto& tensor_proto) {
+void WriteDataToFile(FILE* fp, const std::vector<T>& test_data) {
+  size_t size_in_bytes = test_data.size() * sizeof(T);
+  ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
+}
+
+std::unique_ptr<bool[]> BoolDataFromVector(const std::vector<bool>& test_data) {
+  auto arr = onnxruntime::make_unique<bool[]>(test_data.size());
+  std::copy(std::begin(test_data), std::end(test_data), arr.get());
+  return arr;
+}
+
+// work around std::vector<bool> storing data in bits
+template <>
+void WriteDataToFile<bool>(FILE* fp, const std::vector<bool>& test_data) {
+  auto arr = BoolDataFromVector(test_data);
+  size_t size_in_bytes = test_data.size() * sizeof(bool);
+  ASSERT_EQ(size_in_bytes, fwrite(arr.get(), 1, size_in_bytes, fp));
+}
+
+template <typename T>
+void CreateTensorWithExternalData(TensorProto_DataType type, const std::vector<T>& test_data,
+                                  std::basic_string<ORTCHAR_T>& filename,
+                                  TensorProto& tensor_proto) {
   // Create external data
   FILE* fp;
   CreateTestFile(fp, filename);
-  size_t size_in_bytes = test_data.size() * sizeof(T);
-  ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
+  WriteDataToFile(fp, test_data);
   ASSERT_EQ(0, fclose(fp));
 
   // set the tensor_proto to reference this external data
@@ -109,15 +142,7 @@ static void CreateTensorWithExternalData(
 }
 
 template <typename T>
-static void TestUnpackExternalTensor(TensorProto_DataType type, const Path& model_path) {
-  // Create external data
-  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
-  TensorProto tensor_proto;
-  auto test_data = CreateValues<T>();
-  CreateTensorWithExternalData<T>(type, test_data, filename, tensor_proto);
-  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
-                                                                         DeleteFileFromDisk);
-
+void UnpackAndValidate(const TensorProto& tensor_proto, const Path& model_path, const std::vector<T>& test_data) {
   // Unpack tensor with external data
   std::vector<T> val(test_data.size());
   auto st = utils::UnpackTensor(tensor_proto, model_path, val.data(), test_data.size());
@@ -125,15 +150,45 @@ static void TestUnpackExternalTensor(TensorProto_DataType type, const Path& mode
 
   // Validate data
   for (size_t i = 0; i < test_data.size(); i++) {
-    ASSERT_EQ(val[i], test_data[i]);
+    ASSERT_TRUE(val[i] == test_data[i]);  // need to use ASSERT_TRUE with '==' to handle MFLoat16 and BFloat16
   }
 }
 
+template <>
+void UnpackAndValidate<bool>(const TensorProto& tensor_proto, const Path& model_path,
+                             const std::vector<bool>& test_data) {
+  // Unpack tensor with external data
+  auto arr = onnxruntime::make_unique<bool[]>(test_data.size());
+  auto st = utils::UnpackTensor(tensor_proto, model_path, arr.get(), test_data.size());
+  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+
+  // Validate data
+  for (size_t i = 0; i < test_data.size(); i++) {
+    ASSERT_TRUE(arr[i] == test_data[i]);
+  }
+}
+
+template <typename T>
+void TestUnpackExternalTensor(TensorProto_DataType type, const Path& model_path) {
+  // Create external data
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
+  TensorProto tensor_proto;
+  auto test_data = CreateValues<T>();
+  CreateTensorWithExternalData<T>(type, test_data, filename, tensor_proto);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
+                                                                         DeleteFileFromDisk);
+  UnpackAndValidate(tensor_proto, model_path, test_data);
+}
+}  // namespace
 TEST(TensorProtoUtilsTest, UnpackTensorWithExternalData) {
   Path model_path;
   TestUnpackExternalTensor<float>(TensorProto_DataType_FLOAT, model_path);
   TestUnpackExternalTensor<double>(TensorProto_DataType_DOUBLE, model_path);
   TestUnpackExternalTensor<int32_t>(TensorProto_DataType_INT32, model_path);
+  TestUnpackExternalTensor<int8_t>(TensorProto_DataType_INT8, model_path);
+  TestUnpackExternalTensor<MLFloat16>(TensorProto_DataType_FLOAT16, model_path);
+  TestUnpackExternalTensor<BFloat16>(TensorProto_DataType_BFLOAT16, model_path);
+  TestUnpackExternalTensor<bool>(TensorProto_DataType_BOOL, model_path);
 }
 
 template <typename T>
