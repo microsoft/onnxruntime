@@ -108,6 +108,7 @@ GCC 4.x and below are not supported.
 |**Use OpenMP**|--use_openmp|OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.|
 |**Build using parallel processing**|--parallel|This is strongly recommended to speed up the build.|
 |**Build Shared Library**|--build_shared_lib||
+|**Enable Training support**|--enable_training||
 
 #### APIs and Language Bindings
 
@@ -341,21 +342,21 @@ See more information on the OpenVINO Execution Provider [here](../reference/exec
 
 ##### Prerequisites
 
-1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2021.1** for the appropriate OS and target hardware :
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2021.2** for the appropriate OS and target hardware:
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
-   Follow [documentation](https://docs.openvinotoolkit.org/2021.1/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvinotoolkit.org/2021.2/index.html) for detailed instructions.
 
-  *2021.1 is the recommended OpenVINO version. [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is minimal OpenVINO version requirement.*
-  *The minimum ubuntu version to support 2021.1 is 18.04.*
+  *2021.2 is the recommended OpenVINO version. [OpenVINO 2020.3](https://docs.openvinotoolkit.org/2020.2/index.html) is minimal OpenVINO version requirement.*
+  *The minimum ubuntu version to support 2021.2 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2021.1/openvino_docs_install_guides_installing_openvino_linux_fpga.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2021.2/openvino_docs_install_guides_installing_openvino_linux_fpga.html)
 
 3. Initialize the OpenVINO environment by running the setupvars script as shown below:
    * For Linux run:
@@ -376,18 +377,20 @@ See more information on the OpenVINO Execution Provider [here](../reference/exec
 
 ##### Build Instructions
 ###### Windows
+
 ```
-.\build.bat --config RelWithDebInfo --use_openvino <hardware_option>
+.\build.bat --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib
 ```
+
 *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`*
 
 ###### Linux
-```
-./build.sh --config RelWithDebInfo --use_openvino <hardware_option>
+
+```bash
+./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib
 ```
 
-   <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
-
+* `--use_openvino` builds the OpenVINO Execution Provider in ONNX Runtime.
 * `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider.md](../reference/execution-providers/OpenVINO-ExecutionProvider.md) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
 | Hardware Option | Target Device |
@@ -598,10 +601,11 @@ The Batch Normalization operator is set by default to use the CPU execution prov
 ./build.sh --use_armnn --armnn_bn
 ```
 
-To use a library outside the normal environment you can set a custom path by using --armnn_home and --armnn_libs tags that defines the path to the ArmNN home directory and the build directory respectively.
+To use a library outside the normal environment you can set a custom path by providing the --armnn_home and --armnn_libs parameters to define the path to the ArmNN home directory and build directory respectively. 
+The ARM Compute Library home directory and build directory must also be available, and can be specified if needed using --acl_home and --acl_libs respectively.
 
 ```bash
-./build.sh --use_armnn --armnn_home /path/to/ComputeLibrary --armnn_libs /path/to/build
+./build.sh --use_armnn --armnn_home /path/to/armnn --armnn_libs /path/to/armnn/build  --acl_home /path/to/ComputeLibrary --acl_libs /path/to/acl/build
 ```
 
 ---
@@ -736,14 +740,17 @@ ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
 ---
 
 ### Architectures
-#### x86
+#### 64-bit x86 
+
+Also known as [x86_64](https://en.wikipedia.org/wiki/X86-64) or AMD64. This is the default.
+
+#### 32-bit x86
 ##### Build Instructions
 ###### Windows
 * add `--x86` argument when launching `.\build.bat`
 
 ###### Linux
-* Must be built on a x86 OS
-* add --x86 argument to build.sh
+(Not officially supported)
 
 ---
 
@@ -1231,8 +1238,31 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ---
 
 ## Training
+### CPU
 
-### CUDA
+#### Build Instructions
+
+To build ORT with training support add `--enable_training` build instruction.
+
+All other build options are the same for inferencing as they are for training.
+
+##### Windows
+
+```
+.\build.bat --config RelWithDebInfo --build_shared_lib --parallel --enable_training
+```
+
+The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing
+`--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
+
+
+##### Linux/macOS
+
+```
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --enable_training
+```
+
+### GPU / CUDA
 #### Prerequisites
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
@@ -1267,7 +1297,7 @@ These dependency versions should reflect what is in [Dockerfile.training](https:
 
     This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
 
-### ROCM
+### GPU / ROCM
 #### Prerequisites
 
 The default AMD GPU build requires ROCM software toolkit installed on the system:
@@ -1288,3 +1318,18 @@ These dependency versions should reflect what is in [Dockerfile.training](./dock
    * Run `./build.sh --config RelWithDebInfo --enable_training --build_wheel --use_rocm --rocm_home /opt/rocm --nccl_home /opt/rocm --mpi_home <location for openmpi>`
 
     This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
+
+### DNNL and MKLML
+
+#### Build Instructions
+##### Linux
+
+`./build.sh --enable_training --use_dnnl`
+
+##### Windows
+
+`.\build.bat --enable_training --use_dnnl`
+
+Add `--build_wheel` to build the ONNX Runtime wheel
+
+This will produce a .whl file in `build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training
