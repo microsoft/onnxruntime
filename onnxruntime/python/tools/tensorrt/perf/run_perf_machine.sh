@@ -12,7 +12,7 @@ done
 # Variables
 PERF_DIR=/home/hcsuser/perf/
 
-# Select models to be tested
+# Select models to be tested or run selected-models 
 if [ $OPTION == "onnx-zoo-models" ]
 then 
     MODEL_PATH='model.json'
