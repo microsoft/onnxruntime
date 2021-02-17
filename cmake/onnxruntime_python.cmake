@@ -198,9 +198,6 @@ file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_quantization_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/quantization/*.py"
 )
-file(GLOB onnxruntime_python_quantization_test_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/test/python/quantization/*.py"
-)
 file(GLOB onnxruntime_python_checkpoint_test_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/python/checkpoint/*.py"
 )
