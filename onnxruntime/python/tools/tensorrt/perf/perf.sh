@@ -36,7 +36,7 @@ download_files() {
 
 setup() {
     cd $PERF_DIR
-    #cleanup_files
+    cleanup_files
     download_files
 }
 
