@@ -124,8 +124,8 @@ class WindowsEnv : public Env {
     // upwards.  The format of the affinity vectors comes from when
     // ORT would create the entire thread pool (N) rather than the
     // current approach (N-1)
-    if (!p->thread_options.affinity.empty())
-      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[0]);
+    if (!thread_options.affinity.empty())
+      SetThreadAffinityMask(GetCurrentThread(), thread_options.affinity[0]);
     return new WindowsThread(name_prefix, index, start_address, param, thread_options);
   }
 
