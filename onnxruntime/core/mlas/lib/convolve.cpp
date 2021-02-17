@@ -1215,11 +1215,11 @@ Return Value:
 
         int32_t TargetThreadCount;
         double Complexity = double(FilterCount) * double(OutputSize) * double(K);
-        
-        if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
-            TargetThreadCount = int32_t(Complexity / MLAS_SGEMM_THREAD_COMPLEXITY) + 1;
+
+        if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * MLAS_MAXIMUM_THREAD_COUNT)) {
+            TargetThreadCount = int32_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
         } else {
-            TargetThreadCount = MlasPlatform.MaximumThreadCount;
+            TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
         }
 
         int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);

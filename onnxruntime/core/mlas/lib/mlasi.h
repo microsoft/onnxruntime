@@ -626,9 +626,9 @@ extern "C" {
 // thread to perform additional work.
 //
 
-#define MLAS_SGEMM_THREAD_COMPLEXITY (64 * 1024)
-#define MLAS_DGEMM_THREAD_COMPLEXITY (64 * 1024)
-#define MLAS_QGEMM_THREAD_COMPLEXITY (64 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
+#define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
+#define MLAS_QGEMM_THREAD_COMPLEXITY                (64 * 1024)
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
@@ -717,7 +717,7 @@ struct MLAS_PLATFORM {
     uint32_t PreferredBufferAlignment;
     uint32_t MaximumThreadCount;
 #else
-    constexpr uint32_t MaximumThreadCount = 16;
+    constexpr uint32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
 };
 

@@ -1330,10 +1330,11 @@ Return Value:
     //
 
     const double Complexity = double(M) * double(N) * double(K);
+
     int32_t TargetThreadCount;
 
     if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
-        TargetThreadCount = int32_t(Complexity / MLAS_SGEMM_THREAD_COMPLEXITY) + 1;
+        TargetThreadCount = int32_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
     } else {
         TargetThreadCount = MlasPlatform.MaximumThreadCount;
     }

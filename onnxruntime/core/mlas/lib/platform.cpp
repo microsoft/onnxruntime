@@ -144,7 +144,7 @@ Return Value:
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 
-    this->MaximumThreadCount = 16;
+    this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 
 #endif
 
@@ -229,7 +229,7 @@ Return Value:
                 //
 
                 if ((Cpuid7[3] & 0x8000) != 0) {
-                    this->MaximumThreadCount = 64;
+                    this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT * 4;
                 }
 
                 //
