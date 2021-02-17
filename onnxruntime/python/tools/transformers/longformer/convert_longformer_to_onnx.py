@@ -1,9 +1,9 @@
 # Before running this script, please run "python setup.py install" in ../torch_extensions to build longformer_attention.cpp
 # under a python environment with PyTorch installed. Then you can update the path of longformer_attention.cpython-*.so
 # and run this script in same environment.
-# Conversion tested in Ubuntu 18.04 in WSL (Windows Subsystem for Linux), python 3.6, onnxruntime 1.5.2, PyTorch 1.6.0+cpu, transformers 3.0.2
+# Tested in Ubuntu 18.04, python 3.6, PyTorch 1.7.1, transformers 4.3.0.
 # GPU is not needed for this script. You can run it in CPU.
-# For inference of the onnx model, you will need onnxruntime-gpu 1.6.0 (or nightly build).
+# For inference of the onnx model, you will need latest onnxruntime-gpu 1.7.0 or above.
 
 import torch
 import numpy as np
@@ -109,6 +109,43 @@ example_outputs = model(input_ids, attention_mask=attention_mask, global_attenti
 
 
 # A new function to replace LongformerSelfAttention.forward
+#For transformer 4.3
+def my_longformer_self_attention_forward_4_3(self,
+                                             hidden_states,
+                                             attention_mask=None,
+                                             is_index_masked=None,
+                                             is_index_global_attn=None,
+                                             is_global_attn=None,
+                                             output_attentions=False):
+    # TODO: move mask calculation to LongFormerModel class to avoid calculating it again and again in each layer.
+    global_mask = is_index_global_attn.int()
+    torch.masked_fill(attention_mask, is_index_global_attn, 0.0)
+
+    weight = torch.stack(
+        (self.query.weight.transpose(0, 1), self.key.weight.transpose(0, 1), self.value.weight.transpose(0, 1)), dim=1)
+    weight = weight.reshape(self.embed_dim, 3 * self.embed_dim)
+
+    bias = torch.stack((self.query.bias, self.key.bias, self.value.bias), dim=0)
+    bias = bias.reshape(3 * self.embed_dim)
+
+    global_weight = torch.stack((self.query_global.weight.transpose(0, 1), self.key_global.weight.transpose(
+        0, 1), self.value_global.weight.transpose(0, 1)),
+                                dim=1)
+    global_weight = global_weight.reshape(self.embed_dim, 3 * self.embed_dim)
+
+    global_bias = torch.stack((self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0)
+    global_bias = global_bias.reshape(3 * self.embed_dim)
+
+    attn_output = torch.ops.onnxruntime.LongformerAttention(hidden_states, weight, bias, attention_mask, global_weight,
+                                                            global_bias, global_mask, self.num_heads,
+                                                            self.one_sided_attn_window_size)
+
+    assert attn_output.size() == hidden_states.size(), "Unexpected size"
+
+    outputs = (attn_output, )
+    return outputs
+
+
 #For transformers 4.0
 def my_longformer_self_attention_forward_4(self,
                                            hidden_states,
@@ -181,6 +218,23 @@ def my_longformer_attention_forward_3(self, hidden_states, attention_mask, outpu
 
 
 # Here we replace LongformerSelfAttention.forward using our implmentation for exporting ONNX model
+from transformers.modeling_longformer import LongformerSelfAttention
+key = ' '.join(inspect.getfullargspec(LongformerSelfAttention.forward).args)
+args_to_func = {
+    'self hidden_states attention_mask is_index_masked is_index_global_attn is_global_attn output_attentions':
+    my_longformer_self_attention_forward_4_3,
+    'self hidden_states attention_mask is_index_masked is_index_global_attn is_global_attn':
+    my_longformer_self_attention_forward_4,
+    'self hidden_states attention_mask output_attentions': my_longformer_self_attention_forward_3,
+}
+
+if key not in args_to_func:
+    raise RuntimeError(
+        "LongformerSelfAttention.forward arguments are different. Please install supported version (like 4.3.0) of transformers package."
+    )
+
+LongformerSelfAttention.forward = args_to_func[key]
+"""
 if version.parse(transformers.__version__) < version.parse("4.0.0"):
     from transformers.modeling_longformer import LongformerSelfAttention
     #original_forward = LongformerSelfAttention.forward
@@ -189,6 +243,7 @@ else:
     from transformers.models.longformer.modeling_longformer import LongformerSelfAttention
     #original_forward = LongformerSelfAttention.forward
     LongformerSelfAttention.forward = my_longformer_self_attention_forward_4
+"""
 
 # TODO: support more inputs like (input_ids, attention_mask, global_attention_mask, token_type_ids, position_ids)
 example_inputs = (input_ids, attention_mask, global_attention_mask)

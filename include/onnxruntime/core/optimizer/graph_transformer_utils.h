@@ -25,7 +25,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
     If transformers_and_rules_to_enable is not empty, it returns the intersection between the predefined transformers/rules 
     and the transformers_and_rules_to_enable. */
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
-                                                                    gsl::span<const FreeDimensionOverride> free_dimension_overrides,
+                                                                    const SessionOptions& session_options,
                                                                     const IExecutionProvider& execution_provider /*required by constant folding*/,
                                                                     const std::vector<std::string>& rules_and_transformers_to_enable = {});
 
