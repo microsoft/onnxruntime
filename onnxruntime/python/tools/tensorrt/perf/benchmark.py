@@ -374,17 +374,17 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
             ref_output = ref_outputs[j]
             output = outputs[j]
 
-            try: 
-                # Compare the results with reference outputs
-                for ref_o, o in zip(ref_output, output):
-                    # abs(desired-actual) < rtol * abs(desired) + atol
+            # Compare the results with reference outputs
+            for ref_o, o in zip(ref_output, output):
+                # abs(desired-actual) < rtol * abs(desired) + atol
+                try: 
                     np.testing.assert_allclose(ref_o, o, rtol, atol)
-            except Exception as e:
-                logger.info(e)
-                if percentage_in_allowed_threshold(e, percent_mismatch):    
-                    continue
-                logger.error(e)
-                return False, e
+                except Exception as e:
+                    logger.info(e)
+                    if percentage_in_allowed_threshold(e, percent_mismatch):    
+                        continue
+                    logger.error(e)
+                    return False, e
 
     logger.info('ONNX Runtime outputs are similar to reference outputs!')
     return True, None
@@ -743,10 +743,7 @@ def parse_models_info_from_directory(path, models):
     if test_data_dir:
         model_name = os.path.split(path)[-1]
         model_name = model_name + '_' + os.path.split(os.path.split(path)[0])[-1] # get opset version as model_name
-        model_path = find_model_path(path) if model_name != "test_resnet34v2_opset7" else None
-        if not model_path:
-            logger.info("Can't find model in " + path)
-            return
+        model_path = find_model_path(path):
 
         model = {}
         model["model_name"] = model_name
