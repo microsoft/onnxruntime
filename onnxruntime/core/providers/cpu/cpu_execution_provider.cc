@@ -13,7 +13,7 @@
 #include "featurizers_ops/cpu/cpu_featurizers_kernels.h"
 #endif
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "orttraining/training_ops/cpu/cpu_training_kernels.h"
 #endif
 
@@ -1840,7 +1840,7 @@ static Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
 #ifdef ML_FEATURIZERS
   ORT_RETURN_IF_ERROR(::onnxruntime::featurizers::RegisterCpuMSFeaturizersKernels(kernel_registry));
 #endif
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::RegisterCpuTrainingKernels(kernel_registry));
 #endif
   return Status::OK();

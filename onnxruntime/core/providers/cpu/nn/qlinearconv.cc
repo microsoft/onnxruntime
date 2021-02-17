@@ -293,11 +293,12 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       // Weight tensor was not constant or prepacking is disabled.
       reordered_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * W_shape.Size()));
       reordered_W_buffer = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
-      ReorderFilter(static_cast<const uint8_t*>(W->DataRaw()),
-                    reordered_W,
-                    static_cast<size_t>(M),
-                    static_cast<size_t>(W_shape[1]),
-                    static_cast<size_t>(kernel_size));
+      ReorderFilter(
+          static_cast<const uint8_t*>(W->DataRaw()),
+          reordered_W,
+          static_cast<size_t>(M),
+          static_cast<size_t>(W_shape[1]),
+          static_cast<size_t>(kernel_size));
     }
   }
 
@@ -342,10 +343,17 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   }
 
   BufferUniquePtr col_buffer;
+  std::vector<uint8_t> padding_data;
 
-  // Pointwise convolutions can use the original input tensor in place,
-  // otherwise a temporary buffer is required for the im2col transform.
-  if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
+  if (is_depthwise_conv) {
+    // Allocate indirection buffer pointers and prepare a padding vector for
+    // the im2col transform.
+    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(const uint8_t*)) * kernel_size * output_image_size);
+    col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+    padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
+  } else if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
+    // Pointwise convolutions can use the original input tensor in place,
+    // otherwise a temporary buffer is required for the im2col transform.
     int64_t group_col_buffer_size = (kernel_rank > 2) ? group_count * col_buffer_size : col_buffer_size;
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * group_col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
@@ -383,33 +391,32 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
     if (!channels_last_) {
       // Transpose the input from channels first (NCHW) to channels last (NHWC).
-      MlasTranspose(Xdata,
-                    static_cast<uint8_t*>(transpose_input_buffer.get()),
-                    static_cast<size_t>(C),
-                    static_cast<size_t>(input_image_size));
+      MlasTranspose(
+          Xdata,
+          static_cast<uint8_t*>(transpose_input_buffer.get()),
+          static_cast<size_t>(C),
+          static_cast<size_t>(input_image_size));
       input_data = static_cast<uint8_t*>(transpose_input_buffer.get());
       output_data = static_cast<uint8_t*>(transpose_output_buffer.get());
     }
 
-    if (col_buffer) {
-      if (kernel_rank > 2) {
-        // Threaded implementation of ND convolution is not yet supported, so
-        // prepare all im2col transformations here.
-        for (int64_t group_id = 0; group_id < group_count; ++group_id) {
-          math::Im2col<uint8_t, StorageOrder::NHWC>()(
-              input_data + group_id * group_input_channels,
-              group_input_channels,
-              C,
-              input_shape.GetDims().data(),
-              output_shape.GetDims().data(),
-              kernel_shape.data(),
-              strides.data(),
-              dilations.data(),
-              pads.data(),
-              static_cast<int64_t>(kernel_rank),
-              static_cast<uint8_t*>(col_buffer.get()) + group_id * col_buffer_size,
-              X_zero_point_value);
-        }
+    // Threaded implementation of ND convolution is not yet supported, so
+    // prepare all im2col transformations here.
+    if (!is_depthwise_conv && col_buffer && kernel_rank > 2) {
+      for (int64_t group_id = 0; group_id < group_count; ++group_id) {
+        math::Im2col<uint8_t, StorageOrder::NHWC>()(
+            input_data + group_id * group_input_channels,
+            group_input_channels,
+            C,
+            input_shape.GetDims().data(),
+            output_shape.GetDims().data(),
+            kernel_shape.data(),
+            strides.data(),
+            dilations.data(),
+            pads.data(),
+            static_cast<int64_t>(kernel_rank),
+            static_cast<uint8_t*>(col_buffer.get()) + group_id * col_buffer_size,
+            X_zero_point_value);
       }
     }
 
@@ -421,134 +428,144 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       auto* worker_gemm_output = gemm_output + output_start * M;
       auto* worker_requantize_output = output_data + output_start * M;
 
-      for (int64_t group_id = 0; group_id < group_count; ++group_id) {
-        // Prepare the im2col transformation or use the input buffer directly for
-        // pointwise convolutions.
-        const uint8_t* worker_gemm_input;
-        if (col_buffer) {
-          auto* worker_col_buffer = static_cast<uint8_t*>(col_buffer.get()) + output_start * kernel_dim;
-          if (kernel_rank == 2) {
-            math::Im2col<uint8_t, StorageOrder::NHWC>()(
-                input_data + group_id * group_input_channels,
-                group_input_channels,
-                C,
-                input_shape[0],
-                input_shape[1],
-                kernel_shape[0],
-                kernel_shape[1],
-                dilations[0],
-                dilations[1],
-                pads[0],
-                pads[1],
-                strides[0],
-                strides[1],
-                output_shape[1],
-                output_start,
-                output_count,
-                worker_col_buffer,
-                X_zero_point_value);
-          } else if (kernel_rank == 1) {
-            math::Im2col<uint8_t, StorageOrder::NHWC>()(
-                input_data + group_id * group_input_channels,
-                group_input_channels,
-                C,
-                1,
-                input_shape[0],
-                1,
-                kernel_shape[0],
-                1,
-                dilations[0],
-                0,
-                pads[0],
-                1,
-                strides[0],
-                output_shape[0],
-                output_start,
-                output_count,
-                worker_col_buffer,
-                X_zero_point_value);
+      if (is_depthwise_conv) {
+        auto* worker_col_buffer = static_cast<uint8_t const**>(col_buffer.get()) + output_start * kernel_size;
+        math::Im2col<uint8_t, StorageOrder::NHWC>()(
+            input_data,
+            C,
+            input_shape.GetDims().data(),
+            output_shape.GetDims().data(),
+            kernel_shape.data(),
+            strides.data(),
+            dilations.data(),
+            pads.data(),
+            static_cast<ptrdiff_t>(kernel_rank),
+            output_start,
+            output_count,
+            worker_col_buffer,
+            padding_data.data());
+        MlasConvDepthwise(
+            worker_col_buffer,
+            X_zero_point_value,
+            reordered_W,
+            W_zero_point_value,
+            is_W_signed,
+            worker_gemm_output,
+            static_cast<size_t>(M),
+            static_cast<size_t>(output_count),
+            static_cast<size_t>(kernel_size));
+      } else {
+        for (int64_t group_id = 0; group_id < group_count; ++group_id) {
+          // Prepare the im2col transformation or use the input buffer directly for
+          // pointwise convolutions.
+          const uint8_t* worker_gemm_input;
+          if (col_buffer) {
+            auto* worker_col_buffer = static_cast<uint8_t*>(col_buffer.get()) + output_start * kernel_dim;
+            if (kernel_rank == 2) {
+              math::Im2col<uint8_t, StorageOrder::NHWC>()(
+                  input_data + group_id * group_input_channels,
+                  group_input_channels,
+                  C,
+                  input_shape[0],
+                  input_shape[1],
+                  kernel_shape[0],
+                  kernel_shape[1],
+                  dilations[0],
+                  dilations[1],
+                  pads[0],
+                  pads[1],
+                  strides[0],
+                  strides[1],
+                  output_shape[1],
+                  output_start,
+                  output_count,
+                  worker_col_buffer,
+                  X_zero_point_value);
+            } else if (kernel_rank == 1) {
+              math::Im2col<uint8_t, StorageOrder::NHWC>()(
+                  input_data + group_id * group_input_channels,
+                  group_input_channels,
+                  C,
+                  1,
+                  input_shape[0],
+                  1,
+                  kernel_shape[0],
+                  1,
+                  dilations[0],
+                  0,
+                  pads[0],
+                  1,
+                  strides[0],
+                  output_shape[0],
+                  output_start,
+                  output_count,
+                  worker_col_buffer,
+                  X_zero_point_value);
+            } else {
+              // Use the im2col buffer prepared outside the thread, indexed by group.
+              worker_col_buffer += group_id * col_buffer_size;
+            }
+            worker_gemm_input = worker_col_buffer;
           } else {
-            // Use the im2col buffer prepared outside the thread, indexed by group.
-            worker_col_buffer += group_id * col_buffer_size;
+            worker_gemm_input = input_data + output_start * kernel_dim;
           }
-          worker_gemm_input = worker_col_buffer;
-        } else {
-          worker_gemm_input = input_data + output_start * kernel_dim;
-        }
 
-        if (is_depthwise_conv) {
-          if (is_W_signed) {
-            MlasConvDepthwise(worker_gemm_input,
-                              X_zero_point_value,
-                              reinterpret_cast<int8_t*>(reordered_W),
-                              static_cast<int8_t>(W_zero_point_value),
-                              worker_gemm_output,
-                              static_cast<size_t>(M),
-                              static_cast<size_t>(output_count),
-                              static_cast<size_t>(kernel_size));
-          } else {
-            MlasConvDepthwise(worker_gemm_input,
-                              X_zero_point_value,
-                              reordered_W,
-                              W_zero_point_value,
-                              worker_gemm_output,
-                              static_cast<size_t>(M),
-                              static_cast<size_t>(output_count),
-                              static_cast<size_t>(kernel_size));
-          }
-        } else {
 #ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
           if (packed_W_buffer_) {
-            MlasGemm(static_cast<size_t>(output_count),
-                     static_cast<size_t>(group_output_channels),
-                     static_cast<size_t>(kernel_dim),
-                     worker_gemm_input,
-                     static_cast<size_t>(kernel_dim),
-                     X_zero_point_value,
-                     static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
-                     W_zero_point_value,
-                     is_W_signed,
-                     worker_gemm_output + group_id * group_output_channels,
-                     static_cast<size_t>(M),
-                     nullptr);
+            MlasGemm(
+                static_cast<size_t>(output_count),
+                static_cast<size_t>(group_output_channels),
+                static_cast<size_t>(kernel_dim),
+                worker_gemm_input,
+                static_cast<size_t>(kernel_dim),
+                X_zero_point_value,
+                static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
+                W_zero_point_value,
+                is_W_signed,
+                worker_gemm_output + group_id * group_output_channels,
+                static_cast<size_t>(M),
+                nullptr);
           } else
 #endif
           {
-            MlasGemm(static_cast<size_t>(output_count),
-                     static_cast<size_t>(group_output_channels),
-                     static_cast<size_t>(kernel_dim),
-                     worker_gemm_input,
-                     static_cast<size_t>(kernel_dim),
-                     X_zero_point_value,
-                     reordered_W + group_id * group_output_channels,
-                     static_cast<size_t>(M),
-                     W_zero_point_value,
-                     is_W_signed,
-                     worker_gemm_output + group_id * group_output_channels,
-                     static_cast<size_t>(M),
-                     nullptr);
+            MlasGemm(
+                static_cast<size_t>(output_count),
+                static_cast<size_t>(group_output_channels),
+                static_cast<size_t>(kernel_dim),
+                worker_gemm_input,
+                static_cast<size_t>(kernel_dim),
+                X_zero_point_value,
+                reordered_W + group_id * group_output_channels,
+                static_cast<size_t>(M),
+                W_zero_point_value,
+                is_W_signed,
+                worker_gemm_output + group_id * group_output_channels,
+                static_cast<size_t>(M),
+                nullptr);
           }
         }
       }
 
-      MlasRequantizeOutput(worker_gemm_output,
-                           worker_requantize_output,
-                           Bdata,
-                           static_cast<size_t>(output_count),
-                           static_cast<size_t>(M),
-                           output_scales.data(),
-                           output_scales.size() > 1,
-                           Y_zero_point_value);
+      MlasRequantizeOutput(
+          worker_gemm_output,
+          worker_requantize_output,
+          Bdata,
+          static_cast<size_t>(output_count),
+          static_cast<size_t>(M),
+          output_scales.data(),
+          output_scales.size() > 1,
+          Y_zero_point_value);
     };
 
     concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, thread_count, conv_worker);
 
     if (!channels_last_) {
       // Transpose the output from channels last (NHWC) to channels first (NCHW).
-      MlasTranspose(output_data,
-                    Ydata,
-                    static_cast<size_t>(output_image_size),
-                    static_cast<size_t>(M));
+      MlasTranspose(
+          output_data,
+          Ydata,
+          static_cast<size_t>(output_image_size),
+          static_cast<size_t>(M));
     }
 
     Xdata += X_offset;
