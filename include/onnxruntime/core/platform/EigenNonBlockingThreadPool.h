@@ -131,39 +131,48 @@ namespace onnxruntime {
 namespace concurrency {
 
 class Profiler {
-  bool profiling_ = false;
+  bool enabled_ = false;
+  std::thread::id thread_id_;
   std::list<std::string> events_;
   std::list<onnxruntime::TimePoint> points_;
-
  public:
   Profiler() = default;
   ~Profiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
   using CLOCK = std::chrono::high_resolution_clock;
-  operator bool() const { return profiling_; }
+  operator bool() const {
+    return enabled_ && std::this_thread::get_id() == thread_id_;
+  }
   void Start() {
-    profiling_ = true;
+    enabled_ = true;
+    thread_id_ = std::this_thread::get_id();
   }
   std::string Stop() {
-    profiling_ = false;
-    std::stringstream ss;
-    std::copy(events_.begin(), events_.end(), std::ostream_iterator<std::string>(ss, ", "));
-    events_.clear();
-    return ss.str();
+    if (*this) {
+      enabled_ = false;
+      thread_id_ = std::thread::id{};
+      std::stringstream ss;
+      std::copy(events_.begin(), events_.end(), std::ostream_iterator<std::string>(ss, ", "));
+      events_.clear();
+      points_.clear();
+      return ss.str();
+    } else {
+      return "";
+    }
   }
   void LogStart() {
-    if (profiling_) {
+    if (*this) {
       points_.emplace_back(CLOCK::now());
     }
   }
   void LogEnd(std::string&& evt) {
-    if (profiling_) {
+    if (*this) {
       events_.emplace_back(evt + ": " + std::to_string(TimeDiffMicroSeconds(points_.back(), CLOCK::now())));
       points_.pop_back();
     }
   }
   void LogEndAndStart(std::string&& evt) {
-    if (profiling_) {
+    if (*this) {
       events_.emplace_back(evt + ": " + std::to_string(TimeDiffMicroSeconds(points_.back(), CLOCK::now())));
       points_.pop_back();
       points_.emplace_back(CLOCK::now());
@@ -969,9 +978,7 @@ void SummonWorkers(PerThread &pt,
       unsigned w_idx;
       profiler_.LogStart();
       t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
-      if (profiler_) {
-        profiler_.LogEnd("PushBackWithTag" + std::to_string(q_idx));
-      }
+      profiler_.LogEnd("Enqueue");
       if (!t) {
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
