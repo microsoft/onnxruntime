@@ -22,37 +22,30 @@ parameters:
 - name: EnvSetupScript
   displayName: Package name for nuget
   type: string
-  default: 'Microsoft.ML.OnnxRuntime'
 
 - name: buildArch
   displayName: Package name for nuget
   type: string
-  default: 'Microsoft.ML.OnnxRuntime'
 
 - name: msbuildPlatform
   displayName: Package name for nuget
   type: string
-  default: 'Microsoft.ML.OnnxRuntime'
 
 - name: packageName
   displayName: Package name for nuget
   type: string
-  default: 'Microsoft.ML.OnnxRuntime'
 
 - name: buildparameter
   displayName: Package name for nuget
   type: string
-  default: 'Microsoft.ML.OnnxRuntime'
 
 - name: runTests
-  displayName: Package name for nuget
-  type: string
-  default: 'Microsoft.ML.OnnxRuntime'
+  type: boolean
+  default: true
 
 - name: buildJava
-  displayName: Package name for nuget
-  type: string
-  default: 'Microsoft.ML.OnnxRuntime'
+  type: boolean
+  default: true
 
 - name: job_name_suffix
   displayName: job name for nuget
@@ -62,7 +55,12 @@ parameters:
 - name: ort_build_pool_name
   displayName: job name for nuget
   type: string
-  default: 'Win-CPU-2019'
+  default: 'Win-CPU-2021'
+
+#'onnxruntime' or 'onnxruntime_gpu'
+- name: java_artifact_id
+  type: string
+  default: 'onnxruntime'
 
 jobs:
 - job: Windows_Packaging_CPU_${{ parameters.job_name_suffix }}
@@ -95,12 +93,11 @@ jobs:
        $Env:ONNX_ML=1
        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
        python setup.py bdist_wheel
-       python -m pip uninstall -y onnx
+       python -m pip uninstall -y onnx -qq
        Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'      
       displayName: 'Install ONNX'    
 
-    - template: set-test-data-variables-step.yml
     - template: set-version-number-variables-step.yml
 
     - task: PythonScript@0
@@ -182,7 +179,7 @@ jobs:
           echo "Directories created"
           copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
           pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-          set artifact_id=onnxruntime
+          set artifact_id=${{ parameters.java_artifact_id }}
           jar xf onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
           move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-$(OnnxRuntimeVersion).pom
           rd /s /q META-INF

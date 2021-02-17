@@ -44,11 +44,11 @@ optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& 
   }
 
   float scalar{};
-  utils::MLTypeCallDispatcherRet<
-      Status, ExtractScalarAsFloatDispatchTarget,
+  utils::MLTypeCallDispatcher<
       uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>
       dispatcher{initializer->data_type()};
-  ORT_THROW_IF_ERROR(dispatcher.Invoke(*initializer, graph.ModelPath(), scalar));
+  ORT_THROW_IF_ERROR(
+      (dispatcher.InvokeRet<Status, ExtractScalarAsFloatDispatchTarget>(*initializer, graph.ModelPath(), scalar)));
 
   return {scalar};
 }

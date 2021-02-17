@@ -16,8 +16,6 @@ jobs:
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
   steps:
-  - template: set-test-data-variables-step.yml
-  - template: linux-set-variables-and-download.yml
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Signed NuGet'

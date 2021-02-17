@@ -203,9 +203,9 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
 
   const void* const kernel_input_data = input_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
-  utils::MLTypeCallDispatcher<GatherNDComputeImpl, GATHER_ND_T_DATA_TYPES>
-      t_disp(input_tensor->GetElementType());
-  t_disp.Invoke(Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
+  utils::MLTypeCallDispatcher<GATHER_ND_T_DATA_TYPES> t_disp(input_tensor->GetElementType());
+  t_disp.Invoke<GatherNDComputeImpl>(
+      Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
 
   return Status::OK();
 }
