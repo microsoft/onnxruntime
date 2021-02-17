@@ -245,25 +245,6 @@ Return Value:
                 unsigned Cpuid7_1[4];
 #if defined(_WIN32)
                 __cpuidex((int*)Cpuid7_1, 7, 1);
-#else  
-                __cpuid_count(7, 1, Cpuid7_1[0], Cpuid7_1[1], Cpuid7_1[2], Cpuid7_1[3]);
-#endif
-
-                if ((Cpuid7_1[0] & 0x10) != 0) {
-
-                    this->GemmU8U8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
-                    this->GemmU8U8PackedOperation = MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
-                    this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
-                    this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
-                }
-
-                //
-                // Check if the processor supports AVXVNNI features.
-                //
-
-                unsigned Cpuid7_1[4];
-#if defined(_WIN32)
-                __cpuidex((int*)Cpuid7_1, 7, 1);
 #else
                 __cpuid_count(7, 1, Cpuid7_1[0], Cpuid7_1[1], Cpuid7_1[2], Cpuid7_1[3]);
 #endif
