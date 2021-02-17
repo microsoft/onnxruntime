@@ -27,10 +27,6 @@ For an overview, see this [installation matrix](https://onnxruntime.ai).
     * Run `locale-gen en_US.UTF-8`
     * Run `update-locale LANG=en_US.UTF-8`
 
-2. OpenMP
-
-   * `apt-get install libgomp1`, which installs **libgomp.so.1**
-
 ### Linux / GPU
 
 1. English language package with the `en_US.UTF-8` locale
@@ -41,17 +37,14 @@ For an overview, see this [installation matrix](https://onnxruntime.ai).
 
 2. CUDA 10.2 and cuDNN 8.0.3
 
-    * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
-
+    * Version dependencies for older ONNX Runtime releases can be found [here](https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#Version-Dependency)
 ### Windows / CPU
 
 1. English language package with the `en_US.UTF-8` locale
 
 2. [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
 
-3. OpenMP
-    * Comes installed with Visual C++ runtime
-    * Or is also available as redist packages [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
+
   
 ### Windows / GPU
 
@@ -59,12 +52,12 @@ For an overview, see this [installation matrix](https://onnxruntime.ai).
 
 2. [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
 
-3. CUDA 10.2** and cuDNN 8.0.3
-    * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
+3. CUDA 10.2 and cuDNN 8.0.3
+   * Version dependencies for older ONNX Runtime releases can be found [here](https://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#Version-Dependency)
 
 ### MacOS / CPU
 
-1. The system must have libomp.dylib which can be installed using ``brew install libomp`.
+1. The system must have libomp.dylib which can be installed using `brew install libomp`.
 
 ## Install
 
@@ -88,3 +81,8 @@ If using pip, run `pip install --upgrade pip` prior to downloading.
 ||These are not maintained by the core ONNX Runtime team and may have limited support; use at your discretion.|
 
 Note: Dev builds created from the master branch are available for testing newer changes between official releases. Please use these at your own risk. We strongly advise against deploying these to production workloads as support is limited for dev builds.
+
+## Docker Images
+
+* [ONNX-Ecosystem](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem): includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started
+* [Additional dockerfiles](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles)
