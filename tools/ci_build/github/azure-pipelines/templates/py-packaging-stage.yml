@@ -94,7 +94,6 @@ stages:
                   --parallel \
                   --enable_lto \
                   --build_wheel \
-                  --use_openmp \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
@@ -118,7 +117,7 @@ stages:
 
       - template: clean-agent-build-directory-step.yml
 
-    - job: Linux_py_Wheels_no_openmp
+    - job: Linux_py_Wheels_openmp
       timeoutInMinutes: 90
       workspace:
         clean: all
@@ -159,6 +158,8 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
+              -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+              -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
               onnxruntimecpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
@@ -167,8 +168,9 @@ stages:
                   --parallel \
                   --enable_lto \
                   --build_wheel \
+                  --use_openmp \
                   --enable_onnx_tests \
-                  --wheel_name_suffix=noopenmp \
+                  --wheel_name_suffix=openmp \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
@@ -225,7 +227,7 @@ stages:
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-g -O3" -e CXXFLAGS="-g -O3" --rm \
+            docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -268,7 +270,7 @@ stages:
       timeoutInMinutes: 180
       workspace:
         clean: all
-      pool: Linux-GPU-CUDA10
+      pool: Onnxruntime-Linux-GPU
       strategy:
         matrix:
           Python36:
@@ -289,19 +291,19 @@ stages:
 
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_gpu
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-t
             --build-arg BUILD_UID=$(id -u)
-          Repository: onnxruntimecuda11build
+          Repository: onnxruntimetraininggpubuild
 
       - task: CmdLine@2
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --rm --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-g -O3" -e CXXFLAGS="-g -O3" \
+            docker run --rm --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -310,7 +312,7 @@ stages:
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimecuda11build \
+              onnxruntimetraininggpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
@@ -320,7 +322,7 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                  --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0
+                  --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -343,7 +345,7 @@ stages:
 
   - ${{ if eq(parameters.enable_windows_cpu, true) }}:
     - job: Windows_py_Wheels
-      pool: 'Win-CPU-2019'
+      pool: 'Win-CPU-2021'
       strategy:
         matrix:
           Python36:
@@ -355,7 +357,6 @@ stages:
           Python39:
             PythonVersion: '3.9'
       variables:
-        OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat
@@ -399,7 +400,7 @@ stages:
           $Env:ONNX_ML=1
           $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
           python setup.py bdist_wheel
-          python -m pip uninstall -y onnx
+          python -m pip uninstall -y onnx -qq
           Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
         workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
         displayName: 'Install ONNX'
@@ -416,7 +417,6 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
             --enable_pybind
-            --use_openmp
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
@@ -471,8 +471,8 @@ stages:
         displayName: 'Clean Agent Directories'
         condition: always()
 
-    - job: Windows_py_Wheels_no_openmp
-      pool: 'Win-CPU-2019'
+    - job: Windows_py_Wheels_openmp
+      pool: 'Win-CPU-2021'
       strategy:
         matrix:
           Python36:
@@ -484,7 +484,6 @@ stages:
           Python39:
             PythonVersion: '3.9'
       variables:
-        OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat
@@ -528,7 +527,7 @@ stages:
           $Env:ONNX_ML=1
           $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
           python setup.py bdist_wheel
-          python -m pip uninstall -y onnx
+          python -m pip uninstall -y onnx -qq
           Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
         workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
         displayName: 'Install ONNX'
@@ -545,6 +544,7 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
             --enable_pybind
+            --use_openmp
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
@@ -563,7 +563,7 @@ stages:
         displayName: 'Build wheel'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\setup.py'
-          arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption) --wheel_name_suffix=noopenmp'
+          arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption) --wheel_name_suffix=openmp'
           workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
       - task: CopyFiles@2
@@ -601,6 +601,7 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
             --enable_pybind
+            --use_openmp
             --enable_onnx_tests
             --update
             --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON
@@ -656,7 +657,7 @@ stages:
       variables:
         CUDA_VERSION: '11.0'
         buildArch: x64
-        EnvSetupScript: setup_env_cuda.bat
+        EnvSetupScript: setup_env_cuda_11.bat
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
       strategy:
         matrix:
@@ -664,6 +665,10 @@ stages:
             PythonVersion: '3.6'
           Python37:
             PythonVersion: '3.7'
+          Python38:
+            PythonVersion: '3.8'
+          Python39:
+            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true
@@ -694,7 +699,7 @@ stages:
           $Env:ONNX_ML=1
           $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
           python setup.py bdist_wheel
-          python -m pip uninstall -y onnx
+          python -m pip uninstall -y onnx -qq
           Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
         workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
         displayName: 'Install ONNX'
@@ -786,7 +791,7 @@ stages:
             --parallel
             --use_cuda --cuda_version=$(CUDA_VERSION)
             --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
-            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v8.0.3.33\cuda"
+            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.2.39\cuda"
             $(TelemetryOption)
             --update
             --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON
@@ -857,8 +862,65 @@ stages:
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
           sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
+        displayName: 'Command Line Script'
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)/Release/dist'
+          Contents: '*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          ArtifactName: onnxruntime
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+    - job: MacOS_py_Wheels_openmp
+      workspace:
+        clean: all
+      pool:
+        vmImage: 'macOS-10.14'
+      strategy:
+        matrix:
+          Python36:
+            PythonVersion: '3.6'
+          Python37:
+            PythonVersion: '3.7'
+          Python38:
+            PythonVersion: '3.8'
+          Python39:
+            PythonVersion: '3.9'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - task: UsePythonVersion@0
+        displayName: 'Use Python'
+        inputs:
+          versionSpec: $(PythonVersion)
+
+      - script: |
+          set -e
+          pushd .
+          cd $(Build.SourcesDirectory)/cmake/external/protobuf
+          cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
+          make -j$(getconf _NPROCESSORS_ONLN)
+          make install
+          popd
+          export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
+          export ONNX_ML=1
+          export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+          sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+          sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
           brew install libomp
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }} --wheel_name_suffix=openmp
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2
@@ -885,6 +947,8 @@ stages:
       pool: 'Linux-CPU'
       strategy:
         matrix:
+          Py39:
+            PythonVersion: '3.9'
           Py38:
             PythonVersion: '3.8'
           Py37:
