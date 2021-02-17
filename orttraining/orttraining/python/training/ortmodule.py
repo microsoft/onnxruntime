@@ -436,8 +436,8 @@ class ORTModule(torch.nn.Module):
         dynamic_axes.update(output_dynamic_axes)
 
         # TODO: Support contrib OPs support? user model has no hint
-        # from onnxruntime.training import register_custom_ops_pytorch_exporter
-        # register_custom_ops_pytorch_exporter.register_custom_op()
+        from onnxruntime.training import register_custom_ops_pytorch_exporter
+        register_custom_ops_pytorch_exporter.register_custom_op()
 
         # Export torch.nn.Module to ONNX
         f = io.BytesIO()

@@ -613,3 +613,41 @@ def test_model_with_different_cuda_devices(device):
     model.to(device)
     x = torch.randn(N, D_in, device=device)
     model(x)
+
+def test_register_custom_ops_pytorch_exporter_tensor_triu():
+    class SimpleTensorTriuModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10)
+
+        def forward(self, x):
+            x = self.fc1(x)
+            mask = torch.ones_like(x).triu(diagonal=1)
+            x = x * mask
+            return x
+
+    model = SimpleTensorTriuModel()
+    model = ORTModule(model)
+    user_input = torch.ones(1, 10, 10)
+
+    output = model(user_input)
+    assert list(output.shape) ==  [1, 10, 10]
+
+def test_register_custom_ops_pytorch_exporter_torch_triu():
+    class SimpleTorchTriuModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = torch.nn.Linear(10, 10)
+
+        def forward(self, x):
+            x = self.fc1(x)
+            mask = torch.triu(torch.ones_like(x))
+            x = x * mask
+            return x
+
+    model = SimpleTorchTriuModel()
+    model = ORTModule(model)
+    user_input = torch.ones(1, 10, 10)
+
+    output = model(user_input)
+    assert list(output.shape) ==  [1, 10, 10]
