@@ -7,7 +7,7 @@ from enum import Enum
 
 
 def GenerateModel(model_name):
-    nodes = [  # SimplifiedLayerNorm subgraph
+    nodes = [  # LayerNormWithCast2 subgraph
         helper.make_node("ReduceMean", ["A"], ["rd1_out"], "reduce", axes=[-1]),
         helper.make_node("Sub", ["A", "rd1_out"], ["sub1_out"], "sub"),
         helper.make_node("Cast", ["pow_in_2"], ["cast_out"], "cast", to=10),
@@ -29,7 +29,7 @@ def GenerateModel(model_name):
 
     graph = helper.make_graph(
         nodes,
-        "SimplifiedLayerNorm",  #name
+        "LayerNormWithCast2",  #name
         [  # inputs
             helper.make_tensor_value_info('A', TensorProto.FLOAT16, [16, 32, 4]),
         ],
