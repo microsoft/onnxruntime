@@ -33,7 +33,7 @@ def _check_binary_size(path, readelf, threshold, os_str, arch, build_config):
             '{},{},{},{}\n'.format(os_str, arch, build_config, sections_total)
         ])
 
-    if sections_total > threshold:
+    if threshold is not None and sections_total > threshold:
         raise RuntimeError('Sections total size for {} of {} exceeds threshold of {} by {}. On-disk size={}'
                            .format(path, sections_total, threshold, sections_total - threshold, ondisk_size))
 
@@ -42,10 +42,9 @@ def main():
     argparser = argparse.ArgumentParser(description='Check the binary size for provided path and '
                                                     'create a text file for upload to the performance dashboard.')
 
-    # required
-    argparser.add_argument('-t', '--threshold', type=int, required=True,
-                           help='Return error if binary size exceeds this threshold.')
     # optional
+    argparser.add_argument('-t', '--threshold', type=int,
+                           help='Return error if binary size exceeds this threshold.')
     argparser.add_argument('-r', '--readelf_path', type=str, default='readelf', help='Path to readelf executable.')
     argparser.add_argument('--os', type=str, default='android',
                            help='OS value to include in binary_size_data.txt')

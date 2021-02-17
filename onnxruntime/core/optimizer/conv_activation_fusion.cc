@@ -101,6 +101,10 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     if (node->GetExecutionProviderType() == onnxruntime::kCudaExecutionProvider) {
+      if (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() != 
+          ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        continue;
+      }
       if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Relu", {6, 13})) {
         Node& conv_node = *node;
         Node& act_node = *graph.GetNode(next_node.Index());
