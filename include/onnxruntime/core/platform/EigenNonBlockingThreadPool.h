@@ -131,54 +131,24 @@ namespace onnxruntime {
 namespace concurrency {
 
 class Profiler {
-  bool enabled_ = false;
-  std::thread::id thread_id_;
-  std::list<std::string> events_;
-  std::list<onnxruntime::TimePoint> points_;
  public:
   Profiler() = default;
   ~Profiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
   using CLOCK = std::chrono::high_resolution_clock;
-  operator bool() const {
-    return enabled_ && std::this_thread::get_id() == thread_id_;
-  }
-  void Start() {
-    enabled_ = true;
-    thread_id_ = std::this_thread::get_id();
-  }
-  std::string Stop() {
-    if (*this) {
-      enabled_ = false;
-      thread_id_ = std::thread::id{};
-      std::stringstream ss;
-      std::copy(events_.begin(), events_.end(), std::ostream_iterator<std::string>(ss, ", "));
-      events_.clear();
-      points_.clear();
-      return ss.str();
-    } else {
-      return "";
-    }
-  }
-  void LogStart() {
-    if (*this) {
-      points_.emplace_back(CLOCK::now());
-    }
-  }
-  void LogEnd(std::string&& evt) {
-    if (*this) {
-      events_.emplace_back(evt + ": " + std::to_string(TimeDiffMicroSeconds(points_.back(), CLOCK::now())));
-      points_.pop_back();
-    }
-  }
-  void LogEndAndStart(std::string&& evt) {
-    if (*this) {
-      events_.emplace_back(evt + ": " + std::to_string(TimeDiffMicroSeconds(points_.back(), CLOCK::now())));
-      points_.pop_back();
-      points_.emplace_back(CLOCK::now());
-    }
-  }  // LogEndAndStart
-};  // Profiler
+  operator bool() const;
+  void Start();
+  std::string Stop();
+  void LogStart();
+  void LogEnd(std::string&& evt);
+  void LogEndAndStart(std::string&& evt);
+
+ private:
+  bool enabled_ = false;
+  std::thread::id thread_id_;
+  std::list<std::string> events_;
+  std::list<onnxruntime::TimePoint> points_;
+};
 
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;

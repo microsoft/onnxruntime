@@ -25,6 +25,45 @@ namespace onnxruntime {
 
 namespace concurrency {
 
+Profiler::operator bool() const {
+  return enabled_ && std::this_thread::get_id() == thread_id_;
+}
+void Profiler::Start() {
+  enabled_ = true;
+  thread_id_ = std::this_thread::get_id();
+}
+std::string Profiler::Stop() {
+  if (*this) {
+    enabled_ = false;
+    thread_id_ = std::thread::id{};
+    std::stringstream ss;
+    std::copy(events_.begin(), events_.end(), std::ostream_iterator<std::string>(ss, ", "));
+    events_.clear();
+    points_.clear();
+    return ss.str();
+  } else {
+    return "";
+  }
+}
+void Profiler::LogStart() {
+  if (*this) {
+    points_.emplace_back(CLOCK::now());
+  }
+}
+void Profiler::LogEnd(std::string&& evt) {
+  if (*this) {
+    events_.emplace_back(evt + ": " + std::to_string(TimeDiffMicroSeconds(points_.back(), CLOCK::now())));
+    points_.pop_back();
+  }
+}
+void Profiler::LogEndAndStart(std::string&& evt) {
+  if (*this) {
+    events_.emplace_back(evt + ": " + std::to_string(TimeDiffMicroSeconds(points_.back(), CLOCK::now())));
+    points_.pop_back();
+    points_.emplace_back(CLOCK::now());
+  }
+}
+
 // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
 // the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
 // to it), and it claims iterations via atomic operations on its home shard.  It then proceeds through the other
