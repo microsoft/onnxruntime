@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'trt722wingpu'
+  pool: 'Win-TRT'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
