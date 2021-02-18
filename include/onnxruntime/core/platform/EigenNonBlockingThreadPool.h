@@ -146,8 +146,8 @@ class Profiler {
  private:
   bool enabled_ = false;
   std::thread::id thread_id_;
-  std::list<std::string> events_;
-  std::list<onnxruntime::TimePoint> points_;
+  std::vector<std::string> events_;
+  std::vector<onnxruntime::TimePoint> points_;
 };
 
 class ThreadPoolParallelSection;
