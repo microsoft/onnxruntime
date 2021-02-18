@@ -47,8 +47,8 @@ def run_ortmodule_api_tests(cwd, log):
     # because ORTModule doesn't support multiple run call at the same time
     for test_name in plugin.collected:
         run_subprocess([
-            sys.executable, '-m', 'pytest',
-            'orttraining_test_ortmodule_api.py', '-sv', '-k', test_name], cwd=cwd).check_returncode()
+            sys.executable, '-m', 'pytest', '-sv',
+            'orttraining_test_ortmodule_api.py' + '::' + test_name], cwd=cwd).check_returncode()
 
 def run_ortmodule_poc_net(cwd, log, no_cuda, data_dir):
     log.debug('Running: ORTModule POCNet for MNIST with --no-cuda arg {}.'.format(no_cuda))
