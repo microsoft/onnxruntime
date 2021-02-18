@@ -142,11 +142,13 @@ struct OrtStatus {
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
 // TODO remove deprecated global config
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
+onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
 #endif
 // TODO remove deprecated global config
 OrtDevice::DeviceId cuda_device_id = 0;
@@ -227,7 +229,7 @@ using namespace onnxruntime::logging;
 
 static Env& platform_env = Env::Default();
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 // Custom op section starts
 
 CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so) {
@@ -275,7 +277,7 @@ void CustomOpLibrary::UnloadLibrary() {
 }
 
 // Custom op section ends
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 template <typename T>
 static void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs,
@@ -456,20 +458,7 @@ static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
   if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    // Use arena-based allocator
-    AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId id) {
-          return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
-        },
-        id,
-        true,
-        {cuda_mem_limit,
-         static_cast<int>(arena_extend_strategy),
-         -1, -1});
-
-    auto allocator = CreateAllocator(default_memory_info);
-
-    id_to_allocator_map.insert({id, allocator});
+    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, cuda_mem_limit, arena_extend_strategy, external_allocator_info)});
   }
 
   return id_to_allocator_map[id];
@@ -525,9 +514,14 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   info.arena_extend_strategy = arena_extend_strategy;
                   info.cudnn_conv_algo_search = cudnn_conv_algo_search;
                   info.do_copy_in_default_stream = do_copy_in_default_stream;
+                  info.external_allocator_info = external_allocator_info;
                   return info;
                 }();
 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
+      // since FromProviderOptions might contain external CUDA allocator.
+      external_allocator_info = info.external_allocator_info;
       RegisterExecutionProvider(
           sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(info));
 #endif
@@ -666,7 +660,7 @@ static void GenerateProviderOptionsMap(const std::vector<std::string>& providers
   }
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 static void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessionOptions& so) {
   if (!so.custom_op_domains_.empty()) {
     // Register all custom op domains that will be needed for the session
@@ -830,6 +824,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
                   info.arena_extend_strategy = arena_extend_strategy;
                   info.cudnn_conv_algo_search = cudnn_conv_algo_search;
                   info.do_copy_in_default_stream = do_copy_in_default_stream;
+                  info.external_allocator_info = external_allocator_info;
                   return info;
                 }()),
 #endif
@@ -851,7 +846,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(
-              [&]() {
+                [&]() {
                   TensorrtExecutionProviderInfo info{};
                   return info;
                 }()),
@@ -1593,7 +1588,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "register_custom_ops_library",
           [](PySessionOptions* options, const char* library_path)
               -> void {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
             // We need to pass in an `OrtSessionOptions` instance because the exported method in the shared library expects that
             // Once we have access to the `OrtCustomOpDomains` within the passed in `OrtSessionOptions` instance, we place it
             // into the container we are maintaining for that very purpose and the `ortSessionoptions` instance can go out of scope.
@@ -1735,7 +1730,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 #endif
         } else {
           sess = onnxruntime::make_unique<PyInferenceSession>(env, so);
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
           RegisterCustomOpDomainsAndLibraries(sess.get(), so);
 #endif
 
