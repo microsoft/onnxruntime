@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'Win-CPU-2019'
+  pool: 'Win-GPU-2019'
   strategy:
     maxParallel: 2
     matrix:
@@ -13,10 +13,11 @@ jobs:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    EnvSetupScript: setup_env_x86.bat
-    buildArch: x86
-    setVcvars: true    
-  timeoutInMinutes: 60
+    EnvSetupScript: setup_env_cuda.bat
+    buildArch: x64
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:    
@@ -34,7 +35,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy
+     python -m pip install -q pyopenssl setuptools wheel numpy flake8
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -44,7 +45,7 @@ jobs:
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
      python setup.py bdist_wheel
      python -m pip uninstall -y onnx -qq
-     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
+     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
     workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
     displayName: 'Install ONNX'
 
@@ -52,14 +53,14 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --disable_ml_ops  --enable_msvc_static_runtime --enable_onnx_tests --x86'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --build_shared_lib --build_java --enable_onnx_tests --use_dml --use_cuda --cuda_version=10.2 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2" --cudnn_home="C:\local\cudnn-10.2-windows10-x64-v8.0.3.33\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0'
       workingDirectory: '$(Build.BinariesDirectory)'
-     
+
   - task: VSBuild@1
     displayName: 'Build'
     inputs:
       solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-      platform: 'Win32'
+      platform: 'x64'
       configuration: $(BuildConfig)
       msbuildArgs: $(MsbuildArguments)
       msbuildArchitecture: $(buildArch)
@@ -75,13 +76,10 @@ jobs:
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
-  - template: templates/set-test-data-variables-step.yml
-
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
     inputs:
       versionSpec: 5.7.0
- 
 
   - task: DotNetCoreCLI@2
     displayName: 'Restore nuget packages'
@@ -101,19 +99,29 @@ jobs:
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+  - task: DotNetCoreCLI@2
+    displayName: 'Test C#'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
+    inputs:
+      command: test
+      projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
+      configuration: '$(BuildConfig)'          
+      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
   - script: |
      mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models  
      DIR dist\ /S /B > wheel_filename_file
      set /p WHEEL_FILENAME=<wheel_filename_file
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --disable_ml_ops --enable_msvc_static_runtime --enable_onnx_tests --x86
-   
+     set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --build_java --disable_rtti --build_shared_lib --enable_onnx_tests --use_dml --use_cuda --cuda_version=10.2 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2" --cudnn_home="C:\local\cudnn-10.2-windows10-x64-v8.0.3.33\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0
+
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
+ 
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
-
-  - template: templates/clean-agent-build-directory-step.yml

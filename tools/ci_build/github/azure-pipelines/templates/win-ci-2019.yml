@@ -14,7 +14,7 @@ parameters:
   sln_platform: 'x64' # Options: Win32, x64, arm, arm64
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
-  AgentPool: 'Win-CPU-2019'
+  AgentPool: 'Win-CPU-2021'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
@@ -128,7 +128,6 @@ jobs:
          @echo ##vso[task.setvariable variable=Configuration]$(BuildConfig)
         displayName: 'Set Configuration variable'
 
-    - template: set-test-data-variables-step.yml
 
     - ${{ if eq(parameters.BuildCSharp, true) }}:
       - task: NuGetToolInstaller@0

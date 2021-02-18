@@ -2,7 +2,6 @@ jobs:
 - job: Debug_Build
   pool: Linux-CPU
   steps:
-    - template: templates/set-test-data-variables-step.yml
 
     - task: CmdLine@2
       displayName: 'Clean untagged docker images'

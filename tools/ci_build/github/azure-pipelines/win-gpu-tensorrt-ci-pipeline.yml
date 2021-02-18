@@ -70,9 +70,6 @@ jobs:
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
-  - template: templates/set-test-data-variables-step.yml
-
-
   - script: |
      mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models
      DIR dist\ /S /B > wheel_filename_file

@@ -73,14 +73,14 @@ Status DropoutGrad::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(2);
   if (ratio) {
-    utils::MLTypeCallDispatcher<GetRatioDataImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
-    t_disp.Invoke(ratio, ratio_data);
+    utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
+    t_disp.Invoke<GetRatioDataImpl>(ratio, ratio_data);
   }
 
   auto dX = context->Output(0, shape);
 
-  utils::MLTypeCallDispatcher<DropoutGradComputeImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(dY->GetElementType());
-  t_disp.Invoke(Stream(), N, *dY, mask_data, ratio_data, *dX);
+  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(dY->GetElementType());
+  t_disp.Invoke<DropoutGradComputeImpl>(Stream(), N, *dY, mask_data, ratio_data, *dX);
 
   return Status::OK();
 }
@@ -165,8 +165,8 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(3);
   if (ratio) {
-    utils::MLTypeCallDispatcher<GetRatioDataImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
-    t_disp.Invoke(ratio, ratio_data);
+    utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
+    t_disp.Invoke<GetRatioDataImpl>(ratio, ratio_data);
   }
 
   //Check for inference mode.
@@ -186,8 +186,9 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   const fast_divmod fdm_dim(gsl::narrow_cast<int>(dim));
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
-  utils::MLTypeCallDispatcherRet<Status, BiasDropoutComputeImpl, ALL_IEEE_FLOAT_DATA_TYPES> t_disp(X->GetElementType());
-  return t_disp.Invoke(GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data);
+  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(X->GetElementType());
+  return t_disp.InvokeRet<Status, BiasDropoutComputeImpl>(
+      GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data);
 }
 
 }  // namespace cuda
