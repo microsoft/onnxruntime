@@ -851,7 +851,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(
-              [&]() {
+                [&]() {
                   TensorrtExecutionProviderInfo info{};
                   return info;
                 }()),
@@ -1227,8 +1227,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         return ml_value;
       })
 #ifdef ENABLE_TRAINING
-      .def_static("ortvalue_from_data_ptr", [](std::vector<int64_t>& shape, py::object& element_type,
-                                               OrtDevice& device, int64_t data_ptr) {
+      .def_static("ortvalue_from_data_ptr", [](std::vector<int64_t>& shape, py::object& element_type, OrtDevice& device, int64_t data_ptr) {
         ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is invalid");
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
@@ -1318,7 +1317,7 @@ void addObjectMethods(py::module& m, Environment& env) {
             PyCapsule_New(dlmanaged_tensor, "dltensor", dlpack_capsule_destructor));
       })
 #endif
-;
+      ;
 
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
   session_io_binding
@@ -1841,6 +1840,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })
+#ifdef ENABLE_TRAINING
       .def("run_forward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options, py::list& run_id_container) -> std::vector<OrtValue> {
         std::vector<OrtValue> module_outputs;
         int64_t run_id;
@@ -1862,7 +1862,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })
 #endif
-;
+      ;
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)

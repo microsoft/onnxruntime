@@ -310,6 +310,108 @@ def test_input_requires_grad_backward_creates_input_grad(device):
     s.backward()
     assert x.grad is not None
 
+def test_multiple_forward_only_calls():
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model = ORTModule(model)
+    for step in range(10):
+        x = torch.randn(N, D_in, device='cuda', requires_grad=False)
+        prediction1 = model(x)
+
+def test_multiple_overlapping_forward_backward_calls():
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model = ORTModule(model)
+    x1 = torch.randn(N, D_in, device='cuda', requires_grad=True)
+    x2 = torch.randn(N, D_in, device='cuda', requires_grad=True)
+    assert x1.grad is None and x2.grad is None
+
+    prediction1 = model(x1)
+    s1 = prediction1.sum()
+
+    prediction2 = model(x2)
+    s2 = prediction2.sum()
+
+    s1.backward()
+    s2.backward()
+    assert x1.grad is not None and x2.grad is not None
+
+def test_multiple_ortmodules_training():
+    N, D_in, H, D_out = 32, 784, 500, 10
+    model1 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model2 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model1 = ORTModule(model1)
+    model2 = ORTModule(model2)
+
+    for step in range(10):
+        x1 = torch.randn(N, D_in, device='cuda', requires_grad=True)
+        x2 = torch.randn(N, D_in, device='cuda', requires_grad=True)
+        assert x1.grad is None and x2.grad is None
+
+        prediction1 = model1(x1)
+        s1 = prediction1.sum()
+
+        prediction2 = model2(x2)
+        s2 = prediction2.sum()
+
+        s1.backward()
+        s2.backward()
+
+        assert x1.grad is not None and x2.grad is not None
+        for param in model1.parameters():
+            assert param.grad is not None
+            param.grad = None
+        for param in model2.parameters():
+            assert param.grad is not None
+            param.grad = None
+
+def test_multiple_chained_ortmodules_training():
+    N, D_in, H, D_out = 32, 128, 500, 128
+    model1 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model2 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model1 = ORTModule(model1)
+    model2 = ORTModule(model2)
+
+    all_params = list(model1.parameters()) + list(model2.parameters())
+
+    for step in range(10):
+        x = torch.randn(N, D_in, device='cuda', requires_grad=True)
+        output1 = model1(x)
+        output2 = model2(output1)
+        s = output2.sum()
+        s.backward()
+
+        assert x.grad is not None
+        for param in all_params:
+            assert param.grad is not None
+            param.grad = None
+
+def test_mixed_nnmodule_ortmodules_training():
+    N, D_in, H, D_out = 32, 128, 500, 128
+    model1 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model2 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model3 = NeuralNetMultiplePositionalArguments(D_in, H, D_out).to('cuda')
+    model1 = ORTModule(model1)
+    # model2 = ORTModule(model2)    # model2 is left as nn.module
+    model3 = ORTModule(model3)
+
+    all_params = list(model1.parameters()) + list(model2.parameters()) + list(model3.parameters())
+
+    for step in range(10):
+        x1 = torch.randn(N, D_in, device='cuda', requires_grad=True)
+        x2 = torch.randn(N, D_in, device='cuda', requires_grad=True)
+
+        a1 = model1(x1)
+        a2 = model2(x2)
+        a3 = model3(torch.sin(a1), torch.cos(a2))
+        loss = a3.sum()
+        loss.backward()
+
+        assert x1.grad is not None and x2.grad is not None
+        for param in all_params:
+            assert param.grad is not None
+            param.grad = None
+
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder(device):
     N, D_in, H, D_out = 32, 784, 500, 10

@@ -310,7 +310,7 @@ class InferenceSession {
 
   // For ORTModule.backward()
   common::Status ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads, int64_t run_id) ORT_MUST_USE_RESULT;
-
+#endif
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
