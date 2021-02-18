@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "core/platform/threadpool.h"
 #include "core/common/common.h"
+#include "core/common/cpuid_info.h"
 #include "core/common/eigen_common_wrapper.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
@@ -79,6 +80,10 @@ void Profiler::LogEndAndStart(std::string&& evt) {
 
 static constexpr int CACHE_LINE_BYTES = 64;
 static constexpr unsigned MAX_SHARDS = 8;
+
+#ifndef _OPENMP
+static constexpr int TaskGranularityFactor = 4;
+#endif
 
 struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
   ::std::atomic<uint64_t> _next{0};
@@ -443,7 +448,15 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
 #else
   // When not using OpenMP, we parallelise over the N threads created by the pool
   // tp, plus 1 for the thread entering a loop.
-  return tp ? (tp->NumThreads()+1) : 1;
+  if (tp) {
+    if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
+      return ((tp->NumThreads() + 1)) * TaskGranularityFactor;
+    } else {
+      return ((tp->NumThreads() + 1));
+    }
+  } else {
+    return 1;
+  }
 #endif
 }
 
