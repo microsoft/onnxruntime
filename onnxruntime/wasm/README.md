@@ -14,9 +14,9 @@
 
 1. Build ONNXRuntime.
 
-    Building ONNXRuntime helps to generate `onnx-ml.pb.h` and `onnx-operators-ml.pb.h` under folder `build\Windows\{BUILD_TYPE}\onnx`. This file is required for building WebAssembly.
+    Building ONNXRuntime helps to generate `onnx-ml.pb.h` and `onnx-operators-ml.pb.h` under folder `build\Windows\{BUILD_TYPE}\external\onnx\onnx`. This file is required for building WebAssembly.
 
-    call `build --config {BUILD_TYPE} --minimal_build` in root folder. Supported BUILD_TYPE are Debug and Release.
+    call `build --config {BUILD_TYPE}' in root folder. Supported BUILD_TYPE are Debug and Release. Don't build as a shared lib to compile onnx protobuf properly.
 
 2. Build WebAssembly
 
@@ -27,6 +27,14 @@
 
     emcmake cmake -DCMAKE_BUILD_TYPE={BUILD_TYPE} -G Ninja ..
     cmake --build . --verbose
+
+3. Build native for debugging
+
+    mkdir build
+    cd build
+
+    cmake -DCMAKE_BUILD_TYPE={BUILD_TYPE} -DBUILD_NATIVE=1 -G "Visual Studio 16 2019" ..
+    cmake --build . --verbose --config={BUILD_TYPE}
 
 ### Output
 

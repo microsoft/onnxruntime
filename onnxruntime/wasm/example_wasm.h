@@ -3,18 +3,14 @@
 #include <emscripten.h>
 #include <emscripten/bind.h>
 
-namespace onnxruntime {
-namespace logging {
-  class LoggingManager;
-}
-class CPUExecutionProvider;
-class Model;
-class Node;
+namespace Ort {
+  struct Env;
+  struct Session;
 }
 
 class Example {
   public:
-    Example();
+    Example() = default;
     ~Example() = default;
 
     bool Load(const emscripten::val& model_data);
@@ -26,10 +22,8 @@ class Example {
     Example(Example&&) = delete;
     Example& operator=(Example&&) = delete;
 
-    std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager_;
-    std::shared_ptr<onnxruntime::Model> model_;
-    std::unique_ptr<onnxruntime::CPUExecutionProvider> cpu_execution_provider_;
-    std::vector<const onnxruntime::Node*> nodes_;
+    std::unique_ptr<Ort::Env> env_;
+    std::unique_ptr<Ort::Session> session_;
 };
 
 EMSCRIPTEN_BINDINGS(Example) {
