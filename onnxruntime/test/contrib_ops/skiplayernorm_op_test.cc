@@ -21,7 +21,8 @@ static void RunTest(
     int batch_size,
     int sequence_length,
     int hidden_size,
-    bool use_float16 = false) {
+    bool use_float16 = false,
+    bool no_beta = false) {
   // Input and output shapes
   //   Input 0 - input: (batch_size, sequence_length, hidden_size)
   //   Input 1 - skip : (batch_size, sequence_length, hidden_size)
@@ -40,7 +41,11 @@ static void RunTest(
     test.AddInput<float>("input", input_dims, input_data);
     test.AddInput<float>("skip", skip_dims, skip_data);
     test.AddInput<float>("gamma", gamma_dims, gamma_data);
-    test.AddInput<float>("beta", beta_dims, beta_data);
+    if (!no_beta) {
+      test.AddInput<float>("beta", beta_dims, beta_data);
+    } else {
+      test.AddMissingOptionalInput<float>();
+    }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
       test.AddInput<float>("bias", bias_dims, bias_data);
@@ -53,7 +58,11 @@ static void RunTest(
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
     test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
     test.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
-    test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
+    if (!no_beta) {
+      test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
+    } else {
+      test.AddMissingOptionalInput<float>();
+    }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
       test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
@@ -135,6 +144,42 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16) {
           batch_size,
           sequence_length,
           hidden_size,
+          true);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormBatch1_NoBeta) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> skip_data = {
+      0.1f, -0.2f, 0.3f, 1.0f,
+      0.5f, 0.1f, 0.4f, 1.6f};
+
+  std::vector<float> gamma_data = {
+      0.3f, 0.2f, 4.0f, 2.2f};
+
+  std::vector<float> beta_data = {};
+
+  std::vector<float> output_data = {
+      0.08433859348297119f, -0.27090578377246857f, -1.32897164821624756f, 3.0924152374267578f,
+      0.26111652255058289f, -0.31333980560302734f, -0.69631003737449646f, 1.9148544311523438f};
+
+  RunTest(input_data,
+          skip_data,
+          gamma_data,
+          beta_data,
+          std::vector<float>(),
+          output_data,
+          epsilon_,
+          batch_size,
+          sequence_length,
+          hidden_size,
+          false,
           true);
 }
 

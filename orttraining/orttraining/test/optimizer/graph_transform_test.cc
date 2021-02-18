@@ -13,7 +13,7 @@
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
-#include "orttraining/core/optimizer/bias_dropout_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"

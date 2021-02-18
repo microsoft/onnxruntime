@@ -189,7 +189,8 @@ class Conv : public CudaKernel {
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
 };
 
-Status SliceOutUnwantedOutputSection(const void* input_data,
+Status SliceOutUnwantedOutputSection(cudaStream_t stream,
+                                     const void* input_data,
                                      const std::vector<int64_t>& input_dims,
                                      void* output_data,
                                      const std::vector<int64_t>& output_dims,

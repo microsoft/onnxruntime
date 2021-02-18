@@ -55,16 +55,28 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
   CommonDeviceHelpers::AdapterEnumerationSupport support;
   WINML_THROW_IF_FAILED(CommonDeviceHelpers::GetAdapterEnumerationSupport(&support));
 
-  const char errStr[] = "No hardware adapters available";
+  const char noHardwareAdaptersAvailableErrStr[] = "No hardware adapters available";
+  const char failedToObtainHardwareAdaptersErrStr[] = "Failed to obtain hardware adapters.";
+  HRESULT hardwareAdapterSuccessfullyObtained = S_OK;
   if (support.has_dxgi) {
     winrt::com_ptr<IDXGIAdapter1> spAdapter;
-    WINML_THROW_IF_FAILED_MSG(GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
+    hardwareAdapterSuccessfullyObtained = GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put());
+    if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
+      WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
+    } else {
+      WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
+    }
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   }
 #ifdef ENABLE_DXCORE
   if (support.has_dxgi == false) {
     winrt::com_ptr<IDXCoreAdapter> spAdapter;
-    WINML_THROW_IF_FAILED_MSG(GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put()), errStr);
+    hardwareAdapterSuccessfullyObtained = GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put());
+    if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
+      WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
+    } else {
+      WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
+    }
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   }
 #endif

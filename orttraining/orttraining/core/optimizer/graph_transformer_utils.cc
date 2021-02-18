@@ -39,7 +39,7 @@
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/framework/distributed_run_context.h"
-#include "orttraining/core/optimizer/bias_dropout_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
@@ -94,7 +94,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       if (config.enable_gelu_approximation) {
         transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
       }
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, compatible_eps, weights_to_train));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, false /*skip_dequantize_linear*/, compatible_eps, weights_to_train));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<ConcatSliceElimination>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));

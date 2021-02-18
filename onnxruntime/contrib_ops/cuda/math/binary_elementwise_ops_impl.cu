@@ -20,7 +20,8 @@ namespace cuda {
 
 #define CONTRIB_BINARY_ELEMENTWISE_IMPL(name)              \
   CONTRIB_BINARY_ELEMENTWISE_IMPL_DECLARATION(name) {      \
-    BinaryElementWiseImpl(output_rank_or_simple_broadcast, \
+    BinaryElementWiseImpl(stream,                          \
+                          output_rank_or_simple_broadcast, \
                           lhs_padded_strides,              \
                           lhs_data,                        \
                           rhs_padded_strides,              \
@@ -34,7 +35,8 @@ namespace cuda {
   }
 
 #define CONTRIB_SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, T)                                     \
-  template void Impl_##x<T>(int32_t output_rank,                                              \
+  template void Impl_##x<T>(cudaStream_t stream,                                        \
+                            int32_t output_rank,                                              \
                             const TArray<int64_t>* lhs_padded_strides,                        \
                             const T* lhs_data,                                                \
                             const TArray<int64_t>* rhs_padded_strides,                        \

@@ -160,6 +160,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument(
+        "--enable_training_ops", action='store_true', help="Enable training ops in inference graph.")
+    parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
@@ -437,13 +439,15 @@ def parse_arguments():
         help="Build ONNXRuntime micro-benchmarks.")
 
     # options to reduce binary size
-    parser.add_argument("--minimal_build", action='store',
-                        const='on', default='off', nargs='?', type=str.lower,
+    parser.add_argument("--minimal_build", default=None, nargs='*', type=str.lower,
                         help="Create a build that only supports ORT format models. "
                         "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information. "
                         "RTTI is automatically disabled in a minimal build. "
                         "To enable execution providers that compile kernels at runtime (e.g. NNAPI) pass 'extended' "
-                        "as a parameter. e.g. '--minimal_build extended'.")
+                        "as a parameter. e.g. '--minimal_build extended'. "
+                        "To enable support for custom operators pass 'custom_ops' as a parameter. "
+                        "e.g. '--minimal_build custom_ops'. This can be combined with an 'extended' build by passing "
+                        "'--minimal_build extended custom_ops'")
     parser.add_argument("--include_ops_by_config", type=str,
                         help="include ops from config file. "
                         "See /docs/Reduced_Operator_Kernel_build.md for more information.")
@@ -469,7 +473,8 @@ def parse_arguments():
     # Code coverage
     parser.add_argument("--code_coverage", action='store_true',
                         help="Generate code coverage when targetting Android (only).")
-
+    parser.add_argument(
+        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")
     return parser.parse_args()
 
 
@@ -479,7 +484,7 @@ def resolve_executable_path(command_or_path):
     if executable_path is None:
         raise BuildError("Failed to resolve executable path for "
                          "'{}'.".format(command_or_path))
-    return os.path.realpath(executable_path)
+    return os.path.abspath(executable_path)
 
 
 def get_linux_distro():
@@ -678,8 +683,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
         "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
-        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build != 'off' else "OFF"),
-        "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build == 'extended' else "OFF"),
+        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
+        "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build and 'extended' in args.minimal_build
+                                                   else "OFF"),
+        "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if args.minimal_build and 'custom_ops' in args.minimal_build
+                                                     else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if args.include_ops_by_config else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
             "ON" if args.enable_msvc_static_runtime else "OFF"),
@@ -688,6 +696,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
+        "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + (
             "ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
@@ -711,6 +720,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_OPS=" + (
+            "ON" if args.enable_training_ops else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + (
             "ON" if args.enable_training else "OFF"),
@@ -1370,7 +1381,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run
-            if args.include_ops_by_config or args.minimal_build != 'off':
+            if args.include_ops_by_config or args.minimal_build:
                 return
 
             if is_windows():
@@ -1743,9 +1754,7 @@ def main():
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
     if not (args.update or args.clean or args.build or args.test):
-        log.debug(
-            "Defaulting to running update, build "
-            "[and test for native builds].")
+        log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
         if cross_compiling:
@@ -1756,7 +1765,7 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.include_ops_by_config:
+    if args.include_ops_by_config and args.update:
         from exclude_unused_ops_and_types import exclude_unused_ops_and_types
         exclude_unused_ops_and_types(args.include_ops_by_config,
                                      args.enable_reduced_operator_type_support,

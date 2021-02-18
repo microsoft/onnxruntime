@@ -34,7 +34,7 @@ namespace perftest {
       "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'nuphar', 'dml' or 'acl'. "
+      "'openvino', 'nuphar', 'dml', 'acl', 'nnapi' or 'coreml'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -51,12 +51,19 @@ namespace perftest {
       "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algothrithms: 0(benchmark), 1(heuristic), 2(default). \n"
       "\t-q: [CUDA only] use separate stream for copy. \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
+      "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
+      "\t    [OpenVINO only] [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
+      "\t    [OpenVINO only] [device_id]: Selects a particular hardware device for inference.\n"
+      "\t    [OpenVINO only] [enable_vpu_fast_compile]: Optionally enabled to speeds up the model's compilation on VPU device targets.\n"
+      "\t    [OpenVINO only] [num_of_threads]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
+      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
+      "\t [Example] [For OpenVINO EP] -e openvino -i 'device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5'\n"
       "\t-h: help\n");
 }
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:AMPIvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:AMPIvhsqz"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -93,6 +100,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNupharExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
@@ -186,6 +195,9 @@ namespace perftest {
         break;
       case 'z':
         test_config.run_config.set_denormal_as_zero = true;
+        break;
+      case 'i':
+        test_config.run_config.ep_runtime_config_string = optarg;
         break;
       case '?':
       case 'h':

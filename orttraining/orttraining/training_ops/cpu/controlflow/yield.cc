@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
-#include "orttraining/training_ops/cpu/controlflow/message_queue.h"
+#include "core/providers/cpu/controlflow/event_pool.h"
+#include "core/providers/cpu/controlflow/message_queue.h"
 #include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {

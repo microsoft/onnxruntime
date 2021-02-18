@@ -83,7 +83,7 @@ static Status AddL2NormNcclAllReduce(
                                   {norm_squared},
                                   {allreduce_output},
                                   {ONNX_NAMESPACE::MakeAttribute("group_type",
-                                                                static_cast<int64_t>(WorkerGroupType::DataParallel))},
+                                                                 static_cast<int64_t>(WorkerGroupType::DataParallel))},
                                   allreduce_output.name)});
 
   // Sqrt the reduced L2 norm.
@@ -454,7 +454,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   // add gradient scaling
   ArgDef fused_gradient_argdef;
   const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
-  ORT_RETURN_IF_NOT(total_num_accumulations > 0);
+  ORT_RETURN_IF_NOT(total_num_accumulations > 0, "total_num_accumulations <= 0");
   const float scale = 1.0f / total_num_accumulations;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                               opt_graph_config_.AllReduceDataType(), false));

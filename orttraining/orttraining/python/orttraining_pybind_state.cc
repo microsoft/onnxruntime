@@ -96,7 +96,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     LOGS(*(sess->GetLogger()), WARNING) << msg;
   }
 
-  training::PipelineTrainingSession::TrainingConfiguration config{};
+  training::TrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
@@ -229,13 +229,13 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.number_recompute_layers = parameters.number_recompute_layers;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
-    config.model_after_graph_transforms_path = parameters.model_after_graph_transforms_path;
+    config.model_after_graph_transforms_path = ToPathString(parameters.model_after_graph_transforms_path);
   }
   if (!parameters.model_with_gradient_graph_path.empty()) {
-    config.model_with_gradient_graph_path = parameters.model_with_gradient_graph_path;
+    config.model_with_gradient_graph_path = ToPathString(parameters.model_with_gradient_graph_path);
   }
   if (!parameters.model_with_training_graph_path.empty()) {
-    config.model_with_training_graph_path = parameters.model_with_training_graph_path;
+    config.model_with_training_graph_path = ToPathString(parameters.model_with_training_graph_path);
   }
 
   training::PipelineTrainingSession::TrainingConfigurationResult config_result{};

@@ -30,6 +30,7 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   ORT_ENFORCE(W.Shape() == G.Shape());
 
   SGDOptimizerImpl(
+      Stream(),
       ETA.template Data<float>(),
       W.template Data<float>(),
       G.template Data<float>(),

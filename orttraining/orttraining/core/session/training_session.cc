@@ -33,7 +33,7 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #endif
 
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "core/providers/cpu/controlflow/event_pool.h"
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
@@ -57,7 +57,7 @@ Status SetupOptimizerParams(
     OptimizerGraphConfig& opt_graph_config_result,
     std::unordered_map<std::string, OptimizerNodeConfig>& opt_node_configs_result,
     std::unordered_map<std::string, std::string>& weight_name_map_after_graph_transform) {
-  ORT_RETURN_IF_NOT(config.optimizer_config.has_value());
+  ORT_RETURN_IF_NOT(config.optimizer_config.has_value(), "config.optimizer_config.has_value() was false");
   const auto& optimizer_config = config.optimizer_config.value();
 
   // This is the mapping from the new weight name to the original weight name
@@ -354,7 +354,7 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    MemoryInfo::SetLocalRank(config.distributed_config.world_rank);
+  MemoryInfo::SetLocalRank(config.distributed_config.world_rank);
 #endif
 
 #ifdef USE_MPI
@@ -863,7 +863,7 @@ Status TrainingSession::ConfigureLossFunction(
 
     loss_graph_builder_ = LossFunctionBuilder::Build(loss_function_info_value.op_def.type);
 
-    ORT_RETURN_IF_NOT(loss_graph_builder_);
+    ORT_RETURN_IF_NOT(loss_graph_builder_, "loss_graph_builder_ == nullptr");
   }
 
   try {
@@ -1107,7 +1107,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   // Add sharded weights
   for (const auto& weight : weight_partition_info_) {
     if (weight.second.weight_partitioned) {
-      fp_tensor_names.erase(weight.first); // remove the original name
+      fp_tensor_names.erase(weight.first);  // remove the original name
       fp_tensor_names.insert(weight.second.partition_name);
     }
   }
