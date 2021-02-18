@@ -25,7 +25,7 @@ steps:
     - task: ShellScript@2
       displayName: 'Copy build artifacts for zipping'
       inputs:
-        scriptPath: 'tools/ci_build/github/linux/copy_strip_binary.sh'
+        scriptPath: 'tools/ci_build/github/linux/copy_strip_binary_trt.sh'
         args: '-r $(Build.BinariesDirectory) -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -c ${{parameters.buildConfig}} -s $(Build.SourcesDirectory) -t ${{parameters.commitId}}'
         workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
 
