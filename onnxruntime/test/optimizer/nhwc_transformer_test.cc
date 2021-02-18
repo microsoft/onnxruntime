@@ -383,6 +383,64 @@ TEST(NhwcTransformerTests, ConvBlockBinary) {
   }
 }
 
+TEST(NhwcTransformerTests, ConvMaxPool) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+    auto build_test_case = [&](NhwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<uint8_t>(input_shape);
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                         weights_shape, .02f, 126,
+                                         conv_output_arg, .37f, 131);
+      Node& pool_node = helper.AddNode("MaxPool", {conv_output_arg}, {output_arg});
+      std::vector<int64_t> pads((weights_shape.size() - 2) * 2, 1);
+      pool_node.AddAttribute("pads", pads);
+      std::vector<int64_t> kernel_shape(weights_shape.size() - 2, 3);
+      pool_node.AddAttribute("kernel_shape", kernel_shape);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.NhwcMaxPool"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    NhwcTransformerTester(build_test_case, check_nhwc_graph);
+  };
+
+  // Test the basic case of a single 1D/2D/3D convolution.
+  test_case({5, 12, 37}, {128, 12, 5});
+  test_case({3, 14, 13, 13}, {64, 14, 3, 3});
+  test_case({1, 15, 11, 13, 15}, {31, 15, 5, 3, 3});
+}
+
+TEST(NhwcTransformerTests, ConvMaxPoolIndexTensor) {
+  auto build_test_case = [&](NhwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<uint8_t>({1, 16, 17, 17});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* index_output_arg = helper.MakeOutput();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                       {16, 16, 3, 3}, .02f, 126,
+                                       conv_output_arg, .37f, 131);
+    Node& pool_node = helper.AddNode("MaxPool", {conv_output_arg}, {output_arg, index_output_arg});
+    pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 1);
+    EXPECT_EQ(op_to_count["MaxPool"], 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  // Test that MaxPool using the optional index tensor is not converted to NhwcMaxPool.
+  NhwcTransformerTester(build_test_case, check_nhwc_graph);
+}
+
 TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
   auto build_test_case = [&](NhwcTestHelper& helper) {
     auto* input_arg = helper.MakeInput<uint8_t>({1, 23, 13, 13});
@@ -456,7 +514,7 @@ TEST(NhwcTransformerTests, ConvSplit) {
 }
 
 TEST(NhwcTransformerTests, ConvPad) {
-  std::vector<std::string> pad_modes = {"constant", "reflect", "edge"};
+  std::vector<std::string> pad_modes{"constant", "reflect", "edge"};
   for (const auto& mode : pad_modes) {
     auto build_test_case = [&](NhwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<uint8_t>({1, 23, 13, 13});
