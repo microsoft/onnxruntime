@@ -125,9 +125,9 @@ Status TransposeNCHWToNHWC(ModelBuilder& model_builder,
 }
 
 // Convert the input from nchw to nhwc
+// Caller should ensure input is currently in nchw format using ModelBuilder::IsOperandNHWC
 Status GetNHWCInput(ModelBuilder& model_builder, const Node& node, size_t input_index, std::string& input) {
   const auto& nchw_input = node.InputDefs()[input_index]->Name();
-  ORT_RETURN_IF(model_builder.IsOperandNHWC(input));
   if (!model_builder.GetNHWCOperand(nchw_input, input)) {
     input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
     ORT_RETURN_IF_ERROR(TransposeNCHWToNHWC(model_builder, nchw_input, input));
@@ -136,9 +136,9 @@ Status GetNHWCInput(ModelBuilder& model_builder, const Node& node, size_t input_
 }
 
 // Convert the input from nhwc to nchw
+// Caller should ensure input is currently in nhwc format using ModelBuilder::IsOperandNHWC
 Status GetNCHWInput(ModelBuilder& model_builder, const Node& node, size_t input_index, std::string& input) {
   const auto& nhwc_input = node.InputDefs()[input_index]->Name();
-  ORT_RETURN_IF_NOT(model_builder.IsOperandNHWC(input));
   if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
     input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
     ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(model_builder, nhwc_input, input));
@@ -495,24 +495,6 @@ static Status HandleAutoPad(const Shape& input_shape,
   return Status::OK();
 }
 
-static float GetQuantizationScale(const ModelBuilder& model_builder, const Node& node, size_t idx) {
-  const auto& scale_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
-  return GetTensorFloatData(scale_tensor)[0];
-}
-
-static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const Node& node, size_t idx, int32_t& zero_point)
-    ORT_MUST_USE_RESULT;
-static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const Node& node, size_t idx, int32_t& zero_point) {
-  std::unique_ptr<uint8_t[]> unpacked_tensor;
-  size_t tensor_byte_size;
-  const auto& zero_point_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
-  ORT_RETURN_IF_ERROR(
-      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                unpacked_tensor, tensor_byte_size));
-  zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
-  return Status::OK();
-}
-
 // Get scales and zero points for the qlinear binary ops (which has 2 input and 1 output)
 // QLinearConv, QLinearMatmul, QLinearAdd
 // a, b are inputs, and y is output
@@ -524,13 +506,14 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& b_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
-  a_scale = GetQuantizationScale(model_builder, node, 1);
-  b_scale = GetQuantizationScale(model_builder, node, 4);
-  y_scale = GetQuantizationScale(model_builder, node, 6);
+  const auto& initializers = model_builder.GetInitializerTensors();
+  a_scale = GetQuantizationScale(initializers, node, 1);
+  b_scale = GetQuantizationScale(initializers, node, 4);
+  y_scale = GetQuantizationScale(initializers, node, 6);
 
-  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 2, a_zero_point));
-  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 5, b_zero_point));
-  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 7, y_zero_point));
+  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2, a_zero_point));
+  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 5, b_zero_point));
+  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 7, y_zero_point));
 
   return Status::OK();
 }
@@ -660,7 +643,8 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
          qlinear_op_type != QLinearOpType::QuantizeLinear);
 
   size_t scale_idx, zero_point_idx;
-  if (qlinear_op_type == QLinearOpType::DequantizeLinear) {
+  if (qlinear_op_type == QLinearOpType::DequantizeLinear ||
+      qlinear_op_type == QLinearOpType::QLinearSigmoid) {
     scale_idx = 1;
     zero_point_idx = 2;
   } else if (IsQLinearBinaryOp(qlinear_op_type)) {
@@ -679,10 +663,10 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported op: ", op_type);
   }
 
-  scale = GetQuantizationScale(model_builder, node, scale_idx);
+  scale = GetQuantizationScale(model_builder.GetInitializerTensors(), node, scale_idx);
   zero_point = 0;
   if (node.InputDefs().size() > 2) {
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, zero_point_idx, zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, zero_point_idx, zero_point));
   }
 
   return Status::OK();
@@ -811,7 +795,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
                                                                  a_zero_point, b_zero_point, y_zero_point));
   }
 
-  // Verify if the scale and zero point matchs from onnx input and nnapi input
+  // Verify if the scale and zero point matchs from onnx input and nnapi input match
   if (op_is_qlinear) {
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, a_scale, a_zero_point));
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
@@ -1260,7 +1244,8 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                   onnx_pads, onnx_strides, kernel_shape,
                                   use_nchw,
                                   output));
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  OperandType output_operand_type = operand_types.at(input);
+  output_operand_type.SetDimensions(shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
   return Status::OK();
@@ -1802,11 +1787,28 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class UnaryOpBuilder : public BaseOpBuilder {
  public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  const auto& op = node.OpType();
+  if (op != "QLinearSigmoid")
+    return;
+
+  const auto input_defs = node.InputDefs();
+
+  // skip input/output scales and zeropoints
+  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // X_scale
+  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // X_zero_point
+  model_builder.AddInitializerToSkip(input_defs[3]->Name());  // Y_scale
+
+  if (input_defs.size() == 5)                                   // has Y_zero_point input
+    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // Y_zero_point
+}
 
 /* static */ void UnaryOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
@@ -1822,6 +1824,7 @@ class UnaryOpBuilder : public BaseOpBuilder {
           "Sin",
           "Sqrt",
           "Tanh",
+          "QLinearSigmoid",
       });
 }
 
@@ -1836,7 +1839,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
   ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  bool is_qlinear_sigmoid = op_type == "QLinearSigmoid";
 
   int32_t op_code;
   if (op_type == "Abs")
@@ -1847,7 +1850,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     op_code = ANEURALNETWORKS_FLOOR;
   else if (op_type == "Log")
     op_code = ANEURALNETWORKS_LOG;
-  else if (op_type == "Sigmoid")
+  else if (op_type == "Sigmoid" || is_qlinear_sigmoid)
     op_code = ANEURALNETWORKS_LOGISTIC;
   else if (op_type == "Neg")
     op_code = ANEURALNETWORKS_NEG;
@@ -1860,8 +1863,26 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
   }
+
+  float y_scale = 0.0f;
+  int32_t y_zero_point = 0;
+  if (is_qlinear_sigmoid) {
+    const auto& initializers = model_builder.GetInitializerTensors();
+    float x_scale = GetQuantizationScale(initializers, node, 1);
+    int32_t x_zero_point = 0;
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2, x_zero_point));
+
+    // Verify if the scale and zero point values from onnx input and nnapi input match
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
+
+    // We already verified this in  UnaryOpSupportChecker::IsOpSupportedImpl
+    y_scale = 1.f / 256;
+    y_zero_point = 0;
+  }
+
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
   return Status::OK();
@@ -1887,6 +1908,24 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   bool all_input_have_same_layout = true;
   bool output_is_nhwc = false;
   const auto node_input_size = node.InputDefs().size();
+
+  // First if the inputs are uint8, we need verify all the inputs have same scale and zero points
+  if (operand_types.at(input0).type == android::nn::wrapper::Type::TENSOR_QUANT8_ASYMM) {
+    auto scale = operand_types.at(input0).operandType.scale;
+    auto zero_point = operand_types.at(input0).operandType.zeroPoint;
+
+    // Compare scale and zp of input0 to input1~n
+    for (size_t i = 1; i < node_input_size; i++) {
+      const auto& type = operand_types.at(node.InputDefs()[i]->Name());
+      ORT_RETURN_IF_NOT(scale == type.operandType.scale,
+                        "Input[", i, "]'s scale: ", type.operandType.scale,
+                        " is different than input[0]'s scale: ", scale);
+
+      ORT_RETURN_IF_NOT(zero_point == type.operandType.zeroPoint,
+                        "Input[", i, "]'s zero_point: ", type.operandType.zeroPoint,
+                        " is different than input[0]'s zero_point: ", zero_point);
+    }
+  }
 
   // First we want to see if all the input are same layout
   for (size_t i = 0; i < node_input_size - 1; i++) {
@@ -1934,7 +1973,8 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   const auto& output = node.OutputDefs()[0]->Name();
   ORT_RETURN_IF_ERROR(shaper.Concat(inputs, axis, output));
-  const OperandType output_operand_type(operand_types.at(input0).type, shaper[output]);
+  OperandType output_operand_type = operand_types.at(input0);
+  output_operand_type.SetDimensions(shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
   return Status::OK();
@@ -2023,12 +2063,12 @@ Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
-  float scale = GetQuantizationScale(model_builder, node, 1);
+  float scale = GetQuantizationScale(model_builder.GetInitializerTensors(), node, 1);
   int32_t zero_point = 0;
   Type output_type = Type::TENSOR_QUANT8_ASYMM;
 
   if (input_defs.size() == 3) {  // Get zero point
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 2, zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, 2, zero_point));
   }
 
   ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
@@ -2070,10 +2110,10 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
-  float scale = GetQuantizationScale(model_builder, node, 1);
+  float scale = GetQuantizationScale(model_builder.GetInitializerTensors(), node, 1);
   int32_t zero_point = 0;
   if (input_defs.size() == 3) {  // Get zero point
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder, node, 2, zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, 2, zero_point));
   }
 
   ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, scale, zero_point));
@@ -2296,7 +2336,8 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
   }
 
-  const OperandType output_operand_type(operand_types.at(input).type, output_shape);
+  OperandType output_operand_type = operand_types.at(input);
+  output_operand_type.SetDimensions(output_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
 
@@ -2468,6 +2509,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Sin", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Sqrt", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Tanh", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearSigmoid", UnaryOpBuilder);
   }
 
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);

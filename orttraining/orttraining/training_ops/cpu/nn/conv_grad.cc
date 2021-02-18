@@ -40,19 +40,19 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   // Copied from conv_impl.h, maybe refactor
   std::vector<int64_t> kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
+  size_t kernel_rank = kernel_shape.size();
 
-  bool Is2DKernel = kernel_shape.size() == 2;
   std::vector<int64_t> pads(conv_attrs_.pads);
   if (pads.empty()) {
-    pads.resize(kernel_shape.size() * 2, 0);
+    pads.resize(kernel_rank * 2, 0);
   }
   std::vector<int64_t> dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
-    dilations.resize(kernel_shape.size(), 1);
+    dilations.resize(kernel_rank, 1);
   }
   std::vector<int64_t> strides(conv_attrs_.strides);
   if (strides.empty()) {
-    strides.resize(kernel_shape.size(), 1);
+    strides.resize(kernel_rank, 1);
   }
 
   Tensor* dW = context->Output(1, W->Shape());
@@ -85,7 +85,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
 
   BufferUniquePtr bias_multiplier(alloc->Alloc(sizeof(T) * output_image_size), BufferDeleter(alloc));
   T* bias_multiplier_data = nullptr;
-  Tensor* dB = context->Output(2, TensorShape({M}));
+  Tensor* dB = context->Output(2, {M});
   T* dBdata = nullptr;
   if (dB) {
     dBdata = dB->template MutableData<T>();
@@ -98,37 +98,58 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                               &CPUMathUtil::Instance());
   }
 
+  bool skip_im2col = (kernel_size == 1) && conv_attrs_.HasStridesOneAndNoPadding();
+
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-      if (Is2DKernel) {
-        math::Im2col<T, StorageOrder::NCHW>()(
-            Xdata + group_id * X_offset,
-            C / conv_attrs_.group,
-            input_shape[0],
-            input_shape[1],
-            kernel_shape[0],
-            kernel_shape[1],
-            dilations[0],
-            dilations[1],
-            pads[0],
-            pads[1],
-            pads[2],
-            pads[3],
-            strides[0],
-            strides[1],
-            col_buffer_data);
-      } else {
-        math::Im2col<T, StorageOrder::NCHW>()(
-            Xdata + group_id * X_offset,
-            input_shape.GetDims().data(),
-            output_shape.GetDims().data(),
-            kernel_dim,
-            kernel_shape.data(),
-            strides.data(),
-            dilations.data(),
-            pads.data(),
-            static_cast<int>(kernel_shape.size()),
-            col_buffer_data);
+      if (!skip_im2col) {
+        if (kernel_rank == 1) {
+          math::Im2col<T, StorageOrder::NCHW>()(
+              Xdata + group_id * X_offset,
+              C / conv_attrs_.group,
+              1,
+              input_shape[0],
+              1,
+              kernel_shape[0],
+              1,
+              dilations[0],
+              0,
+              pads[0],
+              0,
+              pads[1],
+              1,
+              strides[0],
+              col_buffer_data);
+        } else if (kernel_rank == 2) {
+          math::Im2col<T, StorageOrder::NCHW>()(
+              Xdata + group_id * X_offset,
+              C / conv_attrs_.group,
+              input_shape[0],
+              input_shape[1],
+              kernel_shape[0],
+              kernel_shape[1],
+              dilations[0],
+              dilations[1],
+              pads[0],
+              pads[1],
+              pads[2],
+              pads[3],
+              strides[0],
+              strides[1],
+              col_buffer_data);
+        } else {
+          math::Im2col<T, StorageOrder::NCHW>()(
+              Xdata + group_id * X_offset,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
+              kernel_shape.data(),
+              strides.data(),
+              dilations.data(),
+              pads.data(),
+              static_cast<int>(kernel_shape.size()),
+              col_buffer_data);
+        }
       }
       // Gradient with respect to W, filter.
       math::Gemm<T>(
@@ -139,7 +160,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
           output_image_size,
           1,
           dYdata + group_id * Y_offset,
-          col_buffer_data,
+          skip_im2col ? Xdata + group_id * X_offset : col_buffer_data,
           1,
           dWdata + group_id * W_offset,
           tp);
@@ -181,7 +202,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
             col_buffer_data,
             tp);
 
-        if (Is2DKernel) {
+        if (kernel_rank == 2) {
           math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(
               col_buffer_data,
               C / conv_attrs_.group,

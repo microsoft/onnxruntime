@@ -5,6 +5,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/compare_provider_test_utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {
@@ -560,9 +561,9 @@ TEST(TransposeOpTest, DoTransposeEltWise) {
                                        13.0f, 15.0f, 14.0f, 16.0f,
                                        17.0f, 17.0f};
 
-  DoTransposeEltWise(input_shape.size(), input_shape, 16,
-                     stride, (uint8_t*)input_vals_end.data(), (uint8_t*)target.data(),
-                     sizeof(float));
+  ASSERT_STATUS_OK(DoTransposeEltWise(input_shape.size(), input_shape, 16,
+                                      stride, (uint8_t*)input_vals_end.data(), (uint8_t*)target.data(),
+                                      sizeof(float)));
   for (size_t i = 0; i < input_vals_end.size(); ++i) {
     ASSERT_TRUE(target[i] == expected_vals3[i]);
   }

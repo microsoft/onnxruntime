@@ -5,8 +5,11 @@
 
 #include <string>
 #include <unordered_map>
+
+#ifdef ENABLE_TRAINING
 #include <thread>
 #include <future>
+#endif
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -188,6 +191,8 @@ class InferenceSession {
   common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) ORT_MUST_USE_RESULT;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   /**
     * Add custom ops. This API is not thread safe.
     */
@@ -203,6 +208,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) ORT_MUST_USE_RESULT;
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
   /**
     * Load an ONNX or ORT format model.
@@ -296,6 +302,7 @@ class InferenceSession {
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
+#ifdef ENABLE_TRAINING
   // For ORTModule.forward()
   virtual common::Status RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
                                                         std::vector<OrtValue>& user_outputs,
@@ -598,9 +605,12 @@ class InferenceSession {
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
+#endif
 
   ModelMetadata model_metadata_;
   std::unordered_set<std::string> required_inputs_;
@@ -665,11 +675,14 @@ class InferenceSession {
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
   std::vector<uint8_t> ort_format_model_bytes_;
 
+#ifdef ENABLE_TRAINING
   // background thread for RunInBackgroundAndWaitForYield
   std::unordered_map<int64_t, std::thread> bg_threads_;
+#endif
 
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };
+
 
 struct SessionIOBinding {
  public:

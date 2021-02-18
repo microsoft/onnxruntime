@@ -3,47 +3,11 @@
 
 #pragma once
 
+struct OrtTypeInfo;
+
 namespace _winml {
 
-MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371")
-IModelInfo : IUnknown {
-  STDMETHOD(GetAuthor)
-  (const char** out, size_t* len) PURE;
-
-  STDMETHOD(GetName)
-  (const char** out, size_t* len) PURE;
-
-  STDMETHOD(GetDomain)
-  (const char** out, size_t* len) PURE;
-
-
-  STDMETHOD(GetDescription)
-  (const char** out, size_t* len) PURE;
-
-  STDMETHOD(GetVersion)
-  (int64_t * out) PURE;
-
-  STDMETHOD(GetModelMetadata)
-  (ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING> **metadata) PURE;
-
-  STDMETHOD(GetInputFeatures)
-  (ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor> **features) PURE;
-
-  STDMETHOD(GetOutputFeatures)
-  (ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor> **features) PURE;
-};
-
-MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99")
-IModel : IUnknown {
-  STDMETHOD(GetModelInfo)
-  (IModelInfo **info) PURE;
-
-  STDMETHOD(ModelEnsureNoFloat16)
-  () PURE;
-
-  STDMETHOD(CloneModel)
-  (IModel **copy) PURE;
-};
+interface IEngineFactory;
 
 using Resource = std::unique_ptr<void, std::function<void(void*)>>;
 MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1")
@@ -76,10 +40,83 @@ IValue : IUnknown {
   (winml::TensorKind kind, bool* out) PURE;
 };
 
+MIDL_INTERFACE("4637dfcb-fc19-45c3-a632-c84942d0cf8e")
+IOrtTypeInfoProvider : IUnknown {
+  STDMETHOD(GetTypeInfo)
+  (OrtTypeInfo * *info) PURE;
+};
+
+MIDL_INTERFACE("fe94665f-76cb-42a2-ab21-a06ae1c7f1ae")
+IDescriptorInfo : IUnknown{
+
+};
+
+MIDL_INTERFACE("e3feaec4-eb09-4b82-973c-781f1c230842")
+IDescriptorInfoProvider : IUnknown{
+  STDMETHOD(GetDescriptorInfo)
+  (IEngineFactory* engine_factory, IDescriptorInfo * *info) PURE;
+};
+
+
+MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371")
+IModelInfo : IUnknown {
+  STDMETHOD(GetAuthor)
+  (const char** out, size_t* len) PURE;
+
+  STDMETHOD(GetName)
+  (const char** out, size_t* len) PURE;
+
+  STDMETHOD(GetDomain)
+  (const char** out, size_t* len) PURE;
+
+  STDMETHOD(GetDescription)
+  (const char** out, size_t* len) PURE;
+
+  STDMETHOD(GetVersion)
+  (int64_t * out) PURE;
+
+  STDMETHOD(GetModelMetadata)
+  (ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING> **metadata) PURE;
+
+  STDMETHOD(GetInputFeatures)
+  (ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor> **features) PURE;
+
+  STDMETHOD(GetOutputFeatures)
+  (ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor> **features) PURE;
+};
+
+MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99")
+IModel : IUnknown {
+  STDMETHOD(GetModelInfo)
+  (IModelInfo **info) PURE;
+
+  STDMETHOD(ModelEnsureNoFloat16)
+  () PURE;
+
+  STDMETHOD(CloneModel)
+  (IModel **copy) PURE;
+
+  STDMETHOD(SaveModel)
+  (_In_ const wchar_t* const file_name,
+   _In_ unsigned size) PURE;
+
+  STDMETHOD(AddOperator)
+  (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,
+   _In_ const char* const* op_input_names, _In_ const char* const* actual_input_names, size_t num_inputs,
+   _In_ const char* const* op_output_names, _In_ const char* const* actual_output_names, size_t num_outputs,
+   _In_ const char* const* op_attribute_names, _In_ IValue** constant_value, size_t num_attributes) PURE;
+
+  STDMETHOD(AddModelInput)
+  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* default_value) PURE;
+
+  STDMETHOD(AddModelOutput)
+  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider) PURE;
+};
+
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac")
 IEngine : IUnknown {
   STDMETHOD(LoadModel)
-  (_In_ IModel*) PURE;
+  (_In_ IModel*)PURE;
 
   STDMETHOD(Initialize)
   () PURE;
@@ -189,6 +226,9 @@ IEngineFactory : IUnknown {
   STDMETHOD(CreateModel)
   (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
 
+  STDMETHOD(CreateEmptyModel)
+  (_In_ int64_t opset, _Outptr_ IModel * *out) PURE;
+
   STDMETHOD(CreateEngineBuilder)
   (_Outptr_ IEngineBuilder **engine_builder) PURE;
 
@@ -197,6 +237,19 @@ IEngineFactory : IUnknown {
 
   STDMETHOD(CreateCustomRegistry)
   (_Out_ IMLOperatorRegistry **registry) PURE;
+
+  STDMETHOD(CreateTensorDescriptorInfo)
+  (
+      winml::TensorKind kind,
+      int64_t* dims,
+      size_t num_dims,
+      _Out_ IDescriptorInfo **info) PURE;
+
+  STDMETHOD(CreateSequenceDescriptorInfo)
+  (_Out_ IDescriptorInfo **info) PURE;
+
+  STDMETHOD(CreateMapDescriptorInfo)
+  (_Out_ IDescriptorInfo **info) PURE;
 };
 
 }  // namespace _winml

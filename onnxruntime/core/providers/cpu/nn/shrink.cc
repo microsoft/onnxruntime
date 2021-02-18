@@ -74,9 +74,9 @@ Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* input = p_op_kernel_context->Input<Tensor>(0);
   auto* output = p_op_kernel_context->Output(0, input->Shape());
   // bool, std::string are not supported.
-  utils::MLTypeCallDispatcherRet<Status, shrink_internal::CallShrinkImpl, float, double, MLFloat16, BFloat16, int8_t, uint8_t,
-                                 int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+  utils::MLTypeCallDispatcher<float, double, MLFloat16, BFloat16, int8_t, uint8_t,
+                              int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
       t_disp(input->GetElementType());
-  return t_disp.Invoke(input, output, bias_, lambd_);
+  return t_disp.InvokeRet<Status, shrink_internal::CallShrinkImpl>(input, output, bias_, lambd_);
 }
 }  // namespace onnxruntime

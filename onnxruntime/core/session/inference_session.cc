@@ -14,7 +14,6 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/customregistry.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -44,7 +43,6 @@
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
-#include "core/session/custom_ops.h"
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -52,7 +50,15 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
+// custom ops are not available in a minimal build unless ORT_MINIMAL_BUILD_CUSTOM_OPS is set
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#include "core/framework/customregistry.h"
+#include "core/session/custom_ops.h"
+#endif
+
+#ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/controlflow/ort_tasks.h"
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
@@ -373,6 +379,7 @@ InferenceSession::~InferenceSession() {
     }
   }
 
+#ifdef ENABLE_TRAINING
   // TODO: find a better way to terminate the background thread
   // backward is not completed yet, set terminate_flag to True
   for (auto it = bg_threads_.begin(); it != bg_threads_.end(); ++it) {
@@ -383,6 +390,7 @@ InferenceSession::~InferenceSession() {
       ORT_UNUSED_PARAMETER(s);
     }
   }
+#endif
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -441,6 +449,11 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
           << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
       session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
     }
+
+    auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);
+    if (trt_ep) {
+      p_exec_provider->SetComputeStream(trt_ep->GetComputeStream());
+    }
   }
 
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
@@ -456,8 +469,33 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return execution_providers_.Add(provider_type, std::move(p_exec_provider));
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+// Custom Op support
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
+  std::shared_ptr<CustomRegistry> custom_registry;
+  ORT_RETURN_IF_ERROR_SESSIONID_(CreateCustomRegistry(op_domains, custom_registry));
+  ORT_RETURN_IF_ERROR_SESSIONID_(RegisterCustomRegistry(custom_registry));
+  return Status::OK();
+}
 
+common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) {
+  if (custom_registry == nullptr) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
+  }
+
+  custom_registries_.push_back(custom_registry);
+
+  // Insert session-level customized kernel registry.
+  kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
+
+#if !defined(ORT_MINIMAL_BUILD)
+  custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
+#endif
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
+#if !defined(ORT_MINIMAL_BUILD)
 common::Status InferenceSession::RegisterGraphTransformer(
     std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, TransformerLevel level) {
   if (p_graph_transformer == nullptr) {
@@ -481,32 +519,7 @@ common::Status InferenceSession::AddCustomTransformerList(const std::vector<std:
 
   return Status::OK();
 }
-#endif
 
-common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
-  std::shared_ptr<CustomRegistry> custom_registry;
-  ORT_RETURN_IF_ERROR_SESSIONID_(CreateCustomRegistry(op_domains, custom_registry));
-  ORT_RETURN_IF_ERROR_SESSIONID_(RegisterCustomRegistry(custom_registry));
-  return Status::OK();
-}
-
-common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) {
-  if (custom_registry == nullptr) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
-  }
-
-  custom_registries_.push_back(custom_registry);
-
-  // Insert session-level customized kernel registry.
-  kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
-
-#if !defined(ORT_MINIMAL_BUILD)
-  custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
-#endif
-  return Status::OK();
-}
-
-#if !defined(ORT_MINIMAL_BUILD)
 common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-edian machines");
 
@@ -1016,7 +1029,7 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
 
   // Verify the ort_format_model_bytes_ is a valid InferenceSessionBuffer before we access the data
   flatbuffers::Verifier verifier(ort_format_model_bytes_.data(), ort_format_model_bytes_.size());
-  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier));
+  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier), "ORT model verification failed.");
 
   const auto* fbs_session = fbs::GetInferenceSession(ort_format_model_bytes_.data());
   ORT_RETURN_IF(nullptr == fbs_session, "InferenceSession is null. Invalid ORT format model.");
@@ -1721,6 +1734,7 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
   return Run(run_options, io_binding);
 }
 
+#ifdef ENABLE_TRAINING
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs, int64_t& run_id) {
   onnxruntime::contrib::OrtTasks::GetInstance().PrepareForegroundWait();
@@ -1774,6 +1788,7 @@ common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtVa
 
   return bg_thread_status;
 }
+#endif
 
 template <typename T>
 void InferenceSession::StartProfiling(const std::basic_string<T>& file_prefix) {
@@ -1956,7 +1971,7 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register =
-        optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides,
+        optimizer_utils::GenerateTransformers(level, session_options_,
                                               *execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
                                               custom_list);
     for (auto& entry : transformers_to_register) {
