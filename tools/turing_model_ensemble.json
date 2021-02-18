@@ -1,6 +1,5 @@
 {
-    "degree_of_parallelism": 10,
-    "batch_size": 1,
+    "max_seq_len": 5,
     "ensemble": [
         {
             "model_name": "first_model",
@@ -11,6 +10,8 @@
                     "input_hidden_states"
                 ]
             ],
+            "batch_dim_index_in_state": 2,
+            "seq_len_dim_index_in_state": 3,
             "state_input_names": [
                 "past_0",
                 "past_1",
@@ -74,6 +75,8 @@
                     "input_hidden_states"
                 ]
             ],
+            "batch_dim_index_in_state": 2,
+            "seq_len_dim_index_in_state": 3,
             "state_input_names": [
                 "past_24",
                 "past_25",

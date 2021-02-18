@@ -19,12 +19,7 @@ using json = nlohmann::json;
 /*
 * This is just a prototype to demonstrate the usage of Intel TBB's parallel_pipeline to implement
 * pipeline parallelism. See main() for usage.
-* It runs 2 models on 2 separate GPU devices in a pipeline.
-* The output of first model is allocated on GPU-0 and fed to the next model running on GPU-1.
-* The cross-device copy (from GPU-0 to GPU-1) is done by ORT as part of Run().
 */
-
-// TODO error handling, replace asserts
 
 const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
@@ -38,7 +33,7 @@ void CheckStatus(OrtStatus* status) {
   }
 }
 
-std::pair<bool, int> Exists(const std::vector<std::string>& vec, const std::string& to_find) {
+static std::pair<bool, int> Exists(const std::vector<std::string>& vec, const std::string& to_find) {
   auto it = std::find(std::begin(vec), std::end(vec), to_find);
   if (it != std::end(vec)) {
     return {true, it - std::begin(vec)};
@@ -47,24 +42,41 @@ std::pair<bool, int> Exists(const std::vector<std::string>& vec, const std::stri
   }
 }
 
+static std::vector<int64_t> GetShape(const Ort::Session& sess,
+                                     const std::vector<std::string>& io_names,
+                                     const std::string& io_name,
+                                     bool is_input) {
+  auto rc = Exists(io_names, io_name);
+  if (!rc.first) {
+    return {};
+  }
+  std::vector<int64_t> retval;
+  if (is_input) {
+    retval = sess.GetInputTypeInfo(rc.second).GetTensorTypeAndShapeInfo().GetShape();
+  } else {
+    retval = sess.GetOutputTypeInfo(rc.second).GetTensorTypeAndShapeInfo().GetShape();
+  }
+  return retval;
+}
+
 struct Ensemble {
   struct ModelConfig {
     std::string model_name;
     std::string model_file_path;
-    std::vector<std::string> input_names;
-    std::vector<std::string> output_names;
+    std::vector<std::string> input_names;                           // same order as model
+    std::vector<std::string> output_names;                          // same order as model
     std::unordered_map<std::string, std::string> output_input_map;  // maps output of this step to input of the next step
     // state_input_names and state_output_names should have 1-1 correspondence
-    // TODO validate their sizes are same
     std::vector<std::string> state_input_names;   // names of inputs whose values come from the previous output
     std::vector<std::string> state_output_names;  // names of outputs that feed the next inputs
     int device_id;
+    int batch_dim_index_in_state;
+    int seq_len_dim_index_in_state;
   };
 
-  std::vector<ModelConfig> models;
+  int max_seq_len;
+  std::vector<ModelConfig> model_config_vec;
   std::unordered_map<std::string, int> model_idx_map;  // maps model name to index in models vector
-  int degree_of_parallelism;
-  int batch_size;
 };
 
 void CopyOrtValues(std::vector<Ort::Value>& input_values, std::vector<Ort::Value>& input_values_copy) {
@@ -72,7 +84,7 @@ void CopyOrtValues(std::vector<Ort::Value>& input_values, std::vector<Ort::Value
     void* data_ptr = nullptr;
     CheckStatus(g_ort->GetTensorMutableData(val, &data_ptr));
     auto type_shape_info = val.GetTensorTypeAndShapeInfo();
-    int byte_count = sizeof(int64_t) * type_shape_info.GetElementCount();  // TODO
+    int byte_count = sizeof(int64_t) * type_shape_info.GetElementCount();
     auto shape = type_shape_info.GetShape();
     auto mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     input_values_copy.push_back(Ort::Value::CreateTensor(mem_info, data_ptr, byte_count,
@@ -82,18 +94,23 @@ void CopyOrtValues(std::vector<Ort::Value>& input_values, std::vector<Ort::Value
 
 struct PipelineSession {
   // TODO do we need to add a looping batch API?
-  // TODO return error status code
-  void Run(const std::vector<std::string>& input_names,
-           std::vector<Ort::Value>& input_values,  // TODO should be const
-           const std::vector<std::string>& output_names,
-           std::vector<Ort::Value>& output_values,  // TODO does the user want to pre-allocate the outputs? how does she know the shape?
-           int max_steps) {
-    using namespace tbb;
-
+  // TODO return error status code, decide how to do error handling in stages
+  // TODO stop execution when an error is detected
+  // TODO - adjust output shape for states
+  // TODO - change position_ids for step > 0
+  OrtStatus* Run(const std::vector<std::string>& input_names,
+                 std::vector<Ort::Value>& input_values,  // TODO should be const
+                 const std::vector<std::string>& output_names,
+                 // TODO honor the user's choice of where she wants the output to be; basically use this OrtValue for BindOutput in the final stage
+                 std::vector<Ort::Value>& output_values,
+                 int max_steps,
+                 int batch_size,
+                 int degree_of_parallelism) {
+    ExecutionFrame exec_frame(*this, batch_size);
     int step_id = 0;
 
     // input stage
-    auto input_stage_fn = [&](flow_control& fc) {
+    auto input_stage_fn = [&](tbb::flow_control& fc) {
       std::shared_ptr<Token> token_ptr;
       if (step_id < max_steps) {
         // HACK HACK TODO
@@ -120,10 +137,10 @@ struct PipelineSession {
       ++step_id;
       return token_ptr;
     };
-    auto input_stage_filter = make_filter<void, std::shared_ptr<Token>>(filter::serial, input_stage_fn);
+    auto input_stage_filter = tbb::make_filter<void, std::shared_ptr<Token>>(tbb::filter::serial, input_stage_fn);
 
     // output stage
-    auto output_stage_fn = [&](std::shared_ptr<Token> token) {
+    auto output_stage_fn = [&](const std::shared_ptr<Token> token) {
       output_values.clear();
       output_values.reserve(output_names.size());
       // only give those outputs to the user that she has requested
@@ -136,18 +153,22 @@ struct PipelineSession {
         output_values.push_back(std::move(token->ort_values[rc.second]));
       }
     };
-    auto output_stage_filter = make_filter<std::shared_ptr<Token>, void>(filter::serial, output_stage_fn);
+    auto output_stage_filter = tbb::make_filter<std::shared_ptr<Token>, void>(tbb::filter::serial, output_stage_fn);
 
     // model execution
-    auto model_exec_fn = [](int stage_id, Token& token, const std::string& model_name, PipelineSession& psess) {
+    auto model_exec_fn = [](int stage_id, const Token& token, const std::string& model_name,
+                            PipelineSession& psess /* passed by ref or else sess.Run won't work as Run is non-const */,
+                            ExecutionFrame& exec_frame /* intentional as we'll update the state */) {
       std::cout << "Executing " << stage_id << "/" << token.step_id << " model: " << model_name << std::endl;
 
-      auto model_idx = psess.ens.model_idx_map.at(model_name);
-      auto& model_config = psess.ens.models.at(model_idx);
-      auto& session_state = psess.model_session_state_vec.at(model_idx);
-      auto& run_state = psess.model_run_state_vec.at(model_idx);
-
+      // TODO psess will be shared across stages, do we need a mutex?
+      const auto model_idx = psess.ens.model_idx_map.at(model_name);
+      const auto& model_config = psess.ens.model_config_vec[model_idx];
+      auto& session_state = psess.model_session_state_vec[model_idx];
       auto& ort_sess = session_state.session;
+
+      // TODO exec_frame is shared across stages, do we need a mutex?
+      ExecutionFrame::RunState& run_state = exec_frame.model_run_state_vec[model_idx];
 
       CheckStatus(g_ort->SetCurrentGpuDeviceId(model_config.device_id));
 
@@ -159,8 +180,9 @@ struct PipelineSession {
       auto token_ptr = std::make_shared<Token>();
       token_ptr->step_id = token.step_id;
 
-      session_state.io_binding.ClearBoundInputs();
-      session_state.io_binding.ClearBoundOutputs();
+      auto& io_binding = *run_state.io_binding;
+      io_binding.ClearBoundInputs();
+      io_binding.ClearBoundOutputs();
 
       // inputs
       // go through all the inputs from the config and for each one if you find it in token.input_names
@@ -171,7 +193,7 @@ struct PipelineSession {
         auto rc = Exists(token.ort_value_names, iname);
         if (rc.first) {
           // std::cout << stage_id << "/" << token.step_id << " binding input " << token.ort_value_names[rc.second] << std::endl;
-          session_state.io_binding.BindInput(token.ort_value_names[rc.second].c_str(), token.ort_values[rc.second]);
+          io_binding.BindInput(token.ort_value_names[rc.second].c_str(), token.ort_values[rc.second]);
           continue;
         }
 
@@ -179,22 +201,37 @@ struct PipelineSession {
         if (rc.first) {
           const auto& mapped_oname = model_config.state_output_names[rc.second];
           // std::cout << stage_id << "/" << token.step_id << " state_binding " << iname << " with value of " << mapped_oname << std::endl;
-          session_state.io_binding.BindInput(iname.c_str(),
-                                             run_state.output_val_map.at(mapped_oname));
+          io_binding.BindInput(iname.c_str(),
+                               run_state.output_val_map.at(mapped_oname));
         }
       }
 
       // allocate outputs
-      // TODO optimize - no need to allocate every single time
-      for (const auto& output_name : model_config.output_names) {
-        session_state.io_binding.BindOutput(output_name.c_str(), session_state.cuda_mem_info);
+      // output seq len = current input seq len + past seq len (which is 0 the first time)
+      // if output is a state, use the pre-allocated buffer to create an OrtValue and bind it.
+      // if output is not a state, bind using just cuda_mem_info.
+      // TODO optimize - pre-allocate buffers for states
+      // TODO output length of states needs to be corrected; it should be input_len + past_seq_len
+      for (const auto& oname : model_config.output_names) {
+        if (Exists(model_config.state_output_names, oname).first) {
+          auto& mem_allocation = token.step_id % 2 == 0
+                                     ? run_state.state_buffer_2_map[oname]
+                                     : run_state.state_buffer_1_map[oname];
+          auto output_ort_val = Ort::Value::CreateTensor(
+              session_state.cuda_mem_info, mem_allocation.get(), mem_allocation.size(),
+              /* shape, shape_len, element_type */);
+          io_binding.BindOutput(oname.c_str(), output_ort_val);
+          )
+        } else {
+          io_binding.BindOutput(oname.c_str(), session_state.cuda_mem_info);
+        }
       }
 
       // run
-      ort_sess.Run(session_state.run_options, session_state.io_binding);
+      ort_sess.Run({}, io_binding);
 
       // now populate token and save state from this run
-      auto vec_out_vals = session_state.io_binding.GetOutputValues();
+      auto vec_out_vals = io_binding.GetOutputValues();
       for (int i = 0; i < model_output_names.size(); ++i) {
         const auto& oname = model_output_names[i];
 
@@ -207,7 +244,9 @@ struct PipelineSession {
         // because we don't want to store all outputs
         if (rc.first) {
           // std::cout << stage_id << "/" << token.step_id << " saving state " << oname << std::endl;
-          run_state.output_val_map.emplace(oname, std::move(vec_out_vals[i]));
+          if (stage_id == 0 && i == 1)
+            // std::cout << "output seq len: " << vec_out_vals[i].GetTypeInfo().GetTensorTypeAndShapeInfo().GetShape()[3] << std::endl;
+            run_state.output_val_map.emplace(oname, std::move(vec_out_vals[i]));
           continue;
         }
 
@@ -216,7 +255,7 @@ struct PipelineSession {
         if (model_config.output_input_map.count(oname)) {
           // std::cout << stage_id << "/" << token.step_id << " mapping output " << oname << " to input of next stage "
           //           << model_config.output_input_map[oname] << std::endl;
-          token_ptr->ort_value_names.push_back(model_config.output_input_map[oname]);
+          token_ptr->ort_value_names.push_back(model_config.output_input_map.at(oname));
           token_ptr->ort_values.push_back(std::move(vec_out_vals[i]));
         }
       }
@@ -225,27 +264,31 @@ struct PipelineSession {
     };
 
     // create filter based on first model
-    auto model_exec_filter_chain =
-        make_filter<std::shared_ptr<Token>,
-                    std::shared_ptr<Token>>(filter::serial,
-                                            [this, &model_exec_fn, &model_name = ens.models[0].model_name](std::shared_ptr<Token> token_ptr) {
-                                              return model_exec_fn(0, *token_ptr, model_name, *this);
-                                            });
+    tbb::filter_t<std::shared_ptr<Token>, std::shared_ptr<Token>> model_exec_filter_chain;
+    // auto model_exec_filter_chain =
+    //     tbb::make_filter<std::shared_ptr<Token>,
+    //                      std::shared_ptr<Token>>(tbb::filter::serial,
+    //                                              [this, &exec_frame, &model_exec_fn, &model_name = ens.model_config_vec[0].model_name](
+    //                                                  const std::shared_ptr<Token> token_ptr) {
+    //                                                return model_exec_fn(0, *token_ptr, model_name, *this, exec_frame);
+    //                                              });
 
     // join filters from other models
-    for (int i = 1; i < ens.models.size(); ++i) {
+    for (int i = 1; i < ens.model_config_vec.size(); ++i) {
       model_exec_filter_chain =
           model_exec_filter_chain &
-          make_filter<std::shared_ptr<Token>,
-                      std::shared_ptr<Token>>(filter::serial,
-                                              [this, i, &model_exec_fn, &model_name = ens.models[i].model_name](std::shared_ptr<Token> token_ptr) {
-                                                return model_exec_fn(i, *token_ptr, model_name, *this);
-                                              });
+          tbb::make_filter<std::shared_ptr<Token>,
+                           std::shared_ptr<Token>>(tbb::filter::serial,
+                                                   [this, i, &exec_frame, &model_exec_fn, &model_name = ens.model_config_vec[i].model_name](
+                                                       const std::shared_ptr<Token> token_ptr) {
+                                                     return model_exec_fn(i, *token_ptr, model_name, *this, exec_frame);
+                                                   });
     }
 
     // create and run the pipeline
-    parallel_pipeline(ens.degree_of_parallelism,
-                      input_stage_filter & model_exec_filter_chain & output_stage_filter);
+    tbb::parallel_pipeline(degree_of_parallelism,
+                           input_stage_filter & model_exec_filter_chain & output_stage_filter);
+    return nullptr;
   }
 
   void ParseEnsembleJsonFile(const std::string& ensemble_json_file, Ensemble& ens) {
@@ -254,18 +297,17 @@ struct PipelineSession {
       throw std::runtime_error("File error");
     }
 
-    auto j = json::parse(ifs);
-    ens.degree_of_parallelism = j["degree_of_parallelism"];
-    ens.batch_size = j["batch_size"];
+    auto j = json::parse(ifs, nullptr, true, true);
+    ens.max_seq_len = j["max_seq_len"];
     int idx = 0;
     for (const auto& m : j["ensemble"]) {
       Ensemble::ModelConfig cfg;
       std::string model_name = m["model_name"];
       cfg.model_name = model_name;
       cfg.model_file_path = m["model_file_path"];
-      cfg.device_id = m["device_id"];
+      cfg.device_id = m["device_id"];  // TODO validate device id
 
-      const char* key = "output_input_map";
+      const char* key = "output_input_map";  // TODO validate entries of this map
       if (m.find(key) != m.end()) {
         const auto& j_oi_map = m[key];
         for (const auto& elem : j_oi_map) {
@@ -289,7 +331,9 @@ struct PipelineSession {
         }
       }
 
-      ens.models.push_back(std::move(cfg));
+      // TODO validate sizes of state_input_names and state_output_names is same
+
+      ens.model_config_vec.push_back(std::move(cfg));
       ens.model_idx_map[model_name] = idx;
       ++idx;
     }
@@ -307,11 +351,9 @@ struct PipelineSession {
 
   void Init(const Ensemble& ens0, Ort::Env& env) {
     ens = ens0;  // TODO can avoid copy of ensemble config
-    model_session_state_vec.reserve(ens.models.size());
-    model_run_state_vec.reserve(ens.models.size());
 
     Ort::AllocatorWithDefaultOptions ort_allocator;
-    for (auto& mcfg : ens.models) {
+    for (auto& mcfg : ens.model_config_vec) {
       Ort::SessionOptions session_options;  // TODO should we accept session options from the config?
       CheckStatus(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, mcfg.device_id));
       Ort::Session session(env, mcfg.model_file_path.c_str(), session_options);
@@ -332,22 +374,9 @@ struct PipelineSession {
         mcfg.input_names.push_back(std::string(name_ptr.get()));
       }
 
-      Ort::IoBinding io_binding(session);
       Ort::MemoryInfo cuda_mem_info("Cuda", OrtDeviceAllocator, mcfg.device_id, OrtMemTypeDefault);
-
-      // HACK HACK TODO how do i know the shape of the past_* inputs given they've symbolic dims?
-      // pre-allocate past input for the first step for both stages
-      RunState rs;
-      std::vector<int64_t> past_dims{2, ens.batch_size, 32, 0, 128};
-      for (const auto& elem : mcfg.state_output_names) {
-        Ort::Float16_t values[] = {15360};
-        auto past_tensor = Ort::Value::CreateTensor<Ort::Float16_t>(cuda_mem_info, values, sizeof(values) / sizeof(values[0]),
-                                                                    past_dims.data(), past_dims.size());
-        rs.output_val_map.emplace(elem, std::move(past_tensor));
-      }
-      model_run_state_vec.push_back(std::move(rs));
-
-      SessionState sess_state{std::move(session), std::move(io_binding), std::move(cuda_mem_info)};
+      Ort::Allocator cuda_allocator(session, cuda_mem_info);
+      SessionState sess_state{std::move(session), std::move(cuda_allocator), std::move(cuda_mem_info)};
       model_session_state_vec.push_back(std::move(sess_state));
     }
   }
@@ -359,19 +388,55 @@ struct PipelineSession {
     std::vector<Ort::Value> ort_values;
   };
 
-  struct SessionState {
-    Ort::Session session;
-    Ort::IoBinding io_binding;
-    Ort::MemoryInfo cuda_mem_info;
-    Ort::RunOptions run_options;
+  struct ExecutionFrame {
+    ExecutionFrame(const PipelineSession& psess, int batch_size) {
+      model_run_state_vec.reserve(psess.ens.model_config_vec.size());
+      int idx = 0;
+      for (const auto& mcfg : psess.ens.model_config_vec) {
+        // HACK HACK TODO how do i know the shape of the past_* inputs given they've symbolic dims?
+        // pre-allocate past input for the first step for both stages
+        RunState rs;
+        auto& cuda_allocator = psess.model_session_state_vec[idx].cuda_allocator;
+
+        // BEGIN determine size to pre-allocate
+        const auto& session = psess.model_session_state_vec[idx].session;
+        auto output_state_shape = GetShape(session, mcfg.state_output_names, mcfg.state_output_names[0], false);
+        // override batch and seq dims with batch_size and maximum seq len
+        output_state_shape[mcfg.batch_dim_index_in_state] = batch_size;
+        output_state_shape[mcfg.seq_len_dim_index_in_state] = psess.ens.max_seq_len;
+        auto num_elements = std::accumulate(std::begin(output_state_shape), std::end(output_state_shape), 1, std::multiplies<int>());
+        int size_to_allocate = sizeof(Ort::Float16_t) * num_elements;
+        // END determine size to pre-allocate
+
+        rs.state_buffer_1 = cuda_allocator.GetAllocation(size_to_allocate);
+        rs.state_buffer_2 = cuda_allocator.GetAllocation(size_to_allocate);
+
+        auto io_binding = std::make_unique<Ort::IoBinding>(psess.model_session_state_vec[idx].session);
+        model_run_state_vec.push_back(std::move(rs));
+
+        ++idx;
+      }
+    }
+
+    struct RunState {
+      // needs to be stored per model since it's associated with a session
+      std::unique_ptr<Ort::IoBinding> io_binding;
+      std::unordered_map<std::string, Ort::Value> output_val_map;
+      std::unordered_map<std::string, Ort::MemoryAllocation> state_buffer_1_map;  // pre-allocated on cuda
+      std::unordered_map<std::string, Ort::MemoryAllocation> state_buffer_2_map;  // pre-allocated on cuda
+    };
+    std::vector<RunState> model_run_state_vec;
   };
 
-  struct RunState {
-    std::unordered_map<std::string, Ort::Value> output_val_map;
+  struct SessionState {
+    Ort::Session session;
+    // needs to be stored per model since it's associated with a session
+    Ort::Allocator cuda_allocator;
+    // needs to be stored per model since it's associated with device id
+    Ort::MemoryInfo cuda_mem_info;
   };
 
   std::vector<SessionState> model_session_state_vec;
-  std::vector<RunState> model_run_state_vec;
   Ensemble ens;
 };
 
@@ -478,7 +543,8 @@ int main(int argc, char* argv[]) {
   // Run the pipeline
   std::vector<Ort::Value> output_values;
   std::vector<std::string> output_names{"logits"};
-  pipeline_session.Run(input_node_names, ort_inputs, output_names, output_values, max_steps);
+  pipeline_session.Run(input_node_names, ort_inputs, output_names, output_values,
+                       max_steps, batch_size, 10);
   assert(output_values.size() == output_names.size());
 
   // print output
@@ -497,4 +563,5 @@ int main(int argc, char* argv[]) {
 
   printf("Done!\n");
   return 0;
+}
 }

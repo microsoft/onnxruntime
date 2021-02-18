@@ -52,7 +52,6 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
-
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
 using namespace onnxruntime::common;
@@ -1688,7 +1687,7 @@ std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutput
   return std::make_pair(common::Status::OK(), &output_def_list_);
 }
 
-common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
+common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) const {
   {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
     if (!is_inited_) {

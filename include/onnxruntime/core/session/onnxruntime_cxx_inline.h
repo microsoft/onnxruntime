@@ -188,7 +188,7 @@ inline UnownedMemoryInfo Allocator::GetInfo() const {
   return UnownedMemoryInfo(out);
 }
 
-inline IoBinding::IoBinding(Session& session) {
+inline IoBinding::IoBinding(const Session& session) {
   ThrowOnError(GetApi().CreateIoBinding(session, &p_));
 }
 
