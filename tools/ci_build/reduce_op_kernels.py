@@ -238,7 +238,8 @@ def exclude_unused_ops_and_types(config_path: str, enable_type_reduction: bool =
 
     _process_provider_registrations(ort_root, use_cuda, create_processor)
 
-    _insert_type_control_cpp_code(ort_root, op_type_usage_manager.get_cpp_entries())
+    if op_type_usage_manager is not None:
+        _insert_type_control_cpp_code(ort_root, op_type_usage_manager.get_cpp_entries())
 
 
 class _ExcludeFromGloballyAllowedTypesRegistrationProcessor(_ExcludingRegistrationProcessor):
