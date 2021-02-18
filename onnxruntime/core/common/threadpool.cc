@@ -88,6 +88,10 @@ public:
    return idx % _num_shards;
  }
 
+  bool Skip(unsigned my_shard) {
+    return _shards[my_shard]._next >= _shards[my_shard]._end;
+  }
+
   // Attempt to claim iterations from the sharded counter.  The function either
   // returns true, along with a block of exactly block_size iterations, or it returns false
   // if all of the iterations have been claimed.
@@ -207,10 +211,14 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
     }
   };
 
+  std::function<bool(unsigned)> skip_work = [&](unsigned idx) {
+    return lc.Skip(idx);
+  };
+
   // Run the work in the thread pool (and in the current thread).  Synchronization with helping
   // threads is handled within RunInParallel, hence we can deallocate lc and other state captured by
   // run_work.
-  RunInParallel(run_work, num_work_items);
+  RunInParallel(run_work, num_work_items, skip_work);
 }
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
@@ -282,6 +290,21 @@ void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n)
     } else {
       underlying_threadpool_->RunInParallel(std::move(fn),
                                             n);
+    }
+  } else {
+    fn(0);
+  }
+}
+
+void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::function<bool(unsigned idx)> skip) {
+  if (underlying_threadpool_) {
+    if (ThreadPool::ParallelSection::current_parallel_section) {
+      underlying_threadpool_->RunInParallelSection(*(ThreadPool::ParallelSection::current_parallel_section->ps_.get()),
+                                                   std::move(fn),
+                                                   n);
+    } else {
+      underlying_threadpool_->RunInParallel(std::move(fn),
+                                            n, skip);
     }
   } else {
     fn(0);

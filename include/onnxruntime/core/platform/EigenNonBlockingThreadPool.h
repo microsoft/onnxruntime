@@ -160,6 +160,11 @@ class Profiler {
       return "";
     }
   }
+  void LogEvent(std::string&& evt) {
+    if (*this) {
+      events_.emplace_back(evt + ": 1");
+    }
+  }
   void LogStart() {
     if (*this) {
       points_.emplace_back(CLOCK::now());
@@ -251,6 +256,8 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // two loops execute in series in a parallel section. ]
   virtual void RunInParallel(std::function<void(unsigned idx)> fn,
                              unsigned n) = 0;
+  virtual void RunInParallel(std::function<void(unsigned idx)> fn,
+                             unsigned n, std::function<bool(unsigned idx)> skip) = 0;
   virtual void StartProfiling() const = 0;
   virtual std::string StopProfiling() const = 0;
 };
@@ -988,6 +995,57 @@ void SummonWorkers(PerThread &pt,
   }
 }
 
+void SummonWorkers(PerThread& pt,
+                   ThreadPoolParallelSection& ps,
+                   unsigned n,
+                   const std::function<void(unsigned)>& worker_fn,
+                   const std::function<bool(unsigned)>& skip_fn) {
+  auto call_worker_fn = [&ps, worker_fn]() {
+    unsigned my_idx = ++ps.worker_idx;
+    worker_fn(my_idx);
+    ps.tasks_finished++;
+  };
+
+  unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
+  if (n > current_dop) {
+    unsigned extra_needed = n - current_dop;
+    std::vector<unsigned> good_hints, alt_hints;
+    profiler_.LogStart();
+    GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
+    profiler_.LogEndAndStart("GetGoodWorkerHints");
+
+    for (auto i = 0u; i < extra_needed; i++) {
+      Task t;
+      int q_idx;
+      if (i < good_hints.size()) {
+        q_idx = good_hints[i];
+      } else {
+        auto alt_i = i - static_cast<unsigned>(good_hints.size());
+        if (alt_i < alt_hints.size()) {
+          q_idx = alt_hints[alt_i];
+        } else {
+          q_idx = Rand(&pt.rand) % num_threads_;
+        }
+      }
+      WorkerData& td = worker_data_[q_idx];
+      Queue& q = td.queue;
+      unsigned w_idx;
+      if (skip_fn(i + 1)) {
+        profiler_.LogEvent("Skipped");
+      } else {
+        profiler_.LogStart();
+        t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
+        profiler_.LogEnd("Enqueue");
+        if (!t) {
+          ps.tasks.push_back({q_idx, w_idx});
+          td.EnsureAwake();
+        }
+      }
+    }
+    profiler_.LogEnd("Distribute");
+  }
+}
+
 // Run a single parallel loop in an existing parallel section.  This
 // maps directly onto SummonWorkers to create sufficient worker
 // threads for the desired degree of parallelism, followed by
@@ -1054,6 +1112,31 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   // multi-loop RunInParallelSection, this single-loop worker can run
   // fn directly without needing to receive it via ps.current_loop.
   SummonWorkers(*pt, ps, n, fn);
+  profiler_.LogEndAndStart("Preproc");
+
+  // Run work in the main thread
+  fn(0);
+  profiler_.LogEndAndStart("Run");
+
+  // Wait for workers to exit the parallel section and hence to have
+  // completed the loop (i.e., ps.tasks_finished matches the number of
+  // tasks that have been created less the number successfully
+  // revoked).
+  EndParallelSectionInternal(*pt, ps);
+  profiler_.LogEnd("Postproc");
+}
+
+void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::function<bool(unsigned idx)> skip) override {
+  profiler_.LogStart();
+  PerThread* pt = GetPerThread();
+  ThreadPoolParallelSection ps;
+  StartParallelSectionInternal(*pt, ps);
+
+  // Summon workers to run the function (n is the desired maximum
+  // degree of parallelism, including the main thread).  Unlike the
+  // multi-loop RunInParallelSection, this single-loop worker can run
+  // fn directly without needing to receive it via ps.current_loop.
+  SummonWorkers(*pt, ps, n, fn, skip);
   profiler_.LogEndAndStart("Preproc");
 
   // Run work in the main thread
