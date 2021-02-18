@@ -15,6 +15,8 @@ import os
 import sys
 import torch
 import onnxruntime
+import numpy as np
+import pprint
 
 # Mapping from model name to pretrained model name
 MODELS = {
@@ -25,19 +27,15 @@ MODELS = {
 is_debug = False
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
-# Run onnx model with ORT
 import benchmark_helper
 
-def get_dummy_inputs(sequence_length, num_global_tokens, device):
-    # Create dummy inputs
-    input_ids = torch.arange(sequence_length).unsqueeze(0).to(device)
-    attention_mask = torch.ones(input_ids.shape, dtype=torch.long,
-                                device=input_ids.device)  # TODO: use random word ID. #TODO: simulate masked word
-    global_attention_mask = torch.zeros(input_ids.shape, dtype=torch.long, device=input_ids.device)
+
+def get_dummy_inputs(batch_size, sequence_length, num_global_tokens, device):
+    input_ids = torch.randint(low=0, high=100, size=(batch_size, sequence_length), dtype=torch.long, device=device)
+    attention_mask = torch.ones(input_ids.shape, dtype=torch.long, device=device)
+    global_attention_mask = torch.zeros(input_ids.shape, dtype=torch.long, device=device)
     global_token_index = list(range(num_global_tokens))
     global_attention_mask[:, global_token_index] = 1
-    # TODO: support more inputs like token_type_ids, position_ids
     return input_ids, attention_mask, global_attention_mask
 
 
@@ -52,11 +50,8 @@ def diff_outputs(ort_outputs, torch_outputs):
     return max_diff
 
 
-def test_torch(device, model, model_name, batch_sizes, sequence_lengths, global_lengths, test_times, num_threads):
-    # Comment the following so that PyTorch use default setting as well.
-    #if num_threads <= 0:
-    #    import psutil
-    #    num_threads = psutil.cpu_count(logical=False)
+def test_torch(device, model, model_name, batch_sizes, sequence_lengths, global_lengths, test_times, num_threads,
+               verbose):
     if num_threads > 0:
         torch.set_num_threads(num_threads)
 
@@ -65,8 +60,8 @@ def test_torch(device, model, model_name, batch_sizes, sequence_lengths, global_
         for sequence_length in sequence_lengths:  # This is total length of <query, document>.
             for global_length in global_lengths:  # This is length of <query>. Short query (8) for search keywords, and longer query (16) for question like
                 print(f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}...")
-                input_ids, attention_mask, global_attention_mask = get_dummy_inputs(sequence_length, global_length,
-                                                                                    device)
+                input_ids, attention_mask, global_attention_mask = get_dummy_inputs(batch_size, sequence_length,
+                                                                                    global_length, device)
 
                 # Run PyTorch
                 _ = model(input_ids, attention_mask=attention_mask, global_attention_mask=global_attention_mask)
@@ -105,7 +100,8 @@ def test_onnxruntime(device,
                      test_times,
                      num_threads,
                      optimizer=False,
-                     precision='fp32'):
+                     precision='fp32',
+                     verbose=True):
     results = []
     for batch_size in batch_sizes:
         for sequence_length in sequence_lengths:  # This is total length of <query, document>.
@@ -113,8 +109,8 @@ def test_onnxruntime(device,
                 print(
                     f"Testing batch_size={batch_size} sequence_length={sequence_length} global_length={global_length} optimizer={optimizer}, precision={precision}..."
                 )
-                input_ids, attention_mask, global_attention_mask = get_dummy_inputs(sequence_length, global_length,
-                                                                                    device)
+                input_ids, attention_mask, global_attention_mask = get_dummy_inputs(batch_size, sequence_length,
+                                                                                    global_length, device)
 
                 # Run OnnxRuntime
                 ort_inputs = {
@@ -123,10 +119,13 @@ def test_onnxruntime(device,
                     "global_attention_mask": global_attention_mask.cpu().numpy()
                 }
 
+                if verbose:
+                    pprint.pprint(ort_inputs)
+
                 # run one query for warm up
                 ort_outputs = ort_session.run(None, ort_inputs)
 
-                if is_debug:
+                if verbose:
                     # Run PyTorch then compare the results with OnnxRuntime.
                     torch_outputs = model(input_ids,
                                           attention_mask=attention_mask,
@@ -157,7 +156,7 @@ def test_onnxruntime(device,
 
                 max_last_state_size = max(batch_sizes) * max(sequence_lengths) * model.config.hidden_size
                 max_pooler_size = max(batch_sizes) * max(sequence_lengths)
-
+                """
                 result = benchmark_helper.inference_ort_with_io_binding(
                     ort_session,
                     ort_inputs,
@@ -169,7 +168,14 @@ def test_onnxruntime(device,
                     output_buffer_max_sizes=[max_last_state_size, max_pooler_size],
                     batch_size=batch_size,
                     device=device)
-                print(result)
+                """
+                result = benchmark_helper.inference_ort(ort_session,
+                                                        ort_inputs,
+                                                        result_template=result_template,
+                                                        repeat_times=test_times,
+                                                        batch_size=batch_size)
+
+                pprint.pprint(result)
                 results.append(result)
     return results
 
@@ -204,7 +210,7 @@ def test_all(args):
         for num_threads in args.num_threads:
             if "torch" in args.engines:
                 results += test_torch(device, model, model_name, args.batch_sizes, args.sequence_lengths,
-                                      args.global_lengths, args.test_times, num_threads)
+                                      args.global_lengths, args.test_times, num_threads, args.verbose)
 
             if "onnxruntime" in args.engines:
                 session = benchmark_helper.create_onnxruntime_session(onnx_model_path,
@@ -212,7 +218,8 @@ def test_all(args):
                                                                       enable_all_optimization=True,
                                                                       num_threads=num_threads)
                 results += test_onnxruntime(device, model, model_name, session, args.batch_sizes, args.sequence_lengths,
-                                            args.global_lengths, args.test_times, num_threads, optimized, precision)
+                                            args.global_lengths, args.test_times, num_threads, optimized, precision,
+                                            args.verbose)
     return results
 
 
@@ -258,6 +265,8 @@ def parse_arguments():
 
     parser.add_argument("-n", "--num_threads", required=False, nargs="+", type=int, default=[0], help="Threads to use")
 
+    parser.add_argument("--verbose", required=False, action="store_true", help="Print more information")
+
     args = parser.parse_args()
     return args
 
@@ -282,9 +291,9 @@ def output_summary(results, csv_filename, args):
                         for threads in args.num_threads:
                             row = {}
                             for result in results:
-                                if result["model_name"] == model and result["inputs"] == input_count and result[
-                                        "engine"] == engine_name and result["io_binding"] == io_binding and result[
-                                            "threads"] == threads:
+                                if result["model_name"] == model and result["inputs"] == input_count and \
+                                   result["engine"] == engine_name and result["io_binding"] == io_binding and \
+                                   result["threads"] == threads:
                                     headers = {k: v for k, v in result.items() if k in header_names}
                                     if not row:
                                         row.update(headers)

@@ -73,7 +73,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string device_id = ""; // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
     size_t num_of_threads = 8; // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
 
-    std::istringstream ss(performance_test_config.run_config.ep_runtime_config_string);
+    #ifdef _MSC_VER
+    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+    #else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    #endif
+    std::istringstream ss(ov_string);
     std::string token;
     while (ss >> token) {
       if(token == "") {

@@ -164,6 +164,7 @@ static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/ov
 static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
 static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/VariedInputCustomOp.onnx");
+static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_3.onnx");
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
@@ -380,6 +381,66 @@ TEST(CApiTest, varied_input_custom_op_handler) {
   TestInference<float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z",
                        expected_dims_z, expected_values_z, 0, custom_op_domain, nullptr);
 #endif
+}
+
+TEST(CApiTest, multiple_varied_input_custom_op_handler) {
+#ifdef USE_CUDA
+  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCudaExecutionProvider};
+#else
+  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCpuExecutionProvider};
+#endif
+
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+
+#ifdef USE_CUDA
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#endif
+
+  session_options.Add(custom_op_domain);
+  Ort::Session session(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI_2, session_options);
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names;
+
+  // input 0 (float type)
+  input_names.emplace_back("X");
+  std::vector<float> input_0_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  std::vector<int64_t> input_0_dims = {3, 2};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
+                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+
+  // input 1 (double type)
+  input_names.emplace_back("W");
+  std::vector<double> input_1_data = {2, 3, 4, 5, 6, 7};
+  std::vector<int64_t> input_1_dims = {3, 2};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<double>(info, const_cast<double*>(input_1_data.data()),
+                                       input_1_data.size(), input_1_dims.data(), input_1_dims.size()));
+
+  // Run
+  const char* output_name = "Y";
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                 &output_name, 1);
+  ASSERT_EQ(ort_outputs.size(), 1u);
+
+  // Validate results
+  std::vector<int64_t> y_dims = {3, 2};
+  std::vector<float> values_y = {3.f, 5.f, 7.f, 9.f, 11.f, 13.f};
+  auto type_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_info.GetShape(), y_dims);
+  size_t total_len = type_info.GetElementCount();
+  ASSERT_EQ(values_y.size(), total_len);
+
+  float* f = ort_outputs[0].GetTensorMutableData<float>();
+  for (size_t i = 0; i != total_len; ++i) {
+    ASSERT_EQ(values_y[i], f[i]);
+  }
 }
 
 // Tests registration of a custom op of the same name for both CPU and CUDA EPs

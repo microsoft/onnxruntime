@@ -28,6 +28,8 @@ contrib_ops_excluded_files = [
                     'bert/longformer_attention.h',
                     'bert/longformer_attention_impl.cu',
                     'bert/longformer_attention_impl.h',
+                    'bert/longformer_global_impl.cu',
+                    'bert/longformer_global_impl.h',
                     'bert/skip_layer_norm.cc',
                     'bert/skip_layer_norm.h',
                     'bert/skip_layer_norm_impl.cu',
