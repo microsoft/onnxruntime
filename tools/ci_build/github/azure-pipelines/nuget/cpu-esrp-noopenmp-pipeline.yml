@@ -90,8 +90,8 @@ jobs:
   variables:
     CUDA_VERSION: '11.0'
   steps:
-    - template: templates/set-version-number-variables-step.yml
-    - template: templates/get-docker-image-steps.yml
+    - template: ../templates/set-version-number-variables-step.yml
+    - template: ../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_tensorrt7.2
         Context: tools/ci_build/github/linux/docker
@@ -107,7 +107,7 @@ jobs:
           --skip_submodule_sync --update --build --parallel --build_shared_lib --use_tensorrt --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr --tensorrt_home=/usr --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc
         workingDirectory: $(Build.SourcesDirectory)
 
-    - template: templates/c-api-tensorrt-artifacts-package-and-publish-steps-posix.yml
+    - template: ../templates/c-api-tensorrt-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
           artifactName: 'onnxruntime-linux-x64-gpu-tensorrt-$(OnnxRuntimeVersion)'
@@ -115,10 +115,10 @@ jobs:
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: ../templates/clean-agent-build-directory-step.yml
 
 
 - template: ../templates/win-ci.yml
