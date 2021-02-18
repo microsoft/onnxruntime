@@ -313,8 +313,7 @@ class EntropyCalibrater(CalibraterBase):
         :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
         '''
         if not self.collector:
-            print("No collector created and can't generate calibration data.")
-            return None
+            raise ValueError("No collector created and can't generate calibration data.")
 
         return self.collector.get_optimal_collection_result()
 
@@ -330,6 +329,13 @@ class CalibrationDataCollector(metaclass=abc.ABCMeta):
         Generate informative data based on given data.
             name_to_arr : dict 
                 tensor name to NDArray data 
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def get_optimal_collection_result(self):
+        """
+        Get the optimal result among collection data.  
         """
         raise NotImplementedError
 
@@ -390,10 +396,9 @@ class HistogramCollector(CalibrationDataCollector):
             return (hist, hist_edges, min(old_min, new_min), max(old_max, new_max), new_threshold)
 
     def get_optimal_collection_result(self):
-        return self.get_optimal_thresholds(self.histogram_dict, self.num_quantized_bins)
+        histogram_dict = self.histogram_dict
+        num_quantized_bins = self.num_quantized_bins
 
-
-    def get_optimal_thresholds(self, histogram_dict, num_quantized_bins=128):
         thresholds_dict = {} # per tensor thresholds
 
         for tensor, histogram in histogram_dict.items():
