@@ -145,8 +145,9 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
   const Node* p_cast1_node = graph_utils::FirstParentByType(pow1_node, "Cast");
   if (p_cast1_node != nullptr) {
     Node& cast1_node = *graph.GetNode(p_cast1_node->Index());
-    // this is fused Cast node, so expect more than 1 output edges
-    if (!CheckNode(graph, cast1_node, "Cast", {9, 13}, pow1_node.GetExecutionProviderType(), false)){
+    // this is fused Cast node, so expect 2 output edges
+    if (!CheckNode(graph, cast1_node, "Cast", {9, 13}, pow1_node.GetExecutionProviderType(), false)  ||
+      cast1_node.GetOutputEdgesCount() != 2){
       return matchResult;
     }
     const Node* p_pow_node = graph_utils::FirstChildByType(cast1_node, "Pow");
