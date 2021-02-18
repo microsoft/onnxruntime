@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'Win-CPU-2019'
+  pool: 'Win-CPU-2021'
   strategy:
     maxParallel: 2
     matrix:

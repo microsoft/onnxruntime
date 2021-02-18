@@ -49,7 +49,7 @@ def create_config_from_models(model_path_or_dir: str, output_file: str = None, e
         if not filename:
             raise RuntimeError("Invalid output path for configuration: {}".format(output_file))
 
-        if not os.path.exists(directory):
+        if directory and not os.path.exists(directory):
             os.makedirs(directory)
     else:
         dir = model_path_or_dir
