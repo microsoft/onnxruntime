@@ -89,7 +89,7 @@ public:
  }
 
   bool Skip(unsigned my_shard) {
-    return _shards[my_shard]._next >= _shards[my_shard]._end;
+    return _shards[my_shard]._next.load(std::memory_order_relaxed) >= _shards[my_shard]._end;
   }
 
   // Attempt to claim iterations from the sharded counter.  The function either
