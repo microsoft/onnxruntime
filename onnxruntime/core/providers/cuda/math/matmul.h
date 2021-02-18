@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
@@ -10,6 +11,41 @@ namespace onnxruntime {
 class MatMulComputeHelper;
 
 namespace cuda {
+
+/// <summary>
+/// Captures Prepack() information along the data and its shape
+/// </summary>
+struct SparseInfo {
+  OpKernel::PrepackParam param_;
+  TensorShape shape_;
+  std::vector<IAllocatorUniquePtr<uint8_t>> prepack_buffers_;   // Typed buffer
+#ifdef USE_CUSPARSE
+  onnxruntime::optional<cusparseLtHandle_t> handle_lt_;
+#endif
+  onnxruntime::optional<cusparseHandle_t> handle_;
+  onnxruntime::optional<cusparseSpMatDescr_t> sparse_desc_;
+
+  SparseInfo(const OpKernel::PrepackParam& p, const TensorShape& shape)
+      : param_(p), shape_(shape), prepack_buffers_() {}
+
+  SparseInfo(const SparseInfo&) = delete;
+  SparseInfo& operator=(const SparseInfo&) = delete;
+
+  ~SparseInfo() {
+    if (sparse_desc_.has_value()) {
+      cusparseDestroySpMat(*sparse_desc_);
+    }
+#ifdef USE_CUSPARSE
+    if (handle_lt_.has_value()) {
+      cusparseLtDestroy(&*handle_lt_);
+    }
+#endif
+    if (handle_.has_value()) {
+      cusparseDestroy(*handle_);
+    }
+  }
+};
+
 template <typename T>
 class MatMul final : public CudaKernel {
   using Base = CudaKernel;
@@ -24,14 +60,7 @@ class MatMul final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
-  struct SparseInfo;
-
  private:
-
-#ifdef USE_CUSPARSELT
-  Status ComputeSparse(const MatMulComputeHelper& helper, bool transa, bool transb,
-                       const Tensor* left, const Tensor* right, Tensor* C) const;
-#endif
 
   Status PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) override;
 

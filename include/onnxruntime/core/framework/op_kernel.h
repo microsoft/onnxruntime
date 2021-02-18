@@ -64,6 +64,9 @@ class OpKernel {
     bool UseCooFormat() const noexcept {
       return (sparse_flags & static_cast<int>(OrtSparseFlags::USE_COO_FORMAT)) != 0;
     }
+    bool UseEllFormat() const noexcept {
+      return (sparse_flags & static_cast<int>(OrtSparseFlags::USE_ELL_FORMAT)) != 0;
+    }
   };
 
   // Override this function to PrePack initialized constant tensor to the format as needed.

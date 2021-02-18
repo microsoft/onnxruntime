@@ -55,6 +55,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 #endif
 
+  cusparseHandle_t PerThreadCusparseHandle() const {
+    return GetPerThreadContext().CusparseHandle();
+  }
+
   template <typename T>
   const T* GetConstOnes(size_t count) {
     return GetPerThreadContext().template GetConstOnes<T>(count);
@@ -68,6 +72,18 @@ class CUDAExecutionProvider : public IExecutionProvider {
       return nullptr;
 
     return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
+  }
+
+  template <typename T>
+  IAllocatorUniquePtr<T> GetPersistentBuffer(size_t count_or_bytes) const {
+    if (count_or_bytes == 0)
+      return nullptr;
+
+    auto allocator = IExecutionProvider::GetAllocator(info_.device_id, OrtMemTypeDefault);
+    if (!allocator)
+      return nullptr;
+
+    return IAllocator::MakeUniquePtr<T>(allocator, count_or_bytes);
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;

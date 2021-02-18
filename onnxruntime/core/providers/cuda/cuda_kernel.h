@@ -57,6 +57,18 @@ class CudaKernel : public OpKernel {
     return provider_->GetScratchBuffer<T>(count_or_bytes);
   }
 
+  /// <summary>
+  /// Allocates memory on the given device that can survive multiple session runs
+  /// We ensure that we are not using one of the per-thread allocators that do not persist
+  /// </summary>
+  /// <typeparam name="T">Primitive type</typeparam>
+  /// <param name="count_or_bytes">count of elements of type T</param>
+  /// <returns></returns>
+  template <typename T>
+  IAllocatorUniquePtr<T> GetPersistentBuffer(size_t count_or_bytes) const {
+    return provider_->GetPersistentBuffer<T>(count_or_bytes);
+  }
+
   inline void AddDeferredReleaseCPUPtr(void* p) const {
     provider_->AddDeferredReleaseCPUPtr(p);
   }
@@ -140,6 +152,10 @@ class CudaKernel : public OpKernel {
     return provider_->PerThreadCuspraseLightHandle();
   }
 #endif
+
+  cusparseHandle_t CusparseHandle() const {
+    return provider_->PerThreadCusparseHandle();
+  }
 
  // Check if NVidia A100 available
   bool IsAmpereAvaiable() const {
