@@ -34,7 +34,7 @@
     cd build
 
     cmake -DCMAKE_BUILD_TYPE={BUILD_TYPE} -DBUILD_NATIVE=1 -G "Visual Studio 16 2019" ..
-    cmake --build . --verbose --config={BUILD_TYPE}
+    cmake --build . --verbose --config {BUILD_TYPE}
 
 ### Output
 

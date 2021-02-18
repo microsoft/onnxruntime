@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.13)
 project(onnxruntime_wasm)
 
 if (BUILD_NATIVE)
-  message(STATUS "Building native")
+  message(STATUS "Building windows native for debugging")
 else()
   message(STATUS "Building webassembly")
 endif()
@@ -22,30 +22,19 @@ set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 set(ONNXRUNTIME_BINARY_DIR ${REPO_ROOT}/build/${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_BUILD_TYPE})
 
-# Protobuf src file reference
-set(wasm_protobuf_src
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/arena.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/extension_set.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/generated_enum_util.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/generated_message_util.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/implicit_weak_message.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/message_lite.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/parse_context.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/repeated_field.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/wire_format_lite.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/io/coded_stream.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/io/io_win32.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/io/zero_copy_stream.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/io/zero_copy_stream_impl.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/io/zero_copy_stream_impl_lite.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/stubs/common.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/stubs/int128.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/stubs/status.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/stubs/stringpiece.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/stubs/stringprintf.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/stubs/structurally_valid.cc"
-  "${REPO_ROOT}/cmake/external/protobuf/src/google/protobuf/stubs/strutil.cc"
-)
+# Protobuf lite reference
+set(protobuf_SHARED_OR_STATIC "STATIC")
+set(protobuf_LINK_LIBATOMIC false)
+set(protobuf_VERSION "3")
+set(LIB_PREFIX "lib")
+set(protobuf_DEBUG_POSTFIX "d")
+set(protobuf_source_dir "${REPO_ROOT}/cmake/external/protobuf")
+include(${REPO_ROOT}/cmake/external/protobuf/cmake/libprotobuf-lite.cmake)
+if (BUILD_NATIVE)
+  set(protobuf_RC_FILEVERSION "3.0.0")
+  configure_file(${REPO_ROOT}/cmake/external/protobuf/cmake/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc @ONLY)
+endif()
+target_compile_definitions(libprotobuf-lite PUBLIC -DHAVE_PTHREAD)
 
 # Onnx protobuf src file reference
 set(wasm_onnx_src
@@ -71,6 +60,7 @@ if (NOT BUILD_NATIVE)
   list(APPEND wasm_mlas_src "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/sgemmc.cpp")
 endif()
 
+# onnxruntime src file reference
 file(GLOB_RECURSE wasm_contrib_ops_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc")
 file(GLOB_RECURSE wasm_core_common_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/common/*.cc")
 file(GLOB_RECURSE wasm_core_flatbuffers_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/flatbuffers/*.cc")
@@ -125,7 +115,6 @@ add_executable(onnxruntime_wasm
   ${wasm_mlas_src}
   ${wasm_onnx_defs_src}
   ${wasm_onnx_src}
-  ${wasm_protobuf_src}
   ${wasm_re2_src}
 )
 
@@ -137,7 +126,6 @@ target_compile_definitions(onnxruntime_wasm PUBLIC
   -DEIGEN_MPL2_ONLY
   -DMLAS_NO_ONNXRUNTIME_THREADPOOL
   -DONNX_USE_LITE_PROTO
-  -DHAVE_PTHREAD
   -D_USE_MATH_DEFINES
   -D__ONNX_DISABLE_STATIC_REGISTRATION
 )
@@ -161,11 +149,13 @@ endif()
 
 # add all these include directory to the WebAssembly
 target_include_directories(onnxruntime_wasm PRIVATE
+  ${ONNXRUNTIME_BINARY_DIR}
+  ${ONNXRUNTIME_BINARY_DIR}/external/onnx
   ${ONNXRUNTIME_INCLUDE_DIR}
   ${ONNXRUNTIME_INCLUDE_DIR}/core/session
   ${ONNXRUNTIME_ROOT}
-  ${ONNXRUNTIME_ROOT}/core/mlas/inc   # mlas.h
-  ${ONNXRUNTIME_ROOT}/core/mlas/lib   # mlasi.h
+  ${ONNXRUNTIME_ROOT}/core/mlas/inc
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib
   ${REPO_ROOT}/cmake/external/date/include
   ${REPO_ROOT}/cmake/external/eigen
   ${REPO_ROOT}/cmake/external/flatbuffers/include
@@ -177,8 +167,6 @@ target_include_directories(onnxruntime_wasm PRIVATE
   ${REPO_ROOT}/cmake/external/re2
   ${REPO_ROOT}/cmake/external/SafeInt
   ${REPO_ROOT}/cmake/external/wil/include
-  PUBLIC ${ONNXRUNTIME_BINARY_DIR}
-  PUBLIC ${ONNXRUNTIME_BINARY_DIR}/external/onnx
 )
 
 if (BUILD_NATIVE)
@@ -196,10 +184,28 @@ if (BUILD_NATIVE)
     "/wd4996"
   )
 
+  target_compile_options(libprotobuf-lite PRIVATE
+    "/wd4018"
+    "/wd4065"
+    "/wd4146"
+    "/wd4244"
+    "/wd4251"
+    "/wd4267"
+    "/wd4305"
+    "/wd4307"
+    "/wd4309"
+    "/wd4334"
+    "/wd4355"
+    "/wd4506"
+    "/wd4800"
+    "/wd4996"
+  )
+
   target_link_libraries(onnxruntime_wasm PRIVATE
-    onnxruntime_mlas
     advapi32
     dbghelp
+    onnxruntime_mlas
+    libprotobuf-lite
   )
 
   enable_language(ASM_MASM)
@@ -236,6 +242,10 @@ if (BUILD_NATIVE)
   target_compile_options(onnxruntime_mlas PRIVATE "/wd6385")
   target_compile_definitions(onnxruntime_mlas PUBLIC -DMLAS_NO_ONNXRUNTIME_THREADPOOL)
 else()
+  target_link_libraries(onnxruntime_wasm PRIVATE
+    libprotobuf-lite
+  )
+
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "-s DEMANGLE_SUPPORT=1 -s ASYNCIFY=1 -s EXPORT_NAME=onnxjs -s WASM=1 -s NO_EXIT_RUNTIME=0 -s ALLOW_MEMORY_GROWTH=1 -s SAFE_HEAP=0 -s MODULARIZE=1 -s SAFE_HEAP_LOG=0 -s STACK_OVERFLOW_CHECK=0 -s EXPORT_ALL=0 -s LLD_REPORT_UNDEFINED -s VERBOSE=0 -s ASSERTIONS=1 -s NO_FILESYSTEM=1 -s DISABLE_EXCEPTION_CATCHING=0 --no-entry --bind")
   else()
