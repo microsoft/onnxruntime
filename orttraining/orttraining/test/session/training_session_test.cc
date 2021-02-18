@@ -13,7 +13,7 @@
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/test/session/training_session_test_utils.h"
 
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
+#include "core/providers/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"

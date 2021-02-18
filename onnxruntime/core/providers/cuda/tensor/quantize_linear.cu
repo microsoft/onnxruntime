@@ -44,12 +44,12 @@ __global__ void QuantizeLinearKernel(const InT* input, OutT* output, const InT* 
 }
 
 template <class OutT, class InT>
-Status CudaQuantizeLinear(const InT* input, OutT* output, const InT* scale, const OutT* zero_point, size_t num_of_element) {
+Status CudaQuantizeLinear(cudaStream_t stream, const InT* input, OutT* output, const InT* scale, const OutT* zero_point, size_t num_of_element) {
   if (num_of_element <= 0)
     return Status::OK();
 
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
-  QuantizeLinearKernel<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, OutT, InT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  QuantizeLinearKernel<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input,
       output,
       scale,
@@ -75,12 +75,12 @@ __global__ void DequantizeLinearKernel(const InT* input, OutT* output, const Out
 }
 
 template <class InT, class OutT>
-Status CudaDequantizeLinear(const InT* input, OutT* output, const OutT* scale, const InT* zero_point, size_t num_of_element) {
+Status CudaDequantizeLinear(cudaStream_t stream, const InT* input, OutT* output, const OutT* scale, const InT* zero_point, size_t num_of_element) {
   if (num_of_element <= 0)
     return Status::OK();
 
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
-  DequantizeLinearKernel<InT, OutT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  DequantizeLinearKernel<InT, OutT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input,
       output,
       scale,
@@ -89,15 +89,15 @@ Status CudaDequantizeLinear(const InT* input, OutT* output, const OutT* scale, c
   return Status::OK();
 }
 
-template Status CudaQuantizeLinear<int8_t, float>(const float* input, int8_t* output, const float* scale, const int8_t* zero_point, size_t num_of_element);
-template Status CudaQuantizeLinear<uint8_t, float>(const float* input, uint8_t* output, const float* scale, const uint8_t* zero_point, size_t num_of_element);
-template Status CudaQuantizeLinear<int8_t, half>(const half* input, int8_t* output, const half* scale, const int8_t* zero_point, size_t num_of_element);
-template Status CudaQuantizeLinear<uint8_t, half>(const half* input, uint8_t* output, const half* scale, const uint8_t* zero_point, size_t num_of_element);
+template Status CudaQuantizeLinear<int8_t, float>(cudaStream_t stream, const float* input, int8_t* output, const float* scale, const int8_t* zero_point, size_t num_of_element);
+template Status CudaQuantizeLinear<uint8_t, float>(cudaStream_t stream, const float* input, uint8_t* output, const float* scale, const uint8_t* zero_point, size_t num_of_element);
+template Status CudaQuantizeLinear<int8_t, half>(cudaStream_t stream, const half* input, int8_t* output, const half* scale, const int8_t* zero_point, size_t num_of_element);
+template Status CudaQuantizeLinear<uint8_t, half>(cudaStream_t stream, const half* input, uint8_t* output, const half* scale, const uint8_t* zero_point, size_t num_of_element);
 
-template Status CudaDequantizeLinear<int8_t, float>(const int8_t* input, float* output, const float* scale, const int8_t* zero_point, size_t num_of_element);
-template Status CudaDequantizeLinear<uint8_t, float>(const uint8_t* input, float* output, const float* scale, const uint8_t* zero_point, size_t num_of_element);
-template Status CudaDequantizeLinear<int8_t, half>(const int8_t* input, half* output, const half* scale, const int8_t* zero_point, size_t num_of_element);
-template Status CudaDequantizeLinear<uint8_t, half>(const uint8_t* input, half* output, const half* scale, const uint8_t* zero_point, size_t num_of_element);
+template Status CudaDequantizeLinear<int8_t, float>(cudaStream_t stream, const int8_t* input, float* output, const float* scale, const int8_t* zero_point, size_t num_of_element);
+template Status CudaDequantizeLinear<uint8_t, float>(cudaStream_t stream, const uint8_t* input, float* output, const float* scale, const uint8_t* zero_point, size_t num_of_element);
+template Status CudaDequantizeLinear<int8_t, half>(cudaStream_t stream, const int8_t* input, half* output, const half* scale, const int8_t* zero_point, size_t num_of_element);
+template Status CudaDequantizeLinear<uint8_t, half>(cudaStream_t stream, const uint8_t* input, half* output, const half* scale, const uint8_t* zero_point, size_t num_of_element);
 
 }  // namespace cuda
 }  // namespace onnxruntime

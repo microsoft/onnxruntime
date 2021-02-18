@@ -58,6 +58,8 @@ class RocmKernel : public OpKernel {
 
   const hipDeviceProp_t& GetDeviceProp() const { return provider_->GetDeviceProp(); };
 
+  inline hipStream_t Stream() const { return static_cast<hipStream_t>(provider_->GetComputeStream()); }
+
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
   template <typename T>
@@ -91,7 +93,7 @@ class RocmKernel : public OpKernel {
     Status CopyToGpu() {
       if (cpu_pinned_copy_) {
         gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_);
-        HIP_RETURN_IF_ERROR(hipMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), hipMemcpyHostToDevice));
+        HIP_RETURN_IF_ERROR(hipMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), hipMemcpyHostToDevice, op_kernel_->Stream()));
         op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release());
       }
       return Status::OK();

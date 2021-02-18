@@ -83,7 +83,7 @@ Status ModelBuilder::RegisterInitializers() {
 
     CreateCoreMLWeight(*constant_tensor->mutable_data(), tensor);
     *layer->mutable_output()->Add() = name;
-    AddLayer(layer.release());
+    AddLayer(std::move(layer));
   }
 
   return Status::OK();
@@ -217,9 +217,9 @@ void ModelBuilder::AddScalarOutput(const std::string& output_name) {
   scalar_outputs_.insert(output_name);
 }
 
-void ModelBuilder::AddLayer(COREML_SPEC::NeuralNetworkLayer* layer) {
+void ModelBuilder::AddLayer(std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer) {
   auto* neural_network = coreml_model_->mutable_neuralnetwork();
-  neural_network->mutable_layers()->AddAllocated(layer);
+  neural_network->mutable_layers()->AddAllocated(layer.release());
 }
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {

@@ -41,7 +41,7 @@ class ExcludeOpsAndTypesRegistrationProcessor(op_registration_utils.Registration
         return True
 
     def process_registration(self, lines: typing.List[str], constant_for_domain: str, operator: str,
-                             start_version: int, end_version: int = None, input_type: str = None):
+                             start_version: int, end_version: int = None, type: str = None):
         # convert from the ORT constant name to the domain string used in the config
         domain = op_registration_utils.map_ort_constant_to_domain(constant_for_domain)
         exclude = False
@@ -51,12 +51,12 @@ class ExcludeOpsAndTypesRegistrationProcessor(op_registration_utils.Registration
             exclude = self._should_exclude_op(domain, operator, start_version, end_version)
 
             # see if a specific typed registration can be excluded
-            if not exclude and input_type and self._op_types_usage_manager:
-                exclude = not self._op_types_usage_manager.is_typed_registration_needed(domain, operator, input_type)
+            if not exclude and type and self._op_types_usage_manager:
+                exclude = not self._op_types_usage_manager.is_typed_registration_needed(domain, operator, type)
 
         if exclude:
             log.info('Disabling {}:{}({}){}'.format(constant_for_domain, operator, start_version,
-                                                    '<{}>'.format(input_type) if input_type else ''))
+                                                    '<{}>'.format(type) if type else ''))
             for line in lines:
                 self._output_file.write('// ' + line)
 

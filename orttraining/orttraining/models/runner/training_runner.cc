@@ -20,7 +20,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "core/providers/cpu/controlflow/event_pool.h"
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
@@ -1288,7 +1288,7 @@ constexpr const char* k_loss_scaler_state = "loss_scaler_state";
 template <typename T>
 Status FromString(const std::string& s, T& t) {
   std::istringstream i{s};
-  ORT_RETURN_IF_NOT(i >> t && i.eof());
+  ORT_RETURN_IF_NOT(i >> t && i.eof(), "i >> t && i.eof() was false");
   return Status::OK();
 }
 }  // namespace
@@ -1315,7 +1315,7 @@ Status TrainingRunner::LoadCheckpointProperties(
     const std::unordered_map<std::string, std::string>& properties) {
   auto load_property = [&properties](const char* name, auto& val) {
     auto prop_it = properties.find(name);
-    ORT_RETURN_IF_NOT(prop_it != properties.end());
+    ORT_RETURN_IF_NOT(prop_it != properties.end(), "prop_it == properties.end()");
     ORT_RETURN_IF_ERROR(FromString(prop_it->second, val));
     return Status::OK();
   };
@@ -1329,7 +1329,7 @@ Status TrainingRunner::LoadCheckpointProperties(
 
   if (loss_scaler_) {
     auto prop_it = properties.find(property_names::k_loss_scaler_state);
-    ORT_RETURN_IF_NOT(prop_it != properties.end());
+    ORT_RETURN_IF_NOT(prop_it != properties.end(), "prop_it == properties.end()");
     ORT_RETURN_IF_ERROR(loss_scaler_->LoadFromString(prop_it->second));
   }
 

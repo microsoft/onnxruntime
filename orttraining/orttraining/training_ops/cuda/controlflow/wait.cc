@@ -4,7 +4,7 @@
 #include "orttraining/training_ops/cuda/controlflow/wait.h"
 #include "core/providers/cpu/tensor/utils.h"
 // Include event mechanism shared by CPU and GPU implementations.
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "core/providers/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/wait.h"
 #include "core/profile/profile.h"
 #include "core/profile/context.h"

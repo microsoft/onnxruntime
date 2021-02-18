@@ -248,7 +248,7 @@ class ORTTrainerOptions(object):
                                     'type': 'string',
                                     'default': ''
                                 },
-                            },
+                            }
                         },
                     }
                 },
@@ -702,9 +702,9 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                         'type': 'string',
                         'default': ''
                     },
-                },
+                }
             },
-        },
+        }
     },
     '_internal_use': {
         'type': 'dict',

@@ -22,6 +22,6 @@ fi
 yum install -y java-1.8.0-openjdk-devel
 
 #If the /opt/python folder exists, we assume this is the manylinux docker image	
-if [ ! -d "/opt/python/cp35-cp35m" ]; then	
+if [ ! -d "/opt/python/cp37-cp37m" ]; then
   yum install -y ccache gcc gcc-c++ python3 python3-devel python3-pip	
 fi
