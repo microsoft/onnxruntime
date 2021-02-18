@@ -3,7 +3,6 @@
 
 import json
 import ort_flatbuffers_py.experimental.fbs as fbs
-import typing
 
 from abc import ABC, abstractmethod
 from .types import value_name_to_typestr
@@ -32,10 +31,6 @@ def _ort_constant_for_domain(domain: str):
     return domain_to_constant_map[domain]
 
 
-def _is_globally_allowed_type(type: str, globally_allowed_types: typing.Optional[typing.Set[str]]):
-    return globally_allowed_types is None or type in globally_allowed_types
-
-
 class TypeUsageProcessor(ABC):
     '''
     Abstract base class for processors which implement operator specific logic to determine the type or types required.
@@ -49,13 +44,11 @@ class TypeUsageProcessor(ABC):
     def process_node(self, node: fbs.Node, value_name_to_typeinfo: dict):
         pass
 
-    def is_typed_registration_needed(self, type_in_registration: str,
-                                     globally_allowed_types: typing.Optional[typing.Set[str]]):
+    def is_typed_registration_needed(self, type_in_registration):
         '''
         Given the string from a kernel registration, determine if the registration is required or not.
         :param type_in_registration: Type string from kernel registration
-        :param globally_allowed_types: Optional set of globally allowed C++ scalar types.
-        :return: True if required. False if not.
+        :return: True is required. False if not.
         '''
         # Not all operators have typed registrations, so this is optionally implemented by derived classes
         raise RuntimeError('Did not expect processor for {} to have typed registrations.'.format(self.name))
@@ -135,15 +128,13 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
             type_str = value_name_to_typestr(node.Outputs(o), value_name_to_typeinfo)
             self._output_types[o].add(type_str)
 
-    def is_typed_registration_needed(self, type_in_registration: str,
-                                     globally_allowed_types: typing.Optional[typing.Set[str]]):
+    def is_typed_registration_needed(self, type_in_registration: str):
         if 0 not in self._input_types.keys():
             # currently all standard typed registrations are for input 0.
             # custom registrations can be handled by operator specific processors (e.g. OneHotProcessor below).
             raise RuntimeError('Expected typed registration to use type from input 0. Node:{}'.format(self.name))
 
-        return type_in_registration in self._input_types[0] and \
-            _is_globally_allowed_type(type_in_registration, globally_allowed_types)
+        return type_in_registration in self._input_types[0]
 
     def get_cpp_entry(self):
         entries = []
@@ -204,10 +195,8 @@ class Output0TypedRegistrationProcessor(DefaultTypeUsageProcessor):
         # init with tracking of output 0 only.
         super().__init__(domain, optype, inputs=[], outputs=[0])
 
-    def is_typed_registration_needed(self, type_in_registration: str,
-                                     globally_allowed_types: typing.Optional[typing.Set[str]]):
-        return type_in_registration in self._output_types[0] and \
-            _is_globally_allowed_type(type_in_registration, globally_allowed_types)
+    def is_typed_registration_needed(self, type_in_registration: str):
+        return type_in_registration in self._output_types[0]
 
 
 class OneHotProcessor(TypeUsageProcessor):
@@ -223,17 +212,13 @@ class OneHotProcessor(TypeUsageProcessor):
         type0 = value_name_to_typestr(node.Inputs(0), value_name_to_typeinfo)
         type1 = value_name_to_typestr(node.Inputs(1), value_name_to_typeinfo)
         type2 = value_name_to_typestr(node.Inputs(2), value_name_to_typeinfo)
-        self._triples.add((type0, type1, type2))
+        key = '{}_{}_{}'.format(type0, type1, type2)
+        self._triples.add(key)
 
-    def is_typed_registration_needed(self, type_in_registration: str,
-                                     globally_allowed_types: typing.Optional[typing.Set[str]]):
-        # the OneHot registration involves a concatenation of the 3 types involved
-        # the needed type triples are added in process_node
-        for triple in self._triples:
-            if type_in_registration == "_".join(triple) and \
-                    all([_is_globally_allowed_type(type, globally_allowed_types) for type in triple]):
-                return True
-        return False
+    def is_typed_registration_needed(self, type_in_registration):
+        # the OneHot registration involves a concatenation of the 3 types involved, in the format we match
+        # when adding values in process_node
+        return type_in_registration in self._triples
 
     def get_cpp_entry(self):
         # exclusion is via commenting out the registration entry, so don't need to write any #defines
@@ -386,21 +371,18 @@ class OperatorTypeUsageManager:
         if op_processor:
             op_processor.process_node(node, value_name_to_typeinfo)
 
-    def is_typed_registration_needed(self, domain: str, optype: str, type_registration_str: str,
-                                     globally_allowed_types: typing.Optional[typing.Set[str]]):
+    def is_typed_registration_needed(self, domain: str, optype: str, type_registration_str: str):
         '''
         Given the string from a kernel registration, determine if the registration is required or not.
         :param domain: Operator domain.
         :param optype: Operator type.
-        :param type_registration_str: Type string from kernel registration.
-        :param globally_allowed_types: Optional set of globally allowed C++ scalar types.
-        :return: True if required. False if not.
+        :param type_registration_str: Type string from kernel registration
+        :return: True is required. False if not.
         '''
         needed = True  # we keep the registration unless the per-operator processor says not to
         key = _create_op_key(domain, optype)
         if key in self._operator_processors:
-            needed = self._operator_processors[key].is_typed_registration_needed(
-                type_registration_str, globally_allowed_types)
+            needed = self._operator_processors[key].is_typed_registration_needed(type_registration_str)
 
         return needed
 
