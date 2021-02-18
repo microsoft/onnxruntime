@@ -386,31 +386,31 @@ def test_multiple_chained_ortmodules_training():
             assert param.grad is not None
             param.grad = None
 
-def test_mixed_nnmodule_ortmodules_training():
-    N, D_in, H, D_out = 32, 128, 500, 128
-    model1 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
-    model2 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
-    model3 = NeuralNetMultiplePositionalArguments(D_in, H, D_out).to('cuda')
-    model1 = ORTModule(model1)
-    # model2 = ORTModule(model2)    # model2 is left as nn.module
-    model3 = ORTModule(model3)
+# def test_mixed_nnmodule_ortmodules_training():
+#     N, D_in, H, D_out = 32, 128, 500, 128
+#     model1 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+#     model2 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+#     model3 = NeuralNetMultiplePositionalArguments(D_in, H, D_out).to('cuda')
+#     model1 = ORTModule(model1)
+#     # model2 is intentionally left as nn.module
+#     model3 = ORTModule(model3)
 
-    all_params = list(model1.parameters()) + list(model2.parameters()) + list(model3.parameters())
+#     all_params = list(model1.parameters()) + list(model2.parameters()) + list(model3.parameters())
 
-    for step in range(10):
-        x1 = torch.randn(N, D_in, device='cuda', requires_grad=True)
-        x2 = torch.randn(N, D_in, device='cuda', requires_grad=True)
+#     for step in range(5):
+#         x1 = torch.randn(N, D_in, device='cuda', requires_grad=True)
+#         x2 = torch.randn(N, D_in, device='cuda', requires_grad=True)
 
-        a1 = model1(x1)
-        a2 = model2(x2)
-        a3 = model3(torch.sin(a1), torch.cos(a2))
-        loss = a3.sum()
-        loss.backward()
+#         a1 = model1(x1)
+#         a2 = model2(x2)
+#         a3 = model3(torch.sin(a1), torch.cos(a2))
+#         loss = a3.sum()
+#         loss.backward()
 
-        assert x1.grad is not None and x2.grad is not None
-        for param in all_params:
-            assert param.grad is not None
-            param.grad = None
+#         assert x1.grad is not None and x2.grad is not None
+#         for param in all_params:
+#             assert param.grad is not None
+#             param.grad = None
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder(device):

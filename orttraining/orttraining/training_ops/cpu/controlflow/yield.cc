@@ -25,24 +25,24 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
   for (int i = 0; i < ctx->InputCount(); ++i) {
     forward_outputs.push_back(*ctx_internal->GetInputMLValue(i));
   }
-  OrtTasks::GetInstance().SetForwardOutputs(forward_outputs);
 
-  // Reset background event before returning to main thread
-  OrtTasks::GetInstance().PrepareBackgroundWait();
+  LOGS(ctx->Logger(), WARNING) << "before SetForwardOutputs";
 
   // single event for InferenceSession::RunInBackgroundAndWaitForYield() that FW graph is done
-  OrtTasks::GetInstance().WakeupForegroundThread();
+  OrtTasks::GetInstance().SetForwardOutputs(forward_outputs);
+
+  LOGS(ctx->Logger(), WARNING) << "after SetForwardOutputs";
 
   // wait for event from InferenceSession::ContinueRunInBackground() to continue the BW graph
-  OrtTasks::GetInstance().WaitInBackgroundThread();
+  // Get output grad from somewhere and prepare Op outputs.
+  std::vector<OrtValue> backward_inputs = OrtTasks::GetInstance().GetBackwardInputs();
+
+  LOGS(ctx->Logger(), WARNING) << "after GetBackwardInputs";
 
   if (ctx_internal->GetTerminateFlag()) {
     LOGS(ctx->Logger(), WARNING) << "Resumed executing backward subgraph, terminate_flag is set to true.";
   } else {
-    // Get output grad from somewhere and prepare Op outputs.
-    std::vector<OrtValue> backward_inputs = OrtTasks::GetInstance().GetBackwardInputs();
     ORT_ENFORCE(backward_inputs.size() == static_cast<size_t>(ctx->OutputCount()));
-
     for (int i = 0; i < ctx->OutputCount(); ++i) {
       ctx_internal->SetOutputMLValue(i, backward_inputs[i]);
     }

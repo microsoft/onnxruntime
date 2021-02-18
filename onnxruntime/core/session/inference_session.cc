@@ -1737,28 +1737,40 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 #ifdef ENABLE_TRAINING
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs, int64_t& run_id) {
-  onnxruntime::contrib::OrtTasks::GetInstance().PrepareForegroundWait();
+  std::promise<void> task_setup_promise;
+  std::future<void> task_setup_future = task_setup_promise.get_future();
 
-  auto bg_thread = std::thread([&]() {
+  auto bg_thread = std::thread([&](std::promise<void> task_setup_promise) {
     onnxruntime::contrib::OrtTasks::GetInstance().CreateBackgroundTask(&(run_options.terminate));
+    task_setup_promise.set_value();
+
     common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                            &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
 
     onnxruntime::contrib::OrtTasks::GetInstance().SetStatus(s);
 
     // signal main thread for background thread completion
-    onnxruntime::contrib::OrtTasks::GetInstance().WakeupForegroundThread();
-  });
+    if (onnxruntime::contrib::OrtTasks::GetInstance().ForwardOutputsIsValid()) {
+      onnxruntime::contrib::OrtTasks::GetInstance().SetForwardOutputs({});
+    }
+  },
+                               std::move(task_setup_promise));
 
   run_id = std::hash<std::thread::id>()(bg_thread.get_id());
   bg_threads_[run_id] = std::move(bg_thread);
 
   LOGS(*session_logger_, WARNING) << "Session::Forward" << run_id;
 
+  task_setup_future.get();
+
+  LOGS(*session_logger_, WARNING) << "after task_setup_future.get()" << run_id;
+
   // Wait for events from
   // 1. Yield op, if the bg thread sucessfully reached Yield's signal point
   // 2. The end of bg thread, if it hit execptions and returned earlier
-  onnxruntime::contrib::OrtTasks::GetInstance().WaitInForegroundThread();
+  user_outputs = onnxruntime::contrib::OrtTasks::GetInstance().GetForwardOutputs(run_id);
+
+  LOGS(*session_logger_, WARNING) << "after GetForwardOutputs" << run_id;
 
   // background thread has completed without hitting Yield Op
   if (onnxruntime::contrib::OrtTasks::GetInstance().StatusIsReady(run_id)) {
@@ -1767,17 +1779,14 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
     return bg_thread_status;
   }
 
-  user_outputs = onnxruntime::contrib::OrtTasks::GetInstance().GetForwardOutputs(run_id);
   return Status::OK();
 }
 
 common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads, int64_t run_id) {
-  onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, backward_output_grads);
-
   LOGS(*session_logger_, WARNING) << "Session::Backward" << run_id;
 
   // resume background thread
-  onnxruntime::contrib::OrtTasks::GetInstance().WakeupBackgroundThread(run_id);
+  onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, backward_output_grads);
 
   Status bg_thread_status = onnxruntime::contrib::OrtTasks::GetInstance().GetStatus(run_id);
 

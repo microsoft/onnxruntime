@@ -23,17 +23,11 @@ class OrtTasks final {
     return instance_;
   }
 
-  void PrepareForegroundWait();
-  void WaitInForegroundThread();
-  void WakeupForegroundThread();
-
   void CreateBackgroundTask(bool* terminate_flags);
-  void PrepareBackgroundWait();
-  void WaitInBackgroundThread();
-  void WakeupBackgroundThread(int64_t run_id);
 
   void SetForwardOutputs(const std::vector<OrtValue>& forward_outputs);
   std::vector<OrtValue> GetForwardOutputs(int64_t run_id);
+  bool ForwardOutputsIsValid();
 
   void SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs);
   std::vector<OrtValue> GetBackwardInputs();
@@ -54,10 +48,6 @@ class OrtTasks final {
   OrtTasks& operator=(const OrtTasks&) = delete;
 
   struct Task {
-    std::atomic<bool> signaled;
-    mutable std::mutex mutex;
-    mutable std::condition_variable cv;
-
     std::promise<std::vector<OrtValue>> forward_output_promise_;
     std::future<std::vector<OrtValue>> forward_output_future_ = forward_output_promise_.get_future();
 
@@ -69,13 +59,10 @@ class OrtTasks final {
 
     bool* terminate_flags_;
 
-    Task() {
-      signaled.store(false);
-    }
+    Task() {}
   };
 
   std::hash<std::thread::id> hasher_;
-  Task fg_task;
   std::unordered_map<int64_t, std::unique_ptr<Task>> bg_tasks;
 };
 
