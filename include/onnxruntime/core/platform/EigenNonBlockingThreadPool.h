@@ -981,7 +981,9 @@ void SummonWorkers(PerThread &pt,
       profiler_.LogEnd("Enqueue");
       if (!t) {
         ps.tasks.push_back({q_idx, w_idx});
+        profiler_.LogStart();
         td.EnsureAwake();
+        profiler_.LogEnd("Awake");
       }
     }
     profiler_.LogEnd("Distribute");
