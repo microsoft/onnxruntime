@@ -10,6 +10,7 @@ import numpy as np
 from inspect import signature
 
 from torch.utils.dlpack import from_dlpack
+from torch.utils.cpp_extension import load_inline
 from collections import abc
 
 # Needed to re-implement PyTorch's cpu,cuda,to methods
@@ -156,6 +157,22 @@ def _ort_output_to_torch_tensor(ort_output):
     tensor = from_dlpack(ort_output.to_dlpack())
     return tensor.to(torch.bool) if tensor.dtype == torch.uint8 else tensor
 
+def _load_torch_allocator_cpp_extension():
+    torch_cuda_allocator_addresses_cpp_source = """
+    #include <torch/extension.h>
+    #include <c10/cuda/CUDACachingAllocator.h>
+    size_t cuda_caching_allocator_raw_alloc_address() {
+        return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_alloc);
+    }
+    size_t cuda_caching_allocator_raw_delete_address() {
+        return reinterpret_cast<size_t>(&c10::cuda::CUDACachingAllocator::raw_delete);
+    }
+    """
+
+    return load_inline(name='inline_extension', cpp_sources=[torch_cuda_allocator_addresses_cpp_source],
+                        functions=['cuda_caching_allocator_raw_alloc_address', 'cuda_caching_allocator_raw_delete_address'],
+                        verbose=True, with_cuda=True)
+
 class ORTModule(torch.nn.Module):
 
     def __init__(self, module):
@@ -190,6 +207,13 @@ class ORTModule(torch.nn.Module):
         self._save_onnx = False
         self._save_onnx_prefix = ''
 
+        # CPP extension to get torch CUDA allocator's alloc and free function addresses
+        self._use_external_cuda_allocator = True
+        if self._use_external_cuda_allocator:
+            self._torch_cuda_allocator = _load_torch_allocator_cpp_extension()
+            self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
+            self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
+
     def _initialize_module_gradient_graph_builder(self):
         # TODO: PyTorch exporter bug: changes the initializer order
         initializer_names = [p[0] for p in self._original_module.named_parameters()]
@@ -215,7 +239,10 @@ class ORTModule(torch.nn.Module):
         if self._device.type == 'cuda':
             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            provider_options = [{"device_id": str(self._device.index)}, {}]
+            if self._use_external_cuda_allocator:
+                provider_options = [{"device_id": str(self._device.index), "cuda_external_alloc": str(self._torch_alloc), "cuda_external_free": str(self._torch_free)}, {}]
+            else:
+                provider_options = [{"device_id": str(self._device.index)}]
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
@@ -460,9 +487,5 @@ class ORTModule(torch.nn.Module):
                                 dynamic_axes=dynamic_axes)
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
-
-        # TODO: this step might not be needed when we use the torch external allocator
-        # clear cache after model export
-        torch.cuda.empty_cache()
 
         return onnx.load_model_from_string(f.getvalue())
