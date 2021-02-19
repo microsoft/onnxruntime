@@ -385,9 +385,7 @@ InferenceSession::~InferenceSession() {
   for (auto it = bg_threads_.begin(); it != bg_threads_.end(); ++it) {
     int64_t run_id = it->first;
     if (onnxruntime::contrib::OrtTasks::GetInstance().StatusIsValid(run_id)) {
-      onnxruntime::contrib::OrtTasks::GetInstance().SetTerminateFlag(run_id);
-      Status s = ContinueRunInBackground({}, run_id);
-      ORT_UNUSED_PARAMETER(s);
+      CancelBackgroundTask(run_id);
     }
   }
 #endif
@@ -1735,7 +1733,7 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 }
 
 #ifdef ENABLE_TRAINING
-common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
+common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs, int64_t& run_id) {
   std::promise<void> setup_promise;
   std::future<void> setup_future = setup_promise.get_future();
@@ -1759,7 +1757,7 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
 
   run_id = std::hash<std::thread::id>()(bg_thread.get_id());
   bg_threads_[run_id] = std::move(bg_thread);
-  onnxruntime::contrib::OrtTasks::GetInstance().CreateBackgroundTask(run_id, &(run_options.terminate));
+  onnxruntime::contrib::OrtTasks::GetInstance().CreateBackgroundTask(run_id);
 
   LOGS(*session_logger_, WARNING) << "Session::Forward" << run_id;
 
@@ -1786,11 +1784,11 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
   return Status::OK();
 }
 
-common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads, int64_t run_id) {
+common::Status InferenceSession::ContinueRunInBackground(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) {
   LOGS(*session_logger_, WARNING) << "Session::Backward" << run_id;
 
   // resume background thread
-  onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, backward_output_grads);
+  onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, backward_output_grads, false);
 
   Status bg_thread_status = onnxruntime::contrib::OrtTasks::GetInstance().WaitForStatus(run_id);
 
@@ -1801,6 +1799,19 @@ common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtVa
 
   return bg_thread_status;
 }
+
+void InferenceSession::CancelBackgroundTask(int64_t run_id) {
+  LOGS(*session_logger_, WARNING) << "CancelBackgroundTask " << run_id;
+
+  // resume background thread with terminate = true
+  onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, {}, true);
+
+  // wait for bg_thread to complete
+  if (bg_threads_[run_id].joinable()) {
+    bg_threads_[run_id].join();
+  }
+}
+
 #endif
 
 template <typename T>

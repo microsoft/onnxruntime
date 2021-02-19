@@ -6,9 +6,8 @@
 namespace onnxruntime {
 namespace contrib {
 
-void OrtTasks::CreateBackgroundTask(int64_t run_id, bool* terminate_flags) {
+void OrtTasks::CreateBackgroundTask(int64_t run_id) {
   bg_tasks_[run_id] = std::make_unique<Task>();
-  bg_tasks_[run_id]->terminate_flags_ = terminate_flags;
 }
 
 void OrtTasks::SetForwardOutputs(Status s, const std::vector<OrtValue>& forward_outputs) {
@@ -25,11 +24,11 @@ bool OrtTasks::ForwardOutputsIsValid() {
   return bg_tasks_[run_id]->forward_output_future_.valid();
 }
 
-void OrtTasks::SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs) {
-  bg_tasks_[run_id]->backward_input_promise_.set_value(backward_inputs);
+void OrtTasks::SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs, bool terminate) {
+  bg_tasks_[run_id]->backward_input_promise_.set_value(std::make_pair(terminate, backward_inputs));
 }
 
-std::vector<OrtValue> OrtTasks::WaitForBackwardInputs() {
+BackwardReturnType OrtTasks::WaitForBackwardInputs() {
   int64_t run_id = hasher_(std::this_thread::get_id());
   return bg_tasks_[run_id]->backward_input_future_.get();
 }

@@ -34,16 +34,17 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
   LOGS(ctx->Logger(), WARNING) << "after SetForwardOutputs";
 
   // wait for data from SetBackwardInputs() to continue executing the BW graph
-  std::vector<OrtValue> backward_inputs = OrtTasks::GetInstance().WaitForBackwardInputs();
+  auto backward_inputs = OrtTasks::GetInstance().WaitForBackwardInputs();
+  bool terminate = backward_inputs.first;
 
   LOGS(ctx->Logger(), WARNING) << "after WaitForBackwardInputs";
 
-  if (ctx_internal->GetTerminateFlag()) {
-    LOGS(ctx->Logger(), WARNING) << "Resumed executing backward subgraph, terminate_flag is set to true.";
+  if (terminate) {
+    ORT_THROW("Terminating backward run, since the terminate is set to true.");
   } else {
-    ORT_ENFORCE(backward_inputs.size() == static_cast<size_t>(ctx->OutputCount()));
+    ORT_ENFORCE(backward_inputs.second.size() == static_cast<size_t>(ctx->OutputCount()));
     for (int i = 0; i < ctx->OutputCount(); ++i) {
-      ctx_internal->SetOutputMLValue(i, backward_inputs[i]);
+      ctx_internal->SetOutputMLValue(i, backward_inputs.second[i]);
     }
   }
 

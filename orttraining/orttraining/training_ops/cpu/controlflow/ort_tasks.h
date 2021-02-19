@@ -17,6 +17,7 @@ namespace onnxruntime {
 namespace contrib {
 
 typedef std::pair<Status, std::vector<OrtValue>> ForwardReturnType;
+typedef std::pair<bool, std::vector<OrtValue>> BackwardReturnType;
 
 class OrtTasks final {
  public:
@@ -25,22 +26,18 @@ class OrtTasks final {
     return instance_;
   }
   
-  void CreateBackgroundTask(int64_t run_id, bool* terminate_flags);
+  void CreateBackgroundTask(int64_t run_id);
 
   void SetForwardOutputs(Status s, const std::vector<OrtValue>& forward_outputs);
   ForwardReturnType WaitForForwardOutputs(int64_t run_id);
   bool ForwardOutputsIsValid();
 
-  void SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs);
-  std::vector<OrtValue> WaitForBackwardInputs();
+  void SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs, bool terminate);
+  BackwardReturnType WaitForBackwardInputs();
 
   void SetStatus(const Status& status);
   bool StatusIsValid(int64_t run_id);
   Status WaitForStatus(int64_t run_id);
-
-  void SetTerminateFlag(int64_t run_id) {
-    *(bg_tasks_[run_id]->terminate_flags_) = true;
-  }
 
  private:
   OrtTasks() = default;
@@ -52,15 +49,11 @@ class OrtTasks final {
     std::promise<ForwardReturnType> forward_output_promise_;
     std::future<ForwardReturnType> forward_output_future_ = forward_output_promise_.get_future();
 
-    std::promise<std::vector<OrtValue>> backward_input_promise_;
-    std::future<std::vector<OrtValue>> backward_input_future_ = backward_input_promise_.get_future();
+    std::promise<BackwardReturnType> backward_input_promise_;
+    std::future<BackwardReturnType> backward_input_future_ = backward_input_promise_.get_future();
 
     std::promise<Status> status_promise_;
     std::future<Status> status_future_ = status_promise_.get_future();
-
-    bool* terminate_flags_;
-
-    Task() {}
   };
 
   std::hash<std::thread::id> hasher_;

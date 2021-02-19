@@ -304,12 +304,14 @@ class InferenceSession {
 
 #ifdef ENABLE_TRAINING
   // For ORTModule.forward()
-  virtual common::Status RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
+  virtual common::Status RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding,
                                                         std::vector<OrtValue>& user_outputs,
                                                         int64_t& run_id) ORT_MUST_USE_RESULT;
 
   // For ORTModule.backward()
-  common::Status ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads, int64_t run_id) ORT_MUST_USE_RESULT;
+  common::Status ContinueRunInBackground(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
+
+  void CancelBackgroundTask(int64_t run_id);
 #endif
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
@@ -682,7 +684,6 @@ class InferenceSession {
 
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };
-
 
 struct SessionIOBinding {
  public:
