@@ -11,7 +11,7 @@ from inspect import signature
 
 from torch.utils.dlpack import from_dlpack
 from torch.utils.cpp_extension import load_inline
-from collections import abc
+from collections import abc, OrderedDict
 
 # Needed to re-implement PyTorch's cpu,cuda,to methods
 from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
@@ -92,29 +92,68 @@ def _parse_inputs_for_onnx_export(all_input_names, onnx_graph, *inputs, **kwargs
             input_shape.append(list(inp.size()))
     return input_names, dynamic_axes, input_names_require_grad, input_shape
 
+def _process_output_name(output_name, output_index = None):
+    processed_name = output_name.replace('*', '**')
+    return processed_name if output_index is None else processed_name + '*{}'.format(output_index)
+
+def _unprocess_output_name(processed_name):
+    index_appended = processed_name.count('*') % 2 == 1
+    output_index = None
+    if index_appended:
+        output_index = int(processed_name[processed_name.rfind('*')+1:])
+        processed_name = processed_name[:processed_name.rfind('*')]
+    return processed_name.replace('**', '*'), output_index
+
 def _parse_outputs_for_onnx_export(module, inputs, kwargs):
 
     def _create_output_dim_names_from_mapping(output):
-        output_names, dynamic_axes = [], {}
+        output_names, dynamic_axes, use_derived_module = [], {}, False
         for name, value in output.items():
-            if not isinstance(value, torch.Tensor):
+            if isinstance(value, torch.Tensor):
+                processed_name = _process_output_name(name)
+                output_names.append(processed_name)
+                dynamic_axes[processed_name] = {}
+                for dim_idx in range(len(value.shape)):
+                    dynamic_axes[processed_name].update({dim_idx: '{}_dim{}'.format(processed_name, dim_idx)})
+            elif isinstance(value, abc.Sequence):
+                use_derived_module = True
+                for i, sequence_value in enumerate(value):
+                    if not isinstance(sequence_value, torch.Tensor):
+                        raise TypeError('ORTModule does not support the following model output type {} \
+                            within a Sequence within a Mapping'.format(type(output)))
+                    processed_name = _process_output_name(name, i)
+                    dynamic_axes[processed_name] = {}
+                    output_names.append(processed_name)
+                    for dim_idx in range(len(sequence_value.shape)):
+                        dynamic_axes[processed_name].update({dim_idx: '{}_dim{}'.format(processed_name, dim_idx)})
+            else:
                 raise TypeError('ORTModule does not support the following model output type {} within a Mapping'.format(type(value)))
-            output_names.append(name)
-            dynamic_axes[name] = {}
-            for dim_idx in range(len(value.shape)):
-                dynamic_axes[name].update({dim_idx: '{}_dim{}'.format(name, dim_idx)})
-        return output_names, dynamic_axes
 
-    def _create_output_dim_names(output, output_idx, from_sequence):
-        if from_sequence and not isinstance(output, torch.Tensor):
-            raise TypeError('ORTModule does not support the following model output type {} within a Sequence'.format(type(output)))
-        output_names, dynamic_axes = [], {}
+        return output_names, dynamic_axes, use_derived_module
+
+    def _create_output_dim_names(output, output_idx):
+        output_names, dynamic_axes, use_derived_module = [], {}, False
         name = 'output{}'.format(output_idx)
-        output_names.append(name)
-        dynamic_axes[name] = {}
-        for dim_idx in range(len(output.shape)):
-            dynamic_axes[name].update({dim_idx : '{}_dim{}'.format(name, dim_idx)})
-        return output_names, dynamic_axes
+        if isinstance(output, torch.Tensor):
+            processed_name = _process_output_name(name)
+            output_names.append(processed_name)
+            dynamic_axes[processed_name] = {}
+            for dim_idx in range(len(output.shape)):
+                dynamic_axes[processed_name].update({dim_idx : '{}_dim{}'.format(processed_name, dim_idx)})
+        elif isinstance(output, abc.Sequence):
+            use_derived_module = True
+            for i, sequence_value in enumerate(output):
+                if not isinstance(sequence_value, torch.Tensor):
+                    raise TypeError('ORTModule does not support the following model output type {} \
+                        within a Sequence within a Sequence'.format(type(output)))
+                processed_name = _process_output_name(name, i)
+                dynamic_axes[processed_name] = {}
+                output_names.append(processed_name)
+                for dim_idx in range(len(sequence_value.shape)):
+                    dynamic_axes[processed_name].update({dim_idx: '{}_dim{}'.format(processed_name, dim_idx)})
+        else:
+            raise TypeError('ORTModule does not support the following model output type {} within a Sequence'.format(type(output)))
+        return output_names, dynamic_axes, use_derived_module
 
     #   Do an inference to grab outputs
     is_train_mode = module.training
@@ -122,6 +161,7 @@ def _parse_outputs_for_onnx_export(module, inputs, kwargs):
     output_names = []
     output_dynamic_axes = {}
     sample_output_type = None
+    use_derived_module = False
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy, sample_kwargs_copy = _deepcopy_model_input(*inputs, **kwargs)
@@ -136,33 +176,98 @@ def _parse_outputs_for_onnx_export(module, inputs, kwargs):
         sample_outputs = model_copy(*sample_inputs_copy, **sample_kwargs_copy)
         sample_output_type = type(sample_outputs)
         if isinstance(sample_outputs, torch.Tensor):
-            output_names, output_dynamic_axes = _create_output_dim_names(sample_outputs, 0, False)
+            output_names, output_dynamic_axes, _ = _create_output_dim_names(sample_outputs, 0)
         elif isinstance(sample_outputs, abc.Mapping):
-            output_names, output_dynamic_axes = _create_output_dim_names_from_mapping(sample_outputs)
+            output_names, output_dynamic_axes, use_derived_module = _create_output_dim_names_from_mapping(sample_outputs)
         elif isinstance(sample_outputs, abc.Sequence):
             for idx, out in enumerate(sample_outputs):
-                tmp_output_names, tmp_output_dynamic_axes = _create_output_dim_names(out, idx, True)
+                tmp_output_names, tmp_output_dynamic_axes, tmp_use_derived_module = _create_output_dim_names(out, idx)
+                use_derived_module = use_derived_module or tmp_use_derived_module
                 output_names += tmp_output_names
                 output_dynamic_axes.update(tmp_output_dynamic_axes)
         else:
             raise TypeError('ORTModule does not support the following model output type {}'.format(type(sample_outputs)))
     if is_train_mode:
         module.train()
-    return output_names, output_dynamic_axes, sample_output_type
+    return output_names, output_dynamic_axes, sample_output_type, use_derived_module
 
 def _populate_user_output(user_output_type, user_output_names, user_outputs):
+    def _key_value_pairs_from_output(output_names, outputs):
+        key_value_pairs = []
+        for i, name in enumerate(user_output_names):
+            output_name, output_index = _unprocess_output_name(name)
+            if output_index is None:
+                key_value_pairs.append((output_name, user_outputs[i]))
+            elif output_index == 0:
+                key_value_pairs.append((output_name, [user_outputs[i]]))
+            else:
+                key_value_pairs[-1][1].append(user_outputs[i])
+        for i, _ in enumerate(key_value_pairs):
+            if isinstance(key_value_pairs[i][1], abc.Sequence):
+                key_value_pairs[i] = (key_value_pairs[i][0], tuple(key_value_pairs[i][1]))
+        return key_value_pairs
+
+    key_value_pairs = _key_value_pairs_from_output(user_output_names, user_outputs)
     if issubclass(user_output_type, Mapping):
-        key_value_pairs = [(user_output_names[i], user_outputs[i]) for i in range(len(user_output_names))]
         return user_output_type(key_value_pairs)
     elif issubclass(user_output_type, tuple):
         try:
             # Try constructing the user named tuple from the output tuple
-            return user_output_type(*user_outputs)
+            return user_output_type(*[user_output for _, user_output in key_value_pairs])
         except TypeError:
             # The expected output type is not a namedtuple, but is a regular tuple type
             pass
 
-    return user_outputs
+    return key_value_pairs[0][1] if len(key_value_pairs) == 1 \
+        else tuple(user_output for _, user_output in key_value_pairs)
+
+def _transform_to_flat_structure(output):
+    def _transform_output_from_mapping(output_dict):
+        transformed_output = OrderedDict()
+        for key, value in output_dict.items():
+            if isinstance(value, torch.Tensor):
+                processed_key = _process_output_name(key)
+                transformed_output[processed_key] = value
+            elif isinstance(value, abc.Sequence):
+                for i, sequence_value in enumerate(value):
+                    if not isinstance(sequence_value, torch.Tensor):
+                        raise TypeError('ORTModule does not support the following output type {} \
+                            within a Sequence within a Mapping'.format(type(sequence_value)))
+                    processed_key = _process_output_name(key, i)
+                    transformed_output[processed_key] = sequence_value
+            else:
+                raise TypeError('ORTModule does not support the following output type {} within a Mapping'.format(type(value)))
+        return transformed_output
+
+    def _transform_output_from_sequence(output_sequence):
+        transformed_output = []
+        for value in output_sequence:
+            if isinstance(value, torch.Tensor):
+                transformed_output.append(value)
+            elif isinstance(value, abc.Sequence):
+                for sequence_value in value:
+                    if not isinstance(sequence_value, torch.Tensor):
+                        raise TypeError('ORTModule does not support the following output type {} \
+                            within a Sequence within a Sequence'.format(type(sequence_value)))
+                    transformed_output.append(sequence_value)
+            else:
+                raise TypeError('ORTModule does not support the following output type {} within a Sequence'.format(type(value)))
+        return tuple(transformed_output)
+
+    output_structure = None
+    if isinstance(output, abc.Mapping):
+        output_structure = _transform_output_from_mapping(output)
+    elif isinstance(output, abc.Sequence):
+        output_structure = _transform_output_from_sequence(output)
+    return output_structure
+
+class _DerivedModule(torch.nn.Module):
+    def __init__(self, module):
+        super(_DerivedModule, self).__init__()
+        self._base_module = module
+
+    def forward(self, *args, **kwargs):
+        return _transform_to_flat_structure(self._base_module(*args, **kwargs))
 
 # TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
 # and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
@@ -209,6 +314,7 @@ class ORTModule(torch.nn.Module):
         self._original_module = module
         sig = signature(self._original_module.forward)
         self._original_module_input_names = sig.parameters.keys()
+        self._derived_module = module
         self._onnx_inference = None
         self._is_training = True
 
@@ -486,8 +592,11 @@ class ORTModule(torch.nn.Module):
 
         # Setup dynamic axes for onnx model
         input_names, dynamic_axes, self._input_names_require_grad, _ = _parse_inputs_for_onnx_export(self._original_module_input_names, None, *inputs, **kwargs)
-        output_names, output_dynamic_axes, self._original_module_output_type = _parse_outputs_for_onnx_export(self._original_module, inputs, kwargs)
+        output_names, output_dynamic_axes, self._original_module_output_type, use_derived_module = _parse_outputs_for_onnx_export(self._original_module, inputs, kwargs)
         dynamic_axes.update(output_dynamic_axes)
+
+        if use_derived_module:
+            self._original_module = _DerivedModule(self._original_module)
 
         # Export torch.nn.Module to ONNX
         f = io.BytesIO()
