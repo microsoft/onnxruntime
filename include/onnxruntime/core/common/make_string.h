@@ -57,15 +57,15 @@ struct if_char_array_make_ptr {
   using type = T;
 };
 
-// specialization that matches an array reference, which is what the char array from a string literal 
+// specialization that matches an array reference, which is what the char array from a string literal
 // used in a call to MakeString will be.
 // if the type is a char[n] array we 'decay' it to a char* so that the usages can be folded.
 template <class T, size_t N>
 struct if_char_array_make_ptr<T (&)[N]> {
   // remove a single extent (T[x] -> T, but T[x][y] -> T[y]) so we only match char[x],
-  // and get the type name without the 'const' so both 'const char (&)[n]' and 'char (&)[n]' are matched. 
-  using element_type = std::remove_const<std::remove_extent<T>::type>::type;
-  using type = std::conditional<std::is_same<char, element_type>::value, const T*, T (&)[N]>::type;
+  // and get the type name without the 'const' so both 'const char (&)[n]' and 'char (&)[n]' are matched.
+  using element_type = typename std::remove_const<typename std::remove_extent<T>::type>::type;
+  using type = typename std::conditional<std::is_same<char, element_type>::value, T*, T (&)[N]>::type;
 };
 
 // helper to make usage simpler in MakeString
