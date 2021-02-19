@@ -1,5 +1,5 @@
 import os
-from onnxruntime.quantization import create_calibrator, write_calibration_table
+from onnxruntime.quantization import create_calibrator, write_calibration_table, CalibrationMethod
 from data_reader import YoloV3DataReader, YoloV3VariantDataReader
 from evaluate import YoloV3Evaluator, YoloV3VariantEvaluator
 
@@ -64,7 +64,8 @@ def get_prediction_evaluation(model_path, validation_dataset, providers):
 
 def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calibration_dataset):
 
-    calibrator = create_calibrator(model_path, None, augmented_model_path=augmented_model_path)
+    calibrator = create_calibrator(model_path, [], augmented_model_path=augmented_model_path, calibrate_method=CalibrationMethod.Entropy)
+    calibrator.set_execution_providers(["CUDAExecutionProvider"])
 
     # DataReader can handle dataset with batch or serial processing depends on its implementation
     # Following examples show two different ways to generate calibration table
