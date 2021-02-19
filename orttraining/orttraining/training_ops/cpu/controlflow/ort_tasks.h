@@ -25,8 +25,9 @@ class OrtTasks final {
     static OrtTasks instance_;
     return instance_;
   }
-  
+
   void CreateBackgroundTask(int64_t run_id);
+  void RemoveTask(int64_t run_id);
 
   void SetForwardOutputs(Status s, const std::vector<OrtValue>& forward_outputs);
   ForwardReturnType WaitForForwardOutputs(int64_t run_id);
@@ -36,8 +37,8 @@ class OrtTasks final {
   BackwardReturnType WaitForBackwardInputs();
 
   void SetStatus(const Status& status);
-  bool StatusIsValid(int64_t run_id);
   Status WaitForStatus(int64_t run_id);
+  bool TaskIsCompleted(int64_t run_id);
 
  private:
   OrtTasks() = default;

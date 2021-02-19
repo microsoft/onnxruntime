@@ -10,6 +10,10 @@ void OrtTasks::CreateBackgroundTask(int64_t run_id) {
   bg_tasks_[run_id] = std::make_unique<Task>();
 }
 
+void OrtTasks::RemoveTask(int64_t run_id) {
+  bg_tasks_.erase(run_id);
+}
+
 void OrtTasks::SetForwardOutputs(Status s, const std::vector<OrtValue>& forward_outputs) {
   int64_t run_id = hasher_(std::this_thread::get_id());
   bg_tasks_[run_id]->forward_output_promise_.set_value(std::make_pair(s, forward_outputs));
@@ -38,8 +42,9 @@ void OrtTasks::SetStatus(const Status& status) {
   bg_tasks_[run_id]->status_promise_.set_value(status);
 }
 
-bool OrtTasks::StatusIsValid(int64_t run_id) {
-  return bg_tasks_[run_id]->status_future_.valid();
+bool OrtTasks::TaskIsCompleted(int64_t run_id) {
+  // if status_future has been invalidated, the task is completed
+  return !bg_tasks_[run_id]->status_future_.valid();
 }
 
 Status OrtTasks::WaitForStatus(int64_t run_id) {

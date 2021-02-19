@@ -380,11 +380,10 @@ InferenceSession::~InferenceSession() {
   }
 
 #ifdef ENABLE_TRAINING
-  // TODO: find a better way to terminate the background thread
-  // backward is not completed yet, set terminate_flag to True
+  // Cancel outstanding background tasks
   for (auto it = bg_threads_.begin(); it != bg_threads_.end(); ++it) {
     int64_t run_id = it->first;
-    if (onnxruntime::contrib::OrtTasks::GetInstance().StatusIsValid(run_id)) {
+    if (!onnxruntime::contrib::OrtTasks::GetInstance().TaskIsCompleted(run_id)) {
       CancelBackgroundTask(run_id);
     }
   }
@@ -1810,6 +1809,8 @@ void InferenceSession::CancelBackgroundTask(int64_t run_id) {
   if (bg_threads_[run_id].joinable()) {
     bg_threads_[run_id].join();
   }
+
+  onnxruntime::contrib::OrtTasks::GetInstance().RemoveTask(run_id);
 }
 
 #endif
