@@ -89,7 +89,8 @@ public:
  }
 
   bool Skip(unsigned my_shard) {
-    return _shards[my_shard]._next.load(std::memory_order_relaxed) >= _shards[my_shard]._end;
+    //return _shards[my_shard]._next.load(std::memory_order_relaxed) >= _shards[my_shard]._end;
+    return _done >= _num_shards;
   }
 
   // Attempt to claim iterations from the sharded counter.  The function either
@@ -108,6 +109,8 @@ public:
           my_end = std::min(_shards[my_shard]._end, temp_start + _block_size);
           return true;
         }
+      } else {
+        ++_done;
       }
       // Work in the current shard is exhausted, move to the next shard, until
       // we are back at the home shard.
@@ -149,6 +152,7 @@ private:
   alignas(CACHE_LINE_BYTES) LoopCounterShard _shards[MAX_SHARDS];
   const uint64_t _block_size;
   const unsigned _num_shards;
+  ::std::atomic<unsigned> _done{0};
 };
 
 #ifdef _MSC_VER
