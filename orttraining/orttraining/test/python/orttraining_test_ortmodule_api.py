@@ -91,16 +91,18 @@ class NeuralNetPositionalAndKeywordArguments(torch.nn.Module):
         out = self.fc2(out)
         return out
 
-def _get_bert_for_sequence_classification_model(device):
+def _get_bert_for_sequence_classification_model(device, output_attentions = False, \
+    output_hidden_states = False, return_dict = True):
     """Returns the BertForSequenceClassification pretrained model"""
 
     config = AutoConfig.from_pretrained(
             "bert-base-uncased",
             num_labels=2,
             num_hidden_layers=1,
-            output_attentions = False,
-            output_hidden_states = False,
+            output_attentions = output_attentions,
+            output_hidden_states = output_hidden_states,
     )
+    config.return_dict = return_dict
 
     model = BertForSequenceClassification.from_pretrained(
         "bert-base-uncased",
@@ -423,9 +425,46 @@ def test_dict_of_tuple_return_value_module(device):
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
 
-    with pytest.raises(TypeError) as type_error:
-        model(x, y, z)
-    assert 'ORTModule does not support the following model output type' in str(type_error.value)
+    output = model(x, y, z)
+    assert 'loss' in output
+    assert len(output['loss']) == 3
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+def test_tuple_of_tuple_return_value_module(device):
+    class NeuralNetTupleOfTuplesOutput(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetTupleOfTuplesOutput, self).__init__()
+
+            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu1 = torch.nn.ReLU()
+            self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
+
+            self.fc2_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu2 = torch.nn.ReLU()
+            self.fc2_2 = torch.nn.Linear(hidden_size, num_classes)
+
+            self.fc3_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu3 = torch.nn.ReLU()
+            self.fc3_2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1, input2, input3):
+            out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
+            out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
+            out3 = self.fc3_2(self.relu3(self.fc3_1(input3)))
+            return ((out1, out2), out3)
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetTupleOfTuplesOutput(D_in, H, D_out).to(device)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in, device=device)
+    y = torch.randn(N, D_in, device=device)
+    z = torch.randn(N, D_in, device=device)
+
+    output = model(x, y, z)
+    assert len(output) == 2
+    assert isinstance(output[0], tuple)
+    assert len(output[0]) == 2
+    assert isinstance(output[1], torch.Tensor)
 
 @pytest.mark.parametrize("device", ['cpu', 'cuda'])
 def test_named_tuple_return_value_module(device):
@@ -647,3 +686,29 @@ def test_register_custom_ops_pytorch_exporter_torch_triu():
 
     output = model(user_input)
     assert list(output.shape) ==  [1, 10, 10]
+
+@pytest.mark.parametrize("return_dict", [True, False])
+def test_hf_model_output_with_tuples(return_dict):
+    device = 'cuda'
+
+    model = _get_bert_for_sequence_classification_model(device, output_attentions=True,
+        output_hidden_states=True, return_dict=return_dict)
+    x, y, z = _get_bert_for_sequence_classification_sample_data(device)
+
+    model = ORTModule(model)
+    output = model(x, y, None, None, None, None, z)
+
+    if return_dict:
+        assert isinstance(output, SequenceClassifierOutput)
+        assert 'loss' in output and 'logits' in output and \
+            'attentions' in output and 'hidden_states' in output
+        assert isinstance(output['loss'], torch.Tensor)
+        assert isinstance(output['logits'], torch.Tensor)
+        assert isinstance(output['attentions'], tuple)
+        assert isinstance(output['hidden_states'], tuple)
+    else:
+        assert isinstance(output, tuple)
+        assert isinstance(output[0], torch.Tensor)
+        assert isinstance(output[1], torch.Tensor)
+        assert isinstance(output[2], tuple)
+        assert isinstance(output[3], tuple)
