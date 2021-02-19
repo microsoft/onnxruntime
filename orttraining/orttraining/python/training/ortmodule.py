@@ -59,20 +59,25 @@ def _onnx_value_info_to_buffer_tensor(value_info, device):
     dtype = _utils.dtype_onnx_to_torch(value_info.type.tensor_type.elem_type)
     return torch.zeros(shape, device=device, dtype=dtype)
 
-def _parse_inputs_for_onnx_export(module, *inputs, **kwargs):
+def _parse_inputs_for_onnx_export(all_input_names, onnx_graph, *inputs, **kwargs):
     # Ignore optional inputs explicitly specified as None
-    sig = signature(module.forward)
-    all_input_names = sig.parameters.keys()
+    # ONNX exporter may remove unused inputs
+    onnx_graph_input_names = []
+    if onnx_graph is not None:
+        onnx_graph_input_names = set([inp.name for inp in onnx_graph.graph.input])
+
     input_names = []
     dynamic_axes = {}
     input_names_require_grad = []
+    input_shape = []
+
     for input_idx, name in enumerate(all_input_names):
         inp = None
         if input_idx < len(inputs) and inputs[input_idx] is not None:
             inp = inputs[input_idx]
         elif name in kwargs and kwargs[name] is not None:
             inp = kwargs[name]
-        if inp is not None:
+        if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
             if inp.requires_grad:
                 # input_names_require_grad holds all input tensors that have requires_grad
                 input_names_require_grad.append(name)
@@ -81,7 +86,9 @@ def _parse_inputs_for_onnx_export(module, *inputs, **kwargs):
             dynamic_axes[name] = {}
             for dim_idx in range(len(inp.shape)):
                 dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
-    return input_names, dynamic_axes, input_names_require_grad
+
+            input_shape.append(list(inp.size()))
+    return input_names, dynamic_axes, input_names_require_grad, input_shape
 
 def _parse_outputs_for_onnx_export(module, inputs, kwargs):
 
@@ -179,6 +186,8 @@ class ORTModule(torch.nn.Module):
 
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
+        sig = signature(self._original_module.forward)
+        self._original_module_input_names = sig.parameters.keys()
         self._onnx_inference = None
         self._is_training = True
 
@@ -334,17 +343,13 @@ class ORTModule(torch.nn.Module):
                     raise RuntimeError('A device must be specified in the model or data!')
             self._get_inference_graph_and_init_gradient_graph_builder(*inputs, **kwargs)
 
-        _, _, input_names_require_grad = _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
+        _, _, input_names_require_grad, new_input_shape = _parse_inputs_for_onnx_export(self._original_module_input_names, self._onnx_inference, *inputs, **kwargs)
         # If inputs requiring gradient change from one call to forward to the next, the module_gradient_graph_builder
         # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
         if input_names_require_grad != self._input_names_require_grad:
             self._input_names_require_grad = input_names_require_grad
             self._initialize_module_gradient_graph_builder()
 
-        new_input_shape = [list(input.size()) for input in inputs if input is not None]
-        for k, v in kwargs.items():
-            if v is not None:
-                new_input_shape.append(list(v.size()))
         if self._current_input_shape is None or self._current_input_shape != new_input_shape:
             self._current_input_shape = new_input_shape
             self._build_training_graph()
@@ -411,31 +416,29 @@ class ORTModule(torch.nn.Module):
                             for backward_output in backward_outputs[num_user_input_grads:]]
                 return tuple(results)
 
-        proc_inputs = [data for data in inputs if data is not None]
-
         return _populate_user_output(self._original_module_output_type, self._onnx_graphs_info.user_output_names,
-            _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*proc_inputs, **kwargs)))
+            _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*inputs, **kwargs)))
 
     @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
     def _convert_training_graph_input_to_list(self, *inputs, **kwargs):
         '''Creates forward `*inputs` list from user input and PyTorch initializers
 
-        TODO: **kwargs is not supported
         TODO: How IO binding model inputs and outputs affects initializer copies?
 
         ONNX Runtime forward requires an order list of:
             * User input: computed from forward InferenceSession
             * Initializers: computed from original PyTorch model parameters
-
-        This codes assumes the exported model's inputs and initializers
-            are the same as the original PyTorch model
         '''
         # User inputs
-        result = list(inputs[:len(self._onnx_graphs_info.user_input_names)])
-        for i in range(len(self._onnx_graphs_info.user_input_names)):
-            input_name = self._onnx_graphs_info.user_input_names[i]
-            if input_name in kwargs and kwargs[input_name] is not None:
-                result.append(kwargs[input_name])
+        result = []
+        for input_idx, name in enumerate(self._original_module_input_names):
+            inp = None
+            if input_idx < len(inputs) and inputs[input_idx] is not None:
+                inp = inputs[input_idx]
+            elif name in kwargs and kwargs[name] is not None:
+                inp = kwargs[name]
+            if inp is not None and name in self._onnx_graphs_info.user_input_names:
+                result.append(inp)
 
         # Initializers
         for param in self._original_module.named_parameters():
@@ -451,7 +454,7 @@ class ORTModule(torch.nn.Module):
         '''
 
         # Setup dynamic axes for onnx model
-        input_names, dynamic_axes, self._input_names_require_grad = _parse_inputs_for_onnx_export(self._original_module, *inputs, **kwargs)
+        input_names, dynamic_axes, self._input_names_require_grad, _ = _parse_inputs_for_onnx_export(self._original_module_input_names, None, *inputs, **kwargs)
         output_names, output_dynamic_axes, self._original_module_output_type = _parse_outputs_for_onnx_export(self._original_module, inputs, kwargs)
         dynamic_axes.update(output_dynamic_axes)
 
