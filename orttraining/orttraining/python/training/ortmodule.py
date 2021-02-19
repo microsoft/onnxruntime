@@ -203,7 +203,6 @@ class ORTModule(torch.nn.Module):
 
         # TODO: Single device support for now
         self._device = _utils.get_device_from_module(module)
-        self._device_changed = False
 
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
@@ -239,8 +238,10 @@ class ORTModule(torch.nn.Module):
             self._torch_free = self._torch_cuda_allocator.cuda_caching_allocator_raw_delete_address()
 
     def _initialize_module_gradient_graph_builder(self):
-        # TODO: PyTorch exporter bug: changes the initializer order
+        # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
         initializer_names = [p[0] for p in self._original_module.named_parameters()]
+        onnx_initializer_names = [p.name for p in self._onnx_inference.graph.initializer]
+        initializer_names = [p for p in initializer_names if p in onnx_initializer_names]
 
         # Build full training graph
         grad_builder_config = C.ModuleGradientGraphBuilderConfiguration()
@@ -295,58 +296,6 @@ class ORTModule(torch.nn.Module):
         if self._save_onnx:
             onnx.save(self._onnx_training, self._save_onnx_prefix + '_training.onnx')
 
-    def cpu(self: T) -> T:
-        '''Thin layer to capture device for ORTModule IO bindings'''
-
-        if not self._device or self._device.type != 'cpu':
-            self._device_changed = True
-            self._device = torch.device('cpu')
-
-        return super(ORTModule, self).cpu()
-
-    def cuda(self: T, device: Optional[Union[int, torch.device]] = None) -> T:
-        '''Thin layer to capture device for ORTModule IO bindings'''
-
-        if device is None:
-            if self._device and _utils.get_device_str(self._device) != _utils.get_default_device_str('cuda'):
-                self._device_changed = True
-                self._device = torch.device(_utils.get_default_device_str('cuda'))
-        elif not self._device or _utils.get_device_str(self._device) != _utils.get_device_str(device):
-            self._device_changed = True
-            self._device = torch.device(_utils.get_device_str(device))
-
-        return super(ORTModule, self).cuda(device)
-
-    @overload
-    def to(self: T, device: Optional[Union[int, torch.device]] = ...,
-           dtype: Optional[Union[torch.dtype, str]] = ...,
-           non_blocking: bool = ...) -> T:
-        ...
-
-    @overload
-    def to(self: T, dtype: Union[torch.dtype, str], non_blocking: bool = ...) -> T:
-        ...
-
-    @overload
-    def to(self: T, tensor: torch.Tensor, non_blocking: bool = ...) -> T:
-        ...
-
-    def to(self, *args, **kwargs):
-        '''Thin layer to capture device for ORTModule IO bindings'''
-
-        device, _, _, _ = torch._C._nn._parse_to(*args, **kwargs)
-        if device:
-            try:
-                device_str = _utils.get_device_str(device)
-                if _utils.get_device_str(self._device) != device_str:
-                    self._device_changed = True
-                    self._device = torch.device(device_str)
-            except RuntimeError:
-                self._device_changed = True
-                self._device = torch.device(device_str)
-
-        return super(ORTModule, self).to(*args, **kwargs)
-
     def eval(self: T) -> T:
         self._is_training = False
         self._original_module.eval()
@@ -368,10 +317,10 @@ class ORTModule(torch.nn.Module):
 
         # Exporting module to ONNX for the first time
         if not self._onnx_training:
-            if not self._device:
-                self._device = _utils.get_device_from_input_args_kwargs(self._original_module, *inputs, **kwargs)
-                if not self._device:
-                    raise RuntimeError('A device must be specified in the model or data!')
+            device_from_module = _utils.get_device_from_module(self._original_module)
+            if not self._device or self._device != device_from_module:
+                self._device = device_from_module
+                assert self._device is not None, RuntimeError('A device must be specified in the model or data!')
             self._get_inference_graph_and_init_gradient_graph_builder(*inputs, **kwargs)
 
         _, _, input_names_require_grad, new_input_shape = _parse_inputs_for_onnx_export(self._original_module_input_names, self._onnx_inference, *inputs, **kwargs)
@@ -385,11 +334,12 @@ class ORTModule(torch.nn.Module):
             self._current_input_shape = new_input_shape
             self._build_training_graph()
             self._create_training_session()
-        # TODO: disabled for now, since it caused a bug in NVBert fp32 run
-        # When creating a new InferenceSession, there is a bug for destructing the original InferenceSession 
-        # elif self._device_changed:
-        #     self._create_training_session()
-        #     self._device_changed = False
+
+        module_device = _utils.get_device_from_module(self._original_module)
+        if self._device != module_device:
+            self._device = module_device
+            self._create_training_session()
+
 
         # Use a custom torch.autograd.Function to associate self.backward_graph as the
         # gradient implementation for self.forward_graph.
