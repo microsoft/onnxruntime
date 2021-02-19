@@ -4,13 +4,17 @@
         {
             "model_name": "first_model",
             "model_file_path": "/bert_ort/pranav/GenTuringSplitModels/tmp_result/distilgput-split-2/part_00_24/model.onnx",
+            "device_id": 2,
             "output_input_map": [
                 [
                     "hidden_states",
                     "input_hidden_states"
                 ]
             ],
-            "batch_dim_index_in_state": 2,
+            "input_to_use_for_seq_len": "input_ids",
+            "batch_dim_index_in_input": 0,
+            "seq_len_dim_index_in_input": 1,
+            "batch_dim_index_in_state": 1,
             "seq_len_dim_index_in_state": 3,
             "state_input_names": [
                 "past_0",
@@ -63,19 +67,22 @@
                 "present_21",
                 "present_22",
                 "present_23"
-            ],
-            "device_id": 2
+            ]
         },
         {
             "model_name": "second_model",
             "model_file_path": "/bert_ort/pranav/GenTuringSplitModels/tmp_result/distilgput-split-2/part_24_48/model.onnx",
+            "device_id": 3,
             "output_input_map": [
                 [
                     "hidden_states",
                     "input_hidden_states"
                 ]
             ],
-            "batch_dim_index_in_state": 2,
+            "input_to_use_for_seq_len": "input_hidden_states",
+            "batch_dim_index_in_input": 0,
+            "seq_len_dim_index_in_input": 1,
+            "batch_dim_index_in_state": 1,
             "seq_len_dim_index_in_state": 3,
             "state_input_names": [
                 "past_24",
@@ -128,8 +135,7 @@
                 "present_45",
                 "present_46",
                 "present_47"
-            ],
-            "device_id": 3
+            ]
         }
     ]
 }

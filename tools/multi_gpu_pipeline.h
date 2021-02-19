@@ -10,6 +10,8 @@
 #include "task_thread_pool.h"
 #include "response_queue.h"
 
+using ReqId = int64_t;
+
 struct Ensemble {
   struct ModelConfig {
     std::string model_name;
@@ -22,7 +24,10 @@ struct Ensemble {
     std::vector<std::string> state_output_names;  // names of outputs that feed the next inputs
     int device_id;
     int batch_dim_index_in_state;
+    int batch_dim_index_in_input;
     int seq_len_dim_index_in_state;
+    std::string input_to_use_for_seq_len;
+    int seq_len_dim_index_in_input;
   };
 
   int max_seq_len;
@@ -33,30 +38,37 @@ struct Ensemble {
 
 struct PipelineSession;
 struct RequestExecutionFrame {
-  RequestExecutionFrame(PipelineSession& psess, int64_t req_id0, int stage_id0, int batch_size0);
+  RequestExecutionFrame(PipelineSession& psess,
+                        int req_idx0,
+                        ReqId req_id0,
+                        int batch_size0,
+                        int orig_input_seq_len0,
+                        int stage_id0);
 
   struct RunState {
     // needs to be stored per model since it's associated with a session
     std::unique_ptr<Ort::IoBinding> io_binding;
-    std::unordered_map<std::string, Ort::Value> output_val_map;                 // output generated after running a stage
-    std::unordered_map<std::string, Ort::MemoryAllocation> state_buffer_1_map;  // pre-allocated on cuda
-    std::unordered_map<std::string, Ort::MemoryAllocation> state_buffer_2_map;  // pre-allocated on cuda
+    std::unordered_map<std::string, Ort::Value> output_val_map;  // output generated after running a stage
+    std::vector<Ort::MemoryAllocation> state_buffer_1_vec;       // pre-allocated on cuda; order should be same as ModelConfig::state_output_names/state_input_names
+    std::vector<Ort::MemoryAllocation> state_buffer_2_vec;       // pre-allocated on cuda; order should be same as ModelConfig::state_output_names/state_input_names
   };
 
-  int64_t req_id;  // request to be executed
-  int stage_id;    // stage to be executed; stage_id can be used as an index into model_run_state_vec
-  int batch_size;
+  const int req_index;
+  const int64_t req_id;  // request to be executed
+  const int batch_size;
+  const int orig_input_seq_len;
+  int stage_id;  // stage to be executed; stage_id can be used as an index into model_run_state_vec
   std::vector<RunState> model_run_state_vec;
 };
 
 struct OrtReq {
   std::vector<std::string> input_names;
   std::vector<Ort::Value> input_values;
-  std::vector<std::string> output_names;
   int batch_size;  // TODO can be derived from input_values
 };
 
 struct OrtResp {
+  std::vector<std::string> output_names;
   std::vector<Ort::Value> output_values;
 };
 
@@ -73,7 +85,7 @@ struct PipelineSession {
   // TODO stop execution when an error is detected
   // TODO - adjust output shape for states
   // TODO - change position_ids for step > 0
-  OrtStatus* Run(std::vector<OrtReq>& req_vec, std::vector<OrtResp> resp_vec, int max_steps);
+  OrtStatus* Run(std::vector<OrtReq>& req_vec, std::vector<OrtResp>& resp_vec, int max_steps);
   void ParseEnsembleJsonFile(const std::string& ensemble_json_file, Ensemble& ens);
   PipelineSession(const std::string& ensemble_json_file, Ort::Env& env);
   PipelineSession(const Ensemble& ens, Ort::Env& env);
