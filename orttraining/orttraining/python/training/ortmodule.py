@@ -314,7 +314,6 @@ class ORTModule(torch.nn.Module):
         self._original_module = module
         sig = signature(self._original_module.forward)
         self._original_module_input_names = sig.parameters.keys()
-        self._derived_module = module
         self._onnx_inference = None
         self._is_training = True
 
@@ -517,7 +516,7 @@ class ORTModule(torch.nn.Module):
                 # Run and return module outputs.
                 user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) \
                     for forward_output in self._training_session.run_forward(self._training_io_binding, self._run_options))
-                return user_outputs[0] if len(user_outputs) == 1 else user_outputs
+                return user_outputs
 
             @staticmethod
             def backward(ctx, *grad_output):
