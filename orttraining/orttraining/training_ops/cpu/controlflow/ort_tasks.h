@@ -16,24 +16,25 @@
 namespace onnxruntime {
 namespace contrib {
 
+typedef std::pair<Status, std::vector<OrtValue>> ForwardReturnType;
+
 class OrtTasks final {
  public:
   static OrtTasks& GetInstance() {
     static OrtTasks instance_;
     return instance_;
   }
-
+  
   void CreateBackgroundTask(int64_t run_id, bool* terminate_flags);
 
-  void SetForwardOutputs(const std::vector<OrtValue>& forward_outputs);
-  std::vector<OrtValue> WaitForForwardOutputs(int64_t run_id);
+  void SetForwardOutputs(Status s, const std::vector<OrtValue>& forward_outputs);
+  ForwardReturnType WaitForForwardOutputs(int64_t run_id);
   bool ForwardOutputsIsValid();
 
   void SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs);
   std::vector<OrtValue> WaitForBackwardInputs();
 
   void SetStatus(const Status& status);
-  bool StatusIsReady(int64_t run_id);
   bool StatusIsValid(int64_t run_id);
   Status WaitForStatus(int64_t run_id);
 
@@ -48,8 +49,8 @@ class OrtTasks final {
   OrtTasks& operator=(const OrtTasks&) = delete;
 
   struct Task {
-    std::promise<std::vector<OrtValue>> forward_output_promise_;
-    std::future<std::vector<OrtValue>> forward_output_future_ = forward_output_promise_.get_future();
+    std::promise<ForwardReturnType> forward_output_promise_;
+    std::future<ForwardReturnType> forward_output_future_ = forward_output_promise_.get_future();
 
     std::promise<std::vector<OrtValue>> backward_input_promise_;
     std::future<std::vector<OrtValue>> backward_input_future_ = backward_input_promise_.get_future();

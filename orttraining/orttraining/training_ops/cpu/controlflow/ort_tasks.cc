@@ -11,12 +11,12 @@ void OrtTasks::CreateBackgroundTask(int64_t run_id, bool* terminate_flags) {
   bg_tasks_[run_id]->terminate_flags_ = terminate_flags;
 }
 
-void OrtTasks::SetForwardOutputs(const std::vector<OrtValue>& forward_outputs) {
+void OrtTasks::SetForwardOutputs(Status s, const std::vector<OrtValue>& forward_outputs) {
   int64_t run_id = hasher_(std::this_thread::get_id());
-  bg_tasks_[run_id]->forward_output_promise_.set_value(forward_outputs);
+  bg_tasks_[run_id]->forward_output_promise_.set_value(std::make_pair(s, forward_outputs));
 }
 
-std::vector<OrtValue> OrtTasks::WaitForForwardOutputs(int64_t run_id) {
+ForwardReturnType OrtTasks::WaitForForwardOutputs(int64_t run_id) {
   return bg_tasks_[run_id]->forward_output_future_.get();
 }
 
@@ -37,10 +37,6 @@ std::vector<OrtValue> OrtTasks::WaitForBackwardInputs() {
 void OrtTasks::SetStatus(const Status& status) {
   int64_t run_id = hasher_(std::this_thread::get_id());
   bg_tasks_[run_id]->status_promise_.set_value(status);
-}
-
-bool OrtTasks::StatusIsReady(int64_t run_id) {
-  return bg_tasks_[run_id]->status_future_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready;
 }
 
 bool OrtTasks::StatusIsValid(int64_t run_id) {

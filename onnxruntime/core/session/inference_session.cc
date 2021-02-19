@@ -1744,14 +1744,15 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
     // wait until task is properly setup
     setup_future.get();
 
-    common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
-                           &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
+    common::Status status = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
+                                &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
 
-    onnxruntime::contrib::OrtTasks::GetInstance().SetStatus(s);
+    onnxruntime::contrib::OrtTasks::GetInstance().SetStatus(status);
 
     // signal main thread for background thread completion
     if (onnxruntime::contrib::OrtTasks::GetInstance().ForwardOutputsIsValid()) {
-      onnxruntime::contrib::OrtTasks::GetInstance().SetForwardOutputs({});
+      ORT_ENFORCE(!status.IsOK());
+      onnxruntime::contrib::OrtTasks::GetInstance().SetForwardOutputs(status, {});
     }
   },
                                std::move(setup_future));
@@ -1763,22 +1764,23 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
   LOGS(*session_logger_, WARNING) << "Session::Forward" << run_id;
 
   // background task is setup, unblock background thread to continue
-  setup_promise.set_value();  
+  setup_promise.set_value();
 
   LOGS(*session_logger_, WARNING) << "after setup_promise.set_value()" << run_id;
 
-  // Wait for data/signal from 
+  // Wait for data/signal from
   // 1. Yield op, if the bg thread sucessfully reached Yield's signal point
   // 2. The end of bg thread, if it hit execptions and returned earlier
-  user_outputs = onnxruntime::contrib::OrtTasks::GetInstance().WaitForForwardOutputs(run_id);
+  auto forward_outputs = onnxruntime::contrib::OrtTasks::GetInstance().WaitForForwardOutputs(run_id);
+  Status forward_status = forward_outputs.first;
+  user_outputs = forward_outputs.second;
 
   LOGS(*session_logger_, WARNING) << "after WaitForForwardOutputs" << run_id;
 
   // background thread has completed without hitting Yield Op
-  if (onnxruntime::contrib::OrtTasks::GetInstance().StatusIsReady(run_id)) {
-    Status bg_thread_status = onnxruntime::contrib::OrtTasks::GetInstance().WaitForStatus(run_id);
+  if (!forward_status.IsOK()) {
     bg_threads_[run_id].join();
-    return bg_thread_status;
+    return forward_status;
   }
 
   return Status::OK();

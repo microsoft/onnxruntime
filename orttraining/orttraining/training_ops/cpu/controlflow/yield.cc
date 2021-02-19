@@ -29,7 +29,7 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
   LOGS(ctx->Logger(), WARNING) << "before SetForwardOutputs";
 
   // return forward output and single that FW graph is completed
-  OrtTasks::GetInstance().SetForwardOutputs(forward_outputs);
+  OrtTasks::GetInstance().SetForwardOutputs(Status::OK(), forward_outputs);
 
   LOGS(ctx->Logger(), WARNING) << "after SetForwardOutputs";
 
