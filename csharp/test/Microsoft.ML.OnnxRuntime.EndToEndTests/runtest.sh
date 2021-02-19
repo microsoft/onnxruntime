@@ -6,8 +6,7 @@ LocalNuGetRepo=$1
 BuildDir=$3
 export CurrentOnnxRuntimeVersion=$4
 IsMacOS=${5:-false}
-# NOTE: PackageName is not PACKAGENAME since this is being called by other scripts that have already switched to the CamelCase version
-PackageName=${PackageName:-Microsoft.ML.OnnxRuntime}
+PACKAGENAME=${PACKAGENAME:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
 
@@ -39,12 +38,12 @@ fi
 
 if [ $RunTestNative = "true" ]; then
   # Run Native shared object test
-  # PackageName is passed in environment (e.g. Microsoft.ML.OnnxRuntime)
-  PackageName="$PackageName.$CurrentOnnxRuntimeVersion.nupkg"
+  # PACKAGENAME is passed in environment (e.g. Microsoft.ML.OnnxRuntime)
+  PACKAGENAME="$PACKAGENAME.$CurrentOnnxRuntimeVersion.nupkg"
   cd $LocalNuGetRepo
   TempDir=_tmp
   mkdir -p $TempDir && pushd $TempDir
-  unzip ../$PackageName
+  unzip ../$PACKAGENAME
 
   inc="-I build/native/include"
 

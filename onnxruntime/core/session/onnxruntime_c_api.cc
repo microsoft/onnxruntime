@@ -1267,10 +1267,10 @@ struct CallGetValueImpl {
 
 // Return status instead of throwing if unsupported type specified
 struct UnsupportedReturnFailStatus {
-  ORT_STATUS_PTR operator()(int32_t dt_type) const {
+  void operator()(int32_t dt_type, OrtStatusPtr& status) const {
     std::string msg("Unsupported tensor element type in the input: ");
     msg.append(std::to_string(dt_type));
-    return OrtApis::CreateStatus(ORT_FAIL, msg.c_str());
+    status = OrtApis::CreateStatus(ORT_FAIL, msg.c_str());
   }
 };
 }  // namespace c_api_internal

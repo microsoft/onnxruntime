@@ -909,8 +909,8 @@ static Status CopySparseData(size_t n_sparse_elements,
 }
 
 struct UnsupportedSparseDataType {
-  Status operator()(int32_t dt_type) const {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ", dt_type);
+  void operator()(int32_t dt_type, Status& status) const {
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ", dt_type);
   }
 };
 
@@ -998,7 +998,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
   } else {
     // No request for std::string
-    status = UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+    UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING, status);
   }
   return status;
 }
@@ -1056,7 +1056,9 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
 
   const bool is_string_data = dense_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
   if (is_string_data) {
-    return UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+    Status status{};
+    UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING, status);
+    return status;
   }
 
   const auto data_type = dense_proto.data_type();
