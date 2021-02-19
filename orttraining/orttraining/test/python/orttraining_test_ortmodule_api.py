@@ -339,8 +339,7 @@ def test_gpu_reserved_memory_with_torch_no_grad():
     del model_with_no_grad
     mem_reserved_after_cache_empty = torch.cuda.memory_reserved(device)
 
-    # Create another model and get the memory_reserved when torch.no_grad and torch.cuda.empty_cache
-    # has not been enabled after export
+    # Create another model and get the memory_reserved when torch.no_grad has not been enabled after export.
     model_without_no_grad = _get_bert_for_sequence_classification_model(device)
     model_without_no_grad = ORTModule(model_without_no_grad)
     mem_reserved_after_export_without_torch_no_grad = 0
