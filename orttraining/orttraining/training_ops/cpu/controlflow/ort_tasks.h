@@ -23,22 +23,22 @@ class OrtTasks final {
     return instance_;
   }
 
-  void CreateBackgroundTask(bool* terminate_flags);
+  void CreateBackgroundTask(int64_t run_id, bool* terminate_flags);
 
   void SetForwardOutputs(const std::vector<OrtValue>& forward_outputs);
-  std::vector<OrtValue> GetForwardOutputs(int64_t run_id);
+  std::vector<OrtValue> WaitForForwardOutputs(int64_t run_id);
   bool ForwardOutputsIsValid();
 
   void SetBackwardInputs(int64_t run_id, const std::vector<OrtValue>& backward_inputs);
-  std::vector<OrtValue> GetBackwardInputs();
+  std::vector<OrtValue> WaitForBackwardInputs();
 
   void SetStatus(const Status& status);
   bool StatusIsReady(int64_t run_id);
   bool StatusIsValid(int64_t run_id);
-  Status GetStatus(int64_t run_id);
+  Status WaitForStatus(int64_t run_id);
 
   void SetTerminateFlag(int64_t run_id) {
-    *(bg_tasks[run_id]->terminate_flags_) = true;
+    *(bg_tasks_[run_id]->terminate_flags_) = true;
   }
 
  private:
@@ -63,7 +63,7 @@ class OrtTasks final {
   };
 
   std::hash<std::thread::id> hasher_;
-  std::unordered_map<int64_t, std::unique_ptr<Task>> bg_tasks;
+  std::unordered_map<int64_t, std::unique_ptr<Task>> bg_tasks_;
 };
 
 }  // namespace contrib

@@ -28,16 +28,15 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
 
   LOGS(ctx->Logger(), WARNING) << "before SetForwardOutputs";
 
-  // single event for InferenceSession::RunInBackgroundAndWaitForYield() that FW graph is done
+  // return forward output and single that FW graph is completed
   OrtTasks::GetInstance().SetForwardOutputs(forward_outputs);
 
   LOGS(ctx->Logger(), WARNING) << "after SetForwardOutputs";
 
-  // wait for event from InferenceSession::ContinueRunInBackground() to continue the BW graph
-  // Get output grad from somewhere and prepare Op outputs.
-  std::vector<OrtValue> backward_inputs = OrtTasks::GetInstance().GetBackwardInputs();
+  // wait for data from SetBackwardInputs() to continue executing the BW graph
+  std::vector<OrtValue> backward_inputs = OrtTasks::GetInstance().WaitForBackwardInputs();
 
-  LOGS(ctx->Logger(), WARNING) << "after GetBackwardInputs";
+  LOGS(ctx->Logger(), WARNING) << "after WaitForBackwardInputs";
 
   if (ctx_internal->GetTerminateFlag()) {
     LOGS(ctx->Logger(), WARNING) << "Resumed executing backward subgraph, terminate_flag is set to true.";

@@ -1737,12 +1737,12 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 #ifdef ENABLE_TRAINING
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs, int64_t& run_id) {
-  std::promise<void> task_setup_promise;
-  std::future<void> task_setup_future = task_setup_promise.get_future();
+  std::promise<void> setup_promise;
+  std::future<void> setup_future = setup_promise.get_future();
 
-  auto bg_thread = std::thread([&](std::promise<void> task_setup_promise) {
-    onnxruntime::contrib::OrtTasks::GetInstance().CreateBackgroundTask(&(run_options.terminate));
-    task_setup_promise.set_value();
+  auto bg_thread = std::thread([&](std::future<void> setup_future) {
+    // wait until task is properly setup
+    setup_future.get();
 
     common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                            &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
@@ -1754,27 +1754,29 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_
       onnxruntime::contrib::OrtTasks::GetInstance().SetForwardOutputs({});
     }
   },
-                               std::move(task_setup_promise));
+                               std::move(setup_future));
 
   run_id = std::hash<std::thread::id>()(bg_thread.get_id());
   bg_threads_[run_id] = std::move(bg_thread);
+  onnxruntime::contrib::OrtTasks::GetInstance().CreateBackgroundTask(run_id, &(run_options.terminate));
 
   LOGS(*session_logger_, WARNING) << "Session::Forward" << run_id;
 
-  task_setup_future.get();
+  // background task is setup, unblock background thread to continue
+  setup_promise.set_value();  
 
-  LOGS(*session_logger_, WARNING) << "after task_setup_future.get()" << run_id;
+  LOGS(*session_logger_, WARNING) << "after setup_promise.set_value()" << run_id;
 
-  // Wait for events from
+  // Wait for data/signal from 
   // 1. Yield op, if the bg thread sucessfully reached Yield's signal point
   // 2. The end of bg thread, if it hit execptions and returned earlier
-  user_outputs = onnxruntime::contrib::OrtTasks::GetInstance().GetForwardOutputs(run_id);
+  user_outputs = onnxruntime::contrib::OrtTasks::GetInstance().WaitForForwardOutputs(run_id);
 
-  LOGS(*session_logger_, WARNING) << "after GetForwardOutputs" << run_id;
+  LOGS(*session_logger_, WARNING) << "after WaitForForwardOutputs" << run_id;
 
   // background thread has completed without hitting Yield Op
   if (onnxruntime::contrib::OrtTasks::GetInstance().StatusIsReady(run_id)) {
-    Status bg_thread_status = onnxruntime::contrib::OrtTasks::GetInstance().GetStatus(run_id);
+    Status bg_thread_status = onnxruntime::contrib::OrtTasks::GetInstance().WaitForStatus(run_id);
     bg_threads_[run_id].join();
     return bg_thread_status;
   }
@@ -1788,7 +1790,7 @@ common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtVa
   // resume background thread
   onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, backward_output_grads);
 
-  Status bg_thread_status = onnxruntime::contrib::OrtTasks::GetInstance().GetStatus(run_id);
+  Status bg_thread_status = onnxruntime::contrib::OrtTasks::GetInstance().WaitForStatus(run_id);
 
   // wait for bg_thread to complete
   if (bg_threads_[run_id].joinable()) {
