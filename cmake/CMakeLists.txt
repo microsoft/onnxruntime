@@ -372,7 +372,7 @@ if(onnxruntime_CROSS_COMPILING)
 endif()
 
 # Mark symbols to be invisible, for macOS/iOS target only
-# Due to many dependencies have different symbol visibility settings, set global complie flags here.
+# Due to many dependencies have different symbol visibility settings, set global compile flags here.
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
   string(APPEND CMAKE_CXX_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
 endif()
