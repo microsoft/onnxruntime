@@ -49,7 +49,7 @@ jobs:
             --cwd /build/RelWithDebInfo \
     displayName: 'Run orttraining_ortmodule_tests.py'
     condition: succeededOrFailed()
-    timeoutInMinutes: 30
+    timeoutInMinutes: 60
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters:
