@@ -88,7 +88,7 @@ public:
    return idx % _num_shards;
  }
 
-  bool Skip(unsigned my_shard) {
+  bool Skip(unsigned) {
     //return _shards[my_shard]._next.load(std::memory_order_relaxed) >= _shards[my_shard]._end;
     return _done >= _num_shards;
   }
