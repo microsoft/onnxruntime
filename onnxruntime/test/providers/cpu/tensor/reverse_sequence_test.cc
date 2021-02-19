@@ -114,7 +114,7 @@ TEST(ReverseSequenceTest, InvalidInput) {
       test.AddInput<int64_t>("input", input_shape, input);
       test.AddInput<int64_t>("sequence_lens", {batch_size}, sequence_lens);
       test.AddOutput<int64_t>("Y", input_shape, expected_output);
-      test.Run(test::OpTester::ExpectResult::kExpectFailure, err_msg);
+      test.Run(test::OpTester::ExpectResult::kExpectFailure, err_msg, {kTensorrtExecutionProvider});  //TensorRT engine build error
     };
 
     check_bad_axis(2, 1, {1, seq_size, batch_size}, "Invalid batch_axis of 2. Must be 0 or 1");
@@ -140,7 +140,7 @@ TEST(ReverseSequenceTest, InvalidInput) {
     test.AddInput<int64_t>("sequence_lens", {3}, sequence_lens);
     test.AddOutput<int64_t>("Y", {2, 4, 1}, expected_output);
     test.Run(test::OpTester::ExpectResult::kExpectFailure,
-             "sequence_lens shape must be {batch_size}. Got:{3}. batch_size=2");
+             "sequence_lens shape must be {batch_size}. Got:{3}. batch_size=2", {kTensorrtExecutionProvider});  //TensorRT engine build error
   }
 }
 
