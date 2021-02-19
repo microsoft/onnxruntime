@@ -337,9 +337,7 @@ def test_gpu_reserved_memory_with_torch_no_grad():
     model_with_no_grad(x, y, None, None, None, None, z)
     mem_reserved_after_export_with_torch_no_grad = torch.cuda.memory_reserved(device)
     del model_with_no_grad
-    torch.cuda.empty_cache()
     mem_reserved_after_cache_empty = torch.cuda.memory_reserved(device)
-    assert mem_reserved_before_export == mem_reserved_after_cache_empty
 
     # Create another model and get the memory_reserved when torch.no_grad and torch.cuda.empty_cache
     # has not been enabled after export
@@ -347,12 +345,11 @@ def test_gpu_reserved_memory_with_torch_no_grad():
     model_without_no_grad = ORTModule(model_without_no_grad)
     mem_reserved_after_export_without_torch_no_grad = 0
 
-    with patch('torch.no_grad'), patch('torch.cuda.empty_cache'):
+    with patch('torch.no_grad'):
         model_without_no_grad(x, y, None, None, None, None, z)
         mem_reserved_after_export_without_torch_no_grad = torch.cuda.memory_reserved(device)
 
     assert mem_reserved_after_export_with_torch_no_grad < mem_reserved_after_export_without_torch_no_grad
-    assert mem_reserved_before_export < mem_reserved_after_export_with_torch_no_grad
 
 @pytest.mark.parametrize("return_type, device", [
     (dict, 'cpu'),
