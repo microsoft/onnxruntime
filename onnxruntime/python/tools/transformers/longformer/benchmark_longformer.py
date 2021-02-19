@@ -1,11 +1,22 @@
+# This script run benchmark of latency or peak memory usage of Longformer model inference.
 # Please run convert_longformer_to_onnx.py to get onnx model before running this script.
-# Tested with python 3.7, onnxruntime-gpu 1.6.0 (or nightly), PyTorch 1.7.0, transformers 4.0, CUDA 10.2, CUDNN 8.0
-# Example step by step command lines for benchmarking longformer base model (without/with optimizer) in Linux:
+# Tested with python 3.6, onnxruntime-gpu 1.7.0, PyTorch 1.7.1, transformers 4.3.2, CUDA 10.2.
+#
+# Example commands for exporting longformer base model in Linux or WSL:
+#   cd ../torch_extensions
 #   python setup.py install
-#   python convert_longformer_to_onnx.py -m longformer-base-4096
-#   python benchmark_longformer.py -m longformer-base-4096
-#   python convert_longformer_to_onnx.py -m longformer-base-4096 -o
-#   python benchmark_longformer.py -m longformer-base-4096
+#   cd ../longformer
+#   python convert_longformer_to_onnx.py --model longformer-base-4096 --precision fp32 --optimize_onnx
+#
+# Benchmark the latency (Exported onnx model is in the current directory):
+#   python benchmark_longformer.py --models longformer-base-4096 --batch_sizes 1 --sequence_lengths 512 1024 2048 4096 --global_lengths 8 --onnx_dir . --validate_onnx -t 100
+#
+# Benchmark GPU peak memory:
+#   export ORT_LONGFORMER_COMPACT_MEMORY=0
+#   python benchmark_longformer.py --models longformer-base-4096 --batch_sizes 1 --sequence_lengths 4096 --global_lengths 8 --onnx_dir . --memory -t 10
+#   export ORT_LONGFORMER_COMPACT_MEMORY=1
+#   python benchmark_longformer.py --models longformer-base-4096 --batch_sizes 1 --sequence_lengths 4096 --global_lengths 8 --onnx_dir . --memory -t 10
+# By default, compact memory kernel is not enabled since it is slower. You need set an environment variable ORT_LONGFORMER_COMPACT_MEMORY=1 to enable it, which uses less memory in this test.
 
 import timeit
 from datetime import datetime
@@ -17,57 +28,30 @@ import torch
 import onnxruntime
 import numpy as np
 import pprint
+import math
 
-# Mapping from model name to pretrained model name
-MODELS = {
-    "longformer-base-4096": "allenai/longformer-base-4096",
-    "longformer-random-tiny": "patrickvonplaten/longformer-random-tiny"  # A tiny model for debugging
-}
-
-is_debug = False
+from longformer_helper import LongformerHelper, PRETRAINED_LONGFORMER_MODELS
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import benchmark_helper
 
 
-def get_dummy_inputs(batch_size, sequence_length, num_global_tokens, device):
-    input_ids = torch.randint(low=0, high=100, size=(batch_size, sequence_length), dtype=torch.long, device=device)
-    attention_mask = torch.ones(input_ids.shape, dtype=torch.long, device=device)
-    global_attention_mask = torch.zeros(input_ids.shape, dtype=torch.long, device=device)
-    global_token_index = list(range(num_global_tokens))
-    global_attention_mask[:, global_token_index] = 1
-    return input_ids, attention_mask, global_attention_mask
-
-
-def diff_outputs(ort_outputs, torch_outputs):
-    max_diff = []
-    # Compare the outputs to find max difference
-    for i in range(2):
-        print(f"output {i} shape: ORT={ort_outputs[i].shape}, Torch={torch_outputs[i].shape}")
-        diff = (torch.from_numpy(ort_outputs[i]) - torch_outputs[i].to('cpu')).abs().max()
-        max_diff.append(diff)
-    print(f"max diff for output: {max_diff}")
-    return max_diff
-
-
-def test_torch(device, model, model_name, batch_sizes, sequence_lengths, global_lengths, test_times, num_threads,
-               verbose):
+def test_torch_latency(device, model, model_name, batch_sizes, sequence_lengths, global_lengths, test_times,
+                       num_threads, verbose):
     if num_threads > 0:
         torch.set_num_threads(num_threads)
 
     results = []
     for batch_size in batch_sizes:
-        for sequence_length in sequence_lengths:  # This is total length of <query, document>.
-            for global_length in global_lengths:  # This is length of <query>. Short query (8) for search keywords, and longer query (16) for question like
+        for sequence_length in sequence_lengths:
+            for global_length in global_lengths:
                 print(f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}...")
-                input_ids, attention_mask, global_attention_mask = get_dummy_inputs(batch_size, sequence_length,
-                                                                                    global_length, device)
+                inputs: LongforerInputs = LongformerHelper.get_dummy_inputs(batch_size, sequence_length, global_length,
+                                                                            device)
+                input_list = inputs.to_list()
 
-                # Run PyTorch
-                _ = model(input_ids, attention_mask=attention_mask, global_attention_mask=global_attention_mask)
-                runtimes = timeit.repeat(lambda: model(input_ids, attention_mask, global_attention_mask),
-                                         repeat=test_times,
-                                         number=1)
+                _ = model(*input_list)
+                runtimes = timeit.repeat(lambda: model(*input_list), repeat=test_times, number=1)
                 result = {
                     "engine": "torch",  #TODO: test torchscript
                     "version": torch.__version__,
@@ -90,7 +74,24 @@ def test_torch(device, model, model_name, batch_sizes, sequence_lengths, global_
     return results
 
 
-def test_onnxruntime(device,
+def test_parity(device, model, ort_session, batch_size, sequence_length, global_length, verbose=True):
+    print(
+        f"Comparing Torch and ORT outputs for batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}..."
+    )
+    dummy_inputs: LongforerInputs = LongformerHelper.get_dummy_inputs(batch_size, sequence_length, global_length,
+                                                                      device)
+    ort_inputs = dummy_inputs.get_ort_inputs()
+    ort_outputs = ort_session.run(None, ort_inputs)
+    input_list = dummy_inputs.to_list()
+    torch_outputs = model(*input_list)
+    max_diff = np.amax(torch_outputs[0].cpu().numpy() - ort_outputs[0])
+    print(f"last_state max diff = {max_diff}")
+    if verbose and (math.isnan(max_diff) or max_diff > 0.001):
+        print("torch last_state:", torch_outputs[0])
+        print("ort last_state:", ort_outputs[0])
+
+
+def test_ort_latency(device,
                      model,
                      model_name,
                      ort_session,
@@ -101,43 +102,30 @@ def test_onnxruntime(device,
                      num_threads,
                      optimizer=False,
                      precision='fp32',
+                     validate_onnx=True,
+                     disable_io_binding=False,
                      verbose=True):
     results = []
     for batch_size in batch_sizes:
-        for sequence_length in sequence_lengths:  # This is total length of <query, document>.
-            for global_length in global_lengths:  # This is length of <query>. Short query (8) for search keywords, and longer query (16) for question like
+        for sequence_length in sequence_lengths:
+            for global_length in global_lengths:
+                assert global_length <= model.config.attention_window[
+                    0], "Limitation of current implementation: number of global token <= attention_window"
                 print(
-                    f"Testing batch_size={batch_size} sequence_length={sequence_length} global_length={global_length} optimizer={optimizer}, precision={precision}..."
+                    f"Testing batch_size={batch_size} sequence_length={sequence_length} global_length={global_length} optimizer={optimizer}, precision={precision} io_binding={not disable_io_binding}..."
                 )
-                input_ids, attention_mask, global_attention_mask = get_dummy_inputs(batch_size, sequence_length,
-                                                                                    global_length, device)
+                dummy_inputs: LongforerInputs = LongformerHelper.get_dummy_inputs(batch_size, sequence_length,
+                                                                                  global_length, device)
 
                 # Run OnnxRuntime
-                ort_inputs = {
-                    "input_ids": input_ids.cpu().numpy(),
-                    "attention_mask": attention_mask.cpu().numpy(),
-                    "global_attention_mask": global_attention_mask.cpu().numpy()
-                }
+                ort_inputs = dummy_inputs.get_ort_inputs()
 
                 if verbose:
-                    pprint.pprint(ort_inputs)
+                    print(ort_inputs)
 
                 # run one query for warm up
                 ort_outputs = ort_session.run(None, ort_inputs)
 
-                if verbose:
-                    # Run PyTorch then compare the results with OnnxRuntime.
-                    torch_outputs = model(input_ids,
-                                          attention_mask=attention_mask,
-                                          global_attention_mask=global_attention_mask)
-
-                    max_diff = diff_outputs(ort_outputs, torch_outputs)
-                    print("max diff for outputs", max_diff)
-                    if max(max_diff) > 0.001:
-                        print("ort_inputs", ort_inputs)
-                        print("ort_outputs", ort_outputs)
-
-                device = input_ids.device
                 result_template = {
                     "model_name": model_name,
                     "inputs": 3,
@@ -154,30 +142,57 @@ def test_onnxruntime(device,
                     "datetime": str(datetime.now()),
                 }
 
-                max_last_state_size = max(batch_sizes) * max(sequence_lengths) * model.config.hidden_size
-                max_pooler_size = max(batch_sizes) * max(sequence_lengths)
-                """
-                result = benchmark_helper.inference_ort_with_io_binding(
-                    ort_session,
-                    ort_inputs,
-                    result_template=result_template,
-                    repeat_times=test_times,
-                    ort_output_names=["last_state", "pooler"],
-                    ort_outputs=ort_outputs,
-                    output_buffers=[],
-                    output_buffer_max_sizes=[max_last_state_size, max_pooler_size],
-                    batch_size=batch_size,
-                    device=device)
-                """
-                result = benchmark_helper.inference_ort(ort_session,
-                                                        ort_inputs,
-                                                        result_template=result_template,
-                                                        repeat_times=test_times,
-                                                        batch_size=batch_size)
+                if not disable_io_binding:
+                    max_last_state_size = max(batch_sizes) * max(sequence_lengths) * model.config.hidden_size
+                    max_pooler_size = max(batch_sizes) * max(sequence_lengths)
+                    result = benchmark_helper.inference_ort_with_io_binding(
+                        ort_session,
+                        ort_inputs,
+                        result_template=result_template,
+                        repeat_times=test_times,
+                        ort_output_names=["last_state", "pooler"],
+                        ort_outputs=ort_outputs,
+                        output_buffers=[],
+                        output_buffer_max_sizes=[max_last_state_size, max_pooler_size],
+                        batch_size=batch_size,
+                        device=device,
+                        data_type=np.longlong,  #input data type
+                    )
+                else:
+                    result = benchmark_helper.inference_ort(ort_session,
+                                                            ort_inputs,
+                                                            result_template=result_template,
+                                                            repeat_times=test_times,
+                                                            batch_size=batch_size)
 
                 pprint.pprint(result)
                 results.append(result)
+
+                if validate_onnx:
+                    test_parity(device, model, ort_session, batch_size, sequence_length, global_length, verbose)
+
     return results
+
+
+def test_ort_memory(device, onnx_model_path, batch_size, sequence_length, global_length, test_times, num_threads):
+    print(
+        f"Testing memory for model={onnx_model_path}, batch_size={batch_size}, sequence_length={sequence_length}, global_length={global_length}, test_times={test_times}, num_threads={num_threads}"
+    )
+
+    def inference():
+        session = benchmark_helper.create_onnxruntime_session(onnx_model_path,
+                                                              use_gpu=True,
+                                                              enable_all_optimization=True,
+                                                              num_threads=num_threads)
+
+        dummy_inputs: LongforerInputs = LongformerHelper.get_dummy_inputs(batch_size, sequence_length, global_length,
+                                                                          device)
+        ort_inputs = dummy_inputs.get_ort_inputs()
+        for _ in range(test_times):
+            ort_outputs = session.run(None, ort_inputs)
+
+    benchmark_helper.measure_memory(is_gpu=True, func=inference)
+    print("Memory test is done")
 
 
 def test_all(args):
@@ -188,17 +203,18 @@ def test_all(args):
     for model_name in args.models:
         # Here we run an example input
         from transformers import LongformerModel
-        torch_model_name_or_dir = MODELS[model_name]
+        torch_model_name_or_dir = PRETRAINED_LONGFORMER_MODELS[model_name]
         model = LongformerModel.from_pretrained(torch_model_name_or_dir)  # pretrained model name or directory
         model.to(device)
 
         # Search onnx model in the following order: optimized fp16 model, optimized fp32 model, raw model
+        # TODO: call convert_longformer_to_onnx to export onnx instead.
+        import os.path
         optimized = False
         precision = 'fp32'
-        onnx_model_path = model_name + ".onnx"
-        optimized_fp32_model = model_name + "_fp32.onnx"
-        optimized_fp16_model = model_name + "_fp16.onnx"
-        import os.path
+        onnx_model_path = os.path.join(args.onnx_dir, model_name + ".onnx")
+        optimized_fp32_model = os.path.join(args.onnx_dir, model_name + "_fp32.onnx")
+        optimized_fp16_model = os.path.join(args.onnx_dir, model_name + "_fp16.onnx")
         if os.path.isfile(optimized_fp16_model):
             onnx_model_path = optimized_fp16_model
             optimized = True
@@ -206,24 +222,33 @@ def test_all(args):
         elif os.path.isfile(optimized_fp32_model):
             onnx_model_path = optimized_fp32_model
             optimized = True
+        print("ONNX model path:", onnx_model_path)
 
         for num_threads in args.num_threads:
             if "torch" in args.engines:
-                results += test_torch(device, model, model_name, args.batch_sizes, args.sequence_lengths,
-                                      args.global_lengths, args.test_times, num_threads, args.verbose)
+                results += test_torch_latency(device, model, model_name, args.batch_sizes, args.sequence_lengths,
+                                              args.global_lengths, args.test_times, num_threads, args.verbose)
 
             if "onnxruntime" in args.engines:
-                session = benchmark_helper.create_onnxruntime_session(onnx_model_path,
-                                                                      use_gpu=True,
-                                                                      enable_all_optimization=True,
-                                                                      num_threads=num_threads)
-                results += test_onnxruntime(device, model, model_name, session, args.batch_sizes, args.sequence_lengths,
-                                            args.global_lengths, args.test_times, num_threads, optimized, precision,
-                                            args.verbose)
+                if args.memory:
+                    test_ort_memory(device, onnx_model_path, args.batch_sizes[0], args.sequence_lengths[0],
+                                    args.global_lengths[0], args.test_times, num_threads)
+                else:  # test latency
+                    session = benchmark_helper.create_onnxruntime_session(onnx_model_path,
+                                                                          use_gpu=True,
+                                                                          enable_all_optimization=True,
+                                                                          num_threads=num_threads)
+                    if session is None:
+                        raise RuntimeError(f"Failed to create ORT sesssion from ONNX file {onnx_model_path}")
+
+                    results += test_ort_latency(device, model, model_name, session, args.batch_sizes,
+                                                args.sequence_lengths, args.global_lengths, args.test_times,
+                                                num_threads, optimized, precision, args.validate_onnx,
+                                                args.disable_io_binding, args.verbose)
     return results
 
 
-def parse_arguments():
+def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-m",
@@ -231,9 +256,9 @@ def parse_arguments():
                         required=False,
                         nargs="+",
                         type=str,
-                        default=["longformer-random-tiny"] if is_debug else ["longformer-base-4096"],
-                        choices=list(MODELS.keys()),
-                        help="Pre-trained models in the list: " + ", ".join(MODELS.keys()))
+                        default=["longformer-base-4096"],
+                        help="Checkpoint directory or pre-trained model names in the list: " +
+                        ", ".join(PRETRAINED_LONGFORMER_MODELS.keys()))
 
     parser.add_argument("-e",
                         "--engines",
@@ -253,21 +278,52 @@ def parse_arguments():
 
     parser.add_argument("-b", "--batch_sizes", nargs="+", type=int, default=[1])
 
-    # If multiple of window size is used during exporting onnx model, there is no padding in ONNX model so you will need padding by yourself before running onnx model.
-    # In that case, you can only test sequence length that is multiple of window size (4 or 512 for these two models).
-    parser.add_argument("-s",
-                        "--sequence_lengths",
+    # If --export_padding is not used in exporting onnx model, there is no padding in ONNX model so you will need padding inputs by yourself before running onnx model.
+    # In that case, you can only test sequence length that is multiple of attention window size.
+    parser.add_argument(
+        "-s",
+        "--sequence_lengths",
+        nargs="+",
+        type=int,
+        default=[512, 1024, 2048, 4096],
+        help=
+        "Sequence lengths. It could have multiple values in latency test. If --export_padding is not used in exporting onnx model, sequence length shall be multiple of window size."
+    )
+
+    parser.add_argument("--onnx_dir",
+                        required=False,
+                        type=str,
+                        default=os.path.join('.', 'onnx_models'),
+                        help="Directory to search onnx models.")
+
+    parser.add_argument("-g",
+                        "--global_lengths",
                         nargs="+",
                         type=int,
-                        default=[4] if is_debug else [512, 1024, 2048, 4096])
+                        default=[0],
+                        help="Number of global tokens. It could have multiple values in latency test.")
 
-    parser.add_argument("-g", "--global_lengths", nargs="+", type=int, default=[1] if is_debug else [8])
+    parser.add_argument("-n",
+                        "--num_threads",
+                        required=False,
+                        nargs="+",
+                        type=int,
+                        default=[0],
+                        help="Threads to use. It could have multiple values in latency test.")
 
-    parser.add_argument("-n", "--num_threads", required=False, nargs="+", type=int, default=[0], help="Threads to use")
+    parser.add_argument("-v",
+                        "--validate_onnx",
+                        required=False,
+                        action="store_true",
+                        help="Validate that ONNX model generates same output as PyTorch model.")
 
-    parser.add_argument("--verbose", required=False, action="store_true", help="Print more information")
+    parser.add_argument("--disable_io_binding", required=False, action="store_true", help="Do not use IO Binding.")
 
-    args = parser.parse_args()
+    parser.add_argument("--memory", required=False, action="store_true", help="Test memory usage instead of latency.")
+
+    parser.add_argument("--verbose", required=False, action="store_true", help="Print more information.")
+
+    args = parser.parse_args(argv)
     return args
 
 
@@ -327,15 +383,26 @@ def output_details(results, csv_filename):
     print(f"Detail results are saved to csv file: {csv_filename}")
 
 
-def main():
-    args = parse_arguments()
-
+def main(args):
     assert len(args.models) == 1, "run only one model at a time"
+
+    if args.memory:
+        if len(args.batch_sizes) > 1:
+            raise RuntimeError("For memory test, only one batch_size (-b) is allowed.")
+        if len(args.sequence_lengths) > 1:
+            raise RuntimeError("For memory test, only one sequence_length (-s) is allowed.")
+        if len(args.global_lengths) > 1:
+            raise RuntimeError("For memory test, only one global_length (-g) is allowed.")
+        if len(args.num_threads) > 1:
+            raise RuntimeError("For memory test, only one value of --num_threads is allowed.")
 
     if not torch.cuda.is_available():
         raise RuntimeError("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
 
     torch.set_grad_enabled(False)
+
+    # set random seed manully to get deterministic results
+    #benchmark_helper.set_random_seed(123)
 
     all_results = test_all(args)
 
@@ -348,4 +415,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    #args = parse_arguments("-e onnxruntime -t 1 -b 1 -s 4 -g 2 --onnx_dir . -t 1 -m longformer-random-tiny".split(' '))
+
+    main(args)

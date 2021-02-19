@@ -18,9 +18,10 @@ size_t GetLongformerAttentionWorkspaceSize(
     int head_size,
     int sequence_length,
     int max_num_global,
-    int window);
+    int window,
+    bool use_fast_kernel);
 
-  bool LaunchLongformerAttentionKernel(
+bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties
     cublasHandle_t& cublas,             // Cublas handle
     cudaStream_t stream,                // CUDA stream
@@ -39,7 +40,8 @@ size_t GetLongformerAttentionWorkspaceSize(
     int head_size,                      // Hidden layer size per head (H)
     int window,                         // One sided attention window (W)
     int max_num_global,                 // Maximum number of global tokens (G)
-    const size_t element_size           // Element size of input tensor
+    const size_t element_size,          // Element size of input tensor,
+    bool use_fast_kernel                // Use compact memory
 );
 
 }  // namespace cuda
