@@ -242,7 +242,7 @@ class ORTModule(torch.nn.Module):
             if self._use_external_cuda_allocator:
                 provider_options = [{"device_id": str(self._device.index), "cuda_external_alloc": str(self._torch_alloc), "cuda_external_free": str(self._torch_free)}, {}]
             else:
-                provider_options = [{"device_id": str(self._device.index)}]
+                provider_options = [{"device_id": str(self._device.index)}, {}]
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
