@@ -273,17 +273,16 @@ def test_torch_nn_module_cpu_api(set_gpu_on_original_module):
         assert parameter_value.device.type == to_device
 
 @pytest.mark.parametrize("original_device, to_argument", [
-    ('cpu', torch.device('cuda')),
+    ('cpu', 'cpu'),
     ('cpu', 'cuda'),
     ('cpu', 'cuda:0'),
-    ('cpu', 'cuda'),
+    ('cpu', torch.device('cpu')),
+    ('cpu', torch.device('cuda')),
     ('cuda', 'cuda'),
     ('cuda', 'cuda:0'),
-    ('cuda', torch.device('cuda')),
     ('cuda', 'cpu'),
+    ('cuda', torch.device('cuda')),
     ('cuda', torch.device('cpu')),
-    ('cpu', 'cpu'),
-    ('cpu', torch.device('cpu')),
     ])
 def test_torch_nn_module_to_api(original_device, to_argument):
     N, D_in, H, D_out = 64, 784, 500, 10
