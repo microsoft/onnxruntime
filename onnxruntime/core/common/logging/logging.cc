@@ -13,7 +13,7 @@
 #include <Windows.h>
 #else
 #include <unistd.h>
-#if defined(__MACH__)
+#if defined(__MACH__) || defined(ENABLE_ORT_WASM)
 #include <pthread.h>
 #else
 #include <sys/syscall.h>
@@ -215,8 +215,7 @@ unsigned int GetThreadId() {
   thr_self(&tid);
   return static_cast<unsigned int>(tid);
 #elif defined(ENABLE_ORT_WASM)
-  // WebAssembly doesn't support a function to get a thread id
-  return 0;
+  return static_cast<unsigned int>(pthread_self());
 #else
   return static_cast<unsigned int>(syscall(SYS_gettid));
 #endif

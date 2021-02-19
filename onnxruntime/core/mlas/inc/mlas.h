@@ -52,6 +52,12 @@ Abstract:
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
 #endif
+#if defined(__wasm__)
+#define MLAS_TARGET_WASM
+#if defined(__wasm_simd128__)
+#define MLAS_TARGET_WASMSIMD
+#endif
+#endif
 
 //
 // Define the support levels for the target architecture.
