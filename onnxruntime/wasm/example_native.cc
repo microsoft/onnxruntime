@@ -4,8 +4,6 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "example_native.h"
 
-const OrtApi* ort_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-
 bool Example::Load(const std::string& model_path) {
   try {
     OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
@@ -65,14 +63,16 @@ int main(int argc, char** argv) {
 
   std::vector<const char*> input_names{"A", "B"};
   const char* output_names[] = {"C"};
+  std::vector<float> data{1., 2., 3., 4., 5.};
+  std::vector<int64_t> shape{5};
 
   std::vector<Ort::Value> values;
   for (size_t i = 0; i < input_names.size(); ++i) {
-    float data[] = {1., 2., 3., 4., 5.};
-    const int data_len = sizeof(data) / sizeof(data[0]);
-    const int64_t shape[] = {5};
-    const size_t shape_len = sizeof(shape) / sizeof(shape[0]);
-    values.emplace_back(Ort::Value::CreateTensor<float>(mem_info, data, data_len, shape, shape_len));
+    values.emplace_back(Ort::Value::CreateTensor<float>(mem_info,
+                                                        data.data(),
+                                                        data.size(),
+                                                        shape.data(),
+                                                        shape.size()));
   }
 
   auto outputs = example.Run(input_names.data(), values.data(), input_names.size(), output_names, 1);
