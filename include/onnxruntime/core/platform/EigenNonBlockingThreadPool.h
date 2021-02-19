@@ -587,11 +587,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
  public:
 
-  void StartProfiling() const {
+  void StartProfiling() const override {
     profiler_.Start();
   }
 
-  std::string StopProfiling() const {
+  std::string StopProfiling() const override {
     return profiler_.Stop();
   }
 
