@@ -437,8 +437,8 @@ struct OrtApi {
      * The handle to the loaded library is returned in library_handle. It can be freed by the caller after all sessions using the passed in
      * session options are destroyed, or if an error occurs and it is non null.
   */
-  ORT_API2_STATUS(RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path,
-                  void** library_handle);
+  ORT_EXPORT ORT_API2_STATUS(RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path,
+                             void** library_handle);
 
   /**
     * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
