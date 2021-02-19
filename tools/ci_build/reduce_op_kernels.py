@@ -54,28 +54,36 @@ def _validated_globally_allowed_types(
     return globally_allowed_types
 
 
+'''
+Callable that determines whether a registration should be excluded.
+:param domain: Domain for the operator
+:param operator: Operator type
+:param start_version: Start version
+:param end_version: End version or None if unversioned registration
+:param type: Type used in registration, if this is a typed registration
+:return: Tuple of (whether to exclude: bool, reason for exclusion: str)
+'''
+_ShouldExcludeRegistrationFn = \
+    typing.Callable[
+        [str,  # domain
+         str,  # operator
+         int,  # start_version
+         typing.Optional[int],  # end_version
+         typing.Optional[str],  # type
+         ],
+        typing.Tuple[bool, str]]
+
+
 class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcessor):
     '''Registration processor that excludes registrations and writes the result to an output file.'''
-    def __init__(self, output_file: str):
+    def __init__(self, should_exclude_registration_fn: _ShouldExcludeRegistrationFn, output_file: str):
         '''
         Constructor.
+        :should_exclude_registration_fn: Callable that determines whether a registration should be excluded
         :param output_file: Output file path
         '''
+        self._should_exclude_registration_fn = should_exclude_registration_fn
         self._output_file = output_file
-
-    def should_exclude_registration(self, constant_for_domain: str, operator: str,
-                                    start_version: int, end_version: typing.Optional[int] = None,
-                                    type: typing.Optional[str] = None) -> typing.Tuple[bool, str]:
-        '''
-        Indicate whether the registration should be excluded. Derived classes should implement this.
-        :param domain: Domain for the operator
-        :param operator: Operator type
-        :param start_version: Start version
-        :param end_version: End version or None if unversioned registration
-        :param type: Type used in registration, if this is a typed registration
-        :return: Tuple of (whether to exclude: bool, reason for exclusion: str)
-        '''
-        raise NotImplementedError()
 
     def process_registration(self, lines: typing.List[str], constant_for_domain: str, operator: str,
                              start_version: int, end_version: typing.Optional[int] = None,
@@ -83,8 +91,18 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
         registration_identifier = '{}:{}({}){}'.format(constant_for_domain, operator, start_version,
                                                        '<{}>'.format(type) if type else '')
 
-        exclude, reason = self.should_exclude_registration(
-            constant_for_domain, operator, start_version, end_version, type)
+        # convert from the ORT constant name to the domain string used in the config
+        domain = op_registration_utils.map_ort_constant_to_domain(constant_for_domain)
+
+        exclude = False
+        reason = ""
+
+        if domain is not None:
+            exclude, reason = self._should_exclude_registration_fn(
+                domain, operator, start_version, end_version, type)
+        else:
+            log.warning('Keeping {} registration from unknown domain: {}'
+                        .format(registration_identifier, constant_for_domain))
 
         if exclude:
             log.info('Disabling {} registration: {}'.format(registration_identifier, reason))
@@ -106,13 +124,12 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
 
 
 def _process_provider_registrations(
-        ort_root: str, use_cuda: bool,
-        create_processor_fn: typing.Callable[[str], op_registration_utils.RegistrationProcessor]):
+        ort_root: str, use_cuda: bool, should_exclude_registration_fn: _ShouldExcludeRegistrationFn):
     '''
     Rewrite provider registration files.
     :param ort_root: Root of the ONNX Runtime repository
     :use_cuda: Whether to process registrations for the CUDA provider
-    :create_processor_fn: Function that accepts an output file path and returns a RegistrationProcessor to use
+    :should_exclude_registration_fn: Callable that determines whether a registration should be excluded
     '''
     kernel_registration_files = op_registration_utils.get_kernel_registration_files(ort_root, use_cuda)
 
@@ -127,7 +144,7 @@ def _process_provider_registrations(
 
         # read from backup and overwrite original with commented out lines for any kernels that are not required
         with open(kernel_registration_file, 'w') as file_to_write:
-            processor = create_processor_fn(file_to_write)
+            processor = _ExcludingRegistrationProcessor(should_exclude_registration_fn, file_to_write)
 
             op_registration_utils.process_kernel_registration_file(backup_path, processor)
 
@@ -181,109 +198,86 @@ def _insert_type_control_cpp_code(ort_root: str, cpp_lines: typing.Sequence[str]
         raise RuntimeError('Insertion point was not found in {}'.format(target))
 
 
-class _ExcludeFromConfigRegistrationProcessor(_ExcludingRegistrationProcessor):
-    '''Registration processor that excludes registrations based on configuration file info.'''
-    def __init__(self, required_ops, op_type_usage_manager, output_file):
-        super().__init__(output_file)
-        self._required_ops = required_ops
-        self._op_type_usage_manager = op_type_usage_manager
+def _should_exclude_op(required_ops: dict, domain: str, operator: str,
+                       start_version: int, end_version: typing.Optional[int]) -> typing.Tuple[bool, str]:
+    '''See if an op should be excluded because it is not required.'''
+    def is_op_required():
+        if domain not in required_ops:
+            return False
 
-    def _should_exclude_op(self, domain, operator, start_version, end_version):
-        if domain not in self._required_ops:
-            return True
-
-        for opset in self._required_ops[domain]:
+        for opset in required_ops[domain]:
             if opset >= start_version and (end_version is None or opset <= end_version):
-                if operator in self._required_ops[domain][opset]:
-                    return False  # found a match, do not exclude
+                if operator in required_ops[domain][opset]:
+                    return True
 
-        return True
+        return False
 
-    def should_exclude_registration(self, constant_for_domain: str, operator: str,
-                                    start_version: int, end_version: typing.Optional[int] = None,
-                                    type: typing.Optional[str] = None) -> typing.Tuple[bool, str]:
-        # convert from the ORT constant name to the domain string used in the config
-        domain = op_registration_utils.map_ort_constant_to_domain(constant_for_domain)
-        exclude = False
-        reason = ""
-
-        if domain:
-            # see if entire op is excluded
-            if self._should_exclude_op(domain, operator, start_version, end_version):
-                exclude = True
-                reason = "Entire op is excluded by configuration."
-
-            # see if a specific typed registration can be excluded
-            if not exclude and type and self._op_type_usage_manager \
-                    and not self._op_type_usage_manager.is_typed_registration_needed(domain, operator, type):
-                exclude = True
-                reason = "Specific typed registration is excluded by configuration."
-
-        return exclude, reason
+    return (False, "") if is_op_required() else (True, "Entire op is not required.")
 
 
-def exclude_unused_ops_and_types(config_path: str, enable_type_reduction: bool = False, use_cuda: bool = True):
+def reduce_ops(config_path: str, enable_type_reduction: bool = False, use_cuda: bool = True):
     '''
-    Exclude op kernel implementations based on a configuration file.
-    :param config_path: Configuration file path
+    Reduce op kernel implementations.
+    :param config_path: Path to configuration file that specifies the ops to include
     :param enable_type_reduction: Whether per operator type reduction is enabled
     :param use_cuda: Whether to reduce op kernels for the CUDA provider
     '''
     required_ops, op_type_usage_manager = parse_config(config_path, enable_type_reduction)
 
-    def create_processor(file_to_write):
-        return _ExcludeFromConfigRegistrationProcessor(required_ops,
-                                                       op_type_usage_manager,
-                                                       file_to_write)
+    def should_exclude_registration(domain: str, operator: str,
+                                    start_version: int, end_version: typing.Optional[int],
+                                    type: typing.Optional[str]) -> typing.Tuple[bool, str]:
+        exclude, reason = _should_exclude_op(required_ops, domain, operator, start_version, end_version)
 
-    _process_provider_registrations(ort_root, use_cuda, create_processor)
+        # see if a specific typed registration can be excluded
+        if not exclude and op_type_usage_manager is not None and type is not None and \
+                not op_type_usage_manager.is_typed_registration_needed(domain, operator, type):
+            exclude = True
+            reason = "Specific typed registration is not required."
+
+        return exclude, reason
+
+    _process_provider_registrations(ort_root, use_cuda, should_exclude_registration)
 
     if op_type_usage_manager is not None:
         _insert_type_control_cpp_code(ort_root, op_type_usage_manager.get_cpp_entries())
 
 
-class _ExcludeFromGloballyAllowedTypesRegistrationProcessor(_ExcludingRegistrationProcessor):
-    '''Registration processor that excludes registrations based on a set of globally allowed types.'''
-    def __init__(self, globally_allowed_types: typing.Set[str], output_file: str):
-        # to keep a registration, the type should match patterns like:
-        # 1. T0
-        # 2. T0_T1_T2
-        # where Ti is a member of globally_allowed_types and multiple Ti's are delimited by "_"
-        # this covers both the common case (1) and special cases like OneHot registration (2)
-        allowed_type_subpattern = \
-            "(?:" + "|".join(re.escape(allowed_type) for allowed_type in sorted(globally_allowed_types)) + ")"
-        self._type_pattern_re = re.compile("^{0}(?:_{0})*$".format(allowed_type_subpattern))
+def reduce_ops_with_globally_allowed_types(
+        config_path: str,
+        globally_allowed_types: typing.Optional[typing.Collection[str]],
+        use_cuda: bool = True):
+    '''
+    Reduce op kernel implementations with type reduction to globally allowed types.
+    :param config_path: Path to configuration file that specifies the ops to include
+    :param globally_allowed_types: The allowed types for which op kernel implementations are included
+    :param use_cuda: Whether to reduce op kernels for the CUDA provider
+    '''
+    globally_allowed_types = _validated_globally_allowed_types(globally_allowed_types)
 
-        super().__init__(output_file)
+    required_ops, _ = parse_config(config_path, enable_type_reduction=False)
 
-    def should_exclude_registration(self, constant_for_domain: str, operator: str,
+    # to keep a registration, the type should match patterns like:
+    # 1. T0
+    # 2. T0_T1_T2
+    # where Ti is a member of globally_allowed_types and multiple Ti's are delimited by "_"
+    # this covers both the common case (1) and special cases like OneHot registration (2)
+    allowed_type_subpattern = \
+        "(?:" + "|".join(re.escape(allowed_type) for allowed_type in sorted(globally_allowed_types)) + ")"
+    type_pattern_re = re.compile("^{0}(?:_{0})*$".format(allowed_type_subpattern))
+
+    def should_exclude_registration(domain: str, operator: str,
                                     start_version: int, end_version: typing.Optional[int] = None,
                                     type: typing.Optional[str] = None) -> typing.Tuple[bool, str]:
-        exclude = False
-        reason = ""
+        exclude, reason = _should_exclude_op(required_ops, domain, operator, start_version, end_version)
 
-        if type is not None and not self._type_pattern_re.match(type):
+        if not exclude and type is not None and not type_pattern_re.match(type):
             exclude = True
             reason = "Specific typed registration is excluded by globally allowed types."
 
         return exclude, reason
 
-
-def constrain_ops_to_globally_allowed_types(
-        globally_allowed_types: typing.Optional[typing.Collection[str]],
-        use_cuda: bool = True):
-    '''
-    Constrain op kernel implementations to the specified globally allowed types.
-    :param globally_allowed_types: The allowed types for which op kernel implementations are kept
-    :param use_cuda: Whether to reduce op kernels for the CUDA provider
-    '''
-    globally_allowed_types = _validated_globally_allowed_types(globally_allowed_types)
-
-    def create_processor(file_to_write):
-        return _ExcludeFromGloballyAllowedTypesRegistrationProcessor(globally_allowed_types,
-                                                                     file_to_write)
-
-    _process_provider_registrations(ort_root, use_cuda, create_processor)
+    _process_provider_registrations(ort_root, use_cuda, should_exclude_registration)
 
     _insert_type_control_cpp_code(
         ort_root,
@@ -294,25 +288,21 @@ def constrain_ops_to_globally_allowed_types(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Reduces operator kernel implementations in ONNX Runtime. "
-                    "Entire op implementations or op implementations for specific types may be pruned. "
-                    "Two modes are supported: reduction may be specified via a configuration file or via a set of "
-                    "globally allowed types.")
+                    "Entire op implementations or op implementations for specific types may be pruned.")
 
-    parser.add_argument("--config-path", type=str,
+    parser.add_argument("config_path", type=str,
                         help="Path to configuration file. "
                              "Create with <ORT root>/tools/python/create_reduced_build_config.py and edit if needed. "
                              "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information.")
 
-    parser.add_argument("--globally-allowed-types", nargs="*", choices=sorted(_valid_allowed_types),
+    parser.add_argument("--globally-allowed-types", nargs="*", metavar="type", choices=sorted(_valid_allowed_types),
                         help="Specifies the globally allowed C++ scalar types.")
 
     args = parser.parse_args()
 
-    if (args.config_path is None) == (args.globally_allowed_types is None):
-        raise ValueError("Exactly one of --config-file or --globally-allowed-types must be specified.")
+    config_path = os.path.abspath(args.config_path)
 
-    if args.config_path is not None:
-        config_path = os.path.abspath(args.config_path)
-        exclude_unused_ops_and_types(config_path, enable_type_reduction=True, use_cuda=True)
+    if args.globally_allowed_types is not None:
+        reduce_ops_with_globally_allowed_types(config_path, args.globally_allowed_types, use_cuda=True)
     else:
-        constrain_ops_to_globally_allowed_types(args.globally_allowed_types, use_cuda=True)
+        reduce_ops(config_path, enable_type_reduction=True, use_cuda=True)
