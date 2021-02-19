@@ -84,43 +84,148 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
   return true;
 }
 
-// We can test with float only here
-//void DumpMatrixImpl(const std::string& name, const float* src, int row, int col, int offset, int col_width) {
-//  std::cout << "Dump matrix: " << name << std::endl;
-//
-//  if (col_width == -1) col_width = col;
-//
-//  for (int r = 0; r < row; r++) {
-//    for (int c = 0; c < col; c++) {
-//      int index = r * col_width + offset + c;
-//      std::cout << std::setw(12) << std::setprecision(8) << src[index];
-//    }
-//    std::cout << std::endl;
-//  }
-//  std::cout << std::endl;
-//}
+template <typename T>
+struct DumpType {
+  static std::ostream& dump(std::ostream& os, T v) {
+    return os << std::setw(12) << std::setprecision(8) << v;
+  }
+};
+
+template <>
+struct DumpType<MLFloat16> {
+  static std::ostream& dump(std::ostream& os, const MLFloat16& v) {
+    return DumpType<float>::dump(os, v.ToFloat());
+  }
+};
+
+template <>
+struct DumpType<BFloat16> {
+  static std::ostream& dump(std::ostream& os, const BFloat16& v) {
+    return DumpType<float>::dump(os, v.ToFloat());
+  }
+};
 
 template <typename T>
-std::ostream& DumpArrayImpl(std::ostream& os, const std::string& name, const void* in, size_t len, size_t col_width) {
-  std::unique_ptr<T[]> buf(new T[len]);
-  cudaMemcpy(buf.get(), in, len * sizeof(T), cudaMemcpyDeviceToHost);
-  const T* src = buf.get();
+struct DumpArray {
+  void operator()(std::ostream& os, const std::string& name, const void* in, size_t len, size_t col_width) const {
+    std::unique_ptr<T[]> buf(new T[len]);
+    cudaMemcpy(buf.get(), in, len * sizeof(T), cudaMemcpyDeviceToHost);
+    const T* src = buf.get();
 
-  std::cout << "Dump array: " << name << std::endl;
+    os << "Dump array: " << name << std::endl;
 
-  if (col_width == -1) col_width = len;
+    if (col_width == -1) col_width = len;
 
-  for (size_t i = 0; i < len;) {
-    for (size_t w = 0; w < col_width && i < len; ++w, ++i) {
-      os << std::setw(12) << std::setprecision(8) << src[i];
+    for (size_t i = 0; i < len;) {
+      for (size_t w = 0; w < col_width && i < len; ++w, ++i) {
+        DumpType<T>::dump(os, src[i]);
+      }
+      os << std::endl;
     }
     os << std::endl;
   }
-  os << std::endl;
-  return os;
-}
+};
 
-#define DUMP_ARRAY(T, ...) DumpArrayImpl<T>(__VA_ARGS__)
+template <typename T>
+struct IsZero {
+  bool operator()(T v) const noexcept {
+    return v == static_cast<T>(0);
+  }
+};
+
+static const MLFloat16 zero_ml16(0.f);
+
+template <>
+struct IsZero<MLFloat16> {
+  bool operator()(MLFloat16 v) const noexcept {
+    return zero_ml16.val == v.val;
+  }
+};
+
+static const BFloat16 zero_b16(0.f);
+
+template <>
+struct IsZero<BFloat16> {
+  bool operator()(BFloat16 v) const noexcept {
+    return zero_b16.val == v.val;
+  }
+};
+
+template <typename T>
+struct FindIfZero {
+  // returns nullptr if not found
+  void operator()(int64_t N,
+                  const uint8_t* block_row_begin,
+                  const uint8_t*& restart, const uint8_t* block_row_end,
+                  int64_t& block_col) const {
+    const T* block_row_begin_T = reinterpret_cast<const T*>(block_row_begin);
+    const T* start = reinterpret_cast<const T*>(restart);
+    const T* block_row_end_T = reinterpret_cast<const T*>(block_row_end);
+    auto hit = std::find_if(start, block_row_end_T, IsZero<T>());
+    if (hit != block_row_end_T) {
+      block_col = (hit - block_row_begin_T) % N;
+      restart = reinterpret_cast<const uint8_t*>(hit + 1);
+    } else {
+      restart = nullptr;
+    }
+  }
+};
+
+/// <summary>
+/// Scans the matrix and converts it into Blocked Ell format.
+/// </summary>
+/// <param name="ell_block_size">Chosen block sizes</param>
+/// <param name="K">rows in the matrix to be sparsified</param>
+/// <param name="N">columns in the incoming matrix</param>
+/// <param name="element_size">element size in the matrix</param>
+/// <param name="ell_col_ind">output parameter, ell_col_indices represented as an array</param>
+/// <param name="ell_values">non-zero blocks values</param>
+/// <returns>status</returns>
+Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, int32_t element_type, size_t element_size,
+                           const void* input_data, std::unique_ptr<int[]>& ell_col_ind, std::unique_ptr<uint8_t[]>& ell_values) {
+  // We need to read the values transposed, by columns as if this was ColumnMajor
+  // even though the incoming data is RowMajor
+  const int64_t block_elements = ell_block_size * ell_block_size;
+  const int64_t block_bytes = block_elements * element_size;
+
+  const int64_t row_element_bytes = K * element_size;
+  const int64_t block_rows = K / ell_block_size;
+  const int64_t block_cols = N / ell_block_size;
+
+  const int64_t row_bytes = block_cols * block_bytes;
+
+  // This is to compute the number of columns for colIdx allocation
+  int64_t min_col_index = std::numeric_limits<size_t>::max();
+  int64_t max_col_index = 0;
+  size_t nnz_blocks = 0;  // For values allocation
+
+  // Key is the row and it contains the set of sorted col indices
+  std::map<int64_t, std::set<int64_t>> rows_to_cols;
+
+  // We scan for non-zero blocks
+  utils::MLTypeCallDispatcher<FindIfZero, float, double, MLFloat16, BFloat16> t_disp(element_type);
+  for (int64_t block_row = 0; block_row < block_rows; ++block_row) {
+    const auto* block_row_begin = reinterpret_cast<const uint8_t*>(input_data) + block_row * row_bytes;
+    const auto* block_row_end = block_row_begin + row_bytes;
+    const auto* start = block_row_begin;
+    int64_t block_col = 0;
+    auto& col_set = rows_to_cols[block_row];
+    while (true) {
+      t_disp.Invoke(N, block_row_begin, start, block_row_end, block_col);
+      if (start != nullptr) {
+        col_set.insert(block_col); // This will discard duplicates
+      } else {
+        break;
+      }
+    }
+    if (!col_set.empty()) {
+      min_col_index = std::min(block_row, min_col_index);
+      max_col_index = std::max(block_row, max_col_index);
+      nnz_blocks += col_set.size();
+    }
+  }
+  return Status::OK();
+}
 
 #ifdef USE_CUSPARSE_LT
 
@@ -372,17 +477,15 @@ class Sparse2x4ComputeHelper {
 
 #endif  // USE_CUSPARSE_LT
 
-template <class T>
 class CuSparseHelper {
  public:
-  static Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::PrepackParam& param,
-                        bool transa, bool transb, std::unique_ptr<SparseInfo>& sparse_info, bool& is_packed) {
+  static Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::PrepackParam& prepack_param,
+                        bool transb, int32_t expected_kernel_type, cudaDataType cuda_type,
+                        std::unique_ptr<SparseInfo>& sparse_info, bool& is_packed) {
     is_packed = false;
-    if (!tensor.IsDataType<T>()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name.get() + " : wrong data type for the constant initializer");
+    if (tensor.GetElementType() != expected_kernel_type) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, prepack_param.name.get() + " : wrong data type for the constant initializer");
     }
-
-    const auto cuda_type = ToCudaTypeEnum<T>::type;
 
     auto close_dense_fn = [](cusparseDnMatDescr_t* desc) { cusparseDestroyDnMat(*desc); };
     auto close_sparse_fn = [](cusparseSpMatDescr_t* desc) { cusparseDestroySpMat(*desc); };
@@ -408,7 +511,7 @@ class CuSparseHelper {
       N = 1;
     }
 
-    auto values_buffer = kernel->GetScratchBuffer<T>(num_elements);
+    auto values_buffer = kernel->GetScratchBuffer<uint8_t>(element_size * num_elements);
     CUDA_RETURN_IF_ERROR(cudaMemcpy(values_buffer.get(), tensor.DataRaw(), element_size * num_elements, cudaMemcpyHostToDevice));
 
     cusparseDnMatDescr_t dense_desc;
@@ -426,7 +529,26 @@ class CuSparseHelper {
     cusparseSpMatDescr_t sparse_desc;
     std::unique_ptr<cusparseSpMatDescr_t, decltype(close_sparse_fn)> sparse_guard(nullptr, close_sparse_fn);
 
-    auto sp_info = onnxruntime::make_unique<SparseInfo>(param, right_shape);
+    auto sp_info = onnxruntime::make_unique<SparseInfo>(prepack_param, right_shape);
+    const OpKernel::PrepackParam& param = sp_info->param_;
+
+    // if Ell format is specified but the hardware is not we then default
+    // to one of the belows
+    const auto& dev_props = kernel->GetDeviceProp();
+    if (param.UseEllFormat() && dev_props.major >= 7) {
+      // Some tunables which we may adjust for both testing and depending on the matrix size.
+      // Must be power of two
+      constexpr int64_t ell_block_size = 8;
+      if ((K % ell_block_size) != 0 || (N % ell_block_size) != 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name.get() + " : Matrix dims: ", K, " ", N, " must divide evenly by a chosen Ell Block size: ", ell_block_size);
+      }
+      const auto ell_columns = K / ell_block_size;
+    } else if (param.UseEllFormat()) {
+      // XXX: Reconsider
+      // Hardware is not available, default to Csr format
+      sp_info->param_.sparse_flags = param.sparse_flags & static_cast<int>(~OrtSparseFlags::USE_ELL_FORMAT);
+      sp_info->param_.sparse_flags |= OrtSparseFlags::USE_CSR_FORMAT;
+    }
 
     if (param.UseCsrFormat() || param.UseCooFormat()) {
       // This will have data transposed, swap dims
@@ -498,20 +620,16 @@ class CuSparseHelper {
 
       // XXX: Print all the buffers
       const auto& bufs = sp_info->prepack_buffers_;
+      utils::MLTypeCallDispatcher<DumpArray, float, double, MLFloat16, BFloat16> t_disp(expected_kernel_type);
+      DumpArray<int> dump_int;
       if (param.UseCsrFormat()) {
-        DUMP_ARRAY(int, std::cout, "csr_offsets", bufs[0].get(), K + 1, 10);
-        DUMP_ARRAY(int, std::cout, "csr_cols", bufs[1].get(), nnz, 10);
-        DUMP_ARRAY(T, std::cout, "csr_values", bufs[2].get(), nnz, 10);
+        dump_int(std::cout, "csr_offsets", bufs[0].get(), K + 1, 10);
+        dump_int(std::cout, "csr_cols", bufs[1].get(), nnz, 10);
+        t_disp.Invoke(std::cout, "csr_values", bufs[2].get(), nnz, 10);
       } else {
-        DUMP_ARRAY(int, std::cout, "coo_row_ind", bufs[0].get(), nnz, 10);
-        DUMP_ARRAY(int, std::cout, "coo_col_ind", bufs[1].get(), nnz, 10);
-        DUMP_ARRAY(T, std::cout, "coo_values", bufs[2].get(), nnz, 10);
-      }
-    } else if (param.UseEllFormat()) {
-      const auto& dev_props = kernel->GetDeviceProp();
-      if (dev_props.major < 7) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name.get() + 
-          " : Need device major version 7 or later to support BlockedEll format");
+        dump_int(std::cout, "coo_row_ind", bufs[0].get(), nnz, 10);
+        dump_int(std::cout, "coo_col_ind", bufs[1].get(), nnz, 10);
+        t_disp.Invoke(std::cout, "coo_values", bufs[2].get(), nnz, 10);
       }
     }
 
@@ -529,10 +647,6 @@ class CuSparseHelper {
 template <typename T>
 Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
   is_packed = false;
-  // We only pack Matrix B just like CPU version
-  // only if it is 2:4 pruned and only if A100 available
-  // However, we will feed this to cuSparseLT as the first argument.
-  // cuSparseLt only handles 2-D matrices
   if (param.input_idx == 1) {
 #ifdef USE_CURSPARSELT
     if (IsAmpereAvaiable() && param.Is2x4Format()) {
@@ -540,7 +654,8 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
     }
 #endif
     if (param.UseCsrFormat() || param.UseCooFormat() || param.UseEllFormat()) {
-      CuSparseHelper<T>::PrePack(this, tensor, param, trans_A_, trans_B_, sparse_info_, is_packed);
+      CuSparseHelper::PrePack(this, tensor, param, trans_B_, utils::ToTensorProtoElementType<T>(), ToCudaTypeEnum<T>::type,
+                              sparse_info_, is_packed);
     }
   }
   return Status::OK();
