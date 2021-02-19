@@ -16,6 +16,8 @@ constexpr const char* kMemLimit = "cuda_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 constexpr const char* kCudnnConvAlgoSearch = "cudnn_conv_algo_search";
 constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
+constexpr const char* kcudaExternalAlloc = "cuda_external_alloc";
+constexpr const char* kcudaExternalFree = "cuda_external_free";
 }  // namespace provider_option_names
 }  // namespace cuda
 
@@ -51,6 +53,22 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                     ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
                 return Status::OK();
               })
+          .AddValueParser(
+              cuda::provider_option_names::kcudaExternalAlloc,
+              [&info](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                info.external_allocator_info.alloc  = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddValueParser(
+              cuda::provider_option_names::kcudaExternalFree,
+              [&info](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                info.external_allocator_info.free  = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
           .AddAssignmentToReference(cuda::provider_option_names::kMemLimit, info.cuda_mem_limit)
           .AddAssignmentToEnumReference(
               cuda::provider_option_names::kArenaExtendStrategy,
@@ -68,6 +86,8 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
   const ProviderOptions options{
       {cuda::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {cuda::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.cuda_mem_limit)},
+      {cuda::provider_option_names::kcudaExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
+      {cuda::provider_option_names::kcudaExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
       {cuda::provider_option_names::kArenaExtendStrategy,
        EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {cuda::provider_option_names::kCudnnConvAlgoSearch,

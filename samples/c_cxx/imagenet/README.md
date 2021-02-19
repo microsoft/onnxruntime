@@ -42,7 +42,7 @@ git clone https://github.com/tensorflow/models
 # Copy inception_v4.ckpt into models
 cd models
 # Ignore deprecation warnings
-python research\slim\export_inference_graph.py --model_name=inception_v4 --output_file=grpah.pb
+python research\slim\export_inference_graph.py --model_name=inception_v4 --output_file=graph.pb
 ```
 
 2. Freeze the graph
