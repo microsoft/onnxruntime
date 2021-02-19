@@ -69,7 +69,7 @@ Status SequencePooling<T>::Compute(OpKernelContext* context) const {
   std::vector<std::vector<int64_t>> sentence_lengthes_prefixsum;
   for (int batch = 0; batch < batch_size; ++batch) {
     std::vector<int64_t> sentence_length_prefixsum;
-    sentence_length_prefixsum.reserve(num_sequences);
+    sentence_length_prefixsum.resize(num_sequences);
 
     const std::ptrdiff_t offset(batch * num_sequences);
     std::partial_sum(sentence_lengthes_data + offset, sentence_lengthes_data + offset + num_sequences, sentence_length_prefixsum.begin());
