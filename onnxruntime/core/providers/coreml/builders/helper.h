@@ -28,5 +28,9 @@ bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, c
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                       const logging::Logger& logger);
 
+// CoreML is more efficient running using Apple Neural Engine
+// This is to detect if the current system has Apple Neural Engine
+bool HasNeuralEngine(const logging::Logger& logger);
+
 }  // namespace coreml
 }  // namespace onnxruntime
