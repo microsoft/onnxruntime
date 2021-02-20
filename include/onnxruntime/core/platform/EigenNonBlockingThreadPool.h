@@ -955,9 +955,9 @@ void SummonWorkers(PerThread &pt,
     // This uses a best-effort assessment of which threads are
     // spinning.
     std::vector<unsigned> good_hints, alt_hints;
-    profiler_.LogStart();
+    //profiler_.LogStart();
     GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
-    profiler_.LogEndAndStart("GetGoodWorkerHints");
+    //profiler_.LogEndAndStart("GetGoodWorkerHints");
 
     // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
@@ -983,15 +983,15 @@ void SummonWorkers(PerThread &pt,
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      profiler_.LogStart();
+      //profiler_.LogStart();
       t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
-      profiler_.LogEnd("Enqueue");
+      //profiler_.LogEnd("Enqueue");
       if (!t) {
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
     }
-    profiler_.LogEnd("Distribute");
+    //profiler_.LogEnd("Distribute");
   }
 }
 
@@ -1010,9 +1010,9 @@ void SummonWorkers(PerThread& pt,
   if (n > current_dop) {
     unsigned extra_needed = n - current_dop;
     std::vector<unsigned> good_hints, alt_hints;
-    profiler_.LogStart();
+    //profiler_.LogStart();
     GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
-    profiler_.LogEndAndStart("GetGoodWorkerHints");
+    //profiler_.LogEndAndStart("GetGoodWorkerHints");
 
     for (auto i = 0u; i < extra_needed; i++) {
       Task t;
@@ -1030,19 +1030,19 @@ void SummonWorkers(PerThread& pt,
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      if (skip_fn(i + 1)) {
-        profiler_.LogEvent("Skipped");
-      } else {
-        profiler_.LogStart();
+      if (!skip_fn(i + 1)) {
+        //profiler_.LogEvent("Skipped");
+      //} else {
+        //profiler_.LogStart();
         t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
-        profiler_.LogEnd("Enqueue");
+        //profiler_.LogEnd("Enqueue");
         if (!t) {
           ps.tasks.push_back({q_idx, w_idx});
           td.EnsureAwake();
         }
       }
     }
-    profiler_.LogEnd("Distribute");
+    //profiler_.LogEnd("Distribute");
   }
 }
 
