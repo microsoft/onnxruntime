@@ -14,8 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// This is cuda kernels for longformer attention. It stores two matrix of
-// It uses more memory but it is faster.
+// This is fast cuda kernels for longformer attention softmax.
+// It uses two temporary matrix of BxNxSxS, and consumes more memory when sequence length is large.
+
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>

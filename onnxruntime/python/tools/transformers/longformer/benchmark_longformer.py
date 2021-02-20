@@ -1,4 +1,11 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+#
 # This script run benchmark of latency or peak memory usage of Longformer model inference.
+#
 # Please run convert_longformer_to_onnx.py to get onnx model before running this script.
 # Tested with python 3.6, onnxruntime-gpu 1.7.0, PyTorch 1.7.1, transformers 4.3.2, CUDA 10.2.
 #

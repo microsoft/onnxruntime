@@ -1,3 +1,12 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+
+# This script converts Longformer model from huggingface transformers 4.0 or later to ONNX.
+# Unlike normal ONNX model exporting, it will directly translate LongformerSelfAttention to the LongformerAttention operator in ONNX Runtime.
+#
 # Before running this script, please run "python setup.py install" in ../torch_extensions under Linux with PyTorch installed.
 # Then you can update the path of longformer_attention.cpython-*.so and run this script in same environment.
 #

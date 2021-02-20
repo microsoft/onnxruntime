@@ -3,7 +3,8 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-# This script helps onnx conversion and validation for GPT2 model with past state.
+# This script helps creating dummy inputs for Longformer model.
+
 import os
 import logging
 import torch
