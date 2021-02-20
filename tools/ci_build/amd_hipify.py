@@ -26,6 +26,8 @@ contrib_ops_excluded_files = [
                     'bert/layer_norm.cuh',
                     'bert/longformer_attention.cc',
                     'bert/longformer_attention.h',
+                    'bert/longformer_attention_softmax.cu',
+                    'bert/longformer_attention_softmax.h',
                     'bert/longformer_attention_impl.cu',
                     'bert/longformer_attention_impl.h',
                     'bert/longformer_global_impl.cu',

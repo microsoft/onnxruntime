@@ -5,6 +5,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/platform/env_var_utils.h"
 #include "longformer_global_impl.h"
 #include "longformer_attention_impl.h"
 
@@ -49,7 +50,9 @@ class AutoDestoryCudaEvent {
 };
 
 template <typename T>
-LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info) : CudaKernel(info), LongformerAttentionBase(info) {}
+LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info) : CudaKernel(info), LongformerAttentionBase(info) {
+  use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, false);
+}
 
 template <typename T>
 Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -80,6 +83,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   constexpr size_t element_size = sizeof(T);
 
+  // TODO: only calculate once per model.
   // Build Global Index
   auto global_index_buffer = GetScratchBuffer<int>(batch_size * sequence_length);
   auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
@@ -148,10 +152,11 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  // Cuda kernel implementation has a limitation of number of global tokens.
-  if (max_num_global > window_) {
-    ORT_THROW("LongformerAttention CUDA operator does not support number of global tokens > attention window.");
-  }
+  // Force to use fast kernel in two situations:
+  // (1) global tokens > windows size. In that case, compact memory kernel cannot be used.
+  // (2) sequence_length == 2 * attention_window. Use fast kernel to walk around parity issue of compact memory kernel.
+  // In other case, we will choose according to user's environment variable setting (default is fast kernel).
+  bool use_fast_kernel = (max_num_global > window_ || sequence_length == 2 * window_ || !use_compact_memory_);
 
   // Fully connection for global projection.
   // Note that Q only need handle global query tokens if we split GEMM to global Q/K/V separately.
@@ -172,7 +177,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         &one, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
   }
 
-  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_);
+  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_, use_fast_kernel);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchLongformerAttentionKernel(
           device_prop,
@@ -193,7 +198,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           head_size,
           window_,
           max_num_global,
-          element_size)) {
+          element_size,
+          use_fast_kernel)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
