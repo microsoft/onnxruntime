@@ -49,7 +49,7 @@ def _validated_globally_allowed_types(globally_allowed_types: typing.Collection[
     return globally_allowed_types
 
 
-def _type_re_from_globally_allowed_types(globally_allowed_types: typing.Set[str]) -> re.Pattern:
+def _type_re_from_globally_allowed_types(globally_allowed_types: typing.Set[str]) -> typing.re.Pattern:
     '''Return a regular expression to match type registration strings to a set of globally allowed types.'''
     # to keep a registration, the type should match patterns like:
     # 1. T0
