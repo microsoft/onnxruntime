@@ -449,24 +449,14 @@ def parse_arguments():
                         "e.g. '--minimal_build custom_ops'. This can be combined with an 'extended' build by passing "
                         "'--minimal_build extended custom_ops'")
 
-    parser.add_argument(
-        "--include_ops_by_config", type=str,
-        help="Include ops from config file. "
-        "See /docs/Reduced_Operator_Kernel_build.md for more information.")
-
-    reduced_ops_exclusive_args = parser.add_mutually_exclusive_group()
-    reduced_ops_exclusive_args.add_argument(
-        "--enable_reduced_operator_type_support", action='store_true',
-        help='If --include_ops_by_config is specified, and the configuration file was created from ORT '
-        'format models with type reduction enabled, limit the types individual operators support '
-        'where possible to further reduce the build size. '
-        'Mutually exclusive with --reduced_operator_allowed_types. '
-        'See /docs/Reduced_Operator_Kernel_build.md for more information.')
-    reduced_ops_exclusive_args.add_argument(
-        "--reduced_operator_allowed_types", nargs="*", metavar="type",
-        help="If --include_ops_by_config is specified, constrain the types individual operator kernels support to "
-        "these allowed types. "
-        "Mutually exclusive with --enable_reduced_operator_type_support.")
+    parser.add_argument("--include_ops_by_config", type=str,
+                        help="Include ops from config file. "
+                             "See /docs/Reduced_Operator_Kernel_build.md for more information.")
+    parser.add_argument("--enable_reduced_operator_type_support", action='store_true',
+                        help='If --include_ops_by_config is specified, and the configuration file has type reduction '
+                             'information, limit the types individual operators support where possible to further '
+                             'reduce the build size. '
+                             'See /docs/Reduced_Operator_Kernel_build.md for more information.')
 
     parser.add_argument("--disable_contrib_ops", action='store_true',
                         help="Disable contrib ops (reduces binary size)")
@@ -1754,19 +1744,11 @@ def main():
         args.test = False
 
     if is_reduced_ops_build(args) and args.update:
-        assert args.include_ops_by_config is not None
-        if args.reduced_operator_allowed_types is not None:
-            from reduce_op_kernels import reduce_ops_with_globally_allowed_types
-            reduce_ops_with_globally_allowed_types(
-                config_path=args.include_ops_by_config,
-                globally_allowed_types=args.reduced_operator_allowed_types,
-                use_cuda=args.use_cuda)
-        else:
-            from reduce_op_kernels import reduce_ops
-            reduce_ops(
-                config_path=args.include_ops_by_config,
-                enable_type_reduction=args.enable_reduced_operator_type_support,
-                use_cuda=args.use_cuda)
+        from reduce_op_kernels import reduce_ops
+        reduce_ops(
+            config_path=args.include_ops_by_config,
+            enable_type_reduction=args.enable_reduced_operator_type_support,
+            use_cuda=args.use_cuda)
 
     if args.use_tensorrt:
         args.use_cuda = True
