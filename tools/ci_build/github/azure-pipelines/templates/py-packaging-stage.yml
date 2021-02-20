@@ -198,7 +198,7 @@ stages:
       timeoutInMinutes: 120
       workspace:
         clean: all
-      pool: Linux-GPU-CUDA10
+      pool: Onnxruntime-Linux-GPU
       strategy:
         matrix:
           Python36:
@@ -270,7 +270,7 @@ stages:
       timeoutInMinutes: 180
       workspace:
         clean: all
-      pool: Linux-GPU-CUDA10
+      pool: Onnxruntime-Linux-GPU
       strategy:
         matrix:
           Python36:
@@ -357,7 +357,6 @@ stages:
           Python39:
             PythonVersion: '3.9'
       variables:
-        OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat
@@ -472,7 +471,7 @@ stages:
         displayName: 'Clean Agent Directories'
         condition: always()
 
-    - job: Windows_py_Wheels_no_openmp
+    - job: Windows_py_Wheels_openmp
       pool: 'Win-CPU-2021'
       strategy:
         matrix:
@@ -485,7 +484,6 @@ stages:
           Python39:
             PythonVersion: '3.9'
       variables:
-        OrtPackageId: 'Microsoft.ML.OnnxRuntime'
         MsbuildArguments: '-maxcpucount'
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat

@@ -232,14 +232,15 @@ class ONNXModel:
         unused_nodes = []
         nodes = self.nodes()
         for node in nodes:
-            if node.op_type == "Constant" and node.output[0] not in input_name_to_nodes:
+            if node.op_type == "Constant" and not self.is_graph_output(
+                    node.output[0]) and node.output[0] not in input_name_to_nodes:
                 unused_nodes.append(node)
 
         self.remove_nodes(unused_nodes)
 
         ununsed_weights = []
         for w in self.initializer():
-            if w.name not in input_name_to_nodes:
+            if w.name not in input_name_to_nodes and not self.is_graph_output(w.name):
                 ununsed_weights.append(w)
                 # Remove from graph.input
                 for graph_input in self.graph().input:
