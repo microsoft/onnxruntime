@@ -54,7 +54,7 @@ class OpKernel {
     struct PrepackParam {
     int input_idx = 0;           // Input index
     int sparse_flags = 0;   // Sparse initializer annotations
-    std::reference_wrapper<const std::string> name;
+    const std::string name;
     bool Is2x4Format() const noexcept {
       return (sparse_flags & static_cast<int>(OrtSparseFlags::FORMAT_2x4)) != 0;
     }

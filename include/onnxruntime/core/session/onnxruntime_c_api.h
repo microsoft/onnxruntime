@@ -1167,14 +1167,6 @@ struct OrtApi {
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 
   /**
-  * Use this API to set a OR combination of flags.
-  * 
-  * \param options - an instance of OrtSessionOptions
-  * \param sparse_flags - an bit-wise combination of flags.
-  */
-  void(ORT_API_CALL* SetConstantInitializerSparseFlags)(_Inout_ OrtSessionOptions* options, int sparse_flags) NO_EXCEPTION;
-
-  /**
    * Append TensorRT execution provider to the session options
    * If TensorRT is not available (due to a non TensorRT enabled build), this function will return failure.
    */
@@ -1191,6 +1183,14 @@ struct OrtApi {
    * Get the current device id of the GPU execution provider (cuda/tensorrt/rocm).
    */
   ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
+
+  /**
+  * Use this API to set a OR combination of flags.
+  * 
+  * \param options - an instance of OrtSessionOptions
+  * \param sparse_flags - an bit-wise combination of flags.
+  */
+  void(ORT_API_CALL* SetConstantInitializerSparseFlags)(_Inout_ OrtSessionOptions* options, int sparse_flags) NO_EXCEPTION;
 };
 
 /*

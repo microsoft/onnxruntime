@@ -2105,12 +2105,11 @@ static constexpr OrtApi ort_api_1_to_7 = {
     // End of Version 6 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::ModelMetadataGetGraphDescription,
-
     &OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
     &OrtApis::SetCurrentGpuDeviceId,
     &OrtApis::GetCurrentGpuDeviceId,
     // End of Version 7 - DO NOT MODIFY ABOVE (see above text for more information)
-    &OrtApis::SetConstantInitializerSparseFlags
+    & OrtApis::SetConstantInitializerSparseFlags
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

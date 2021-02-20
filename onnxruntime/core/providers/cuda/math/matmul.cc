@@ -126,6 +126,18 @@ struct DumpArray {
   }
 };
 
+#if 1
+#define DUMP_TYPE(T, ...) DumpType<T>()(__VA_ARGS__)
+#define DUMP_ARRAY(T, ...) DumpArray<T>()(__VA_ARGS__)
+#define DUMP_DISP(var, t, ...) utils::MLTypeCallDispatcher<__VA_ARGS__> var(t)
+#define DUMP_INVOKE(var, fn, ...) var.Invoke<fn>(__VA_ARGS__)
+#else
+#define DUMP_DISP(var, t, ...)
+#define DUMP_INVOKE(var, fn, ...)
+#define DUMP_TYPE(T, ...)
+#define DUMP_ARRAY(T, ...)
+#endif
+
 template <typename T>
 struct IsZero {
   bool operator()(T v) const noexcept {
@@ -151,6 +163,12 @@ struct IsZero<BFloat16> {
   }
 };
 
+/// <summary>
+/// Finds the first non-zero entry and computes its col index.
+/// Advances restart past the found entry. restart is nullptr if
+/// reached the end of the block row.
+/// </summary>
+/// <typeparam name="T"></typeparam>
 template <typename T>
 struct FindIfZero {
   // returns nullptr if not found
@@ -177,53 +195,160 @@ struct FindIfZero {
 /// <param name="ell_block_size">Chosen block sizes</param>
 /// <param name="K">rows in the matrix to be sparsified</param>
 /// <param name="N">columns in the incoming matrix</param>
+/// <param name="transpose">whether transpose flag was specified</param>
+/// <param name="element_type">element type</param>
 /// <param name="element_size">element size in the matrix</param>
+/// <param name="input_data">matrix buffer</param>
 /// <param name="ell_col_ind">output parameter, ell_col_indices represented as an array</param>
 /// <param name="ell_values">non-zero blocks values</param>
 /// <returns>status</returns>
-Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, int32_t element_type, size_t element_size,
-                           const void* input_data, std::unique_ptr<int[]>& ell_col_ind, std::unique_ptr<uint8_t[]>& ell_values) {
-  // We need to read the values transposed, by columns as if this was ColumnMajor
-  // even though the incoming data is RowMajor
+static Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, bool transpose, int32_t element_type, size_t element_size,
+                                  const void* input_data, std::unique_ptr<int[]>& ell_col_ind, std::unique_ptr<uint8_t[]>& ell_values,
+                                  int64_t& ell_rows, int64_t& ell_cols) {
   const int64_t block_elements = ell_block_size * ell_block_size;
   const int64_t block_bytes = block_elements * element_size;
 
-  const int64_t row_element_bytes = K * element_size;
-  const int64_t block_rows = K / ell_block_size;
-  const int64_t block_cols = N / ell_block_size;
+  const int64_t src_row_element_bytes = K * element_size;
+  const int64_t src_block_rows = K / ell_block_size;
+  const int64_t src_block_cols = N / ell_block_size;
+  const int64_t ell_block_row_bytes = ell_block_size * element_size;
 
-  const int64_t row_bytes = block_cols * block_bytes;
-
-  // This is to compute the number of columns for colIdx allocation
-  int64_t min_col_index = std::numeric_limits<size_t>::max();
-  int64_t max_col_index = 0;
-  size_t nnz_blocks = 0;  // For values allocation
+  const int64_t src_block_row_bytes = src_block_cols * block_bytes;
+  const auto dst_block_rows = (transpose) ? src_block_rows : src_block_cols;
 
   // Key is the row and it contains the set of sorted col indices
   std::map<int64_t, std::set<int64_t>> rows_to_cols;
 
   // We scan for non-zero blocks
-  utils::MLTypeCallDispatcher<FindIfZero, float, double, MLFloat16, BFloat16> t_disp(element_type);
-  for (int64_t block_row = 0; block_row < block_rows; ++block_row) {
-    const auto* block_row_begin = reinterpret_cast<const uint8_t*>(input_data) + block_row * row_bytes;
-    const auto* block_row_end = block_row_begin + row_bytes;
+  utils::MLTypeCallDispatcher<float, double, MLFloat16, BFloat16> t_disp(element_type);
+  for (int64_t block_row = 0; block_row < src_block_rows; ++block_row) {
+    const auto* block_row_begin = reinterpret_cast<const uint8_t*>(input_data) + block_row * src_block_row_bytes;
+    const auto* block_row_end = block_row_begin + src_block_row_bytes;
     const auto* start = block_row_begin;
-    int64_t block_col = 0;
-    auto& col_set = rows_to_cols[block_row];
+    int64_t block_col = -1;
     while (true) {
-      t_disp.Invoke(N, block_row_begin, start, block_row_end, block_col);
+      t_disp.Invoke<FindIfZero>(N, block_row_begin, start, block_row_end, block_col);
       if (start != nullptr) {
-        col_set.insert(block_col); // This will discard duplicates
+        assert(block_col != -1);
+        // We transpose for !transpose because we want to
+        // swap arguments in Gemm formula
+        if (!transpose) {
+          rows_to_cols[block_col].insert(block_row);
+        } else {
+          rows_to_cols[block_row].insert(block_col);
+        }
+        block_col = -1;
       } else {
         break;
       }
     }
-    if (!col_set.empty()) {
-      min_col_index = std::min(block_row, min_col_index);
-      max_col_index = std::max(block_row, max_col_index);
-      nnz_blocks += col_set.size();
+  }
+
+  // Calculate the amount of indecies per row by finding the max
+  size_t max_cols = 0;
+  for (const auto& e : rows_to_cols) {
+    max_cols = std::max(max_cols, e.second.size());
+  }
+
+  if (max_cols == 0) {
+    // matrix is all zeros
+    // outputs are also nullptr
+    return Status::OK();
+  }
+
+  // Now we have all non-empty blocks.
+  // We need to make sure, that we do not have any missing rows in the col index.
+  // For each row, we must make sure that we have equal amount col indecies in each row
+  // by inserting indecies to some zero blocks that we discarded earlier.
+  // See https://github.com/NVIDIA/CUDALibrarySamples/issues/24
+  for (int64_t block_row = 0; block_row < dst_block_rows; ++block_row) {
+    auto& cols = rows_to_cols[block_row];
+    // fill in some zero indecies for padding
+    for (int64_t i = 0; cols.size() < max_cols; ++i) {
+      assert(i < K);
+      cols.insert(i);  // duplicates will not be inserted
     }
   }
+
+  // Indecies array of rows X max_cols
+  const int64_t nnz_blocks = dst_block_rows * static_cast<int64_t>(max_cols);
+  std::unique_ptr<int[]> col_ind(new int[nnz_blocks]);
+  // Value blocks are square block_elements * element_size * nnz_blocks
+  const int64_t values_bytes = block_bytes * nnz_blocks;
+  std::unique_ptr<uint8_t[]> values(new uint8_t[values_bytes]);
+
+  const int64_t dst_block_row_bytes = block_bytes * static_cast<int64_t>(max_cols);
+
+  // Lets build the col In and copy value blocks in a transposed manner
+  const uint8_t* input = reinterpret_cast<const uint8_t*>(input_data);
+  int* col_ind_out = col_ind.get();
+  uint8_t* values_out = values.get();
+  int64_t blocks_copied = 0;
+  for (const auto& e : rows_to_cols) {
+    ORT_ENFORCE(e.second.size() == max_cols, "Failed to check for equal columns");
+    // Copy the block, we do the opposite of the transpose flag
+    // as we intend to swap the args.
+    if (!transpose) {
+      const auto src_block_col_idx = e.first;
+      for (auto src_block_row_idx : e.second) {
+        const auto* const block_row_start = input + src_block_row_idx * src_block_row_bytes +
+                                            src_block_col_idx * ell_block_row_bytes;
+        auto* const block_output = values_out + block_bytes * blocks_copied;
+        // Copy row by row transposed
+        for (int64_t row = 0; row < ell_block_size; ++row) {
+          const auto* row_start = block_row_start + row * src_row_element_bytes;
+          // Shift each row one element to the right
+          auto* row_output = block_output + row * element_size;
+          // Element by element with ell_block_size distance
+          for (int64_t element = 0; element < ell_block_size; ++element) {
+            // Spread output ell_block_row_bytes apart
+            auto* element_output = row_output + element * ell_block_row_bytes;
+            memcpy(element_output, row_start, element_size);
+            row_start += element_size;
+          }
+        }
+        // Becomes col index
+        *col_ind_out++ = gsl::narrow_cast<int>(src_block_row_idx);
+        ++blocks_copied;
+      }
+    } else {
+      // Copy entire block row by row
+      const auto src_block_row_idx = e.first;
+      for (auto src_block_col_idx : e.second) {
+        const auto* const block_row_start = input + src_block_row_idx * src_block_row_bytes +
+                                            src_block_col_idx * ell_block_row_bytes;
+        auto* row_output = values_out + block_bytes * blocks_copied;
+        for (int64_t row = 0; row < ell_block_size; ++row) {
+          const auto* row_start = block_row_start + row * src_row_element_bytes;
+          // We copy entire block rows
+          memcpy(row_output, row_start, ell_block_row_bytes);
+          row_output += ell_block_row_bytes;
+        }
+        *col_ind_out++ = gsl::narrow_cast<int>(src_block_col_idx);
+        ++blocks_copied;
+      }
+    }
+  }
+
+  // Let's dump the converted matrix
+  // first indices
+  const int* col_ind_in = col_ind.get();
+  ORT_UNUSED_PARAMETER(col_ind_in);
+  DUMP_ARRAY(int, std::cout, "col_ind_block", col_ind_in, nnz_blocks, max_cols);
+
+  // Now the values
+  const auto* values_in = values.get();
+  ORT_UNUSED_PARAMETER(values_in);
+  for (int64_t nnzs = 0; nnzs < nnz_blocks; ++nnzs) {
+    DUMP_INVOKE(t_disp, DumpArray, std::cout, "col_ind_block", values_in, ell_block_size, ell_block_size);
+    values_in += block_bytes;
+  }
+
+  ell_col_ind = std::move(col_ind);
+  ell_values = std::move(values);
+  ell_rows = static_cast<int64_t>(rows_to_cols.size());
+  ell_cols = static_cast<int64_t>(max_cols);
+
   return Status::OK();
 }
 
@@ -462,7 +587,7 @@ class Sparse2x4ComputeHelper {
                                                          static_cast<cudaStream_t>(0)));
 
     if (valid == 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name.get() + " : 2:4 data format validation failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name + " : 2:4 data format validation failed");
     }
 
     sparse_info = onnxruntime::make_unique<SparseInfo>(param, right_shape);
@@ -484,7 +609,7 @@ class CuSparseHelper {
                         std::unique_ptr<SparseInfo>& sparse_info, bool& is_packed) {
     is_packed = false;
     if (tensor.GetElementType() != expected_kernel_type) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, prepack_param.name.get() + " : wrong data type for the constant initializer");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, prepack_param.name + " : wrong data type for the constant initializer");
     }
 
     auto close_dense_fn = [](cusparseDnMatDescr_t* desc) { cusparseDestroyDnMat(*desc); };
@@ -511,21 +636,6 @@ class CuSparseHelper {
       N = 1;
     }
 
-    auto values_buffer = kernel->GetScratchBuffer<uint8_t>(element_size * num_elements);
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(values_buffer.get(), tensor.DataRaw(), element_size * num_elements, cudaMemcpyHostToDevice));
-
-    cusparseDnMatDescr_t dense_desc;
-    // Feed column order and swap dims
-    CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&dense_desc,
-                                                 N,  // Number of rows in B(T)
-                                                 K,  // Number of columns in B(T)
-                                                 transb ? K : N,
-                                                 values_buffer.get(),
-                                                 cuda_type,
-                                                 CUSPARSE_ORDER_COL));
-
-    std::unique_ptr<cusparseDnMatDescr_t, decltype(close_dense_fn)> dense_guard(&dense_desc, close_dense_fn);
-
     cusparseSpMatDescr_t sparse_desc;
     std::unique_ptr<cusparseSpMatDescr_t, decltype(close_sparse_fn)> sparse_guard(nullptr, close_sparse_fn);
 
@@ -540,17 +650,61 @@ class CuSparseHelper {
       // Must be power of two
       constexpr int64_t ell_block_size = 8;
       if ((K % ell_block_size) != 0 || (N % ell_block_size) != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name.get() + " : Matrix dims: ", K, " ", N, " must divide evenly by a chosen Ell Block size: ", ell_block_size);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name + " : Matrix dims: ", K, " ", N, " must divide evenly by a chosen Ell Block size: ", ell_block_size);
       }
-      const auto ell_columns = K / ell_block_size;
+
+      std::unique_ptr<int[]> ell_col_ind;
+      std::unique_ptr<uint8_t[]> ell_values;
+      int64_t ell_rows;
+      int64_t ell_cols;
+      ORT_RETURN_IF_ERROR(ConvertToBlockedEll(ell_block_size, K, N, transb, tensor.GetElementType(), element_size,
+                                              tensor.DataRaw(), ell_col_ind, ell_values, ell_rows, ell_cols));
+      const int64_t ell_ind_elements = ell_rows * ell_cols;
+      auto ell_ind_buffer = kernel->GetPersistentBuffer<uint8_t>(ell_ind_elements * sizeof(int));
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(ell_ind_buffer.get(), ell_col_ind.get(), ell_ind_elements * sizeof(int), cudaMemcpyHostToDevice));
+
+      const int64_t ell_values_elements = ell_ind_elements * ell_block_size * ell_block_size;
+      auto ell_values_buffer = kernel->GetPersistentBuffer<uint8_t>(ell_values_elements * element_size);
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(ell_values_buffer.get(), ell_values.get(), ell_values_elements * element_size,
+                                      cudaMemcpyHostToDevice));
+
+      CUSPARSE_RETURN_IF_ERROR(cusparseCreateBlockedEll(&sparse_desc,
+                                                        transb ? K : N,
+                                                        transb ? N : K,
+                                                        ell_block_size,
+                                                        ell_cols,
+                                                        ell_ind_buffer.get(),
+                                                        ell_values_buffer.get(),
+                                                        CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO,
+                                                        cuda_type));
+
+      sparse_guard.reset(&sparse_desc);
+      sp_info->prepack_buffers_.push_back(std::move(ell_ind_buffer));
+      sp_info->prepack_buffers_.push_back(std::move(ell_values_buffer));
+
     } else if (param.UseEllFormat()) {
-      // XXX: Reconsider
+      // XXX: Right now we just choose some format
       // Hardware is not available, default to Csr format
       sp_info->param_.sparse_flags = param.sparse_flags & static_cast<int>(~OrtSparseFlags::USE_ELL_FORMAT);
       sp_info->param_.sparse_flags |= OrtSparseFlags::USE_CSR_FORMAT;
     }
 
     if (param.UseCsrFormat() || param.UseCooFormat()) {
+      auto values_buffer = kernel->GetScratchBuffer<uint8_t>(element_size * num_elements);
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(values_buffer.get(), tensor.DataRaw(), element_size * num_elements, cudaMemcpyHostToDevice));
+
+      cusparseDnMatDescr_t dense_desc;
+      // Feed column order and swap dims
+      CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&dense_desc,
+                                                   N,  // Number of rows in B(T)
+                                                   K,  // Number of columns in B(T)
+                                                   transb ? K : N,
+                                                   values_buffer.get(),
+                                                   cuda_type,
+                                                   CUSPARSE_ORDER_COL));
+
+      std::unique_ptr<cusparseDnMatDescr_t, decltype(close_dense_fn)> dense_guard(&dense_desc, close_dense_fn);
+
       // This will have data transposed, swap dims
       if (param.UseCsrFormat()) {
         CUSPARSE_RETURN_IF_ERROR(cusparseCreateCsr(&sparse_desc,
@@ -620,16 +774,16 @@ class CuSparseHelper {
 
       // XXX: Print all the buffers
       const auto& bufs = sp_info->prepack_buffers_;
-      utils::MLTypeCallDispatcher<DumpArray, float, double, MLFloat16, BFloat16> t_disp(expected_kernel_type);
-      DumpArray<int> dump_int;
+      ORT_UNUSED_PARAMETER(bufs);
+      DUMP_DISP(t_disp, expected_kernel_type, float, double, MLFloat16, BFloat16);
       if (param.UseCsrFormat()) {
-        dump_int(std::cout, "csr_offsets", bufs[0].get(), K + 1, 10);
-        dump_int(std::cout, "csr_cols", bufs[1].get(), nnz, 10);
-        t_disp.Invoke(std::cout, "csr_values", bufs[2].get(), nnz, 10);
+        DUMP_ARRAY(int, std::cout, "csr_offsets", bufs[0].get(), K + 1, 10);
+        DUMP_ARRAY(int, std::cout, "csr_cols", bufs[1].get(), nnz, 10);
+        DUMP_INVOKE(t_disp, DumpArray, std::cout, "csr_values", bufs[2].get(), nnz, 10);
       } else {
-        dump_int(std::cout, "coo_row_ind", bufs[0].get(), nnz, 10);
-        dump_int(std::cout, "coo_col_ind", bufs[1].get(), nnz, 10);
-        t_disp.Invoke(std::cout, "coo_values", bufs[2].get(), nnz, 10);
+        DUMP_ARRAY(int, std::cout, "coo_row_ind", bufs[0].get(), nnz, 10);
+        DUMP_ARRAY(int, std::cout, "coo_col_ind", bufs[1].get(), nnz, 10);
+        DUMP_INVOKE(t_disp, DumpArray, std::cout, "coo_values", bufs[2].get(), nnz, 10);
       }
     }
 
