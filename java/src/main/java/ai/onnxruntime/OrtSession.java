@@ -867,6 +867,17 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Adds the ARM Neural Net library as an execution backend.
+     *
+     * @param useArena If true use the arena memory allocator.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addArmNN(boolean useArena) throws OrtException {
+      checkClosed();
+      addArmNN(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+    }
+
+    /**
      * Adds ROCM as an execution backend.
      *
      * @param deviceID The ROCM device ID.
@@ -990,6 +1001,9 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
+
+    private native void addArmNN(long apiHandle, long nativeHandle, int useArena)
+        throws OrtException;
 
     private native void addROCM(long apiHandle, long nativeHandle, int deviceID, long memLimit)
         throws OrtException;

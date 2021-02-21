@@ -20,6 +20,7 @@ public interface OrtFlags {
    * Converts an EnumSet of flags into the value expected by the C API.
    *
    * @param set The enum set to aggregate the values from.
+   * @param <E> The enum type to aggregate.
    * @return The aggregated values
    */
   public static <E extends Enum<E> & OrtFlags> int aggregateToInt(EnumSet<E> set) {
