@@ -381,11 +381,13 @@ InferenceSession::~InferenceSession() {
 
 #ifdef ENABLE_TRAINING
   // Cancel outstanding background tasks
-  for (auto it = bg_threads_.begin(); it != bg_threads_.end(); ++it) {
+  auto it = bg_threads_.begin();
+  while (it != bg_threads_.end()) {
     int64_t run_id = it->first;
     if (!onnxruntime::contrib::OrtTasks::GetInstance().TaskIsCompleted(run_id)) {
       CancelBackgroundTask(run_id);
     }
+    it = bg_threads_.erase(it);
   }
 #endif
 
@@ -1746,9 +1748,13 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions
 
     onnxruntime::contrib::OrtTasks::GetInstance().SetStatus(status);
 
-    // signal main thread for background thread completion
+    // If forward outputs still hasn't been consumed at this point, i.e. forward function hasn't complete itself
+    // this indicates that Run() call returned before hitting YieldOp, due to hitting some exception during the forward subgraph execution
+    // In this case, we need to wake up the foreground thread and pass along the failed status.
+    // Otherwise, foreground thread will be stuck waiting for forward_outputs.
     if (onnxruntime::contrib::OrtTasks::GetInstance().ForwardOutputsIsValid()) {
       ORT_ENFORCE(!status.IsOK());
+      // signal main thread for background thread completion
       onnxruntime::contrib::OrtTasks::GetInstance().SetForwardOutputs(status, {});
     }
   },
@@ -1769,14 +1775,16 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions
   // 1. Yield op, if the bg thread sucessfully reached Yield's signal point
   // 2. The end of bg thread, if it hit execptions and returned earlier
   auto forward_outputs = onnxruntime::contrib::OrtTasks::GetInstance().WaitForForwardOutputs(run_id);
-  Status forward_status = forward_outputs.first;
-  user_outputs = forward_outputs.second;
+  const Status& forward_status = forward_outputs.first;
+  user_outputs = std::move(forward_outputs.second);
 
   LOGS(*session_logger_, WARNING) << "after WaitForForwardOutputs" << run_id;
 
   // background thread has completed without hitting Yield Op
   if (!forward_status.IsOK()) {
     bg_threads_[run_id].join();
+    bg_threads_.erase(run_id);
+    onnxruntime::contrib::OrtTasks::GetInstance().RemoveTask(run_id);
     return forward_status;
   }
 
@@ -1794,6 +1802,8 @@ common::Status InferenceSession::ContinueRunInBackground(int64_t run_id, const s
   // wait for bg_thread to complete
   if (bg_threads_[run_id].joinable()) {
     bg_threads_[run_id].join();
+    bg_threads_.erase(run_id);
+    onnxruntime::contrib::OrtTasks::GetInstance().RemoveTask(run_id);
   }
 
   return bg_thread_status;
@@ -1809,7 +1819,6 @@ void InferenceSession::CancelBackgroundTask(int64_t run_id) {
   if (bg_threads_[run_id].joinable()) {
     bg_threads_[run_id].join();
   }
-
   onnxruntime::contrib::OrtTasks::GetInstance().RemoveTask(run_id);
 }
 

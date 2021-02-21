@@ -228,13 +228,14 @@ class Session:
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
-    def run_forward(self, iobinding, run_options, run_id):
+    def run_forward(self, iobinding, run_options):
         """
          Compute the forward subgraph until it hits the Yield Op.
          :param iobinding: the iobinding object that has graph inputs/outputs bind.
          :param run_options: See :class:`onnxruntime.RunOptions`.
         """
-        return [OrtValue(ortvalue) for ortvalue in self._sess.run_forward(iobinding._iobinding, run_options, run_id)]
+        ortvalues, run_id = self._sess.run_forward(iobinding._iobinding, run_options)
+        return [OrtValue(ortvalue) for ortvalue in ortvalues], run_id
 
     def run_backward(self, backward_output_grads, run_id):
         """

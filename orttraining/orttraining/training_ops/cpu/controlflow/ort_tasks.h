@@ -4,14 +4,11 @@
 #pragma once
 
 #include "core/common/common.h"
-#include <atomic>
-#include <cstdint>
-#include <mutex>
-#include <memory>
-#include <thread>
-#include <future>
-#include <condition_variable>
 #include "core/framework/ml_value.h"
+
+#include <mutex>
+#include <future>
+
 
 namespace onnxruntime {
 namespace contrib {
@@ -22,8 +19,8 @@ typedef std::pair<bool, std::vector<OrtValue>> BackwardReturnType;
 class OrtTasks final {
  public:
   static OrtTasks& GetInstance() {
-    static OrtTasks instance_;
-    return instance_;
+    static OrtTasks* instance_ = new OrtTasks;
+    return *instance_;
   }
 
   void CreateBackgroundTask(int64_t run_id);
@@ -58,6 +55,7 @@ class OrtTasks final {
   };
 
   std::hash<std::thread::id> hasher_;
+  mutable std::mutex mutex_;
   std::unordered_map<int64_t, std::unique_ptr<Task>> bg_tasks_;
 };
 
