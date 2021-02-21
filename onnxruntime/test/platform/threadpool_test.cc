@@ -50,7 +50,7 @@ void ValidateTestData(TestData& test_data, int expected=1) {
 // static methods and should operate across all of these cases.
 void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body) {
   if (num_threads > 0) {
-    auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
+    auto tp = onnxruntime::make_unique<ThreadPoolLite>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
                                                    num_threads, true);
     test_body(tp.get());
   } else {

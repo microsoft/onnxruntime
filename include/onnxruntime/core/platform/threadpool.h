@@ -54,10 +54,10 @@ using NAME_CHAR_TYPE = wchar_t;
 #else
 using NAME_CHAR_TYPE = char;
 #endif
-/*
+
 class ThreadPool {
  public:
-
+  ThreadPool();
   ThreadPool(Env* env,
              const ThreadOptions& thread_options,
              const NAME_CHAR_TYPE* name,
@@ -194,54 +194,55 @@ class ThreadPool {
 
  private:
   friend class LoopCounter;
-  int NumThreads() const;
-  int CurrentThreadId() const;
-  void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n);
-  void ParallelForFixedBlockSizeScheduling(std::ptrdiff_t total, std::ptrdiff_t block_size,
+  virtual const char* Type() const { return "ThreadPool";  }
+  virtual int NumThreads() const;
+  virtual int CurrentThreadId() const;
+  virtual void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n);
+  virtual void ParallelForFixedBlockSizeScheduling(std::ptrdiff_t total, std::ptrdiff_t block_size,
                                            const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn);
-  bool ShouldParallelizeLoop(const std::ptrdiff_t num_iterations,
+  virtual bool ShouldParallelizeLoop(const std::ptrdiff_t num_iterations,
                              const std::ptrdiff_t block_size = 1) const;
-  void ParallelFor(std::ptrdiff_t total, double cost_per_unit,
+  virtual void ParallelFor(std::ptrdiff_t total, double cost_per_unit,
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn);
-  void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
+  virtual void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
-  void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn);
-  void Schedule(std::function<void()> fn);
+  virtual void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn);
+  virtual void Schedule(std::function<void()> fn);
   ThreadOptions thread_options_;
   ExtendedThreadPoolInterface* underlying_threadpool_ = nullptr;
   std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
-};*/
+};
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct ThreadPoolImpl;
+struct ThreadPoolImplLite;
 
-class ThreadPool {
+class ThreadPoolLite : public ThreadPool {
  public:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPool);
-  ThreadPool(Env*,
-        const ThreadOptions&,
-        const NAME_CHAR_TYPE*,
-        int num_threads,
-        bool);
-  ThreadPool(int num_threads);
-  ~ThreadPool();
-
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolLite);
+  ThreadPoolLite(Env*,
+                 const ThreadOptions&,
+                 const NAME_CHAR_TYPE*,
+                 int num_threads,
+                 bool);
+  ThreadPoolLite(int num_threads);
+  ~ThreadPoolLite();
+  using Fn = ::std::function<void(::std::ptrdiff_t, ::std::ptrdiff_t)>;
+  using SimpleFn = ::std::function<void(::std::ptrdiff_t)>;
+  /*
   class ParallelSection {
     public:
-      explicit ParallelSection(ThreadPool*) {};
+    explicit ParallelSection(ThreadPoolLite*){};
       ~ParallelSection() = default;
   };
 
-  using Fn = ::std::function<void(::std::ptrdiff_t, ::std::ptrdiff_t)>;
-  using SimpleFn = ::std::function<void(::std::ptrdiff_t)>;
-
-  static void Schedule(ThreadPool* tp, ::std::function<void()> fn);
-  static void TryParallelFor(ThreadPool* tp, ::std::ptrdiff_t total, double cost_per_unit, const Fn& fn);
-  static void TryParallelFor(ThreadPool* tp, ::std::ptrdiff_t total, const TensorOpCost& cost_per_unit, const Fn& fn);
-  static void TrySimpleParallelFor(ThreadPool* tp, ::std::ptrdiff_t total, const SimpleFn& fn);
+  static void Schedule(ThreadPoolLite* tp, ::std::function<void()> fn);
+  static void TryParallelFor(ThreadPoolLite* tp, ::std::ptrdiff_t total, double cost_per_unit, const Fn& fn);
+  static void TryParallelFor(ThreadPoolLite* tp, ::std::ptrdiff_t total, const TensorOpCost& cost_per_unit, const Fn& fn);
+  static void TrySimpleParallelFor(ThreadPoolLite* tp, ::std::ptrdiff_t total, const SimpleFn& fn);
+  
   template <typename F>
-  inline static void TryBatchParallelFor(ThreadPool* tp, ::std::ptrdiff_t total, F&& fn, ::std::ptrdiff_t num_batches) {
+  inline static void TryBatchParallelFor(ThreadPoolLite* tp, ::std::ptrdiff_t total, F&& fn, ::std::ptrdiff_t num_batches) {
     if (tp) {
       if (total <= 0) {
         return;
@@ -278,15 +279,17 @@ class ThreadPool {
   };
 
   static WorkInfo PartitionWork(::std::ptrdiff_t batch_idx, ::std::ptrdiff_t num_batches, ::std::ptrdiff_t total_work);
-  static bool ShouldParallelize(const ThreadPool* tp);
-  static int DegreeOfParallelism(const ThreadPool* tp);
-
+  static bool ShouldParallelize(const ThreadPoolLite* tp);
+  static int DegreeOfParallelism(const ThreadPoolLite* tp);
+  */
  private:
-  void Schedule(::std::function<void()> fn);
-  void ParallelFor(::std::ptrdiff_t total, double cost_per_unit, const Fn& fn);
-  void ParallelFor(::std::ptrdiff_t total, const TensorOpCost& cost_per_unit, const Fn& fn);
-  void SimpleParallelFor(::std::ptrdiff_t total, const SimpleFn& fn);
-  ThreadPoolImpl* threadPoolImpl_ = nullptr;
+  virtual int NumThreads() const override;
+  virtual const char* Type() const { return "ThreadPoolLite"; }
+  virtual void Schedule(::std::function<void()> fn) override;
+  virtual void ParallelFor(::std::ptrdiff_t total, double cost_per_unit, const Fn& fn) override;
+  virtual void ParallelFor(::std::ptrdiff_t total, const TensorOpCost& cost_per_unit, const Fn& fn) override;
+  virtual void SimpleParallelFor(::std::ptrdiff_t total, const SimpleFn& fn) override;
+  ThreadPoolImplLite* threadPoolImpl_ = nullptr;
 }; // class ThreadPool
 
 }  // namespace concurrency
