@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/math/div_grad.h"
-#include "orttraining/training_ops/cuda/math/div_grad_impl.h"
-#include "core/providers/cuda/math/binary_elementwise_ops.h"
+#include "orttraining/training_ops/rocm/math/div_grad.h"
+#include "orttraining/training_ops/rocm/math/div_grad_impl.h"
+#include "core/providers/rocm/math/binary_elementwise_ops.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
-namespace cuda {
+namespace rocm {
 
 #define DIVGRAD_REGISTER_KERNEL_TYPED(T)                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
@@ -15,13 +15,13 @@ namespace cuda {
       kMSDomain,                                                                \
       1,                                                                        \
       T,                                                                        \
-      kCudaExecutionProvider,                                                   \
+      kRocmExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DivGrad<T>);
 
 DIVGRAD_REGISTER_KERNEL_TYPED(MLFloat16)
 DIVGRAD_REGISTER_KERNEL_TYPED(float)
-DIVGRAD_REGISTER_KERNEL_TYPED(double)
+// DIVGRAD_REGISTER_KERNEL_TYPED(double)
 
 std::vector<int64_t> prepended_dimension_1(const TensorShape& shape, size_t total_rank) {
   size_t input_rank = shape.NumDimensions();
@@ -39,7 +39,7 @@ std::vector<int64_t> prepended_dimension_1(const TensorShape& shape, size_t tota
 
 template <typename T>
 Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename ToHipType<T>::MappedType HipT;
 
   const Tensor* dy_tensor = context->Input<Tensor>(0);
   const Tensor* a_tensor = context->Input<Tensor>(1);
@@ -58,23 +58,23 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(a_tensor, b_tensor,
                                                         // TODO: BinaryElementwiseBroadcastPrepare shall take dy_tensor as const Tensor*.
                                                         const_cast<Tensor*>(dy_tensor), &prepare));
-  const CudaT* prepare_a_data = reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>());
-  const CudaT* prepare_b_data = reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>());
-  const CudaT* prepare_dy_data = reinterpret_cast<const CudaT*>(prepare.output_tensor->template Data<T>());
+  const HipT* prepare_a_data = reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>());
+  const HipT* prepare_b_data = reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>());
+  const HipT* prepare_dy_data = reinterpret_cast<const HipT*>(prepare.output_tensor->template Data<T>());
   T* da_data = da_output_tensor ? da_output_tensor->template MutableData<T>() : nullptr;
   T* db_data = db_output_tensor ? db_output_tensor->template MutableData<T>() : nullptr;
 
   switch (prepare.output_rank_or_simple_broadcast) {
     case static_cast<int32_t>(SimpleBroadcast::NoBroadcast):
-      ImplDivGradSimple<CudaT>(
+      ImplDivGradSimple<HipT>(
           Stream(),
           SimpleBroadcast::NoBroadcast,
           prepare_a_data,
           prepare_b_data,
           prepare_dy_data,
           dy_shape.Size(),
-          reinterpret_cast<CudaT*>(da_data),
-          reinterpret_cast<CudaT*>(db_data));
+          reinterpret_cast<HipT*>(da_data),
+          reinterpret_cast<HipT*>(db_data));
       break;
     case static_cast<int32_t>(SimpleBroadcast::LeftScalar): {
       T* temp_da_data = nullptr;
@@ -84,24 +84,24 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
         temp_da_data = temp_da_allocator.get();
       }
 
-      ImplDivGradSimple<CudaT>(
+      ImplDivGradSimple<HipT>(
           Stream(),
           SimpleBroadcast::LeftScalar,
           prepare_a_data,
           prepare_b_data,
           prepare_dy_data,
           dy_shape.Size(),
-          reinterpret_cast<CudaT*>(temp_da_data),
-          reinterpret_cast<CudaT*>(db_data));
+          reinterpret_cast<HipT*>(temp_da_data),
+          reinterpret_cast<HipT*>(db_data));
 
       if (da_output_tensor) {
         std::vector<int64_t> a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        ReduceKernelShared<T, T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
             temp_da_data,
             dy_shape,
             da_data,
             TensorShape({}),
-            CUDNN_REDUCE_TENSOR_ADD,
+            MIOPEN_REDUCE_TENSOR_ADD,
             a_output_dims);
       }
       break;
@@ -113,24 +113,24 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
         temp_db_allocator = GetScratchBuffer<T>(dy_shape.Size());
         temp_db_data = temp_db_allocator.get();
       }
-      ImplDivGradSimple<CudaT>(
+      ImplDivGradSimple<HipT>(
           Stream(),
           SimpleBroadcast::RightScalar,
           prepare_a_data,
           prepare_b_data,
           prepare_dy_data,
           dy_shape.Size(),
-          reinterpret_cast<CudaT*>(da_data),
-          reinterpret_cast<CudaT*>(temp_db_data));
+          reinterpret_cast<HipT*>(da_data),
+          reinterpret_cast<HipT*>(temp_db_data));
 
       if (db_output_tensor) {
         std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        ReduceKernelShared<T, T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
             temp_db_data,
             dy_shape,
             db_data,
             TensorShape({}),
-            CUDNN_REDUCE_TENSOR_ADD,
+            MIOPEN_REDUCE_TENSOR_ADD,
             b_output_dims);
       }
       break;
@@ -145,18 +145,18 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       }
       if (prepare.output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatch1)) {
         // lhs(1,C,H) and rhs (C,1)
-        ImplDivGradRhsPerChannelBatch1<CudaT>(
+        ImplDivGradRhsPerChannelBatch1<HipT>(
             Stream(),
             prepare_a_data,
             prepare_b_data,
             prepare_dy_data,
             dy_shape.Size(),
             prepare.fdm_H,
-            reinterpret_cast<CudaT*>(da_data),
-            reinterpret_cast<CudaT*>(temp_db_data));
+            reinterpret_cast<HipT*>(da_data),
+            reinterpret_cast<HipT*>(temp_db_data));
       } else {
         // lhs(N,C,H) and rhs (C,1)
-        ImplDivGradRhsPerChannelBatchN<CudaT>(
+        ImplDivGradRhsPerChannelBatchN<HipT>(
             Stream(),
             prepare_a_data,
             prepare_b_data,
@@ -164,18 +164,18 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             dy_shape.Size(),
             prepare.fdm_H,
             prepare.fdm_C,
-            reinterpret_cast<CudaT*>(da_data),
-            reinterpret_cast<CudaT*>(temp_db_data));
+            reinterpret_cast<HipT*>(da_data),
+            reinterpret_cast<HipT*>(temp_db_data));
       }
 
       if (db_output_tensor) {
         std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        ReduceKernelShared<T, T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
             temp_db_data,
             dy_shape,
             db_data,
             b_shape,
-            CUDNN_REDUCE_TENSOR_ADD,
+            MIOPEN_REDUCE_TENSOR_ADD,
             b_output_dims);
       }
       break;
@@ -201,7 +201,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
           db_data_ref = db_data;
         }
 
-      ImplDivGrad<CudaT>(
+      ImplDivGrad<HipT>(
           Stream(),
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
@@ -211,28 +211,28 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
           prepare_dy_data,
           dy_shape.Size(),
           &prepare.fdm_output_strides,
-          reinterpret_cast<CudaT*>(da_data_ref),
-          reinterpret_cast<CudaT*>(db_data_ref));
+          reinterpret_cast<HipT*>(da_data_ref),
+          reinterpret_cast<HipT*>(db_data_ref));
 
       if (need_reduce_da) {
         std::vector<int64_t> a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        ReduceKernelShared<T, T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
             da_data_ref,
             dy_shape,
             da_data,
             a_shape,
-            CUDNN_REDUCE_TENSOR_ADD,
+            MIOPEN_REDUCE_TENSOR_ADD,
             a_output_dims);
       }
 
       if (need_reduce_db) {
         std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        ReduceKernelShared<T, T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
             db_data_ref,
             dy_shape,
             db_data,
             b_shape,
-            CUDNN_REDUCE_TENSOR_ADD,
+            MIOPEN_REDUCE_TENSOR_ADD,
             b_output_dims);
       }
     }
@@ -240,5 +240,5 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-}  // namespace cuda
+}  // namespace rocm
 }  // namespace onnxruntime
