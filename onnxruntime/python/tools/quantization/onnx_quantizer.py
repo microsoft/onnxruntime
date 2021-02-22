@@ -575,8 +575,7 @@ class ONNXQuantizer:
 
         assert (bias_name not in self.quantized_value_map)
         quantized_value = QuantizedValue(bias_name, quantized_bias_name, quantized_bias_scale_name, "",
-                                         QuantizedValueType.Initializer, 0 if bias_scale_data.size > 1 else None,
-                                         onnx_proto.TensorProto.INT32)
+                                         QuantizedValueType.Initializer, 0 if bias_scale_data.size > 1 else None)
         self.quantized_value_map[bias_name] = quantized_value
 
         return quantized_bias_name
@@ -668,7 +667,7 @@ class ONNXQuantizer:
 
         # Log entry for this quantized weight
         quantized_value = QuantizedValue(weight.name, q_weight_name, scale_name, zp_name,
-                                         QuantizedValueType.Initializer, None, qType)
+                                         QuantizedValueType.Initializer, None)
         self.quantized_value_map[weight.name] = quantized_value
 
         return q_weight_name, zp_name, scale_name
@@ -714,7 +713,7 @@ class ONNXQuantizer:
         scale_name = weight_name + "_scale"
 
         quantized_value = QuantizedValue(weight_name, q_weight_name, scale_name, zp_name,
-                                         QuantizedValueType.Initializer, None, weight_qType)
+                                         QuantizedValueType.Initializer, None)
         self.quantized_value_map[weight_name] = quantized_value
 
         # Update packed weight, zero point, and scale initializers
