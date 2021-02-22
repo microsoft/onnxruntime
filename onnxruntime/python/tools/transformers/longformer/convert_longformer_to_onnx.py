@@ -22,7 +22,7 @@ import transformers
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import parse_args
 from packaging import version
-
+from pathlib import Path
 from longformer_helper import LongformerHelper, PRETRAINED_LONGFORMER_MODELS
 
 
