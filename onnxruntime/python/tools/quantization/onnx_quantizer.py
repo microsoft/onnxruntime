@@ -531,6 +531,10 @@ class ONNXQuantizer:
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
         '''
 
+        # Handle case where bias already in quantizatio map
+        if bias_name in self.quantized_value_map:
+            return self.quantized_value_map[bias_name].q_name
+
         # get scale for weight
         weight_scale_name = self.quantized_value_map[weight_name].scale_name
         weight_initializer = find_by_name(weight_scale_name, self.model.initializer())
