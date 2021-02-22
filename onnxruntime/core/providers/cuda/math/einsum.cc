@@ -5,8 +5,6 @@
 
 namespace onnxruntime {
 
-template class EinsumTypedComputeProcessor<MLFloat16>;
-
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(

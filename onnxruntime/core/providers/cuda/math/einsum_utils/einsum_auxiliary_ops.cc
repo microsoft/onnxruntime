@@ -69,16 +69,6 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
 }
 
 // CUDA EP specific ReduceSum helper
-Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                 bool keep_dims, AllocatorPtr allocator,
-                 const TensorShape* input_shape_override,
-                 concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
-  return cuda::ReductionOps::ReduceCompute<MLFloat16>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
-                                                      allocator, input, reduce_axes,
-                                                      keep_dims, false, false, false,
-                                                      true, input_shape_override);
-}
-
 template <typename T>
 Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                  bool keep_dims, AllocatorPtr allocator,
