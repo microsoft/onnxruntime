@@ -1503,12 +1503,11 @@ if (onnxruntime_BUILD_NODEJS)
   include(onnxruntime_nodejs.cmake)
 endif()
 
-# some of the tests rely on the shared libs to be
-# built; hence the ordering
+if (onnxruntime_ENABLE_PYTHON)
+  include(onnxruntime_python.cmake)
+endif()
+
 if (onnxruntime_BUILD_UNIT_TESTS)
-  if (onnxruntime_ENABLE_PYTHON)
-    include(onnxruntime_python.cmake)
-  endif()
   include(onnxruntime_unittests.cmake)
 endif()
 
