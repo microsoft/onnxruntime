@@ -28,8 +28,8 @@ enum COREMLFlags {
 extern "C" {
 #endif
 
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CoreML,
-               _In_ OrtSessionOptions* options, uint32_t coreml_flags);
+ORT_EXPORT ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CoreML,
+                          _In_ OrtSessionOptions* options, uint32_t coreml_flags);
 
 #ifdef __cplusplus
 }

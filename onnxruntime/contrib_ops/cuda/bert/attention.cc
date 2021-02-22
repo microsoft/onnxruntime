@@ -88,6 +88,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchAttentionKernel(
           device_prop,
+          Stream(),
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
           nullptr == mask_index ? nullptr : &(mask_index->Shape().GetDims()),

@@ -22,6 +22,7 @@ struct GetRatioDataImpl {
 template <typename T>
 struct DropoutComputeImpl {
   void operator()(const cudaDeviceProp& prop,
+                  cudaStream_t stream,
                   const int64_t N,
                   const float ratio_data,
                   PhiloxGenerator& generator,
@@ -33,7 +34,7 @@ struct DropoutComputeImpl {
     const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
     CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
 
-    DropoutKernelImpl<CudaT>(prop, N, ratio_data, generator, X_data, Y_data, mask_data);
+    DropoutKernelImpl<CudaT>(prop, stream, N, ratio_data, generator, X_data, Y_data, mask_data);
   }
 };
 
@@ -71,8 +72,8 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(1);
   if (ratio) {
-    utils::MLTypeCallDispatcher<GetRatioDataImpl, float, MLFloat16, double> t_disp(ratio->GetElementType());
-    t_disp.Invoke(ratio, ratio_data);
+    utils::MLTypeCallDispatcher<float, MLFloat16, double> t_disp(ratio->GetElementType());
+    t_disp.Invoke<GetRatioDataImpl>(ratio, ratio_data);
   }
 
   const Tensor* training_mode = context->Input<Tensor>(2);
@@ -81,12 +82,12 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
     const void* X_data = X->DataRaw();
     void* Y_data = Y->MutableDataRaw();
     if (Y_data != X_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
     }
 
     // If mask is requested, return all 1s.
     if (mask != nullptr) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask->MutableData<bool>(), true, N * sizeof(bool)));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask->MutableData<bool>(), true, N * sizeof(bool), Stream()));
     }
 
     return Status::OK();
@@ -101,12 +102,16 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
 
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
+  using SupportedTypes = onnxruntime::TypeList<
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-  utils::MLTypeCallDispatcher<DropoutComputeImpl, float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
+      float, MLFloat16, double, BFloat16
 #else
-  utils::MLTypeCallDispatcher<DropoutComputeImpl, float, MLFloat16, double> t_disp(X->GetElementType());
+      float, MLFloat16, double
 #endif
-  t_disp.Invoke(GetDeviceProp(), N, ratio_data, generator, *X, *Y, mask_data);
+      >;
+
+  utils::MLTypeCallDispatcherFromTypeList<SupportedTypes> t_disp(X->GetElementType());
+  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(), N, ratio_data, generator, *X, *Y, mask_data);
 
   return Status::OK();
 }

@@ -32,7 +32,23 @@ void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
 #endif
 }
 
+void CUDAAllocator::SetDevice(bool throw_when_fail) const {
+  int current_device;
+  auto cuda_err = cudaGetDevice(&current_device);
+  if (cuda_err == cudaSuccess) {
+    int allocator_device_id = Info().id;
+    if (current_device != allocator_device_id) {
+      cuda_err = cudaSetDevice(allocator_device_id);
+    }
+  }
+
+  if (cuda_err != cudaSuccess && throw_when_fail) {
+    CUDA_CALL_THROW(cuda_err);
+  }
+}
+
 void* CUDAAllocator::Alloc(size_t size) {
+  SetDevice(true);
   CheckDevice(true);
   void* p = nullptr;
   if (size > 0) {
@@ -43,8 +59,26 @@ void* CUDAAllocator::Alloc(size_t size) {
 }
 
 void CUDAAllocator::Free(void* p) {
+  SetDevice(false);
   CheckDevice(false);  // ignore CUDA failure when free
   cudaFree(p);         // do not throw error since it's OK for cudaFree to fail during shutdown
+}
+
+void* CUDAExternalAllocator::Alloc(size_t size) {
+  void* p = nullptr;
+  if (size > 0) {
+    p = alloc_(size);
+
+    // review(codemzs): ORT_ENFORCE does not seem appropiate.
+    ORT_ENFORCE(p != nullptr);
+
+  }
+
+  return p;
+}
+
+void CUDAExternalAllocator::Free(void* p) {
+  free_(p);
 }
 
 FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {
