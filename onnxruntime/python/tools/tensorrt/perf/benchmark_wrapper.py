@@ -32,12 +32,11 @@ def main():
 
     model_to_fail_ep = {}
 
-    commit = get_latest_commit_hash()
-    benchmark_fail_csv = 'fail_' + commit + '.csv'  
-    benchmark_metrics_csv = 'metrics_' + commit + '.csv'
-    benchmark_success_csv = 'success_' + commit + '.csv' 
-    benchmark_latency_csv = 'latency_' + commit + '.csv'
-    benchmark_status_csv = 'status_' + commit + '.csv'
+    benchmark_fail_csv = 'fail.csv'
+    benchmark_metrics_csv = 'metrics.csv' 
+    benchmark_success_csv = 'success.csv'  
+    benchmark_latency_csv = 'latency.csv' 
+    benchmark_status_csv = 'status.csv' 
 
     for model, model_info in models.items():
         logger.info("\n" + "="*40 + "="*len(model))

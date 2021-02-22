@@ -25,11 +25,8 @@ def pretty_print(pp, json_object):
     sys.stdout.flush()
 
 def get_latest_commit_hash():
-    return ""
-    #p1 = subprocess.Popen(["git", "rev-parse", "--short", "HEAD"], stdout = subprocess.PIPE)
-    #stdout, sterr = p1.communicate()
-    #commit = stdout.decode("utf-8").strip()
-    #return commit
+    commit = get_output(["git", "rev-parse", "--short", "HEAD"])
+    return commit
 
 def parse_single_file(f):
 
