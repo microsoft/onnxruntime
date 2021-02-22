@@ -610,7 +610,7 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
             &zero, output_tensor, reinterpret_cast<CudaT*>(output.template MutableData<T>())));
       }
     }
-  } else {  
+  } else {
     // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
     // cudnnReduceTensor has issue if input and output has same size, which will happen if the axis to be reduced has dim value of 1.
     // the output is zeros of the output size
@@ -922,6 +922,13 @@ template Tensor ReduceCompute<float, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     bool fast_reduction, const TensorShape* input_shape_override);
 
 template Tensor ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+    CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
+    AllocatorPtr allocator,
+    const Tensor& input, const std::vector<int64_t>& axes,
+    bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+    bool fast_reduction, const TensorShape* input_shape_override);
+
+template Tensor ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, const std::vector<int64_t>& axes,

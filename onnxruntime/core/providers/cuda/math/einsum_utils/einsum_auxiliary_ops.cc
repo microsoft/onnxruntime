@@ -69,6 +69,16 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
 }
 
 // CUDA EP specific ReduceSum helper
+Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                 bool keep_dims, AllocatorPtr allocator,
+                 const TensorShape* input_shape_override,
+                 concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
+  return cuda::ReductionOps::ReduceCompute<MLFloat16>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
+                                                      allocator, input, reduce_axes,
+                                                      keep_dims, false, false, false,
+                                                      true, input_shape_override);
+}
+
 template <typename T>
 Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                  bool keep_dims, AllocatorPtr allocator,
@@ -160,6 +170,19 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<double>(
     void* einsum_cuda_assets);
 
 template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(
+    const Tensor& input, const std::vector<int64_t>& reduce_axes,
+    bool keep_dims, AllocatorPtr allocator,
+    const TensorShape* input_shape_override,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+
+// MLFloat16
+template Status DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>(
+    const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data,
+    size_t left_stride, size_t right_stride, size_t output_stride,
+    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+    void* einsum_cuda_assets);
+
+template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
     const Tensor& input, const std::vector<int64_t>& reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
