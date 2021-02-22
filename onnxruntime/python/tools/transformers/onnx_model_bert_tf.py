@@ -459,7 +459,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 logger.debug("Root node not matched.")
                 continue
         self.remove_nodes(nodes_to_remove)
-        self.update_graph()
+        # self.update_graph()
         logger.info(f"Fused Attention count:{attention_count}")
 
     def preprocess(self):

@@ -43,5 +43,5 @@ class Fusion:
 
         if self.prune_graph:
             self.model.prune_graph()
-        elif self.nodes_to_remove or self.nodes_to_add:
-            self.model.update_graph()
+        # elif self.nodes_to_remove or self.nodes_to_add:
+        #     self.model.update_graph()
