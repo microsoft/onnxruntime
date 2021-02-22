@@ -41,7 +41,9 @@ This pruning is referred to as "operator type reduction" in this documentation.
   - `python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py <path to directory containing one or more .onnx models>`
     - To enable operator type reduction, specify the `--enable_type_reduction` option.
   - For each ONNX model an ORT format model will be created with '.ort' as the file extension.
-  - A `required_operators.config` configuration file will also be created.
+  - A configuration file will also be created.
+    If operator type reduction is enabled, the file will be called `required_operators_and_types.config`.
+    Otherwise, the file will be called `required_operators.config`.
 
 Example:
 
