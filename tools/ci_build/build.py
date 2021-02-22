@@ -448,13 +448,14 @@ def parse_arguments():
                         "To enable support for custom operators pass 'custom_ops' as a parameter. "
                         "e.g. '--minimal_build custom_ops'. This can be combined with an 'extended' build by passing "
                         "'--minimal_build extended custom_ops'")
+
     parser.add_argument("--include_ops_by_config", type=str,
-                        help="include ops from config file. "
-                        "See /docs/Reduced_Operator_Kernel_build.md for more information.")
+                        help="Include ops from config file. "
+                             "See /docs/Reduced_Operator_Kernel_build.md for more information.")
     parser.add_argument("--enable_reduced_operator_type_support", action='store_true',
-                        help='If --include_ops_by_config is specified, and the configuration file was created from ORT '
-                             'format models with type reduction enabled, limit the types individual operators support '
-                             'where possible to further reduce the build size. '
+                        help='If --include_ops_by_config is specified, and the configuration file has type reduction '
+                             'information, limit the types individual operators support where possible to further '
+                             'reduce the build size. '
                              'See /docs/Reduced_Operator_Kernel_build.md for more information.')
 
     parser.add_argument("--disable_contrib_ops", action='store_true',
@@ -475,7 +476,12 @@ def parse_arguments():
                         help="Generate code coverage when targetting Android (only).")
     parser.add_argument(
         "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")
+
     return parser.parse_args()
+
+
+def is_reduced_ops_build(args):
+    return args.include_ops_by_config is not None
 
 
 def resolve_executable_path(command_or_path):
@@ -679,7 +685,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                    else "OFF"),
         "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if args.minimal_build and 'custom_ops' in args.minimal_build
                                                      else "OFF"),
-        "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if args.include_ops_by_config else "OFF"),
+        "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
@@ -1354,7 +1360,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run.
-            if args.include_ops_by_config or args.minimal_build is not None:
+            if is_reduced_ops_build(args) or args.minimal_build is not None:
                 return
 
             if is_windows():
@@ -1740,11 +1746,12 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.include_ops_by_config and args.update:
-        from exclude_unused_ops_and_types import exclude_unused_ops_and_types
-        exclude_unused_ops_and_types(args.include_ops_by_config,
-                                     args.enable_reduced_operator_type_support,
-                                     args.use_cuda)
+    if is_reduced_ops_build(args) and args.update:
+        from reduce_op_kernels import reduce_ops
+        reduce_ops(
+            config_path=args.include_ops_by_config,
+            enable_type_reduction=args.enable_reduced_operator_type_support,
+            use_cuda=args.use_cuda)
 
     if args.use_tensorrt:
         args.use_cuda = True
