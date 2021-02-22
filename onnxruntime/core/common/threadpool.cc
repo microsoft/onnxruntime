@@ -489,6 +489,15 @@ ThreadPool::ThreadPool() {}
 using Fn = ::std::function<void(::std::ptrdiff_t, ::std::ptrdiff_t)>;
 using SimpleFn = ::std::function<void(::std::ptrdiff_t)>;
 
+/*
+OMP local: 29.41 34.54 45.87 47.64 68.58
+ v1 local: 37.19 38.53 39.71 42.29 55.13 - run once each time and yield in main
+ v2 local: 37.49 40.91 42.45 46.72 62.83 - run all each time and no yield in main
+ v3 local: 37.14 38.81 40.18 42.86 52.13 - run all each time and yield in main
+ v4 local: 37.25 38.68 39.84 42.09 50.14 - run all each time and pause in main
+ v5 local: 37.36 40.20 41.78 46.25 67.77 - run all each time and pause in main and no yield in thread
+*/
+
 struct ThreadPoolImplLite {
 
   ThreadPoolImplLite(int num_threads, bool denormal_as_zero) {
@@ -501,14 +510,13 @@ struct ThreadPoolImplLite {
       threads_.emplace_back(::std::thread([denormal_as_zero, this]() {
         SetDenormalAsZero(denormal_as_zero);
         while (alive_) {
-          for (int i = TASK_LEN-1; i > -1; i--) {
+          for (int i = TASK_LEN - 1; i > -1; i--) {
             engaged_[i].fetch_add(1, std::memory_order_relaxed);
             if (stages_[i].load(std::memory_order_acquire) == Ready) {
               (*tasks_[i])();
             }
             engaged_[i].fetch_sub(1, std::memory_order_relaxed);
           }  // while
-          std::this_thread::yield();
         }  // while
       }));
     }
@@ -528,20 +536,18 @@ struct ThreadPoolImplLite {
   void Schedule(::std::function<void()>) {
     throw std::exception("not implememted");
   }  // Schedule
-  /*
+
   void Distribute(std::function<void()>& task,
                   std::atomic<::std::ptrdiff_t>& progress,
                   std::ptrdiff_t laps) {
-    Stage stage = Empty;
     int at = -1;
     for (int i = 0; i < TASK_LEN; ++i) {
+      Stage stage = Empty;
       if (stages_[i].compare_exchange_weak(stage, Loading, std::memory_order_relaxed)) {
         tasks_[i] = &task;
         stages_[i].store(Ready, std::memory_order_release);
         at = i;
         break;
-      } else {
-        stage = Empty;
       }
     }  //for
     while (progress.load(std::memory_order_relaxed) < laps) {
@@ -550,49 +556,27 @@ struct ThreadPoolImplLite {
     if (at != -1) {
       stages_[at].store(Unloading, std::memory_order_relaxed);
       while (engaged_[at].load(std::memory_order_relaxed) != 0) {
-        std::this_thread::yield();
+        onnxruntime::concurrency::SpinPause();
       }
       stages_[at].store(Empty, std::memory_order_relaxed);
     }  //if
   }    //Distribute
-  */
+
   void ParallelFor(::std::ptrdiff_t laps, const Fn& fn) {
-    ::std::ptrdiff_t num_threads = threads_.size() + 1;
-    auto share_per_thread = (laps / num_threads + ((laps % num_threads) ? 1 : 0))>>1;
+    std::ptrdiff_t num_threads = threads_.size() + 1;
+    auto share_per_thread = (laps / num_threads + ((laps % num_threads) ? 1 : 0)) >> 1;
     if (share_per_thread < 1) {
       share_per_thread = 1;
     }
-    std::atomic<::std::ptrdiff_t> progress{0};
+    std::atomic<std::ptrdiff_t> progress{0};
     std::function<void()> task = [&]() {
-      ::std::ptrdiff_t lap;
+      std::ptrdiff_t lap;
       if ((lap = progress.fetch_add(share_per_thread, std::memory_order_relaxed)) < laps) {
         fn(lap, std::min(laps, lap + share_per_thread));
-      } 
+      }
     };
-    //Distribute(task, progress, laps);
-    Stage stage = Empty;
-    int at = -1;
-    for (int i = 0; i < TASK_LEN; ++i) {
-      if (stages_[i].compare_exchange_weak(stage, Loading, std::memory_order_relaxed)) {
-        tasks_[i] = &task;
-        stages_[i].store(Ready, std::memory_order_release);
-        at = i;
-        break;
-      } else {
-        stage = Empty;
-      }
-    }  //for
-    while (progress.load(std::memory_order_relaxed) < laps) {
-      task();
-    }  //while
-    if (at != -1) {
-      stages_[at].store(Unloading, std::memory_order_relaxed);
-      while (engaged_[at].load(std::memory_order_relaxed) != 0) {
-        std::this_thread::yield();
-      }
-      stages_[at].store(Empty, std::memory_order_relaxed);
-    }  //if
-  }    //ParallelFor
+    Distribute(task, progress, laps);
+  }  //ParallelFor
 
   void SimpleParallelFor(::std::ptrdiff_t laps, const SimpleFn& simple_fn) {
     std::atomic<::std::ptrdiff_t> progress{0};
@@ -602,29 +586,8 @@ struct ThreadPoolImplLite {
         simple_fn(lap);
       }
     };
-    Stage stage = Empty;
-    int at = -1;
-    for (int i = 0; i < TASK_LEN; ++i) {
-      if (stages_[i].compare_exchange_weak(stage, Loading, std::memory_order_relaxed)) {
-        tasks_[i] = &task;
-        stages_[i].store(Ready, std::memory_order_release);
-        at = i;
-        break;
-      } else {
-        stage = Empty;
-      }
-    }  //for
-    while (progress.load(std::memory_order_relaxed) < laps) {
-      task();
-    }  //while
-    if (at != -1) {
-      stages_[at].store(Unloading, std::memory_order_relaxed);
-      while (engaged_[at].load(std::memory_order_relaxed) != 0) {
-        std::this_thread::yield();
-      }
-      stages_[at].store(Empty, std::memory_order_relaxed);
-    }  //if
-  }    //SimpleParallelFor
+    Distribute(task, progress, laps);
+  }  //SimpleParallelFor
 
   ::std::vector<::std::thread> threads_;
   bool alive_ = true;
