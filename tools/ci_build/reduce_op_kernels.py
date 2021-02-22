@@ -72,6 +72,11 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
 
         self._op_type_usage_manager = op_type_usage_manager
 
+        self._enable_all_ops = globally_allowed_types is not None and not required_ops
+        if self._enable_all_ops:
+            log.info("No required ops were specified but globally allowed types were specified. "
+                     "Globally allowed types will be used to exclude op implementations.")
+
         self._globally_allowed_types_re = \
             _type_re_from_globally_allowed_types(globally_allowed_types) \
             if globally_allowed_types is not None else None
@@ -81,6 +86,9 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
     def _is_op_required(self, domain: str, operator: str,
                         start_version: int, end_version: typing.Optional[int]) -> typing.Tuple[bool, str]:
         '''See if an op should be excluded because it is not required.'''
+        if self._enable_all_ops:
+            return True
+
         if domain not in self._required_ops:
             return False
 

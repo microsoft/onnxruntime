@@ -125,7 +125,7 @@ def main():
 
         # Debug code to validate that the config parsing matches
         # from util import parse_config
-        # required_ops, op_type_usage_processor = parse_config(args.config_path)
+        # required_ops, op_type_usage_processor, _ = parse_config(args.config_path, True)
         # op_type_usage_processor.debug_dump()
 
 
