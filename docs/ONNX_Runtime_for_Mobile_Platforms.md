@@ -28,6 +28,7 @@ It is also possible (and optional) to further prune the operator kernel implemen
 This pruning is referred to as "operator type reduction" in this documentation.
 
 - The helper python script requires the standard ONNX Runtime python package to be installed. Install the ONNX Runtime python package from https://pypi.org/project/onnxruntime/. Version 1.5.2 or later is required.
+  To enable operator type reduction, version 1.7 or later is required.
   - `pip install onnxruntime`
   - Ensure that any existing ONNX Runtime python package was uninstalled first, or use `-U` with the above command to upgrade an existing package.
 
