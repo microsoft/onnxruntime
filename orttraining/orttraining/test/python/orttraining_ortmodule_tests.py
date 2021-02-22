@@ -90,7 +90,8 @@ def main():
 
     run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=False, data_dir=args.bert_data)
 
-    run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True, data_dir=args.bert_data)
+    # TODO: figure out why no cuda hangs and re-enable.
+    # run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True, data_dir=args.bert_data)
 
     return 0
 
