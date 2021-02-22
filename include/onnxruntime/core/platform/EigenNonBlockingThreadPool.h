@@ -1233,12 +1233,11 @@ int CurrentThreadId() const EIGEN_FINAL {
             onnxruntime::concurrency::SpinPause();
           }
           SetGoodWorkerHint(thread_id, false);
-
           if (!t) {
             // No work passed to us while spinning; make a further full attempt to
             // steal work from other threads prior to blocking.
             if (num_threads_ != 1) {
-              t = Steal(true /* true => check all queues */);
+              t = Steal(true);
             }
             if (!t) {
               td.SetBlocked(

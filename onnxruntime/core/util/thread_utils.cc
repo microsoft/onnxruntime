@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace concurrency {
 static std::unique_ptr<ThreadPool>
-CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
+CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type) {
   if (options.thread_pool_size == 1)
     return nullptr;
   std::vector<size_t> cpu_list;
@@ -23,14 +23,20 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     cpu_list = Env::Default().GetThreadAffinityMasks();
     if (cpu_list.empty() || cpu_list.size() == 1)
       return nullptr;
-    options.thread_pool_size = static_cast<int>(cpu_list.size());
+    //options.thread_pool_size = static_cast<int>(cpu_list.size());
+    options.thread_pool_size = std::thread::hardware_concurrency();
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
   }
   to.set_denormal_as_zero = options.set_denormal_as_zero;
 
-  return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
-                                              options.allow_spinning);
+  if (concurrency::ThreadPoolType::INTER_OP == tpool_type) {
+    return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
+                                                options.allow_spinning);
+  } else {
+    return onnxruntime::make_unique<ThreadPoolLite>(env, to, options.name, options.thread_pool_size,
+                                                    options.allow_spinning);
+  }
 }
 
 std::unique_ptr<ThreadPool>
@@ -47,8 +53,8 @@ CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_typ
     return CreateThreadPoolHelper(env, options);
   }
 #else
-  ORT_UNUSED_PARAMETER(tpool_type);
-  return CreateThreadPoolHelper(env, options);
+  //ORT_UNUSED_PARAMETER(tpool_type);
+  return CreateThreadPoolHelper(env, options, tpool_type);
 #endif
 }
 

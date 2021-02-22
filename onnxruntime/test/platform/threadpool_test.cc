@@ -50,7 +50,7 @@ void ValidateTestData(TestData& test_data, int expected=1) {
 // static methods and should operate across all of these cases.
 void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body) {
   if (num_threads > 0) {
-    auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
+    auto tp = onnxruntime::make_unique<ThreadPoolLite>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
                                                    num_threads, true);
     test_body(tp.get());
   } else {
@@ -92,11 +92,11 @@ void TestConcurrentParallelFor(const std::string& name, int num_threads, int num
       // For a range of scenarios, run some tests via the thread pool, and one directly
       for (int c = 0; c < num_concurrent - 1; c++) {
         ThreadPool::Schedule(tp, [&, c]() {
-            ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
-                IncrementElement(*td[c], i);
-              });
-            b.Notify();
+          ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+            IncrementElement(*td[c], i);
           });
+          b.Notify();
+        });
       }
 
       ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
@@ -142,6 +142,7 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
         }
       });
     });
+    std::cout << "ctr: " << ctr.load() << std::endl;
     ASSERT_TRUE(ctr == num_tasks*2);
   }
 }
@@ -191,6 +192,7 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
 }  // namespace
 
 namespace onnxruntime {
+
 TEST(ThreadPoolTest, TestParallelFor_0_Thread_NoTask) {
   TestParallelFor("TestParallelFor_0_Thread_NoTask", 0, 0);
 }
@@ -381,6 +383,7 @@ TEST(ThreadPoolTest, TestMultiLoopSections_4Thread_100Loop) {
   TestMultiLoopSections("TestMultiLoopSections_4Thread_100Loop", 4, 100);
 }
 
+/*
 #ifdef _WIN32
 TEST(ThreadPoolTest, TestStackSize) {
   ThreadOptions to;
@@ -409,5 +412,6 @@ TEST(ThreadPoolTest, TestStackSize) {
     ASSERT_EQ(high_limit - low_limit, to.stack_size);
 }
 #endif
+*/
 
 }  // namespace onnxruntime

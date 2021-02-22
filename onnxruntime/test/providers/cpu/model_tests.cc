@@ -49,6 +49,7 @@ TEST_P(ModelTest, Run) {
   ASSERT_NE(pos, std::string::npos);
   std::string provider_name = ToMBString(param.substr(0, pos));
   std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
+  std::wcout << model_path << std::endl;
   double per_sample_tolerance = 1e-3;
   // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
   // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
@@ -506,6 +507,7 @@ TEST_P(ModelTest, Run) {
       else
         so.intra_op_param.thread_pool_size = 1;  // Disable intra op thread pool
 #endif
+      execution_mode = ExecutionMode::ORT_SEQUENTIAL;
       so.execution_mode = execution_mode;
       so.session_logid = ToMBString(test_case_name);
       so.session_log_severity_level = (int)logging::Severity::kERROR;

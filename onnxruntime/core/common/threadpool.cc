@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <iostream>
 #include <memory>
 
 #include "core/platform/threadpool.h"
@@ -150,7 +150,7 @@ private:
   alignas(CACHE_LINE_BYTES) LoopCounterShard _shards[MAX_SHARDS];
   const uint64_t _block_size;
   const unsigned _num_shards;
-};
+}; //LoopCounter
 
 #ifdef _MSC_VER
 #pragma warning(pop) /* Padding added in LoopCounterShard, LoopCounter */
@@ -219,7 +219,8 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
 }
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
-  ParallelForFixedBlockSizeScheduling(total, 1, [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+  ptrdiff_t block_size = static_cast<ptrdiff_t>(std::ceil((static_cast<double>(total))/DegreeOfParallelism(this)));
+  ParallelForFixedBlockSizeScheduling(total, block_size, [&](std::ptrdiff_t first, std::ptrdiff_t last) {
     for (std::ptrdiff_t idx = first; idx < last; idx++) {
       fn(idx);
     }
@@ -470,10 +471,275 @@ void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t tota
       fn(0, total);
       return;
     }
+    std::cout << tp->Type() << std::endl;
     tp->ParallelFor(total, cost_per_unit, fn);
 #endif
   }
 
+ThreadPool::ThreadPool() {}
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#include <vector>
+#include <thread>
+#include <deque>
+#include <mutex>
+#include <atomic>
+#include <algorithm>
+#define TASK_LEN 32
+
+using Fn = ::std::function<void(::std::ptrdiff_t, ::std::ptrdiff_t)>;
+using SimpleFn = ::std::function<void(::std::ptrdiff_t)>;
+
+struct ThreadPoolImplLite {
+
+  ThreadPoolImplLite(int num_threads, bool denormal_as_zero) {
+    for (int i = 0; i < TASK_LEN; i++) {
+      stages_[i].store(Empty, std::memory_order_relaxed);
+      engaged_[i].store(0, std::memory_order_relaxed);
+      tasks_[i] = nullptr;
+    }
+    for (int i = 0; i < num_threads - 1; i++) {
+      threads_.emplace_back(::std::thread([denormal_as_zero, this]() {
+        SetDenormalAsZero(denormal_as_zero);
+        while (alive_) {
+          for (int i = TASK_LEN-1; i > -1; i--) {
+            engaged_[i].fetch_add(1, std::memory_order_relaxed);
+            if (stages_[i].load(std::memory_order_acquire) == Ready) {
+              (*tasks_[i])();
+            }
+            engaged_[i].fetch_sub(1, std::memory_order_relaxed);
+          }  // while
+          std::this_thread::yield();
+        }  // while
+      }));
+    }
+  }
+
+  ThreadPoolImplLite() = delete;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolImplLite);
+
+  ~ThreadPoolImplLite() {
+    alive_ = false;
+    for (auto& t : threads_) {
+      t.join();
+    }
+  }
+
+  void Schedule(::std::function<void()>) {
+    throw std::exception("not implememted");
+  }  // Schedule
+  /*
+  void Distribute(std::function<void()>& task,
+                  std::atomic<::std::ptrdiff_t>& progress,
+                  std::ptrdiff_t laps) {
+    Stage stage = Empty;
+    int at = -1;
+    for (int i = 0; i < TASK_LEN; ++i) {
+      if (stages_[i].compare_exchange_weak(stage, Loading, std::memory_order_relaxed)) {
+        tasks_[i] = &task;
+        stages_[i].store(Ready, std::memory_order_release);
+        at = i;
+        break;
+      } else {
+        stage = Empty;
+      }
+    }  //for
+    while (progress.load(std::memory_order_relaxed) < laps) {
+      task();
+    }  //while
+    if (at != -1) {
+      stages_[at].store(Unloading, std::memory_order_relaxed);
+      while (engaged_[at].load(std::memory_order_relaxed) != 0) {
+        std::this_thread::yield();
+      }
+      stages_[at].store(Empty, std::memory_order_relaxed);
+    }  //if
+  }    //Distribute
+  */
+  void ParallelFor(::std::ptrdiff_t laps, const Fn& fn) {
+    ::std::ptrdiff_t num_threads = threads_.size() + 1;
+    auto share_per_thread = (laps / num_threads + ((laps % num_threads) ? 1 : 0))>>1;
+    if (share_per_thread < 1) {
+      share_per_thread = 1;
+    }
+    std::atomic<::std::ptrdiff_t> progress{0};
+    std::function<void()> task = [&]() {
+      ::std::ptrdiff_t lap;
+      if ((lap = progress.fetch_add(share_per_thread, std::memory_order_relaxed)) < laps) {
+        fn(lap, std::min(laps, lap + share_per_thread));
+      } 
+    };
+    //Distribute(task, progress, laps);
+    Stage stage = Empty;
+    int at = -1;
+    for (int i = 0; i < TASK_LEN; ++i) {
+      if (stages_[i].compare_exchange_weak(stage, Loading, std::memory_order_relaxed)) {
+        tasks_[i] = &task;
+        stages_[i].store(Ready, std::memory_order_release);
+        at = i;
+        break;
+      } else {
+        stage = Empty;
+      }
+    }  //for
+    while (progress.load(std::memory_order_relaxed) < laps) {
+      task();
+    }  //while
+    if (at != -1) {
+      stages_[at].store(Unloading, std::memory_order_relaxed);
+      while (engaged_[at].load(std::memory_order_relaxed) != 0) {
+        std::this_thread::yield();
+      }
+      stages_[at].store(Empty, std::memory_order_relaxed);
+    }  //if
+  }    //ParallelFor
+
+  void SimpleParallelFor(::std::ptrdiff_t laps, const SimpleFn& simple_fn) {
+    std::atomic<::std::ptrdiff_t> progress{0};
+    std::function<void()> task = [&]() {
+      ::std::ptrdiff_t lap;
+      if ((lap = progress.fetch_add(1, std::memory_order_relaxed)) < laps) {
+        simple_fn(lap);
+      }
+    };
+    Stage stage = Empty;
+    int at = -1;
+    for (int i = 0; i < TASK_LEN; ++i) {
+      if (stages_[i].compare_exchange_weak(stage, Loading, std::memory_order_relaxed)) {
+        tasks_[i] = &task;
+        stages_[i].store(Ready, std::memory_order_release);
+        at = i;
+        break;
+      } else {
+        stage = Empty;
+      }
+    }  //for
+    while (progress.load(std::memory_order_relaxed) < laps) {
+      task();
+    }  //while
+    if (at != -1) {
+      stages_[at].store(Unloading, std::memory_order_relaxed);
+      while (engaged_[at].load(std::memory_order_relaxed) != 0) {
+        std::this_thread::yield();
+      }
+      stages_[at].store(Empty, std::memory_order_relaxed);
+    }  //if
+  }    //SimpleParallelFor
+
+  ::std::vector<::std::thread> threads_;
+  bool alive_ = true;
+  using Task = std::function<void()>;
+  Task* tasks_[TASK_LEN];
+  enum Stage {
+    Empty = 0,
+    Loading,
+    Unloading,
+    Ready
+  };
+  std::atomic<Stage> stages_[TASK_LEN];
+  std::atomic_int engaged_[TASK_LEN];
+};
+
+ThreadPoolLite::ThreadPoolLite(Env*,
+                       const ThreadOptions& to,
+                       const NAME_CHAR_TYPE*,
+                       int num_threads,
+                       bool) {
+  threadPoolImpl_ = new ThreadPoolImplLite(num_threads, to.set_denormal_as_zero);
+}
+
+ThreadPoolLite::ThreadPoolLite(int num_threads) {
+  threadPoolImpl_ = new ThreadPoolImplLite(num_threads, false);
+}
+
+ThreadPoolLite::~ThreadPoolLite() {
+  if (threadPoolImpl_) {
+    delete threadPoolImpl_;
+    threadPoolImpl_ = nullptr;
+  }
+}
+/*
+void ThreadPoolLite::Schedule(ThreadPoolLite* tp, ::std::function<void()> fn) {
+  if (tp) {
+    tp->Schedule(fn);
+  } else {
+    fn();
+  }
+}
+
+void ThreadPoolLite::TryParallelFor(ThreadPoolLite* tp, ::std::ptrdiff_t total, double cost, const Fn& fn) {
+  if (0 == total) {
+    return;
+  }
+  if (tp) {
+    tp->ParallelFor(total, cost, fn);
+  } else {
+    fn(0, total);
+  }
+}
+
+void ThreadPoolLite::TryParallelFor(ThreadPoolLite* tp, ::std::ptrdiff_t total, const TensorOpCost& cost, const Fn& fn) {
+  if (0 == total) {
+    return;
+  }
+  if (tp) {
+    tp->ParallelFor(total, cost, fn);
+  } else {
+    fn(0, total);
+  }
+}
+
+void ThreadPoolLite::TrySimpleParallelFor(ThreadPoolLite* tp, ::std::ptrdiff_t total, const SimpleFn& fn) {
+  if (0 == total) {
+    return;
+  }
+  if (tp) {
+    tp->SimpleParallelFor(total, fn);
+  } else {
+    for (::std::ptrdiff_t i = 0; i < total; i++) {
+      fn(i);
+    }
+  }
+}
+
+ThreadPoolLite::WorkInfo ThreadPoolLite::PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
+  const std::ptrdiff_t work_per_batch = total_work / num_batches;
+  const std::ptrdiff_t work_per_batch_extra = total_work % num_batches;
+  WorkInfo info;
+  if (batch_idx < work_per_batch_extra) {
+    info.start = (work_per_batch + 1) * batch_idx;
+    info.end = info.start + work_per_batch + 1;
+  } else {
+    info.start = work_per_batch * batch_idx + work_per_batch_extra;
+    info.end = info.start + work_per_batch;
+  }
+  return info;
+}
+
+bool ThreadPoolLite::ShouldParallelize(const ThreadPoolLite* tp) {
+  return DegreeOfParallelism(tp) > 1;
+}
+
+int ThreadPoolLite::DegreeOfParallelism(const ThreadPoolLite* tp) {
+  return (tp ? static_cast<int>(tp->threadPoolImpl_->threads_.size()) : 0) + 1;
+}
+*/
+int ThreadPoolLite::NumThreads() const {
+  return static_cast<int>(threadPoolImpl_->threads_.size()) + 1;
+}
+
+void ThreadPoolLite::Schedule(::std::function<void()> fn) {
+  threadPoolImpl_->Schedule(std::move(fn));
+}
+void ThreadPoolLite::ParallelFor(::std::ptrdiff_t total, double, const Fn& fn) {
+  threadPoolImpl_->ParallelFor(total, fn);
+}
+void ThreadPoolLite::ParallelFor(::std::ptrdiff_t total, const TensorOpCost&, const Fn& fn) {
+  threadPoolImpl_->ParallelFor(total, fn);
+}
+void ThreadPoolLite::SimpleParallelFor(::std::ptrdiff_t total, const SimpleFn& fn) {
+  threadPoolImpl_->SimpleParallelFor(total, fn);
+}
 
 }  // namespace concurrency
 }  // namespace onnxruntime
