@@ -806,6 +806,7 @@ void EndParallelSectionInternal(PerThread &pt,
   // started.
   unsigned tasks_started = static_cast<unsigned>(ps.tasks.size());
   unsigned tasks_revoked = 0;
+  /*
   while (!ps.tasks.empty()) {
     const auto& item = ps.tasks.back();
     Queue& q = worker_data_[item.first].queue;
@@ -813,7 +814,7 @@ void EndParallelSectionInternal(PerThread &pt,
       tasks_revoked++;
     }
     ps.tasks.pop_back();
-  }
+  }*/
 
   // Wait for workers to exit ParLoopWorker
   auto tasks_to_wait_for = tasks_started - tasks_revoked;
