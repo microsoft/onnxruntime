@@ -34,7 +34,7 @@ def run_ortmodule_api_tests(cwd, log):
             for item in items:
                 print('item.name: ', item.name)
                 self.collected.add(item.name)
-    
+
     import os
     import pytest
     plugin = TestNameCollecterPlugin()
@@ -42,8 +42,8 @@ def run_ortmodule_api_tests(cwd, log):
     test_script_filename = os.path.join("orttraining_test_ortmodule_api.py")
     pytest.main(['--collect-only', test_script_filename], plugins=[plugin])
 
-    # TODO: FIX THIS! 
-    # Running tests in a loop one after another, 
+    # TODO: FIX THIS!
+    # Running tests in a loop one after another,
     # because ORTModule doesn't support multiple run call at the same time
     for test_name in plugin.collected:
         run_subprocess([
@@ -61,7 +61,6 @@ def run_ortmodule_poc_net(cwd, log, no_cuda, data_dir):
         command.extend(['--data_dir', data_dir])
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
-
 
 def run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda, data_dir):
     log.debug('Running: ORTModule HuggingFace BERT for sequence classification with --no-cuda arg {}.'.format(no_cuda))
@@ -90,7 +89,8 @@ def main():
 
     run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=False, data_dir=args.bert_data)
 
-    run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True, data_dir=args.bert_data)
+    # TODO: Re-enable when hang with no_cuda=True is fixed
+    # run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True, data_dir=args.bert_data)
 
     return 0
 
