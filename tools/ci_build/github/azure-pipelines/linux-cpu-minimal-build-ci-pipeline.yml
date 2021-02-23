@@ -55,32 +55,76 @@ jobs:
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
       workingDirectory: $(Build.SourcesDirectory)
 
-  - task: CmdLine@2
-    displayName: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED]
-    inputs:
-      script: |
-        # We will try to build minimal ORT with exceptions disabled
-        # Only the building process is verified here, no test will be performed
-        docker run --rm \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          onnxruntimecentoscpubuild \
-            python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
-              --config Debug\
-              --skip_submodule_sync \
-              --build_shared_lib \
-              --parallel \
-              --skip_tests \
-              --minimal_build \
-              --disable_exceptions
-      workingDirectory: $(Build.SourcesDirectory)
+  # - task: CmdLine@2
+  #   displayName: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED]
+  #   inputs:
+  #     script: |
+  #       # We will try to build minimal ORT with exceptions disabled
+  #       # Only the building process is verified here, no test will be performed
+  #       docker run --rm \
+  #         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+  #         --volume $(Build.BinariesDirectory):/build \
+  #         -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+  #         -e NIGHTLY_BUILD \
+  #         -e BUILD_BUILDNUMBER \
+  #         onnxruntimecentoscpubuild \
+  #           python3 /onnxruntime_src/tools/ci_build/build.py \
+  #             --build_dir /build --cmake_generator Ninja \
+  #             --config Debug\
+  #             --skip_submodule_sync \
+  #             --build_shared_lib \
+  #             --parallel \
+  #             --skip_tests \
+  #             --minimal_build \
+  #             --disable_exceptions
+  #     workingDirectory: $(Build.SourcesDirectory)
+
+  # - task: CmdLine@2
+  #   displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
+  #   inputs:
+  #     script: |
+  #       docker run --rm \
+  #         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+  #         --volume $(Build.BinariesDirectory):/build \
+  #         --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
+  #         -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+  #         -e NIGHTLY_BUILD \
+  #         -e BUILD_BUILDNUMBER \
+  #         onnxruntimecentoscpubuild \
+  #           /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
+  #             --build-directory /build/without_type_reduction \
+  #             --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops.ort_models.config \
+  #             --enable-custom-ops
+  #     workingDirectory: $(Build.SourcesDirectory)
+
+  # - script: git checkout -- .
+  #   displayName: Discard local changes to Git repository files
+  #   workingDirectory: $(Build.SourcesDirectory)
+
+  # - task: CmdLine@2
+  #   displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
+  #   inputs:
+  #     script: |
+  #       docker run --rm \
+  #         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+  #         --volume $(Build.BinariesDirectory):/build \
+  #         --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
+  #         -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+  #         -e NIGHTLY_BUILD \
+  #         -e BUILD_BUILDNUMBER \
+  #         onnxruntimecentoscpubuild \
+  #           /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
+  #             --build-directory /build/with_type_reduction \
+  #             --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config \
+  #             --enable-type-reduction
+  #     workingDirectory: $(Build.SourcesDirectory)
+
+  # - script: git checkout -- .
+  #   displayName: Discard local changes to Git repository files
+  #   workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
+    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
     inputs:
       script: |
         docker run --rm \
@@ -92,30 +136,8 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
-              --build-directory /build/without_type_reduction \
-              --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops.ort_models.config \
-              --enable-custom-ops
-      workingDirectory: $(Build.SourcesDirectory)
-
-  - script: git checkout -- .
-    displayName: Discard local changes to Git repository files
-    workingDirectory: $(Build.SourcesDirectory)
-
-  - task: CmdLine@2
-    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
-    inputs:
-      script: |
-        docker run --rm \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          onnxruntimecentoscpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
-              --build-directory /build/with_type_reduction \
-              --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config \
+              --build-directory /build/with_type_reduction_globally_allowed_types \
+              --reduced-ops-config /home/onnxruntimedev/.test_data/globally_allowed_types.config \
               --enable-type-reduction
       workingDirectory: $(Build.SourcesDirectory)
 

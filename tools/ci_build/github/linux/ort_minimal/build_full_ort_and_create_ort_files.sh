@@ -44,6 +44,10 @@ python3 /onnxruntime_src/tools/python/create_reduced_build_config.py --format OR
     /onnxruntime_src/onnxruntime/test/testdata \
     /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config
 
+# Config with type reduction via globally allowed types
+echo "!globally_allowed_types;float,int8_t,uint8_t" \
+    > /home/onnxruntimedev/.test_data/globally_allowed_types.config
+
 # Test that we can convert an ONNX model with custom ops to ORT format
 mkdir /home/onnxruntimedev/.test_data/custom_ops_model
 cp /onnxruntime_src/onnxruntime/test/testdata/custom_op_library/*.onnx /home/onnxruntimedev/.test_data/custom_ops_model/
