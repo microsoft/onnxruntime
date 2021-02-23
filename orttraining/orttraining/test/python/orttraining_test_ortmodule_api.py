@@ -155,6 +155,7 @@ def test_forward_call_multiple_positional_arguments():
     output = model(x, y)
     assert output is not None
 
+# TODO: Re-enable after "Support models with dynamically defined inputs" done.
 # def test_forward_call_positional_arguments():
 #     device = 'cuda'
 
