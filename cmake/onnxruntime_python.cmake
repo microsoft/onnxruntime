@@ -262,7 +262,7 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )
 
-set(build_output_target onnxruntime)
+set(build_output_target onnxruntime_common)
 
 add_custom_command(
   TARGET onnxruntime_pybind11_state POST_BUILD
