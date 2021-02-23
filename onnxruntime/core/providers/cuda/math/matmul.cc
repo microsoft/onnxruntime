@@ -602,6 +602,12 @@ class Sparse2x4ComputeHelper {
 
 #endif  // USE_CUSPARSE_LT
 
+namespace guards {
+auto close_dense_fn = [](cusparseDnMatDescr_t* desc) { cusparseDestroyDnMat(*desc); };
+auto close_sparse_fn = [](cusparseSpMatDescr_t* desc) { cusparseDestroySpMat(*desc); };
+auto destroy_cusparse_fn = [](cusparseHandle_t* desc) { cusparseDestroy(*desc); };
+}  // namespace guards
+
 class CuSparseHelper {
  public:
   static Status PrePack(const CudaKernel* kernel, const Tensor& tensor, const OpKernel::PrepackParam& prepack_param,
@@ -612,23 +618,28 @@ class CuSparseHelper {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, prepack_param.name + " : wrong data type for the constant initializer");
     }
 
-    auto close_dense_fn = [](cusparseDnMatDescr_t* desc) { cusparseDestroyDnMat(*desc); };
-    auto close_sparse_fn = [](cusparseSpMatDescr_t* desc) { cusparseDestroySpMat(*desc); };
-    auto destroy_cusparse_fn = [](cusparseHandle_t* desc) { cusparseDestroy(*desc); };
-
     // We do not want to use per-thread handles but persists between the runs.
     cusparseHandle_t handle;
     CUSPARSE_RETURN_IF_ERROR(cusparseCreate(&handle));
-    std::unique_ptr<cusparseHandle_t, decltype(destroy_cusparse_fn)> handle_guard(&handle, destroy_cusparse_fn);
+    std::unique_ptr<cusparseHandle_t, decltype(guards::destroy_cusparse_fn)> handle_guard(&handle, guards::destroy_cusparse_fn);
 
-    // XXX: Currently support only 2 and 3-Dim Matrices
+    // XXX: Currently support only 2-D Matrices for experimental purposes
     const auto& right_shape = tensor.Shape();
     const auto element_size = tensor.DataType()->Size();
     const auto num_elements = right_shape.Size();
     const auto right_num_dims = right_shape.NumDimensions();
+    if (right_num_dims > 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently do not support dims higher than 2");
+    }
+
+    if (right_num_dims == 1) {
+      transb = false;
+    }
+
+    // MxKxN
     int64_t K = 0;
     int64_t N = 0;
-    if (right_num_dims >= 2) {
+    if (right_num_dims == 2) {
       K = right_shape[right_num_dims - 2];
       N = right_shape[right_num_dims - 1];
     } else {
@@ -637,10 +648,12 @@ class CuSparseHelper {
     }
 
     cusparseSpMatDescr_t sparse_desc;
-    std::unique_ptr<cusparseSpMatDescr_t, decltype(close_sparse_fn)> sparse_guard(nullptr, close_sparse_fn);
+    std::unique_ptr<cusparseSpMatDescr_t, decltype(guards::close_sparse_fn)> sparse_guard(nullptr, guards::close_sparse_fn);
 
     auto sp_info = onnxruntime::make_unique<SparseInfo>(prepack_param, right_shape);
     const OpKernel::PrepackParam& param = sp_info->param_;
+    sp_info->K_ = K;
+    sp_info->N_ = N;
 
     // if Ell format is specified but the hardware is not we then default
     // to one of the belows
@@ -703,7 +716,7 @@ class CuSparseHelper {
                                                    cuda_type,
                                                    CUSPARSE_ORDER_COL));
 
-      std::unique_ptr<cusparseDnMatDescr_t, decltype(close_dense_fn)> dense_guard(&dense_desc, close_dense_fn);
+      std::unique_ptr<cusparseDnMatDescr_t, decltype(guards::close_dense_fn)> dense_guard(&dense_desc, guards::close_dense_fn);
 
       // This will have data transposed, swap dims
       if (param.UseCsrFormat()) {
@@ -796,7 +809,96 @@ class CuSparseHelper {
     is_packed = true;
     return Status::OK();
   }
-};  // namespace cuda
+
+  static Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo& sparse_info,
+                        float alpha, bool transa, bool transb, const Tensor* left, cudaDataType cuda_type) {
+    const auto& left_shape = left->Shape();
+    const auto left_num_dims = left_shape.NumDimensions();
+    if (left_num_dims > 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently do not support dims higher than 2");
+    }
+
+    const auto& right_shape = sparse_info.shape_;
+    if (right_shape.NumDimensions() == 1) {
+      transb = false;
+    }
+
+    MatMulComputeHelper helper;
+    ORT_RETURN_IF_ERROR(helper.Compute(left->Shape(), right_shape, transa, transb));
+
+    const auto M = helper.M();
+    const auto N = helper.N();
+    const auto K = helper.K();
+
+    ORT_RETURN_IF_NOT(K == sparse_info.K_, "K does not match sparse weight computed K");
+    ORT_RETURN_IF_NOT(N == sparse_info.N_, "N does not match sparse weight computed N");
+
+    const auto& output_shape = helper.OutputShape();
+    // Make sure we still request output allocation if the len is zero
+    Tensor* Y = ctx->Output(0, output_shape);
+    // Bail out early if the output is going to be empty
+    if (output_shape.Size() == 0)
+      return Status::OK();
+
+    cusparseDnMatDescr_t dense_desc;
+    CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&dense_desc,
+                                                 (transa) ? M : K,
+                                                 (transa) ? K : M,
+                                                 (transa) ? M : K,
+                                                 const_cast<void*>(left->DataRaw()),  // They say we can safely cast constness away :)
+                                                 cuda_type,
+                                                 CUSPARSE_ORDER_COL));  // We have RowMajor but feeding like Column
+    std::unique_ptr<cusparseDnMatDescr_t, decltype(guards::close_dense_fn)> dense_guard(&dense_desc, guards::close_dense_fn);
+
+    // Create output matrix with transposed dimensions
+    cusparseDnMatDescr_t output_desc;
+    CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&output_desc,
+                                                 N,
+                                                 M,
+                                                 N,
+                                                 Y->MutableDataRaw(),
+                                                 cuda_type,
+                                                 CUSPARSE_ORDER_COL));
+    std::unique_ptr<cusparseDnMatDescr_t, decltype(guards::close_dense_fn)> output_guard(&output_desc, guards::close_dense_fn);
+
+    cusparseOperation_t op_A = transa ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
+    cusparseOperation_t op_B = transb ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
+
+    constexpr float beta = 0.f;
+    size_t buffer_size = 0;
+
+    CUSPARSE_RETURN_IF_ERROR(cusparseSpMM_bufferSize(*sparse_info.handle_,
+                                                     op_A,
+                                                     op_B,
+                                                     &alpha,
+                                                     *sparse_info.sparse_desc_,
+                                                     dense_desc,
+                                                     &beta,
+                                                     output_desc,
+                                                     cuda_type,
+                                                     CUSPARSE_SPMM_ALG_DEFAULT,
+                                                     &buffer_size));
+
+    auto work_buffer = kernel->GetScratchBuffer<uint8_t>(buffer_size);
+    CUSPARSE_RETURN_IF_ERROR(cusparseSpMM(*sparse_info.handle_,
+                                          op_A,
+                                          op_B,
+                                          &alpha,
+                                          *sparse_info.sparse_desc_,
+                                          dense_desc,
+                                          &beta,
+                                          output_desc,
+                                          cuda_type,
+                                          CUSPARSE_SPMM_ALG_DEFAULT,
+                                          work_buffer.get()));
+
+    // Debug dump
+    DUMP_DISP(t_disp, left->GetElementType(), float, double, MLFloat16, BFloat16);
+    DUMP_INVOKE(t_disp, DumpArray, std::cout, "cusparseSpMM output", Y->DataRaw(), Y->Shape().Size(), helper.K());
+
+    return Status::OK();
+  }
+};
 
 template <typename T>
 Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool& is_packed) {
@@ -829,6 +931,25 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (left_X->Shape().NumDimensions() == 1) {
     transa = false;
   }
+
+#ifdef USE_CUSPARSELT
+  if (sparse_info_ && sparse_info_->param_.Is2x4Format()) {
+    Sparse2x4ComputeHelper<T> sparse_helper;
+    // XXX: Use the helper inside and allocate output inside as well
+    return sparse_helper.Compute(this, *sparse_info_, helper, alpha_, transa, transb, left_X, Y);
+  }
+#endif
+
+  if (sparse_info_) {
+    if (sparse_info_->param_.UseCooFormat() ||
+        sparse_info_->param_.UseCsrFormat() ||
+        sparse_info_->param_.UseEllFormat()) {
+      return CuSparseHelper::Compute(this, ctx, *sparse_info_, alpha_, trans_A_, trans_B_, left_X, ToCudaTypeEnum<T>::type);
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, sparse_info_->param_.name + 
+            " : Unsupported sparse format specified");
+  }
+
   if (right_X->Shape().NumDimensions() == 1) {
     transb = false;
   }
@@ -841,13 +962,6 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0)
     return Status::OK();
-
-#ifdef USE_CUSPARSELT
-  if (sparse_info_) {
-    Sparse2x4ComputeHelper<T> sparse_helper;
-    return sparse_helper.Compute(this, *sparse_info_, helper, alpha_, transa, transb, left_X, Y);
-  }
-#endif
 
   const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -876,6 +990,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
         ldc,
         device_prop));
+
+    DUMP_ARRAY(T, std::cout, "Offsets 1 output", Y->DataRaw(), Y->Shape().Size(), helper.K());
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, stride_A, stride_B, stride_C, batch_count)) {
@@ -898,7 +1014,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           stride_C,
                                                           static_cast<int>(batch_count),
                                                           device_prop));
-
+    DUMP_ARRAY(T, std::cout, "StridedBatched output", Y->DataRaw(), Y->Shape().Size(), helper.K());
     return Status::OK();
   }
 
@@ -932,6 +1048,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       static_cast<int>(helper.OutputOffsets().size()),
       device_prop));
 
+  DUMP_ARRAY(T, std::cout, "Batched output", Y->DataRaw(), Y->Shape().Size(), helper.K());
   return Status::OK();
 }
 }  // namespace cuda

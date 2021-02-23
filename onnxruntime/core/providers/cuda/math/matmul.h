@@ -18,6 +18,7 @@ namespace cuda {
 struct SparseInfo {
   OpKernel::PrepackParam param_;
   TensorShape shape_;
+  ptrdiff_t K_, N_; // computed in PrePack() and here for verification
   std::vector<IAllocatorUniquePtr<uint8_t>> prepack_buffers_;   // Typed buffer
 #ifdef USE_CUSPARSE
   onnxruntime::optional<cusparseLtHandle_t> handle_lt_;
