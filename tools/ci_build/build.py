@@ -201,6 +201,8 @@ def parse_arguments():
         "--cudnn_home", help="Path to CUDNN home. "
         "Read from CUDNN_HOME environment variable if --use_cuda is true and "
         "--cudnn_home is not specified.")
+    parser.add_argument(
+        "--enable_cuda_line_info", action='store_true', help="Enable CUDA line info.")
 
     # Python bindings
     parser.add_argument(
@@ -715,6 +717,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
+        "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
