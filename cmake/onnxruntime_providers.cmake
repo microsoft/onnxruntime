@@ -97,6 +97,10 @@ endif()
 if(onnxruntime_USE_ROCM)
   set(PROVIDERS_ROCM onnxruntime_providers_rocm)
 endif()
+if (onnxruntime_USE_STVM)
+  set(PROVIDERS_STVM onnxruntime_providers_stvm)
+endif()
+
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -1167,4 +1171,37 @@ if (onnxruntime_USE_ROCM)
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+endif()
+
+if (onnxruntime_USE_STVM)
+  add_definitions(-DUSE_STVM=1)
+  if ( CMAKE_COMPILER_IS_GNUCC )
+    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
+  endif()
+  file (GLOB_RECURSE onnxruntime_providers_stvm_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/stvm/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/stvm/*.cc"
+    )
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_stvm_cc_srcs})
+  add_library(onnxruntime_providers_stvm ${onnxruntime_providers_stvm_cc_srcs})
+  find_library(STVM_LIBS NAMES tvm PATHS "${onnxruntime_STVM_HOME}/build")
+  onnxruntime_add_include_to_target(onnxruntime_providers_stvm onnxruntime_common onnxruntime_framework onnx)
+  set_target_properties(onnxruntime_providers_stvm PROPERTIES LINKER_LANGUAGE CXX)
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/stvm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_stvm PROPERTIES FOLDER "ONNXRuntime")
+  link_directories(onnxruntime_providers_stvm ${onnxruntime_STVM_HOME}/build)
+  add_dependencies(onnxruntime_providers_stvm onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_providers_stvm SYSTEM PUBLIC
+    ${ONNXRUNTIME_ROOT}
+    ${onnxruntime_STVM_HOME}/include
+    ${onnxruntime_STVM_HOME}/3rdparty/dlpack/include
+    ${onnxruntime_STVM_HOME}/3rdparty/dmlc-core/include
+    ${PYTHON_INLCUDE_DIRS})
+  if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(onnxruntime_providers_stvm PRIVATE ${onnxruntime_STVM_HOME}/build/libtvm.dylib)
+  else()
+    target_link_libraries(onnxruntime_providers_stvm PRIVATE ${onnxruntime_STVM_HOME}/build/libtvm.so)
+  endif()
+  set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath,${onnxruntime_STVM_HOME}/build")
+#  target_compile_options(onnxruntime_providers_stvm PRIVATE -Wno-error=sign-compare)
 endif()

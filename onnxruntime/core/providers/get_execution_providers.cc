@@ -74,6 +74,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kStvmExecutionProvider,
+#ifdef USE_STVM
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kVitisAIExecutionProvider,
 #ifdef USE_VITISAI
             true,
@@ -127,6 +135,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
             true,
 #else
             false,
+#endif
+        },
+        {
+          kStvmExecutionProvider,
+#ifdef USE_STVM
+          true,
+#else
+          false,
 #endif
         },
         {kCpuExecutionProvider, true},  // kCpuExecutionProvider is always last

@@ -32,6 +32,14 @@ IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags) {
 }
 #endif
 
+//TODO(vvchernov): update test build and tests
+// #ifdef USE_STVM
+// IExecutionProvider* TestTVMExecutionProvider() {
+//   static StvmExecutionProvider tvm_provider({"llvm"});
+//   return &tvm_provider;
+// }
+// #endif
+
 static void CountOpsInGraphImpl(const Graph& graph, bool recurse_into_subgraphs, std::map<std::string, int>& ops) {
   for (auto& node : graph.Nodes()) {
     std::string key = node.Domain() + (node.Domain().empty() ? "" : ".") + node.OpType();
