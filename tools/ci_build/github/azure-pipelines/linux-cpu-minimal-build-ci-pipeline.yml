@@ -127,6 +127,8 @@ jobs:
     displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
     inputs:
       script: |
+        echo "!globally_allowed_types;bool,float,int8_t,uint8_t" \
+          > $(test_data_directory)/globally_allowed_types.config && \
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
@@ -138,7 +140,8 @@ jobs:
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
               --build-directory /build/with_type_reduction_globally_allowed_types \
               --reduced-ops-config /home/onnxruntimedev/.test_data/globally_allowed_types.config \
-              --enable-type-reduction
+              --enable-type-reduction \
+              --skip-model-tests
       workingDirectory: $(Build.SourcesDirectory)
 
   - script: git checkout -- .
