@@ -879,14 +879,26 @@ void SummonWorkers(PerThread &pt,
   unsigned current_dop = static_cast<unsigned>(ps.tasks.size()) + 1;
   if (n > current_dop) {
     unsigned extra_needed = n - current_dop;
+    for (auto i = 0u; i < extra_needed; i++) {
+      WorkerData& td = worker_data_[i];
+      Queue& q = td.queue;
+      unsigned w_idx;
+      Task t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
+      if (!t) {
+        ps.tasks.push_back({i, w_idx});
+        td.EnsureAwake();
+      }
+    }
 
     // Obtain hints for which worker threads to push the tasks to.
     // This uses a best-effort assessment of which threads are
     // spinning.
+    /*
     std::vector<unsigned> good_hints, alt_hints;
     GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
 
     // Create the additional tasks, and push them to workers.
+    /*
     for (auto i = 0u; i < extra_needed; i++) {
       Task t;
       int q_idx;
@@ -915,7 +927,7 @@ void SummonWorkers(PerThread &pt,
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
-    }
+    }*/
   }
 }
 
@@ -1212,7 +1224,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     pt->thread_id = thread_id;
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
-    SetGoodWorkerHint(thread_id, true /* Is good */);
+    //SetGoodWorkerHint(thread_id, true /* Is good */);
 
     const int log2_spin = 20;
     const int spin_count = allow_spinning_ ? (1ull<<log2_spin) : 0;
@@ -1227,19 +1239,18 @@ int CurrentThreadId() const EIGEN_FINAL {
           // spinning.  This will bias other threads toward pushing work to our queue.
           // In addition, priodically make a best-effort attempt to steal from other
           // threads which are not themselves spinning.
-
-          SetGoodWorkerHint(thread_id, true);
+          //SetGoodWorkerHint(thread_id, true);
           for (int i = 0; i < spin_count && !t && !cancelled_ && !done_; i++) {
             t = ((i+1)%steal_count == 0) ? TrySteal() : q.PopFront();
             onnxruntime::concurrency::SpinPause();
           }
-          SetGoodWorkerHint(thread_id, false);
+          //SetGoodWorkerHint(thread_id, false);
 
           if (!t) {
             // No work passed to us while spinning; make a further full attempt to
             // steal work from other threads prior to blocking.
             if (num_threads_ != 1) {
-              t = Steal(true /* true => check all queues */);
+              t = Steal(true);
             }
             if (!t) {
               td.SetBlocked(
