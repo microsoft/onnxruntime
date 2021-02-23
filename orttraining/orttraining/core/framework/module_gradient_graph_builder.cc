@@ -191,29 +191,27 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
     }
   }
 
+  // YieldOps RequiredGrad attribute specifies the indices of the required gradients.
+  ONNX_NAMESPACE::AttributeProto required_grad;
+  const std::string attribute_name = "RequiredGrad";
+  required_grad.set_name(attribute_name);
+  required_grad.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
+
   // Yield inputs include all user outputs, those require output gradients come first, so Yield Op can use their shapes
   // to infer Op output shapes.
   std::vector<std::string> user_output_names_require_grad;
   std::vector<std::string> user_output_names_no_grad;
   training_graph_info_.backward_output_grad_names.clear();
-  for (const auto& name : training_graph_info_.user_output_names) {
+  for (std::size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
+    const auto& name = training_graph_info_.user_output_names[i];
     std::string grad_name = name + "_grad";
     if (non_backward_user_output_grad_names.find(grad_name) == non_backward_user_output_grad_names.end()) {
       user_output_names_require_grad.emplace_back(name);
       training_graph_info_.backward_output_grad_names.emplace_back(grad_name);
+      required_grad.add_ints(i);
     } else {
       user_output_names_no_grad.emplace_back(name);
     }
-  }
-
-  // Reorder the user outputs.
-  training_graph_info_.user_output_names.clear();
-  for (const auto& name : user_output_names_require_grad) {
-    training_graph_info_.user_output_names.emplace_back(name);
-  }
-
-  for (const auto& name : user_output_names_no_grad) {
-    training_graph_info_.user_output_names.emplace_back(name);
   }
 
   std::vector<NodeArg*> yield_input_node_args;
@@ -225,12 +223,6 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   for (const auto& name : training_graph_info_.backward_output_grad_names) {
     yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
-
-  ONNX_NAMESPACE::AttributeProto required_grad;
-  const std::string attribute_name = "RequiredGrad";
-  required_grad.set_name(attribute_name);
-  required_grad.set_type(ONNX_NAMESPACE::AttributeProto::INT);
-  required_grad.set_i(static_cast<int64_t> (user_output_names_require_grad.size()));
 
   NodeAttributes attributes({{attribute_name, required_grad}});
 

@@ -2223,24 +2223,23 @@ Return true if all elements are true and false otherwise.
       .Attr(
         "RequiredGrad",
         "The number of inputs with require_glad flag set.",
-        AttributeProto::INT,
-        static_cast<int64_t>(0))
+        AttributeProto::INTS)
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         const std::string attribute_name = "RequiredGrad";
-        auto attr_proto = ctx.getAttribute(attribute_name);
-        if (nullptr == attr_proto) {  // attribute not present
+        auto required_grads = ctx.getAttribute(attribute_name);
+        if (nullptr == required_grads) {  // attribute not present
           fail_type_inference("Value of attribute ", attribute_name, " not specified");
         }
-        size_t required_grad = static_cast<size_t> (attr_proto->i());
-        ORT_ENFORCE(ctx.getNumOutputs() == required_grad);
-        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          propagateElemTypeFromInputToOutput(ctx, i, i);
+        ORT_ENFORCE(ctx.getNumOutputs() >= static_cast<size_t> (required_grads->ints_size()));
+        for (size_t i = 0; i < static_cast<size_t> (required_grads->ints_size()); ++i) {
+          size_t j = static_cast<size_t> (required_grads->ints(i));
+          propagateElemTypeFromInputToOutput(ctx, j, i);
           auto typeProto = ctx.getInputType(i);
           if (!hasShape(*typeProto)) {
             continue;
           }
-          propagateShapeFromInputToOutput(ctx, i, i);
+          propagateShapeFromInputToOutput(ctx, j, i);
         }
       });
 }
