@@ -297,10 +297,8 @@ def measure_memory(is_gpu, func):
                 return None
 
     monitor = MemoryMonitor(False)
-    if is_gpu:
-        print(f"GPU memory usage before testing: {monitor.measure_gpu_usage()}")
-    else:
-        print(f"Peak CPU memory usage before testing: {monitor.measure_cpu_usage():.2f} MB")
+
+    memory_before_test = monitor.measure_gpu_usage() if is_gpu else monitor.measure_cpu_usage()
 
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor() as executor:
@@ -312,8 +310,15 @@ def measure_memory(is_gpu, func):
         finally:
             monitor.keep_measuring = False
             max_usage = mem_thread.result()
+
         if is_gpu:
-            print(f"Peak GPU memory usage: {max_usage}")
+            print(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
+            if len(memory_before_test) >= 1 and len(max_usage) >= 1:
+                before = memory_before_test[0]["max_used_MB"]
+                after = max_usage[0]["max_used_MB"]
+                return after - before
+            else:
+                return None
         else:
-            print(f"Peak CPU memory usage: {max_usage:.2f} MB")
-        return max_usage
+            print(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")
+            return max_usage - memory_before_test
