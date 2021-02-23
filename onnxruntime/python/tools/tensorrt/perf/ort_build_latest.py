@@ -1,6 +1,7 @@
 import os
 import subprocess
 import argparse
+import tarfile
 from perf_utils import get_latest_commit_hash
 
 def parse_arguments():
@@ -36,12 +37,11 @@ def main():
 
     cmake_tar = "cmake-3.17.4-Linux-x86_64.tar.gz" 
     if not os.path.exists(cmake_tar):
-        p1 = subprocess.Popen(["wget", "-c", "https://cmake.org/files/v3.17/" + cmake_tar])
-        p1.wait()
-
-    p1 = subprocess.Popen(["tar", "zxvf", cmake_tar])
-    p1.wait()
-
+        p = subprocess.run(["wget", "-c", "https://cmake.org/files/v3.17/" + cmake_tar], check=True)
+    tar = tarfile.open(cmake_tar)
+    tar.extractall()
+    tar.close()
+    
     os.environ["PATH"] = os.path.join(os.path.abspath("cmake-3.17.4-Linux-x86_64"), "bin") + ":" + os.environ["PATH"]
     os.environ["CUDACXX"] = os.path.join(args.cuda_home, "bin", "nvcc") 
 

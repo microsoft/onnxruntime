@@ -616,35 +616,6 @@ def get_trt_version():
     version = re.search(r'nvinfer.*\d\.\d\.\d\-\d', nvidia_strings).group(0)
     return version
  
-# not use for this script temporarily
-def tmp_get_trt_version():
-    p1 = subprocess.Popen(["dpkg", "-l"], stdout=subprocess.PIPE)
-    p2 = subprocess.Popen(["grep", "TensorRT runtime libraries"], stdin=p1.stdout, stdout=subprocess.PIPE)
-    stdout, sterr = p2.communicate()
-    stdout = stdout.decode("ascii").strip()
-
-    if stdout != "":
-        stdout = re.sub('\s+', ' ', stdout)
-        return stdout
-
-    if os.path.exists("/usr/lib/x86_64-linux-gnu/libnvinfer.so"):
-        p1 = subprocess.Popen(["readelf", "-s", "/usr/lib/x86_64-linux-gnu/libnvinfer.so"], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["grep", "version"], stdin=p1.stdout, stdout=subprocess.PIPE)
-        stdout, sterr = p2.communicate()
-        stdout = stdout.decode("ascii").strip()
-        stdout = stdout.split(" ")[-1]
-        return stdout
-
-    elif os.path.exists("/usr/lib/aarch64-linux-gnu/libnvinfer.so"):
-        p1 = subprocess.Popen(["readelf", "-s", "/usr/lib/aarch64-linux-gnu/libnvinfer.so"], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["grep", "version"], stdin=p1.stdout, stdout=subprocess.PIPE)
-        stdout, sterr = p2.communicate()
-        stdout = stdout.decode("ascii").strip()
-        stdout = stdout.split(" ")[-1]
-        return stdout
-
-    return ""
-
 def get_linux_distro(): 
     linux_strings = get_output(["cat", "/etc/os-release"])
     stdout = linux_strings.split("\n")[:2]

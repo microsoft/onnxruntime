@@ -3,7 +3,7 @@ jobs:
   pool: Linux-GPU-TensorRT-Perf 
   variables:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-    image: 'onnxruntime-master'
+    image: 'onnxruntime-master-ep-perf'
   timeoutInMinutes: 2000 
   steps:
 
