@@ -289,7 +289,7 @@ class InferenceSession {
   * @param provider_type specifies the location where the inputs need to be potentially copied.
   * See IOBinding class for more info.
   */
-  common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) const ORT_MUST_USE_RESULT;
+  common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) ORT_MUST_USE_RESULT;
 
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
@@ -654,7 +654,7 @@ class InferenceSession {
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
   std::vector<uint8_t> ort_format_model_bytes_;
-
+  
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };
 

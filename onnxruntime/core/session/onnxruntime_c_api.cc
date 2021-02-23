@@ -615,9 +615,9 @@ ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_ cons
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateIoBinding, _Inout_ const OrtSession* sess, _Outptr_ OrtIoBinding** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out) {
   API_IMPL_BEGIN
-  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
   std::unique_ptr<::onnxruntime::IOBinding> binding;
   auto status = session->NewIOBinding(&binding);
   if (!status.IsOK()) {

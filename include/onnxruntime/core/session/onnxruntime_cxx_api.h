@@ -542,7 +542,7 @@ struct IoBinding : public Base<OrtIoBinding> {
   std::vector<Value> GetOutputValuesHelper(OrtAllocator*) const;
 
  public:
-  explicit IoBinding(const Session& session);
+  explicit IoBinding(Session& session);
   void BindInput(const char* name, const Value&);
   void BindOutput(const char* name, const Value&);
   void BindOutput(const char* name, const MemoryInfo&);

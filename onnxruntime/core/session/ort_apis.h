@@ -211,7 +211,7 @@ ORT_API(void, ReleaseAllocator, _Frees_ptr_opt_ OrtAllocator* allocator);
 
 ORT_API_STATUS_IMPL(RunWithBinding, _Inout_ OrtSession* sess, _In_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
 
-ORT_API_STATUS_IMPL(CreateIoBinding, _Inout_ const OrtSession* sess, _Outptr_ OrtIoBinding** out);
+ORT_API_STATUS_IMPL(CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out);
 ORT_API(void, ReleaseIoBinding, _Frees_ptr_opt_ OrtIoBinding* allocator);
 
 ORT_API_STATUS_IMPL(BindInput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);

@@ -33,7 +33,7 @@ void CheckStatus(OrtStatus* status) {
   }
 }
 
-static std::pair<bool, int> Exists(const std::vector<std::string>& vec, const std::string& to_find) {
+static std::pair<bool, int> Contains(const std::vector<std::string>& vec, const std::string& to_find) {
   auto it = std::find(std::begin(vec), std::end(vec), to_find);
   if (it != std::end(vec)) {
     return {true, it - std::begin(vec)};
@@ -46,7 +46,7 @@ static std::vector<int64_t> GetShape(const Ort::Session& sess,
                                      const std::vector<std::string>& io_names,
                                      const std::string& io_name,
                                      bool is_input) {
-  auto rc = Exists(io_names, io_name);
+  auto rc = Contains(io_names, io_name);
   if (!rc.first) {
     return {};
   }
@@ -59,7 +59,7 @@ static std::vector<int64_t> GetShape(const Ort::Session& sess,
   return retval;
 }
 
-struct Ensemble {
+struct PipelineConfig {
   struct ModelConfig {
     std::string model_name;
     std::string model_file_path;
@@ -145,7 +145,7 @@ struct PipelineSession {
       output_values.reserve(output_names.size());
       // only give those outputs to the user that she has requested
       for (const auto& oname : output_names) {
-        auto rc = Exists(token->ort_value_names, oname);
+        auto rc = Contains(token->ort_value_names, oname);
         if (!rc.first) {
           output_values.push_back(Ort::Value(nullptr));
           continue;  // TODO invalid output name requested; throw error here?
@@ -190,14 +190,14 @@ struct PipelineSession {
       // else search this input name inside state_input_names. If found, get the corresponding output name from
       // state_output_names and the OrtValue associated with it.
       for (const auto& iname : model_config.input_names) {
-        auto rc = Exists(token.ort_value_names, iname);
+        auto rc = Contains(token.ort_value_names, iname);
         if (rc.first) {
           // std::cout << stage_id << "/" << token.step_id << " binding input " << token.ort_value_names[rc.second] << std::endl;
           io_binding.BindInput(token.ort_value_names[rc.second].c_str(), token.ort_values[rc.second]);
           continue;
         }
 
-        rc = Exists(model_config.state_input_names, iname);
+        rc = Contains(model_config.state_input_names, iname);
         if (rc.first) {
           const auto& mapped_oname = model_config.state_output_names[rc.second];
           // std::cout << stage_id << "/" << token.step_id << " state_binding " << iname << " with value of " << mapped_oname << std::endl;
@@ -213,7 +213,7 @@ struct PipelineSession {
       // TODO optimize - pre-allocate buffers for states
       // TODO output length of states needs to be corrected; it should be input_len + past_seq_len
       for (const auto& oname : model_config.output_names) {
-        if (Exists(model_config.state_output_names, oname).first) {
+        if (Contains(model_config.state_output_names, oname).first) {
           auto& mem_allocation = token.step_id % 2 == 0
                                      ? run_state.state_buffer_2_map[oname]
                                      : run_state.state_buffer_1_map[oname];
@@ -237,7 +237,7 @@ struct PipelineSession {
 
         // Assume that the same output name is not present in both the state that needs to be kept
         // and that needs to be passed on to the next layer.
-        auto rc = Exists(model_config.state_output_names, oname);
+        auto rc = Contains(model_config.state_output_names, oname);
         assert(!(rc.first && model_config.output_input_map.count(oname)));
 
         // if this output is present in state_output_names, store it in model_run_state_vec
@@ -291,7 +291,7 @@ struct PipelineSession {
     return nullptr;
   }
 
-  void ParseEnsembleJsonFile(const std::string& ensemble_json_file, Ensemble& ens) {
+  void ParseEnsembleJsonFile(const std::string& ensemble_json_file, PipelineConfig& ens) {
     std::ifstream ifs(ensemble_json_file);
     if (!ifs.good()) {
       throw std::runtime_error("File error");
@@ -301,7 +301,7 @@ struct PipelineSession {
     ens.max_seq_len = j["max_seq_len"];
     int idx = 0;
     for (const auto& m : j["ensemble"]) {
-      Ensemble::ModelConfig cfg;
+      PipelineConfig::ModelConfig cfg;
       std::string model_name = m["model_name"];
       cfg.model_name = model_name;
       cfg.model_file_path = m["model_file_path"];
@@ -340,16 +340,16 @@ struct PipelineSession {
   }
 
   PipelineSession(const std::string& ensemble_json_file, Ort::Env& env) {
-    Ensemble ens;
+    PipelineConfig ens;
     ParseEnsembleJsonFile(ensemble_json_file, ens);
     Init(ens, env);
   }
 
-  PipelineSession(const Ensemble& ens, Ort::Env& env) {
+  PipelineSession(const PipelineConfig& ens, Ort::Env& env) {
     Init(ens, env);
   }
 
-  void Init(const Ensemble& ens0, Ort::Env& env) {
+  void Init(const PipelineConfig& ens0, Ort::Env& env) {
     ens = ens0;  // TODO can avoid copy of ensemble config
 
     Ort::AllocatorWithDefaultOptions ort_allocator;
@@ -437,16 +437,16 @@ struct PipelineSession {
   };
 
   std::vector<SessionState> model_session_state_vec;
-  Ensemble ens;
+  PipelineConfig ens;
 };
 
-// void SetupEnsemble(Ensemble& ens) {
+// void SetupEnsemble(PipelineConfig& ens) {
 //   std::string model_name1 = "mul_1";
 //   std::string model_name2 = "mul_2";
 //   std::string input_name = "X";
 //   std::string output_name = "Y";
 //   std::string model_path = "/bert_ort/pranav/onnxruntime/onnxruntime/test/testdata/mul_1.onnx";
-//   Ensemble::ModelConfig m1{model_name1,
+//   PipelineConfig::ModelConfig m1{model_name1,
 //                            model_path,
 //                            {},
 //                            {},
@@ -455,7 +455,7 @@ struct PipelineSession {
 //                            {},
 //                            2};
 
-//   Ensemble::ModelConfig m2{model_name2,
+//   PipelineConfig::ModelConfig m2{model_name2,
 //                            model_path,
 //                            {},
 //                            {},
@@ -536,7 +536,7 @@ int main(int argc, char* argv[]) {
 
   // setup the pipeline session
   PipelineSession pipeline_session(ensemble_file_name, env);
-  // Ensemble ens;
+  // PipelineConfig ens;
   // SetupEnsemble(ens);
   // PipelineSession pipeline_session(ens, env);
 

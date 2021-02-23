@@ -950,7 +950,7 @@ struct OrtApi {
   // Creates an IoBinding instance that allows one to bind pre-allocated OrtValues
   // to input names. Thus if you want to use a raw on device buffer as input or output
   // you can avoid extra copy during runtime.
-  ORT_API2_STATUS(CreateIoBinding, _Inout_ const OrtSession* sess, _Outptr_ OrtIoBinding** out);
+  ORT_API2_STATUS(CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out);
 
   // Release instance or OrtIoBinding obtained from CreateIoBinding API
   ORT_CLASS_RELEASE(IoBinding);

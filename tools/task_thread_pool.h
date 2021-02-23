@@ -15,7 +15,7 @@
  */
 
 /*
-Changed to use std::packaged_task instead of std::function so exceptions can be propagated.
+Changed to use std::function instead of std::function so exceptions can be propagated.
 
 This also allows the task threadpool to be shared across multiple operators as the caller
 can keep a container of the packaged_task futures to check when they have completed. Calling
@@ -27,7 +27,7 @@ Example of that usage:
   std::vector<std::future<void>> task_results{};
 
   for (...) {
-    std::packaged_task<void()> task{std::bind(lambda, i)};
+    std::function<void()> task{std::bind(lambda, i)};
     task_results.push_back(task.get_future());
     task_thread_pool.RunTask(std::move(task));
   }
@@ -66,8 +66,8 @@ class TaskThreadPool {
  private:
   struct task_element_t {
     bool run_with_id;
-    std::packaged_task<void()> no_id;
-    std::packaged_task<void(std::size_t)> with_id;
+    std::function<void()> no_id;
+    std::function<void(std::size_t)> with_id;
 
     task_element_t(task_element_t&& other) {
       run_with_id = other.run_with_id;
@@ -75,10 +75,10 @@ class TaskThreadPool {
       with_id = std::move(other.with_id);
     }
 
-    explicit task_element_t(std::packaged_task<void()>&& f)
+    explicit task_element_t(std::function<void()>&& f)
         : run_with_id(false), no_id(std::move(f)) {}
 
-    explicit task_element_t(std::packaged_task<void(std::size_t)>&& f)
+    explicit task_element_t(std::function<void(std::size_t)>&& f)
         : run_with_id(true), with_id(std::move(f)) {}
   };
 
@@ -121,7 +121,7 @@ class TaskThreadPool {
     }
   }
 
-  void RunTask(std::packaged_task<void()>&& task) {
+  void RunTask(std::function<void()>&& task) {
     std::unique_lock<OrtMutex> lock(mutex_);
 
     // Set task and signal condition variable so that a worker thread will
@@ -131,7 +131,7 @@ class TaskThreadPool {
     condition_.notify_one();
   }
 
-  void RunTaskWithID(std::packaged_task<void(std::size_t)>&& task) {
+  void RunTaskWithID(std::function<void(std::size_t)>&& task) {
     std::unique_lock<OrtMutex> lock(mutex_);
 
     // Set task and signal condition variable so that a worker thread will
