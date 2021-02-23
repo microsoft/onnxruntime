@@ -41,59 +41,139 @@ set(wasm_onnx_src
   "${ONNXRUNTIME_BINARY_DIR}/external/onnx/onnx/onnx-data.pb.cc"
   "${ONNXRUNTIME_BINARY_DIR}/external/onnx/onnx/onnx-ml.pb.cc"
   "${ONNXRUNTIME_BINARY_DIR}/external/onnx/onnx/onnx-operators-ml.pb.cc"
-  "${REPO_ROOT}/cmake/external/onnx/onnx/checker.cc"
-  "${REPO_ROOT}/cmake/external/onnx/onnx/common/assertions.cc"
-  "${REPO_ROOT}/cmake/external/onnx/onnx/common/path.cc"
-  "${REPO_ROOT}/cmake/external/onnx/onnx/shape_inference/implementation.cc"
 )
-file(GLOB_RECURSE wasm_onnx_defs_src "${REPO_ROOT}/cmake/external/onnx/onnx/defs/*.cc")
+
+if (BUILD_MINIMAL)
+  file(GLOB wasm_onnx_defs_src CONFIGURE_DEPENDS
+    "${REPO_ROOT}/cmake/external/onnx/onnx/defs/data_type_utils.cc"
+  )
+else()
+  list(APPEND wasm_onnx_src
+    "${REPO_ROOT}/cmake/external/onnx/onnx/checker.cc"
+    "${REPO_ROOT}/cmake/external/onnx/onnx/common/assertions.cc"
+    "${REPO_ROOT}/cmake/external/onnx/onnx/common/path.cc"
+    "${REPO_ROOT}/cmake/external/onnx/onnx/shape_inference/implementation.cc"
+  )
+  file(GLOB_RECURSE wasm_onnx_defs_src CONFIGURE_DEPENDS
+    "${REPO_ROOT}/cmake/external/onnx/onnx/defs/*.cc"
+  )
+endif()
 
 # re2 src file reference
-file(GLOB wasm_re2_src "${REPO_ROOT}/cmake/external/re2/re2/*.cc")
-list(APPEND wasm_re2_src "${REPO_ROOT}/cmake/external/re2/util/rune.cc"
-                    "${REPO_ROOT}/cmake/external/re2/util/strutil.cc"
+file(GLOB wasm_re2_src CONFIGURE_DEPENDS
+  "${REPO_ROOT}/cmake/external/re2/re2/*.cc"
+)
+list(APPEND wasm_re2_src
+  "${REPO_ROOT}/cmake/external/re2/util/rune.cc"
+  "${REPO_ROOT}/cmake/external/re2/util/strutil.cc"
 )
 
 if (NOT BUILD_NATIVE)
   # mlas src file reference
-  file(GLOB wasm_mlas_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/mlas/lib/*.cpp")
-  list(APPEND wasm_mlas_src "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/sgemmc.cpp")
+  file(GLOB wasm_mlas_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/mlas/lib/*.cpp"
+  )
+  list(APPEND wasm_mlas_src
+    "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/sgemmc.cpp"
+  )
+  if (BUILD_MINIMAL)
+    # exclude AVX512 in minimal build
+    set_source_files_properties(${wasm_mlas_src} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_UNSUPPORTED")
+  endif()
 endif()
 
 # onnxruntime src file reference
-file(GLOB_RECURSE wasm_contrib_ops_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc")
-file(GLOB_RECURSE wasm_core_common_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/common/*.cc")
-file(GLOB_RECURSE wasm_core_flatbuffers_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/flatbuffers/*.cc")
-file(GLOB_RECURSE wasm_core_framework_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/framework/*.cc")
-file(GLOB wasm_core_graph_contrib_ops_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*.cc")
-file(GLOB wasm_core_graph_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/graph/*.cc")
-file(GLOB_RECURSE wasm_core_optimizer_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/optimizer/*.cc")
-file(GLOB wasm_core_platform_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/platform/*.cc")
-if (BUILD_NATIVE)
-  file(GLOB wasm_core_platform_type_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/platform/windows/*.cc")
-else()
-  file(GLOB wasm_core_platform_type_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/platform/posix/*.cc")
+file(GLOB_RECURSE wasm_contrib_ops_src CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
+)
+file(GLOB_RECURSE wasm_core_common_src CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/common/*.cc"
+)
+file(GLOB_RECURSE wasm_core_flatbuffers_src CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/flatbuffers/*.cc"
+)
+
+file(GLOB_RECURSE wasm_core_framework_src CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/framework/*.cc"
+)
+if (BUILD_MINIMAL)
+  list(REMOVE_ITEM wasm_core_framework_src
+    "${ONNXRUNTIME_ROOT}/core/framework/provider_bridge_ort.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.cc"
+  )
 endif()
-file(GLOB_RECURSE wasm_core_providers_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc")
+
+if (NOT BUILD_MINIMAL)
+file(GLOB wasm_core_graph_contrib_ops_src CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*.cc"
+)
+endif()
+
+file(GLOB wasm_core_graph_src CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/graph/*.cc"
+)
+if (BUILD_MINIMAL)
+  list(REMOVE_ITEM wasm_core_graph_src
+    "${ONNXRUNTIME_ROOT}/core/graph/schema_registry.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/function.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/graph_utils.cc"
+  )
+endif()
+
+if (BUILD_MINIMAL)
+  set(wasm_core_optimizer_src
+    "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer.cc"
+  )
+else()
+  file(GLOB_RECURSE wasm_core_optimizer_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/optimizer/*.cc"
+  )
+endif()
+
+file(GLOB wasm_core_platform_src CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/platform/*.cc"
+)
+if (BUILD_NATIVE)
+  file(GLOB wasm_core_platform_type_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/platform/windows/*.cc"
+  )
+else()
+  file(GLOB wasm_core_platform_type_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/platform/posix/*.cc"
+  )
+endif()
+
+file(GLOB_RECURSE wasm_core_providers_src CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
+)
 list(APPEND wasm_core_providers_src
   "${ONNXRUNTIME_ROOT}/core/providers/get_execution_providers.cc"
 )
-file(GLOB_RECURSE wasm_core_session_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/session/*.cc")
-file(GLOB_RECURSE wasm_core_util_src CONFIGURE_DEPENDS "${ONNXRUNTIME_ROOT}/core/util/*.cc")
+if (BUILD_MINIMAL)
+  list(FILTER wasm_core_providers_src EXCLUDE REGEX
+    ".*/ml/.*"
+  )
+endif()
+
+file(GLOB_RECURSE wasm_core_session_src CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/session/*.cc"
+)
+file(GLOB_RECURSE wasm_core_util_src CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/util/*.cc"
+)
+
+set(wasm_core_wasm_src
+  "${ONNXRUNTIME_ROOT}/wasm/example.cc" 
+)
 
 if (BUILD_NATIVE)
   list(APPEND wasm_core_platform_type_src
     "${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry.cc"
   )
-  set(wasm_core_wasm_src
-    "${ONNXRUNTIME_ROOT}/wasm/example_native.cc" 
-  )
 else()
   list(REMOVE_ITEM wasm_core_platform_type_src
     "${ONNXRUNTIME_ROOT}/core/platform/posix/ort_mutex.cc"
-  )
-  set(wasm_core_wasm_src
-    "${ONNXRUNTIME_ROOT}/wasm/example_wasm.cc" 
   )
 endif()
 
@@ -129,11 +209,13 @@ target_compile_definitions(onnxruntime_wasm PUBLIC
   -D_USE_MATH_DEFINES
   -D__ONNX_DISABLE_STATIC_REGISTRATION
 )
+
 if (BUILD_NATIVE)
   target_compile_definitions(onnxruntime_wasm PUBLIC
     -DPLATFORM_WINDOWS
     -DNOGDI
     -DNOMINMAX
+    -DBUILD_NATIVE
   )
 else()
   target_compile_definitions(onnxruntime_wasm PUBLIC
@@ -145,6 +227,24 @@ else()
   )
 
   set(CMAKE_CXX_FLAGS_DEBUG "-g4 --source-map-base http://localhost:8000/")
+
+  if (BUILD_MINIMAL)
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-unwind-tables -fno-asynchronous-unwind-tables")
+    else()
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables")
+    endif()
+  endif()
+endif()
+
+if (BUILD_MINIMAL)
+  target_compile_definitions(onnxruntime_wasm PUBLIC
+    -DORT_MINIMAL_BUILD
+    -DENABLE_ORT_FORMAT_LOAD
+    -DORT_NO_EXCEPTIONS
+    -DMLAS_NO_EXCEPTION
+    -DDISABLE_ML_OPS
+  )
 endif()
 
 # add all these include directory to the WebAssembly
