@@ -720,26 +720,28 @@ def testORTTrainerMixedPrecisionLossScaler(seed, device, expected_loss, fetches)
     assert trainer._onnx_model is not None
 
 
-@pytest.fixture(scope="function")
-def _orttrainer_recompute_expected_loss(request):
+def _recompute_data():
     device_capability_major = torch.cuda.get_device_capability()[0]
-    if device_capability_major == 6 or device_capability_major == 7: # V100 for Dev machine
-        return [10.5732, 10.4407, 10.3701, 10.2778, 10.1824]
-    elif device_capability_major == 5: # M60 for CI machines
-        return [10.56341 , 10.456358, 10.355879, 10.285801, 10.234793]
-    else:
-        raise('Unsupported device for test')
-@pytest.mark.parametrize("attn_dropout, gelu, transformer_layer, number_layers, _orttrainer_recompute_expected_loss",[
-    (False, False, False, 0, '_orttrainer_recompute_expected_loss'),    # no recompute
-    (True, False, False, 0, '_orttrainer_recompute_expected_loss'),     # attn_dropout recompute
-    (False, True, False, 0, '_orttrainer_recompute_expected_loss'),     # gelu recompute
-    (False, False, True, 0, '_orttrainer_recompute_expected_loss'),     # transformer_layer recompute
-    (False, False, True, 1, '_orttrainer_recompute_expected_loss'),     # transformer_layer recompute with 1 layer
-], indirect=['_orttrainer_recompute_expected_loss'])
-def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers, _orttrainer_recompute_expected_loss):
-    # Fetch expected loss from fixture and create friendly name
-    expected_loss = _orttrainer_recompute_expected_loss
-
+    if device_capability_major == 7:    # V100 for Dev machine
+        expected_loss = [10.5732, 10.4407, 10.3701, 10.2778, 10.1824]
+        return [
+            (False, False, False, 0, expected_loss),    # no recompute
+            (True, False, False, 0, expected_loss),     # attn_dropout recompute
+            (False, True, False, 0, expected_loss),     # gelu recompute
+            (False, False, True, 0, expected_loss),     # transformer_layer recompute
+            (False, False, True, 1, expected_loss),     # transformer_layer recompute with 1 layer
+        ]
+    elif device_capability_major == 5:  # M60 for CI machines
+        expected_loss = [10.56341 , 10.456358, 10.355879, 10.285801, 10.234793]
+        return [
+            (False, False, False, 0, expected_loss),    # no recompute
+            (True, False, False, 0, expected_loss),     # attn_dropout recompute
+            (False, True, False, 0, expected_loss),     # gelu recompute
+            (False, False, True, 0, expected_loss),     # transformer_layer recompute
+            (False, False, True, 1, expected_loss),     # transformer_layer recompute with 1 layer
+        ]
+@pytest.mark.parametrize("attn_dropout, gelu, transformer_layer, number_layers, expected_loss", _recompute_data())
+def testORTTrainerRecompute(attn_dropout, gelu, transformer_layer, number_layers, expected_loss):
     seed = 321
     device = 'cuda'
     rtol = 1e-3
@@ -1476,60 +1478,32 @@ def testTrainingGraphExport(debug_files):
                 assert not os.path.isfile(path)
 
 
-@pytest.fixture(scope="function")
-def _orttrainer_adam_max_norm_clip_expected_loss(request):
-    '''Return expected loss based on seed and max_norm_clip of the test
-
-    IMPORTANT: `seed` and `max_norm_clip` *must* match
-                values passed to @pytest.mark.parametrize([])
-    '''
-    seed = request.getfixturevalue('seed')
-    max_norm_clip = request.getfixturevalue('max_norm_clip')
+def _adam_max_norm_clip_data():
     device_capability_major = torch.cuda.get_device_capability()[0]
-    if device_capability_major == 6 or device_capability_major == 7: # V100 for Dev machine
-        if seed == 0 and max_norm_clip == 1.0:
-            return [10.596329, 10.087329, 9.625324, 9.254117, 8.914067,\
-                8.557245, 8.296672, 8.040311, 7.780754, 7.499548, 7.229341, 7.036769]
-        elif seed == 0 and max_norm_clip == 0.1:
-            return [10.596329, 10.088068, 9.626670, 9.256137, 8.916809, 8.560838, 8.301097,\
-                8.045413, 7.786527, 7.505644, 7.236132, 7.043610]
-        elif seed == 42 and max_norm_clip == 1.0:
-            return [10.659752, 10.149531, 9.646378, 9.273719, 8.938648,\
-                8.595006, 8.344718, 8.100259, 7.828771, 7.541266, 7.269467, 7.083140]
-        elif seed == 42 and max_norm_clip == 0.1:
-            return [10.659752, 10.150211, 9.647715, 9.275835, 8.941610, 8.598876, 8.349401,\
-                8.105709, 7.834774, 7.547812, 7.276530, 7.090215]
-        else:
-            raise RuntimeError('Illegal combination of seed and max_norm_clip')
-    elif device_capability_major == 5: # M60 for CI machines
-        if seed == 0 and max_norm_clip == 1.0:
-            return [10.564176,  9.97518 ,  9.474583,  9.076513,  8.724233,  8.440754,\
-                    8.156107,  7.905789,  7.683374,  7.420595,  7.156939,  6.914139]
-        elif seed == 0 and max_norm_clip == 0.1:
-            return [10.564176,  9.975904,  9.475933,  9.078633,  8.727232,  8.444615,\
-                    8.160932,  7.911339,  7.689524,  7.427308,  7.164138,  6.921518]
-        elif seed == 42 and max_norm_clip == 1.0:
-            return [10.660578, 10.027208,  9.518457,  9.10457 ,  8.767458,  8.469093,\
-                    8.207001,  7.92541 ,  7.655277,  7.434964,  7.155968,  6.924634]
-        elif seed == 42 and max_norm_clip == 0.1:
-            return [10.660578, 10.027987,  9.519927,  9.106762,  8.770505,  8.473034,\
-                    8.211944,  7.931111,  7.661622,  7.441899,  7.163355,  6.932114]
-        else:
-            raise RuntimeError('Illegal combination of seed and max_norm_clip')
-    else:
-        raise RuntimeError('Unsupported device for test')
-@pytest.mark.parametrize("seed,device,max_norm_clip,gradient_accumulation_steps,total_steps,"\
-                         "_orttrainer_adam_max_norm_clip_expected_loss", [
-    (0, 'cuda', 1.0, 1, 12, '_orttrainer_adam_max_norm_clip_expected_loss'),
-    (0, 'cuda', 0.1, 1, 12, '_orttrainer_adam_max_norm_clip_expected_loss'),
-    (42, 'cuda', 1.0, 1, 12, '_orttrainer_adam_max_norm_clip_expected_loss'),
-    (42, 'cuda', 0.1, 1, 12, '_orttrainer_adam_max_norm_clip_expected_loss'),
-], indirect=['_orttrainer_adam_max_norm_clip_expected_loss'])
-def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps,
-                                  total_steps, _orttrainer_adam_max_norm_clip_expected_loss):
-    # Fetch expected loss from fixture and create friendly name
-    expected_loss = _orttrainer_adam_max_norm_clip_expected_loss
-
+    if device_capability_major == 7:    # V100 for Dev machine
+        return [
+            (0, 'cuda', 1.0, 1, 12, [10.596329, 10.087329, 9.625324, 9.254117, 8.914067,\
+                8.557245, 8.296672, 8.040311, 7.780754, 7.499548, 7.229341, 7.036769]),
+            (0, 'cuda', 0.1, 1, 12, [10.596329, 10.088068, 9.626670, 9.256137, 8.916809,\
+                8.560838, 8.301097, 8.045413, 7.786527, 7.505644, 7.236132, 7.043610]),
+            (42, 'cuda', 1.0, 1, 12, [10.659752, 10.149531, 9.646378, 9.273719, 8.938648,\
+                8.595006, 8.344718, 8.100259, 7.828771, 7.541266, 7.269467, 7.083140]),
+            (42, 'cuda', 0.1, 1, 12, [10.659752, 10.150211, 9.647715, 9.275835, 8.941610,\
+                8.598876, 8.349401, 8.105709, 7.834774, 7.547812, 7.276530, 7.090215]),
+        ]
+    elif device_capability_major == 5:  # M60 for CI machines (Python Packaging Pipeline)
+        return [
+            (0, 'cuda', 1.0, 1, 12, [10.564176,  9.97518 ,  9.474583,  9.076513,  8.724233,  8.440754,\
+                    8.156107,  7.905789,  7.683374,  7.420595,  7.156939,  6.914139]),
+            (0, 'cuda', 0.1, 1, 12, [10.564176,  9.975904,  9.475933,  9.078633,  8.727232,  8.444615,\
+                    8.160932,  7.911339,  7.689524,  7.427308,  7.164138,  6.921518]),
+            (42, 'cuda', 1.0, 1, 12, [10.660578, 10.027208,  9.518457,  9.10457 ,  8.767458,  8.469093,\
+                    8.207001,  7.92541 ,  7.655277,  7.434964,  7.155968,  6.924634]),
+            (42, 'cuda', 0.1, 1, 12, [10.660578, 10.027987,  9.519927,  9.106762,  8.770505,  8.473034,\
+                    8.211944,  7.931111,  7.661622,  7.441899,  7.163355,  6.932114]),
+        ]
+@pytest.mark.parametrize("seed,device,max_norm_clip,gradient_accumulation_steps,total_steps,expected_loss", _adam_max_norm_clip_data())
+def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps, total_steps, expected_loss):
     rtol = 1e-5
     torch.manual_seed(seed)
     set_seed(seed)
@@ -1553,60 +1527,32 @@ def testORTTrainerAdamMaxNormClip(seed, device, max_norm_clip, gradient_accumula
     _test_helpers.assert_model_outputs(expected_loss, actual_loss, rtol=rtol)
 
 
-@pytest.fixture(scope="function")
-def _orttrainer_lamb_max_norm_clip_expected_loss(request):
-    '''Return expected loss based on seed and max_norm_clip of the test
-
-    IMPORTANT: `seed` and `max_norm_clip` *must* match
-                values passed to @pytest.mark.parametrize([])
-    '''
-    seed = request.getfixturevalue('seed')
-    max_norm_clip = request.getfixturevalue('max_norm_clip')
+def _lamb_max_norm_clip_data():
     device_capability_major = torch.cuda.get_device_capability()[0]
-    if device_capability_major == 6 or device_capability_major == 7:    # V100 for Dev machine
-        if seed == 0 and max_norm_clip == 1.0:
-            return [10.596329, 10.509530, 10.422451, 10.359101, 10.285673, 10.200603,\
-                10.152860, 10.106999, 10.033828, 9.965749, 9.895924, 9.854723]
-        elif seed == 0 and max_norm_clip == 0.1:
-            return [10.596329, 10.474221, 10.350412, 10.253196, 10.148172, 10.032470,\
-                9.958271, 9.885362, 9.788476, 9.696474, 9.601951, 9.542482]
-        elif seed == 42 and max_norm_clip == 1.0:
-            return [10.659752, 10.565927, 10.437677, 10.387601, 10.302234, 10.217105,\
-                10.170007, 10.143104, 10.093051, 10.002419, 9.960327, 9.895797]
-        elif seed == 42 and max_norm_clip == 0.1:
-            return [10.659752, 10.531717, 10.367162, 10.284177, 10.168813, 10.053536,\
-                9.980052, 9.926860, 9.852230, 9.738342, 9.673130, 9.590945]
-        else:
-            raise RuntimeError('Illegal combination of seed and max_norm_clip')
-    elif device_capability_major == 5:  # M60 for CI machines
-        if seed == 0 and max_norm_clip == 1.0:
-            return [10.564176, 10.429815, 10.331507, 10.261825, 10.19336 , 10.110986,\
-                    10.041771,  9.990074,  9.985901,  9.892414,  9.819457,  9.753627]
-        elif seed == 0 and max_norm_clip == 0.1:
-            return [10.564176, 10.391491, 10.253088, 10.146585, 10.044328,  9.930671,\
-                    9.830513,  9.752279,  9.72234 ,  9.606323,  9.506898,  9.417118]
-        elif seed == 42 and max_norm_clip == 1.0:
-            return [10.660578, 10.510471, 10.431763, 10.358577, 10.301462, 10.209934,\
-                    10.167318, 10.03529 ,  9.995482,  9.938999,  9.875689,  9.80955 ]
-        elif seed == 42 and max_norm_clip == 0.1:
-            return [10.660578, 10.471846, 10.352203, 10.241209, 10.149426, 10.026606,\
-                    9.952093,  9.792846,  9.726216,  9.645785,  9.556379,  9.467741]
-        else:
-            raise RuntimeError('Illegal combination of seed and max_norm_clip')
-    else:
-        raise RuntimeError('Unsupported device for test')
-@pytest.mark.parametrize("seed,device,max_norm_clip, gradient_accumulation_steps,total_steps,"\
-                         "_orttrainer_lamb_max_norm_clip_expected_loss", [
-    (0, 'cuda', 1.0, 1, 12, '_orttrainer_lamb_max_norm_clip_expected_loss'),
-    (0, 'cuda', 0.1, 1, 12, '_orttrainer_lamb_max_norm_clip_expected_loss'),
-    (42, 'cuda', 1.0, 1, 12, '_orttrainer_lamb_max_norm_clip_expected_loss'),
-    (42, 'cuda', 0.1, 1, 12, '_orttrainer_lamb_max_norm_clip_expected_loss')
-], indirect=['_orttrainer_lamb_max_norm_clip_expected_loss'])
-def testORTTrainerLambMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps,
-                                  total_steps, _orttrainer_lamb_max_norm_clip_expected_loss):
-    # Fetch expected loss from fixture and create friendly name
-    expected_loss = _orttrainer_lamb_max_norm_clip_expected_loss
-
+    if device_capability_major == 7:    # V100 for Dev machine
+        return [
+            (0, 'cuda', 1.0, 1, 12, [10.596329, 10.509530, 10.422451, 10.359101, 10.285673, 10.200603,\
+                10.152860, 10.106999, 10.033828, 9.965749, 9.895924, 9.854723]),
+            (0, 'cuda', 0.1, 1, 12, [10.596329, 10.474221, 10.350412, 10.253196, 10.148172, 10.032470,\
+                9.958271, 9.885362, 9.788476, 9.696474, 9.601951, 9.542482]),
+            (42, 'cuda', 1.0, 1, 12, [10.659752, 10.565927, 10.437677, 10.387601, 10.302234, 10.217105,\
+                10.170007, 10.143104, 10.093051, 10.002419, 9.960327, 9.895797]),
+            (42, 'cuda', 0.1, 1, 12, [10.659752, 10.531717, 10.367162, 10.284177, 10.168813, 10.053536,\
+                9.980052, 9.926860, 9.852230, 9.738342, 9.673130, 9.590945]),
+        ]
+    elif device_capability_major == 5:  # M60 for CI machines (Python Packaging Pipeline)
+        return [
+            (0, 'cuda', 1.0, 1, 12, [10.564176, 10.429815, 10.331507, 10.261825, 10.19336 , 10.110986,\
+                    10.041771,  9.990074,  9.985901,  9.892414,  9.819457,  9.753627]),
+            (0, 'cuda', 0.1, 1, 12, [10.564176, 10.391491, 10.253088, 10.146585, 10.044328,  9.930671,\
+                    9.830513,  9.752279,  9.72234 ,  9.606323,  9.506898,  9.417118]),
+            (42, 'cuda', 1.0, 1, 12, [10.660578, 10.510471, 10.431763, 10.358577, 10.301462, 10.209934,\
+                    10.167318, 10.03529 ,  9.995482,  9.938999,  9.875689,  9.80955 ]),
+            (42, 'cuda', 0.1, 1, 12, [10.660578, 10.471846, 10.352203, 10.241209, 10.149426, 10.026606,\
+                    9.952093,  9.792846,  9.726216,  9.645785,  9.556379,  9.467741]),
+        ]
+@pytest.mark.parametrize("seed,device,max_norm_clip, gradient_accumulation_steps,total_steps,expected_loss", _lamb_max_norm_clip_data())
+def testORTTrainerLambMaxNormClip(seed, device, max_norm_clip, gradient_accumulation_steps, total_steps, expected_loss):
     rtol = 1e-3
     torch.manual_seed(seed)
     set_seed(seed)
