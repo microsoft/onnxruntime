@@ -201,14 +201,14 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   // to infer Op output shapes.
   std::vector<std::string> user_output_names_require_grad;
   std::vector<std::string> user_output_names_no_grad;
-  training_graph_info_.backward_output_grad_names.clear();
+  training_graph_info_.backward_output_grad_names_map.clear();
   for (std::size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
     const auto& name = training_graph_info_.user_output_names[i];
     std::string grad_name = name + "_grad";
     if (non_backward_user_output_grad_names.find(grad_name) == non_backward_user_output_grad_names.end()) {
       user_output_names_require_grad.emplace_back(name);
-      training_graph_info_.backward_output_grad_names.emplace_back(grad_name);
-      required_grad.add_ints(i);
+      training_graph_info_.backward_output_grad_names_map.insert(std::make_pair(grad_name, i));
+      required_grad.add_ints(static_cast<int64_t>(i));
     } else {
       user_output_names_no_grad.emplace_back(name);
     }
@@ -220,8 +220,8 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
     yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
 
-  for (const auto& name : training_graph_info_.backward_output_grad_names) {
-    yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(name));
+  for (const auto& element : training_graph_info_.backward_output_grad_names_map) {
+    yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(element.first));
   }
 
   NodeAttributes attributes({{attribute_name, required_grad}});
