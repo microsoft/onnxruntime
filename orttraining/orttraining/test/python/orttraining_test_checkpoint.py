@@ -59,8 +59,6 @@ backend_api_file = os.path.join('checkpoint', 'orttraining_test_backend_api.py')
 
 single_node_full_precision_path = os.path.join(checkpoint_dir, 'single_node', 'full_precision')
 single_node_mixed_precision_path = os.path.join(checkpoint_dir, 'single_node', 'mixed_precision')
-distributed_zero_full_precision_adam_path = os.path.join(checkpoint_dir, 'distributed_zero', 'full_precision', 'adam')
-distributed_zero_mixed_precision_adam_path = os.path.join(checkpoint_dir, 'distributed_zero', 'mixed_precision', 'adam')
 distributed_zero_full_precision_lamb_path = os.path.join(checkpoint_dir, 'distributed_zero', 'full_precision', 'lamb')
 distributed_zero_mixed_precision_lamb_path = os.path.join(checkpoint_dir, 'distributed_zero', 'mixed_precision', 'lamb')
 
@@ -69,8 +67,6 @@ single_node_full_precision_bart_path = os.path.join(checkpoint_dir, 'bart', 'sin
 single_node_mixed_precision_bart_path = os.path.join(checkpoint_dir, 'bart', 'single_node', 'mixed_precision')
 distributed_zero_full_precision_lamb_bart_path = os.path.join(checkpoint_dir, 'bart', 'distributed_zero', 'full_precision', 'lamb')
 distributed_zero_mixed_precision_lamb_bart_path = os.path.join(checkpoint_dir, 'bart', 'distributed_zero', 'mixed_precision', 'lamb')
-distributed_megatron_full_precision_adam_path = os.path.join(checkpoint_dir, 'bart', 'distributed_megatron', 'full_precision', 'adam')
-distributed_megatron_mixed_precision_adam_path = os.path.join(checkpoint_dir, 'bart', 'distributed_megatron', 'mixed_precision', 'adam')
 distributed_megatron_full_precision_lamb_path = os.path.join(checkpoint_dir, 'bart', 'distributed_megatron', 'full_precision', 'lamb')
 distributed_megatron_mixed_precision_lamb_path = os.path.join(checkpoint_dir, 'bart', 'distributed_megatron', 'mixed_precision', 'lamb')
 distributed_zero_megatron_full_precision_adam_path = os.path.join(checkpoint_dir, 'bart', 'distributed_zero_megatron', 'full_precision', 'adam')
@@ -81,8 +77,6 @@ distributed_zero_megatron_mixed_precision_lamb_path = os.path.join(checkpoint_di
 # save all checkpoint files (pre-checkpoint)
 _single_run(save_checkpoint_file, 'single_node_full_precision', single_node_full_precision_path)
 _single_run(save_checkpoint_file, 'single_node_mixed_precision', single_node_mixed_precision_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_full_precision_adam', distributed_zero_full_precision_adam_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_mixed_precision_adam', distributed_zero_mixed_precision_adam_path)
 _distributed_run(save_checkpoint_file, 'distributed_zero_full_precision_lamb', distributed_zero_full_precision_lamb_path)
 _distributed_run(save_checkpoint_file, 'distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
 
@@ -91,12 +85,8 @@ _single_run(save_checkpoint_file, 'single_node_mixed_precision_bart', single_nod
 _distributed_run(save_checkpoint_file, 'distributed_zero_full_precision_lamb_bart', distributed_zero_full_precision_lamb_bart_path)
 _distributed_run(save_checkpoint_file, 'distributed_zero_mixed_precision_lamb_bart', distributed_zero_mixed_precision_lamb_bart_path)
 
-_distributed_run(save_checkpoint_file, 'distributed_megatron_full_precision_adam', distributed_megatron_full_precision_adam_path)
-_distributed_run(save_checkpoint_file, 'distributed_megatron_mixed_precision_adam', distributed_megatron_mixed_precision_adam_path)
 _distributed_run(save_checkpoint_file, 'distributed_megatron_full_precision_lamb', distributed_megatron_full_precision_lamb_path)
 _distributed_run(save_checkpoint_file, 'distributed_megatron_mixed_precision_lamb', distributed_megatron_mixed_precision_lamb_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_megatron_full_precision_adam', distributed_zero_megatron_full_precision_adam_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_megatron_mixed_precision_adam', distributed_zero_megatron_mixed_precision_adam_path)
 _distributed_run(save_checkpoint_file, 'distributed_zero_megatron_full_precision_lamb', distributed_zero_megatron_full_precision_lamb_path)
 _distributed_run(save_checkpoint_file, 'distributed_zero_megatron_mixed_precision_lamb', distributed_zero_megatron_mixed_precision_lamb_path)
 
