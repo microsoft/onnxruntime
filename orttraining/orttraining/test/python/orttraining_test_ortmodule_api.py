@@ -155,17 +155,17 @@ def test_forward_call_multiple_positional_arguments():
     output = model(x, y)
     assert output is not None
 
-def test_forward_call_positional_arguments():
-    device = 'cuda'
+# def test_forward_call_positional_arguments():
+#     device = 'cuda'
 
-    N, D_in, H, D_out = 64, 784, 500, 10
-    model = NeuralNetPositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
-    model = ORTModule(model)
-    args = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
+#     N, D_in, H, D_out = 64, 784, 500, 10
+#     model = NeuralNetPositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
+#     model = ORTModule(model)
+#     args = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
 
-    # Make sure model runs without any exception
-    output = model(*args)
-    assert output is not None
+#     # Make sure model runs without any exception
+#     output = model(*args)
+#     assert output is not None
 
 def test_forward_call_keyword_arguments():
     device = 'cuda'
