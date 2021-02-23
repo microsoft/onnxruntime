@@ -91,6 +91,17 @@ class NeuralNetPositionalAndKeywordArguments(torch.nn.Module):
         out = self.fc2(out)
         return out
 
+class NeuralNetSimplePositionalAndKeywordArguments(torch.nn.Module):
+    def __init__(self):
+        super(NeuralNetSimplePositionalAndKeywordArguments, self).__init__()
+        self.a = torch.nn.Parameter(torch.FloatTensor([-1., 1.]))
+    def forward(self, x, y=None, z=None):
+        if z is not None:
+            return torch.mean(self.a) + x + 4 * z
+        if y is not None:
+            return torch.mean(self.a) + 3 * y
+        return torch.mean(self.a) + x
+
 def _get_bert_for_sequence_classification_model(device):
     """Returns the BertForSequenceClassification pretrained model"""
 
@@ -184,6 +195,40 @@ def test_forward_call_positional_and_keyword_arguments():
     # Make sure model runs without any exception
     output = model(a, x, y, z)
     assert output is not None
+
+@pytest.mark.parametrize("forward_statement", [
+    "model(one)",
+    "model(x=one)",
+    "model(one, None, None)",
+    "model(one, None, z=None)",
+    "model(one, None)",
+    "model(x=one, y=one)",
+    "model(y=one, x=one)",
+    "model(y=one, z=None, x=one)",
+    "model(one, None, z=one)",
+    "model(x=one, z=one)",
+    "model(one, z=one)",
+    "model(one, z=one, y=one)",
+    "model(one, one, one)",
+    "model(one, None, one)",
+    "model(z=one, x=one, y=one)",
+    "model(z=one, x=one, y=None)"
+])
+def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_statement):
+    one = torch.FloatTensor([1])
+
+    model = NeuralNetSimplePositionalAndKeywordArguments()
+    pytorch_result = eval(forward_statement + ".item()")
+
+    model = NeuralNetSimplePositionalAndKeywordArguments()
+    model = ORTModule(model)
+    ortmodule_result = eval(forward_statement)
+    # TODO: remove backward call when the issue with multiple call to forward fixed.
+    ortmodule_result.backward()
+    ortmodule_result = ortmodule_result.item()
+    ortmodule_result_again = eval(forward_statement + ".item()")
+    assert ortmodule_result == ortmodule_result_again
+    assert pytorch_result == ortmodule_result
 
 def test_model_cuda():
     original_device = 'cpu'
@@ -439,22 +484,18 @@ def test_gpu_reserved_memory_with_torch_no_grad():
     model_with_no_grad(x, y, None, None, None, None, z)
     mem_reserved_after_export_with_torch_no_grad = torch.cuda.memory_reserved(device)
     del model_with_no_grad
-    torch.cuda.empty_cache()
     mem_reserved_after_cache_empty = torch.cuda.memory_reserved(device)
-    assert mem_reserved_before_export == mem_reserved_after_cache_empty
 
-    # Create another model and get the memory_reserved when torch.no_grad and torch.cuda.empty_cache
-    # has not been enabled after export
+    # Create another model and get the memory_reserved when torch.no_grad has not been enabled after export.
     model_without_no_grad = _get_bert_for_sequence_classification_model(device)
     model_without_no_grad = ORTModule(model_without_no_grad)
     mem_reserved_after_export_without_torch_no_grad = 0
 
-    with patch('torch.no_grad'), patch('torch.cuda.empty_cache'):
+    with patch('torch.no_grad'):
         model_without_no_grad(x, y, None, None, None, None, z)
         mem_reserved_after_export_without_torch_no_grad = torch.cuda.memory_reserved(device)
 
     assert mem_reserved_after_export_with_torch_no_grad < mem_reserved_after_export_without_torch_no_grad
-    assert mem_reserved_before_export == mem_reserved_after_export_with_torch_no_grad
 
 @pytest.mark.parametrize("return_type, device", [
     (dict, 'cpu'),
