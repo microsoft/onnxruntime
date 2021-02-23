@@ -59,6 +59,8 @@ backend_api_file = os.path.join('checkpoint', 'orttraining_test_backend_api.py')
 
 single_node_full_precision_path = os.path.join(checkpoint_dir, 'single_node', 'full_precision')
 single_node_mixed_precision_path = os.path.join(checkpoint_dir, 'single_node', 'mixed_precision')
+data_parallelism_full_precision_path = os.path.join(checkpoint_dir, 'data_parallelism', 'full_precision')	
+data_parallelism_mixed_precision_path = os.path.join(checkpoint_dir, 'data_parallelism', 'mixed_precision')
 distributed_zero_full_precision_lamb_path = os.path.join(checkpoint_dir, 'distributed_zero', 'full_precision', 'lamb')
 distributed_zero_mixed_precision_lamb_path = os.path.join(checkpoint_dir, 'distributed_zero', 'mixed_precision', 'lamb')
 
