@@ -1790,14 +1790,14 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions
 
   // background thread has completed without hitting Yield Op
   if (!forward_status.IsOK()) {
-    std::thread bg_thread;
+    std::thread thread;
     {
       std::lock_guard<std::mutex> lock(bg_threads_mutex_);
-      std::swap(bg_thread, bg_threads_[run_id]);
+      std::swap(thread, bg_threads_[run_id]);
       bg_threads_.erase(run_id);
     }
-    ORT_ENFORCE(bg_thread.joinable());
-    bg_thread.join();
+    ORT_ENFORCE(thread.joinable());
+    thread.join();
     onnxruntime::contrib::OrtTasks::GetInstance().RemoveTask(run_id);
     return forward_status;
   }
