@@ -33,6 +33,29 @@ using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
+static SessionOptions session_options = {
+    ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+    ExecutionOrder::PRIORITY_BASED,    //execution_order
+    false,                             //enable_profiling
+    ORT_TSTR(""),                      //optimized_model_filepath
+    true,                              //enable_mem_pattern
+    true,                              //enable_cpu_mem_arena
+    ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
+    "",                                //session_logid
+    -1,                                //session_log_severity_level
+    0,                                 //session_log_verbosity_level
+    5,                                 //max_num_graph_transformation_steps
+    TransformerLevel::Level1,          //graph_optimization_level
+    {},                                //intra_op_param
+    {},                                //inter_op_param
+    {},                                //free_dimension_overrides
+    true,                              //use_per_session_threads
+    true,                              //thread_pool_allow_spinning
+    false,                             //use_deterministic_compute
+    {},                                //session_configurations
+    {},                                // initializers_to_share_map
+}; 
+
 struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
   int max_predictions_per_sequence = 80;
@@ -109,6 +132,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("seed", "Random seed.", cxxopts::value<int64_t>()->default_value("-1"))
+      ("use_deterministic_compute", "Whether to enable deterministic compute.", cxxopts::value<bool>()->default_value("false"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("use_bfloat16", "Whether to use BFloat16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("enable_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
@@ -469,6 +493,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       std::cout << "Random seed is set to: " << seed << std::endl;
     }
 
+    session_options.use_deterministic_compute = flags["use_deterministic_compute"].as<bool>();
+
     params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
     params.attn_dropout_recompute = flags["attn_dropout_recompute"].as<bool>();
     params.gelu_recompute = flags["gelu_recompute"].as<bool>();
@@ -746,7 +772,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
   auto random_perf_data_loader = onnxruntime::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
 
-  TrainingRunner runner{params, env};
+  TrainingRunner runner{params, env, session_options};
   ORT_RETURN_IF_ERROR(runner.Initialize());
   ORT_RETURN_IF_ERROR(runner.Run(random_perf_data_loader.get(), random_perf_data_loader.get()));
 
@@ -756,7 +782,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
 static Status RunTraining(const BertParameters& params, const Environment& env) {
   const size_t max_num_files_preload = 2;
 
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env);
+  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env, session_options);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
   BertParameters params_for_phase;

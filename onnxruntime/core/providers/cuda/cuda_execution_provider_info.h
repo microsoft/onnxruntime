@@ -12,6 +12,20 @@
 
 namespace onnxruntime {
 // Information needed to construct CUDA execution providers.
+struct CUDAExecutionProviderExternalAllocatorInfo {
+  void* alloc{nullptr};
+  void* free{nullptr};
+
+  CUDAExecutionProviderExternalAllocatorInfo() {
+    alloc = nullptr;
+    free = nullptr;
+  }
+
+  bool UseExternalAllocator() {
+    return (alloc != nullptr) && (free != nullptr);
+  }
+};
+
 struct CUDAExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
   size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
@@ -20,6 +34,7 @@ struct CUDAExecutionProviderInfo {
   bool do_copy_in_default_stream{true};
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
+  CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);

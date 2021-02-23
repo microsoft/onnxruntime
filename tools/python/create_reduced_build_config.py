@@ -5,6 +5,7 @@
 import argparse
 import os
 import onnx
+import pathlib
 import sys
 
 
@@ -103,19 +104,29 @@ def main():
                            help='Enable tracking of the specific types that individual operators require. '
                                 'Operator implementations MAY support limiting the type support included in the build '
                                 'to these types. Only possible with ORT format models.')
-    argparser.add_argument('model_path_or_dir', type=str,
+    argparser.add_argument('model_path_or_dir', type=pathlib.Path,
                            help='Path to a single model, or a directory that will be recursively searched '
                                 'for models to process.')
 
-    argparser.add_argument('config_path', type=str, help='Path to write configuration file to.')
+    argparser.add_argument('config_path', nargs='?', type=pathlib.Path, default=None,
+                           help='Path to write configuration file to. Default is to write to required_operators.config '
+                                'or required_operators_and_types.config in the same directory as the models.')
 
     args = argparser.parse_args()
-    model_path_or_dir = os.path.abspath(args.model_path_or_dir)
-    config_path = os.path.abspath(args.config_path)
 
     if args.enable_type_reduction and args.format == 'ONNX':
         print('Type reduction requires model format to be ORT.', file=sys.stderr)
         sys.exit(-1)
+
+    model_path_or_dir = args.model_path_or_dir.resolve()
+    if args.config_path:
+        config_path = args.config_path.resolve()
+    else:
+        config_path = model_path_or_dir if model_path_or_dir.is_dir() else model_path_or_dir.parent
+
+    if config_path.is_dir():
+        filename = 'required_operators_and_types.config' if args.enable_type_reduction else 'required_operators.config'
+        config_path = config_path.joinpath(filename)
 
     if args.format == 'ONNX':
         create_config_from_onnx_models(model_path_or_dir, config_path)
@@ -125,7 +136,7 @@ def main():
 
         # Debug code to validate that the config parsing matches
         # from util import parse_config
-        # required_ops, op_type_usage_processor = parse_config(args.config_path)
+        # required_ops, op_type_usage_processor, _ = parse_config(args.config_path, True)
         # op_type_usage_processor.debug_dump()
 
 

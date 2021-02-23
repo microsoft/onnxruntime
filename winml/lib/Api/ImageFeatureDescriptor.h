@@ -4,6 +4,7 @@
 #pragma once
 
 #include "ImageFeatureDescriptor.g.h"
+#include "iengine.h"
 
 namespace WINMLP {
 
@@ -14,7 +15,8 @@ enum class ImageColorSpaceGamma {
 
 struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
                                     ImageFeatureDescriptor,
-                                    ILearningModelFeatureDescriptorNative> {
+                                    ILearningModelFeatureDescriptorNative,
+                                    _winml::IDescriptorInfoProvider> {
   ImageFeatureDescriptor() = delete;
   ImageFeatureDescriptor(
       const char* name,
@@ -74,6 +76,11 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
   (
       const wchar_t** description,
       uint32_t* cchDescription) override;
+
+  STDMETHOD(GetDescriptorInfo)
+  (
+      _winml::IEngineFactory* engine_factory,
+      _winml::IDescriptorInfo** info) override;
 
  private:
   winrt::hstring name_;
