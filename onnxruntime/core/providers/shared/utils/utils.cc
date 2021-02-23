@@ -28,6 +28,13 @@ int32_t NodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
   return SafeInt<int32_t>(node_attributes_.at(key).i());
 }
 
+int64_t NodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
+  if (!HasAttr(key))
+    return def_val;
+
+  return node_attributes_.at(key).i();
+}
+
 std::string NodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
   if (!HasAttr(key))
     return def_val;

@@ -47,7 +47,7 @@ file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
 
-add_library(onnxruntime_pybind11_state MODULE ${onnxruntime_pybind_srcs})
+onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
@@ -151,6 +151,36 @@ if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".pyd")
 else()
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".so")
+endif()
+
+# Generate version_info.py in Windows build.
+# Has to be done before onnxruntime_python_srcs is set.
+if (WIN32)
+  set(VERSION_INFO_FILE "${ONNXRUNTIME_ROOT}/python/version_info.py")
+
+  if (onnxruntime_USE_CUDA)
+    file(WRITE "${VERSION_INFO_FILE}" "use_cuda = True\n")
+
+    file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll")
+    if (NOT CUDNN_DLL_PATH)
+      message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
+    endif()
+    get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
+    string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
+
+    file(APPEND "${VERSION_INFO_FILE}"
+      "cuda_version = \"${onnxruntime_CUDA_VERSION}\"\n"
+      "cudnn_version = \"${CUDNN_VERSION}\"\n"
+    )
+  else()
+    file(WRITE "${VERSION_INFO_FILE}" "use_cuda = False\n")
+  endif()
+
+  if ("${MSVC_TOOLSET_VERSION}" STREQUAL "142")
+    file(APPEND "${VERSION_INFO_FILE}" "vs2019 = True\n")
+  else()
+    file(APPEND "${VERSION_INFO_FILE}" "vs2019 = False\n")
+  endif()
 endif()
 
 file(GLOB onnxruntime_backend_srcs CONFIGURE_DEPENDS

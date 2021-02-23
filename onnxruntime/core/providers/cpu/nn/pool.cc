@@ -132,9 +132,9 @@ Status Pool<float, AveragePool>::Compute(OpKernelContext* context) const {
 
 
 Status MaxPoolV8::Compute(OpKernelContext* context) const {
-  utils::MLTypeCallDispatcherRet<Status, ComputeHelper, float, double, int8_t, uint8_t>
+  utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t>
       t_disp(context->Input<Tensor>(0)->GetElementType());
-  return t_disp.Invoke(this, context);
+  return t_disp.InvokeRet<Status, ComputeHelper>(this, context);
 }
 
 template <typename T>

@@ -11,6 +11,7 @@
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/graph/signal_ops/signal_defs.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
@@ -546,7 +547,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
-      .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T")
+      .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T", OpSchema::Optional)
       .Input(4, "bias", "1D bias tensor with shape (hidden_size", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
@@ -1122,7 +1123,7 @@ Sample echo operator.)DOC");
       .SinceVersion(1)
       .SetDoc(R"DOC()DOC")
       .Input(0, "X", "input tensor", "T")
-      .Attr("signal_ndim", "", AttributeProto::INT)
+      .Attr("signal_ndim", "", AttributeProto::INT, static_cast<int64_t>(1))
       .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
       .Output(0, "Y", "output tensor", "T")
@@ -2085,7 +2086,7 @@ Example 4:
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
       .Input(1, "scale", "Scale tensor.", "T")
-      .Input(2, "B", "Bias tensor.", "T")
+      .Input(2, "B", "Bias tensor.", "T", OpSchema::Optional)
       .Output(0, "Y", "Output data tensor.", "T")
       .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
       .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
@@ -2372,6 +2373,11 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
     RegisterNchwcSchemas();
   }
   RegisterBertSchemas();
+
+#ifdef BUILD_MS_EXPERIMENTAL_OPS
+  onnxruntime::signal::RegisterSignalSchemas();
+#endif
+
   RegisterQuantizationSchemas();
 }
 }  // namespace contrib

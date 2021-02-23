@@ -102,7 +102,7 @@ RUN apt update && \
     git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
     cd onnxruntime/cmake/external/onnx && python3 setup.py install && \
-    cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget && \
+    cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget --build_shared_lib && \
     mv ${MY_ROOT}/onnxruntime/build/Linux/Release/nuget-artifacts ${MY_ROOT} && \
 # Clean-up unnecessary files
     rm -rf ${MY_ROOT}/cmake* /opt/cmake ${MY_ROOT}/onnxruntime && \

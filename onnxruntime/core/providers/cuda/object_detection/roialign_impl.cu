@@ -174,6 +174,7 @@ __global__ void RoIAlignForward(
 
 template <typename T>
 void RoiAlignImpl(
+  cudaStream_t stream,
   const int64_t nthreads,
   const T* bottom_data,
   const T spatial_scale,
@@ -189,7 +190,7 @@ void RoiAlignImpl(
   const bool is_mode_avg,
   const int64_t* batch_indices_ptr) {
     int blocksPerGrid = (int)(ceil(static_cast<float>(nthreads) / GridDim::maxThreadsPerBlock)); 
-    RoIAlignForward<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    RoIAlignForward<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       nthreads,
       bottom_data,
       spatial_scale,
@@ -208,6 +209,7 @@ void RoiAlignImpl(
 
 #define SPECIALIZED_IMPL(T)                     \
   template void RoiAlignImpl<T>(                \
+        cudaStream_t stream,              \
         const int64_t nthreads,                 \
         const T* bottom_data,                   \
         const T spatial_scale,                  \
