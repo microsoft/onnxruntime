@@ -2233,7 +2233,7 @@ Return true if all elements are true and false otherwise.
         }
         ORT_ENFORCE(ctx.getNumOutputs() >= static_cast<size_t> (required_grads->ints_size()));
         for (size_t i = 0; i < static_cast<size_t> (required_grads->ints_size()); ++i) {
-          size_t j = static_cast<size_t> (required_grads->ints(i));
+          size_t j = static_cast<size_t> (required_grads->ints(static_cast<int>(i)));
           propagateElemTypeFromInputToOutput(ctx, j, i);
           auto typeProto = ctx.getInputType(i);
           if (!hasShape(*typeProto)) {
