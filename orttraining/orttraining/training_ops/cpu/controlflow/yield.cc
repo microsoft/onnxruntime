@@ -22,6 +22,7 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
 
   std::vector<OrtValue> forward_outputs;
+  forward_outputs.reserve(ctx->InputCount());
   for (int i = 0; i < ctx->InputCount(); ++i) {
     forward_outputs.push_back(*ctx_internal->GetInputMLValue(i));
   }

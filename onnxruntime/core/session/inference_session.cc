@@ -283,9 +283,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
   allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
-
-  // initializer terminating_runs_ to false
-  terminating_runs_.store(false);
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
@@ -383,9 +380,6 @@ InferenceSession::~InferenceSession() {
   }
 
 #ifdef ENABLE_TRAINING
-  // set flat to block any incoming forward/backward calls
-  terminating_runs_.store(true);
-
   // TODO: Properly cancel outstanding background tasks
   // Following implementation only handle the case where bg_thread is waiting for backward inputs
   // Background thread can also be in other states, such as running Forward() or running Backward()
@@ -1748,10 +1742,6 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 #ifdef ENABLE_TRAINING
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs, int64_t& run_id) {
-  if (terminating_runs_.load()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Terminating active runs, new runs are no longer accepted.");
-  }
-
   std::promise<void> setup_promise;
   std::future<void> setup_future = setup_promise.get_future();
 

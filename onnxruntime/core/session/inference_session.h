@@ -678,9 +678,6 @@ class InferenceSession {
   std::vector<uint8_t> ort_format_model_bytes_;
 
 #ifdef ENABLE_TRAINING
-  // Flag indicating if destroyer is terminating outstanding runs
-  std::atomic<bool> terminating_runs_;
-
   // mutex for accessing bg_threads_
   std::mutex bg_threads_mutex_;
 
