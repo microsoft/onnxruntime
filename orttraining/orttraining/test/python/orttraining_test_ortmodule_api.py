@@ -586,8 +586,6 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
     N, D_in, H, D_out = 32, 784, 500, 10
     model = NeuralNetMultiplePositionalArgumentsMultipleOutputs2(D_in, H, D_out).to(device)
     model = ORTModule(model)
-    model._save_onnx_prefix = 'test0'
-    model._save_onnx = True
     x1 = torch.randn(N, D_in, device=device, requires_grad=True)
     x2 = torch.randn(N, D_in, device=device, requires_grad=True)
     y1, y2 = model(x1, x2)
