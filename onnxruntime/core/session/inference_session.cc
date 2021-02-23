@@ -283,6 +283,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
   allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
+
+  // initializer terminating_runs_ to false
+  terminating_runs_.store(false);
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
@@ -380,14 +383,23 @@ InferenceSession::~InferenceSession() {
   }
 
 #ifdef ENABLE_TRAINING
-  // Cancel outstanding background tasks
-  auto it = bg_threads_.begin();
-  while (it != bg_threads_.end()) {
-    int64_t run_id = it->first;
+  // set flat to block any incoming forward/backward calls
+  terminating_runs_.store(true);
+
+  // TODO: Properly cancel outstanding background tasks
+  // Following implementation only handle the case where bg_thread is waiting for backward inputs
+  // Background thread can also be in other states, such as running Forward() or running Backward()
+  std::vector<int64_t> run_ids;
+  {
+    std::lock_guard<std::mutex> lock(bg_threads_mutex_);
+    for (auto it = bg_threads_.begin(); it != bg_threads_.end(); ++it) {
+      run_ids.push_back(it->first);
+    }
+  }
+  for (int64_t run_id : run_ids) {
     if (!onnxruntime::contrib::OrtTasks::GetInstance().TaskIsCompleted(run_id)) {
       CancelBackgroundTask(run_id);
     }
-    it = bg_threads_.erase(it);
   }
 #endif
 
@@ -1736,10 +1748,16 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 #ifdef ENABLE_TRAINING
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs, int64_t& run_id) {
+  if (terminating_runs_.load()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Terminating active runs, new runs are no longer accepted.");
+  }
+
   std::promise<void> setup_promise;
   std::future<void> setup_future = setup_promise.get_future();
 
-  auto bg_thread = std::thread([&](std::future<void> setup_future) {
+  // Passing run_options and io_binding by reference to the bg_thread,
+  // this is ok because they are ORTModule's member, and they are presistent through forward and backward calls
+  auto bg_thread = std::thread([this](std::future<void> setup_future, const RunOptions& run_options, IOBinding& io_binding) {
     // wait until task is properly setup
     setup_future.get();
 
@@ -1758,18 +1776,20 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions
       onnxruntime::contrib::OrtTasks::GetInstance().SetForwardOutputs(status, {});
     }
   },
-                               std::move(setup_future));
+                               std::move(setup_future), std::cref(run_options), std::ref(io_binding));
 
   run_id = std::hash<std::thread::id>()(bg_thread.get_id());
-  bg_threads_[run_id] = std::move(bg_thread);
+  {
+    std::lock_guard<std::mutex> lock(bg_threads_mutex_);
+    bg_threads_[run_id] = std::move(bg_thread);
+  }
+
   onnxruntime::contrib::OrtTasks::GetInstance().CreateBackgroundTask(run_id);
 
-  LOGS(*session_logger_, WARNING) << "Session::Forward" << run_id;
+  LOGS(*session_logger_, VERBOSE) << "InferenceSession::Forward() call created a task with run_id " << run_id;
 
   // background task is setup, unblock background thread to continue
   setup_promise.set_value();
-
-  LOGS(*session_logger_, WARNING) << "after setup_promise.set_value()" << run_id;
 
   // Wait for data/signal from
   // 1. Yield op, if the bg thread sucessfully reached Yield's signal point
@@ -1778,12 +1798,16 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions
   const Status& forward_status = forward_outputs.first;
   user_outputs = std::move(forward_outputs.second);
 
-  LOGS(*session_logger_, WARNING) << "after WaitForForwardOutputs" << run_id;
-
   // background thread has completed without hitting Yield Op
   if (!forward_status.IsOK()) {
-    bg_threads_[run_id].join();
-    bg_threads_.erase(run_id);
+    std::thread bg_thread;
+    {
+      std::lock_guard<std::mutex> lock(bg_threads_mutex_);
+      std::swap(bg_thread, bg_threads_[run_id]);
+      bg_threads_.erase(run_id);
+    }
+    ORT_ENFORCE(bg_thread.joinable());
+    bg_thread.join();
     onnxruntime::contrib::OrtTasks::GetInstance().RemoveTask(run_id);
     return forward_status;
   }
@@ -1792,36 +1816,45 @@ common::Status InferenceSession::RunInBackgroundAndWaitForYield(const RunOptions
 }
 
 common::Status InferenceSession::ContinueRunInBackground(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) {
-  LOGS(*session_logger_, WARNING) << "Session::Backward" << run_id;
+  LOGS(*session_logger_, VERBOSE) << "Running InferenceSession::Backward() with run_id " << run_id;
 
   // resume background thread
   onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, backward_output_grads, false);
 
   Status bg_thread_status = onnxruntime::contrib::OrtTasks::GetInstance().WaitForStatus(run_id);
 
-  // wait for bg_thread to complete
-  if (bg_threads_[run_id].joinable()) {
-    bg_threads_[run_id].join();
+  std::thread bg_thread;
+  {
+    std::lock_guard<std::mutex> lock(bg_threads_mutex_);
+    std::swap(bg_thread, bg_threads_[run_id]);
     bg_threads_.erase(run_id);
-    onnxruntime::contrib::OrtTasks::GetInstance().RemoveTask(run_id);
   }
+
+  // wait for bg_thread to complete
+  ORT_ENFORCE(bg_thread.joinable());
+  bg_thread.join();
+  onnxruntime::contrib::OrtTasks::GetInstance().RemoveTask(run_id);
 
   return bg_thread_status;
 }
 
 void InferenceSession::CancelBackgroundTask(int64_t run_id) {
-  LOGS(*session_logger_, WARNING) << "CancelBackgroundTask " << run_id;
+  LOGS(*session_logger_, WARNING) << "Canceling background task with run_id " << run_id;
 
   // resume background thread with terminate = true
   onnxruntime::contrib::OrtTasks::GetInstance().SetBackwardInputs(run_id, {}, true);
 
   // wait for bg_thread to complete
-  if (bg_threads_[run_id].joinable()) {
-    bg_threads_[run_id].join();
+  std::thread bg_thread;
+  {
+    std::lock_guard<std::mutex> lock(bg_threads_mutex_);
+    std::swap(bg_thread, bg_threads_[run_id]);
+    bg_threads_.erase(run_id);
   }
+  ORT_ENFORCE(bg_thread.joinable());
+  bg_thread.join();
   onnxruntime::contrib::OrtTasks::GetInstance().RemoveTask(run_id);
 }
-
 #endif
 
 template <typename T>

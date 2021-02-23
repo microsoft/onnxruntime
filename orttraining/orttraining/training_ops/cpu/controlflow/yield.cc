@@ -26,18 +26,12 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
     forward_outputs.push_back(*ctx_internal->GetInputMLValue(i));
   }
 
-  LOGS(ctx->Logger(), WARNING) << "before SetForwardOutputs";
-
   // return forward output and single that FW graph is completed
   OrtTasks::GetInstance().SetForwardOutputs(Status::OK(), forward_outputs);
-
-  LOGS(ctx->Logger(), WARNING) << "after SetForwardOutputs";
 
   // wait for data from SetBackwardInputs() to continue executing the BW graph
   auto backward_inputs = OrtTasks::GetInstance().WaitForBackwardInputs();
   bool terminate = backward_inputs.first;
-
-  LOGS(ctx->Logger(), WARNING) << "after WaitForBackwardInputs";
 
   if (terminate) {
     ORT_THROW("Terminating backward run, since the terminate is set to true.");
