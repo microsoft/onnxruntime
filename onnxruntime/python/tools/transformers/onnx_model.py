@@ -11,7 +11,7 @@ import argparse
 from pathlib import Path
 import numpy as np
 from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
+from onnx import ModelProto, AttributeProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,17 @@ class OnnxModel:
 
     def graph(self):
         return self.model.graph
+
+    def graphs(self):
+        graphs = [self.model.graph]
+        for node in self.model.graph.node:
+            for attribute in node.attribute:
+                if attribute.type == 10: # graphs
+                    for subgraph in attribute.value:
+                        graphs.append(subgraph.g)
+                if attribute.type == 5: #graph
+                    graphs.append(attribute.g)
+        return graphs
 
     def remove_node(self, node):
         if node in self.model.graph.node:
@@ -613,27 +624,30 @@ class OnnxModel:
         self.update_graph()
 
     def update_graph(self, verbose=False):
+        graphs = self.graphs()
         graph = self.model.graph
 
         remaining_input_names = []
-        for node in graph.node:
-            if node.op_type != "Constant":
-                for input_name in node.input:
-                    if input_name not in remaining_input_names:
-                        remaining_input_names.append(input_name)
+        
+        for g in graphs:
+            for node in g.node:
+                if node.op_type != "Constant":
+                    for input_name in node.input:
+                        if input_name not in remaining_input_names:
+                            remaining_input_names.append(input_name)
         if verbose:
             logger.debug(f"remaining input names: {remaining_input_names}")
 
-        # remove graph input that is not used
-        inputs_to_remove = []
-        for input in graph.input:
-            if input.name not in remaining_input_names:
-                inputs_to_remove.append(input)
-        for input in inputs_to_remove:
-            graph.input.remove(input)
+        # # remove graph input that is not used
+        # inputs_to_remove = []
+        # for input in graph.input:
+        #     if input.name not in remaining_input_names:
+        #         inputs_to_remove.append(input)
+        # for input in inputs_to_remove:
+        #     graph.input.remove(input)
 
-        names_to_remove = [input.name for input in inputs_to_remove]
-        logger.debug(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")
+        # names_to_remove = [input.name for input in inputs_to_remove]
+        # logger.debug(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")
 
         # remove weights that are not used
         weights_to_remove = []

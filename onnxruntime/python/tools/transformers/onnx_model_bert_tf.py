@@ -28,6 +28,18 @@ class BertOnnxModelTF(BertOnnxModel):
                     nodes_to_remove.append(node)
         self.remove_nodes(nodes_to_remove)
         logger.info(f"Removed Identity count: {len(nodes_to_remove)}")
+    
+    def skip_reshape(self):
+        count = 0
+        reshape_nodes = self.get_nodes_by_op_type("Reshape")
+        for reshape_node in reshape_nodes:
+            parent = self.get_parent(reshape_node, 0)
+            if parent is not None and parent.op_type == "Reshape":
+                reshape_node.input[0] = parent.input[0]
+                count += 1
+
+        if count > 0:
+            logger.info(f"Skip consequent Reshape count: {count}")
 
     def fuse_mask(self):
         nodes_to_remove = []
@@ -467,6 +479,7 @@ class BertOnnxModelTF(BertOnnxModel):
         self.process_embedding()
         #TODO: remove fuse mask since we have embedding fused so fuse_attention shall handle the mask nodes.
         self.fuse_mask()
+        self.skip_reshape()
 
     def remove_reshape_before_first_attention(self):
         attention_nodes = self.get_nodes_by_op_type("Attention")

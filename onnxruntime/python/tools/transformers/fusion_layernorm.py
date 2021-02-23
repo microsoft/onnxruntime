@@ -145,6 +145,7 @@ class FusionLayerNormalizationTF(Fusion):
             output_name_to_node) # yapf: disable
 
         if parent_nodes is None:
+            self.fuse2(node, input_name_to_nodes, output_name_to_node)
             return
 
         assert len(return_indice) == 3
@@ -218,4 +219,61 @@ class FusionLayerNormalizationTF(Fusion):
                                       inputs=[mul_node_3.input[0], weight_input, bias_input],
                                       outputs=[node.output[0]])
         fused_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
+        self.nodes_to_add.append(fused_node)
+
+    def fuse2(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+        
+        parent_nodes = self.model.match_parent_path(
+            node,
+            ['Mul', 'Reshape', 'Cast', 'BatchNormalization', 'Div', 'Cast', 'ReduceProd', 'Gather', 'Shape', 'Cast', 'Reshape', 'Add'], 
+            [  0,       0,       0,              0,            4,     1,         0,          0,        0,      0,        0,       0  ],
+            output_name_to_node) # yapf: disable
+
+        if parent_nodes is None:
+            return
+
+        _, _, _, batch_norm_node, div_node = parent_nodes[:5]
+        if batch_norm_node.input[0] != parent_nodes[-3].output[0]: 
+            return
+
+        batch_parents = self.model.match_parent_path(
+            batch_norm_node, 
+            ['Squeeze', 'ReduceMean', 'Cast'], 
+            [3, 0, 0]
+        )
+        if batch_parents is None:
+            logger.info("no batch parent")
+            return
+
+        div_parents = self.model.match_parent_path(
+            div_node, 
+            ['ReduceSumSquare', 'Sub', 'Cast'], 
+            [0, 0, 0]
+        )
+
+        if div_parents is None:
+            logger.info("no div parent")
+            return
+
+        sub_node = div_parents[1]
+        reduceMean_node = batch_parents[1]
+        if sub_node.input[1] != reduceMean_node.output[0]: 
+            logger.info(sub_node.input[1])
+            return
+        
+        self.nodes_to_remove.extend(parent_nodes[3:-3])
+        self.nodes_to_remove.extend(batch_parents[:-1])
+        self.nodes_to_remove.extend(div_parents[:-1])
+
+        weight_input = batch_norm_node.input[1]
+        bias_input = batch_norm_node.input[2]
+        
+        #TODO: add epsilon attribute
+        fused_node = helper.make_node('LayerNormalization',
+                                      inputs=[parent_nodes[-3].output[0], weight_input, bias_input],
+                                      outputs=[parent_nodes[2].input[0]],
+                                      name=self.model.create_node_name("LayerNormalization"))
+        for att in batch_norm_node.attribute:
+            if att.name == 'epsilon':
+                fused_node.attribute.extend([att])
         self.nodes_to_add.append(fused_node)
