@@ -45,6 +45,23 @@ class OpKernel {
     return op_kernel_info_.GetKernelDef();
   }
 
+  /**
+   * @brief   A secondary initializer.
+   *
+   * Similar to the constructor, this function is called only once for each kernel,
+   * during the session creation stage.
+   *
+   * We want to create the coresponding kernel object as soon as a node's operator
+   * is loaded, so that the session creator can leverage the kernel's functionality
+   * in initial graph processing. At the same time, some kernels may have part of
+   * init logic depend on other part of the graph. These kernels can override this
+   * function, which will be invoked near the end of the session creation, after
+   * all graph data are loaded.
+   */
+  virtual Status SecondaryInit() {
+    return Status::OK();
+  }
+
   virtual Status Compute(_Inout_ OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
 
   virtual Status ComputeAsync(_Inout_ OpKernelContext*, DoneCallback) const ORT_MUST_USE_RESULT {

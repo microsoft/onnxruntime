@@ -105,28 +105,6 @@ class UpsampleBase {
     } else if (opset <= 10 && input_count > 1) {
       scales_input_idx_ = 1;
     }
-
-    if (scales_input_idx_ > 0) {
-      const Tensor* scale;
-      bool get_scale = info.TryGetConstantInput(scales_input_idx_, &scale);
-
-      if (get_scale && scale->Shape().Size() > 0) {
-        ParseScalesData(scale, scales_);
-        scales_cached_ = true;
-      }
-    }
-
-    // roi is only needed when coordinate transformation mode is tf_crop_and_resize
-    // for all other modes no need to read roi input
-    if (roi_input_idx_ > 0 && need_roi_input_) {
-      const Tensor* roi;
-      bool get_roi = info.TryGetConstantInput(roi_input_idx_, &roi);
-
-      if (get_roi) {
-        ParseRoiData(roi, roi_);
-        roi_cached_ = true;
-      }
-    }
   }
 
   UpsampleMode mode_;
@@ -150,6 +128,30 @@ class UpsampleBase {
   int roi_input_idx_ = -1;
   int scales_input_idx_ = -1;
   int sizes_input_idx_ = -1;
+
+  void CacheState(OpKernelInfo info) {
+    if (scales_input_idx_ > 0 && !scales_cached_) {
+      const Tensor* scale;
+      bool get_scale = info.TryGetConstantInput(scales_input_idx_, &scale);
+
+      if (get_scale && scale->Shape().Size() > 0) {
+        ParseScalesData(scale, scales_);
+        scales_cached_ = true;
+      }
+    }
+
+    // roi is only needed when coordinate transformation mode is tf_crop_and_resize
+    // for all other modes no need to read roi input
+    if (roi_input_idx_ > 0 && need_roi_input_ && !roi_cached_) {
+      const Tensor* roi;
+      bool get_roi = info.TryGetConstantInput(roi_input_idx_, &roi);
+
+      if (get_roi) {
+        ParseRoiData(roi, roi_);
+        roi_cached_ = true;
+      }
+    }
+  }
 
   UpsampleMode StringToUpsampleMode(const std::string& mode) {
     if (mode == UpsampleModeNN) {
@@ -355,6 +357,11 @@ template <typename T>
 class Upsample : public UpsampleBase, public OpKernel {
  public:
   Upsample(OpKernelInfo info) : UpsampleBase(info), OpKernel(info) {
+  }
+
+  Status SecondaryInit() override {
+    CacheState(this->Info());
+    return Status::OK();
   }
 
   Status Compute(OpKernelContext* context) const override;

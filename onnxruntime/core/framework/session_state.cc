@@ -192,6 +192,16 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
   return Status::OK();
 }
 
+Status SessionState::SecondaryKernelInit() {
+  for (auto& node : GetGraphViewer().Nodes()) {
+    auto kernel = GetMutableKernel(node.Index());
+    // We don't expect the second initializer to fail
+    ORT_THROW_IF_ERROR(kernel->SecondaryInit());
+  }
+
+  return Status::OK();
+}
+
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p_seq_exec_plan_.get(); }
 
 Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
@@ -992,6 +1002,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
+  ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
+
   SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
@@ -1031,8 +1043,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     CleanInitializedTensorsFromGraph();
   }
 
-  ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
-
   const auto disable_prepacking =
       session_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
 
@@ -1042,6 +1052,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInputOutputNamesToNodeMapping(*graph_viewer_, *this, valid_outer_scope_node_args));
+
+  ORT_RETURN_IF_ERROR(SecondaryKernelInit());
 
   // Need to recurse into subgraph session state instances to finalize them and add the execution info
 

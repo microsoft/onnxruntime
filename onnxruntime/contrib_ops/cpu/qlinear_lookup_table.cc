@@ -119,8 +119,8 @@ Status QLinearLookupBase<T>::ComputeBase(OpKernelContext* context, Transformer f
         context->Input<Tensor>(3), context->Input<Tensor>(4), fn);
   }
 
-  using onnxruntime::concurrency::ThreadPool;
   using onnxruntime::TensorOpCost;
+  using onnxruntime::concurrency::ThreadPool;
   ThreadPool* tp = context->GetOperatorThreadPool();
   const uint8_t* x_data = reinterpret_cast<const uint8_t*>(X.template Data<T>());
   uint8_t* y_data = reinterpret_cast<uint8_t*>(Y.template MutableData<T>());
@@ -140,10 +140,14 @@ Status QLinearLookupBase<T>::ComputeBase(OpKernelContext* context, Transformer f
 // Derived classes from QLinearLookupBase
 template <typename T>
 QLinearLeakyRelu<T>::QLinearLeakyRelu(const OpKernelInfo& info)
-    : QLinearLookupBase<T>(info), alpha_(info.GetAttrOrDefault("alpha", 0.01f)) {
-  this->BuildLookupTableIfFixed(info, [this](float v) -> float {
+    : QLinearLookupBase<T>(info), alpha_(info.GetAttrOrDefault("alpha", 0.01f)) {}
+
+template <typename T>
+Status QLinearLeakyRelu<T>::SecondaryInit() {
+  this->BuildLookupTableIfFixed(this->Info(), [this](float v) -> float {
     return v >= 0.0f ? v : alpha_ * v;
   });
+  return Status::OK();
 }
 
 template <typename T>
@@ -155,10 +159,14 @@ Status QLinearLeakyRelu<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 QLinearSigmoid<T>::QLinearSigmoid(const OpKernelInfo& info)
-    : QLinearLookupBase<T>(info) {
-  this->BuildLookupTableIfFixed(info, [](const float* input, float* output, size_t length) {
+    : QLinearLookupBase<T>(info) {}
+
+template <typename T>
+Status QLinearSigmoid<T>::SecondaryInit() {
+  this->BuildLookupTableIfFixed(this->Info(), [](const float* input, float* output, size_t length) {
     MlasComputeLogistic(input, output, length);
   });
+  return Status::OK();
 }
 
 template <typename T>

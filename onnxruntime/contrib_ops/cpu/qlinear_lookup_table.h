@@ -16,7 +16,6 @@ typedef std::function<void(const float* input, float* output, size_t length)> Lo
 // function that transform single value
 typedef std::function<float(float)> LookupTableScalarTransformer;
 
-
 template <typename T>
 class QLinearLookupBase : public OpKernel {
  public:
@@ -24,7 +23,7 @@ class QLinearLookupBase : public OpKernel {
       : OpKernel(info), fixed_lookup_table_() {
   }
 
-//  protected:
+  //  protected:
   template <typename Transformer>
   Status ComputeBase(OpKernelContext* context, Transformer fn) const;
 
@@ -42,6 +41,8 @@ class QLinearLeakyRelu final : public QLinearLookupBase<T> {
  public:
   QLinearLeakyRelu(const OpKernelInfo& info);
 
+  Status SecondaryInit() override;
+
   Status Compute(OpKernelContext* context) const override;
 
  private:
@@ -52,6 +53,8 @@ template <typename T>
 class QLinearSigmoid final : public QLinearLookupBase<T> {
  public:
   QLinearSigmoid(const OpKernelInfo& info);
+
+  Status SecondaryInit() override;
 
   Status Compute(OpKernelContext* context) const override;
 };

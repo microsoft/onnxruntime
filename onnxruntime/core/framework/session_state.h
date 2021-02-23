@@ -305,6 +305,12 @@ class SessionState {
   // create kernels using info in kernel_create_info_map_
   Status CreateKernels(const KernelRegistryManager& custom_registry_manager);
 
+  /**
+  Call SecondaryInit() of each kernel. We want to call CreateKernels as early as
+  possible, and call secondary init as late as possible.
+  */
+  Status SecondaryKernelInit();
+
   // remove TensorProto versions of initializers from Graph instance
   // (replaced byOrtValue instances in initialized_tensors_)
   void CleanInitializedTensorsFromGraph();
