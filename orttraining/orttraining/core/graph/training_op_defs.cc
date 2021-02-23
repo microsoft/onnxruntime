@@ -2222,7 +2222,7 @@ Return true if all elements are true and false otherwise.
               /*min_arity*/ 1)
       .Attr(
         "RequiredGrad",
-        "The number of inputs with require_glad flag set.",
+        "The indices of required gradient outputs.",
         AttributeProto::INTS)
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
