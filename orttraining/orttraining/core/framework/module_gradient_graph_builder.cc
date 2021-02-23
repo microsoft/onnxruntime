@@ -50,7 +50,7 @@ Status ModuleGradientGraphBuilder::Initialize(std::istream& model_istream,
 
   // Remove the training initializers from the graph and move them to graph inputs.
   for (const auto& initializer_name : training_graph_info_.initializer_names_to_train) {
-    auto node_arg = graph.GetNodeArg(initializer_name);
+    const NodeArg* node_arg = graph.GetNodeArg(initializer_name);
     if (node_arg) {
       input_args.emplace_back(node_arg);
     }
