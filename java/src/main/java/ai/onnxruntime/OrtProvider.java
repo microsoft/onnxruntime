@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2021, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -21,7 +21,9 @@ public enum OrtProvider {
   DIRECT_ML("DmlExecutionProvider"),
   MI_GRAPH_X("MIGraphXExecutionProvider"),
   ACL("ACLExecutionProvider"),
-  ARM_NN("ArmNNExecutionProvider");
+  ARM_NN("ArmNNExecutionProvider"),
+  ROCM("ROCMExecutionProvider"),
+  CORE_ML("CoreMLExecutionProvider");
 
   private static final Map<String, OrtProvider> valueMap = new HashMap<>(values().length);
 
