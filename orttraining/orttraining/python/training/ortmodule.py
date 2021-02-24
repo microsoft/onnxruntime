@@ -180,12 +180,10 @@ class ORTModule(torch.nn.Module):
 
     def eval(self: T) -> T:
         self._is_training = False
-        self._original_module.eval()
         self._flattened_output_module.eval()
 
     def train(self: T, mode: bool = True) -> T:
         self._is_training = mode
-        self._original_module.train(mode)
         self._flattened_output_module.train(mode)
 
     def forward(self, *inputs, **kwargs):
