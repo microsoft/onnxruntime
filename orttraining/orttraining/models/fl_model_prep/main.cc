@@ -240,21 +240,33 @@ void WriteWeightsToFile(std::map<std::string, std::vector<float>> weights, const
       length_list += ",";
     }
     key_list += "\"" + weight_iter->first + "\"";
-    length_list += std::to_string(weight_iter->second.size() * sizeof(float));
+    length_list += std::to_string(weight_iter->second.size());
   }
   std::string metadata = "{";
   metadata += "\"version\":1.0,";
   metadata += "\"key_list\":[" + key_list + "],";
   metadata += "\"length_list\":[" + length_list + "]}";
-
-  int32_t metadata_length = (int32_t)(metadata.size() * sizeof(metadata[0]));
-  f.write((char *) &(metadata_length), sizeof(int32_t)); 
-  f.write(metadata.data(), metadata_length);
-  for (auto weight_iter = weights.begin(); weight_iter != weights.end(); weight_iter++) {
-      for (auto value_iter = weight_iter->second.begin(); value_iter != weight_iter->second.end(); value_iter++) {
-          f.write((char*)&(*value_iter), sizeof(float));
+  bool needs_swap = endian::native == endian::little;
+  uint32_t metadata_length = (uint32_t)(metadata.size() * sizeof(metadata[0]));
+  if (needs_swap) {
+    metadata_length = ntohl(metadata_length);
+  }
+  f.write((char *) &metadata_length, sizeof(uint32_t)); 
+  f.write(metadata.data(), metadata.size());
+  for (const auto& weight : weights) {
+      for (const auto& value : weight.second) {
+          uint32_t u_value = 0;
+          memcpy(&u_value, &value, sizeof(float));
+          if (needs_swap) {
+            u_value = ntohl(u_value);
+          }
+          f.write((char*) &value, sizeof(float));
       }
   }
+  /*for (auto weight_iter = weights.begin(); weight_iter != weights.end(); weight_iter++) {
+      for (auto value_iter = weight_iter->second.begin(); value_iter != weight_iter->second.end(); value_iter++) {
+      }
+  }*/
   f.close();
 }
 
@@ -289,6 +301,10 @@ onnxruntime::common::Status ExtractTrainableWeights(const ModelPrepParameters& p
   std::map<std::string, std::vector<float>> weights_to_export = {};
   std::shared_ptr<onnxruntime::Model> model;
   auto status = onnxruntime::Model::Load(ToPathString(params.starting_onnx_model_path), model, nullptr, logging::LoggingManager::DefaultLogger());
+  if (!status.IsOK()) {
+    std::cerr << "Failed to load model: " << status.ErrorMessage() << std::endl;
+    return status;
+  }
   auto input_list = model->MainGraph().GetAllInitializedTensors();
   for (auto it = input_list.begin(); it != input_list.end(); it++) {
       
@@ -350,10 +366,18 @@ onnxruntime::common::Status PrepareTrainingGraphForInferenceSession(const ModelP
         std::string optimizer_input_name = (*optimizer_input)->Name();
         if (new_model->MainGraph().IsInitializedTensor(optimizer_input_name)) {
           initializers_to_remove.push_back(optimizer_input_name);
-          bool input_exists = std::any_of(graph_inputs.begin(), graph_inputs.end(), [optimizer_input_name](const NodeArg* input){return input->Name() == optimizer_input_name;});
-          if (!input_exists) {
-              new_inputs.push_back(*optimizer_input);
+          if (params.optimizer_type == "AdamOptimizer" && optimizer_input_name.rfind("Update_Count_") == 0)
+          {
+              auto& batch_number_input = new_model->MainGraph().GetOrCreateNodeArg("batch_number", (*optimizer_input)->TypeAsProto());
+              current_node->ReplaceDefs({{*optimizer_input,&batch_number_input}});
           }
+          else {
+            bool input_exists = std::any_of(graph_inputs.begin(), graph_inputs.end(), [optimizer_input_name](const NodeArg* input){return input->Name() == optimizer_input_name;});
+            if (!input_exists) {
+              new_inputs.push_back(*optimizer_input);
+            }
+          }
+          
         }
       }
       auto optimizer_output_defs = current_node->OutputDefs();
@@ -367,6 +391,11 @@ onnxruntime::common::Status PrepareTrainingGraphForInferenceSession(const ModelP
 
   // Save required ops to a file
   WriteRequiredOpsToFile(required_ops, params.required_ops_path);
+
+  if (params.optimizer_type == "AdamOptimizer") {
+      auto& batch_number_input = new_model->MainGraph().GetOrCreateNodeArg("batch_number", nullptr);
+      graph_inputs.push_back(&batch_number_input);
+  }
 
   // Add new inputs
   for (auto new_input = new_inputs.begin(); new_input != new_inputs.end(); new_input++) {
