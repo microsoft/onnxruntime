@@ -182,9 +182,14 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     if (converted_to_constant) {
       // Remove single-output node chain for inputs of the node
-      for (auto p_ip_node = node->InputNodesBegin(); p_ip_node != node->InputNodesEnd(); ++p_ip_node) {
-        graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_ip_node);
+      auto p_ip_node = node->InputNodesBegin();
+      auto p_ip_node_end = node->InputNodesEnd();
+      while (p_ip_node != p_ip_node_end) {
+        const auto& input_node = *p_ip_node;
+        ++p_ip_node;
+        graph_utils::RemoveNodesWithOneOutputBottomUp(graph, input_node);
       }
+
       // Remove the output edges of the constant node and then remove the node itself.
       graph_utils::RemoveNodeOutputEdges(graph, *node);
       graph.RemoveNode(node->Index());
