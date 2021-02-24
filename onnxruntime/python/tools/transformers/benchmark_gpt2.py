@@ -16,6 +16,7 @@ import argparse
 import logging
 import torch
 import onnx
+from packaging import version
 from transformers import AutoConfig
 from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from quantize_helper import QuantizeHelper
@@ -113,6 +114,10 @@ def parse_arguments(argv=None):
 
 
 def main(args):
+    from transformers import __version__ as transformers_version
+    if version.parse(transformers_version) < version.parse("3.1.0"): # past_key_values name does not exist in 3.0.2 or older
+        raise RuntimeError("This tool requires transformers 3.1.0 or later.")
+
     logger.info(f"Arguments:{args}")
     if args.precision == Precision.FLOAT16:
         assert args.optimize_onnx and args.use_gpu, "fp16 requires --optimize_onnx --use_gpu"
@@ -279,7 +284,7 @@ def main(args):
     return csv_filename
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':       
     args = parse_arguments()
     setup_logger(args.verbose)
     main(args)
