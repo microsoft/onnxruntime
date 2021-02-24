@@ -6,6 +6,7 @@ import torch
 from transformers import AutoConfig, BertForSequenceClassification
 from transformers.modeling_outputs import SequenceClassifierOutput
 import pytest
+from time import sleep
 import warnings
 from unittest.mock import patch
 from collections import OrderedDict
@@ -101,6 +102,13 @@ class NeuralNetSimplePositionalAndKeywordArguments(torch.nn.Module):
         if y is not None:
             return torch.mean(self.a) + 3 * y
         return torch.mean(self.a) + x
+
+# TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
+# while the next task already start. 
+@pytest.fixture(autouse=True)
+def run_before_tests():
+    # wait for 50ms before starting the next test
+    sleep(0.05)
 
 def _get_bert_for_sequence_classification_model(device):
     """Returns the BertForSequenceClassification pretrained model"""
