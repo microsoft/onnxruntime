@@ -615,6 +615,27 @@ TEST(Einsum, ExplicitEinsumAsMatmul_Half) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumAsBatchedMatmul_Half) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "bij,bjk->bik");
+  std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f};
+  std::vector<float> input_y_f = {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f};
+  std::vector<float> output_f = {7.f, 10.f, 15.f, 22.f, 7.f, 10.f, 15.f, 22.f};
+  std::vector<MLFloat16> input_x(8);
+  std::vector<MLFloat16> input_y(8);
+  std::vector<MLFloat16> output(8);
+  ConvertFloatToMLFloat16(input_x_f.data(), input_x.data(), 8);
+  ConvertFloatToMLFloat16(input_y_f.data(), input_y.data(), 8);
+  ConvertFloatToMLFloat16(output_f.data(), output.data(), 8);
+  test.AddInput<MLFloat16>("x", {2, 2, 2}, input_x);
+  test.AddInput<MLFloat16>("y", {2, 2, 2}, input_y);
+  test.AddOutput<MLFloat16>("o", {2, 2, 2}, output);
+  test.Run();
+}
+
 TEST(Einsum, ExplicitEinsumAsDiagonalOp_Half) {
   if (!HasCudaEnvironment(600)) {
     return;
