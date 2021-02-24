@@ -147,18 +147,6 @@ TEST(MathOpTest, MatMulUint64Type) {
 
 TEST(MathOpTest, SparseInitializerTests) {
   OpTester test("MatMul", 13);
-  const std::vector<int64_t> initializer_shape = {9, 9};
-  const std::vector<float> initializer_data = {
-    0, 1, 2,    0, 0, 0,  3, 4, 5,
-    6, 7, 8,    0, 0, 0,  9, 10, 11,
-    12, 13, 14, 0, 0, 0, 15, 16, 17,
-    0, 0, 0,    18, 19, 20, 21, 22, 23,
-    0, 0, 0,    24, 25, 26, 27, 28, 29,
-    0, 0, 0,    30, 31, 32, 33, 34, 35,
-    36, 37, 38, 39, 40, 41, 0, 0, 0,
-    42, 43, 44, 45, 46, 47, 0, 0, 0,
-    48, 49, 50, 51, 52, 53, 0, 0, 0
-  };
 
   const std::vector<int64_t> input_shape = {10, 9};
   const std::vector<float> input_data = {
@@ -178,23 +166,44 @@ TEST(MathOpTest, SparseInitializerTests) {
   // B should the initializer so we designate it as a constant. We can
   // also add sparse_initializer method later one but with current implementation
   // all going to Dense bucket is not really necessary.
-  test.AddInput<float>("B", initializer_shape, initializer_data, false);
+  const std::vector<int64_t> initializer_shape = {9, 9};
+  const std::vector<float> initializer_data = {
+      0, 1, 2,     0, 0, 0,    3, 4, 5,
+      6, 7, 8,     0, 0, 0,    9, 10, 11,
+      12, 13, 14,  0, 0, 0,    15, 16, 17,
+      0, 0, 0,     18, 19, 20, 21, 22, 23,
+      0, 0, 0,     24, 25, 26, 27, 28, 29,
+      0, 0, 0,     30, 31, 32, 33, 34, 35,
+      36, 37, 38,  39, 40, 41, 0, 0, 0,
+      42, 43, 44,  45, 46, 47, 0, 0, 0,
+      48, 49, 50,  51, 52, 53, 0, 0, 0};
+
+  const bool is_b_constant = false;
+  test.AddInput<float>("B", initializer_shape, initializer_data, is_b_constant);
   const std::vector<int64_t> output_shape = {10, 9};
   const std::vector<float> output_data = {
-      546, 561, 576, 552, 564, 576, 39, 42, 45,
+      546, 561, 576,    552, 564, 576,    39, 42, 45,
       1410, 1461, 1512, 1362, 1392, 1422, 201, 222, 243,
       2274, 2361, 2448, 2172, 2220, 2268, 363, 402, 441,
       2784, 2850, 2916, 4362, 4485, 4608, 1551, 1608, 1665,
       3540, 3624, 3708, 5604, 5763, 5922, 2037, 2112, 2187,
       4296, 4398, 4500, 6846, 7041, 7236, 2523, 2616, 2709,
-      678, 789, 900, 2892, 3012, 3132, 4263, 4494, 4725,
-      786, 915, 1044, 3324, 3462, 3600, 4911, 5178, 5445,
-      894, 1041, 1188, 3756, 3912, 4068, 5559, 5862, 6165,
-      1128, 1296, 1464, 4347, 4525, 4703, 6234, 6574, 6914
+      678, 789, 900,    2892, 3012, 3132, 4263, 4494, 4725,
+      786, 915, 1044,   3324, 3462, 3600, 4911, 5178, 5445,
+      894, 1041, 1188,  3756, 3912, 4068, 5559, 5862, 6165,
+      1128, 1296, 1464, 4623, 4810, 4997, 6537, 6886, 7235
   };
 	
   test.AddOutput<float>("Y", output_shape, output_data);
 
+  // OpenVINO EP: Disabled temporarily matmul broadcasting not fully supported
+  // Disable TensorRT because of unsupported data type
+  std::unordered_set<std::string> excluded_providers{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+  if (is_b_constant) {
+    // NNAPI: currently fails for the "test 2D empty input" case
+    excluded_providers.insert(kNnapiExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 }  // namespace test

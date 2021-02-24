@@ -811,7 +811,8 @@ class CuSparseHelper {
   }
 
   static Status Compute(const CudaKernel* kernel, OpKernelContext* ctx, const SparseInfo& sparse_info,
-                        float alpha, bool transa, bool transb, const Tensor* left, cudaDataType cuda_type) {
+                        float alpha, bool transa, bool transb, cudaDataType cuda_type) {
+    const Tensor* left = ctx->Input<Tensor>(0);
     const auto& left_shape = left->Shape();
     const auto left_num_dims = left_shape.NumDimensions();
     if (left_num_dims > 2) {
@@ -921,16 +922,10 @@ template <typename T>
 Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  const Tensor* left_X = ctx->Input<Tensor>(0);
-  const Tensor* right_X = ctx->Input<Tensor>(1);
-
   // Ignore the transpose flag if rank of input being 1.
   // Be noted: numpy.transpose on vector does not change anything.
   bool transa = trans_A_;
   bool transb = trans_B_;
-  if (left_X->Shape().NumDimensions() == 1) {
-    transa = false;
-  }
 
 #ifdef USE_CUSPARSELT
   if (sparse_info_ && sparse_info_->param_.Is2x4Format()) {
@@ -944,10 +939,17 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (sparse_info_->param_.UseCooFormat() ||
         sparse_info_->param_.UseCsrFormat() ||
         sparse_info_->param_.UseEllFormat()) {
-      return CuSparseHelper::Compute(this, ctx, *sparse_info_, alpha_, trans_A_, trans_B_, left_X, ToCudaTypeEnum<T>::type);
+      return CuSparseHelper::Compute(this, ctx, *sparse_info_, alpha_, trans_A_, trans_B_, ToCudaTypeEnum<T>::type);
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, sparse_info_->param_.name + 
             " : Unsupported sparse format specified");
+  }
+
+  const Tensor* left_X = ctx->Input<Tensor>(0);
+  const Tensor* right_X = ctx->Input<Tensor>(1);
+
+  if (left_X->Shape().NumDimensions() == 1) {
+    transa = false;
   }
 
   if (right_X->Shape().NumDimensions() == 1) {
