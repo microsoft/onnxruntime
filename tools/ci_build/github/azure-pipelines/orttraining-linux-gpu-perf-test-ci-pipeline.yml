@@ -27,36 +27,36 @@ jobs:
 
   - script: >
       docker run --gpus all --rm --name onnxruntime-gpu-perf
-        --volume $(Build.SourcesDirectory):/onnxruntime_src
-        --volume $(Build.BinariesDirectory):/build
-        --volume /bert_data/bert_models:/build/bert_models:ro
-        --volume /bert_data:/build/bert_data:ro
-        -e NIGHTLY_BUILD onnxruntime_perf_test_image
-        /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/mysql/create_table_perf_test_training_ort_module_data.py
-        --action insert_perf_table
-        --mysql_server_name onnxruntimedashboard.mysql.database.azure.com
-        --power_bi_user_name powerbi@onnxruntimedashboard
-        --password $(ortperf)
-        --database onnxruntime
-        --perf_metrics aa
+      --volume $(Build.SourcesDirectory):/onnxruntime_src
+      --volume $(Build.BinariesDirectory):/build
+      --volume /bert_data/bert_models:/build/bert_models:ro
+      --volume /bert_data:/build/bert_data:ro
+      -e NIGHTLY_BUILD onnxruntime_perf_test_image
+      /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/mysql/create_table_perf_test_training_ort_module_data.py
+      --action insert_perf_table
+      --mysql_server_name onnxruntimedashboard.mysql.database.azure.com
+      --power_bi_user_name powerbi@onnxruntimedashboard
+      --password $(ortperf)
+      --database onnxruntime
+      --perf_metrics aa
     displayName: 'Run python36 create_table_perf_test_training_ort_module_data.py'
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 10
 
-  - script: >
-      docker run --gpus all --rm --name onnxruntime-gpu-perf
-        --volume $(Build.SourcesDirectory):/onnxruntime_src
-        --volume $(Build.BinariesDirectory):/build
-        --volume /bert_data/bert_models:/build/bert_models:ro
-        --volume /bert_data:/build/bert_data:ro
-        -e NIGHTLY_BUILD onnxruntime_perf_test_image
-        /usr/bin/python3.8 /onnxruntime_src/orttraining/tools/ci_test/mysql/create_table_perf_test_training_ort_module_data.py
-        --action insert_perf_table
-        --mysql_server_name onnxruntimedashboard.mysql.database.azure.com
-        --power_bi_user_name powerbi@onnxruntimedashboard
-        --password $(ortperf)
-        --database onnxruntime
-        --perf_metrics aa
+  - script: |
+      docker run --gpus all --rm --name onnxruntime-gpu-perf \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build  \
+        --volume /bert_data/bert_models:/build/bert_models:ro \
+        --volume /bert_data:/build/bert_data:ro \
+        -e NIGHTLY_BUILD onnxruntime_perf_test_image \
+        /usr/bin/python3.8 /onnxruntime_src/orttraining/tools/ci_test/mysql/create_table_perf_test_training_ort_module_data.py \
+          --action insert_perf_table \
+          --mysql_server_name onnxruntimedashboard.mysql.database.azure.com \
+          --power_bi_user_name powerbi@onnxruntimedashboard \
+          --password $(ortperf) \
+          --database onnxruntime \
+          --perf_metrics aa \
     displayName: 'Run python38 create_table_perf_test_training_ort_module_data.py'
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 10
@@ -69,20 +69,20 @@ jobs:
   #   displayName: 'Map gpt2 test data'
   #   condition: succeededOrFailed() # ensure all tests are run
 
-  # - script: >
-  #     docker run --gpus all --rm --name onnxruntime-gpu-perf
-  #     --volume $(Build.SourcesDirectory):/onnxruntime_src
-  #     --volume $(Build.BinariesDirectory):/build
-  #     --volume /bert_data/bert_models:/build/bert_models:ro
-  #     --volume /bert_data:/build/bert_data:ro
-  #     -e NIGHTLY_BUILD onnxruntime_perf_test_image
-  #     /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_bert_perf_test.py
-  #     --binary_dir /build/RelWithDebInfo
-  #     --training_data_root /build/bert_data
-  #     --model_root /build/bert_models
-  #   displayName: 'Run bert performance tests'
-  #   condition: succeededOrFailed()
-  #   timeoutInMinutes: 120
+  - script: >
+      docker run --gpus all --rm --name onnxruntime-gpu-perf
+      --volume $(Build.SourcesDirectory):/onnxruntime_src
+      --volume $(Build.BinariesDirectory):/build
+      --volume /bert_data/bert_models:/build/bert_models:ro
+      --volume /bert_data:/build/bert_data:ro
+      -e NIGHTLY_BUILD onnxruntime_perf_test_image
+      /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_bert_perf_test.py
+      --binary_dir /build/RelWithDebInfo
+      --training_data_root /build/bert_data
+      --model_root /build/bert_models
+    displayName: 'Run bert performance tests'
+    condition: succeededOrFailed()
+    timeoutInMinutes: 120
 
   # - script: >
   #     docker run --gpus all --rm --name onnxruntime-gpu-perf
