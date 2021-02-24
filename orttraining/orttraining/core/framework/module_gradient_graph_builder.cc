@@ -197,20 +197,13 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   required_grad.set_name(attribute_name);
   required_grad.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
 
-  // Yield inputs include all user outputs, those require output gradients come first, so Yield Op can use their shapes
-  // to infer Op output shapes.
-  std::vector<std::string> user_output_names_require_grad;
-  std::vector<std::string> user_output_names_no_grad;
   training_graph_info_.backward_output_grad_names_map.clear();
   for (std::size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
     const auto& name = training_graph_info_.user_output_names[i];
     std::string grad_name = name + "_grad";
     if (non_backward_user_output_grad_names.find(grad_name) == non_backward_user_output_grad_names.end()) {
-      user_output_names_require_grad.emplace_back(name);
       training_graph_info_.backward_output_grad_names_map.insert(std::make_pair(grad_name, i));
       required_grad.add_ints(static_cast<int64_t>(i));
-    } else {
-      user_output_names_no_grad.emplace_back(name);
     }
   }
 
