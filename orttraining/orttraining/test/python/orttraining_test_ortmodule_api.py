@@ -421,6 +421,40 @@ def test_multiple_ortmodules_training():
             assert param.grad is not None
             param.grad = None
 
+def test_multiple_ortmodules_common_backbone_training():
+    N, D_in, H, D_out = 32, 64, 500, 64
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model1 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model2 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    # model is the common backbone shared by model1 and model2
+    model = ORTModule(model)   
+    model1 = ORTModule(model1)
+    model2 = ORTModule(model2)
+
+    for step in range(10):
+        x1 = torch.randn(N, D_in, device='cuda', requires_grad=True)
+        x2 = torch.randn(N, D_in, device='cuda', requires_grad=True)
+        assert x1.grad is None and x2.grad is None
+
+        prediction1 = model1(model(x1))
+        s1 = prediction1.sum()
+        s1.backward()
+
+        prediction2 = model2(model(x2))
+        s2 = prediction2.sum()
+        s2.backward()
+
+        assert x1.grad is not None and x2.grad is not None
+        for param in model.parameters():
+            assert param.grad is not None
+            param.grad = None
+        for param in model1.parameters():
+            assert param.grad is not None
+            param.grad = None
+        for param in model2.parameters():
+            assert param.grad is not None
+            param.grad = None
+
 def test_multiple_chained_ortmodules_training():
     N, D_in, H, D_out = 32, 128, 500, 128
     model1 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
