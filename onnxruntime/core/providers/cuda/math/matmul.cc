@@ -87,7 +87,7 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
 template <typename T>
 struct DumpType {
   static std::ostream& dump(std::ostream& os, T v) {
-    return os << std::setw(12) << std::setprecision(8) << v;
+    return os << std::setw(17) << std::setprecision(8) << v;
   }
 };
 
@@ -708,10 +708,13 @@ class CuSparseHelper {
 
       cusparseDnMatDescr_t dense_desc;
       // Feed column order and swap dims
+      const int64_t num_rows = transb ? K : N;
+      const int64_t num_cols = transb ? N : K;
+      const int64_t lead_dim = transb ? K : N;
       CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&dense_desc,
-                                                   N,  // Number of rows in B(T)
-                                                   K,  // Number of columns in B(T)
-                                                   transb ? K : N,
+                                                   num_rows,  // Number of rows in B(T)
+                                                   num_cols,  // Number of columns in B(T)
+                                                   lead_dim,
                                                    values_buffer.get(),
                                                    cuda_type,
                                                    CUSPARSE_ORDER_COL));
@@ -719,20 +722,22 @@ class CuSparseHelper {
       std::unique_ptr<cusparseDnMatDescr_t, decltype(guards::close_dense_fn)> dense_guard(&dense_desc, guards::close_dense_fn);
 
       // This will have data transposed, swap dims
+      onnxruntime::IAllocatorUniquePtr<uint8_t> csr_offsets;
       if (param.UseCsrFormat()) {
+        csr_offsets = kernel->GetPersistentBuffer<uint8_t>((num_rows + 1) * sizeof(int));
         CUSPARSE_RETURN_IF_ERROR(cusparseCreateCsr(&sparse_desc,
-                                                   N,
-                                                   K,
+                                                   num_rows,
+                                                   num_cols,
                                                    0,  // nnz is zero now
-                                                   nullptr,
+                                                   csr_offsets.get(),
                                                    nullptr,                                 // colInd is null according to the example
                                                    nullptr,                                 // values is null according to the example
                                                    CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,  // indicies are int
                                                    CUSPARSE_INDEX_BASE_ZERO, cuda_type));
       } else {
         CUSPARSE_RETURN_IF_ERROR(cusparseCreateCoo(&sparse_desc,
-                                                   N,
-                                                   K,
+                                                   num_rows,
+                                                   num_cols,
                                                    0,  // nnz
                                                    nullptr,
                                                    nullptr,
@@ -762,7 +767,6 @@ class CuSparseHelper {
                 << cols_tmp << " nnz: " << nnz << std::endl;
 
       if (param.UseCsrFormat()) {
-        auto csr_offsets = kernel->GetPersistentBuffer<uint8_t>((K + 1) * sizeof(int));
         auto csr_cols = kernel->GetPersistentBuffer<uint8_t>(nnz * sizeof(int));
         auto csr_values = kernel->GetPersistentBuffer<uint8_t>(nnz * element_size);
         CUSPARSE_RETURN_IF_ERROR(cusparseCsrSetPointers(sparse_desc, csr_offsets.get(), csr_cols.get(),
@@ -790,7 +794,7 @@ class CuSparseHelper {
       ORT_UNUSED_PARAMETER(bufs);
       DUMP_DISP(t_disp, expected_kernel_type, float, double, MLFloat16, BFloat16);
       if (param.UseCsrFormat()) {
-        DUMP_ARRAY(int, std::cout, "csr_offsets", bufs[0].get(), K + 1, 10);
+        DUMP_ARRAY(int, std::cout, "csr_offsets", bufs[0].get(), num_rows + 1, 10);
         DUMP_ARRAY(int, std::cout, "csr_cols", bufs[1].get(), nnz, 10);
         DUMP_INVOKE(t_disp, DumpArray, std::cout, "csr_values", bufs[2].get(), nnz, 10);
       } else {
@@ -841,26 +845,36 @@ class CuSparseHelper {
     if (output_shape.Size() == 0)
       return Status::OK();
 
-    cusparseDnMatDescr_t dense_desc;
-    CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&dense_desc,
-                                                 (transa) ? M : K,
-                                                 (transa) ? K : M,
-                                                 (transa) ? M : K,
+    // Dims swapped and we indicate ColumnMajor in all A, B and C
+    // We should end up RowMajor C since we are feeding dense X sparse instead of
+    // sparse X dense.
+    const int64_t num_rows_A = transa ? M : K;
+    const int64_t num_cols_A = transa ? K : M;
+    const int64_t lead_dim_A = transa ? M : K;
+
+    const int64_t num_rows_C = N;
+    const int64_t num_cols_C = M;
+    const int64_t lead_dim_C = N;
+
+    cusparseDnMatDescr_t dense_desc_A;
+    CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&dense_desc_A,
+                                                 num_rows_A,
+                                                 num_cols_A,
+                                                 lead_dim_A,
                                                  const_cast<void*>(left->DataRaw()),  // They say we can safely cast constness away :)
                                                  cuda_type,
                                                  CUSPARSE_ORDER_COL));  // We have RowMajor but feeding like Column
-    std::unique_ptr<cusparseDnMatDescr_t, decltype(guards::close_dense_fn)> dense_guard(&dense_desc, guards::close_dense_fn);
+    std::unique_ptr<cusparseDnMatDescr_t, decltype(guards::close_dense_fn)> dense_guard_A(&dense_desc_A, guards::close_dense_fn);
 
-    // Create output matrix with transposed dimensions
-    cusparseDnMatDescr_t output_desc;
-    CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&output_desc,
-                                                 N,
-                                                 M,
-                                                 N,
+    cusparseDnMatDescr_t output_desc_C;
+    CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&output_desc_C,
+                                                 num_rows_C,
+                                                 num_cols_C,
+                                                 lead_dim_C,
                                                  Y->MutableDataRaw(),
                                                  cuda_type,
                                                  CUSPARSE_ORDER_COL));
-    std::unique_ptr<cusparseDnMatDescr_t, decltype(guards::close_dense_fn)> output_guard(&output_desc, guards::close_dense_fn);
+    std::unique_ptr<cusparseDnMatDescr_t, decltype(guards::close_dense_fn)> output_guard_C(&output_desc_C, guards::close_dense_fn);
 
     cusparseOperation_t op_A = transa ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
     cusparseOperation_t op_B = transb ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
@@ -873,9 +887,9 @@ class CuSparseHelper {
                                                      op_B,
                                                      &alpha,
                                                      *sparse_info.sparse_desc_,
-                                                     dense_desc,
+                                                     dense_desc_A,
                                                      &beta,
-                                                     output_desc,
+                                                     output_desc_C,
                                                      cuda_type,
                                                      CUSPARSE_SPMM_ALG_DEFAULT,
                                                      &buffer_size));
@@ -886,9 +900,9 @@ class CuSparseHelper {
                                           op_B,
                                           &alpha,
                                           *sparse_info.sparse_desc_,
-                                          dense_desc,
+                                          dense_desc_A,
                                           &beta,
-                                          output_desc,
+                                          output_desc_C,
                                           cuda_type,
                                           CUSPARSE_SPMM_ALG_DEFAULT,
                                           work_buffer.get()));

@@ -178,7 +178,7 @@ TEST(MathOpTest, SparseInitializerTests) {
       42, 43, 44,  45, 46, 47, 0, 0, 0,
       48, 49, 50,  51, 52, 53, 0, 0, 0};
 
-  const bool is_b_constant = false;
+  const bool is_b_constant = true;
   test.AddInput<float>("B", initializer_shape, initializer_data, is_b_constant);
   const std::vector<int64_t> output_shape = {10, 9};
   const std::vector<float> output_data = {
@@ -203,7 +203,9 @@ TEST(MathOpTest, SparseInitializerTests) {
     // NNAPI: currently fails for the "test 2D empty input" case
     excluded_providers.insert(kNnapiExecutionProvider);
   }
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+  SessionOptions opts;
+  opts.constant_initializers_sparse_flags = OrtSparseFlags::USE_CSR_FORMAT;
+  test.Run(opts, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 }  // namespace test
