@@ -81,5 +81,3 @@ GradientCheckerTest.MulGrad
 GradientCheckerTest.ReduceMeanGrad
 GradientCheckerTest.ReduceL2Grad
 GradientCheckerTest.DivGrad
-GradientCheckerTest.SplitGrad
-GradientCheckerTest.ClipGrad
