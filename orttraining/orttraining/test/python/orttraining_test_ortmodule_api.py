@@ -253,7 +253,7 @@ def test_torch_nn_module_cuda_method():
     True,
     False
     ])
-def test_torch_nn_module_cpu_api(set_gpu_on_original_module):
+def test_torch_nn_module_cpu_method(set_gpu_on_original_module):
     original_device = 'cuda'
     to_device = 'cpu'
 

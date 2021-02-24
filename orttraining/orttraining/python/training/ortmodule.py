@@ -320,7 +320,8 @@ class ORTModule(torch.nn.Module):
             device_from_module = _utils.get_device_from_module(self._original_module)
             if not self._device or self._device != device_from_module:
                 self._device = device_from_module
-                assert self._device is not None, RuntimeError('A device must be specified in the model or data!')
+                if not self._device:
+                    raise RuntimeError('A device must be specified in the model or data!')
             self._get_inference_graph_and_init_gradient_graph_builder(*inputs, **kwargs)
 
         _, _, input_names_require_grad, new_input_shape = _parse_inputs_for_onnx_export(self._original_module_input_names, self._onnx_inference, *inputs, **kwargs)
