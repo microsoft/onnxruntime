@@ -164,6 +164,7 @@ static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/ov
 static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
 static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/VariedInputCustomOp.onnx");
+static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_3.onnx");
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
@@ -382,6 +383,66 @@ TEST(CApiTest, varied_input_custom_op_handler) {
 #endif
 }
 
+TEST(CApiTest, multiple_varied_input_custom_op_handler) {
+#ifdef USE_CUDA
+  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCudaExecutionProvider};
+#else
+  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCpuExecutionProvider};
+#endif
+
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+
+#ifdef USE_CUDA
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#endif
+
+  session_options.Add(custom_op_domain);
+  Ort::Session session(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI_2, session_options);
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names;
+
+  // input 0 (float type)
+  input_names.emplace_back("X");
+  std::vector<float> input_0_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  std::vector<int64_t> input_0_dims = {3, 2};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
+                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+
+  // input 1 (double type)
+  input_names.emplace_back("W");
+  std::vector<double> input_1_data = {2, 3, 4, 5, 6, 7};
+  std::vector<int64_t> input_1_dims = {3, 2};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<double>(info, const_cast<double*>(input_1_data.data()),
+                                       input_1_data.size(), input_1_dims.data(), input_1_dims.size()));
+
+  // Run
+  const char* output_name = "Y";
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                 &output_name, 1);
+  ASSERT_EQ(ort_outputs.size(), 1u);
+
+  // Validate results
+  std::vector<int64_t> y_dims = {3, 2};
+  std::vector<float> values_y = {3.f, 5.f, 7.f, 9.f, 11.f, 13.f};
+  auto type_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_info.GetShape(), y_dims);
+  size_t total_len = type_info.GetElementCount();
+  ASSERT_EQ(values_y.size(), total_len);
+
+  float* f = ort_outputs[0].GetTensorMutableData<float>();
+  for (size_t i = 0; i != total_len; ++i) {
+    ASSERT_EQ(values_y[i], f[i]);
+  }
+}
+
 // Tests registration of a custom op of the same name for both CPU and CUDA EPs
 #ifdef USE_CUDA
 TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
@@ -541,21 +602,10 @@ TEST(CApiTest, create_session_without_session_option) {
 #endif
 
 #ifdef REDUCED_OPS_BUILD
-TEST(ReducedOpsBuildTest, test_included_ops) {
-  // In reduce-ops build, test a model containing
-  // ops specified in reduced_ops_via_config.config
-  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_included_ops");
-  std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
-  std::vector<int64_t> expected_dims_y = {1};
-  std::vector<float> expected_values_y = {0.75};
-  TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                       nullptr, nullptr);
-}
-
 TEST(ReducedOpsBuildTest, test_excluded_ops) {
-  // In reduce-ops build, test a model containing
-  // ops not referred by reduced_ops_via_config.config
-  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_ops_via_config.onnx_model_with_excluded_ops");
+  // In reduced ops build, test a model containing ops not included in required_ops.config cannot be loaded.
+  // See onnxruntime/test/testdata/reduced_build_test.readme.txt for more details of the setup
+  constexpr PATH_TYPE model_uri = TSTR("testdata/reduced_build_test.onnx_model_with_excluded_ops");
   std::vector<Input> inputs = {{"X", {3}, {-1.0f, 2.0f, -3.0f}}};
   std::vector<int64_t> expected_dims_y = {3};
   std::vector<float> expected_values_y = {0.1f, 0.1f, 0.1f};
@@ -708,11 +758,7 @@ TEST(CApiTest, io_binding_cuda) {
 #endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
-#ifdef USE_TENSORRT
-  Ort::MemoryInfo info_cuda("Tensorrt", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#else
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#endif
 
   Ort::Allocator cuda_allocator(session, info_cuda);
   auto allocator_info = cuda_allocator.GetInfo();
@@ -738,6 +784,9 @@ TEST(CApiTest, io_binding_cuda) {
   // Create an OrtValue tensor backed by data on CUDA memory
   Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
                                                 expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+
+  // Sychronize to make sure the copy on default stream is done since TensorRT isn't using default stream.
+  cudaStreamSynchronize(nullptr);
 
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
@@ -1153,7 +1202,7 @@ TEST(CApiTest, get_available_providers) {
   char** providers;
   ASSERT_EQ(g_ort->GetAvailableProviders(&providers, &len), nullptr);
   ASSERT_GT(len, 0);
-  ASSERT_STREQ(providers[len-1], "CPUExecutionProvider");
+  ASSERT_STREQ(providers[len - 1], "CPUExecutionProvider");
   ASSERT_EQ(g_ort->ReleaseAvailableProviders(providers, len), nullptr);
 }
 

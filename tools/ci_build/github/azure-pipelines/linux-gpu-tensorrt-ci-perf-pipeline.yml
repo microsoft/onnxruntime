@@ -6,7 +6,7 @@ jobs:
     image: 'onnxruntime-master-ep-perf'
   timeoutInMinutes: 2000 
   steps:
-
+  
     - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_images.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b master -i $(image)'
       displayName: 'Build latest ORT Images'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'

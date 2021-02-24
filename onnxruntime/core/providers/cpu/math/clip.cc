@@ -74,10 +74,10 @@ Status Clip::Compute(OpKernelContext* ctx) const {
   const auto* max = ctx->Input<Tensor>(2);
   Tensor* Y = ctx->Output(0, X->Shape());
 
-  utils::MLTypeCallDispatcher<ComputeImpl, float, double, int8_t, uint8_t, int64_t, uint64_t>
+  utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t, int64_t, uint64_t>
       t_disp(X->GetElementType());
 
-  t_disp.Invoke(X, min, max, Y);
+  t_disp.Invoke<ComputeImpl>(X, min, max, Y);
 
   return Status::OK();
 }

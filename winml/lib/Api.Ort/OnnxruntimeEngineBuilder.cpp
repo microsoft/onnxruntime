@@ -14,12 +14,12 @@
 #include "OnnxruntimeErrors.h"
 using namespace _winml;
 
-HRESULT OnnxruntimeEngineBuilder::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory) {
+HRESULT OnnxruntimeEngineBuilder::RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine_factory) {
   engine_factory_ = engine_factory;
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
+STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** out) {
   auto ort_api = engine_factory_->UseOrtApi();
 
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> onnxruntime_session_builder;
@@ -61,7 +61,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineBuilder::GetD3D12Device(ID3D12Device** device) {
+STDMETHODIMP OnnxruntimeEngineBuilder::GetD3D12Device(_Outptr_ ID3D12Device** device) {
   *device = device_.Get();
   return S_OK;
 }
@@ -77,7 +77,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetMetacommandsEnabled(int enabled) {
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(ID3D12CommandQueue** queue) {
+STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(_Outptr_ ID3D12CommandQueue** queue) {
   *queue = queue_.Get();
   return S_OK;
 }

@@ -15,7 +15,7 @@ namespace WINMLP {
 
 struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative> {
   /* LearningModelSession constructors (MachineLearningContract 1). */
-  LearningModelSession() = delete;
+  LearningModelSession(_winml::IEngine* engine);
 
   LearningModelSession(
       winml::LearningModel const& model);
@@ -83,6 +83,9 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearn
   {
     return &dml_ep_lock_;
   }
+
+  static winml::LearningModelSession CreateInertSession(_winml::IEngine* engine);
+
  private:
   void
   Initialize();

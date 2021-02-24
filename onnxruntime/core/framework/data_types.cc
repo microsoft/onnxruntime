@@ -7,6 +7,7 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/data_types_internal.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/util/math.h"
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -21,6 +22,13 @@
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
+
+MLFloat16::MLFloat16(float f) : val{math::floatToHalf(f)} {}
+
+float MLFloat16::ToFloat() const {
+  return math::halfToFloat(val);
+}
+
 // Return the MLDataType used for a generic Tensor
 template <>
 MLDataType DataTypeImpl::GetType<Tensor>() {

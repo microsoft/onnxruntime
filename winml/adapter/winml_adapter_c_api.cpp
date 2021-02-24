@@ -40,6 +40,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::ModelGetMetadataCount,
     &winmla::ModelGetMetadata,
     &winmla::ModelEnsureNoFloat16,
+    &winmla::SaveModel,
 
     // OrtSessionOptions methods
     &OrtSessionOptionsAppendExecutionProvider_CPU,
@@ -79,11 +80,25 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::ValueGetDeviceId,
     &winmla::SessionGetInputRequiredDeviceId,
 
+    &winmla::CreateTensorTypeInfo,
+    &winmla::CreateSequenceTypeInfo,
+    &winmla::CreateMapTypeInfo,
+    &winmla::CreateModel,
+    &winmla::ModelAddInput,
+    &winmla::ModelAddConstantInput,
+    &winmla::ModelAddOutput,
+    &winmla::ModelAddOperator,
+    &winmla::ModelGetOpsetVersion,
+    &winmla::OperatorGetNumInputs,
+    &winmla::OperatorGetInputName,
+    &winmla::OperatorGetNumOutputs,
+    &winmla::OperatorGetOutputName,
+
     // Release
     &winmla::ReleaseModel
 };
 
-const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(const OrtApi* ort_api) NO_EXCEPTION {
+const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(_In_ const OrtApi* ort_api) NO_EXCEPTION {
   if (OrtApis::GetApi(2) == ort_api) {
     return &winml_adapter_api_1;
   }

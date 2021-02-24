@@ -51,18 +51,19 @@ __global__ void _ShrinkKernel(
 
 template <typename T>
 void ShrinkImpl(
+    cudaStream_t stream,
     const T* input_data,
     const float bias,
     const float lambda,
     T* output_data,
     size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _ShrinkKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _ShrinkKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input_data, bias, lambda, output_data, (CUDA_LONG)N);
 }
 
 #define SPECIALIZED_IMPL(T) \
-  template void ShrinkImpl<T>(const T* input_data, const float bias, const float lambda, T* output_data, size_t N);
+  template void ShrinkImpl<T>(cudaStream_t stream, const T* input_data, const float bias, const float lambda, T* output_data, size_t N);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

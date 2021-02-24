@@ -76,7 +76,7 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
 // see input_to_dimension_mapping in bert/main.cc for example, and training_utils.h for more explanation
 common::Status DataSet::GetTensorDimensionsFromInputs(const std::map<std::string, std::pair<std::string, size_t>>& input_to_dimension_mapping,
                                                       MapStringToString& mapped_dimensions) const {
-  if (input_to_dimension_mapping.size() == 0) return Status::OK(); 
+  if (input_to_dimension_mapping.size() == 0) return Status::OK();
 
   for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
     std::string input_name = GetInputName(input_index);
@@ -212,7 +212,8 @@ std::string LossScaler::SaveToString() const {
 
 Status LossScaler::LoadFromString(const std::string& input) {
   std::istringstream s{input};
-  ORT_RETURN_IF_NOT((s >> loss_scale_ >> stable_steps_) && s.eof());
+  ORT_RETURN_IF_NOT((s >> loss_scale_ >> stable_steps_) && s.eof(),
+                    "(s >> loss_scale_ >> stable_steps_) && s.eof() was false");
   return Status::OK();
 }
 
