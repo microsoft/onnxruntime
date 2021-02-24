@@ -75,6 +75,7 @@ Status SequencePooling<T>::Compute(OpKernelContext* context) const {
     std::partial_sum(sentence_lengthes_data + offset, sentence_lengthes_data + offset + num_sequences, sentence_length_prefixsum.begin());
 
     ORT_ENFORCE(sentence_length_prefixsum[num_sequences - 1] == sequence_length_for_split);
+
     sentence_lengthes_prefixsum.push_back(std::move(sentence_length_prefixsum));
   }
 
