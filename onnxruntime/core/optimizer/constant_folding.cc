@@ -186,6 +186,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       auto p_ip_node_end = node->InputNodesEnd();
       while (p_ip_node != p_ip_node_end) {
         const auto& input_node = *p_ip_node;
+        // Update the node iterator before removing the corresponding node because removing
+        // the node will invalidate the node iterator
         ++p_ip_node;
         graph_utils::RemoveNodesWithOneOutputBottomUp(graph, input_node);
       }
