@@ -23,7 +23,12 @@ def populate_user_output_from_schema_and_outputs(output_schema, output_names, ou
             user_output = list(user_output)
             for idx in range(len(user_output)):
                 user_output[idx] = replace_stub_with_tensor_value(user_output[idx], outputs, output_idx)
-            user_output = sequence_type(user_output)
+            try:
+                # namedtuple can be created by passing the list sequence to method _make
+                user_output = sequence_type._make(user_output)
+            except AttributeError:
+                # If attribute error encountered, create the sequence directly
+                user_output = sequence_type(user_output)
         elif isinstance(user_output, abc.Mapping):
             for key in sorted(user_output):
                 user_output[key] = replace_stub_with_tensor_value(user_output[key], outputs, output_idx)
@@ -54,7 +59,12 @@ def extract_output_schema(output):
         output = list(output)
         for idx in range(len(output)):
             output[idx] = extract_output_schema(output[idx])
-        output = sequence_type(output)
+        try:
+            # namedtuple can be created by passing the list sequence to method _make
+            output = sequence_type._make(output)
+        except AttributeError:
+            # If attribute error encountered, create the sequence directly
+            output = sequence_type(output)
     elif isinstance(output, abc.Mapping):
         for key in sorted(output):
             output[key] = extract_output_schema(output[key])
@@ -118,7 +128,7 @@ def get_flattened_output_module(original_module):
                 return _transform_output_to_flat_tuple(self._base_module(*args, **kwargs))
 
             # Exporter does not support use of **kwargs in the forward method.
-            # Work around it by making the signature of the forward method to resemble that of the 
+            # Work around it by making the signature of the forward method to resemble that of the
             # original model
             # Copy the forward signature from the original PyTorch module.
             self.forward = _forward.__get__(self)
