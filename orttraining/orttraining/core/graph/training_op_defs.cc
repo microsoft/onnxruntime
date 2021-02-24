@@ -2231,11 +2231,12 @@ Return true if all elements are true and false otherwise.
         if (nullptr == required_grads) {  // attribute not present
           fail_type_inference("Value of attribute ", attribute_name, " not specified");
         }
-        ORT_ENFORCE(ctx.getNumOutputs() >= static_cast<size_t> (required_grads->ints_size()));
-        for (size_t i = 0; i < static_cast<size_t> (required_grads->ints_size()); ++i) {
+        ORT_ENFORCE(ctx.getNumOutputs() == static_cast<size_t> (required_grads->ints_size()));
+        for (size_t i = 0, n = static_cast<size_t> (required_grads->ints_size()); i < n; ++i) {
           size_t j = static_cast<size_t> (required_grads->ints(static_cast<int>(i)));
+          ORT_ENFORCE(ctx.getNumInputs() > j);
           propagateElemTypeFromInputToOutput(ctx, j, i);
-          auto typeProto = ctx.getInputType(i);
+          auto typeProto = ctx.getInputType(j);
           if (!hasShape(*typeProto)) {
             continue;
           }
