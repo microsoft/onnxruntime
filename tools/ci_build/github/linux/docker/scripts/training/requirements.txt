@@ -11,3 +11,4 @@ torchtext
 tensorboard==v2.0.0
 h5py
 wget
+mysql-connector-python
