@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 # orttraining_test_ortmodule_api.py
 
+import math
 import torch
 from transformers import AutoConfig, BertForSequenceClassification
 from transformers.modeling_outputs import SequenceClassifierOutput
@@ -697,3 +698,35 @@ def test_register_custom_ops_pytorch_exporter_torch_triu():
     output = model(user_input)
     assert list(output.shape) ==  [1, 10, 10]
 
+def test_wrap_ortmodule_and_change_device():
+    # Basic Sequencial model wrapping ORTModule
+    x = torch.linspace(-math.pi, math.pi, 2000)
+    xx = x.unsqueeze(-1).pow(torch.tensor([1, 2, 3]))
+    y = torch.sin(x)
+    model = torch.nn.Sequential(
+        ORTModule(torch.nn.Linear(3, 1)),
+        torch.nn.Flatten(0, 1)
+    )
+
+    # Changing device for fun
+    model = model.cpu()
+    xx = xx.cpu()
+    y = y.cpu()
+    model = model.cuda()
+    xx = xx.cuda()
+    y = y.cuda()
+
+    # Quick train
+    loss_fn = torch.nn.MSELoss(reduction='sum')
+    learning_rate = 1e-6
+    for t in range(2000):
+        y_pred = model(xx)
+        loss = loss_fn(y_pred, y)
+        model.zero_grad()
+        loss.backward()
+        with torch.no_grad():
+            for param in model.parameters():
+                param -= learning_rate * param.grad
+
+    # Checking training finished normally
+    assert y_pred is not None and loss is not None
