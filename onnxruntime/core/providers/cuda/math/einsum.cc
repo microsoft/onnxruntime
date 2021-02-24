@@ -15,7 +15,8 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T",
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<double>()}),
+                                          DataTypeImpl::GetTensorType<double>(),
+                                          DataTypeImpl::GetTensorType<MLFloat16>()}),
     Einsum);
 
 Status Einsum::Compute(OpKernelContext* context) const {
@@ -57,6 +58,16 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<double>,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
+    return einsum_compute_processor.Run();
+  } else if (inputs[0]->IsDataType<MLFloat16>()) {
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<MLFloat16>(context, allocator, tp,
+                                                                           einsum_compute_preprocessor,
+                                                                           &einsum_cuda_assets);
+
+    einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
     return einsum_compute_processor.Run();
   }
