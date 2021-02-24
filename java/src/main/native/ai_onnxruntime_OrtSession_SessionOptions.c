@@ -532,7 +532,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCor
     (void)jobj;
   #ifdef USE_CORE_ML
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CoreML((OrtSessionOptions*) handle, (uint32_t) coreMLFlags));
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id, size_t hip_mem_limit);
   #else
     (void)apiHandle;(void)handle;(void)coreMLFlags; // Parameters used when CoreML is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with CoreML support.");
@@ -549,9 +548,9 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROC
     (void)jobj;
   #ifdef USE_ROCM
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ROCM((OrtSessionOptions*) handle, deviceID, (size_t) memLimit));
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id, size_t hip_mem_limit);
   #else
     (void)apiHandle;(void)handle;(void)deviceID;(void)memLimit; // Parameters used when ROCM is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ROCM support.");
   #endif
 }
+
