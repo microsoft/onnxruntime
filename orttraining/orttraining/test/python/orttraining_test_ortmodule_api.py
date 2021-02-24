@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 # orttraining_test_ortmodule_api.py
 
+import math
 import torch
 from transformers import AutoConfig, BertForSequenceClassification
 from transformers.modeling_outputs import SequenceClassifierOutput
@@ -231,93 +232,96 @@ def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_s
     assert ortmodule_result == ortmodule_result_again
     assert pytorch_result == ortmodule_result
 
-def test_model_cuda():
+def test_torch_nn_module_cuda_method():
     original_device = 'cpu'
     to_device = 'cuda'
 
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
     model = ORTModule(model)
-    x = torch.randn(N, D_in, device=to_device)
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == original_device
 
+    x = torch.randn(N, D_in, device=to_device)
     model = model.cuda()
     model(x)
 
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == to_device
 
-def test_model_cpu():
+@pytest.mark.parametrize("set_gpu_on_original_module", [
+    True,
+    False
+    ])
+def test_torch_nn_module_cpu_method(set_gpu_on_original_module):
     original_device = 'cuda'
     to_device = 'cpu'
 
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(original_device)
-    model = ORTModule(model)
-    x = torch.randn(N, D_in)
+    if set_gpu_on_original_module:
+        model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(original_device)
+        model = ORTModule(model)
+    else:
+        model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
+        model = ORTModule(model).to(original_device)
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == original_device
 
+    x = torch.randn(N, D_in, device=to_device)
     model = model.cpu()
     model(x)
-
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == to_device
 
-@pytest.mark.parametrize("original_device, to_argument, requires_export, device_type, device_index", [
-    ('cpu', torch.device('cuda'), True, 'cuda', 0),
-    ('cpu', 'cuda', True, 'cuda', 0),
-    ('cpu', 'cuda:0', True, 'cuda', 0),
-    ('cpu', 'cuda', True, 'cuda', 0),
-    ('cuda', 'cuda', False, 'cuda', 0),
-    ('cuda', 'cuda:0', False, 'cuda', 0),
-    ('cuda', torch.device('cuda'), False, 'cuda', 0),
-    ('cuda', 'cpu', True, 'cpu', 0),
-    ('cuda', torch.device('cpu'), True, 'cpu', 0),
-    ('cpu', 'cpu', False, 'cpu', None),
-    ('cpu', torch.device('cpu'), False, 'cpu', None),
-    ('cpu', torch.zeros(2, device=torch.device('cuda')), True, 'cuda', 0),
+@pytest.mark.parametrize("original_device, to_argument", [
+    ('cpu', 'cpu'),
+    ('cpu', 'cuda'),
+    ('cpu', 'cuda:0'),
+    ('cpu', torch.device('cpu')),
+    ('cpu', torch.device('cuda')),
+    ('cuda', 'cuda'),
+    ('cuda', 'cuda:0'),
+    ('cuda', 'cpu'),
+    ('cuda', torch.device('cuda')),
+    ('cuda', torch.device('cpu')),
     ])
-def test_model_to_device(original_device, to_argument, requires_export, device_type, device_index):
+def test_torch_nn_module_to_api(original_device, to_argument):
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(original_device)
     model = ORTModule(model)
-    x = torch.randn(N, D_in, device=device_type)
+    x = torch.randn(N, D_in, device=original_device)
     for _, parameter_value in model.named_parameters():
         assert parameter_value.device.type == original_device
 
     model = model.to(to_argument)
-    assert model._device_changed == requires_export
-    assert model._device == torch.device(device_type+':'+str(device_index) if device_index is not None else device_type)
+    x = x.to(to_argument)
     model(x)
+    assert _utils.get_device_str(model._device) == _utils.get_device_str(torch.device(to_argument))
 
-    for _, parameter_value in model.named_parameters():
-        assert parameter_value.device.type == device_type
-
-@pytest.mark.parametrize("original_device, to_device", [
-    ('cuda', 'cpu'),
-    ('cpu', 'cuda')
-    ])
-def test_model_to_device_and_back_to_original(original_device, to_device):
+def test_model_without_device():
+    # Model doesn't have device (CPU is assumed)
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(original_device)
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
     model = ORTModule(model)
-    for _, parameter_value in model.named_parameters():
-        assert parameter_value.device.type == original_device
 
-    model = model.to(to_device)
-    assert model._device_changed == True
-    assert model._device == torch.device(to_device+':0')
+    # User input is on GPU
+    input_device='cuda'
+    x = torch.randn(N, D_in).to(input_device)
 
-    for _, parameter_value in model.named_parameters():
-        assert parameter_value.device.type == to_device
+    # ORTModule and PyTorch does not move model to where user input is hosted
+    with pytest.raises(RuntimeError) as type_error:
+        model(x)
+    assert "Tensor for argument #1 'self' is on CPU, but expected them to be on GPU (while checking arguments for addmm)" in str(type_error.value)
 
-    model = model.to(original_device)
-    assert model._device_changed == True
-    assert model._device == torch.device(original_device+':0')
-    for _, parameter_value in model.named_parameters():
-        assert parameter_value.device.type == original_device
+def test_model_and_input_without_device():
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
+    model = ORTModule(model)
+    x = torch.randn(N, D_in)
+
+    # CPU is assumed for both model and user input
+    out = model(x)
+    out is not None
 
 # TODO: Re-enable this Test when .to(), .cpu() and .cuda() are fixed
 # def test_model_with_different_devices_same_session():
@@ -693,3 +697,36 @@ def test_register_custom_ops_pytorch_exporter_torch_triu():
 
     output = model(user_input)
     assert list(output.shape) ==  [1, 10, 10]
+
+def test_wrap_ortmodule_and_change_device():
+    # Basic Sequencial model wrapping ORTModule
+    x = torch.linspace(-math.pi, math.pi, 2000)
+    xx = x.unsqueeze(-1).pow(torch.tensor([1, 2, 3]))
+    y = torch.sin(x)
+    model = torch.nn.Sequential(
+        ORTModule(torch.nn.Linear(3, 1)),
+        torch.nn.Flatten(0, 1)
+    )
+
+    # Changing device for fun
+    model = model.cpu()
+    xx = xx.cpu()
+    y = y.cpu()
+    model = model.cuda()
+    xx = xx.cuda()
+    y = y.cuda()
+
+    # Quick train
+    loss_fn = torch.nn.MSELoss(reduction='sum')
+    learning_rate = 1e-6
+    for t in range(2000):
+        y_pred = model(xx)
+        loss = loss_fn(y_pred, y)
+        model.zero_grad()
+        loss.backward()
+        with torch.no_grad():
+            for param in model.parameters():
+                param -= learning_rate * param.grad
+
+    # Checking training finished normally
+    assert y_pred is not None and loss is not None
