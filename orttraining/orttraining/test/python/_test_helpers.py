@@ -145,3 +145,19 @@ def _get_name(name):
     if os.path.exists(res):
         return res
     raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
+
+def assert_gradients_match_and_reset_gradient(ort_model, pt_model, reset_gradient=True, rtol=1e-05, atol=1e-06):
+    ort_named_params = list(ort_model.named_parameters())
+    pt_named_params = list(pt_model.named_parameters())
+    assert len(ort_named_params) == len(pt_named_params)
+
+    for ort_named_param, pt_named_param in zip(ort_named_params, pt_named_params):
+        ort_name, ort_param = ort_named_param
+        pt_name, pt_param = pt_named_param
+
+        assert pt_name in ort_name
+        assert torch.allclose(ort_param.grad, pt_param.grad, rtol=rtol, atol=atol)
+
+        if reset_gradient:
+            ort_param.grad = None
+            pt_param.grad = None
