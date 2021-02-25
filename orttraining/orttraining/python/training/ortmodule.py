@@ -244,8 +244,10 @@ class ORTModule(torch.nn.Module):
                 _create_iobinding(self._training_io_binding, inputs, self._onnx_training, self._device)
 
                 # Run and return module outputs.
-                user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) \
-                    for forward_output in self._training_session.run_forward(self._training_io_binding, self._run_options))
+                forward_outputs, run_id = self._training_session.run_forward(self._training_io_binding, self._run_options)
+                user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) for forward_output in forward_outputs)
+                ctx.run_id = run_id
+
                 return user_outputs
 
             @staticmethod
@@ -261,7 +263,8 @@ class ORTModule(torch.nn.Module):
                         grad_output.dtype), grad_output.device.type, _utils.get_device_index(grad_output.device), grad_output.data_ptr()))
 
                 # Run and get results
-                self._training_session.run_backward(backward_grad_output_ortvalue)
+                run_id = ctx.run_id
+                self._training_session.run_backward(backward_grad_output_ortvalue, run_id)
                 backward_outputs = self._training_io_binding.get_outputs()
 
                 # Return input and initializer gradients
