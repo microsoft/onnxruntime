@@ -68,25 +68,25 @@ ort_tensor_t ort_create_tensor(ort_tensor_metadata_t metadata) {
 }
 
 ort_tensor_metadata_t ort_get_tensor_metadata(ort_tensor_t tensor) {
-    Ort::Value v{reinterpret_cast<OrtValue*>(tensor)};
-    auto info = v.GetTensorTypeAndShapeInfo();
-    size_t dims_len = info.GetDimensionsCount();
-    size_t metadata_size = sizeof(TensorMetadata) + sizeof(size_t) * dims_len;
-    TensorMetadata * p = reinterpret_cast<TensorMetadata *>(malloc(metadata_size));
-    p->data = v.GetTensorMutableData<void>();
-    p->data_type = info.GetElementType();
-    p->shape_len = dims_len;
-    auto shape = info.GetShape();
-    for (size_t i = 0; i < dims_len; i++) {
-        p->shapes()[i] = static_cast<size_t>(shape[i]);
-    }
+  Ort::Value v{reinterpret_cast<OrtValue*>(tensor)};
+  auto info = v.GetTensorTypeAndShapeInfo();
+  size_t dims_len = info.GetDimensionsCount();
+  size_t metadata_size = sizeof(TensorMetadata) + sizeof(size_t) * dims_len;
+  TensorMetadata* p = reinterpret_cast<TensorMetadata*>(malloc(metadata_size));
+  p->data = v.GetTensorMutableData<void>();
+  p->data_type = info.GetElementType();
+  p->shape_len = dims_len;
+  auto shape = info.GetShape();
+  for (size_t i = 0; i < dims_len; i++) {
+    p->shapes()[i] = static_cast<size_t>(shape[i]);
+  }
 
-    v.release();
-    return reinterpret_cast<ort_tensor_metadata_t>(p);
+  v.release();
+  return reinterpret_cast<ort_tensor_metadata_t>(p);
 }
 
 void ort_release_tensor_metadata(ort_tensor_metadata_t metadata) {
-    free(reinterpret_cast<void *>(metadata));
+  free(reinterpret_cast<void*>(metadata));
 }
 
 void ort_release_tensor(ort_tensor_t tensor) {
@@ -126,6 +126,9 @@ void ort_run(ort_session_handle_t p_session, ort_run_context_t context) {
                               output_count ? output_names.data() : nullptr,
                               output_count);
 
+  for (size_t i = 0; i < input_count; i++) {
+    inputs[i].release();
+  }
   for (size_t i = 0; i < output_count; i++) {
     feeds[input_count + i].tensor = reinterpret_cast<ort_tensor_t>(outputs[i].release());
   }
