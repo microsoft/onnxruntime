@@ -713,7 +713,13 @@ class PlannerImpl {
               }
             }
           }
-        } else if (IsNonTensor(*node_output) || external_outputs) {
+        } else if (external_outputs) {
+          ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
+          AllocPlan(current).alloc_kind = AllocKind::kPreExisting;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+          AllocPlan(current).life_interval.second = execution_plan.size();
+#endif
+        } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
