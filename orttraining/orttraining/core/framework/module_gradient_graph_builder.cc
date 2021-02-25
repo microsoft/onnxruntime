@@ -191,9 +191,9 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
     }
   }
 
-  // YieldOps RequiredGrad attribute specifies the indices of the required gradients.
+  // YieldOps required_grad attribute specifies the indices of the required gradients.
   ONNX_NAMESPACE::AttributeProto required_grad;
-  const std::string attribute_name = "RequiredGrad";
+  const std::string attribute_name = "required_grad";
   required_grad.set_name(attribute_name);
   required_grad.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
 

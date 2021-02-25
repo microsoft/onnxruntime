@@ -2221,12 +2221,12 @@ Return true if all elements are true and false otherwise.
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
       .Attr(
-        "RequiredGrad",
-        "The indices of required gradient outputs.",
+        "required_grad",
+        "The indices of the outputs that require gradient outputs.",
         AttributeProto::INTS)
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        const std::string attribute_name = "RequiredGrad";
+        const std::string attribute_name = "required_grad";
         auto required_grads = ctx.getAttribute(attribute_name);
         if (nullptr == required_grads) {  // attribute not present
           fail_type_inference("Value of attribute ", attribute_name, " not specified");
