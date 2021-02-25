@@ -96,7 +96,7 @@ def main():
     run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True,
         data_dir=args.bert_data, transformers_cache=args.transformers_cache)
 
-    run_ortmodule_torch_lightning(cwd, log, args.args.mnist)
+    run_ortmodule_torch_lightning(cwd, log, args.mnist)
 
     return 0
 
