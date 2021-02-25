@@ -304,13 +304,15 @@ class InferenceSession {
 
 #ifdef ENABLE_TRAINING
   // For ORTModule.forward()
-  virtual common::Status RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
-                                                        std::vector<OrtValue>& user_outputs) ORT_MUST_USE_RESULT;
+  virtual common::Status RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding,
+                                                        std::vector<OrtValue>& user_outputs,
+                                                        int64_t& run_id) ORT_MUST_USE_RESULT;
 
   // For ORTModule.backward()
-  common::Status ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
-#endif
+  common::Status ContinueRunInBackground(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
 
+  void CancelBackgroundTask(int64_t run_id);
+#endif
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
@@ -676,17 +678,15 @@ class InferenceSession {
   std::vector<uint8_t> ort_format_model_bytes_;
 
 #ifdef ENABLE_TRAINING
-  // background thread for RunInBackgroundAndWaitForYield
-  struct Task {
-    std::thread bg_thread_;
-    std::promise<Status> bg_thread_promise_;
-    std::future<Status> bg_thread_future_;
-    bool* terminate_flag_ = nullptr;
-  } task_;
+  // mutex for accessing bg_threads_
+  std::mutex bg_threads_mutex_;
+
+  // background threads for RunInBackgroundAndWaitForYield and ContinueRunInBackground
+  std::unordered_map<int64_t, std::thread> bg_threads_;
 #endif
+
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };
-
 
 struct SessionIOBinding {
  public:
