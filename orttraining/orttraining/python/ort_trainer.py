@@ -929,7 +929,7 @@ class ORTTrainer():
                 checkpoint_path=self.checkpoint_path,
                 _onnx_model_cache_key=self._onnx_model_cache_key,
                 _init_onnx_model_file_name=self._init_onnx_model_file_name,
-                _param_bytes_size=self._param_bytes_size)
+                _param_bytes_size=self.self.num_param_to_train_in_pytorch * 4)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -990,6 +990,7 @@ class ORTTrainer():
             print("load torch model states from pickled files at ", self._init_onnx_model_cache_root)
             self._torch_state_dict_keys = pickle.load(open(os.path.join(self._init_onnx_model_cache_root, "_torch_state_dict_keys.p"), "rb"))
             self.frozen_weights_ = pickle.load(open(os.path.join(self._init_onnx_model_cache_root, "frozen_weights_.p"), "rb"))
+            self.num_param_to_train_in_pytorch = pickle.load(open(os.path.join(self._init_onnx_model_cache_root, "num_params.p"), "rb"))
         else:
             print("start building PyTorch model with pytorch_model_builder")
             self.torch_model_ = self._pytorch_model_builder()
@@ -1003,6 +1004,8 @@ class ORTTrainer():
             # torch buffers created using 'register_buffer' are not meant to be trainable.
             torch_buffers = list(dict(self.torch_model_.named_buffers()).keys())
             self.frozen_weights_ = self.frozen_weights_ + torch_buffers
+
+            self.num_param_to_train_in_pytorch = sum(p.numel() for p in self.torch_model_.parameters() if p.requires_grad)
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
                 self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, 
                 opset_version=self.opset_version_,
@@ -1020,14 +1023,14 @@ class ORTTrainer():
 
             pickle.dump(self._torch_state_dict_keys, open(os.path.join(self._init_onnx_model_cache_root, "_torch_state_dict_keys.p"), "wb"))
             pickle.dump(self.frozen_weights_, open(os.path.join(self._init_onnx_model_cache_root, "frozen_weights_.p"), "wb"))
+            pickle.dump(self.num_param_to_train_in_pytorch, open(os.path.join(self._init_onnx_model_cache_root, "num_params.p"), "wb"))      
 
             external_data_helper.convert_model_to_external_data(self.onnx_model_, all_tensors_to_one_file=False)
             onnx.save_model(self.onnx_model_, self._init_onnx_model_file_name)
-            print("finish saving model to ", self._init_onnx_model_file_name)
+            print("finish saving model to ", self._init_onnx_model_file_name, " model param num: ", self.num_param_to_train_in_pytorch)
 
             self._init_onnx_model_export_lock.release()
-        self._param_bytes_size = os.path.getsize(self._init_onnx_model_file_name)
-        print("parameter bytes size is ", self._param_bytes_size)
+
         self._init_session()
 
     def train(self):
