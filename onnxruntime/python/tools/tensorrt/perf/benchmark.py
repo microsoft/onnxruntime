@@ -235,72 +235,6 @@ def get_acl_version():
         version = version_match.group(0).split(' ')[0]
         return version
 
-def get_cuda_version():
-    from pathlib import Path
-    home = str(Path.home())
-
-    p1 = subprocess.Popen(["find", home+"/.local/lib/", "-name", "onnxruntime_pybind11_state.so"], stdout=subprocess.PIPE)
-    stdout, sterr = p1.communicate()
-    stdout = stdout.decode("ascii").strip()
-    p1 = subprocess.Popen(["ldd", stdout], stdout=subprocess.PIPE)
-    p2 = subprocess.Popen(["grep", "libcudart.so"], stdin=p1.stdout, stdout=subprocess.PIPE)
-    stdout, sterr = p2.communicate()
-    stdout = stdout.decode("ascii").strip()
-
-    return stdout
-
-def get_trt_version():
-    from pathlib import Path
-    home = str(Path.home())
-
-    p1 = subprocess.Popen(["find", home+"/.local/lib/", "-name", "onnxruntime_pybind11_state.so"], stdout=subprocess.PIPE)
-    stdout, sterr = p1.communicate()
-    stdout = stdout.decode("ascii").strip()
-    p1 = subprocess.Popen(["ldd", stdout], stdout=subprocess.PIPE)
-    p2 = subprocess.Popen(["grep", "libnvinfer.so"], stdin=p1.stdout, stdout=subprocess.PIPE)
-    stdout, sterr = p2.communicate()
-    stdout = stdout.decode("ascii").strip()
-
-    if stdout == "":
-        p1 = subprocess.Popen(["find", home+"/.local/lib/", "-name", "libonnxruntime_providers_tensorrt.so"], stdout=subprocess.PIPE)
-        stdout, sterr = p1.communicate()
-        stdout = stdout.decode("ascii").strip()
-        p1 = subprocess.Popen(["ldd", stdout], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["grep", "libnvinfer.so"], stdin=p1.stdout, stdout=subprocess.PIPE)
-        stdout, sterr = p2.communicate()
-        stdout = stdout.decode("ascii").strip()
-
-    return stdout
-
-# not use for this script temporarily
-def tmp_get_trt_version():
-    p1 = subprocess.Popen(["dpkg", "-l"], stdout=subprocess.PIPE)
-    p2 = subprocess.Popen(["grep", "TensorRT runtime libraries"], stdin=p1.stdout, stdout=subprocess.PIPE)
-    stdout, sterr = p2.communicate()
-    stdout = stdout.decode("ascii").strip()
-
-    if stdout != "":
-        stdout = re.sub('\s+', ' ', stdout)
-        return stdout
-
-    if os.path.exists("/usr/lib/x86_64-linux-gnu/libnvinfer.so"):
-        p1 = subprocess.Popen(["readelf", "-s", "/usr/lib/x86_64-linux-gnu/libnvinfer.so"], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["grep", "version"], stdin=p1.stdout, stdout=subprocess.PIPE)
-        stdout, sterr = p2.communicate()
-        stdout = stdout.decode("ascii").strip()
-        stdout = stdout.split(" ")[-1]
-        return stdout
-
-    elif os.path.exists("/usr/lib/aarch64-linux-gnu/libnvinfer.so"):
-        p1 = subprocess.Popen(["readelf", "-s", "/usr/lib/aarch64-linux-gnu/libnvinfer.so"], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["grep", "version"], stdin=p1.stdout, stdout=subprocess.PIPE)
-        stdout, sterr = p2.communicate()
-        stdout = stdout.decode("ascii").strip()
-        stdout = stdout.split(" ")[-1]
-        return stdout
-
-    return ""
-
 #######################################################################################################################################
 # The following two lists will be generated.
 #
@@ -309,7 +243,6 @@ def tmp_get_trt_version():
 #######################################################################################################################################
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
     logger.info("Parsing test data in {} ...".format(path))
-    # p1 = subprocess.Popen(["find", path, "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
     p1 = subprocess.Popen(["find", path, "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
@@ -419,7 +352,15 @@ def generate_onnx_model_random_input(test_times, ref_input):
 
     return inputs
 
-def validate(all_ref_outputs, all_outputs, rtol=0, atol=1.5):
+def percentage_in_allowed_threshold(e, percent_mismatch):
+    percent_string = re.search(r'\(([^)]+)', str(e)).group(1)
+    if "%" in percent_string:
+        percentage_wrong = float(percent_string.replace("%",""))
+        return percentage_wrong < percent_mismatch
+    else: 
+        return False # error in output 
+
+def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
     if len(all_ref_outputs) == 0:
         logger.info("No reference output provided.")
         return True, None
@@ -428,22 +369,25 @@ def validate(all_ref_outputs, all_outputs, rtol=0, atol=1.5):
     logger.info('Predicted {} results.'.format(len(all_outputs)))
     logger.info('rtol: {}, atol: {}'.format(rtol, atol))
 
-    try:
-        for i in range(len(all_outputs)):
-            ref_outputs = all_ref_outputs[i]
-            outputs = all_outputs[i]
+    for i in range(len(all_outputs)):
+        ref_outputs = all_ref_outputs[i]
+        outputs = all_outputs[i]
 
-            for j in range(len(outputs)):
-                ref_output = ref_outputs[j]
-                output = outputs[j]
+        for j in range(len(outputs)):
+            ref_output = ref_outputs[j]
+            output = outputs[j]
 
-                # Compare the results with reference outputs
-                for ref_o, o in zip(ref_output, output):
-                    # abs(desired-actual) < rtol * abs(desired) + atol
+            # Compare the results with reference outputs
+            for ref_o, o in zip(ref_output, output):
+                # abs(desired-actual) < rtol * abs(desired) + atol
+                try:
+                    logger.info("Output shape{} input shape{}".format(ref_output.shape, output.shape))
                     np.testing.assert_allclose(ref_o, o, rtol, atol)
-    except Exception as e:
-        logger.error(e)
-        return False, e
+                except Exception as e:
+                    if percentage_in_allowed_threshold(e, percent_mismatch):    
+                        continue
+                    logger.error(e)
+                    return False, e
 
     logger.info('ONNX Runtime outputs are similar to reference outputs!')
     return True, None
@@ -482,7 +426,7 @@ def remove_profiling_files(path):
     for f in files:
         if "custom_test_data" in f:
             continue
-        subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
+        subprocess.Popen(["sudo","rm","-rf", f], stdout=subprocess.PIPE)
 
 
 def update_fail_report(fail_results, model, ep, e_type, e):
@@ -662,56 +606,59 @@ def write_map_to_file(result, file_name):
         file.write(json.dumps(existed_result)) # use `json.loads` to do the reverse
 
 
-def get_system_info():
-    info = {}
-
-    info["cuda"] = get_cuda_version()
-    info["trt"] = get_trt_version()
-
-    p = subprocess.Popen(["cat", "/etc/os-release"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
-    stdout = stdout.split("\n")[:2]
+def get_cuda_version():
+    nvidia_strings = get_output(["nvidia-smi"]) 
+    version = re.search(r'CUDA Version: \d\d\.\d', nvidia_strings).group(0) 
+    return version
+    
+def get_trt_version():
+    nvidia_strings = get_output(["dpkg", "-l"])
+    version = re.search(r'nvinfer.*\d\.\d\.\d\-\d', nvidia_strings).group(0)
+    return version
+ 
+def get_linux_distro(): 
+    linux_strings = get_output(["cat", "/etc/os-release"])
+    stdout = linux_strings.split("\n")[:2]
     infos = []
     for row in stdout:
         row = re.sub('=', ':  ', row)
         row = re.sub('"', '', row)
         infos.append(row)
-    info["linux_distro"] = infos
+    return infos 
 
-    p = subprocess.Popen(["lscpu"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
-    stdout = stdout.split("\n")
-    infos = []
-    for row in stdout:
-        if "mode" in row or "Arch" in row or "name" in row:
-            # row = row.replace(":\s+", ":  ")
-            row = re.sub(': +', ':  ', row)
-            infos.append(row)
-    info["cpu_info"] = infos
-
-    p1 = subprocess.Popen(["lspci", "-v"], stdout=subprocess.PIPE)
-    p2 = subprocess.Popen(["grep", "NVIDIA"], stdin=p1.stdout, stdout=subprocess.PIPE)
-    stdout, sterr = p2.communicate()
-    stdout = stdout.decode("ascii").strip()
-    stdout = stdout.split("\n")
-    infos = []
-    for row in stdout:
-        row = re.sub('.*:', '', row)
-        infos.append(row)
-    info["gpu_info"] = infos
-
-    p = subprocess.Popen(["cat", "/proc/meminfo"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
-    stdout = stdout.split("\n")
+def get_memory_info():
+    mem_strings = get_output(["cat", "/proc/meminfo"])
+    stdout = mem_strings.split("\n")
     infos = []
     for row in stdout:
         if "Mem" in row:
             row = re.sub(': +', ':  ', row)
             infos.append(row)
-    info["memory"] = infos
+    return infos
+
+def get_cpu_info(): 
+    cpu_strings = get_output(["lscpu"])
+    stdout = cpu_strings.split("\n")
+    infos = []
+    for row in stdout:
+        if "mode" in row or "Arch" in row or "name" in row:
+            row = re.sub(': +', ':  ', row)
+            infos.append(row)
+    return infos
+
+def get_gpu_info():
+    info = get_output(["lspci", "-v"])
+    infos = re.findall('NVIDIA.*', info)
+    return infos
+
+def get_system_info():
+    info = {}
+    info["cuda"] = get_cuda_version()
+    info["trt"] = get_trt_version()
+    info["linux_distro"] = get_linux_distro()
+    info["cpu_info"] = get_cpu_info()
+    info["gpu_info"] = get_gpu_info()
+    info["memory"] = get_memory_info()
 
     return info
 
@@ -771,10 +718,6 @@ def parse_models_info_from_directory(path, models):
         model_name = os.path.split(path)[-1]
         model_name = model_name + '_' + os.path.split(os.path.split(path)[0])[-1] # get opset version as model_name
         model_path = find_model_path(path)
-
-        if not model_path:
-            logger.info("Can't find model in " + path)
-            return
 
         model = {}
         model["model_name"] = model_name
@@ -922,10 +865,6 @@ def run_onnxruntime(args, models):
             os.mkdir(path)
         os.chdir(path)
         path = os.getcwd()
-
-        # cleanup files before running a new inference
-        if args.running_mode == "validate":
-            remove_profiling_files(path)
 
         inputs = []
         ref_outputs = []
@@ -1095,7 +1034,7 @@ def run_onnxruntime(args, models):
                     try:
                         ort_outputs = inference_ort_and_get_prediction(name, sess, inputs)
 
-                        status = validate(ref_outputs, ort_outputs)
+                        status = validate(ref_outputs, ort_outputs, args.rtol, args.atol, args.percent_mismatch)
                         if not status[0]:
                             update_fail_model_map(model_to_fail_ep, name, ep, 'result accuracy issue', status[1])
                             continue
@@ -1372,6 +1311,8 @@ def output_latency(results, csv_filename):
 
 
             row = [key,
+                   cpu_average, 
+                   cpu_90_percentile, 
                    cuda_average,
                    cuda_90_percentile,
                    trt_average,
@@ -1515,6 +1456,11 @@ def parse_arguments():
 
     parser.add_argument("--trtexec", required=False, default=None, help="trtexec executable path.")
 
+    # Validation options
+    parser.add_argument("--percent_mismatch", required=False, default=20.0, help="Allowed percentage of mismatched elements in validation.")
+    parser.add_argument("--rtol", required=False, default=0, help="Relative tolerance for validating outputs.")
+    parser.add_argument("--atol", required=False, default=20, help="Absolute tolerance for validating outputs.")
+    
     parser.add_argument("-t",
                         "--test_times",
                         required=False,
