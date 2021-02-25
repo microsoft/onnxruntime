@@ -28,7 +28,7 @@ limitations under the License.
 #include "core/providers/cuda/cuda_common.h"
 #include "longformer_attention_impl.h"
 #include "attention_impl.h"
-#include "attention_softmax.h"
+#include "longformer_attention_softmax.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -53,11 +53,8 @@ namespace cuda {
 //   [SoftmaxSpace: see below] [Q:BxNxSxH] [K:BxNxSxH] [V:BxNxSxH] [Global_Q:BxNxSxH] [Global_K:BxNxSxH] [Global_V:BxNxSxH]
 // where Global_Q, Global_K and Global_V are optional. They are not allocated when there is no global token.
 //
-// It is feasible to use compact format for Global_Q with shape BxNxGxH to save space. We do not use compact format for now.
-//
 // SoftmaxSpace layout:
 //    [scratch1: (5S-3W)*W*N*B][scratch2: size_t 20]
-//
 // Scratch1 has 5 buffers for local and global attention calculation.
 // Scratch2 has 5 input pointers, 5 output pointers, 5 buffer sizes and 5 strides related to scratch1.
 
@@ -74,10 +71,17 @@ size_t GetLongformerSoftmaxWorkspaceSize(
     int batch_size,
     int num_heads,
     int sequence_length,
-    int window) {
-  size_t scratch1_size = GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
-  size_t scratch2_size = 10 * (sizeof(void*) + sizeof(size_t));
-  return scratch1_size + scratch2_size;
+    int window,
+    bool use_fast_kernel) {
+  if (!use_fast_kernel) {
+      size_t scratch1_size = GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
+      size_t scratch2_size = 10 * (sizeof(void*) + sizeof(size_t));
+      return scratch1_size + scratch2_size;
+  } else {
+    // Non-compact layout when environment variable ORT_LONGFORMER_COMPACT_MEMORY=0 is set.
+    //    [scratch1: BxNxSxS] [scratch2: BxNxSxS]
+    return 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
+  }
 }
 
 size_t GetLongformerAttentionWorkspaceSize(
@@ -87,8 +91,9 @@ size_t GetLongformerAttentionWorkspaceSize(
     int head_size,
     int sequence_length,
     int max_num_global,
-    int window) {
-  size_t softmax_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window);
+    int window,
+    bool use_fast_kernel) {
+  size_t softmax_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window, use_fast_kernel);
   size_t qkv_size = 3 * batch_size * sequence_length * num_heads * head_size * element_size;
   size_t global_qkv_size = max_num_global > 0 ? qkv_size : 0;
   return softmax_size + qkv_size + global_qkv_size;
@@ -100,6 +105,7 @@ size_t GetPinnedBufferSize(int batch_size) {
   return sizeof(int) * batch_size + GetScratch2Size();
 }
 
+// Softmax kernel for compact format
 template <typename T, int blockSize>
 __launch_bounds__(blockSize)
     __global__ void LongformerSoftmaxKernel(const int* global_attention,
@@ -354,7 +360,6 @@ bool launchSoftmaxKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,
-    size_t softmax_workspace_size,
     const void* q,                // transposed Q with shape (B, N, S, H)
     const void* k,                // transposed K with shape (B, N, S, H)
     const void* v,                // transposed V with shape (B, N, S, H)
@@ -373,10 +378,7 @@ bool launchSoftmaxKernel(
     int num_heads,                // number of heads
     int head_size,                // hidden size per head
     int window,                   // one sided window size
-    int max_num_global,           // maximum number of global tokens (G) in all batches
     size_t element_size) {        // size of element: 2 for half, and 4 for float
-  assert(max_num_global <= window);
-
   const int* global_count = reinterpret_cast<const int*>(pinned_buffer);
 
   bool is_fp16 = (element_size == 2);
@@ -605,7 +607,10 @@ bool launchSoftmaxKernel(
                                        resultType,
                                        algo));
 
-      void* global_q_batch = (char*)global_q + (i * elements_per_batch) * element_size;  // For compact format: replace elements_per_batch by num_heads * max_num_global * head_size
+      // It is feasible to use compact format for Global_Q with shape BxNxGxH to save space.
+      // In that case, elements_per_batch is num_heads * max_num_global * head_size, and stride_per_head is max_num_global * head_size.
+
+      void* global_q_batch = (char*)global_q + (i * elements_per_batch) * element_size;  
       void* global_k_batch = (char*)global_k + (i * elements_per_batch) * element_size;
       qk_batch = (char*)input_pointers[4] + (i * buffer_sizes[4] * num_heads) * element_size;
 
@@ -625,7 +630,7 @@ bool launchSoftmaxKernel(
                                        global_q_batch,   // B
                                        Btype,            // B type
                                        head_size,        // ldb
-                                       stride_per_head,  // strideB. For compact format: max_num_global * head_size.
+                                       stride_per_head,  // strideB.
                                        beta_0,           // beta
                                        qk_batch,         // C
                                        Ctype,            // C type
@@ -827,8 +832,9 @@ bool LongformerQkvToContext(
     const T* global_input, const int* global_attention,
     const int* global_index, const int* batch_global_num, const int max_num_global,
     void* pinned_buffer, T* workspace,
-    T* output) {
-  size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window);
+    T* output,
+    size_t softmax_workspace_size,
+    bool use_fast_kernel) {
   T* qkv = reinterpret_cast<T*>((char*)workspace + softmax_workspace_size);
 
   // Number of elements in Q, K, V, Global_Q, Global_K or Global_V are same: BxNxSxH
@@ -862,33 +868,62 @@ bool LongformerQkvToContext(
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
 
   T* temp_output = qkv;  // Q will be overwritten
-  if (!launchSoftmaxKernel(
-          stream,
-          cublas,
-          workspace,
-          softmax_workspace_size,
-          q,                 // Transposed Q with shape B x N x S x H
-          k,                 // Transposed K with shape B x N x S x H
-          v,                 // Transposed V with shape B x N x S x H
-          attention_mask,    // Attention mask flags with shape B x S
-          global_q,          // Transposed global Q with shape B x N x S x H.
-          global_k,          // Transposed global K with shape B x N x S x H
-          global_v,          // Transposed global V with shape B x N x S x H
-          global_attention,  // Global attention flags with shape B x S
-          global_index,      // Global index with shape B x S
-          batch_global_num,  // Number of global token per batch with shape B x 1
-          pinned_buffer,     // Pinned Memory Buffer
-          temp_output,       // Output with shape B x N x S x H
-          rsqrt_head_size,   // Scaler
-          batch_size,        // Batch size
-          sequence_length,   // Sequence length
-          num_heads,         // Number of attention heads
-          head_size,         // Hidden size per head
-          window,            // Half (one-sided) window size
-          max_num_global,    // Maximum number of global tokens (G)
-          element_size)) {
-    return false;
+
+  if (use_fast_kernel) {
+    if (!launchSoftmaxFastKernel(
+            stream,
+            cublas,
+            workspace,         // softmax space
+            q,                 // transposed Q with shape (B, N, S, H)
+            k,                 // transposed K with shape (B, N, S, H)
+            v,                 // transposed V with shape (B, N, S, H)
+            attention_mask,    // attention mask with shape (B, S), with value 0.0 not masked, and -10000.0 masked.
+            global_q,          // Q for global tokens with shape (B, N, S, H)
+            global_k,          // K for global tokens with shape (B, N, S, H)
+            global_v,          // V for global tokens with shape (B, N, S, H)
+            global_attention,  // global attention with shape (B, S), with value 0 for local attention and 1 for global attention.
+            global_index,      // Global index with shape (B, S)
+            batch_global_num,  // Number of global tokens per batch with shape (B, 1)
+            pinned_buffer,     // Pinned memory in CPU. Number of global tokens per batch with shape (B, 1)
+            temp_output,       // output with shape (B, N, S, H)
+            rsqrt_head_size,   // scalar
+            batch_size,        // batch size
+            sequence_length,   // sequence length
+            num_heads,         // number of heads
+            head_size,         // hidden size per head
+            window,            // Half (one-sided) window size
+            element_size)) {
+      return false;
+    }
+  } else {
+    assert(max_num_global <= window);
+    if (!launchSoftmaxKernel(
+            stream,
+            cublas,
+            workspace,         // softmax space
+            q,                 // Transposed Q with shape B x N x S x H
+            k,                 // Transposed K with shape B x N x S x H
+            v,                 // Transposed V with shape B x N x S x H
+            attention_mask,    // Attention mask flags with shape B x S. Value -10000.0 means masked, and 0.0 not mased.
+            global_q,          // Transposed global Q with shape B x N x S x H.
+            global_k,          // Transposed global K with shape B x N x S x H
+            global_v,          // Transposed global V with shape B x N x S x H
+            global_attention,  // Global attention flags with shape B x S
+            global_index,      // Global index with shape B x S
+            batch_global_num,  // Number of global token per batch with shape B x 1
+            pinned_buffer,     // Pinned Memory Buffer
+            temp_output,       // Output with shape B x N x S x H
+            rsqrt_head_size,   // Scaler
+            batch_size,        // Batch size
+            sequence_length,   // Sequence length
+            num_heads,         // Number of attention heads
+            head_size,         // Hidden size per head
+            window,            // Half (one-sided) window size
+            element_size)) {
+      return false;
+    }
   }
+  
 
   // The temp_output is BxNxSxH, transpose it to final output BxSxNxH
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, temp_output, output);
@@ -913,8 +948,10 @@ bool LaunchLongformerAttentionKernel(
     int head_size,
     int window,
     int max_num_global,
-    const size_t element_size) {
+    const size_t element_size,
+    bool use_fast_kernel) {
   CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
+  size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window, use_fast_kernel);
   if (element_size == 2) {
     return LongformerQkvToContext(cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
@@ -927,7 +964,9 @@ bool LaunchLongformerAttentionKernel(
                                   max_num_global,
                                   pinned_buffer,
                                   reinterpret_cast<half*>(workspace),
-                                  reinterpret_cast<half*>(output));
+                                  reinterpret_cast<half*>(output),
+                                  softmax_workspace_size,
+                                  use_fast_kernel);
   } else {
     return LongformerQkvToContext(cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
@@ -940,7 +979,9 @@ bool LaunchLongformerAttentionKernel(
                                   max_num_global,
                                   pinned_buffer,
                                   reinterpret_cast<float*>(workspace),
-                                  reinterpret_cast<float*>(output));
+                                  reinterpret_cast<float*>(output),
+                                  softmax_workspace_size,
+                                  use_fast_kernel);
   }
 }
 
