@@ -25,24 +25,6 @@ jobs:
         "
       DisplayName: 'Build performance tests'
 
-  # - script: >
-  #     docker run --gpus all --rm --name onnxruntime-gpu-perf
-  #     --volume $(Build.SourcesDirectory):/onnxruntime_src
-  #     --volume $(Build.BinariesDirectory):/build
-  #     --volume /bert_data/bert_models:/build/bert_models:ro
-  #     --volume /bert_data:/build/bert_data:ro
-  #     -e NIGHTLY_BUILD onnxruntime_perf_test_image
-  #     /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/mysql/create_table_perf_test_training_ort_module_data.py
-  #     --action insert_perf_table
-  #     --mysql_server_name onnxruntimedashboard.mysql.database.azure.com
-  #     --power_bi_user_name powerbi@onnxruntimedashboard
-  #     --password $(ortperf)
-  #     --database onnxruntime
-  #     --perf_metrics aa
-  #   displayName: 'Run python36 create_table_perf_test_training_ort_module_data.py'
-  #   condition: succeededOrFailed() # ensure all tests are run
-  #   timeoutInMinutes: 10
-
   - script: |
       docker run --gpus all --rm --name onnxruntime-gpu-perf \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -50,14 +32,14 @@ jobs:
         --volume /bert_data/bert_models:/build/bert_models:ro \
         --volume /bert_data:/build/bert_data:ro \
         -e NIGHTLY_BUILD onnxruntime_perf_test_image \
-        /usr/bin/python3.8 /onnxruntime_src/orttraining/tools/ci_test/mysql/create_table_perf_test_training_ort_module_data.py \
+        /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/mysql/create_table_perf_test_training_ort_module_data.py \
           --action insert_perf_table \
           --mysql_server_name onnxruntimedashboard.mysql.database.azure.com \
           --power_bi_user_name powerbi@onnxruntimedashboard \
           --password $(ortperf) \
           --database onnxruntime \
           --perf_metrics aa \
-    displayName: 'Run python38 create_table_perf_test_training_ort_module_data.py'
+    displayName: 'Run create_table_perf_test_training_ort_module_data.py'
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 10
 
@@ -119,4 +101,4 @@ jobs:
   #   displayName: 'Populate perf metrics'
   #   workingDirectory: $(Build.SourcesDirectory)/tools/perf_util
 
-  - template: templates/clean-agent-build-directory-step.yml
+  # - template: templates/clean-agent-build-directory-step.yml
