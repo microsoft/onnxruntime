@@ -456,7 +456,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                use_external_data_format=True,
                                                checkpoint_path=None,
                                                _onnx_model_cache_key=None,
-                                               _init_onnx_model_file_name=None):
+                                               _init_onnx_model_file_name=None,
+                                               _param_bytes_size=None):
     is_onnx_model_updated = False
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
@@ -611,12 +612,12 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
         file_name_or_serialized_string = model.SerializeToString()
 
 
-    current_memory_usage = psutil.virtual_memory()
-    factor = current_memory_usage[0] // current_memory_usage[3]
-    print("before deleting initializer from memory ", current_memory_usage, ", parallel factor is ", factor)
-
     del model.graph.initializer[:]
-    print("before sleep ", psutil.virtual_memory())
+    estimated_pytorch_model_size = _param_bytes_size * 4
+    current_memory_usage = psutil.virtual_memory() 
+    factor = (current_memory_usage[0] - estimated_pytorch_model_size) // (_param_bytes_size * 6)
+    print("before deleting initializer from memory ", current_memory_usage, ", parallel factor is ", factor)
+    print("before sleep ", current_memory_usage)
     import time
     time.sleep(30) # wait for GC, otherwise 11B model will fail.
     print("before start session", psutil.virtual_memory())
@@ -927,7 +928,8 @@ class ORTTrainer():
                 use_external_data_format=self.use_external_data_format,
                 checkpoint_path=self.checkpoint_path,
                 _onnx_model_cache_key=self._onnx_model_cache_key,
-                _init_onnx_model_file_name=self._init_onnx_model_file_name)
+                _init_onnx_model_file_name=self._init_onnx_model_file_name,
+                _param_bytes_size=self._param_bytes_size)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -1024,7 +1026,8 @@ class ORTTrainer():
             print("finish saving model to ", self._init_onnx_model_file_name)
 
             self._init_onnx_model_export_lock.release()
-
+        self._param_bytes_size = os.path.getsize(self._init_onnx_model_file_name)
+        print("parameter bytes size is ", self._param_bytes_size)
         self._init_session()
 
     def train(self):
