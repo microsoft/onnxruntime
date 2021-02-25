@@ -12,7 +12,7 @@ from filelock import Timeout, FileLock
 
 
 class TrainingSession(InferenceSession):
-    def __init__(self, path_or_bytes, parameters, sess_options=None):
+    def __init__(self, path_or_bytes, parameters, sess_options=None, factor=1):
         Session.__init__(self)
 
         if sess_options:
@@ -21,7 +21,8 @@ class TrainingSession(InferenceSession):
             self._sess = C.TrainingSession()
 
         #lock = FileLock(os.environ['ORT_TRAINER_LOCK_FILE'])
-        lock = FileLock("/tmp/ort_session_init.lock") # each node use one lock
+        lock_file_name = "/tmp/ort_session_init_{}.lock".format(int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK']) % factor)
+        lock = FileLock(lock_file_name) # each node use one lock
         lock.acquire()
         print("start create_ort_trainer on rank {}".format(os.environ['OMPI_COMM_WORLD_RANK']))
 

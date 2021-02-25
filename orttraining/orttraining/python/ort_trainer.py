@@ -611,6 +611,10 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
         file_name_or_serialized_string = model.SerializeToString()
 
 
+    current_memory_usage = psutil.virtual_memory()
+    factor = current_memory_usage[0] // current_memory_usage[3]
+    print("before deleting initializer from memory ", current_memory_usage, ", parallel factor is ", factor)
+
     del model.graph.initializer[:]
     print("before sleep ", psutil.virtual_memory())
     import time
@@ -632,7 +636,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
         #sessionOptions.execution_order = ort.ExecutionOrder.PRIORITY_BASED
         pass
 
-    session = ort.TrainingSession(file_name_or_serialized_string, ort_parameters, sessionOptions)
+    session = ort.TrainingSession(file_name_or_serialized_string, ort_parameters, sessionOptions, factor)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
 
