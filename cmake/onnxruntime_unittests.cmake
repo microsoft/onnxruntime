@@ -785,23 +785,24 @@ target_include_directories(onnxruntime_eager_mode_test PRIVATE ${ONNXRUNTIME_ROO
         ${CMAKE_CURRENT_BINARY_DIR}
         "${TEST_SRC_DIR}/util/include")
 set(onnxruntime_eager_mode_libs 
-        onnxruntime_eager 
-        onnxruntime_common
+        onnxruntime_eager
+        onnxruntime_session
+        onnxruntime_optimizer
+        onnxruntime_providers
+        onnxruntime_util
+        onnxruntime_framework
         onnxruntime_flatbuffers
         flatbuffers
-        onnxruntime_framework 
-        onnxruntime_optimizer
-        onnxruntime_util
         onnxruntime_graph 
+        onnxruntime_common
         onnxruntime_mlas
         onnx 
         onnx_proto 
         protobuf::libprotobuf
         GTest::gtest
-        onnxruntime_providers
-        onnxruntime_session
         re2::re2
         nsync_cpp
+        ${CMAKE_DL_LIBS}
         )
 target_link_libraries(onnxruntime_eager_mode_test PRIVATE ${onnxruntime_eager_mode_libs} Threads::Threads)
 
