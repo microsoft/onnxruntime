@@ -34,25 +34,9 @@ class NeuralNetSinglePositionalArgument(torch.nn.Module):
         out = self.fc2(out)
         return out
 
-class NeuralNetMultiplePositionalArgumentsMultipleOutputs(torch.nn.Module):
+class NeuralNetMultiplePositionalArgumentsMultipleOutputs0(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetMultiplePositionalArgumentsMultipleOutputs, self).__init__()
-
-        self.fc1 = torch.nn.Linear(input_size, hidden_size)
-        self.relu = torch.nn.ReLU()
-        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
-
-    def forward(self, input1, input2):
-        model_input = input1 + input2
-        out1 = self.fc1(model_input)
-        out1 = self.relu(out1)
-        out2 = self.fc2(out1)
-
-        return out1, out2
-
-class NeuralNetMultiplePositionalArgumentsMultipleOutputs2(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetMultiplePositionalArgumentsMultipleOutputs2, self).__init__()
+        super(NeuralNetMultiplePositionalArgumentsMultipleOutputs0, self).__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu1 = torch.nn.ReLU()
@@ -63,7 +47,21 @@ class NeuralNetMultiplePositionalArgumentsMultipleOutputs2(torch.nn.Module):
         out = self.fc1(model_input)
         out1 = self.relu1(out)
         out2 = self.relu2(out)
+        return out1, out2
 
+class NeuralNetMultiplePositionalArgumentsMultipleOutputs1(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(NeuralNetMultiplePositionalArgumentsMultipleOutputs1, self).__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+    def forward(self, input1, input2):
+        model_input = input1 + input2
+        out1 = self.fc1(model_input)
+        out1 = self.relu(out1)
+        out2 = self.fc2(out1)
         return out1, out2
 
 class NeuralNetMultiplePositionalArguments(torch.nn.Module):
@@ -585,7 +583,7 @@ def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder
 @pytest.mark.parametrize("device", ['cuda'])
 def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
     N, D_in, H, D_out = 32, 784, 500, 10
-    model = NeuralNetMultiplePositionalArgumentsMultipleOutputs2(D_in, H, D_out).to(device)
+    model = NeuralNetMultiplePositionalArgumentsMultipleOutputs0(D_in, H, D_out).to(device)
     model = ORTModule(model)
     x1 = torch.randn(N, D_in, device=device, requires_grad=True)
     x2 = torch.randn(N, D_in, device=device, requires_grad=False)
@@ -599,7 +597,7 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
 def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_requires_grad, x2_requires_grad):
     N, D_in, H, D_out = 32, 784, 500, 10
     device = 'cuda'
-    model = NeuralNetMultiplePositionalArgumentsMultipleOutputs(D_in, H, D_out).to(device)
+    model = NeuralNetMultiplePositionalArgumentsMultipleOutputs1(D_in, H, D_out).to(device)
     model = ORTModule(model)
     x1 = torch.randn(N, D_in, device=device, requires_grad=x1_requires_grad)
     x2 = torch.randn(N, D_in, device=device, requires_grad=x2_requires_grad)
