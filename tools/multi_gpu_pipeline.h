@@ -63,9 +63,14 @@ struct RequestExecutionFrame {
   struct RunState {
     // needs to be stored per model since it's associated with a session
     std::unique_ptr<Ort::IoBinding> io_binding;
+    // needs to be stored per model since it's associated with a session
+    // storing it here as opposed to PipelineConfig since it may not be thread-safe when multiple requests
+    // are getting executed in parallel
+    std::unique_ptr<Ort::Allocator> cuda_allocator;
     std::unordered_map<std::string, Ort::Value> output_val_map;  // output generated after running a stage
-    std::vector<Ort::MemoryAllocation> state_buffer_1_vec;       // pre-allocated on cuda; order should be same as ModelConfig::state_output_names/state_input_names
-    std::vector<Ort::MemoryAllocation> state_buffer_2_vec;       // pre-allocated on cuda; order should be same as ModelConfig::state_output_names/state_input_names
+    // pre-allocated on cuda; order should be same as ModelConfig::state_output_names/state_input_names
+    std::vector<Ort::MemoryAllocation> state_buffer_1_vec;
+    std::vector<Ort::MemoryAllocation> state_buffer_2_vec;
   };
 
   const int req_index;
@@ -107,8 +112,6 @@ struct PipelineSession {
 
   struct SessionState {
     Ort::Session session;
-    // needs to be stored per model since it's associated with a session
-    Ort::Allocator cuda_allocator;
     // needs to be stored per model since it's associated with device id
     Ort::MemoryInfo cuda_mem_info;
   };

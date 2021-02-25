@@ -47,6 +47,19 @@ void CheckStatus(OrtStatus* status) {
   }
 }
 
+struct Timer {
+  // using namespace std::chrono;
+  using Clock = std::chrono::high_resolution_clock;
+  Timer(const char* msg0) : msg(msg0), start(Clock::now()) {
+  }
+  ~Timer() {
+    auto stop = Clock::now();
+    std::cout << msg << " took " << std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() << " microseconds\n";
+  }
+  const char* msg;
+  std::chrono::time_point<Clock> start;
+};
+
 // returns a pair p; p.first is true if the elem is found in which case p.second is the index of the elem in the container
 static std::pair<bool, int> Contains(const std::vector<std::string>& vec, const std::string& to_find) {
   auto it = std::find(std::begin(vec), std::end(vec), to_find);
@@ -89,8 +102,8 @@ RequestExecutionFrame::RequestExecutionFrame(/*const*/ PipelineSession& psess
   for (const auto& mcfg : psess.pcfg.model_config_vec) {
     RunState rs;
     const auto& cuda_mem_info = psess.model_session_state_vec[idx].cuda_mem_info;
-    auto& cuda_allocator = psess.model_session_state_vec[idx].cuda_allocator;
     auto& session = psess.model_session_state_vec[idx].session;
+    auto cuda_allocator = std::make_unique<Ort::Allocator>(session, cuda_mem_info);
 
     // Pre-allocate memory for both input and output states
     // Calcuate the amount of memory to allocate
@@ -108,8 +121,8 @@ RequestExecutionFrame::RequestExecutionFrame(/*const*/ PipelineSession& psess
 
     // pre-allocate buffers for input and output states
     for (const auto& name : mcfg.state_input_names) {
-      rs.state_buffer_1_vec.push_back(cuda_allocator.GetAllocation(size_to_allocate));
-      rs.state_buffer_2_vec.push_back(cuda_allocator.GetAllocation(size_to_allocate));
+      rs.state_buffer_1_vec.push_back(cuda_allocator->GetAllocation(size_to_allocate));
+      rs.state_buffer_2_vec.push_back(cuda_allocator->GetAllocation(size_to_allocate));
     }
 
     // initialize the output states
@@ -117,7 +130,7 @@ RequestExecutionFrame::RequestExecutionFrame(/*const*/ PipelineSession& psess
     state_shape[mcfg.seq_len_dim_index_in_state] = 0;
     for (int idx = 0; idx < mcfg.state_output_names.size(); ++idx) {
       const auto& oname = mcfg.state_output_names[idx];
-      auto& mem_allocation = rs.state_buffer_1_vec[idx];
+      auto& mem_allocation = rs.state_buffer_1_vec[idx];  // careful, use buffer1 here
       auto ort_val = Ort::Value::CreateTensor(
           cuda_mem_info, mem_allocation.get(), mem_allocation.size(),
           state_shape.data(), state_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);  // TODO remove hardcoded type
@@ -125,6 +138,7 @@ RequestExecutionFrame::RequestExecutionFrame(/*const*/ PipelineSession& psess
     }
 
     rs.io_binding = std::make_unique<Ort::IoBinding>(psess.model_session_state_vec[idx].session);
+    rs.cuda_allocator = std::move(cuda_allocator);
     model_run_state_vec.push_back(std::move(rs));
 
     ++idx;
@@ -139,7 +153,7 @@ static ReqId CreateRequestId() {
 struct RequestProcessor {
   std::shared_ptr<Token> ProcessRequest(const Token& token,
                                         /*const*/ PipelineSession& psess /* passed by ref or else sess.Run won't work as Run is non-const */,
-                                        RequestExecutionFrame& exec_frame /* intentional as we'll update the state */) {
+                                        RequestExecutionFrame& exec_frame /* pass by non-const ref intentional as we'll update the state */) {
     std::cout << "Executing req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ")" << std::endl;
 
     const auto model_idx = exec_frame.stage_id;
@@ -152,6 +166,7 @@ struct RequestProcessor {
 
     CheckStatus(g_ort->SetCurrentGpuDeviceId(model_config.device_id));
 
+    // convert output_names from std::string to const char*
     std::vector<const char*> model_output_names;
     for (const auto& elem : model_config.output_names) {
       model_output_names.push_back(elem.c_str());
@@ -174,7 +189,7 @@ struct RequestProcessor {
       auto rc = Contains(token.ort_value_names, iname);
       if (rc.first) {
         // std::cout << stage_id << "/" << token.step_id << " binding input " << token.ort_value_names[rc.second] << std::endl;
-        io_binding.BindInput(token.ort_value_names[rc.second].c_str(), token.ort_values[rc.second]);
+        io_binding.BindInput(iname.c_str(), token.ort_values[rc.second]);
         continue;
       }
 
@@ -200,15 +215,6 @@ struct RequestProcessor {
 
     // get past seq len
     // assume past_seq_len is same for all states
-    // int past_seq_len = 0;
-    // // for the very first run there's no past.
-    // if (exec_frame.stage_id == 0 && token.step_id == 0) {
-    //   past_seq_len = 0;
-    // } else {
-    //   past_seq_len = run_state.output_val_map.at(model_config.state_output_names[0])
-    //                      .GetTensorTypeAndShapeInfo()
-    //                      .GetShape()[model_config.seq_len_dim_index_in_state];
-    // }
     int past_seq_len = run_state.output_val_map.at(model_config.state_output_names[0])
                            .GetTensorTypeAndShapeInfo()
                            .GetShape()[model_config.seq_len_dim_index_in_state];
@@ -243,6 +249,8 @@ struct RequestProcessor {
         io_binding.BindOutput(oname.c_str(), output_ort_val);
       } else {
         // if oname is present in OrtResp::output_names, bind the corresponding OrtValue from OrtResp
+        // we check in OrtResp::output_names because we want to use the info provided by the user to tell us
+        // where the output should go.
         auto rc = Contains(exec_frame.ort_resp.output_names, oname);
         if (rc.first) {  // logits
           // get the corresponding ortval from OrtResp
@@ -320,21 +328,19 @@ static void PostProcessLogits(int batch_size,
   int num_elems = logits_shape[0] * logits_shape[1] * logits_shape[2];
   int ltwo = logits_shape[1] * logits_shape[2];
   for (int batch_id = 0; batch_id < num_elems; batch_id += ltwo) {
-    for (int j = 0; j < logits_shape[1]; ++j) {
-      if (j == logits_shape[1] - 1) {
-        for (int k = 0; k < logits_shape[2]; ++k) {
-          tmp.push_back(logits_data[batch_id + ((logits_shape[1] - 1) * logits_shape[2]) + k]);
-        }
-      }
+    for (int k = 0; k < logits_shape[2]; ++k) {
+      tmp.push_back(logits_data[batch_id + ((logits_shape[1] - 1) * logits_shape[2]) + k]);
     }
   }
 
   // now find the max per onnx batch
-  for (int batch_id = 0; batch_id < new_size; ++batch_id) {
+  for (int batch_id = 0; batch_id < new_size; batch_id += logits_shape[2]) {
+    // float max = HalfToFloat(tmp[batch_id]);
     auto max = tmp[batch_id];
     int max_idx = 0;
     for (int j = 1; j < logits_shape[2]; ++j) {
-      auto elem = HalfToFloat(tmp[batch_id + j]);
+      // auto elem = HalfToFloat(tmp[batch_id + j]);
+      auto elem = tmp[batch_id + j];
       if (elem > max) {
         max = elem;
         max_idx = j;
@@ -365,12 +371,14 @@ OrtStatus* PipelineSession::Run(/*const*/ std::vector<OrtReq>& req_list, std::ve
       error << "Error in processing request id: " << token.req_id << " with exception: " << e.what();
       out_token_ptr = std::make_shared<Token>();
       out_token_ptr->req_id = token.req_id;
+      out_token_ptr->step_id = token.step_id;
       out_token_ptr->error_msg = error.str();
     } catch (...) {
       std::ostringstream error;
       error << "Error in processing request id: " << token.req_id << " with unknown exception";
       out_token_ptr = std::make_shared<Token>();
       out_token_ptr->req_id = token.req_id;
+      out_token_ptr->step_id = token.step_id;
       out_token_ptr->error_msg = error.str();
     }
     rq.Put(out_token_ptr);
@@ -379,26 +387,19 @@ OrtStatus* PipelineSession::Run(/*const*/ std::vector<OrtReq>& req_list, std::ve
   // First enqueue the first step and first stage processing for all the requests
   RequestProcessor rp;
   auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  int nreqs = req_list.size();
+  int num_reqs = req_list.size();
 
-  for (int req_idx = 0; req_idx < nreqs; ++req_idx) {
+  for (int req_idx = 0; req_idx < num_reqs; ++req_idx) {
     ReqId req_id = CreateRequestId();
     std::cout << "creating req_id: " << req_id << std::endl;
     auto& one_req = req_list[req_idx];
     auto& one_resp = resp_list[req_idx];
     int stage_id = 0;
 
-    // resize the output vector if not already of appropriate size
+    // validate resp vector
     auto& ovalues = resp_list[req_idx].output_values;
     const auto& onames = resp_list[req_idx].output_names;
-    if (!ovalues.empty()) {
-      assert(onames.size() == ovalues.size());
-    } else {
-      ovalues.reserve(onames.size());
-      for (const auto& oname : onames) {
-        ovalues.push_back(Ort::Value{nullptr});
-      }
-    }
+    assert(ovalues.size() == onames.size());
 
     // store batch size and input seq len to change position_ids for step > 0
     auto rc = Contains(one_req.input_names, pcfg.model_config_vec[0].input_to_use_for_seq_len);
@@ -431,14 +432,14 @@ OrtStatus* PipelineSession::Run(/*const*/ std::vector<OrtReq>& req_list, std::ve
   // now read the response queue and enqueue further steps/stages for processing
   // passing the output of one stage to the next one
   int req_processed = 0;
-  while (req_processed < nreqs) {
+  while (req_processed < num_reqs) {
     auto token_ptr = rq.Get();
     ReqId req_id = token_ptr->req_id;
     int step_id = token_ptr->step_id;
     auto& exec_frame = req_frame_map.at(req_id);
 
+    // fail the whole batch if even one req fails
     if (!token_ptr->error_msg.empty()) {
-      ++req_processed;
       return g_ort->CreateStatus(ORT_FAIL, token_ptr->error_msg.c_str());
     }
 
@@ -455,14 +456,16 @@ OrtStatus* PipelineSession::Run(/*const*/ std::vector<OrtReq>& req_list, std::ve
           if (ex.first) {
             resp_list[req_index].output_values[resp_index] = std::move(token_ptr->ort_values[ex.second]);
           } else {
-            // case when the user requested for an invalid output
-            resp_list[req_index].output_values[resp_index] = Ort::Value{nullptr};
+            // case when the user requested output was not present in the final output
+            std::ostringstream ostr;
+            ostr << "Error: Output " << oname << " not getting output by the final stage\n";
+            return g_ort->CreateStatus(ORT_FAIL, ostr.str().c_str());
           }
           ++resp_index;
         }
         ++req_processed;
         continue;
-      } else {
+      } else {  // done with one step; now continue with the next step
         int batch_size = exec_frame.batch_size;
 
         // update input_ids
@@ -474,7 +477,7 @@ OrtStatus* PipelineSession::Run(/*const*/ std::vector<OrtReq>& req_list, std::ve
         }
         std::vector<int64_t> input_ids;
         std::vector<int64_t> input_ids_shape;
-        auto logits_shape = model_session_state_vec[exec_frame.stage_id]
+        auto logits_shape = model_session_state_vec[pcfg.num_stages - 1]  // only the last stage has logits as output
                                 .session.GetOutputTypeInfo(logits_idx)
                                 .GetTensorTypeAndShapeInfo()
                                 .GetShape();
@@ -501,7 +504,7 @@ OrtStatus* PipelineSession::Run(/*const*/ std::vector<OrtReq>& req_list, std::ve
         token_ptr->ort_values.push_back(std::move(input_ids_tensor));
         token_ptr->ort_values.push_back(std::move(posn_ids_tensor));
       }
-    } else {
+    } else {  // continue executing the next stage
       token_ptr->req_id = req_id;
       token_ptr->step_id = step_id;
     }
@@ -617,8 +620,7 @@ void PipelineSession::Init(PipelineConfig& pcfg, Ort::Env& env) {
     }
 
     Ort::MemoryInfo cuda_mem_info("Cuda", OrtDeviceAllocator, mcfg.device_id, OrtMemTypeDefault);
-    Ort::Allocator cuda_allocator(session, cuda_mem_info);
-    SessionState sess_state{std::move(session), std::move(cuda_allocator), std::move(cuda_mem_info)};
+    SessionState sess_state{std::move(session), std::move(cuda_mem_info)};
     model_session_state_vec.push_back(std::move(sess_state));
   }
 }
