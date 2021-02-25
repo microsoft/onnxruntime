@@ -210,7 +210,7 @@ For GPU, please append --use_gpu to the command.
 bert_perf_test.py can be used to check the BERT model inference performance. Below are examples:
 
 ```console
-python -m onnxruntime.transformers.bert_perf_test --model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --test_times 10 --inclusive
+python -m onnxruntime.transformers.bert_perf_test --model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128
 ```
 
 For GPU, please append --use_gpu to the command.
@@ -219,7 +219,7 @@ After test is finished, a file like perf_results_CPU_B1_S128_<date_time>.txt or 
 
 ## Profiling
 
-profiler.py can be used to run profiling on a transformer model. It can help figure out the bottleneck of a model, and time spent on a node or subgraph.
+profiler.py can be used to run profiling on a transformer model. It can help figure out the bottleneck of a model, and CPU time spent on a node or subgraph.
 
 Examples commands:
 
