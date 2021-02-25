@@ -141,27 +141,6 @@ def _get_bert_for_sequence_classification_sample_data(device):
 
     return input_ids, input_mask, labels
 
-def _assert_tensor_value_matches(ref, target, tol = 1e-3):
-    diff = target - ref
-    norm = torch.norm(diff)
-    assert norm.item() < tol
-
-def _check_model_gradients_match_and_reset(pt_model, ort_model, tol = 1e-3, reset_grad = True):
-    pt_named_params = list(pt_model.named_parameters())
-    ort_named_params = list(ort_model.named_parameters())
-    assert len(pt_named_params) == len(ort_named_params)
-
-    for pt_named_param, ort_named_param in zip(pt_named_params, ort_named_params):
-        pt_name, pt_param = pt_named_param
-        ort_name, ort_param = ort_named_param
-
-        assert pt_name in ort_name
-        _assert_tensor_value_matches(pt_param.grad, ort_param.grad)
-
-        if reset_grad:
-            pt_param.grad = None
-            ort_param.grad = None
-
 # ORTModule-API tests
 
 def test_forward_call_single_positional_argument():
@@ -408,7 +387,7 @@ def test_gradient_correctness():
         run_step(pt_model, x)
         run_step(ort_model, x)
 
-        _check_model_gradients_match_and_reset(pt_model, ort_model)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_multiple_forward_only_calls():
     device = 'cuda'
@@ -421,7 +400,7 @@ def test_multiple_forward_only_calls():
         pt_prediction = pt_model(x)
         ort_prediction = ort_model(x)
 
-        _assert_tensor_value_matches(pt_prediction, ort_prediction)
+        assert torch.allclose(ort_prediction, pt_prediction)
 
 def test_multiple_overlapping_forward_backward_calls():
     device = 'cuda'
@@ -451,9 +430,9 @@ def test_multiple_overlapping_forward_backward_calls():
         run_step(pt_model, pt_x1, pt_x2)
         run_step(ort_model, ort_x1, ort_x2)
 
-        _assert_tensor_value_matches(pt_x1.grad, ort_x1.grad)
-        _assert_tensor_value_matches(pt_x2.grad, ort_x2.grad)
-        _check_model_gradients_match_and_reset(pt_model, ort_model)
+        assert torch.allclose(ort_x1.grad, pt_x1.grad)
+        assert torch.allclose(ort_x2.grad, pt_x2.grad)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_multiple_ortmodules_training():
     device = 'cuda'
@@ -478,8 +457,8 @@ def test_multiple_ortmodules_training():
         run_step(pt_model1, pt_model2, x1, x2)
         run_step(ort_model1, ort_model2, x1, x2)
 
-        _check_model_gradients_match_and_reset(pt_model1, ort_model1)
-        _check_model_gradients_match_and_reset(pt_model2, ort_model2)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
 def test_multiple_ortmodules_common_backbone_training():
     device = 'cuda'
@@ -503,16 +482,16 @@ def test_multiple_ortmodules_common_backbone_training():
         run_step(pt_model0, pt_model1, x1)
         run_step(ort_model0, ort_model1, x1)
 
-        _check_model_gradients_match_and_reset(pt_model0, ort_model0, reset_grad=False)
-        _check_model_gradients_match_and_reset(pt_model1, ort_model1)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=False)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
 
         # Run task 2
         x2 = torch.randn(N, D_in, device=device)
         run_step(pt_model0, pt_model2, x1)
         run_step(ort_model0, ort_model2, x1)
 
-        _check_model_gradients_match_and_reset(pt_model0, ort_model0, reset_grad=True)
-        _check_model_gradients_match_and_reset(pt_model2, ort_model2)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=True)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
 def test_multiple_chained_ortmodules_training():
     device = 'cuda'
@@ -532,8 +511,8 @@ def test_multiple_chained_ortmodules_training():
         run_step(pt_model1, pt_model2, x)
         run_step(ort_model1, ort_model2, x)
 
-        _check_model_gradients_match_and_reset(pt_model1, ort_model1)
-        _check_model_gradients_match_and_reset(pt_model2, ort_model2)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
 def test_mixed_nnmodule_ortmodules_training():
     device = 'cuda'
@@ -559,9 +538,9 @@ def test_mixed_nnmodule_ortmodules_training():
         run_step(pt_model1, pt_model2, pt_model3, x1, x2)
         run_step(ort_model1, ort_model2, ort_model3, x1, x2)
 
-        _check_model_gradients_match_and_reset(pt_model1, ort_model1)
-        _check_model_gradients_match_and_reset(pt_model2, ort_model2)
-        _check_model_gradients_match_and_reset(pt_model3, ort_model3)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model3, pt_model3)
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder(device):
