@@ -218,7 +218,7 @@ def generate_files(list, args):
 
     runtimes = '{}{}\\{}"'.format(runtimes_target,
                                   args.target_architecture,
-                                  'uap' if args.is_store_build else 'native')
+                                  'uap' if args.is_store_build else '_native')
 
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
