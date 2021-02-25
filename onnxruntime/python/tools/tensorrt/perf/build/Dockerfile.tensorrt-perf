@@ -1,0 +1,4 @@
+FROM onnxruntime-trt
+RUN apt-get update &&\
+    apt-get -y install libprotobuf-dev protobuf-compiler pciutils &&\
+    pip install coloredlogs numpy flake8 onnx Cython onnxmltools sympy packaging

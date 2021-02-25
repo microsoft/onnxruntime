@@ -235,3 +235,90 @@ def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):
 
     for i in output_buffer_max_sizes:
         output_buffers.append(torch.empty(i, dtype=torch.float32, device=device))
+
+
+def set_random_seed(seed=123):
+    """Set random seed manully to get deterministic results"""
+    import random
+    random.seed(seed)
+    numpy.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    #torch.backends.cudnn.enabled = False
+    #torch.backends.cudnn.benchmark = False
+    #torch.backends.cudnn.deterministic = True
+
+
+def measure_memory(is_gpu, func):
+    import os
+    import psutil
+    from time import sleep
+
+    class MemoryMonitor:
+        def __init__(self, keep_measuring=True):
+            self.keep_measuring = keep_measuring
+
+        def measure_cpu_usage(self):
+            max_usage = 0
+            while True:
+                max_usage = max(max_usage, psutil.Process(os.getpid()).memory_info().rss / 1024**2)
+                sleep(0.005)  # 5ms
+                if not self.keep_measuring:
+                    break
+            return max_usage
+
+        def measure_gpu_usage(self):
+            from py3nvml.py3nvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, \
+                                 nvmlDeviceGetMemoryInfo, nvmlDeviceGetName, nvmlShutdown, NVMLError
+            max_gpu_usage = []
+            gpu_name = []
+            try:
+                nvmlInit()
+                deviceCount = nvmlDeviceGetCount()
+                max_gpu_usage = [0 for i in range(deviceCount)]
+                gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(deviceCount)]
+                while True:
+                    for i in range(deviceCount):
+                        info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
+                        max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
+                    sleep(0.005)  # 5ms
+                    if not self.keep_measuring:
+                        break
+                nvmlShutdown()
+                return [{
+                    "device_id": i,
+                    "name": gpu_name[i],
+                    "max_used_MB": max_gpu_usage[i]
+                } for i in range(deviceCount)]
+            except NVMLError as error:
+                if not self.silent:
+                    self.logger.error("Error fetching GPU information using nvml: %s", error)
+                return None
+
+    monitor = MemoryMonitor(False)
+
+    memory_before_test = monitor.measure_gpu_usage() if is_gpu else monitor.measure_cpu_usage()
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor() as executor:
+        monitor = MemoryMonitor()
+        mem_thread = executor.submit(monitor.measure_gpu_usage if is_gpu else monitor.measure_cpu_usage)
+        try:
+            fn_thread = executor.submit(func)
+            result = fn_thread.result()
+        finally:
+            monitor.keep_measuring = False
+            max_usage = mem_thread.result()
+
+        if is_gpu:
+            print(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
+            if len(memory_before_test) >= 1 and len(max_usage) >= 1:
+                before = memory_before_test[0]["max_used_MB"]
+                after = max_usage[0]["max_used_MB"]
+                return after - before
+            else:
+                return None
+        else:
+            print(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")
+            return max_usage - memory_before_test
