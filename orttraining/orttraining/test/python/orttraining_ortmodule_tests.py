@@ -43,6 +43,19 @@ def run_ortmodule_poc_net(cwd, log, no_cuda, data_dir):
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
+
+def run_ortmodule_torch_lightning(cwd, log, data_dir):
+    log.debug('Running: ORTModule PyTorch Lightning sample .')
+
+    command = [sys.executable, 'orttraining_test_ortmodule_torch_lightning_basic.py', '--train-steps=470',
+               '--epochs=2', '--batch-size=256']
+
+    if data_dir:
+        command.extend(['--data_dir', data_dir])
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda, data_dir):
     log.debug('Running: ORTModule HuggingFace BERT for sequence classification with --no-cuda arg {}.'.format(no_cuda))
 
@@ -71,6 +84,9 @@ def main():
     run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=False, data_dir=args.bert_data)
 
     run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True, data_dir=args.bert_data)
+
+    # TODO: Re-enable when PyTorch Lightning works with newer torchtext (nightlies after 2021-02-19)
+    # run_ortmodule_torch_lightning(cwd, log, args.args.mnist)
 
     return 0
 
