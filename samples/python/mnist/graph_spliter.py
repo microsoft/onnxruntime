@@ -85,7 +85,7 @@ print_list('backward_user_input_names', split_graphs_info.backward_user_input_na
 print_list('backward_intializer_names_as_input', split_graphs_info.backward_intializer_names_as_input)
 print_list('intermediate_tensor_names', split_graphs_info.intermediate_tensor_names)
 print_list('user_output_grad_names', split_graphs_info.user_output_grad_names)
-print_list('backward_output_grad_names_map', split_graphs_info.backward_output_grad_names_map)
+print_list('backward_output_grad_names', split_graphs_info.backward_output_grad_names)
 
 type_map = {}
 for name in split_graphs_info.user_input_names:
@@ -102,7 +102,7 @@ for name in split_graphs_info.intermediate_tensor_names:
     type_map[name] = None
 for name in split_graphs_info.user_output_grad_names:
     type_map[name] = None
-for name in split_graphs_info.backward_output_grad_names_map:
+for name in split_graphs_info.backward_output_grad_names:
     type_map[name] = None
 
 for input in forward_model.graph.input:
