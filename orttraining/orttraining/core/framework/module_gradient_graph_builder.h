@@ -41,7 +41,8 @@ struct TrainingGraphInfo {
   std::vector<std::string> initializer_grad_names_to_train{};
   // The user outputs.
   std::vector<std::string> user_output_names{};
-  // The user output grad names that are actual required by the backward graph mapped to the index of the correspoinding output of inference graph.
+  // The user output grad names that are actually required by the backward graph 
+  // mapped to the index of the correspoinding output of inference graph.
   std::unordered_map<std::string, size_t> backward_output_grad_names_map{};
 };
 
