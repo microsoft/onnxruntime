@@ -90,14 +90,13 @@ def main():
 
     run_ortmodule_poc_net(cwd, log, no_cuda=True, data_dir=args.mnist)
 
-    run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=False,
+    run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=False,
         data_dir=args.bert_data, transformers_cache=args.transformers_cache)
 
-    run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True,
+    run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True,
         data_dir=args.bert_data, transformers_cache=args.transformers_cache)
 
-    # TODO: Re-enable when PyTorch Lightning works with newer torchtext (nightlies after 2021-02-19)
-    # run_ortmodule_torch_lightning(cwd, log, args.args.mnist)
+    run_ortmodule_torch_lightning(cwd, log, args.args.mnist)
 
     return 0
 
