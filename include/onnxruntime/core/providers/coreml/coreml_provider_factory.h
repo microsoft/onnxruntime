@@ -19,17 +19,22 @@ enum COREMLFlags {
   // Enable CoreML EP on subgraph
   COREML_FLAG_ENABLE_ON_SUBGRAPH = 0x002,
 
+  // By default CoreML Execution provider will be enabled for all compatible Apple devices
+  // Enable this option will only enable CoreML EP for Apple devices with ANE (Apple Neural Engine)
+  // Please note, enable this option does not guarantee the entire model to be executed using ANE only
+  COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 0x004,
+
   // Keep COREML_FLAG_MAX at the end of the enum definition
   // And assign the last COREMLFlag to it
-  COREML_FLAG_LAST = COREML_FLAG_ENABLE_ON_SUBGRAPH,
+  COREML_FLAG_LAST = COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE,
 };
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CoreML,
-               _In_ OrtSessionOptions* options, uint32_t coreml_flags);
+ORT_EXPORT ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CoreML,
+                          _In_ OrtSessionOptions* options, uint32_t coreml_flags);
 
 #ifdef __cplusplus
 }
