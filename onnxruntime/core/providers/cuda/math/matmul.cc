@@ -179,6 +179,7 @@ struct FindIfZero {
     const T* block_row_begin_T = reinterpret_cast<const T*>(block_row_begin);
     const T* start = reinterpret_cast<const T*>(restart);
     const T* block_row_end_T = reinterpret_cast<const T*>(block_row_end);
+    assert(start <= block_row_end_T);
     auto hit = std::find_if(start, block_row_end_T, IsZero<T>());
     if (hit != block_row_end_T) {
       block_col = (hit - block_row_begin_T) % N;
@@ -208,7 +209,7 @@ static Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, 
   const int64_t block_elements = ell_block_size * ell_block_size;
   const int64_t block_bytes = block_elements * element_size;
 
-  const int64_t src_row_element_bytes = K * element_size;
+  const int64_t src_row_element_bytes = N * element_size; // bytes in a row of elements
   const int64_t src_block_rows = K / ell_block_size;
   const int64_t src_block_cols = N / ell_block_size;
   const int64_t ell_block_row_bytes = ell_block_size * element_size;
@@ -655,13 +656,18 @@ class CuSparseHelper {
     sp_info->K_ = K;
     sp_info->N_ = N;
 
+      // Feed column order and swap dims
+    const int64_t num_rows = transb ? K : N;
+    const int64_t num_cols = transb ? N : K;
+    const int64_t lead_dim = transb ? K : N;
+
     // if Ell format is specified but the hardware is not we then default
     // to one of the belows
     const auto& dev_props = kernel->GetDeviceProp();
     if (param.UseEllFormat() && dev_props.major >= 7) {
       // Some tunables which we may adjust for both testing and depending on the matrix size.
       // Must be power of two
-      constexpr int64_t ell_block_size = 8;
+      constexpr int64_t ell_block_size = 3;
       if ((K % ell_block_size) != 0 || (N % ell_block_size) != 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name + " : Matrix dims: ", K, " ", N, " must divide evenly by a chosen Ell Block size: ", ell_block_size);
       }
@@ -677,13 +683,14 @@ class CuSparseHelper {
       CUDA_RETURN_IF_ERROR(cudaMemcpy(ell_ind_buffer.get(), ell_col_ind.get(), ell_ind_elements * sizeof(int), cudaMemcpyHostToDevice));
 
       const int64_t ell_values_elements = ell_ind_elements * ell_block_size * ell_block_size;
-      auto ell_values_buffer = kernel->GetPersistentBuffer<uint8_t>(ell_values_elements * element_size);
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(ell_values_buffer.get(), ell_values.get(), ell_values_elements * element_size,
+      const int64_t ell_values_bytes = ell_values_elements * element_size;
+      auto ell_values_buffer = kernel->GetPersistentBuffer<uint8_t>(ell_values_bytes);
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(ell_values_buffer.get(), ell_values.get(), ell_values_bytes,
                                       cudaMemcpyHostToDevice));
 
       CUSPARSE_RETURN_IF_ERROR(cusparseCreateBlockedEll(&sparse_desc,
-                                                        transb ? K : N,
-                                                        transb ? N : K,
+                                                        num_rows,
+                                                        num_cols,
                                                         ell_block_size,
                                                         ell_cols,
                                                         ell_ind_buffer.get(),
@@ -707,10 +714,6 @@ class CuSparseHelper {
       CUDA_RETURN_IF_ERROR(cudaMemcpy(values_buffer.get(), tensor.DataRaw(), element_size * num_elements, cudaMemcpyHostToDevice));
 
       cusparseDnMatDescr_t dense_desc;
-      // Feed column order and swap dims
-      const int64_t num_rows = transb ? K : N;
-      const int64_t num_cols = transb ? N : K;
-      const int64_t lead_dim = transb ? K : N;
       CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&dense_desc,
                                                    num_rows,  // Number of rows in B(T)
                                                    num_cols,  // Number of columns in B(T)
@@ -721,7 +724,6 @@ class CuSparseHelper {
 
       std::unique_ptr<cusparseDnMatDescr_t, decltype(guards::close_dense_fn)> dense_guard(&dense_desc, guards::close_dense_fn);
 
-      // This will have data transposed, swap dims
       onnxruntime::IAllocatorUniquePtr<uint8_t> csr_offsets;
       if (param.UseCsrFormat()) {
         csr_offsets = kernel->GetPersistentBuffer<uint8_t>((num_rows + 1) * sizeof(int));
@@ -883,8 +885,8 @@ class CuSparseHelper {
     size_t buffer_size = 0;
 
     CUSPARSE_RETURN_IF_ERROR(cusparseSpMM_bufferSize(*sparse_info.handle_,
-                                                     op_A,
                                                      op_B,
+                                                     op_A,
                                                      &alpha,
                                                      *sparse_info.sparse_desc_,
                                                      dense_desc_A,
@@ -896,8 +898,8 @@ class CuSparseHelper {
 
     auto work_buffer = kernel->GetScratchBuffer<uint8_t>(buffer_size);
     CUSPARSE_RETURN_IF_ERROR(cusparseSpMM(*sparse_info.handle_,
-                                          op_A,
                                           op_B,
+                                          op_A,
                                           &alpha,
                                           *sparse_info.sparse_desc_,
                                           dense_desc_A,
@@ -1007,6 +1009,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         ldc,
         device_prop));
 
+    CUDA_CALL(cudaStreamSynchronize(Stream()));
     DUMP_ARRAY(T, std::cout, "Offsets 1 output", Y->DataRaw(), Y->Shape().Size(), helper.K());
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),

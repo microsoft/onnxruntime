@@ -56,7 +56,9 @@ class MatMul final : public CudaKernel {
       : CudaKernel(info),
         alpha_{info.GetAttrOrDefault<float>("alpha", 1.0f)},
         trans_A_{info.GetAttrOrDefault<int64_t>("transA", 0) != 0},
+        // trans_A_(true),
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0} {
+        // trans_B_(true) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
