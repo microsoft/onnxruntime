@@ -234,10 +234,7 @@ def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_s
 
     model = NeuralNetSimplePositionalAndKeywordArguments()
     model = ORTModule(model)
-    ortmodule_result = eval(forward_statement)
-    # TODO: remove backward call when the issue with multiple call to forward fixed.
-    ortmodule_result.backward()
-    ortmodule_result = ortmodule_result.item()
+    ortmodule_result = eval(forward_statement + ".item()")
     ortmodule_result_again = eval(forward_statement + ".item()")
     assert ortmodule_result == ortmodule_result_again
     assert pytorch_result == ortmodule_result
