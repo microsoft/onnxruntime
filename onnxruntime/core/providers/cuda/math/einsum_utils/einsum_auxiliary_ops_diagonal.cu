@@ -30,8 +30,8 @@ __global__ void _DiagonalKernel(
     if (i == dim_1) {
       // Process dim_2 as dim_2 needs to have the same dim value as dim_1
       // For example: given a tensor of shape [2, 3, 3] and parsing the diagonal along axes `1` and `2`
-      // we need to parse elements in input[j, i, i] (j -> 0 to 1; and i -> 0 to 2) 
-      // and place them in output[j, i] and by definition of diagonal parsing dim_1 has to be equal to 
+      // we need to parse elements in input[j, i, i] (j -> 0 to 1; and i -> 0 to 2)
+      // and place them in output[j, i] and by definition of diagonal parsing dim_1 has to be equal to
       // dim_2
       input_idx += input_strides[dim_2] * dim;
     }
@@ -72,6 +72,13 @@ void DiagonalImpl(
         _DiagonalKernel<int64_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
             reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data), input_rank, dim_1, dim_2,
             input_strides, reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data), output_strides,
+            output_size);
+        break;
+
+      case sizeof(int16_t):
+        _DiagonalKernel<half><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+            reinterpret_cast<const half*>(input_data), input_rank, dim_1, dim_2,
+            input_strides, reinterpret_cast<half*>(output_data), output_strides,
             output_size);
         break;
 
