@@ -294,6 +294,7 @@ void addObjectMethodsForTraining(py::module& m) {
         const auto config_result = ConfigureSessionForTraining(static_cast<TrainingSession*>(sess->GetSessionHandle()), parameters);
         std::vector<std::string> provider_types = {};
         InitializeSession(sess->GetSessionHandle(), provider_types);
+
         return config_result;
       })
       .def("get_state", [](PyTrainingSession* sess) {

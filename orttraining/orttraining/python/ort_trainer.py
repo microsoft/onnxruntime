@@ -929,7 +929,7 @@ class ORTTrainer():
                 checkpoint_path=self.checkpoint_path,
                 _onnx_model_cache_key=self._onnx_model_cache_key,
                 _init_onnx_model_file_name=self._init_onnx_model_file_name,
-                _param_bytes_size=self.self.num_param_to_train_in_pytorch * 4)
+                _param_bytes_size=self.num_param_to_train_in_pytorch * 4)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
