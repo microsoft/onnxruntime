@@ -75,7 +75,8 @@ class RegistrationProcessor:
     '''
 
     def process_registration(self, lines: typing.List[str], domain: str, operator: str,
-                             start_version: int, end_version: int = None, type: str = None):
+                             start_version: int, end_version: typing.Optional[int] = None,
+                             type: typing.Optional[str] = None):
         '''
         Process lines that contain a kernel registration.
         :param lines: Array containing the original lines containing the kernel registration.

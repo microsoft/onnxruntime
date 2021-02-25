@@ -80,9 +80,6 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
         )
         return results
 
-    if (not use_gpu) and ('CUDAExecutionProvider' in onnxruntime.get_available_providers()):
-        logger.warning("Please install onnxruntime package instead of onnxruntime-gpu to get best cpu performance.")
-
     for model_name in model_names:
         all_input_names = MODELS[model_name][0]
         for num_inputs in input_counts:
