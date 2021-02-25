@@ -283,6 +283,11 @@ class ORTModule(torch.nn.Module):
                 # Append gradients of initializer to results
                 results += [_ort_output_to_torch_tensor(backward_output) 
                             for backward_output in backward_outputs[num_user_input_grads:]]
+                # The OrtValue has a shared_ptr to the data. At this point there are two shared_ptrs to the data, one through the 
+                # OrtValue in the output iobinding, and the other through the copy in OrtDLManagedTensor.
+                # The following call clears the iobinding output, reducing the use_count to 1, so that once torch finishes computation
+                # on the DLpack tensors, the memory can be freed.
+                self._training_io_binding.clear_binding_outputs()
                 return tuple(results)
 
         return _ortmodule_output_transformation.populate_user_output_from_schema_and_outputs(self._original_module_output_schema,
