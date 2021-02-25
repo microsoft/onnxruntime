@@ -258,6 +258,10 @@ class ORTModule(torch.nn.Module):
                 # Use IO binding
                 # Push user output grads to ONNX backend.
                 backward_grad_output_ortvalue = []
+
+                # backward_output_grad_names_map only contains the subset of module outputs that need a gradient,
+                # we filter out the invalid entries in grad_outputs, accessing using the mapped index.
+
                 for _, i in self._onnx_graphs_info.backward_output_grad_names_map.items():
                     grad_output = grad_outputs[i]
                     if not grad_output.is_contiguous():
