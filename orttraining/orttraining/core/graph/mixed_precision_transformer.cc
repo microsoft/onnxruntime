@@ -65,6 +65,7 @@ bool IsFP32(const std::unordered_map<std::string, std::vector<int>>& map, std::s
 static const std::string loss_scale_input = "loss_scale";
 
 static const std::unordered_set<std::string> loss_subgraph_entry_nodes = {
+    "ReduceLogSumExp",
     "SparseSoftmaxCrossEntropy",
     "SoftmaxCrossEntropyLoss",
     "SoftmaxCrossEntropy"};
