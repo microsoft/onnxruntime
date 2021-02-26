@@ -2220,19 +2220,27 @@ Return true if all elements are true and false otherwise.
       .Output(0, "outputs_grad", "Gradient of outputs returned from pytorch.", "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
+      .Attr(
+        "required_grad",
+        "The indices of the outputs that require gradient outputs.",
+        AttributeProto::INTS)
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Assume the outputs and gradients are one-to-one matching
-        // TODO: The contrain is relaxed for now 
-        // ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs(), "Yield op doesn't have the same number of inputs and output");
-
-        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          propagateElemTypeFromInputToOutput(ctx, i, i);
-          auto typeProto = ctx.getInputType(i);
+        const std::string attribute_name = "required_grad";
+        auto required_grads = ctx.getAttribute(attribute_name);
+        if (nullptr == required_grads) {  // attribute not present
+          fail_type_inference("Value of attribute ", attribute_name, " not specified");
+        }
+        ORT_ENFORCE(ctx.getNumOutputs() == static_cast<size_t> (required_grads->ints_size()));
+        for (size_t i = 0, n = static_cast<size_t> (required_grads->ints_size()); i < n; ++i) {
+          size_t j = static_cast<size_t> (required_grads->ints(static_cast<int>(i)));
+          ORT_ENFORCE(ctx.getNumInputs() > j);
+          propagateElemTypeFromInputToOutput(ctx, j, i);
+          auto typeProto = ctx.getInputType(j);
           if (!hasShape(*typeProto)) {
             continue;
           }
-          propagateShapeFromInputToOutput(ctx, i, i);
+          propagateShapeFromInputToOutput(ctx, j, i);
         }
       });
 }
