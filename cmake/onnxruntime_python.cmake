@@ -395,15 +395,13 @@ if (onnxruntime_USE_TENSORRT)
 endif()
 
 if (onnxruntime_USE_OPENVINO)
-  if(NOT WIN32)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
-          ${OPENVINO_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_openvino>
+          $<TARGET_FILE:onnxruntime_providers_openvino>
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
-  endif()
 endif()
 
 if (onnxruntime_USE_TVM)
