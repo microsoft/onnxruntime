@@ -15,7 +15,6 @@ import random
 import time
 import datetime
 
-
 import onnxruntime
 from onnxruntime.training import ORTModule
 
@@ -312,6 +311,17 @@ def format_time(elapsed):
     # Format as hh:mm:ss
     return str(datetime.timedelta(seconds=elapsed_rounded))
 
+def log_perf_metrics(args, perf_metrics):
+    from perf_log.create_table_perf_test_training_ort_module_data import ConnectAndInsertPerfMetrics
+    from perf_log.create_table_perf_test_training_ort_module_data import get_repo_commit
+    perf_metrics['CommitId'] = get_repo_commit(os.path.realpath(__file__))
+    ConnectAndInsertPerfMetrics(
+        args.perf_mysql_server_name,
+        args.perf_power_bi_user_name,
+        args.perf_power_bi_password,
+        args.perf_database,
+        perf_metrics)
+
 def main():
     # 1. Basic setup
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -339,6 +349,13 @@ def main():
                         help='Number of hidden layers for the BERT model. A vanila BERT has 12 hidden layers (default: 1)')
     parser.add_argument('--data_dir', type=str, default='./cola_public/raw',
                         help='Path to the bert data directory')
+
+    parser.add_argument('--log_perf_metrics', action='store_true', default=False,
+                        help='whether to log perf data')
+    parser.add_argument('--perf_mysql_server_name', type=str, help='perfmance mysql name')
+    parser.add_argument('--perf_power_bi_user_name', type=str, help='perfmance power BI account user name')
+    parser.add_argument('--perf_power_bi_password', type=str, help='perfmance power BI account password')
+    parser.add_argument('--perf_database', type=str, help='perfmance database')
 
     args = parser.parse_args()
 
@@ -408,6 +425,8 @@ def main():
     if torch.cuda.is_available() and not args.no_cuda:
         torch.cuda.manual_seed_all(args.seed)
 
+    perf_metrics_start_time = datetime.datetime.now()
+
     # 4. Train loop (fine-tune)
     total_training_time, total_test_time, epoch_0_training, validation_accuracy = 0, 0, 0, 0
     for epoch_i in range(0, args.epochs):
@@ -430,6 +449,43 @@ def main():
         print("  Accumulated training without export took: {:.4f}s".format(total_training_time - estimated_export))
     print("  Accumulated training took:                {:.4f}s".format(total_training_time))
     print("  Accumulated validation took:              {:.4f}s".format(total_test_time))
+
+    if args.log_perf_metrics:
+        perf_metrics = {}
+        
+        perf_metrics['Model'] = 'orttraining_test_ortmodule_bert_classifier'
+        perf_metrics['BatchId'] = 'na'
+        perf_metrics['ModelName'] = 'bert'
+        perf_metrics['DisplayName'] = 'bert'
+        perf_metrics['UseMixedPrecision'] = False
+        perf_metrics['UseAutoCast'] = False
+        perf_metrics['UseDeepSpeed'] = False
+        perf_metrics['Optimizer'] = 'AdamW'
+        perf_metrics['BatchSize'] = args.batch_size
+        perf_metrics['SeqLen'] = 128                # TODO
+        perf_metrics['PredictionsPerSeq'] = 0       # TODO
+        perf_metrics['NumOfBatches'] = args.epochs * args.train_steps
+        perf_metrics['WeightUpdateSteps'] = args.epochs * args.train_steps
+        perf_metrics['Round'] = 0
+        perf_metrics['GradAccSteps'] = 0
+
+        perf_metrics_duration = datetime.datetime.now() - perf_metrics_start_time
+        perf_metrics['AvgTimePerBatch'] = \
+            perf_metrics_duration.microseconds / args.train_steps
+
+        perf_metrics['Throughput'] = \
+            args.batch_size * args.train_steps / perf_metrics_duration.seconds
+
+        perf_metrics['StabilizedThroughput'] = 0    # TODO
+        perf_metrics['EndToEndThroughput'] = 0      # TODO
+        perf_metrics['TotalTime'] = perf_metrics_duration.seconds
+
+        perf_metrics['AvgCPU'] = 0                  # TODO
+        perf_metrics['Memory'] = 0                  # TODO
+        perf_metrics['RunConfig'] = 'na'
+        perf_metrics['Time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_perf_metrics(args, perf_metrics)
+
 
 if __name__ == '__main__':
     main()
