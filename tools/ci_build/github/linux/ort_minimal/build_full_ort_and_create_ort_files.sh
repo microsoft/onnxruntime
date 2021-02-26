@@ -44,5 +44,13 @@ python3 /onnxruntime_src/tools/python/create_reduced_build_config.py --format OR
     /onnxruntime_src/onnxruntime/test/testdata \
     /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config
 
+# Test that we can convert an ONNX model with custom ops to ORT format
+mkdir /home/onnxruntimedev/.test_data/custom_ops_model
+cp /onnxruntime_src/onnxruntime/test/testdata/custom_op_library/*.onnx /home/onnxruntimedev/.test_data/custom_ops_model/
+python3 /onnxruntime_src/tools/python/convert_onnx_models_to_ort.py \
+    --custom_op_library /build/Debug/libcustom_op_library.so \
+    /home/onnxruntimedev/.test_data/custom_ops_model
+rm -rf /home/onnxruntimedev/.test_data/custom_ops_model
+
 # Clear the build
 rm -rf /build/Debug

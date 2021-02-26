@@ -15,7 +15,8 @@ WORKDIR /root
 
 ENV INTEL_OPENVINO_DIR /opt/intel/openvino_${OPENVINO_VERSION}.200
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/deployment_tools/inference_engine/lib/intel64:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:$INTEL_OPENVINO_DIR/deployment_tools/inference_engine/external/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
-
+ENV InferenceEngine_DIR $INTEL_OPENVINO_DIR/deployment_tools/inference_engine/share
+ENV ngraph_DIR $INTEL_OPENVINO_DIR/deployment_tools/ngraph/cmake
 ENV PYTHONPATH $INTEL_OPENVINO_DIR/tools:$PYTHONPATH
 ENV IE_PLUGINS_PATH $INTEL_OPENVINO_DIR/deployment_tools/inference_engine/lib/intel64
 ENV DEBIAN_FRONTEND=noninteractive

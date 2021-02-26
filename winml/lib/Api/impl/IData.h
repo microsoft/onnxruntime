@@ -5,9 +5,6 @@
 
 #include "IEngine.h"
 
-// ILotusValueProviderPrivate exposes a private Lotus interface to the engine so that it can retrieve tensor
-// resources stored in winrt structures.
-
 namespace _winml {
 
 struct idata {

@@ -212,6 +212,8 @@ class FusionAttention(Fusion):
                     root_input = layernorm_node.output[0]
                 else:
                     return
+            elif mul_children is not None and len(mul_children) == 5:
+                root_input = mul_before_layernorm.output[0]
             else:
                 return
 

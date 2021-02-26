@@ -5,7 +5,6 @@
 #include "core/util/math.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/mlas/inc/mlas.h"
 #include <random>
 
 namespace onnxruntime {
@@ -387,9 +386,7 @@ class QLinearConvOpTester {
     Y_shape.push_back(output_channels);
     for (size_t n = 0; n < kernel_rank; n++) {
       Y_shape.push_back(((input_shape[n] + pads[n] + pads[kernel_rank + n]) -
-                         (dilations[n] * (kernel_shape[n] - 1) + 1)) /
-                            strides[n] +
-                        1);
+                         (dilations[n] * (kernel_shape[n] - 1) + 1)) / strides[n] + 1);
     }
     const int64_t* output_shape = Y_shape.data() + 2;
     Y_data.resize(ShapeSize(Y_shape));
