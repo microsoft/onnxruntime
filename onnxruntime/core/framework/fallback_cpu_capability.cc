@@ -100,11 +100,6 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       continue;
 
     auto* node = graph.GetNode(cur);
-    if (node->Name() == "na_speech_model/parallel_0_3/na_speech_model/na_speech_model/body/s_decoder/layer_5/ffn/conv_relu_conv/conv1_7/Tensordot/GatherV2") {
-      float f = 1.f / 2;
-      ORT_IGNORE_RETURN_VALUE(f);
-    }
-
     bool place_in_cpu = true;
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
