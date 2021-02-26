@@ -127,11 +127,19 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
   CUDA_CALL_THROW(cudaDeviceSynchronize());
   CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, info_.device_id));
+
+  // This scenario is not supported.
+  ORT_ENFORCE(!(info.has_user_compute_stream && info.external_allocator_info.UseExternalAllocator()));
+
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
   } else {
-    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+    if (info.external_allocator_info.UseExternalAllocator()) {
+      stream_ = nullptr;
+    } else {
+      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+    }
   }
 
   size_t free = 0;
