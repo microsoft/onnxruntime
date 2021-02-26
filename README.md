@@ -25,6 +25,7 @@ Common use cases for ONNX Runtime:
 * [Training](https://www.onnxruntime.ai/docs/get-started/training.html)
 * [Documentation](https://www.onnxruntime.ai/docs/)
 * [Samples and Tutorials](https://www.onnxruntime.ai/docs/tutorials/)
+* [Build Instructions](https://www.onnxruntime.ai/docs/how-to/build.html)
 * [Frequently Asked Questions](./docs/FAQ.md)
 
 ## Build Pipeline Status

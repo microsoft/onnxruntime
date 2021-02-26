@@ -140,7 +140,8 @@ def generate_test_data(batch_size, sequence_length, test_cases, seed, verbose, i
 
 
 def get_graph_input_from_embed_node(onnx_model, embed_node, input_index):
-    assert input_index < len(embed_node.input)
+    if input_index >= len(embed_node.input):
+        return None
 
     input = embed_node.input[input_index]
     graph_input = onnx_model.find_graph_input(input)
@@ -195,6 +196,15 @@ def find_bert_inputs(onnx_model, input_ids_name=None, segment_ids_name=None, inp
         input_ids = get_graph_input_from_embed_node(onnx_model, embed_node, 0)
         segment_ids = get_graph_input_from_embed_node(onnx_model, embed_node, 1)
         input_mask = get_graph_input_from_embed_node(onnx_model, embed_node, 7)
+
+        if input_mask is None:
+            for input in graph_inputs:
+                input_name_lower = input.name.lower()
+                if "mask" in input_name_lower:
+                    input_mask = input
+        if input_mask is None:
+            raise ValueError(f"Failed to find attention mask input")
+            
         return input_ids, segment_ids, input_mask
 
     # Try guess the inputs based on naming.
@@ -231,7 +241,7 @@ def get_bert_inputs(onnx_file, input_ids_name=None, segment_ids_name=None, input
         model.ParseFromString(f.read())
 
     onnx_model = OnnxModel(model)
-    find_bert_inputs(onnx_model, input_ids_name, segment_ids_name, input_mask_name)
+    return find_bert_inputs(onnx_model, input_ids_name, segment_ids_name, input_mask_name)
 
 
 def parse_arguments():

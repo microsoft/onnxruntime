@@ -240,7 +240,7 @@ if (onnxruntime_MINIMAL_BUILD)
   if (onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
     add_compile_definitions(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   endif()
-  
+
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -369,6 +369,12 @@ if(onnxruntime_CROSS_COMPILING)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
     string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
   endif()
+endif()
+
+# Mark symbols to be invisible, for macOS/iOS target only
+# Due to many dependencies have different symbol visibility settings, set global compile flags here.
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
+  string(APPEND CMAKE_CXX_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
 endif()
 
 #must after OpenMP settings
@@ -715,7 +721,7 @@ endif()
 
 function(onnxruntime_add_shared_library target_name)
   add_library(${target_name} SHARED ${ARGN})
-  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS}) 
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
   if (MSVC)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
@@ -753,9 +759,9 @@ function(onnxruntime_add_shared_library_module target_name)
 endfunction()
 
 #almost the same as the above function, except the first line of the body
-function(onnxruntime_add_executable target_name)  
+function(onnxruntime_add_executable target_name)
   add_executable(${target_name} ${ARGN})
-  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS}) 
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
   if (MSVC)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
@@ -979,7 +985,7 @@ if (WIN32)
     list(APPEND ORT_WARNING_FLAGS "/wd4201")
     if (onnxruntime_ENABLE_STATIC_ANALYSIS)
         list(APPEND ORT_WARNING_FLAGS "/analyze:stacksize 131072")
-        list(APPEND ORT_WARNING_FLAGS "/wd6326") # potential comparison of a constant with another constant        
+        list(APPEND ORT_WARNING_FLAGS "/wd6326") # potential comparison of a constant with another constant
         if(onnxruntime_USE_OPENMP)
           list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
         endif()
@@ -1499,12 +1505,11 @@ if (onnxruntime_BUILD_NODEJS)
   include(onnxruntime_nodejs.cmake)
 endif()
 
-# some of the tests rely on the shared libs to be
-# built; hence the ordering
+if (onnxruntime_ENABLE_PYTHON)
+  include(onnxruntime_python.cmake)
+endif()
+
 if (onnxruntime_BUILD_UNIT_TESTS)
-  if (onnxruntime_ENABLE_PYTHON)
-    include(onnxruntime_python.cmake)
-  endif()
   include(onnxruntime_unittests.cmake)
 endif()
 

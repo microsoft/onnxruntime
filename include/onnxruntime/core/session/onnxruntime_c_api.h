@@ -53,7 +53,12 @@ extern "C" {
 #define ORT_MUST_USE_RESULT
 #define ORTCHAR_T wchar_t
 #else
+// To make symbols visible on macOS/iOS
+#ifdef __APPLE__
+#define ORT_EXPORT __attribute__((visibility("default")))
+#else
 #define ORT_EXPORT
+#endif
 #define ORT_API_CALL
 #define ORT_MUST_USE_RESULT __attribute__((warn_unused_result))
 #define ORTCHAR_T char
@@ -1139,7 +1144,7 @@ struct OrtApi {
   ORT_API2_STATUS(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options);
 
   /**
-  * Use this API to create the configuration of an arena that can eventually be used to define 
+  * Use this API to create the configuration of an arena that can eventually be used to define
   * an arena based allocator's behavior
   * \param max_mem - use 0 to allow ORT to choose the default
   * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
@@ -1159,8 +1164,8 @@ struct OrtApi {
   * (doc_string field of the GraphProto message within the ModelProto message).
   * If it doesn't exist, an empty string will be returned.
   * \param model_metadata - an instance of OrtModelMetadata
-  * \param allocator - allocator used to allocate the string that will be returned back 
-  * \param value - is set to a null terminated string allocated using 'allocator'. 
+  * \param allocator - allocator used to allocate the string that will be returned back
+  * \param value - is set to a null terminated string allocated using 'allocator'.
     The caller is responsible for freeing it.
   */
   ORT_API2_STATUS(ModelMetadataGetGraphDescription, _In_ const OrtModelMetadata* model_metadata,

@@ -4,10 +4,14 @@
  */
 package ai.onnxruntime;
 
+import ai.onnxruntime.providers.CoreMLFlags;
+import ai.onnxruntime.providers.NNAPIFlags;
+import ai.onnxruntime.providers.OrtFlags;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -809,13 +813,23 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Android's NNAPI as an execution backend.
+     * Adds Android's NNAPI as an execution backend. Uses the default empty flag.
      *
      * @throws OrtException If there was an error in native code.
      */
     public void addNnapi() throws OrtException {
+      addNnapi(EnumSet.noneOf(NNAPIFlags.class));
+    }
+
+    /**
+     * Adds Android's NNAPI as an execution backend.
+     *
+     * @param flags The flags which control the NNAPI configuration.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addNnapi(EnumSet<NNAPIFlags> flags) throws OrtException {
       checkClosed();
-      addNnapi(OnnxRuntime.ortApiHandle, nativeHandle, 0);
+      addNnapi(OnnxRuntime.ortApiHandle, nativeHandle, OrtFlags.aggregateToInt(flags));
     }
 
     /**
@@ -850,6 +864,49 @@ public class OrtSession implements AutoCloseable {
     public void addACL(boolean useArena) throws OrtException {
       checkClosed();
       addACL(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+    }
+
+    /**
+     * Adds the ARM Neural Net library as an execution backend.
+     *
+     * @param useArena If true use the arena memory allocator.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addArmNN(boolean useArena) throws OrtException {
+      checkClosed();
+      addArmNN(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+    }
+
+    /**
+     * Adds ROCM as an execution backend.
+     *
+     * @param deviceID The ROCM device ID.
+     * @param memLimit The maximum amount of memory available.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addROCM(int deviceID, long memLimit) throws OrtException {
+      checkClosed();
+      addROCM(OnnxRuntime.ortApiHandle, nativeHandle, deviceID, memLimit);
+    }
+
+    /**
+     * Adds Apple's CoreML as an execution backend. Uses the default empty flag.
+     *
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addCoreML() throws OrtException {
+      addCoreML(EnumSet.noneOf(CoreMLFlags.class));
+    }
+
+    /**
+     * Adds Apple's CoreML as an execution backend.
+     *
+     * @param flags The flags which control the CoreML configuration.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addCoreML(EnumSet<CoreMLFlags> flags) throws OrtException {
+      checkClosed();
+      addCoreML(OnnxRuntime.ortApiHandle, nativeHandle, OrtFlags.aggregateToInt(flags));
     }
 
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
@@ -944,6 +1001,15 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
+
+    private native void addArmNN(long apiHandle, long nativeHandle, int useArena)
+        throws OrtException;
+
+    private native void addROCM(long apiHandle, long nativeHandle, int deviceID, long memLimit)
+        throws OrtException;
+
+    private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
+        throws OrtException;
   }
 
   /** Used to control logging and termination of a call to {@link OrtSession#run}. */

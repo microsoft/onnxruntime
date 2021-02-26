@@ -93,15 +93,15 @@ class QuantFormat(Enum):
         except KeyError:
             raise ValueError()
 
-
-QUANT_TYPE_TO_NP_TYPE = {
-    QuantType.QInt8: numpy.dtype('int8'),
-    QuantType.QUInt8: numpy.dtype('uint8'),
+ONNX_TYPE_TO_NP_TYPE = {
+    onnx_proto.TensorProto.INT8: numpy.dtype('int8'),
+    onnx_proto.TensorProto.UINT8:  numpy.dtype('uint8')
 }
 
-
-def quantize_nparray(qtype, arr, scale, zero_point, low=None, high=None):
-    dtype = QUANT_TYPE_TO_NP_TYPE[qtype]
+def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
+    assert qType in ONNX_TYPE_TO_NP_TYPE, \
+        "Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType)
+    dtype = ONNX_TYPE_TO_NP_TYPE[qType]
     cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
     cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
     arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
@@ -144,12 +144,7 @@ def quantize_data(data, quantize_range, qType):
     rmax = max(max(data), 0)
 
     zero_point, scale = compute_scale_zp(rmin, rmax, qType, quantize_range)
-    if qType == onnx_proto.TensorProto.INT8:
-        quantized_data = quantize_nparray(QuantType.QInt8, numpy.asarray(data), scale, zero_point)
-    elif qType == onnx_proto.TensorProto.UINT8:
-        quantized_data = quantize_nparray(QuantType.QUInt8, numpy.asarray(data), scale, zero_point)
-    else:
-        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
+    quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
 
     return rmin, rmax, zero_point, scale, quantized_data
 
@@ -181,8 +176,7 @@ class QuantizedInitializer:
                  scales,
                  data=[],
                  quantized_data=[],
-                 axis=None,
-                 qType=QuantType.QUInt8):
+                 axis=None):
         self.name = name
         self.initializer = initializer  # TensorProto initializer in ONNX graph
         self.rmins = rmins  # List of minimum range for each axis
@@ -195,7 +189,6 @@ class QuantizedInitializer:
         # Scalar to specify which dimension in the initializer to weight pack.
         self.axis = axis
         # If empty, single zero point and scales computed from a single rmin and rmax
-        self.qType = qType  # type of quantized data.
 
 
 class QuantizedValue:
@@ -208,15 +201,13 @@ class QuantizedValue:
                  scale_name,
                  zero_point_name,
                  quantized_value_type,
-                 axis=None,
-                 qType=QuantType.QUInt8):
+                 axis=None):
         self.original_name = name
         self.q_name = new_quantized_name
         self.scale_name = scale_name
         self.zp_name = zero_point_name
         self.value_type = quantized_value_type
         self.axis = axis
-        self.qType = qType
 
 
 class BiasToQuantize:
