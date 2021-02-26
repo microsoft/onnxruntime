@@ -107,6 +107,10 @@ struct SessionOptions {
   // An bitwise OR combination of OrtSparseFlags
   int constant_initializers_sparse_flags = OrtSparseFlags::NOTHING;
 
+  // ell_block_size. In force only if USE_ELL_FORMAT flag is set
+  // in constant_initializers_sparse_flags
+  int64_t constant_initializers_ell_block_size = 8;
+
   // Stores the configurations for this session
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
   // The configuration keys and value formats are defined in

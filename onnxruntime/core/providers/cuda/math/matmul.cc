@@ -139,27 +139,27 @@ struct DumpArray {
 #endif
 
 template <typename T>
-struct IsZero {
+struct IsNotZero {
   bool operator()(T v) const noexcept {
-    return v == static_cast<T>(0);
+    return v != static_cast<T>(0);
   }
 };
 
 static const MLFloat16 zero_ml16(0.f);
 
 template <>
-struct IsZero<MLFloat16> {
+struct IsNotZero<MLFloat16> {
   bool operator()(MLFloat16 v) const noexcept {
-    return zero_ml16.val == v.val;
+    return zero_ml16.val != v.val;
   }
 };
 
 static const BFloat16 zero_b16(0.f);
 
 template <>
-struct IsZero<BFloat16> {
+struct IsNotZero<BFloat16> {
   bool operator()(BFloat16 v) const noexcept {
-    return zero_b16.val == v.val;
+    return zero_b16.val != v.val;
   }
 };
 
@@ -170,9 +170,9 @@ struct IsZero<BFloat16> {
 /// </summary>
 /// <typeparam name="T"></typeparam>
 template <typename T>
-struct FindIfZero {
+struct FindNotZero {
   // returns nullptr if not found
-  void operator()(int64_t N,
+  void operator()(int64_t N, int64_t ell_block_size,
                   const uint8_t* block_row_begin,
                   const uint8_t*& restart, const uint8_t* block_row_end,
                   int64_t& block_col) const {
@@ -180,9 +180,9 @@ struct FindIfZero {
     const T* start = reinterpret_cast<const T*>(restart);
     const T* block_row_end_T = reinterpret_cast<const T*>(block_row_end);
     assert(start <= block_row_end_T);
-    auto hit = std::find_if(start, block_row_end_T, IsZero<T>());
+    auto hit = std::find_if(start, block_row_end_T, IsNotZero<T>());
     if (hit != block_row_end_T) {
-      block_col = (hit - block_row_begin_T) % N;
+      block_col = ((hit - block_row_begin_T) % N) / ell_block_size;
       restart = reinterpret_cast<const uint8_t*>(hit + 1);
     } else {
       restart = nullptr;
@@ -202,14 +202,21 @@ struct FindIfZero {
 /// <param name="input_data">matrix buffer</param>
 /// <param name="ell_col_ind">output parameter, ell_col_indices represented as an array</param>
 /// <param name="ell_values">non-zero blocks values</param>
-/// <returns>status</returns>
-static Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, bool transpose, int32_t element_type, size_t element_size,
-                                  const void* input_data, std::unique_ptr<int[]>& ell_col_ind, std::unique_ptr<uint8_t[]>& ell_values,
-                                  int64_t& ell_rows, int64_t& ell_cols) {
+/// <returns>Status</returns>
+static Status ConvertToBlockedEll(const CudaKernel* kernel,
+                                  int64_t ell_block_size, int64_t K, int64_t N, bool transpose, int32_t element_type, size_t element_size,
+                                  const void* input_data_initialier, IAllocatorUniquePtr<uint8_t>& ell_indicies_buffer, IAllocatorUniquePtr<uint8_t>& ell_values_buffer,
+                                  int64_t& ell_cols) {
+  //Copy to CPU for processing
+  const int64_t total_input_bytes = K * N * element_size;
+  std::unique_ptr<uint8_t[]> cpu_local(new uint8_t[total_input_bytes]);
+  CUDA_RETURN_IF_ERROR(cudaMemcpy(cpu_local.get(), input_data_initialier, total_input_bytes, cudaMemcpyDeviceToHost));
+
+  const void* input_data = cpu_local.get();
   const int64_t block_elements = ell_block_size * ell_block_size;
   const int64_t block_bytes = block_elements * element_size;
 
-  const int64_t src_row_element_bytes = N * element_size; // bytes in a row of elements
+  const int64_t src_row_element_bytes = N * element_size;  // bytes in a row of elements
   const int64_t src_block_rows = K / ell_block_size;
   const int64_t src_block_cols = N / ell_block_size;
   const int64_t ell_block_row_bytes = ell_block_size * element_size;
@@ -217,7 +224,7 @@ static Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, 
   const int64_t src_block_row_bytes = src_block_cols * block_bytes;
   const auto dst_block_rows = (transpose) ? src_block_rows : src_block_cols;
 
-  // Key is the row and it contains the set of sorted col indices
+  // Key is the row and it contains the set of sorted col indicies
   std::map<int64_t, std::set<int64_t>> rows_to_cols;
 
   // We scan for non-zero blocks
@@ -228,9 +235,10 @@ static Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, 
     const auto* start = block_row_begin;
     int64_t block_col = -1;
     while (true) {
-      t_disp.Invoke<FindIfZero>(N, block_row_begin, start, block_row_end, block_col);
+      t_disp.Invoke<FindNotZero>(N, ell_block_size, block_row_begin, start, block_row_end, block_col);
       if (start != nullptr) {
         assert(block_col != -1);
+        assert(block_col < src_block_cols);
         // We transpose for !transpose because we want to
         // swap arguments in Gemm formula
         if (!transpose) {
@@ -245,7 +253,7 @@ static Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, 
     }
   }
 
-  // Calculate the amount of indecies per row by finding the max
+  // Calculate the amount of indicies per row by finding the max
   size_t max_cols = 0;
   for (const auto& e : rows_to_cols) {
     max_cols = std::max(max_cols, e.second.size());
@@ -259,7 +267,7 @@ static Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, 
 
   // Now we have all non-empty blocks.
   // We need to make sure, that we do not have any missing rows in the col index.
-  // For each row, we must make sure that we have equal amount col indecies in each row
+  // For each row, we must make sure that we have equal amount col indicies in each row
   // by inserting indecies to some zero blocks that we discarded earlier.
   // See https://github.com/NVIDIA/CUDALibrarySamples/issues/24
   for (int64_t block_row = 0; block_row < dst_block_rows; ++block_row) {
@@ -271,7 +279,7 @@ static Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, 
     }
   }
 
-  // Indecies array of rows X max_cols
+  // Indicies array of rows X max_cols
   const int64_t nnz_blocks = dst_block_rows * static_cast<int64_t>(max_cols);
   std::unique_ptr<int[]> col_ind(new int[nnz_blocks]);
   // Value blocks are square block_elements * element_size * nnz_blocks
@@ -331,23 +339,22 @@ static Status ConvertToBlockedEll(int64_t ell_block_size, int64_t K, int64_t N, 
     }
   }
 
-  // Let's dump the converted matrix
-  // first indices
-  const int* col_ind_in = col_ind.get();
-  ORT_UNUSED_PARAMETER(col_ind_in);
-  DUMP_ARRAY(int, std::cout, "col_ind_block", col_ind_in, nnz_blocks, max_cols);
+  auto ell_indicies_buffer_local = kernel->GetPersistentBuffer<uint8_t>(nnz_blocks * sizeof(int));
+  CUDA_RETURN_IF_ERROR(cudaMemcpy(ell_indicies_buffer_local.get(), col_ind.get(), nnz_blocks * sizeof(int), cudaMemcpyHostToDevice));
+  auto ell_values_buffer_local = kernel->GetPersistentBuffer<uint8_t>(values_bytes);
+  CUDA_RETURN_IF_ERROR(cudaMemcpy(ell_values_buffer_local.get(), values.get(), values_bytes, cudaMemcpyHostToDevice));
 
+  DUMP_ARRAY(int, std::cout, "ell_indicies_buffer_local", ell_indicies_buffer_local.get(), nnz_blocks, max_cols);
   // Now the values
-  const auto* values_in = values.get();
-  ORT_UNUSED_PARAMETER(values_in);
+  const auto* values_in = ell_values_buffer_local.get();
   for (int64_t nnzs = 0; nnzs < nnz_blocks; ++nnzs) {
-    DUMP_INVOKE(t_disp, DumpArray, std::cout, "col_ind_block", values_in, ell_block_size, ell_block_size);
+    // Dump block elements
+    DUMP_INVOKE(t_disp, DumpArray, std::cout, "ell_values_blocks", values_in, block_elements, ell_block_size);
     values_in += block_bytes;
   }
 
-  ell_col_ind = std::move(col_ind);
-  ell_values = std::move(values);
-  ell_rows = static_cast<int64_t>(rows_to_cols.size());
+  ell_indicies_buffer = std::move(ell_indicies_buffer_local);
+  ell_values_buffer = std::move(ell_values_buffer_local);
   ell_cols = static_cast<int64_t>(max_cols);
 
   return Status::OK();
@@ -656,7 +663,7 @@ class CuSparseHelper {
     sp_info->K_ = K;
     sp_info->N_ = N;
 
-      // Feed column order and swap dims
+    // Feed column order and swap dims
     const int64_t num_rows = transb ? K : N;
     const int64_t num_cols = transb ? N : K;
     const int64_t lead_dim = transb ? K : N;
@@ -664,29 +671,20 @@ class CuSparseHelper {
     // if Ell format is specified but the hardware is not we then default
     // to one of the belows
     const auto& dev_props = kernel->GetDeviceProp();
-    if (param.UseEllFormat() && dev_props.major >= 7) {
+    //if (param.UseEllFormat() && dev_props.major >= 7) {
+    if (param.UseEllFormat()) {
       // Some tunables which we may adjust for both testing and depending on the matrix size.
       // Must be power of two
-      constexpr int64_t ell_block_size = 3;
+      const int64_t ell_block_size = param.ell_block_size;
       if ((K % ell_block_size) != 0 || (N % ell_block_size) != 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, param.name + " : Matrix dims: ", K, " ", N, " must divide evenly by a chosen Ell Block size: ", ell_block_size);
       }
 
-      std::unique_ptr<int[]> ell_col_ind;
-      std::unique_ptr<uint8_t[]> ell_values;
-      int64_t ell_rows;
+      IAllocatorUniquePtr<uint8_t> ell_ind_buffer;
+      IAllocatorUniquePtr<uint8_t> ell_values_buffer;
       int64_t ell_cols;
-      ORT_RETURN_IF_ERROR(ConvertToBlockedEll(ell_block_size, K, N, transb, tensor.GetElementType(), element_size,
-                                              tensor.DataRaw(), ell_col_ind, ell_values, ell_rows, ell_cols));
-      const int64_t ell_ind_elements = ell_rows * ell_cols;
-      auto ell_ind_buffer = kernel->GetPersistentBuffer<uint8_t>(ell_ind_elements * sizeof(int));
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(ell_ind_buffer.get(), ell_col_ind.get(), ell_ind_elements * sizeof(int), cudaMemcpyHostToDevice));
-
-      const int64_t ell_values_elements = ell_ind_elements * ell_block_size * ell_block_size;
-      const int64_t ell_values_bytes = ell_values_elements * element_size;
-      auto ell_values_buffer = kernel->GetPersistentBuffer<uint8_t>(ell_values_bytes);
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(ell_values_buffer.get(), ell_values.get(), ell_values_bytes,
-                                      cudaMemcpyHostToDevice));
+      ORT_RETURN_IF_ERROR(ConvertToBlockedEll(kernel, ell_block_size, K, N, transb, tensor.GetElementType(), element_size,
+                                              tensor.DataRaw(), ell_ind_buffer, ell_values_buffer, ell_cols));
 
       CUSPARSE_RETURN_IF_ERROR(cusparseCreateBlockedEll(&sparse_desc,
                                                         num_rows,
@@ -702,23 +700,23 @@ class CuSparseHelper {
       sp_info->prepack_buffers_.push_back(std::move(ell_ind_buffer));
       sp_info->prepack_buffers_.push_back(std::move(ell_values_buffer));
 
-    } else if (param.UseEllFormat()) {
-      // XXX: Right now we just choose some format
-      // Hardware is not available, default to Csr format
-      sp_info->param_.sparse_flags = param.sparse_flags & static_cast<int>(~OrtSparseFlags::USE_ELL_FORMAT);
-      sp_info->param_.sparse_flags |= OrtSparseFlags::USE_CSR_FORMAT;
-    }
+    } else
+        //else if (param.UseEllFormat()) {
+        //  // XXX: Right now we just choose some format
+        //  // Hardware is not available, default to Csr format
+        //  sp_info->param_.sparse_flags = param.sparse_flags & static_cast<int>(~OrtSparseFlags::USE_ELL_FORMAT);
+        //  sp_info->param_.sparse_flags |= OrtSparseFlags::USE_CSR_FORMAT;
+        //}
 
-    if (param.UseCsrFormat() || param.UseCooFormat()) {
-      auto values_buffer = kernel->GetScratchBuffer<uint8_t>(element_size * num_elements);
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(values_buffer.get(), tensor.DataRaw(), element_size * num_elements, cudaMemcpyHostToDevice));
+        if (param.UseCsrFormat() || param.UseCooFormat()) {
 
       cusparseDnMatDescr_t dense_desc;
       CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&dense_desc,
                                                    num_rows,  // Number of rows in B(T)
                                                    num_cols,  // Number of columns in B(T)
                                                    lead_dim,
-                                                   values_buffer.get(),
+                                                   // values_buffer.get(),
+                                                   const_cast<void*>(tensor.DataRaw()),
                                                    cuda_type,
                                                    CUSPARSE_ORDER_COL));
 
@@ -927,7 +925,7 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
     }
 #endif
     if (param.UseCsrFormat() || param.UseCooFormat() || param.UseEllFormat()) {
-      CuSparseHelper::PrePack(this, tensor, param, trans_B_, utils::ToTensorProtoElementType<T>(), ToCudaTypeEnum<T>::type,
+      return CuSparseHelper::PrePack(this, tensor, param, trans_B_, utils::ToTensorProtoElementType<T>(), ToCudaTypeEnum<T>::type,
                               sparse_info_, is_packed);
     }
   }
@@ -957,8 +955,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         sparse_info_->param_.UseEllFormat()) {
       return CuSparseHelper::Compute(this, ctx, *sparse_info_, alpha_, trans_A_, trans_B_, ToCudaTypeEnum<T>::type);
     }
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, sparse_info_->param_.name + 
-            " : Unsupported sparse format specified");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, sparse_info_->param_.name + " : Unsupported sparse format specified");
   }
 
   const Tensor* left_X = ctx->Input<Tensor>(0);

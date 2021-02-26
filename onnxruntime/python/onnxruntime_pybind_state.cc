@@ -1498,7 +1498,9 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def_readwrite("use_deterministic_compute", &PySessionOptions::use_deterministic_compute,
                      R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc")
       .def_readwrite("constant_initializers_sparse_flags", &PySessionOptions::constant_initializers_sparse_flags,
-                     R"pbdoc(Advise that constant initializers are in 2:4 sparse format. Default is false.)pbdoc")
+                     R"pbdoc(Advise which sparse format to use at Prepack and at runtime. Default is NOTHING(0).)pbdoc")
+      .def_readwrite("constant_initializers_ell_block_size", &PySessionOptions::constant_initializers_ell_block_size,
+                     R"pbdoc(BlockedEll block size to use when USE_ELL_FORMAT is set in constant_initializers_sparse_flags. Default is 8.)pbdoc")
       .def(
           "add_free_dimension_override_by_denotation",
           [](PySessionOptions* options, const char* dim_name, int64_t dim_value)

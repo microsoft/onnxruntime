@@ -276,7 +276,8 @@ Status SessionState::PrepackConstantInitializedTensors(const SessionOptions& ses
             std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
             auto init_hit = constant_initialized_tensors.find(ort_value_idx);
             if (init_hit != constant_initialized_tensors.end()) {
-              OpKernel::PrepackParam pre_param{input_idx, session_options.constant_initializers_sparse_flags, input_name};
+              OpKernel::PrepackParam pre_param{input_idx, session_options.constant_initializers_sparse_flags,
+                session_options.constant_initializers_ell_block_size, input_name};
               bool is_packed = false;
               const Tensor& const_initialized_tensor = init_hit->second.Get<Tensor>();
               ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, pre_param, is_packed));

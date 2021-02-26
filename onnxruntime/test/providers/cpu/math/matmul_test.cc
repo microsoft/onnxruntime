@@ -180,6 +180,29 @@ static std::vector<MatMulSparsityData> GenerateSparseTestData() {
       252,  282,  312,  2088, 2172, 2256, 2682, 2796, 2910,
       270,  303,  336,  2160, 2247, 2334, 2790, 2910, 3030};
 
+  //const std::vector<float> t_b_output = {
+  //    55,  145, 235,  266,  338,  410,  113,  131,  149,
+  //    145, 451, 757,  662,  842,  1022, 779,  905,  1031,
+  //    235, 757, 1279, 1058, 1346, 1634, 1445, 1679, 1913,
+  //    266, 662, 1058, 2539, 3277, 4015, 2282, 2624, 2966,
+  //    338, 842, 1346, 3277, 4231, 5185, 3002, 3452, 3902,
+  //    410, 1022, 1634, 4015, 5185, 6355, 3722, 4280, 4838,
+  //    113, 779, 1445, 2282, 3002, 3722, 8911, 10297, 11683,
+  //    131, 905, 1679, 2624, 3452, 4280, 10297, 11899, 13501,
+  //    149, 1031, 1913, 2966, 3902, 4838, 11683, 13501, 15319};
+
+  //const std::vector<float> t_a_b_output = {
+  //    546, 1410, 2274, 2784, 3540, 4296, 678, 786, 894,
+  //    561, 1461, 2361, 2850, 3624, 4398, 789, 915, 1041,
+  //    576, 1512, 2448, 2916, 3708, 4500, 900, 1044, 1188,
+  //    552, 1362, 2172, 4362, 5604, 6846, 2892, 3324, 3756,
+  //    564, 1392, 2220, 4485, 5763, 7041, 3012, 3462, 3912,
+  //    576, 1422, 2268, 4608, 5922, 7236, 3132, 3600, 4068,
+  //    39,  201,  363,  1551, 2037, 2523, 4263, 4911, 5559,
+  //    42,  222,  402,  1608, 2112, 2616, 4494, 5178, 5862,
+  //    45,  243,  441,  1665, 2187, 2709, 4725, 5445, 6165
+  //};
+
   std::vector<MatMulSparsityData> test_data;
   test_data.push_back(
       {"Dense cuBlas", OrtSparseFlags::NOTHING, false, false, false,
@@ -293,7 +316,8 @@ TEST(MathOpTest, SparseInitializerTests) {
     excluded_providers.insert(kNnapiExecutionProvider);
   }
   SessionOptions opts;
-  // opts.constant_initializers_sparse_flags = OrtSparseFlags::USE_COO_FORMAT;
+  opts.constant_initializers_sparse_flags = OrtSparseFlags::USE_ELL_FORMAT;
+  opts.constant_initializers_ell_block_size = 3;
   test.Run(opts, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   // test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
