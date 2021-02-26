@@ -28,15 +28,16 @@
  *    Zero or more allowed type sets may be given.
  *    The supported type set (1) will be limited by set intersection with all allowed type sets.
  *
- * 4. Enabled types are the types that are actually supported in the build.
+ * 4. Enabled types are the types that are actually supported.
  *    These are the required types and the supported, allowed types.
  *    Defined with set operations:
  *      enabled (4) = union( required (2),
- *                           intersection( supported (1) [, allowed_0 (3), allowed_1, ...] ) )
+ *                           intersection( supported (1)
+ *                                         [, allowed_0 (3), allowed_1, ...] ) )
  *
  * These types are usually associated with an Op argument. It is also possible to specify globally allowed types.
  *
- * Use of these utilities is optional. they are useful for cases where one registered Op kernel handles multiple types.
+ * Use of these utilities is optional. They are useful for cases where one registered Op kernel handles multiple types.
  *
  * See the macros below for usage details. Although this description deals with type sets, lists may be provided which
  * will get converted to sets.
