@@ -462,8 +462,8 @@ def main():
         perf_metrics['UseDeepSpeed'] = False
         perf_metrics['Optimizer'] = 'AdamW'
         perf_metrics['BatchSize'] = args.batch_size
-        perf_metrics['SeqLen'] = 128                # TODO
-        perf_metrics['PredictionsPerSeq'] = 0       # TODO
+        perf_metrics['SeqLen'] = 64                 # MAX_LEN = 64
+        perf_metrics['PredictionsPerSeq'] = 0       # NA
         perf_metrics['NumOfBatches'] = args.epochs * args.train_steps
         perf_metrics['WeightUpdateSteps'] = args.epochs * args.train_steps
         perf_metrics['Round'] = 0

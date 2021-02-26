@@ -24,6 +24,7 @@ jobs:
         --update --build
         --build_wheel
         "
+        -u
       DisplayName: 'Build performance tests'
 
   - script: |
