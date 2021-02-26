@@ -22,6 +22,7 @@ jobs:
         --config RelWithDebInfo
         --enable_training
         --update --build
+        --build_wheel
         "
       DisplayName: 'Build performance tests'
 
