@@ -3,10 +3,9 @@
 #include <onnxruntime_c_api.h>
 #include <onnxruntime_cxx_api.h>
 #include "cuda_provider_factory.h"
-// #include "tbb/pipeline.h"
 #include "json.hpp"
-#include <cuda_runtime_api.h>
-#include <cuda.h>
+// #include <cuda_runtime_api.h>
+// #include <cuda.h>
 #include "task_thread_pool.h"
 #include "response_queue.h"
 
@@ -16,8 +15,8 @@ struct PipelineConfig {
   struct ModelConfig {
     std::string model_name;
     std::string model_file_path;
-    std::vector<std::string> input_names;                           // same order as model
-    std::vector<std::string> output_names;                          // same order as model
+    std::vector<std::string> input_names;   // same order as model
+    std::vector<std::string> output_names;  // same order as model
     std::unordered_map<std::string, std::string> output_input_map;  // maps output of this step to input of the next step in the pipeline
     // state_input_names and state_output_names should have 1-1 correspondence
     std::vector<std::string> state_input_names;   // names of inputs whose values come from the previous output
@@ -46,7 +45,7 @@ struct OrtReq {
 
 struct OrtResp {
   std::vector<std::string> output_names;
-  std::vector<Ort::Value> output_values;
+  std::vector<Ort::Value> output_values;       // can be null if output_mem_info is non-null
   std::vector<OrtMemoryInfo*> output_meminfo;  // specify location of outputs or null for preallocated
 };
 
@@ -58,7 +57,7 @@ struct RequestExecutionFrame {
                         int batch_size0,
                         int orig_input_seq_len0,
                         int stage_id0,
-                        OrtResp& ort_resp);
+                        OrtResp& ort_resp0);
 
   struct RunState {
     // needs to be stored per model since it's associated with a session
@@ -67,7 +66,7 @@ struct RequestExecutionFrame {
     // storing it here as opposed to PipelineConfig since it may not be thread-safe when multiple requests
     // are getting executed in parallel
     std::unique_ptr<Ort::Allocator> cuda_allocator;
-    std::unordered_map<std::string, Ort::Value> output_val_map;  // output generated after running a stage
+    std::unordered_map<std::string, Ort::Value> output_val_map;  // (present_00..) output generated after running a stage
     // pre-allocated on cuda; order should be same as ModelConfig::state_output_names/state_input_names
     std::vector<Ort::MemoryAllocation> state_buffer_1_vec;
     std::vector<Ort::MemoryAllocation> state_buffer_2_vec;
@@ -99,10 +98,6 @@ struct Token {
 };
 
 struct PipelineSession {
-  // TODO return error status code, decide how to do error handling in stages
-  // TODO stop execution when an error is detected
-  // TODO - adjust output shape for states
-  // TODO - change position_ids for step > 0
   OrtStatus* Run(std::vector<OrtReq>& req_vec, std::vector<OrtResp>& resp_vec, int max_steps);
   void ParseEnsembleJsonFile(const std::string& ensemble_json_file, PipelineConfig& ens);
   PipelineSession(const std::string& ensemble_json_file, Ort::Env& env);
