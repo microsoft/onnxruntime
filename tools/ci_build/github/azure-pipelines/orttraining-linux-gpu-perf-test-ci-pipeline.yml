@@ -32,7 +32,7 @@ jobs:
         --volume /bert_data/bert_models:/build/bert_models:ro \
         --volume /bert_data:/build/bert_data:ro \
         -e NIGHTLY_BUILD onnxruntime_perf_test_image \
-        /usr/bin/python3.6 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_ortmodule_bert_classifier.py \
+        /usr/bin/python3.6 /build/RelWithDebInfo/orttraining_test_ortmodule_bert_classifier.py \
           --log_perf_metrics \
           --perf_mysql_server_name onnxruntimedashboard.mysql.database.azure.com \
           --perf_power_bi_user_name powerbi@onnxruntimedashboard \
@@ -49,7 +49,7 @@ jobs:
         --volume /bert_data/bert_models:/build/bert_models:ro \
         --volume /bert_data:/build/bert_data:ro \
         -e NIGHTLY_BUILD onnxruntime_perf_test_image \
-        /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/mysql/create_table_perf_test_training_ort_module_data.py \
+        /usr/bin/python3.6 /onnxruntime_src/orttraining/orttraining/test/python/perf_log/create_table_perf_test_training_ort_module_data.py \
           --action insert_perf_table \
           --mysql_server_name onnxruntimedashboard.mysql.database.azure.com \
           --power_bi_user_name powerbi@onnxruntimedashboard \
