@@ -272,6 +272,9 @@ enum DataLayout {
   L_1230 = 1,
 };
 
+// This is primarily used for adding the weight (an initializer) of Conv
+// And perform layout change from ONNX -> NNAPI
+// If the QlinearConv is per-tensor u8s8, B will be converted from int8 to uint8
 // TODO, replace this with more efficient code in optimizers
 static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                         const std::string& name,
@@ -363,6 +366,9 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 }
 
+// This is primarily used for adding the input B (an initializer) of MatMul/Gemm (not transposed)
+// and transpose it, since for NNAPI only supports A*B'
+// If the QlinearMatMul is per-tensor u8s8, B will be converted from int8 to uint8
 // TODO, replace this with more efficient code in optimizers
 static Status AddInitializerTransposed(ModelBuilder& model_builder,
                                        const OperandType& source_operand_type,

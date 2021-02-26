@@ -215,7 +215,7 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
 
     const auto zero_point_name = input_defs[idx]->Name();
     if (!Contains(initializers, zero_point_name)) {
-      LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be known";
+      LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be an initializer tensor";
       return false;
     }
 
@@ -240,7 +240,7 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
       // 1. Per-tensor, the weight will be transformed to uint8 later
       // 2. Per-channel, only from Android API level 29
       if (zero_tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-        LOGS_DEFAULT(VERBOSE) << "u8s8 QlinearConv only supports int8 zero point for weight, "
+        LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul] only supports int8 zero point for weight, "
                               << "actual zero point type: [" << zero_tensor.data_type() << "]";
         return false;
       }
@@ -271,7 +271,7 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
           node.ModelPath(),
           unpacked_tensor, tensor_byte_size);
       if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "QLinearConv erro when unpack zero tensor:" << status.ErrorMessage();
+        LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor:" << status.ErrorMessage();
         return false;
       }
 
@@ -279,7 +279,7 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
       const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.get());
       for (size_t i = 0; i < tensor_byte_size; i++) {
         if (zero_points[i] != 0) {
-          LOGS_DEFAULT(VERBOSE) << "QLinearConv only support 0 as zero point, "
+          LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
                                 << "zero_points[" << i << "] has value: " << zero_points[i];
           return false;
         }
