@@ -5,31 +5,7 @@
 #include <vector>
 
 namespace {
-static Ort::Env* g_env;
-
-struct TensorMetadata {
-  ONNXTensorElementDataType data_type;
-  size_t data_size;
-  void* data;
-  size_t shape_len;
-
-  size_t* shapes() const { return reinterpret_cast<size_t*>(reinterpret_cast<size_t>(this) + sizeof(TensorMetadata)); }
-};
-static_assert(sizeof(TensorMetadata) == sizeof(size_t) + sizeof(size_t) + sizeof(void*) + sizeof(size_t), "memory is not aligned");
-
-struct Feed {
-  const char* name;
-  ort_tensor_t tensor;
-};
-
-struct RunContext {
-  size_t input_count;
-  size_t output_count;
-
-  Feed* feeds() const { return reinterpret_cast<Feed*>(reinterpret_cast<size_t>(this) + sizeof(RunContext)); }
-};
-static_assert(sizeof(RunContext) == sizeof(size_t) + sizeof(size_t), "memory is not aligned");
-
+Ort::Env* g_env;
 }  // namespace
 
 void ort_init() {
@@ -37,99 +13,72 @@ void ort_init() {
   g_env = new Ort::Env{logging_level, "Default"};
 }
 
-ort_session_handle_t ort_create_session(ort_model_data_t data) {
-  size_t* p_size = reinterpret_cast<size_t*>(data);
-  void* p_data = reinterpret_cast<void*>(data + sizeof(size_t));
-
+Ort::Session* ort_create_session(void* data, size_t data_length) {
   Ort::SessionOptions session_options;
   session_options.SetLogId("onnxjs");
   session_options.SetIntraOpNumThreads(1);
 
-  return reinterpret_cast<ort_session_handle_t>(new Ort::Session(*g_env, p_data, *p_size, session_options));
+  return new Ort::Session(*g_env, data, data_length, session_options);
 }
 
-void ort_release_session(ort_session_handle_t session) {
-  Ort::Session* p = reinterpret_cast<Ort::Session*>(session);
+void ort_release_session(Ort::Session* session) {
+  Ort::Session* p = session;
   delete p;
 }
 
-ort_tensor_t ort_create_tensor(ort_tensor_metadata_t metadata) {
-  TensorMetadata* p_metadata = reinterpret_cast<TensorMetadata*>(metadata);
-  size_t shape_len = p_metadata->shape_len;
-  size_t* p_shapes = p_metadata->shapes();
-  std::vector<int64_t> dims(shape_len);
-  for (size_t i = 0; i < shape_len; i++) {
-    dims[i] = p_shapes[i];
-  }
-
-  return reinterpret_cast<ort_tensor_t>(
-      Ort::Value::CreateTensor({}, p_metadata->data, p_metadata->data_size, shape_len > 0 ? dims.data() : nullptr, shape_len, p_metadata->data_type)
-          .release());
+size_t ort_get_input_count(Ort::Session* session) {
+  return session->GetInputCount();
+}
+size_t ort_get_output_count(Ort::Session* session) {
+  return session->GetOutputCount();
 }
 
-ort_tensor_metadata_t ort_get_tensor_metadata(ort_tensor_t tensor) {
-  Ort::Value v{reinterpret_cast<OrtValue*>(tensor)};
+char* ort_get_input_name(Ort::Session* session, size_t index) {
+  Ort::AllocatorWithDefaultOptions a;
+  return session->GetInputName(index, a);
+}
+
+char* ort_get_output_name(Ort::Session* session, size_t index) {
+  Ort::AllocatorWithDefaultOptions a;
+  return session->GetOutputName(index, a);
+}
+
+void ort_free(void* ptr) {
+  Ort::AllocatorWithDefaultOptions a;
+  a.Free(ptr);
+}
+
+OrtValue* ort_create_tensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length) {
+  std::vector<int64_t> shapes(dims_length);
+  for (size_t i = 0; i < dims_length; i++) {
+    shapes[i] = dims[i];
+  }
+
+  return Ort::Value::CreateTensor({}, data, data_length, dims_length > 0 ? shapes.data() : nullptr, dims_length, static_cast<ONNXTensorElementDataType>(data_type))
+      .release();
+}
+
+void ort_get_tensor_data(OrtValue* tensor, int* data_type, void** data, size_t** dims, size_t* dims_length) {
+  Ort::Value v{tensor};
   auto info = v.GetTensorTypeAndShapeInfo();
   size_t dims_len = info.GetDimensionsCount();
-  size_t metadata_size = sizeof(TensorMetadata) + sizeof(size_t) * dims_len;
-  TensorMetadata* p = reinterpret_cast<TensorMetadata*>(malloc(metadata_size));
-  p->data = v.GetTensorMutableData<void>();
-  p->data_type = info.GetElementType();
-  p->shape_len = dims_len;
+  Ort::AllocatorWithDefaultOptions a;
+  size_t* p_dims = reinterpret_cast<size_t*>(a.Alloc(sizeof(size_t) * dims_len));
+  *data = v.GetTensorMutableData<void>();
+  *data_type = info.GetElementType();
+  *dims_length = dims_len;
   auto shape = info.GetShape();
   for (size_t i = 0; i < dims_len; i++) {
-    p->shapes()[i] = static_cast<size_t>(shape[i]);
+    p_dims[i] = static_cast<size_t>(shape[i]);
   }
-
+  *dims = p_dims;
   v.release();
-  return reinterpret_cast<ort_tensor_metadata_t>(p);
 }
 
-void ort_release_tensor_metadata(ort_tensor_metadata_t metadata) {
-  free(reinterpret_cast<void*>(metadata));
+void ort_release_tensor(OrtValue* tensor) {
+  Ort::OrtRelease(tensor);
 }
 
-void ort_release_tensor(ort_tensor_t tensor) {
-  OrtValue* value = reinterpret_cast<OrtValue*>(tensor);
-  Ort::GetApi().ReleaseValue(value);
-}
-
-void ort_run(ort_session_handle_t p_session, ort_run_context_t context) {
-  RunContext* p_context = reinterpret_cast<RunContext*>(context);
-  size_t input_count = p_context->input_count;
-  size_t output_count = p_context->output_count;
-  Feed* feeds = p_context->feeds();
-
-  std::vector<Ort::Value> inputs;
-  inputs.reserve(input_count);
-  std::vector<const char*> input_names(input_count);
-  std::vector<const char*> output_names(output_count);
-
-  for (size_t i = 0; i < input_count; i++) {
-    const char* n = feeds[i].name;
-    ort_tensor_t t = feeds[i].tensor;
-    inputs.emplace_back(Ort::Value{reinterpret_cast<OrtValue*>(t)});
-    input_names[i] = n;
-  }
-  for (size_t i = 0; i < output_count; i++) {
-    const char* n = feeds[input_count + i].name;
-    output_names[i] = n;
-  }
-
-  auto session = reinterpret_cast<Ort::Session*>(p_session);
-  Ort::AllocatorWithDefaultOptions allocator;
-
-  auto outputs = session->Run(Ort::RunOptions{nullptr},
-                              input_count ? input_names.data() : nullptr,
-                              input_count ? inputs.data() : nullptr,
-                              input_count,
-                              output_count ? output_names.data() : nullptr,
-                              output_count);
-
-  for (size_t i = 0; i < input_count; i++) {
-    inputs[i].release();
-  }
-  for (size_t i = 0; i < output_count; i++) {
-    feeds[input_count + i].tensor = reinterpret_cast<ort_tensor_t>(outputs[i].release());
-  }
+void ort_run(ort_session_handle_t session, const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count, const char** output_names, size_t output_count, ort_tensor_handle_t* outputs) {
+  Ort::ThrowOnError(Ort::GetApi().Run(*session, Ort::RunOptions{nullptr}, input_names, inputs, input_count, output_names, output_count, outputs));
 }
