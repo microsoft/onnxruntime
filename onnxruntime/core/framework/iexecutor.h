@@ -44,5 +44,13 @@ class IExecutor {
                                  // optional custom allocators. key is index in fetches
                                  const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger) = 0;
+
+  virtual common::Status Execute(const SessionState& session_state,
+                                 const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
+                                 const logging::Logger& logger) { 
+                                   ORT_UNUSED_PARAMETER(session_state);
+                                   ORT_UNUSED_PARAMETER(fetch_allocators);
+                                   ORT_UNUSED_PARAMETER(logger);
+                                   return Status::OK(); }
 };
 }  // namespace onnxruntime

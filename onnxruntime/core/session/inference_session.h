@@ -308,7 +308,7 @@ class InferenceSession {
                                                         std::vector<OrtValue>& user_outputs) ORT_MUST_USE_RESULT;
 
   // For ORTModule.backward()
-  common::Status ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
+  common::Status ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads, RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
 #endif
 
   /**

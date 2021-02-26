@@ -236,12 +236,13 @@ class Session:
         """
         return [OrtValue(ortvalue) for ortvalue in self._sess.run_forward(iobinding._iobinding, run_options)]
 
-    def run_backward(self, backward_output_grads):
+    def run_backward(self, iobinding, run_options, backward_output_grads):
         """
          Resume executing the backward subgraph starting from Yield Op.
          :param backward_output_grads: Output gradients for backward.
         """
-        self._sess.run_backward([ortvalue._ortvalue for ortvalue in backward_output_grads])
+        self._sess.run_backward(iobinding._iobinding, run_options,
+                                [ortvalue._ortvalue for ortvalue in backward_output_grads])
 
 
 class InferenceSession(Session):

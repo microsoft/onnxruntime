@@ -405,7 +405,7 @@ class ORTModule(torch.nn.Module):
                         grad_output.dtype), grad_output.device.type, _utils.get_device_index(grad_output.device), grad_output.data_ptr()))
 
                 # Run and get results
-                self._training_session.run_backward(backward_grad_output_ortvalue)
+                self._training_session.run_backward(self._training_io_binding, self._run_options, backward_grad_output_ortvalue)
                 backward_outputs = self._training_io_binding.get_outputs()
 
                 # Return input and initializer gradients

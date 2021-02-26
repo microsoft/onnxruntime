@@ -13,6 +13,7 @@ class YieldOp final : public OpKernel {
  public:
   YieldOp(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
+  static bool input_;
 };
 
 }  // namespace contrib

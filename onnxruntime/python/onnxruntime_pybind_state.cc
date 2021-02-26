@@ -1846,8 +1846,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         return module_outputs;
       })
-      .def("run_backward", [](PyInferenceSession* sess, const std::vector<OrtValue>& backward_output_grads) -> void {
-        Status status = sess->GetSessionHandle()->ContinueRunInBackground(backward_output_grads);
+      .def("run_backward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options, const std::vector<OrtValue>& backward_output_grads) -> void {
+        Status status = sess->GetSessionHandle()->ContinueRunInBackground(backward_output_grads, run_options, *io_binding.Get());
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })

@@ -380,15 +380,15 @@ InferenceSession::~InferenceSession() {
     }
   }
 
-#ifdef ENABLE_TRAINING
+//#ifdef ENABLE_TRAINING
   // TODO: find a better way to terminate the background thread
   // backward is not completed yet, set terminate_flag to True
-  if (task_.bg_thread_future_.valid()) {
-    *(task_.terminate_flag_) = true;
-    Status s = ContinueRunInBackground({});
-    ORT_UNUSED_PARAMETER(s);
-  }
-#endif
+  //if (task_.bg_thread_future_.valid()) {
+  //  *(task_.terminate_flag_) = true;
+  //  Status s = ContinueRunInBackground({});
+  //  ORT_UNUSED_PARAMETER(s);
+  //}
+//#endif
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -1511,6 +1511,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  //bool c = true;
+  //while(c){}
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
@@ -1536,21 +1538,23 @@ Status InferenceSession::Run(const RunOptions& run_options,
     // log evaluation start to trace logging provider
     env.GetTelemetryProvider().LogEvaluationStart();
 
-    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
-    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+//    if (session_state_->execute_until_yield_op_) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
 
-    FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
-    FeedsFetchesManager feeds_fetches_manager{std::move(info)};
+      FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
+      FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
-    if (p_fetches_device_info) {
-      // populate the target device info. ignored if pre-allocated fetches are provided
-      const auto& fetch_device_info = *p_fetches_device_info;
-      auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
+      if (p_fetches_device_info) {
+        // populate the target device info. ignored if pre-allocated fetches are provided
+        const auto& fetch_device_info = *p_fetches_device_info;
+        auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
 
-      for (size_t i = 0, end = output_names.size(); i < end; ++i) {
-        fetch_info[i].target_device = fetch_device_info[i];
+        for (size_t i = 0, end = output_names.size(); i < end; ++i) {
+          fetch_info[i].target_device = fetch_device_info[i];
+        }
       }
-    }
+//    }
 
     if (!run_options.run_tag.empty()) {
       LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
@@ -1577,12 +1581,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
       ORT_CHECK_AND_SET_RETVAL(start_func());
     }
-
+    if (session_state_->execute_until_yield_op_) {
 #if !defined(ORT_MINIMAL_BUILD)
-    if (run_options.only_execute_path_to_fetches) {
-      session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
-    }
+      if (run_options.only_execute_path_to_fetches) {
+        session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+      }
 #endif
+    }
 
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
@@ -1735,56 +1740,60 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 #ifdef ENABLE_TRAINING
 common::Status InferenceSession::RunInBackgroundAndWaitForYield(RunOptions& run_options, IOBinding& io_binding,
                                                                 std::vector<OrtValue>& user_outputs) {
-  const int64_t main_thread_event_id = 0;
-  onnxruntime::contrib::OrtEventPool::GetInstance().ResetEvent(0);
+ // const int64_t main_thread_event_id = 0;
+ // onnxruntime::contrib::OrtEventPool::GetInstance().ResetEvent(0);
 
-  task_.terminate_flag_ = &(run_options.terminate);
-  task_.bg_thread_promise_ = std::promise<Status>();
-  task_.bg_thread_future_ = task_.bg_thread_promise_.get_future();
-  task_.bg_thread_ = std::thread([&](std::promise<common::Status> result_promise) {
-    common::Status s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
+  //task_.terminate_flag_ = &(run_options.terminate);
+  //task_.bg_thread_promise_ = std::promise<Status>();
+  //task_.bg_thread_future_ = task_.bg_thread_promise_.get_future();
+  //task_.bg_thread_ = std::thread([&](std::promise<common::Status> result_promise) {
+    auto s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
                            &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
 
-    result_promise.set_value(s);
+    //result_promise.set_value(s);
 
     // signal main thread for background thread completion
-    const int64_t main_thread_event_id = 0;
-    onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
-  },
-                                 std::move(task_.bg_thread_promise_));
+    //const int64_t main_thread_event_id = 0;
+    //onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
+  //},
+   //                              std::move(task_.bg_thread_promise_));
 
   // Wait for events from
   // 1. Yield op, if the bg thread sucessfully reached Yield's signal point
   // 2. The end of bg thread, if it hit execptions and returned earlier
-  onnxruntime::contrib::OrtEventPool::GetInstance().WaitAndResetEvent(main_thread_event_id);
+  //onnxruntime::contrib::OrtEventPool::GetInstance().WaitAndResetEvent(main_thread_event_id);
 
   // background thread has completed without hitting Yield Op
-  if (task_.bg_thread_future_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
-    Status bg_thread_status = task_.bg_thread_future_.get();
-    task_.bg_thread_.join();
-    return bg_thread_status;
-  }
+  //if (task_.bg_thread_future_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+   // Status bg_thread_status = task_.bg_thread_future_.get();
+   // task_.bg_thread_.join();
+   // return bg_thread_status;
+ // }
 
   onnxruntime::contrib::OrtMessageQueue::GetInstance().PopAll(user_outputs);
-  return Status::OK();
+  return s;
 }
 
-common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads) {
-  for (const auto& ort_value : backward_output_grads) {
+common::Status InferenceSession::ContinueRunInBackground(const std::vector<OrtValue>& backward_output_grads, RunOptions& run_options, IOBinding& io_binding) {
+    for (const auto& ort_value : backward_output_grads) {
     onnxruntime::contrib::OrtMessageQueue::GetInstance().Push(ort_value);
   }
 
+  auto s = Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
+                           &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
+
   // resume background thread
-  const int64_t background_thread_event_id = 1;
-  onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(background_thread_event_id);
+  //const int64_t background_thread_event_id = 1;
+  //onnxruntime::contrib::OrtEventPool::GetInstance().SignalEvent(background_thread_event_id);
 
-  Status bg_thread_status = task_.bg_thread_future_.get();
+  //Status bg_thread_status = task_.bg_thread_future_.get();
   // wait for bg_thread to complete
-  if (task_.bg_thread_.joinable()) {
-    task_.bg_thread_.join();
-  }
+  //if (task_.bg_thread_.joinable()) {
+  //  task_.bg_thread_.join();
+ // }
 
-  return bg_thread_status;
+  //return bg_thread_status;
+  return s;
 }
 #endif
 

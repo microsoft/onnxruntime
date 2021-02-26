@@ -34,7 +34,7 @@
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif
-
+#include "core/framework/iexecutor.h"
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>
@@ -97,6 +97,7 @@ class SessionState {
         data_transfer_mgr_(data_transfer_mgr),
         use_deterministic_compute_(use_deterministic_compute) {
     SetupAllocators();
+    execute_until_yield_op_ = true;
   }
 
   ~SessionState() {
@@ -107,6 +108,9 @@ class SessionState {
       kvp.second.f(kvp.second.param);
     }
   }
+
+  mutable bool execute_until_yield_op_ = true;
+  mutable std::unique_ptr<IExecutor> p_exec_;
 
   // Graph viewer. CreateGraphInfo must have been called previously.
   const GraphViewer& GetGraphViewer() const noexcept { return *graph_viewer_.get(); };
