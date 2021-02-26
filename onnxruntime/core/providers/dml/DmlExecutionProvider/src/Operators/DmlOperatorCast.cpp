@@ -13,16 +13,9 @@ public:
 
     DmlOperatorCast(
         const MLOperatorKernelCreationContext& kernelInfo
-        ) : DmlOperator(kernelInfo),
-            m_toDataType(static_cast<MLOperatorTensorDataType>(kernelInfo.GetAttribute<int64_t>(AttrName::To)))
+        ) : DmlOperator(kernelInfo)
     {
         Initialize(kernelInfo);
-
-        // Zero the output tensor's memory for 64-bit integer emulation with strides.
-        if (m_toDataType == MLOperatorTensorDataType::UInt64 || m_toDataType == MLOperatorTensorDataType::Int64)
-        {
-            m_zeroOperator = InitializeZeroInt64Tensor(m_outputTensorDescs[0].GetBufferSizeInBytes());
-        }
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -41,23 +34,12 @@ public:
         std::vector<IMLOperatorTensor*> inputTensors = GetInputTensorsForExecute(kernelContext);
         std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
 
-        // Zero the output tensor's memory for 64-bit integer emulation with strides.
-        if (m_zeroOperator)
-        {
-            assert(m_toDataType == MLOperatorTensorDataType::UInt64 || m_toDataType == MLOperatorTensorDataType::Int64);
-            ExecuteZeroInt64Tensor(m_zeroOperator.Get(), outputTensors[0]);
-        }
-
         THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),
             gsl::make_span(outputTensors)));
     }
-
-private:
-    MLOperatorTensorDataType m_toDataType;
-    ComPtr<IDMLCompiledOperator> m_zeroOperator;
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(Cast, DmlOperatorCast);
