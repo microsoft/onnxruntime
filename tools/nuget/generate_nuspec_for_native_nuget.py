@@ -312,17 +312,17 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' +
                           os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') +
                           runtimes_target + args.target_architecture + '\\' +
-                          ('uap' if args.is_store_build else 'native') +
+                          ('uap' if args.is_store_build else '_native') +
                           '\\Microsoft.AI.MachineLearning.lib" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                                                             'microsoft.ai.machinelearning.dll') +
                           runtimes_target + args.target_architecture + '\\' +
-                          ('uap' if args.is_store_build else 'native') +
+                          ('uap' if args.is_store_build else '_native') +
                           '\\Microsoft.AI.MachineLearning.dll" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                                                             'microsoft.ai.machinelearning.pdb') +
                           runtimes_target + args.target_architecture + '\\' +
-                          ('uap' if args.is_store_build else 'native') +
+                          ('uap' if args.is_store_build else '_native') +
                           '\\Microsoft.AI.MachineLearning.pdb" />')
     # Process execution providers which are built as shared libs
     if args.execution_provider == "tensorrt":
