@@ -276,11 +276,13 @@ enum DataLayout {
 static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                         const std::string& name,
                                         const OperandType& source_operand_type,
-                                        DataLayout new_layout) ORT_MUST_USE_RESULT;
+                                        DataLayout new_layout,
+                                        bool is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
 static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                         const std::string& name,
                                         const OperandType& source_operand_type,
-                                        DataLayout new_layout) {
+                                        DataLayout new_layout,
+                                        bool is_per_tensor_u8s8) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
   ORT_RETURN_IF_NOT(shape.size() == 4,
@@ -345,7 +347,13 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
           }
 
           for (size_t i = 0; i < element_size; i++) {
-            buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i];
+            if (is_per_tensor_u8s8) {
+              // Convert int8 tensor to uint8 tensor for per-tensor u8s8
+              // i^0x80 == i + 128
+              buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i] ^ 0x80;
+            } else {
+              buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i];
+            }
           }
         }
       }
@@ -358,10 +366,12 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 // TODO, replace this with more efficient code in optimizers
 static Status AddInitializerTransposed(ModelBuilder& model_builder,
                                        const OperandType& source_operand_type,
-                                       const std::string& name) ORT_MUST_USE_RESULT;
+                                       const std::string& name,
+                                       bool is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
 static Status AddInitializerTransposed(ModelBuilder& model_builder,
                                        const OperandType& source_operand_type,
-                                       const std::string& name) {
+                                       const std::string& name,
+                                       bool is_per_tensor_u8s8) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
 
@@ -400,7 +410,13 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
   for (uint32_t x = 0; x < x_t; x++) {
     for (uint32_t y = 0; y < y_t; y++) {
       for (size_t i = 0; i < element_size; i++) {
-        buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i];
+        if (is_per_tensor_u8s8) {
+          // Convert int8 tensor to uint8 tensor for per-tensor u8s8
+          // i^0x80 == i + 128
+          buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i] ^ 0x80;
+        } else {
+          buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i];
+        }
       }
     }
   }
@@ -518,16 +534,24 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint(
   return Status::OK();
 }
 
-static Status GetConvOpQuantizationScaleAndZeroPoint(
+// Get scale and zero point for
+// [QlinearConv] input, weight, output
+// [QlinearMatMul] A, B, Y
+// If the QlinearConv is using per-channel u8s8, return the scales vector
+// If the Qlinear[Conv/MatMul] is using per-tensor u8s8, the weight/B tensor
+// will be convert to uint8 later, will return the same scale and zero point as 128
+// Also will set is_per_tensor_u8s8 to true to be used later
+static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& w_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<vector<float>>& w_scales) ORT_MUST_USE_RESULT;
-static Status GetConvOpQuantizationScaleAndZeroPoint(
+    optional<vector<float>>& w_scales, bool& is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
+static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& w_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<vector<float>>& w_scales) {
+    optional<vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
+  is_per_tensor_u8s8 = false;
   // Get scale and zero points
   // We will handle per-channel weight scale and zero point later
   ORT_RETURN_IF_ERROR(
@@ -543,14 +567,26 @@ static Status GetConvOpQuantizationScaleAndZeroPoint(
   if (weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8)
     return Status::OK();
 
-  // Now we have u8s8 QlinearConv
+  // This is per-tensor u8s8
+  // NNAPI does not support per-tensor u8s8
+  // For this case we will need to convert the int8 weight tensor to uint8
+  // And have same scale and 128 as zero point
+  // The coversion of the weight tensor itself will be done in the OpBuilder
+  const auto& scale_tensor = *initializers.at(input_defs[4]->Name());
+  int64_t scale_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
+  if (scale_dim == 1) {
+    w_zero_point = 128;
+    is_per_tensor_u8s8 = true;
+    return Status::OK();
+  }
+
+  // Now we have u8s8 per-channel QlinearConv
   // u8s8 QlinearConv always have 0 as zero point so we are not getting it here
   // and we do not use w_scale here, so we reset them back to 0
   w_scale = 0.0f;
   w_zero_point = 0;
 
   // We need to copy the 1d scales array for per-channel quantization
-  const auto& scale_tensor = *initializers.at(input_defs[4]->Name());
   const auto* scales = GetTensorFloatData(scale_tensor);
   size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
   vector<float> scales_vec(scales_size, 0.0f);
@@ -1345,12 +1381,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   // this is for per-channel quantization weights
   optional<vector<float>> w_scales;
-
+  bool is_per_tensor_u8s8 = false;
   if (is_qlinear_conv) {
-    ORT_RETURN_IF_ERROR(GetConvOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                                               x_scale, w_scale, y_scale,
-                                                               x_zero_point, w_zero_point, y_zero_point,
-                                                               w_scales));
+    ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                                     x_scale, w_scale, y_scale,
+                                                                     x_zero_point, w_zero_point, y_zero_point,
+                                                                     w_scales, is_per_tensor_u8s8));
   }
 
   Shape onnx_weight_shape;
@@ -1366,7 +1402,15 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       onnx_weight_type = Type::TENSOR_QUANT8_ASYMM;
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      onnx_weight_type = Type::TENSOR_QUANT8_SYMM_PER_CHANNEL;
+      // We support both per-tensor and per-channel u8s8
+      // For per-tensor u8s8 we will convert the int8 weight to uint8
+      if (is_per_tensor_u8s8) {
+        // Per-Tensor u8s8
+        onnx_weight_type = Type::TENSOR_QUANT8_ASYMM;
+      } else {
+        // Per-Channel u8s8
+        onnx_weight_type = Type::TENSOR_QUANT8_SYMM_PER_CHANNEL;
+      }
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -1384,9 +1428,9 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   // Pre-process weights
   if (conv_2d || grouped_conv_2d) {
-    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_0231));
+    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_0231, is_per_tensor_u8s8));
   } else {  // depthwise_conv_2d
-    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230));
+    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230, is_per_tensor_u8s8));
   }
 
   if (is_qlinear_conv) {
@@ -1697,10 +1741,14 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           b_zero_point = 0,
           y_zero_point = 0;
 
+  bool is_per_tensor_u8s8 = false;
   if (is_qlinear_matmul) {
-    ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                                                 a_scale, b_scale, y_scale,
-                                                                 a_zero_point, b_zero_point, y_zero_point));
+    optional<vector<float>> w_scales;
+    ORT_RETURN_IF_ERROR(
+        GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                     a_scale, b_scale, y_scale,
+                                                     a_zero_point, b_zero_point, y_zero_point,
+                                                     w_scales, is_per_tensor_u8s8));
   }
 
   uint32_t input_2_idx;
@@ -1717,7 +1765,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       onnx_mat_b_shape.push_back(SafeInt<uint32_t>(dim));
 
     const OperandType onnx_mat_b_operand_type(onnx_mat_b_type, onnx_mat_b_shape, b_scale, b_zero_point);
-    ORT_RETURN_IF_ERROR(AddInitializerTransposed(model_builder, onnx_mat_b_operand_type, input2));
+    ORT_RETURN_IF_ERROR(AddInitializerTransposed(model_builder, onnx_mat_b_operand_type, input2, is_per_tensor_u8s8));
   }
 
   input_2_idx = operand_indices.at(input2);
