@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Parse Arguments
-while getopts d:o:m: parameter
+while getopts o:m: parameter
 do case "${parameter}"
 in 
 o) OPTION=${OPTARG};;
