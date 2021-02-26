@@ -39,14 +39,16 @@ class NeuralNetMultiplePositionalArgumentsMultipleOutputs0(torch.nn.Module):
         super(NeuralNetMultiplePositionalArgumentsMultipleOutputs0, self).__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.fc2 = torch.nn.Linear(input_size, hidden_size)
         self.relu1 = torch.nn.ReLU()
         self.relu2 = torch.nn.ReLU()
 
     def forward(self, input1, input2):
         model_input = input1 + input2
-        out = self.fc1(model_input)
-        out1 = self.relu1(out)
-        out2 = self.relu2(out)
+        out1 = self.fc1(model_input)
+        out2 = self.fc2(model_input)
+        out1 = self.relu1(out1)
+        out2 = self.relu2(out2)
         return out1, out2
 
 class NeuralNetMultiplePositionalArgumentsMultipleOutputs1(torch.nn.Module):
@@ -586,25 +588,64 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
     model = NeuralNetMultiplePositionalArgumentsMultipleOutputs0(D_in, H, D_out).to(device)
     model = ORTModule(model)
     x1 = torch.randn(N, D_in, device=device, requires_grad=True)
-    x2 = torch.randn(N, D_in, device=device, requires_grad=False)
-    y1, y2 = model(x1, x2)
-    s = y2.sum()
-    s.backward()
-    assert x1.grad is not None and x2.grad is None
+    x2 = torch.randn(N, D_in, device=device, requires_grad=True)
+
+    y1, _ = model(x1, x2)
+    s1 = y1.sum()
+    s1.backward()
+    assert x1.grad is not None and x2.grad is not None
+
+    # named_params[0] and named_params[1] correspond to weight and bias for fc1, similarly
+    # named_params[2] and named_params[3] correspond to weight and bias for fc2.
+    named_params = list(model.named_parameters())
+    assert torch.count_nonzero(named_params[0][1].grad) > 0
+    assert torch.count_nonzero(named_params[1][1].grad) > 0
+    assert named_params[2][1].grad is None or torch.count_nonzero(named_params[2][1].grad) == 0
+    assert named_params[3][1].grad is None or torch.count_nonzero(named_params[3][1].grad) == 0
+
+    # Reset gradients
+    for param in named_params:
+        param[1].grad = None
+
+    _, y2 = model(x1,x2)
+    s2 = y2.sum()
+    s2.backward()
+    named_params = list(model.named_parameters())
+    assert named_params[0][1].grad is None or torch.count_nonzero(named_params[0][1].grad) == 0
+    assert named_params[1][1].grad is None or torch.count_nonzero(named_params[1][1].grad) == 0
+    assert torch.count_nonzero(named_params[2][1].grad) > 0
+    assert torch.count_nonzero(named_params[3][1].grad) > 0
+
 
 
 @pytest.mark.parametrize("x1_requires_grad, x2_requires_grad", [(True, True), (True, False), (False, False), (False, True)])
 def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_requires_grad, x2_requires_grad):
+
+    def run_step(model, x1, x2):
+        y1, y2 = model(x1, x2)
+        s = y2.sum()
+        s.backward()
+
     N, D_in, H, D_out = 32, 784, 500, 10
     device = 'cuda'
-    model = NeuralNetMultiplePositionalArgumentsMultipleOutputs1(D_in, H, D_out).to(device)
-    model = ORTModule(model)
-    x1 = torch.randn(N, D_in, device=device, requires_grad=x1_requires_grad)
-    x2 = torch.randn(N, D_in, device=device, requires_grad=x2_requires_grad)
-    y1, y2 = model(x1, x2)
-    s = y2.sum()
-    s.backward()
-    assert (not x1_requires_grad or x1.grad is not None) and (not x2_requires_grad or x2.grad is not None)
+    pt_model = NeuralNetMultiplePositionalArgumentsMultipleOutputs1(D_in, H, D_out).to(device)
+    ort_model = ORTModule(pt_model)
+    pt_x1 = torch.randn(N, D_in, device=device, requires_grad=x1_requires_grad)
+    pt_x2 = torch.randn(N, D_in, device=device, requires_grad=x2_requires_grad)
+
+    ort_x1 = pt_x1.clone().detach()
+    ort_x2 = pt_x2.clone().detach()
+    ort_x1.requires_grad = x1_requires_grad
+    ort_x2.requires_grad = x2_requires_grad
+
+    run_step(pt_model, pt_x1, pt_x2)
+    run_step(ort_model, ort_x1, ort_x2)
+
+    assert not x1_requires_grad or ort_x1.grad is not None
+    assert not x2_requires_grad or ort_x2.grad is not None
+    assert not x1_requires_grad or torch.allclose(ort_x1.grad, pt_x1.grad)
+    assert not x2_requires_grad or torch.allclose(ort_x2.grad, pt_x2.grad)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_gpu_reserved_memory_with_torch_no_grad():
     device = 'cuda'
