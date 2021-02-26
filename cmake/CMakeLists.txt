@@ -148,6 +148,8 @@ option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
+# build WebAssembly
+option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
 # using the MSVC compiler and on windows OS.
@@ -574,7 +576,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
   endif()
 endif()
 
-if(NOT WIN32 AND NOT onnxruntime_PREFER_SYSTEM_LIB)
+if(NOT WIN32 AND NOT onnxruntime_PREFER_SYSTEM_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 endif()
 # External dependencies
@@ -946,7 +948,7 @@ endif()
 
 # Flatbuffers
 # We do not need to build flatc for iOS or Android Cross Compile
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR onnxruntime_BUILD_WEBASSEMBLY)
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
@@ -1409,7 +1411,7 @@ foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework o
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
     set_target_properties(${target_name} PROPERTIES VS_CA_EXCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
-  else()
+  elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
     target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
   endif()
@@ -1441,7 +1443,7 @@ endif()
 if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB} Shlwapi)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
-else()
+elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
@@ -1522,6 +1524,11 @@ if (onnxruntime_BUILD_CSHARP)
   message(STATUS "CSharp Build is enabled")
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
+endif()
+
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  message(STATUS "WebAssembly Build is enabled")
+  include(onnxruntime_webassembly.cmake)
 endif()
 
 if (WINDOWS_STORE)

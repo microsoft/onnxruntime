@@ -24,6 +24,12 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlgavgpool.cpp
 )
 
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  list(APPEND mlas_common_srcs
+    ${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/sgemmc.cpp
+  )
+endif()
+
 if(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
     set(mlas_platform_preprocess_srcs
@@ -125,7 +131,7 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/i386/SgemmKernelAvx.asm
     )
   endif()
-else()
+elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
   if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
     set(ARM64 TRUE)
   elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")

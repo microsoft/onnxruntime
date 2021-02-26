@@ -15,53 +15,30 @@
 
 ### Building
 
-1. Build ONNXRuntime.
+1. Build for onnx model
 
-    Building ONNXRuntime helps to generate `onnx-ml.pb.h` and `onnx-operators-ml.pb.h` under folder `build/{BUILD_PLATFORM}/{BUILD_TYPE}/external/onnx/onnx`. This file is required for building WebAssembly.
+    Call `build` command in root folder. There are some restrictions to build WebAssembly.
+    
+    - Use 'Ninja' as cmake generator to use an emscripten as compiler.
+    - Add '--wasm'.
+    - Specify 'protoc' command path to compile onnx proto.
+    - Don't build as a shared lib to compile onnx protobuf properly.
+    - Skip unit test.
 
-    Call `build --config {BUILD_TYPE}' in root folder. Supported BUILD_TYPE are Debug and Release. Don't build as a shared lib to compile onnx protobuf properly.
-
-2. Build WebAssembly
-
-    ```cmd
-    mkdir build
-    cd build
-
-    Add cmake/external/emsdk/upstream/emscripten into path
-
-    emcmake cmake -DCMAKE_BUILD_TYPE={BUILD_TYPE} -G Ninja ..
-    cmake --build . --verbose
-    ```
-
-3. Build native for debugging
+    In example,
 
     ```cmd
-    mkdir build
-    cd build
-
-    cmake -DCMAKE_BUILD_TYPE={BUILD_TYPE} -DBUILD_NATIVE=1 -G "Visual Studio 16 2019" ..
-    cmake --build . --verbose --config {BUILD_TYPE}
+    build.bat --config=Release --cmake_generator="Ninja" --wasm --path_to_protoc_exe=<path_to_protoc>\protoc.exe --skip_tests
     ```
 
-4. Reduce WebAssembly binary size and run with ort format
+2. Reduce WebAssembly binary size and run with ort model format
 
     Refer to 'https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_for_Mobile_Platforms.md' to build an ORT model and a configuration file to reduce operator kernels. This command creates a ORT model and 'required_operators.config'
 
-    ```cmd
-    python tools/python/convert_onnx_models_to_ort.py model_path
-    ```
-
-    To comment out all unnecessary operator kernels from repository, run
+    Keep the same restrictions listed at #1 above. In example,
 
     ```cmd
-    python ../../tools/ci_build/exclude_unused_ops_and_types.py required_operators.config
-    ```
-
-    Build WebAssembly with 'MinSizeRel' build type and '-DBUILD_MINIMAL' macro
-
-    ```cmd
-    emcmake cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_MINIMAL -G Ninja ..
-    cmake --build . --verbose
+    build.bat --config=MinSizeRel --cmake_generator="Ninja" --wasm --path_to_protoc_exe=<path_to_protoc>\protoc.exe --skip_tests --include_ops_by_config required_operators.config --enable_reduced_operator_type_support --minimal_build --disable_exceptions --disable_ml_ops
     ```
 
 ### Output

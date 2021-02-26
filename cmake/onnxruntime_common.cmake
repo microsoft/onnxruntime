@@ -75,6 +75,12 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
 
+if (onnxruntime_BUILD_WEBASSEMBLY)
+    list(REMOVE_ITEM onnxruntime_common_src
+        "${ONNXRUNTIME_ROOT}/core/platform/posix/ort_mutex.cc"
+    )
+endif()
+
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 add_library(onnxruntime_common ${onnxruntime_common_src})
@@ -107,7 +113,7 @@ target_include_directories(onnxruntime_common
 
 target_link_libraries(onnxruntime_common Boost::mp11)
 
-if(NOT WIN32)
+if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
 
