@@ -37,7 +37,7 @@ def check_if_dlls_are_present(is_windows_ai_package, platforms_supported, zip_fi
     platforms = platforms_supported.strip().split(",")
     for platform in platforms:
         if platform.startswith("win"):
-            native = '_native' if is_windows_ai_package else 'native' 
+            native = '_native' if is_windows_ai_package else 'native'
             path = "runtimes/" + platform + "/" + native + "/onnxruntime.dll"
             print('Checking path: ' + path)
             if (path not in zip_file.namelist()):
@@ -104,7 +104,7 @@ def main():
     if check_exists(zip_copy_name):
         os.remove(zip_copy_name)
 
-    is_windows_ai_package = package_name.startswith('Microsoft')
+    is_windows_ai_package = nuget_file_name.startswith('Microsoft')
 
     # Do all validations here
     try:
