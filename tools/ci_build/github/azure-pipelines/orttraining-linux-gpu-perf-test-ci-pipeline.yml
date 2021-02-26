@@ -44,24 +44,6 @@ jobs:
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 10
 
-  - script: |
-      docker run --gpus all --rm --name onnxruntime-gpu-perf \
-        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-        --volume $(Build.BinariesDirectory):/build  \
-        --volume /bert_data/bert_models:/build/bert_models:ro \
-        --volume /bert_data:/build/bert_data:ro \
-        -e NIGHTLY_BUILD onnxruntime_perf_test_image \
-        /usr/bin/python3.6 /onnxruntime_src/orttraining/orttraining/test/python/perf_log/create_table_perf_test_training_ort_module_data.py \
-          --action insert_perf_table \
-          --mysql_server_name onnxruntimedashboard.mysql.database.azure.com \
-          --power_bi_user_name powerbi@onnxruntimedashboard \
-          --password $(ortperf) \
-          --database onnxruntime \
-          --perf_metrics aa \
-    displayName: 'Run create_table_perf_test_training_ort_module_data.py'
-    condition: succeededOrFailed() # ensure all tests are run
-    timeoutInMinutes: 10
-
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh $(orttrainingtestdata-storage-key)
     displayName: 'Map bert test data'
     condition: succeededOrFailed() # ensure all tests are run
