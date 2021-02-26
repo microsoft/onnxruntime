@@ -37,8 +37,8 @@ def check_if_dlls_are_present(is_windows_ai_package, platforms_supported, zip_fi
     platforms = platforms_supported.strip().split(",")
     for platform in platforms:
         if platform.startswith("win"):
-            native = '_native' if is_windows_ai_package else 'native'
-            path = "runtimes/" + platform + "/" + native + "/onnxruntime.dll"
+            native_folder = '_native' if is_windows_ai_package else 'native'
+            path = "runtimes/" + platform + "/" + native_folder + "/onnxruntime.dll"
             print('Checking path: ' + path)
             if (path not in zip_file.namelist()):
                 print("onnxruntime.dll not found for " + platform)
@@ -104,15 +104,13 @@ def main():
     if check_exists(zip_copy_name):
         os.remove(zip_copy_name)
 
-    is_windows_ai_package = nuget_file_name.startswith('Microsoft')
-
     # Do all validations here
     try:
         if not is_windows():
             raise Exception('Nuget validation is currently supported only on Windows')
 
         # Make a copy of the Nuget package
-        print('Making a copy of the Nuget and extracting its contents')
+        print('Making a copy (' + nupkg_copy_name + ') of the Nuget (' + full_nuget_path + ') and extracting its contents')
         os.system("copy " + full_nuget_path + " " + nupkg_copy_name)
 
         # Convert nupkg to zip
@@ -121,6 +119,7 @@ def main():
 
         # Check if the relevant dlls are present in the Nuget/Zip
         print('Checking if the Nuget contains relevant dlls')
+        is_windows_ai_package = nuget_file_name.startswith('Microsoft')
         check_if_dlls_are_present(is_windows_ai_package, args.platforms_supported, zip_file)
 
         # Check if the Nuget has been signed
