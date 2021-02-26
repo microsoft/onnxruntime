@@ -1,10 +1,10 @@
 trigger: none
 
 jobs:
-- job: Onnxruntime_Linux_GPU_ORTModule_Clear_Cache
+- job: Onnxruntime_Linux_GPU_ORTTraining_Clear_Cache
 
-  timeoutInMinutes: 120
-  pool: 'Linux-Single-GPU-V100'
+  timeoutInMinutes: 15
+  pool: 'Linux-CPU-2019'
 
   steps:
   - checkout: self
