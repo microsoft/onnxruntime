@@ -65,10 +65,10 @@ struct PipelineConfig {
     std::string model_file_path;
     std::vector<std::string> input_names;                           // same order as model
     std::vector<std::string> output_names;                          // same order as model
-    std::unordered_map<std::string, std::string> output_input_map;  // maps output of this step to input of the next step
-    // state_input_names and state_output_names should have 1-1 correspondence
-    std::vector<std::string> state_input_names;   // names of inputs whose values come from the previous output
-    std::vector<std::string> state_output_names;  // names of outputs that feed the next inputs
+    std::unordered_map<std::string, std::string> inter_stage_output_input_map;  // maps output of this step to input of the next step
+    // past_input_names and present_output_names should have 1-1 correspondence
+    std::vector<std::string> past_input_names;   // names of inputs whose values come from the previous output
+    std::vector<std::string> present_output_names;  // names of outputs that feed the next inputs
     int device_id;
     int batch_dim_index_in_state;
     int seq_len_dim_index_in_state;
@@ -123,7 +123,7 @@ struct PipelineSession {
           token_ptr = std::shared_ptr<Token>(new Token{step_id, std::string(), input_names, std::move(input_values_copy)});
         } else {
           // for the second step input_ids and position_ids are derived from the output of the first step
-          // and the rest of the inputs come from state_output_names
+          // and the rest of the inputs come from present_output_names
           std::vector<Ort::Value> ort_inputs;
           ort_inputs.push_back(std::move(input_values_copy[0]));  // input_ids
           ort_inputs.push_back(std::move(input_values_copy[1]));  // position_ids
@@ -187,8 +187,8 @@ struct PipelineSession {
       // inputs
       // go through all the inputs from the config and for each one if you find it in token.input_names
       // use the value from there.
-      // else search this input name inside state_input_names. If found, get the corresponding output name from
-      // state_output_names and the OrtValue associated with it.
+      // else search this input name inside past_input_names. If found, get the corresponding output name from
+      // present_output_names and the OrtValue associated with it.
       for (const auto& iname : model_config.input_names) {
         auto rc = Contains(token.ort_value_names, iname);
         if (rc.first) {
@@ -197,9 +197,9 @@ struct PipelineSession {
           continue;
         }
 
-        rc = Contains(model_config.state_input_names, iname);
+        rc = Contains(model_config.past_input_names, iname);
         if (rc.first) {
-          const auto& mapped_oname = model_config.state_output_names[rc.second];
+          const auto& mapped_oname = model_config.present_output_names[rc.second];
           // std::cout << stage_id << "/" << token.step_id << " state_binding " << iname << " with value of " << mapped_oname << std::endl;
           io_binding.BindInput(iname.c_str(),
                                run_state.output_val_map.at(mapped_oname));
@@ -213,7 +213,7 @@ struct PipelineSession {
       // TODO optimize - pre-allocate buffers for states
       // TODO output length of states needs to be corrected; it should be input_len + past_seq_len
       for (const auto& oname : model_config.output_names) {
-        if (Contains(model_config.state_output_names, oname).first) {
+        if (Contains(model_config.present_output_names, oname).first) {
           auto& mem_allocation = token.step_id % 2 == 0
                                      ? run_state.state_buffer_2_map[oname]
                                      : run_state.state_buffer_1_map[oname];
@@ -237,10 +237,10 @@ struct PipelineSession {
 
         // Assume that the same output name is not present in both the state that needs to be kept
         // and that needs to be passed on to the next layer.
-        auto rc = Contains(model_config.state_output_names, oname);
-        assert(!(rc.first && model_config.output_input_map.count(oname)));
+        auto rc = Contains(model_config.present_output_names, oname);
+        assert(!(rc.first && model_config.inter_stage_output_input_map.count(oname)));
 
-        // if this output is present in state_output_names, store it in model_run_state_vec
+        // if this output is present in present_output_names, store it in model_run_state_vec
         // because we don't want to store all outputs
         if (rc.first) {
           // std::cout << stage_id << "/" << token.step_id << " saving state " << oname << std::endl;
@@ -252,10 +252,10 @@ struct PipelineSession {
 
         // only pass those outputs to the next layer for which there is a config in the ensemble
         // other outputs are states to be used in the next run
-        if (model_config.output_input_map.count(oname)) {
+        if (model_config.inter_stage_output_input_map.count(oname)) {
           // std::cout << stage_id << "/" << token.step_id << " mapping output " << oname << " to input of next stage "
-          //           << model_config.output_input_map[oname] << std::endl;
-          token_ptr->ort_value_names.push_back(model_config.output_input_map.at(oname));
+          //           << model_config.inter_stage_output_input_map[oname] << std::endl;
+          token_ptr->ort_value_names.push_back(model_config.inter_stage_output_input_map.at(oname));
           token_ptr->ort_values.push_back(std::move(vec_out_vals[i]));
         }
       }
@@ -307,31 +307,31 @@ struct PipelineSession {
       cfg.model_file_path = m["model_file_path"];
       cfg.device_id = m["device_id"];  // TODO validate device id
 
-      const char* key = "output_input_map";  // TODO validate entries of this map
+      const char* key = "inter_stage_output_input_map";  // TODO validate entries of this map
       if (m.find(key) != m.end()) {
         const auto& j_oi_map = m[key];
         for (const auto& elem : j_oi_map) {
-          cfg.output_input_map[elem[0]] = elem[1];
+          cfg.inter_stage_output_input_map[elem[0]] = elem[1];
         }
       }
 
-      key = "state_input_names";
+      key = "past_input_names";
       if (m.find(key) != m.end()) {
         const auto& si_names = m[key];
         for (const auto& elem : si_names) {
-          cfg.state_input_names.push_back(elem);
+          cfg.past_input_names.push_back(elem);
         }
       }
 
-      key = "state_output_names";
+      key = "present_output_names";
       if (m.find(key) != m.end()) {
         const auto& so_names = m[key];
         for (const auto& elem : so_names) {
-          cfg.state_output_names.push_back(elem);
+          cfg.present_output_names.push_back(elem);
         }
       }
 
-      // TODO validate sizes of state_input_names and state_output_names is same
+      // TODO validate sizes of past_input_names and present_output_names is same
 
       ens.model_config_vec.push_back(std::move(cfg));
       ens.model_idx_map[model_name] = idx;
@@ -400,7 +400,7 @@ struct PipelineSession {
 
         // BEGIN determine size to pre-allocate
         const auto& session = psess.model_session_state_vec[idx].session;
-        auto output_state_shape = GetShape(session, mcfg.state_output_names, mcfg.state_output_names[0], false);
+        auto output_state_shape = GetShape(session, mcfg.present_output_names, mcfg.present_output_names[0], false);
         // override batch and seq dims with batch_size and maximum seq len
         output_state_shape[mcfg.batch_dim_index_in_state] = batch_size;
         output_state_shape[mcfg.seq_len_dim_index_in_state] = psess.ens.max_seq_len;

@@ -1,5 +1,5 @@
 {
-    "max_seq_len": 5,
+    "max_seq_len": 1024,
     "input_ids_name": "input_ids",
     "position_ids_name": "position_ids",
     "logits_name": "logits",
@@ -8,7 +8,7 @@
             "model_name": "first_model",
             "model_file_path": "/bert_ort/pranav/GenTuringSplitModels/tmp_result/distilgput-split-2/part_00_24/model.onnx",
             "device_id": 2,
-            "output_input_map": [
+            "inter_stage_output_input_map": [
                 [
                     "hidden_states",
                     "input_hidden_states"
@@ -19,7 +19,9 @@
             "seq_len_dim_index_in_input": 1,
             "batch_dim_index_in_state": 1,
             "seq_len_dim_index_in_state": 3,
-            "state_input_names": [
+            "batch_dim_in_inter_stage_output": 0,
+            "seq_len_dim_in_inter_stage_output": 1,
+            "past_input_names": [
                 "past_0",
                 "past_1",
                 "past_2",
@@ -45,7 +47,7 @@
                 "past_22",
                 "past_23"
             ],
-            "state_output_names": [
+            "present_output_names": [
                 "present_0",
                 "present_1",
                 "present_2",
@@ -76,7 +78,7 @@
             "model_name": "second_model",
             "model_file_path": "/bert_ort/pranav/GenTuringSplitModels/tmp_result/distilgput-split-2/part_24_48/model.onnx",
             "device_id": 3,
-            "output_input_map": [
+            "inter_stage_output_input_map": [
                 [
                     "logits",
                     "logits"
@@ -87,7 +89,9 @@
             "seq_len_dim_index_in_input": 1,
             "batch_dim_index_in_state": 1,
             "seq_len_dim_index_in_state": 3,
-            "state_input_names": [
+            "batch_dim_in_inter_stage_output": 0,
+            "seq_len_dim_in_inter_stage_output": 1,
+            "past_input_names": [
                 "past_24",
                 "past_25",
                 "past_26",
@@ -113,7 +117,7 @@
                 "past_46",
                 "past_47"
             ],
-            "state_output_names": [
+            "present_output_names": [
                 "present_24",
                 "present_25",
                 "present_26",

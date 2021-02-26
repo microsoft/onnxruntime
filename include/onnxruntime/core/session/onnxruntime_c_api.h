@@ -521,7 +521,7 @@ struct OrtApi {
   /**
    * \Sets *out to 1 iff an OrtValue is a tensor, 0 otherwise
    */
-  ORT_API2_STATUS(IsTensor, _In_ const OrtValue* value, _Out_ int* out);
+    ORT_API2_STATUS(IsTensor, _In_ const OrtValue* value, _Out_ int* out);
 
   // This function doesn't work with string tensor
   // this is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
