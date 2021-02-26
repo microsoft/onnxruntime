@@ -665,6 +665,18 @@ MlasRequantizeOutput(
 
 void
 MLASCALL
+MlasScaleOutput(
+    const int32_t* Input,
+    float* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    const float* Scale,
+    bool PerColumnScale
+);
+
+void
+MLASCALL
 MlasFindMinMaxElement(
     const float* Input,
     float* Min,

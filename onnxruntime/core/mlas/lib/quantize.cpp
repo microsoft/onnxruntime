@@ -583,6 +583,197 @@ Return Value:
     }
 }
 
+void
+MLASCALL
+MlasScaleOutput(
+    const int32_t* Input,
+    float* Output,
+    const int32_t* Bias,
+    size_t M,
+    size_t N,
+    const float* Scale,
+    bool PerColumnScale
+    )
+/*++
+
+Routine Description:
+
+    This routine requantizes the intermediate buffer to the output buffer
+    optionally adding the supplied bias.
+
+Arguments:
+
+    Input - Supplies the input matrix.
+
+    Output - Supplies the output matrix.
+
+    Bias - Supplies the optional bias vector to be added to the input buffer
+        before requantization.
+
+    Buffer - Supplies the output matrix.
+
+    M - Supplies the number of elements of the bias vector and the number of
+        rows in the output matrix.
+
+    N - Supplies the number of columns of the output matrix.
+
+    Scale - Supplies the quantization scale.
+
+    PerColumnScale - Supplies true if the quantization scale has per-column
+        values, else false if a single quantization scale applies to the
+        entire matrix.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const __m128 PerMatrixScaleVector = PerColumnScale ? _mm_setzero_ps() : _mm_load1_ps(Scale);
+
+    //
+    // Step through each row of the output matrix.
+    //
+
+    while (M-- > 0) {
+
+        const int32_t* bias = Bias;
+        const float* scale = PerColumnScale ? Scale : nullptr;
+        size_t n = N;
+
+        //
+        // Process 16 columns of the matrices at a time.
+        //
+
+        while (n >= 16) {
+
+            //
+            // Load the input data and optionally add the per-column bias.
+            //
+
+            __m128i IntegerVector0 = _mm_loadu_si128((const __m128i *)&Input[0]);
+            __m128i IntegerVector1 = _mm_loadu_si128((const __m128i *)&Input[4]);
+            __m128i IntegerVector2 = _mm_loadu_si128((const __m128i *)&Input[8]);
+            __m128i IntegerVector3 = _mm_loadu_si128((const __m128i *)&Input[12]);
+            Input += 16;
+
+            if (bias != nullptr) {
+                IntegerVector0 = _mm_add_epi32(IntegerVector0, _mm_loadu_si128((const __m128i *)&bias[0]));
+                IntegerVector1 = _mm_add_epi32(IntegerVector1, _mm_loadu_si128((const __m128i *)&bias[4]));
+                IntegerVector2 = _mm_add_epi32(IntegerVector2, _mm_loadu_si128((const __m128i *)&bias[8]));
+                IntegerVector3 = _mm_add_epi32(IntegerVector3, _mm_loadu_si128((const __m128i *)&bias[12]));
+                bias += 16;
+            }
+
+            //
+            // Convert to integer values to float and apply the per-tensor or
+            // per-column scaling.
+            //
+
+            __m128 FloatVector0 = _mm_cvtepi32_ps(IntegerVector0);
+            __m128 FloatVector1 = _mm_cvtepi32_ps(IntegerVector1);
+            __m128 FloatVector2 = _mm_cvtepi32_ps(IntegerVector2);
+            __m128 FloatVector3 = _mm_cvtepi32_ps(IntegerVector3);
+
+            if (scale != nullptr) {
+
+                FloatVector0 = _mm_mul_ps(FloatVector0, _mm_loadu_ps(&scale[0]));
+                FloatVector1 = _mm_mul_ps(FloatVector1, _mm_loadu_ps(&scale[4]));
+                FloatVector2 = _mm_mul_ps(FloatVector2, _mm_loadu_ps(&scale[8]));
+                FloatVector3 = _mm_mul_ps(FloatVector3, _mm_loadu_ps(&scale[12]));
+                scale += 16;
+
+            } else {
+
+                FloatVector0 = _mm_mul_ps(FloatVector0, PerMatrixScaleVector);
+                FloatVector1 = _mm_mul_ps(FloatVector1, PerMatrixScaleVector);
+                FloatVector2 = _mm_mul_ps(FloatVector2, PerMatrixScaleVector);
+                FloatVector3 = _mm_mul_ps(FloatVector3, PerMatrixScaleVector);
+            }
+
+            _mm_store_ps(Output, FloatVector0);
+            _mm_store_ps(Output+4, FloatVector0);
+            _mm_store_ps(Output+8, FloatVector0);
+            _mm_store_ps(Output+12, FloatVector0);
+            Output += 16;
+
+            n -= 16;
+        }
+
+        //
+        // Process the remaining columns of the matrices.
+        //
+
+        while (n > 0) {
+
+            //
+            // Load the input data and optionally add the per-column bias.
+            //
+
+            __m128i IntegerVector;
+
+            if (n >= 4) {
+
+                IntegerVector = _mm_loadu_si128((const __m128i*)&Input[0]);
+                Input += 4;
+
+                if (bias != nullptr) {
+                    IntegerVector = _mm_add_epi32(IntegerVector, _mm_loadu_si128((const __m128i*)&bias[0]));
+                    bias += 4;
+                }
+
+            } else {
+
+                int32_t IntegerValue = *Input++;
+
+                if (bias != nullptr) {
+                    IntegerValue += *bias++;
+                }
+
+                IntegerVector = _mm_cvtsi32_si128(IntegerValue);
+            }
+
+            //
+            // Convert to integer values to float and apply the per-tensor or
+            // per-column scaling.
+            //
+
+            __m128 FloatVector = _mm_cvtepi32_ps(IntegerVector);
+            __m128 ScaleVector;
+
+            if (scale != nullptr) {
+
+                if (n >= 4) {
+                    ScaleVector = _mm_loadu_ps(scale);
+                    scale += 4;
+                } else {
+                    ScaleVector = _mm_load_ss(scale);
+                    scale += 1;
+                }
+
+            } else {
+                ScaleVector = PerMatrixScaleVector;
+            }
+
+            FloatVector = _mm_mul_ps(FloatVector, ScaleVector);
+
+            if (n >= 4) {
+                _mm_store_ps(Output, FloatVector);
+                Output += 4;
+
+                n -= 4;
+
+            } else {
+
+                *Output = _mm_cvtss_f32(FloatVector);
+                Output += 1;
+
+                n -= 1;
+            }
+        }
+    }
+}
+
 #elif defined(MLAS_NEON64_INTRINSICS)
 
 void

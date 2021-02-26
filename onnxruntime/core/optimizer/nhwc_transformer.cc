@@ -46,6 +46,7 @@ class NhwcTransformerImpl {
   void InsertReorderInput(Node& node, int rank);
 
   void TransformQLinearConv(Node& node);
+  void TransformConvIntegerToFloat(Node& node);
   void TransformQLinearBinary(Node& node);
   void TransformQLinearActivation(Node& node);
   void TransformQLinearGlobalAveragePool(Node& node);
@@ -161,6 +162,52 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node) {
   std::string nhwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_nhwc");
   Node& nhwc_node = graph_.AddNode(nhwc_node_name,
                                    "QLinearConv",
+                                   nhwc_node_name,
+                                   input_defs,
+                                   output_defs,
+                                   &node.GetAttributes(),
+                                   kMSDomain);
+  nhwc_node.SetExecutionProviderType(kCpuExecutionProvider);
+  nhwc_node.AddAttribute("channels_last", static_cast<int64_t>(1));
+
+  if (nhwc_input == nullptr) {
+    InsertReorderInput(nhwc_node, weights_shape->dim_size());
+  } else {
+    nhwc_node.MutableInputDefs()[0] = nhwc_input->nhwc_arg_;
+    nhwc_input->remaining_original_uses_--;
+  }
+
+  CreateNhwcArgument(node, nhwc_node, weights_shape->dim_size());
+  removed_nodes_.push_front(node.Index());
+}
+
+void NhwcTransformerImpl::TransformConvIntegerToFloat(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  // Require that the weights tensor have a shape so that the necessary
+  // Transpose nodes can be inserted into the graph.
+  auto* weights_shape = input_defs[3]->Shape();
+  if (weights_shape == nullptr) {
+    return;
+  }
+
+  // If the output is immediately dequantized, then skip wrapping QLinearConv
+  // with Transpose nodes and use the NCHW variant that does this internally.
+  auto* nhwc_input = LookupNhwcArgument(input_defs[0]);
+  //if (nhwc_input == nullptr) {
+  //    if (optimizer_utils::CheckOutputEdges(graph_, node, 1)) {
+  //        const auto& next_node = *node.OutputNodesBegin();
+  //        if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "DequantizeLinear", { 10, 13 })) {
+  //            return;
+  //        }
+  //    }
+  //}
+
+  // Create the replacement node.
+  std::string nhwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_nhwc");
+  Node& nhwc_node = graph_.AddNode(nhwc_node_name,
+                                   "ConvIntegerToFloat",
                                    nhwc_node_name,
                                    input_defs,
                                    output_defs,
@@ -369,8 +416,11 @@ void NhwcTransformerImpl::TransformPad(Node& node) {
 void NhwcTransformerImpl::Transform(Node& node) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearConv", {10})) {
     TransformQLinearConv(node);
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "ConvIntegerToFloat", {1}, kMSDomain)) {
+    TransformConvIntegerToFloat(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearAdd", {1}, kMSDomain) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearMul", {1}, kMSDomain)) {
+             //graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13})) {
     TransformQLinearBinary(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearLeakyRelu", {1}, kMSDomain) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearSigmoid", {1}, kMSDomain)) {

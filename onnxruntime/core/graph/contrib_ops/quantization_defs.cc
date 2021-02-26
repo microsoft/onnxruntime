@@ -27,6 +27,7 @@ using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::InferenceContext;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
+using ONNX_NAMESPACE::TypeProto;
 
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize = 0) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
@@ -135,6 +136,13 @@ Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadc
     });
   };
 }
+
+void convPoolShapeInferenceNhwc(
+    InferenceContext& ctx,
+    bool use_dilation,
+    bool require_kernel_shape,
+    int input1Idx,
+    int input2Idx);
 
 void RegisterQuantizationSchemas() {
   static const char* QuantizeLinear_ver1_doc = R"DOC(
@@ -927,6 +935,64 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
           {"tensor(uint8)", "tensor(int8)"},
           "Constrain weights types to 8 bit tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::RNNShapeInference);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ConvIntegerToFloat)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "x", "", "T1")
+      .Input(1, "x_scale", "", "tensor(float)")
+      .Input(2, "x_zero_point", "", "T1")
+      .Input(3, "w", "", "T2")
+      .Input(4, "w_scale", "", "tensor(float)")
+      .Input(5, "w_zero_point", "", "T2")
+      .Input(6, "B", "", "T4", OpSchema::Optional)
+      .Output(0, "y", "", "T3")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "")
+      .TypeConstraint("T3", {"tensor(float)"}, "")
+      .TypeConstraint("T4", {"tensor(int32)"}, "")
+      .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("channels_last", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        auto x_type = ctx.getInputType(0);
+        auto w_type = ctx.getInputType(3);
+        if (nullptr == x_type || nullptr == w_type ||
+            x_type->value_case() != TypeProto::kTensorType ||
+            w_type->value_case() != TypeProto::kTensorType) {
+          fail_type_inference("inputs are expected to have tensor type.");
+        }
+
+        auto x_zero_point_type = ctx.getInputType(2);
+        if (nullptr == x_zero_point_type ||
+            x_zero_point_type->tensor_type().elem_type() !=
+                x_type->tensor_type().elem_type()) {
+          fail_type_inference(
+              "input and zero_point pair is expected to have be same type.");
+        }
+
+        auto w_zero_point_type = ctx.getInputType(5);
+        if (nullptr == w_zero_point_type ||
+            w_zero_point_type->tensor_type().elem_type() !=
+                w_type->tensor_type().elem_type()) {
+          fail_type_inference(
+              "weight and zero_point pair is expected to have same type.");
+        }
+
+        // only float is supported
+        auto y_type = ctx.getOutputType(0);
+        y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+
+        if (getAttribute(ctx, "channels_last", 0) == 0) {
+          convPoolShapeInference(ctx, true, false, 0, 3);
+        } else {
+          convPoolShapeInferenceNhwc(ctx, true, false, 0, 3);
+        }
+      });
 }
 
 }  // namespace contrib

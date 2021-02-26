@@ -180,8 +180,8 @@ def quantize_static(model_input,
         Please use CalibrationMethod.MinMax or CalibrationMethod.Entropy as options.
     '''
 
-    if activation_type != QuantType.QUInt8:
-        raise ValueError("Static quantization only support uint8 for activation now.")
+    #if activation_type != QuantType.QUInt8:
+    #    raise ValueError("Static quantization only support uint8 for activation now.")
 
     mode = QuantizationMode.QLinearOps
 
