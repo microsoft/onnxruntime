@@ -52,9 +52,6 @@ FAIL_MODEL_FILE = ".fail_model_map"
 LATENCY_FILE = ".latency_map"
 METRICS_FILE = ".metrics_map"
 
-def is_standalone(ep): 
-    return ep == standalone_trt or ep == standalone_trt_fp16
-
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info("running native trt")
     model_path = "--onnx=" + model_path
@@ -377,7 +374,6 @@ def generate_onnx_model_random_input(test_times, ref_input):
     return inputs
 
 def percentage_in_allowed_threshold(e, percent_mismatch):
-    print(str(e))
     percent_string = re.search(r'\(([^)]+)', str(e)).group(1)
     if "%" in percent_string:
         percentage_wrong = float(percent_string.replace("%",""))
@@ -442,10 +438,8 @@ def cleanup_files():
 
 def remove_profiling_files(path):
     files = []
-    p = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
-    files = files + stdout.split("\n")
+    out = get_output(["find", path, "-name", "onnxruntime_profile*"])
+    files = files + out.split("\n")
 
     for f in files:
         if "custom_test_data" in f:
