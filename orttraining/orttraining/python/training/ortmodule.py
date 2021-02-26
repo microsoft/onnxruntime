@@ -240,6 +240,9 @@ class ORTModule(torch.nn.Module):
                 Module outputs are returned to the user
                 '''
 
+                # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
+                ctx.set_materialize_grads(False)
+
                 # Use IO binding
                 _create_iobinding(self._training_io_binding, inputs, self._onnx_training, self._device)
 
@@ -258,7 +261,11 @@ class ORTModule(torch.nn.Module):
                 # Use IO binding
                 # Push user output grads to ONNX backend.
                 backward_grad_output_ortvalue = []
-                for grad_output in grad_outputs[:len(self._onnx_graphs_info.backward_output_grad_names)]:
+                for idx, output_grad_name in enumerate(self._onnx_graphs_info.backward_output_grad_names):
+                    grad_output = grad_outputs[idx]
+                    if grad_output is None:
+                        raise RuntimeError('Output grad {} should not be None as it is required for backward calculation.'.format(output_grad_name))
+
                     # Force torch tensors to be contiguous before converting into OrtValue
                     if not grad_output.is_contiguous():
                         grad_output = grad_output.contiguous()
