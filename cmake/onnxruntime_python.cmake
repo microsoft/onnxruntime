@@ -204,6 +204,9 @@ file(GLOB onnxruntime_python_checkpoint_test_srcs CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_dhp_parallel_test_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/python/dhp_parallel/*.py"
 )
+file(GLOB onnxruntime_python_perf_log_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/test/python/perf_log/*.py"
+)
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
 )
@@ -246,6 +249,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/operators
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/dhp_parallel
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/perf_log
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
@@ -271,6 +275,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_dhp_parallel_test_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/dhp_parallel/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_perf_log_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/perf_log/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_backend_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend/
