@@ -13,6 +13,7 @@ import warnings
 from unittest.mock import patch
 from collections import OrderedDict
 from collections import namedtuple
+from inspect import signature
 
 from onnxruntime.training import _utils, ORTModule
 import _test_helpers
@@ -180,10 +181,12 @@ def test_forward_call_single_positional_argument():
 
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
-    model = ORTModule(model)
+    ort_model = ORTModule(model)
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
     x = torch.randn(N, D_in, device=device)
     # Make sure model runs without any exception
-    output = model(x)
+    output = ort_model(x)
     assert output is not None
 
 def test_forward_call_multiple_positional_arguments():
@@ -191,12 +194,14 @@ def test_forward_call_multiple_positional_arguments():
 
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetMultiplePositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
-    model = ORTModule(model)
+    ort_model = ORTModule(model)
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
 
     # Make sure model runs without any exception
-    output = model(x, y)
+    output = ort_model(x, y)
     assert output is not None
 
 # TODO: Re-enable after "Support models with dynamically defined inputs" done.
