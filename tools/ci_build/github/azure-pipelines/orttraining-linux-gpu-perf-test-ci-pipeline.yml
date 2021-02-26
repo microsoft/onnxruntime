@@ -62,13 +62,13 @@ jobs:
     condition: succeededOrFailed() # ensure all tests are run
     timeoutInMinutes: 10
 
-  # - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh $(orttrainingtestdata-storage-key)
-  #   displayName: 'Map bert test data'
-  #   condition: succeededOrFailed() # ensure all tests are run
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh $(orttrainingtestdata-storage-key)
+    displayName: 'Map bert test data'
+    condition: succeededOrFailed() # ensure all tests are run
 
-  # - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_gpt2_test_data.sh $(orttrainingtestdata-storage-key)
-  #   displayName: 'Map gpt2 test data'
-  #   condition: succeededOrFailed() # ensure all tests are run
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_gpt2_test_data.sh $(orttrainingtestdata-storage-key)
+    displayName: 'Map gpt2 test data'
+    condition: succeededOrFailed() # ensure all tests are run
 
   - script: >
       docker run --gpus all --rm --name onnxruntime-gpu-perf
@@ -85,39 +85,39 @@ jobs:
     condition: succeededOrFailed()
     timeoutInMinutes: 120
 
-  # - script: >
-  #     docker run --gpus all --rm --name onnxruntime-gpu-perf
-  #     --volume $(Build.SourcesDirectory):/onnxruntime_src
-  #     --volume $(Build.BinariesDirectory):/build
-  #     --volume /gpt2_data/gpt2_models:/build/gpt2_models:ro
-  #     --volume /gpt2_data:/build/gpt2_data:ro
-  #     -e NIGHTLY_BUILD onnxruntime_perf_test_image
-  #     /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
-  #     --binary_dir /build/RelWithDebInfo
-  #     --training_data_root /build/gpt2_data
-  #     --model_root /build/gpt2_models
-  #   displayName: 'Run gpt-2 performance tests'
-  #   condition: succeededOrFailed()
-  #   timeoutInMinutes: 120
+  - script: >
+      docker run --gpus all --rm --name onnxruntime-gpu-perf
+      --volume $(Build.SourcesDirectory):/onnxruntime_src
+      --volume $(Build.BinariesDirectory):/build
+      --volume /gpt2_data/gpt2_models:/build/gpt2_models:ro
+      --volume /gpt2_data:/build/gpt2_data:ro
+      -e NIGHTLY_BUILD onnxruntime_perf_test_image
+      /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
+      --binary_dir /build/RelWithDebInfo
+      --training_data_root /build/gpt2_data
+      --model_root /build/gpt2_models
+    displayName: 'Run gpt-2 performance tests'
+    condition: succeededOrFailed()
+    timeoutInMinutes: 120
 
-  # # generate jdbc.properties
-  # - script: >
-  #     mkdir -p $(Build.SourcesDirectory)/tools/perf_util/src/main/resources &&
-  #     printf "url=jdbc:mysql://onnxruntimedashboard.mysql.database.azure.com/onnxruntime?serverTimezone=UTC&useUnicode=true&characterEncoding=UTF-8\nuser=powerbi@onnxruntimedashboard\npassword_env=ORT_PERF_PASSWORD"
-  #     > $(Build.SourcesDirectory)/tools/perf_util/src/main/resources/jdbc.properties
-  #   displayName: 'Create resource file'
+  # generate jdbc.properties
+  - script: >
+      mkdir -p $(Build.SourcesDirectory)/tools/perf_util/src/main/resources &&
+      printf "url=jdbc:mysql://onnxruntimedashboard.mysql.database.azure.com/onnxruntime?serverTimezone=UTC&useUnicode=true&characterEncoding=UTF-8\nuser=powerbi@onnxruntimedashboard\npassword_env=ORT_PERF_PASSWORD"
+      > $(Build.SourcesDirectory)/tools/perf_util/src/main/resources/jdbc.properties
+    displayName: 'Create resource file'
 
-  # - script: >
-  #     mvn package
-  #   displayName: 'Maven build'
-  #   workingDirectory: $(Build.SourcesDirectory)/tools/perf_util
+  - script: >
+      mvn package
+    displayName: 'Maven build'
+    workingDirectory: $(Build.SourcesDirectory)/tools/perf_util
 
-  # # process json files
-  # - script: >
-  #     java -cp target/send_perf_metrics-0.0.1-SNAPSHOT-jar-with-dependencies.jar com.msft.send_perf_metrics.App "$(Build.SourcesDirectory)/orttraining/tools/ci_test/results"
-  #   env:
-  #     ORT_PERF_PASSWORD: $(ortperf)
-  #   displayName: 'Populate perf metrics'
-  #   workingDirectory: $(Build.SourcesDirectory)/tools/perf_util
+  # process json files
+  - script: >
+      java -cp target/send_perf_metrics-0.0.1-SNAPSHOT-jar-with-dependencies.jar com.msft.send_perf_metrics.App "$(Build.SourcesDirectory)/orttraining/tools/ci_test/results"
+    env:
+      ORT_PERF_PASSWORD: $(ortperf)
+    displayName: 'Populate perf metrics'
+    workingDirectory: $(Build.SourcesDirectory)/tools/perf_util
 
-  # - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/clean-agent-build-directory-step.yml
