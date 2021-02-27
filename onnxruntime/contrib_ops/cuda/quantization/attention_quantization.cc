@@ -131,7 +131,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   // Use GEMM for fully connection.
   int m = batch_size * sequence_length;
   int n = 3 * hidden_size;
-  int k = hidden_size;
+  int k = input_hidden_size;
   auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size);
   auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(batch_size * sequence_length * 3 * hidden_size);
 
