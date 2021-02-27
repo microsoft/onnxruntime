@@ -163,7 +163,7 @@ class ThreadPoolProfiler {
   inline const char* GetEventName(const Event&) const;
   std::thread::id main_thread_id_;
   uint64_t events_[All];
-  std::list<onnxruntime::TimePoint> points_;
+  std::vector<onnxruntime::TimePoint> points_;
 };
 
 // Align to avoid false sharing with prior fields.  If required,
@@ -600,11 +600,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
  public:
 
-  void StartProfiling() const {
+  void StartProfiling() const override {
     profiler_.Start();
   }
 
-  std::string StopProfiling() const {
+  std::string StopProfiling() const override {
     return profiler_.Stop();
   }
 
