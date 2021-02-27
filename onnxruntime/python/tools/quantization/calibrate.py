@@ -167,20 +167,27 @@ class MinMaxCalibrater(CalibraterBase):
 
         for tensor in tensors:
 
-            # Get tensor's shape 
-            dim = len(value_infos[tensor].type.tensor_type.shape.dim)
-            shape = (1,) if dim == 1 else list(1 for i in range(dim))
+            # Get tensor's shape.
+            # Don't keep dimension (keepdims=0) when reducing, only keep dimension if tensor contains any dim with value of 0.
+            dim = value_infos[tensor].type.tensor_type.shape.dim
+            keepdims = 0
+            shape = ()
+            for d in dim:
+                if isinstance(d.dim_value, int) and d.dim_value == 0:
+                    keepdims = 1
+                    shape = (1,) if len(dim) == 1 else list(1 for i in range(len(dim)))
+                    break
 
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
-            reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'], reduce_min_name)
+            reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'], reduce_min_name, keepdims=keepdims)
 
             added_nodes.append(reduce_min_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, shape))
 
             # Adding ReduceMax nodes
             reduce_max_name = tensor + '_ReduceMax'
-            reduce_max_node = onnx.helper.make_node('ReduceMax', [tensor], [tensor + '_ReduceMax'], reduce_max_name)
+            reduce_max_node = onnx.helper.make_node('ReduceMax', [tensor], [tensor + '_ReduceMax'], reduce_max_name, keepdims=keepdims)
 
             added_nodes.append(reduce_max_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, shape))
