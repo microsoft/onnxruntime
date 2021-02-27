@@ -93,15 +93,15 @@ class QuantFormat(Enum):
         except KeyError:
             raise ValueError()
 
-
-QUANT_TYPE_TO_NP_TYPE = {
-    QuantType.QInt8: numpy.dtype('int8'),
-    QuantType.QUInt8: numpy.dtype('uint8'),
+ONNX_TYPE_TO_NP_TYPE = {
+    onnx_proto.TensorProto.INT8: numpy.dtype('int8'),
+    onnx_proto.TensorProto.UINT8:  numpy.dtype('uint8')
 }
 
-
-def quantize_nparray(qtype, arr, scale, zero_point, low=None, high=None):
-    dtype = QUANT_TYPE_TO_NP_TYPE[qtype]
+def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
+    assert qType in ONNX_TYPE_TO_NP_TYPE, \
+        "Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType)
+    dtype = ONNX_TYPE_TO_NP_TYPE[qType]
     cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
     cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
     arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
@@ -144,12 +144,7 @@ def quantize_data(data, quantize_range, qType):
     rmax = max(max(data), 0)
 
     zero_point, scale = compute_scale_zp(rmin, rmax, qType, quantize_range)
-    if qType == onnx_proto.TensorProto.INT8:
-        quantized_data = quantize_nparray(QuantType.QInt8, numpy.asarray(data), scale, zero_point)
-    elif qType == onnx_proto.TensorProto.UINT8:
-        quantized_data = quantize_nparray(QuantType.QUInt8, numpy.asarray(data), scale, zero_point)
-    else:
-        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
+    quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
 
     return rmin, rmax, zero_point, scale, quantized_data
 
@@ -181,8 +176,7 @@ class QuantizedInitializer:
                  scales,
                  data=[],
                  quantized_data=[],
-                 axis=None,
-                 qType=QuantType.QUInt8):
+                 axis=None):
         self.name = name
         self.initializer = initializer  # TensorProto initializer in ONNX graph
         self.rmins = rmins  # List of minimum range for each axis
@@ -195,7 +189,6 @@ class QuantizedInitializer:
         # Scalar to specify which dimension in the initializer to weight pack.
         self.axis = axis
         # If empty, single zero point and scales computed from a single rmin and rmax
-        self.qType = qType  # type of quantized data.
 
 
 class QuantizedValue:
@@ -208,15 +201,13 @@ class QuantizedValue:
                  scale_name,
                  zero_point_name,
                  quantized_value_type,
-                 axis=None,
-                 qType=QuantType.QUInt8):
+                 axis=None):
         self.original_name = name
         self.q_name = new_quantized_name
         self.scale_name = scale_name
         self.zp_name = zero_point_name
         self.value_type = quantized_value_type
         self.axis = axis
-        self.qType = qType
 
 
 class BiasToQuantize:
@@ -368,3 +359,29 @@ def write_calibration_table(calibration_cache):
             s = key + ' ' + str(max(abs(value[0]), abs(value[1])))
             file.write(s)
             file.write('\n')
+
+def smooth_distribution(p, eps=0.0001):
+    """Given a discrete distribution (may have not been normalized to 1),
+    smooth it by replacing zeros with eps multiplied by a scaling factor
+    and taking the corresponding amount off the non-zero values.
+    Ref: http://web.engr.illinois.edu/~hanj/cs412/bk3/KL-divergence.pdf
+         https://github.com//apache/incubator-mxnet/blob/master/python/mxnet/contrib/quantization.py
+    """
+    import numpy as np
+
+    is_zeros = (p == 0).astype(np.float32)
+    is_nonzeros = (p != 0).astype(np.float32)
+    n_zeros = is_zeros.sum()
+    n_nonzeros = p.size - n_zeros
+
+    if not n_nonzeros:
+        # raise ValueError('The discrete probability distribution is malformed. All entries are 0.')
+        return -1
+    eps1 = eps * float(n_zeros) / float(n_nonzeros)
+    assert eps1 < 1.0, 'n_zeros=%d, n_nonzeros=%d, eps1=%f' % (n_zeros, n_nonzeros, eps1)
+
+    hist = p.astype(np.float32)
+    hist += eps * is_zeros + (-eps1) * is_nonzeros
+    assert (hist <= 0).sum() == 0
+
+    return hist
