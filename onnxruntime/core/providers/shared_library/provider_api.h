@@ -20,6 +20,7 @@
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/float16.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
 #include "core/common/path_string.h"
@@ -152,9 +153,8 @@ enum OperatorStatus : int {
 }  // namespace ONNX_NAMESPACE
 
 #include "core/framework/execution_provider.h"
-#include "core/framework/op_kernel_shared.h"
-#include "core/framework/float16.h"
 #include "provider_interfaces.h"
+#include "core/framework/op_kernel_shared.h"
 #include "core/framework/data_types_internal.h"
 
 namespace onnxruntime {
