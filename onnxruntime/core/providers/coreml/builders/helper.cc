@@ -3,6 +3,11 @@
 
 #include <vector>
 
+#ifdef __APPLE__
+#include <sys/utsname.h>
+#include <TargetConditionals.h>
+#endif
+
 #include "helper.h"
 #include <core/graph/graph_viewer.h>
 
@@ -120,6 +125,43 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   }
 
   return supported_node_vecs;
+}
+
+bool HasNeuralEngine(const logging::Logger& logger) {
+  bool has_neural_engine = false;
+
+#ifdef __APPLE__
+  struct utsname system_info;
+  uname(&system_info);
+  LOGS(logger, VERBOSE) << "Current Apple hardware info: " << system_info.machine;
+
+#if TARGET_OS_IPHONE
+  // utsname.machine has device identifier. For example, identifier for iPhone Xs is "iPhone11,2".
+  // Since Neural Engine is only available for use on A12 and later, major device version in the
+  // identifier is checked for these models:
+  // A12: iPhone XS (11,2), iPad Mini - 5th Gen (11,1)
+  // A12X: iPad Pro - 3rd Gen (8,1)
+  // For more information, see https://www.theiphonewiki.com/wiki/Models
+  size_t str_len = strlen(system_info.machine);
+  if (str_len > 4 && strncmp("iPad", system_info.machine, 4) == 0) {
+    const int major_version = atoi(system_info.machine + 4);
+    has_neural_engine = major_version >= 8;  // There are no device between iPad 8 and 11.
+  } else if (str_len > 6 && strncmp("iPhone", system_info.machine, 6) == 0) {
+    const int major_version = atoi(system_info.machine + 6);
+    has_neural_engine = major_version >= 11;
+  }
+#elif TARGET_OS_OSX && TARGET_CPU_ARM64
+  // Only Mac with arm64 CPU (Apple Silicon) has ANE.
+  has_neural_engine = true;
+#endif  // #if TARGET_OS_IPHONE
+#else
+  // In this case, we are running the EP on non-apple platform, which means we are running the model
+  // conversion with CoreML EP enabled, for this we always assume the target system has Neural Engine
+  LOGS(logger, VERBOSE) << "HasNeuralEngine running on non-Apple hardware for model conversion only";
+  has_neural_engine = true;
+#endif  // #ifdef __APPLE__
+
+  return has_neural_engine;
 }
 
 }  // namespace coreml

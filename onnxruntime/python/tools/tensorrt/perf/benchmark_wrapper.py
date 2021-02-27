@@ -6,7 +6,6 @@ import argparse
 import copy
 import json
 import re
-import sys
 import pprint
 from benchmark import *
 from perf_utils import get_latest_commit_hash
@@ -33,12 +32,11 @@ def main():
 
     model_to_fail_ep = {}
 
-    commit = get_latest_commit_hash()
-    benchmark_fail_csv = 'fail_' + commit + '.csv'  
-    benchmark_metrics_csv = 'metrics_' + commit + '.csv'
-    benchmark_success_csv = 'success_' + commit + '.csv' 
-    benchmark_latency_csv = 'latency_' + commit + '.csv'
-    benchmark_status_csv = 'status_' + commit + '.csv'
+    benchmark_fail_csv = 'fail.csv'
+    benchmark_metrics_csv = 'metrics.csv' 
+    benchmark_success_csv = 'success.csv'  
+    benchmark_latency_csv = 'latency.csv' 
+    benchmark_status_csv = 'status.csv' 
 
     for model, model_info in models.items():
         logger.info("\n" + "="*40 + "="*len(model))
@@ -49,8 +47,10 @@ def main():
         
         model_list_file = os.path.join(os.getcwd(), model +'.json')
         write_model_info_to_file([model_info], model_list_file)
-
-        ep_list = get_ep_list(args.comparison)
+        if args.ep: 
+            ep_list = [args.ep]
+        else:
+            ep_list = get_ep_list(args.comparison)
         for ep in ep_list:
             if args.running_mode == "validate":
                 p = subprocess.run(["python3",
@@ -91,24 +91,25 @@ def main():
         Path(path).mkdir(parents=True, exist_ok=True)
 
     if args.running_mode == "validate":
-        logger.info("\n==========================================================")
+        logger.info("\n=========================================================")
         logger.info("========== Failing Models/EPs (accumulated) ==============")
         logger.info("==========================================================")
 
         if os.path.exists(FAIL_MODEL_FILE) or len(model_to_fail_ep) > 1:
             model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
             output_fail(model_to_fail_ep, os.path.join(path, benchmark_fail_csv))
-
+            logger.info("\nSaved model fail results to {}".format(benchmark_fail_csv)) 
             logger.info(model_to_fail_ep)
 
         logger.info("\n=========================================")
-        logger.info("========== Models/EPs metrics  ==========")
+        logger.info("=========== Models/EPs metrics ==========")
         logger.info("=========================================")
 
         if os.path.exists(METRICS_FILE):
             model_to_metrics = read_map_from_file(METRICS_FILE)
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
-
+            logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv)) 
+    
     elif args.running_mode == "benchmark":
         logger.info("\n=======================================================")
         logger.info("=========== Models/EPs Status (accumulated) ===========")
@@ -124,28 +125,30 @@ def main():
             model_fail = read_map_from_file(FAIL_MODEL_FILE)
             is_fail = True
             model_status = build_status(model_status, model_fail, is_fail)
+       
+        pretty_print(pp, model_status)
         
-        pp.pprint(model_status)
         output_status(model_status, os.path.join(path, benchmark_status_csv)) 
         logger.info("\nSaved model status results to {}".format(benchmark_status_csv)) 
 
-        logger.info("\n=======================================================")
+        logger.info("\n=========================================================")
         logger.info("=========== Models/EPs latency (accumulated)  ===========")
-        logger.info("=======================================================")
+        logger.info("=========================================================")
 
         if os.path.exists(LATENCY_FILE):
             model_to_latency = read_map_from_file(LATENCY_FILE)
             add_improvement_information(model_to_latency)
+            
+            pretty_print(pp, model_to_latency)
+            
             output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
-
-            pp.pprint(model_to_latency)
-
+            logger.info("\nSaved model status results to {}".format(benchmark_latency_csv)) 
 
     logger.info("\n===========================================")
     logger.info("=========== System information  ===========")
     logger.info("===========================================")
     info = get_system_info()
-    pp.pprint(info)
+    pretty_print(pp, info)
 
 if __name__ == "__main__":
     main()

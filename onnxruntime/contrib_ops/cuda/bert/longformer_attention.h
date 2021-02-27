@@ -18,6 +18,9 @@ class LongformerAttention final : public CudaKernel, public LongformerAttentionB
  public:
   LongformerAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  bool use_compact_memory_;
 };
 
 }  // namespace cuda

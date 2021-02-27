@@ -134,7 +134,7 @@ class QDQQuantizer(ONNXQuantizer):
                 self.model.add_nodes([qlinear_node, dequant_node])
 
                 quantized_value = QuantizedValue(tensor_name, tensor_name + "_QuantizeLinear", scale_name, zp_name,
-                                                 QuantizedValueType.Input, None, self.input_qType)
+                                                 QuantizedValueType.Input)
                 self.quantized_value_map[tensor_name] = quantized_value
 
     def quantize_bias_tensors(self):
