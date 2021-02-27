@@ -10,7 +10,7 @@ For general purpose usage of the publicly distributed API, please see the [gener
 
 ### Building
 
-Use the main project's [build instructions](../BUILD.md) with the `--build_java` option.
+Use the main project's [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html) with the `--build_java` option.
 
 #### Requirements
 

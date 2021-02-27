@@ -13,7 +13,7 @@ from transformers import AutoConfig, AutoTokenizer, AutoModel
 from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS
 from quantize_helper import QuantizeHelper
-from huggingface_models import MODEL_CLASSES, EXEMPT_MODELS
+from huggingface_models import MODEL_CLASSES
 
 logger = logging.getLogger(__name__)
 
@@ -202,9 +202,6 @@ def optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model
 
         if Precision.FLOAT16 == precision:
             opt_model.convert_model_float32_to_float16()
-
-        if model_name in EXEMPT_MODELS:
-            use_external_data_format = False
 
         opt_model.save_model_to_file(optimized_model_path, use_external_data_format)
     else:
