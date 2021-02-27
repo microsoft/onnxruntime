@@ -110,7 +110,7 @@ def main():
             raise Exception('Nuget validation is currently supported only on Windows')
 
         # Make a copy of the Nuget package
-        print('Making a copy (' + nupkg_copy_name + ') of the Nuget (' + full_nuget_path + ') and extracting its contents')
+        print('Copying [' + full_nuget_path + '] -> [' + nupkg_copy_name + '], and extracting its contents')
         os.system("copy " + full_nuget_path + " " + nupkg_copy_name)
 
         # Convert nupkg to zip
