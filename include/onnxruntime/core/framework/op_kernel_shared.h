@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "boost/mp11.hpp"
+
 namespace onnxruntime {
 
 std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info);
