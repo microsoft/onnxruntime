@@ -1,4 +1,4 @@
 deepspeed
 numpy==1.19.5
 transformers==v4.3.2
-git
+GitPython
