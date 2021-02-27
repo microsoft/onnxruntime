@@ -163,7 +163,7 @@ class ThreadPoolProfiler {
   inline const char* GetEventName(const Event&) const;
   std::thread::id main_thread_id_;
   uint64_t events_[All];
-  std::list<onnxruntime::TimePoint> points_;
+  std::vector<onnxruntime::TimePoint> points_;
 };
 
 // Align to avoid false sharing with prior fields.  If required,
