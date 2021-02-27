@@ -14,8 +14,8 @@ class OpKernel {
   explicit OpKernel(const OpKernelInfo& info) : op_kernel_info_(CopyOpKernelInfo(info)) {}
   virtual ~OpKernel() = default;
 
-  const Node& Node() const;
-  const KernelDef& KernelDef() const;
+  const onnxruntime::Node& Node() const;
+  const onnxruntime::KernelDef& KernelDef() const;
 
   virtual Status Compute(_Inout_ OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
 
