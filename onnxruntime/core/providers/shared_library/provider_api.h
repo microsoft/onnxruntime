@@ -67,6 +67,7 @@ struct DataTransferManager;
 struct IDataTransfer;
 struct IndexedSubGraph;
 struct IndexedSubGraph_MetaDef;
+struct KernelCreateInfo;
 struct KernelDef;
 struct KernelDefBuilder;
 struct KernelRegistry;
@@ -81,6 +82,9 @@ struct NodeAttributes;
 struct OpKernelContext;
 struct OpKernelInfo;
 struct Tensor;
+
+class DataTypeImpl;
+using MLDataType = const DataTypeImpl*;
 }  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
@@ -146,6 +150,7 @@ enum OperatorStatus : int {
 }  // namespace ONNX_NAMESPACE
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/op_kernel_shared.h"
 #include "provider_interfaces.h"
 
 namespace onnxruntime {
@@ -233,23 +238,6 @@ constexpr T roundUpPow2(T a) {
 }  // namespace math
 
 }  // namespace onnxruntime
-
-#define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \
-  provider##_##name##_##domain##_ver##ver
-
-#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                                                              \
-  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                                                                   \
-  template <>                                                                                                                           \
-  Provider_KernelCreateInfo                                                                                                             \
-  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {                                               \
-    return Provider_KernelCreateInfo(                                                                                                   \
-        builder.SetName(#name)                                                                                                          \
-            .SetDomain(domain)                                                                                                          \
-            .SinceVersion(ver)                                                                                                          \
-            .Provider(provider)                                                                                                         \
-            .Build(),                                                                                                                   \
-        static_cast<Provider_KernelCreatePtrFn>([](const OpKernelInfo& info) -> Provider_OpKernel* { return new __VA_ARGS__(info); })); \
-  }
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
   ::onnxruntime::logging::Capture::Create(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)

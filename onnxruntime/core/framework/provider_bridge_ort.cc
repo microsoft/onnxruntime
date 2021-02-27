@@ -123,19 +123,6 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
   Node::EdgeConstIterator v_;
 };
 
-struct OpKernel_Translator : OpKernel {
-  OpKernel_Translator(const OpKernelInfo& info, Provider_OpKernel* p) : OpKernel{info}, p_{p} {
-  }
-
-  Status Compute(OpKernelContext* context) const override {
-    return p_->Compute(context, *reinterpret_cast<const Provider_OpKernel_Base*>(static_cast<const OpKernel*>(this)));
-  }
-
-  std::unique_ptr<Provider_OpKernel> p_;
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernel_Translator);
-};
-
 struct ProviderHostImpl : ProviderHost {
   ProviderHostImpl() {
     DataTypeImpl_GetType_Tensor = &DataTypeImpl::GetType<Tensor>;
@@ -398,6 +385,7 @@ struct ProviderHostImpl : ProviderHost {
 
   // KernelDef
   void KernelDef__operator_delete(KernelDef* p) override { delete p; }
+  int KernelDef__ExecQueueId(const KernelDef* p) override { return p->ExecQueueId(); }
 
   // KernelDefBuilder
   std::unique_ptr<KernelDefBuilder> KernelDefBuilder__construct() override { return onnxruntime::make_unique<KernelDefBuilder>(); }
@@ -418,13 +406,7 @@ struct ProviderHostImpl : ProviderHost {
   // KernelRegistry
   std::shared_ptr<KernelRegistry> KernelRegistry__construct() override { return std::make_shared<KernelRegistry>(); }
   void KernelRegistry__operator_delete(KernelRegistry* p) override { delete p; }
-  Status KernelRegistry__Register(KernelRegistry* p, Provider_KernelCreateInfo&& create_info) override {
-    KernelCreateInfo info_real(std::move(create_info.kernel_def),
-                               [kernel_create_func = create_info.kernel_create_func](const OpKernelInfo& info) -> OpKernel* {
-                                 return new OpKernel_Translator(info, kernel_create_func(info));
-                               });
-    return p->Register(std::move(info_real));
-  }
+  Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) override { return p->Register(std::move(create_info)); }
 
   // Function
   const Graph& Function__Body(const Function* p) override { return p->Body(); }
@@ -543,23 +525,21 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) override { return p->GetNodesInTopologicalOrder(); }
   const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept override { return p->GetInputsIncludingInitializers(); }
 
-  //Path
-  //Gets a string representation of the path.
+  // Path
   PathString Path__ToPathString(const Path* p) noexcept override { return p->ToPathString(); }
-
-  // Provider_OpKernel_Base
-  const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) override { return reinterpret_cast<const OpKernel*>(p)->Info(); }
 
   // OpKernelContext
   const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) override { return p->Input<Tensor>(index); }
   Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) override { return p->Output(index, shape); }
 
   // OpKernelInfo
+  std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
+  void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }
   Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) override { return p->GetAttr(name, value); }
   Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) override { return p->GetAttr(name, value); }
 
   const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
-  int OpKernelInfo__GetKernelDef_ExecQueueId(const OpKernelInfo* p) noexcept override { return p->GetKernelDef().ExecQueueId(); }
+  const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) override { return p->GetKernelDef(); }
 
   // Tensor
   float* Tensor__MutableData_float(Tensor* p) override { return p->MutableData<float>(); }
@@ -570,7 +550,7 @@ struct ProviderHostImpl : ProviderHost {
 
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
   size_t Tensor__SizeInBytes(const Tensor* p) override { return p->SizeInBytes(); }
-  const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }  
+  const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
 
   // AllocatorManager
   void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->InsertAllocator(allocator); }

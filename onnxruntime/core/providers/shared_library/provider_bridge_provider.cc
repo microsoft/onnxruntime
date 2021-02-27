@@ -221,4 +221,8 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status,
   return g_host->LogRuntimeError(session_id, status, file, function, line);
 }
 
+std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
+  return g_host->CopyOpKernelInfo(info);
+}
+
 }  // namespace onnxruntime
