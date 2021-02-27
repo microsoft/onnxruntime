@@ -47,6 +47,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreatePoolOpBuilder("GlobalMaxPool", op_registrations);
   }
 
+  {  // Concat
+    CreateConcatOpBuilder("Concat", op_registrations);
+  }
+
   return op_registrations;
 }
 
