@@ -26,43 +26,75 @@ namespace onnxruntime {
 
 namespace concurrency {
 
-Profiler::operator bool() const {
-  return enabled_ && std::this_thread::get_id() == thread_id_;
+ThreadPoolProfiler::ThreadPoolProfiler() {
+  memset(events_, 0, sizeof(uint64_t) * All);
 }
-void Profiler::Start() {
-  enabled_ = true;
-  thread_id_ = std::this_thread::get_id();
+
+bool ThreadPoolProfiler::Enabled() const {
+  return std::this_thread::get_id() == main_thread_id_;
 }
-std::string Profiler::Stop() {
-  if (*this) {
-    enabled_ = false;
-    thread_id_ = std::thread::id{};
+void ThreadPoolProfiler::Start() {
+  main_thread_id_ = std::this_thread::get_id();
+}
+
+std::string ThreadPoolProfiler::Stop() {
+  if (Enabled()) {
+    ORT_ENFORCE(points_.empty(), "LogStart must pair with LogEnd");
+    main_thread_id_ = std::thread::id{};
     std::stringstream ss;
-    std::copy(events_.begin(), events_.end(), std::ostream_iterator<std::string>(ss, ", "));
-    events_.clear();
-    points_.clear();
+    for (int i = 0; i < All; ++i) {
+      ss << GetEventName(static_cast<Event>(events_[i]))
+         << ": " << events_[i] << ((i == All - 1) ? std::string{} : ", ");
+    }
+    memset(events_, 0, sizeof(uint64_t) * All);
     return ss.str();
   } else {
-    return "";
+    return std::string{};
   }
 }
-void Profiler::LogStart() {
-  if (*this) {
-    points_.emplace_back(CLOCK::now());
+
+void ThreadPoolProfiler::LogStart() {
+  if (Enabled()) {
+    points_.emplace_back(Clock::now());
   }
 }
-void Profiler::LogEnd(std::string&& evt) {
-  if (*this) {
-    events_.emplace_back(evt + ": " + std::to_string(TimeDiffMicroSeconds(points_.back(), CLOCK::now())));
+
+void ThreadPoolProfiler::LogEnd(const Event& evt) {
+  if (Enabled()) {
+    ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
+    events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
     points_.pop_back();
   }
 }
-void Profiler::LogEndAndStart(std::string&& evt) {
-  if (*this) {
-    events_.emplace_back(evt + ": " + std::to_string(TimeDiffMicroSeconds(points_.back(), CLOCK::now())));
+
+void ThreadPoolProfiler::LogEndAndStart(const Event& evt) {
+  if (Enabled()) {
+    ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
+    events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
     points_.pop_back();
-    points_.emplace_back(CLOCK::now());
+    points_.emplace_back(Clock::now());
   }
+}
+
+const char* ThreadPoolProfiler::GetEventName(const Event& event) const {
+  const char* name = "UnknownEvent";
+  switch (event) {
+    case Distribution:
+      name = "Distribution";
+      break;
+    case Enqueue:
+      name = "Enqueue";
+      break;
+    case Run:
+      name = "Run";
+      break;
+    case Wait:
+      name = "Wait";
+      break;
+    default:
+      break;
+  }
+  return name;
 }
 
 // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
@@ -283,7 +315,7 @@ std::string ThreadPool::StopProfiling() const {
   if (underlying_threadpool_) {
     return underlying_threadpool_->StopProfiling();
   } else {
-    return "";
+    return {};
   }
 }
 

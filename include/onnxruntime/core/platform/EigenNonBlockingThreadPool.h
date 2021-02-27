@@ -130,28 +130,41 @@
 namespace onnxruntime {
 namespace concurrency {
 
-class Profiler {
- public:
-  Profiler() = default;
-  ~Profiler() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
-  using CLOCK = std::chrono::high_resolution_clock;
-  operator bool() const;
-  void Start();
-  std::string Stop();
-  void LogStart();
-  void LogEnd(std::string&& evt);
-  void LogEndAndStart(std::string&& evt);
-
- private:
-  bool enabled_ = false;
-  std::thread::id thread_id_;
-  std::list<std::string> events_;
-  std::list<onnxruntime::TimePoint> points_;
-};
-
 class ThreadPoolParallelSection;
 class ThreadPoolLoop;
+
+/* Usage:
+1. In executor, call Start() before profiling and Stop() to get profiled numbers;
+2. Inside thread pool, call LogStart() before interested section and LogEnd... after to log elapsed time;
+3. To extend, just add more events in enum Event before "All", and update GetEventName(...) accordingly.
+4. Note LogStart must pair with either LogEnd or LogEndAndStart, otherwise ORT_ENFORCE will fail.
+*/
+class ThreadPoolProfiler {
+ public:
+  enum Event {
+    Distribution = 0,
+    Enqueue,
+    Run,
+    Wait,
+    All
+  };
+  ThreadPoolProfiler();
+  ~ThreadPoolProfiler() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
+  using Clock = std::chrono::high_resolution_clock;
+  inline bool Enabled() const;
+  void Start();                       //start profiling
+  std::string Stop();                 //stop profiling and return collected numbers
+  void LogStart();                    //record the starting time point
+  void LogEnd(const Event&);          //calculate and save the time elpased from last start point
+  void LogEndAndStart(const Event&);  //same as LogEnd but add a starting point before return
+
+ private:
+  inline const char* GetEventName(const Event&) const;
+  std::thread::id main_thread_id_;
+  uint64_t events_[All];
+  std::list<onnxruntime::TimePoint> points_;
+};
 
 // Align to avoid false sharing with prior fields.  If required,
 // alignment or padding must be added subsequently to avoid false
@@ -583,7 +596,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     return 0;
   }
 
-  mutable Profiler profiler_;
+  mutable ThreadPoolProfiler profiler_;
 
  public:
 
@@ -848,14 +861,13 @@ void EndParallelSectionInternal(PerThread &pt,
     }
     ps.tasks.pop_back();
   }
-  profiler_.LogEndAndStart("Revoke");
 
   // Wait for workers to exit ParLoopWorker
   auto tasks_to_wait_for = tasks_started - tasks_revoked;
   while (ps.tasks_finished < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
   }
-  profiler_.LogEnd("WaitAll");
+  profiler_.LogEnd(ThreadPoolProfiler::Wait);
   // Clear status to allow the ThreadPoolParallelSection to be
   // re-used.
   ps.tasks_finished = 0;
@@ -918,9 +930,8 @@ void SummonWorkers(PerThread &pt,
     // This uses a best-effort assessment of which threads are
     // spinning.
     std::vector<unsigned> good_hints, alt_hints;
-    profiler_.LogStart();
     GetGoodWorkerHints(extra_needed, good_hints, alt_hints);
-    profiler_.LogEndAndStart("GetGoodWorkerHints");
+    profiler_.LogStart();
 
     // Create the additional tasks, and push them to workers.
     for (auto i = 0u; i < extra_needed; i++) {
@@ -946,15 +957,13 @@ void SummonWorkers(PerThread &pt,
       WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      profiler_.LogStart();
       t = q.PushBackWithTag(call_worker_fn, pt.tag, w_idx);
-      profiler_.LogEnd("Enqueue");
       if (!t) {
         ps.tasks.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
     }
-    profiler_.LogEnd("Distribute");
+    profiler_.LogEnd(ThreadPoolProfiler::Enqueue);
   }
 }
 
@@ -995,18 +1004,18 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
     }
   };
   SummonWorkers(*pt, ps, n, worker_fn);
-  profiler_.LogEndAndStart("ParallelSection Preproc");
+  profiler_.LogEnd(ThreadPoolProfiler::Distribution);
 
   // Run work in the main thread
   loop.fn(0);
-  profiler_.LogEndAndStart("ParallelSection Run");
+  profiler_.LogEndAndStart(ThreadPoolProfiler::Run);
 
   // Wait for workers to exit the loop
   ps.current_loop = 0;
   while (ps.workers_in_loop) {
     onnxruntime::concurrency::SpinPause();
   }
-  profiler_.LogEnd("ParallelSection Postproc");
+  profiler_.LogEnd(ThreadPoolProfiler::Wait);
 }
 
 // Run a single parallel loop _without_ a parallel section.  This is a
@@ -1024,18 +1033,18 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   // multi-loop RunInParallelSection, this single-loop worker can run
   // fn directly without needing to receive it via ps.current_loop.
   SummonWorkers(*pt, ps, n, fn);
-  profiler_.LogEndAndStart("Preproc");
+  profiler_.LogEndAndStart(ThreadPoolProfiler::Distribution);
 
   // Run work in the main thread
   fn(0);
-  profiler_.LogEndAndStart("Run");
+  profiler_.LogEndAndStart(ThreadPoolProfiler::Run);
 
   // Wait for workers to exit the parallel section and hence to have
   // completed the loop (i.e., ps.tasks_finished matches the number of
   // tasks that have been created less the number successfully
   // revoked).
   EndParallelSectionInternal(*pt, ps);
-  profiler_.LogEnd("Postproc");
+  profiler_.LogEnd(ThreadPoolProfiler::Wait);
 }
 
 void Cancel() override {
