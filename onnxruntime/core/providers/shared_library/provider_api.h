@@ -16,6 +16,7 @@
 #include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
@@ -81,6 +82,7 @@ struct NodeArg;
 struct NodeAttributes;
 struct OpKernelContext;
 struct OpKernelInfo;
+struct PrimitiveDataTypeBase;
 struct Tensor;
 
 class DataTypeImpl;
@@ -150,9 +152,10 @@ enum OperatorStatus : int {
 }  // namespace ONNX_NAMESPACE
 
 #include "core/framework/execution_provider.h"
-#include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel_shared.h"
+#include "core/framework/float16.h"
 #include "provider_interfaces.h"
+#include "core/framework/data_types_internal.h"
 
 namespace onnxruntime {
 
@@ -189,18 +192,6 @@ enum CUDAStreamType : int {
   kCudaStreamCopyIn,
   kCudaStreamCopyOut,
   kTotalCudaStreams,
-};
-
-class DataTypeImpl {
- public:
-  virtual ~DataTypeImpl() = default;
-
-  template <typename T>
-  static MLDataType GetType();
-  template <typename elemT>
-  static MLDataType GetTensorType();
-
-  static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
 };
 
 template <typename T>

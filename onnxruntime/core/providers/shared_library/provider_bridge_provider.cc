@@ -63,10 +63,6 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
   return g_host->DataTypeImpl_GetTensorType_float();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
-  return g_host->DataTypeImpl_AllFixedSizeTensorTypes();
-}
-
 TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
     : std::vector<int64_t>(dimension_count) {
   for (size_t i = 0; i < dimension_count; ++i) {

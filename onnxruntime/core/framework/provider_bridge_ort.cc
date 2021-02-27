@@ -171,9 +171,13 @@ struct ProviderHostImpl : ProviderHost {
     return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
   }
 
-  const std::vector<MLDataType>& DataTypeImpl_AllFixedSizeTensorTypes() override {
-    return DataTypeImpl::AllFixedSizeTensorTypes();
-  }
+  int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) override { return p->GetDataType(); }
+
+  const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
+  size_t DataTypeImpl__Size(const DataTypeImpl* p) override { return p->Size(); }
+  const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) override { return p->AsPrimitiveDataType(); }
 
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }

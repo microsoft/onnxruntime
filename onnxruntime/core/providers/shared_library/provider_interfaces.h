@@ -127,10 +127,19 @@ struct ProviderHost {
 
   virtual std::string GetEnvironmentVar(const std::string& var_name) = 0;
 
+  // PrimitiveDataTypeBase
+  virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;
+
+  // DataTypeImpl
   MLDataType (*DataTypeImpl_GetType_Tensor)();
   MLDataType (*DataTypeImpl_GetType_float)();
   MLDataType (*DataTypeImpl_GetTensorType_float)();
-  virtual const std::vector<MLDataType>& DataTypeImpl_AllFixedSizeTensorTypes() = 0;
+
+  virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
+  virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
+  virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
@@ -820,6 +829,31 @@ struct KernelRegistry {
   KernelRegistry() = delete;
   KernelRegistry(const KernelRegistry&) = delete;
   void operator=(const KernelRegistry&) = delete;
+};
+
+struct PrimitiveDataTypeBase {
+  int32_t GetDataType() const { return g_host->PrimitiveDataTypeBase__GetDataType(this); }
+
+  PROVIDER_DISALLOW_ALL(PrimitiveDataTypeBase)
+};
+
+class DataTypeImpl {
+ public:
+  size_t Size() const { return g_host->DataTypeImpl__Size(this); }
+
+  template <typename T>
+  static MLDataType GetType();
+  template <typename elemT>
+  static MLDataType GetTensorType();
+
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorTypes(); }
+  static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
+
+  const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
+
+  static const char* ToString(MLDataType type) { return g_host->DataTypeImpl__ToString(type); }
+
+  PROVIDER_DISALLOW_ALL(DataTypeImpl)
 };
 
 struct Function {
