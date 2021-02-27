@@ -67,19 +67,25 @@ void ComputeBroadcastBackwardAxes(
       auto B_dim = B_dims[j].dim_value();
 
       if (B_dim != 1) {
-        ORT_THROW("Gradient building error for node ", node_name, ": symbolic broadcasting requires the B_dimension to be 1. ",
-                  "A_dims:", ToString(A_dims), ", B_dims:", ToString(B_dims));
+        LOGS_DEFAULT(WARNING) << "Gradient building error for node " << node_name << ": symbolic broadcasting requires the B_dimension to be 1. " <<
+                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims);  
+        --i;
+        --j;            
+        continue;
       }
       if (B_axes) {
         B_axes->push_back(gsl::narrow_cast<int64_t>(k));
       }
     } else if (A_dims[i].has_dim_value() && B_dims[j].has_dim_param()) {
-      auto A_dim = A_dims[j].dim_value();
-      auto B_dim = B_dims[i].dim_param();
+      auto A_dim = A_dims[i].dim_value();
+      auto B_dim = B_dims[j].dim_param();
 
       if (A_dim != 1) {
-        ORT_THROW("Gradient building error for node ", node_name, ": symbolic broadcasting requires the A_dimension to be 1. ",
-                  "A_dims:", ToString(A_dims), ", B_dims:", ToString(B_dims));
+        LOGS_DEFAULT(WARNING) << "Gradient building error for node " << node_name << ": symbolic broadcasting requires the A_dimension to be 1. " <<
+                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims); 
+        --i;
+        --j;            
+        continue;
       }
       if (A_axes) {
         A_axes->push_back(gsl::narrow_cast<int64_t>(k));
