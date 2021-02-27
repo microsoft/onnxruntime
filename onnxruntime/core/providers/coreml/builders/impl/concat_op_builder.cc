@@ -71,7 +71,8 @@ bool ConcatOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   NodeAttrHelper helper(node);
   auto axis = static_cast<size_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
   if (rank != axis + 3) {
-    LOGS(logger, VERBOSE) << "Concat only support axis to be -3, actual axis, " << axis;
+    LOGS(logger, VERBOSE) << "Concat only support axis to be -3, actual axis: " << axis
+                          << ", actual rank: " << rank;
     return false;
   }
 
