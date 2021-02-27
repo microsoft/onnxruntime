@@ -327,6 +327,10 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
   uint8_t* buffer = buffer_holder.get();
   size_t element_size = operand_type.GetElementByteSize();
+
+  // If necessary, convert int8 tensor to uint8 tensor for per-tensor u8s8
+  // i^0x80 == i + 128
+  uint8_t bit_flip_val = is_per_tensor_u8s8 ? 0x80 : 0;
   for (uint32_t out = 0; out < out_t; out++) {
     for (uint32_t in = 0; in < in_t; in++) {
       for (uint32_t h = 0; h < h_t; h++) {
@@ -350,13 +354,7 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
           }
 
           for (size_t i = 0; i < element_size; i++) {
-            if (is_per_tensor_u8s8) {
-              // Convert int8 tensor to uint8 tensor for per-tensor u8s8
-              // i^0x80 == i + 128
-              buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i] ^ 0x80;
-            } else {
-              buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i];
-            }
+            buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i] ^ bit_flip_val;
           }
         }
       }
@@ -413,16 +411,13 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
   uint8_t* buffer = buffer_holder.get();
   size_t element_size = operand_type.GetElementByteSize();
+  // If necessary, convert int8 tensor to uint8 tensor for per-tensor u8s8
+  // i^0x80 == i + 128
+  uint8_t bit_flip_val = is_per_tensor_u8s8 ? 0x80 : 0;
   for (uint32_t x = 0; x < x_t; x++) {
     for (uint32_t y = 0; y < y_t; y++) {
       for (size_t i = 0; i < element_size; i++) {
-        if (is_per_tensor_u8s8) {
-          // Convert int8 tensor to uint8 tensor for per-tensor u8s8
-          // i^0x80 == i + 128
-          buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i] ^ 0x80;
-        } else {
-          buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i];
-        }
+        buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i] ^ bit_flip_val;
       }
     }
   }
@@ -577,7 +572,7 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
   // NNAPI does not support per-tensor u8s8
   // For this case we will need to convert the int8 weight tensor to uint8
   // And have same scale and 128 as zero point
-  // The coversion of the weight tensor itself will be done in the OpBuilder
+  // The conversion of the weight tensor itself will be done in the OpBuilder
   const auto& scale_tensor = *initializers.at(input_defs[4]->Name());
   int64_t scale_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
   if (scale_dim == 1) {
