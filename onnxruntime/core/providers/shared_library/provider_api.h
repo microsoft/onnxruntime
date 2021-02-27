@@ -150,6 +150,7 @@ enum OperatorStatus : int {
 }  // namespace ONNX_NAMESPACE
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel_shared.h"
 #include "provider_interfaces.h"
 
