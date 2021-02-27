@@ -56,7 +56,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
               })
           .AddValueParser(
               cuda::provider_option_names::kcudaExternalAlloc,
-              [&info, &alloc](const std::string& value_str) -> Status {
+              [&alloc](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
                 alloc  = reinterpret_cast<void*>(address);
@@ -64,7 +64,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
               })
           .AddValueParser(
               cuda::provider_option_names::kcudaExternalFree,
-              [&info, &free](const std::string& value_str) -> Status {
+              [&free](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
                 free  = reinterpret_cast<void*>(address);
