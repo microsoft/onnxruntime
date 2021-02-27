@@ -11,3 +11,5 @@ torchtext
 tensorboard==v2.0.0
 h5py
 wget
+# PyTorch Lightning (nightly) is used for CI tests only
+https://github.com/PyTorchLightning/pytorch-lightning/archive/master.zip
