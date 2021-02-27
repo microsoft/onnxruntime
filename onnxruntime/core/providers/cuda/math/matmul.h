@@ -23,7 +23,6 @@ struct SparseInfo {
 #ifdef USE_CUSPARSE
   onnxruntime::optional<cusparseLtHandle_t> handle_lt_;
 #endif
-  onnxruntime::optional<cusparseHandle_t> handle_;
   onnxruntime::optional<cusparseSpMatDescr_t> sparse_desc_;
 
   SparseInfo(const OpKernel::PrepackParam& p, const TensorShape& shape)
@@ -41,9 +40,6 @@ struct SparseInfo {
       cusparseLtDestroy(&*handle_lt_);
     }
 #endif
-    if (handle_.has_value()) {
-      cusparseDestroy(*handle_);
-    }
   }
 };
 

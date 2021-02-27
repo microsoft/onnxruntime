@@ -1981,7 +1981,7 @@ def main():
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja'),
-                use_cusparselt=args.use_cusparselt
+                use_cusparselt=args.use_cusparse_lt
             )
         if args.build_nuget:
             build_nuget_package(

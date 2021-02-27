@@ -126,7 +126,7 @@ struct DumpArray {
   }
 };
 
-#if 1
+#if 0
 #define DUMP_TYPE(T, ...) DumpType<T>()(__VA_ARGS__)
 #define DUMP_ARRAY(T, ...) DumpArray<T>()(__VA_ARGS__)
 #define DUMP_DISP(var, t, ...) utils::MLTypeCallDispatcher<__VA_ARGS__> var(t)
@@ -355,7 +355,7 @@ static Status ConvertToBlockedEll(const CudaKernel* kernel,
 
   ell_indicies_buffer = std::move(ell_indicies_buffer_local);
   ell_values_buffer = std::move(ell_values_buffer_local);
-  ell_cols = static_cast<int64_t>(max_cols);
+  ell_cols = nnz_blocks;
 
   return Status::OK();
 }
@@ -671,8 +671,7 @@ class CuSparseHelper {
     // if Ell format is specified but the hardware is not we then default
     // to one of the belows
     const auto& dev_props = kernel->GetDeviceProp();
-    //if (param.UseEllFormat() && dev_props.major >= 7) {
-    if (param.UseEllFormat()) {
+    if (param.UseEllFormat() && dev_props.major >= 7) {
       // Some tunables which we may adjust for both testing and depending on the matrix size.
       // Must be power of two
       const int64_t ell_block_size = param.ell_block_size;
@@ -699,17 +698,14 @@ class CuSparseHelper {
       sparse_guard.reset(&sparse_desc);
       sp_info->prepack_buffers_.push_back(std::move(ell_ind_buffer));
       sp_info->prepack_buffers_.push_back(std::move(ell_values_buffer));
+    } else if (param.UseEllFormat()) {
+      // XXX: Right now we just choose some format
+      // How do we log here?
+      sp_info->param_.sparse_flags = param.sparse_flags & static_cast<int>(~OrtSparseFlags::USE_ELL_FORMAT);
+      sp_info->param_.sparse_flags |= OrtSparseFlags::USE_CSR_FORMAT;
+    }
 
-    } else
-        //else if (param.UseEllFormat()) {
-        //  // XXX: Right now we just choose some format
-        //  // Hardware is not available, default to Csr format
-        //  sp_info->param_.sparse_flags = param.sparse_flags & static_cast<int>(~OrtSparseFlags::USE_ELL_FORMAT);
-        //  sp_info->param_.sparse_flags |= OrtSparseFlags::USE_CSR_FORMAT;
-        //}
-
-        if (param.UseCsrFormat() || param.UseCooFormat()) {
-
+    if (param.UseCsrFormat() || param.UseCooFormat()) {
       cusparseDnMatDescr_t dense_desc;
       CUSPARSE_RETURN_IF_ERROR(cusparseCreateDnMat(&dense_desc,
                                                    num_rows,  // Number of rows in B(T)
@@ -763,9 +759,6 @@ class CuSparseHelper {
       CUSPARSE_RETURN_IF_ERROR(cusparseSpMatGetSize(sparse_desc, &rows_tmp, &cols_tmp,
                                                     &nnz));
 
-      std::cout << "rows_tmp: " << rows_tmp << " cols_tmp: "
-                << cols_tmp << " nnz: " << nnz << std::endl;
-
       if (param.UseCsrFormat()) {
         auto csr_cols = kernel->GetPersistentBuffer<uint8_t>(nnz * sizeof(int));
         auto csr_values = kernel->GetPersistentBuffer<uint8_t>(nnz * element_size);
@@ -806,8 +799,6 @@ class CuSparseHelper {
 
     sp_info->sparse_desc_ = onnxruntime::make_optional<cusparseSpMatDescr_t>(sparse_desc);
     sparse_guard.release();
-    sp_info->handle_ = onnxruntime::make_optional<cusparseHandle_t>(handle);
-    handle_guard.release();
     sparse_info = std::move(sp_info);
 
     is_packed = true;
@@ -882,7 +873,9 @@ class CuSparseHelper {
     constexpr float beta = 0.f;
     size_t buffer_size = 0;
 
-    CUSPARSE_RETURN_IF_ERROR(cusparseSpMM_bufferSize(*sparse_info.handle_,
+    cusparseHandle_t handle = kernel->CusparseHandle();
+
+    CUSPARSE_RETURN_IF_ERROR(cusparseSpMM_bufferSize(handle,
                                                      op_B,
                                                      op_A,
                                                      &alpha,
@@ -895,7 +888,7 @@ class CuSparseHelper {
                                                      &buffer_size));
 
     auto work_buffer = kernel->GetScratchBuffer<uint8_t>(buffer_size);
-    CUSPARSE_RETURN_IF_ERROR(cusparseSpMM(*sparse_info.handle_,
+    CUSPARSE_RETURN_IF_ERROR(cusparseSpMM(handle,
                                           op_B,
                                           op_A,
                                           &alpha,
@@ -926,7 +919,7 @@ Status MatMul<T>::PrePack(const Tensor& tensor, const PrepackParam& param, bool&
 #endif
     if (param.UseCsrFormat() || param.UseCooFormat() || param.UseEllFormat()) {
       return CuSparseHelper::PrePack(this, tensor, param, trans_B_, utils::ToTensorProtoElementType<T>(), ToCudaTypeEnum<T>::type,
-                              sparse_info_, is_packed);
+                                     sparse_info_, is_packed);
     }
   }
   return Status::OK();
@@ -1006,7 +999,6 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         ldc,
         device_prop));
 
-    CUDA_CALL(cudaStreamSynchronize(Stream()));
     DUMP_ARRAY(T, std::cout, "Offsets 1 output", Y->DataRaw(), Y->Shape().Size(), helper.K());
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
