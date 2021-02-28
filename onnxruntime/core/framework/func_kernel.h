@@ -18,33 +18,33 @@ class FunctionKernel : public OpKernel {
   explicit FunctionKernel(const OpKernelInfo& info) : OpKernel(info) {
     num_inputs_ = info.node().InputDefs().size();
     num_outputs_ = info.node().OutputDefs().size();
-    CreateFunctionStateFunc create_func;
-    auto status = info.GetFusedFuncs(&func_, &create_func, &release_func_);
+    auto status = info.GetFusedFuncs(compute_info_);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    if (create_func) {
+    if (compute_info_->create_state_func) {
       //TODO: we are only provide host allocate method in compute context.
       //Do we need to hold the ref-counting here?
       host_allocator_ = info.GetAllocator(0, OrtMemType::OrtMemTypeDefault);
-      ComputeContext context = {allocate_helper_func, release_helper_func, host_allocator_.get(), info.node().Name().c_str()};
-      ORT_ENFORCE(create_func(&context, &func_state_) == 0);
+      ComputeContext context = {allocate_helper_func, release_helper_func, host_allocator_.get(),
+                                info.node().Name().c_str()};
+      ORT_ENFORCE(compute_info_->create_state_func(&context, &func_state_) == 0);
     }
   }
 
   ~FunctionKernel() override {
-    if (release_func_ && func_state_) {
-      release_func_(func_state_);
+    if (compute_info_->release_state_func && func_state_) {
+      compute_info_->release_state_func(func_state_);
     }
   }
 
   virtual Status Compute(OpKernelContext* context) const override {
     auto* context_internal = static_cast<OpKernelContextInternal*>(context);
-    return func_(func_state_, OrtGetApiBase()->GetApi(ORT_API_VERSION), reinterpret_cast<OrtKernelContext*>(context_internal));
+    return compute_info_->compute_func(func_state_, OrtGetApiBase()->GetApi(ORT_API_VERSION),
+                                       reinterpret_cast<OrtKernelContext*>(context_internal));
   }
 
  private:
-  ComputeFunc func_;
-  DestroyFunctionStateFunc release_func_;
-  FunctionState func_state_;
+  NodeComputeInfo* compute_info_{nullptr};
+  FunctionState func_state_{nullptr};
   size_t num_inputs_;
   size_t num_outputs_;
   AllocatorPtr host_allocator_;

@@ -57,6 +57,20 @@ namespace Dml
 
     void GetDmlAdjustedAxes(/*inout*/ gsl::span<const int32_t> axes, uint32_t onnxDimCount, uint32_t dmlDimCount, std::vector<uint32_t>& dmlAxes);
 
+    struct NameAndIndex
+    {
+        const char* name; // Null terminated.
+        uint32_t index;
+    };
+
+    template<typename T>
+    T MapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList)
+    {
+        return static_cast<T>(MapStringToIndex(mode, nameAndIndexList));
+    }
+
+    uint32_t MapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList);
+
     DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode);
 
     DML_DEPTH_SPACE_ORDER MapStringToDepthSpaceMode(std::string_view mode);

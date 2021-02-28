@@ -12,6 +12,7 @@ import random
 import numpy
 import time
 import re
+from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config
 from benchmark_helper import Precision
@@ -30,7 +31,7 @@ class GPT2ModelNoPastState(GPT2Model):
         super().__init__(config)
 
     def forward(self, input_ids):
-        return super().forward(input_ids, use_cache=False)
+        return super().forward(input_ids, use_cache=False, return_dict=False)
 
 
 class MyGPT2Model(GPT2Model):
@@ -39,8 +40,26 @@ class MyGPT2Model(GPT2Model):
     def __init__(self, config):
         super().__init__(config)
 
+    @staticmethod
+    def post_process(result, num_layer):
+        if isinstance(result[1][0], tuple) or isinstance(result[1][0], list):
+            assert len(result[1]) == num_layer and len(result[1][0]) == 2 #and len(result[1][0][0].shape) == 4 and result[1][0][0].shape == result[1][0][1].shape
+            present = []
+            for i in range(num_layer):
+                # Since transformers v4.*, past key and values are separated outputs.
+                # Here we concate them into one tensor to be compatible with Attention operator.
+                present.append(torch.cat((result[1][i][0].unsqueeze(0), result[1][i][1].unsqueeze(0)), dim=0))
+            return (result[0], tuple(present))
+
+        return result
+
     def forward(self, input_ids, position_ids, attention_mask, *past):
-        return super().forward(input_ids, position_ids=position_ids, attention_mask=attention_mask, past=past)
+        result = super().forward(input_ids,
+                                 position_ids=position_ids,
+                                 attention_mask=attention_mask,
+                                 past_key_values=past,
+                                 return_dict=False)
+        return MyGPT2Model.post_process(result, self.config.n_layer)
 
 
 class MyGPT2LMHeadModel(GPT2LMHeadModel):
@@ -50,7 +69,13 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
         super().__init__(config)
 
     def forward(self, input_ids, position_ids, attention_mask, *past):
-        return super().forward(input_ids, position_ids=position_ids, attention_mask=attention_mask, past=past)
+        result = super().forward(input_ids,
+                                 position_ids=position_ids,
+                                 attention_mask=attention_mask,
+                                 past_key_values=past,
+                                 return_dict=False)
+
+        return MyGPT2Model.post_process(result, self.config.n_layer)
 
 
 class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
@@ -62,7 +87,7 @@ class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
         super().__init__(config)
 
     def forward(self, input_ids, *past):
-        return super().forward(input_ids, past=past)
+        return super().forward(input_ids, past_key_values=past)
 
 
 # Maps model class name to a tuple of model class, name of first output and use padding or not
@@ -209,6 +234,7 @@ class Gpt2Helper:
 
         is_all_close = is_close
         num_layers = len(ort_outputs) - 1
+
         for layer in range(num_layers):
             is_close = numpy.allclose(ort_outputs[1 + layer],
                                       torch_outputs[1][layer].cpu().numpy(),
@@ -281,9 +307,13 @@ class Gpt2Helper:
             input_names.append('attention_mask')
         input_names.extend(past_names)
 
+        assert len(outputs) == 2 and len(outputs[1]) == num_layer
+
         logger.info(
             f"Shapes: input_ids={dummy_inputs.input_ids.shape} past={dummy_inputs.past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
         )
+    
+        Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         torch.onnx.export(model,
                           args=tuple(input_list),
@@ -297,6 +327,7 @@ class Gpt2Helper:
                           use_external_data_format=use_external_data_format,
                           verbose=verbose)
 
+    @staticmethod
     def optimize_onnx(onnx_model_path,
                       optimized_model_path,
                       is_float16,
@@ -322,7 +353,7 @@ class Gpt2Helper:
     def pytorch_inference(model, inputs: Gpt2Inputs, total_runs: int = 0):
         """ Run inference of PyTorch model, and returns average latency in ms when total_runs > 0 besides outputs.
         """
-        logger.debug(f"start pytorch_inference")
+        logger.debug("start pytorch_inference")
 
         # Convert it to fp32 as the PyTroch model cannot deal with half input.
         input_list = inputs.to_fp32().to_list()
@@ -397,8 +428,14 @@ class Gpt2Helper:
         if past is not None:
             for i, past_i in enumerate(past):
                 assert past_i.is_contiguous()
-                io_binding.bind_input(f'past_{i}', past_i.device.type, 0, float_type, list(past_i.size()),
-                                      past_i.data_ptr())
+
+                data_ptr = past_i.data_ptr()
+                if data_ptr == 0:
+                    # When past_sequence_length is 0, its data_ptr will be zero. IO Binding asserts that data_ptr shall not be zero.
+                    # Here we workaround and pass data pointer of input_ids. Actual data is not used for past so it does not matter.
+                    data_ptr = input_ids.data_ptr()
+
+                io_binding.bind_input(f'past_{i}', past_i.device.type, 0, float_type, list(past_i.size()), data_ptr)
 
         if attention_mask is not None:
             assert attention_mask.is_contiguous()
@@ -440,7 +477,7 @@ class Gpt2Helper:
     def onnxruntime_inference_with_binded_io(ort_session,
                                              inputs: Gpt2Inputs,
                                              output_buffers: Dict[str, torch.Tensor],
-                                             output_shapes : Dict[str, List[int]],
+                                             output_shapes: Dict[str, List[int]],
                                              total_runs: int = 0,
                                              return_numpy: bool = True,
                                              include_copy_output_latency: bool = False):
@@ -563,8 +600,10 @@ class Gpt2Helper:
                        new_folder=False):
         """ Build a  path name for given model based on given attributes.
         """
-        model_name = model_name_or_path if re.match('^[\w_-]+$',
-                                                    model_name_or_path) else os.path.dirname(model_name_or_path)
+        model_name = model_name_or_path
+        if not re.match(r'^[\w_-]+$', model_name_or_path):  # It is not a name, shall be a path
+            assert os.path.isdir(model_name_or_path)
+            model_name = Path(model_name_or_path).parts[-1]
 
         if model_class != 'GPT2LMHeadModel':
             model_name += "_" + model_class
@@ -573,9 +612,13 @@ class Gpt2Helper:
             model_name += "_past"
 
         if new_folder:
-            output_dir = os.path.join(output_dir, model_name)
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
+            # store each model to its own directory (for external data format).
+            return {
+                "raw": os.path.join(os.path.join(output_dir, model_name), model_name + ".onnx"),
+                "fp32": os.path.join(os.path.join(output_dir, model_name + "_fp32"), model_name + "_fp32.onnx"),
+                "fp16": os.path.join(os.path.join(output_dir, model_name + "_fp16"), model_name + "_fp16.onnx"),
+                "int8": os.path.join(os.path.join(output_dir, model_name + "_int8"), model_name + "_int8.onnx")
+            }
 
         return {
             "raw": os.path.join(output_dir, model_name + ".onnx"),

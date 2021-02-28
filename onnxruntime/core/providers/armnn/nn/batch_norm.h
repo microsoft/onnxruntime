@@ -28,6 +28,7 @@ class BatchNorm final : public OpKernel {
 
     provider_ = (const_cast<ArmNNExecutionProvider*>(
         dynamic_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
+    run = BatchNorm<T>::initRuntime();
   }
 
   ~BatchNorm() {

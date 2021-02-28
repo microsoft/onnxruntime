@@ -1,5 +1,3 @@
-
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -73,11 +71,11 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
   }
 
   test.AddReferenceOutputs(reference_model);
+  test.SetOutputRelErr("Y", 1e-4f);
   test.Run();
 }
 
 TEST(MatMulIntegerToFloat, Int8_test) {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
@@ -91,11 +89,9 @@ TEST(MatMulIntegerToFloat, Int8_test) {
                                    B_dims,
                                    "testdata/matmul_integer_to_float_int8.onnx",
                                    true /*is_matrix_b_constant*/);
-#endif
 }
 
 TEST(MatMulIntegerToFloat, Int8_bias_test) {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
@@ -113,7 +109,6 @@ TEST(MatMulIntegerToFloat, Int8_bias_test) {
                                    true /*is_matrix_b_constant*/,
                                    false, /*has_zp*/
                                    true /*has_bias*/);
-#endif
 }
 
 TEST(MatMulIntegerToFloat, UInt8_test) {

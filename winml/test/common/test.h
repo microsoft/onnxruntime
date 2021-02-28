@@ -9,6 +9,9 @@ using TeardownClass = VoidTest;
 using SetupTest = VoidTest;
 using TeardownTest = VoidTest;
 
+#pragma warning(push)
+#pragma warning(disable:4505)  // unreferenced local function has been removed
+
 constexpr bool alwaysTrue() {
     return true;
 }
@@ -27,3 +30,5 @@ constexpr bool alwaysFalse() {
 static void SkipTest() {
   WINML_SKIP_TEST("");
 }
+
+#pragma warning(pop)

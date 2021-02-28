@@ -31,12 +31,10 @@ typedef std::shared_ptr<pyxir::graph::XLayer> XLayerHolder;
 
 VitisAIExecutionProvider::VitisAIExecutionProvider(const VitisAIExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, backend_type_(info.backend_type), device_id_(info.device_id) {
-  DeviceAllocatorRegistrationInfo default_memory_info{
-      OrtMemTypeDefault,
+  AllocatorCreationInfo default_memory_info{
       [](int) {
         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(VITISAI, OrtAllocatorType::OrtDeviceAllocator));
-      },
-      std::numeric_limits<size_t>::max()};
+      }};
 
   InsertAllocator(CreateAllocator(default_memory_info));
 }

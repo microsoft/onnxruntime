@@ -4,6 +4,7 @@
 #pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #elif defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4267)

@@ -9,13 +9,18 @@
 #include <iterator>
 #include "gtest/gtest.h"
 #include <core/platform/path_lib.h>
-#include "test/onnx/TestCase.h"
-#include "test/onnx/runner.h"
-#include "test/compare_ortvalue.h"
 #include "default_providers.h"
+
+// test infrastructure
+#include "test/onnx/TestCase.h"
+#include "test/compare_ortvalue.h"
+#include "test/onnx/heap_buffer.h"
 #include "test/onnx/onnx_model_info.h"
+#include "test/onnx/callback.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
+
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace test {
@@ -71,6 +76,11 @@ TEST_P(ModelTest, Run) {
 #endif
   // TODO: filter model based on opset
   std::set<BrokenTest> broken_tests = {
+      {"slice_neg_steps", "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
+      {"cast_BFLOAT16_to_FLOAT", "Unexpected input data type"},
+      {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
+      {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
+      {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
       {"mnist", "Input data isn't in valid range"},
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
@@ -116,30 +126,48 @@ TEST_P(ModelTest, Run) {
       {"momentum", "not a registered function/op", {}},                 // Op not registered.
       {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_3d", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_4d_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_4d", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_3d_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_none_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_3d", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_3d_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_none_weights_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_sum_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_sum", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_none_weights", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_none", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"onnx170"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
-  if (provider_name == "ngraph") {
-    broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-    broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip", "not implemented yet for opset 11"});
-    broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
-    broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
-    broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
-    broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
-    broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
-    broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
+  if (provider_name == "nuphar") {
+    // https://msdata.visualstudio.com/Vienna/_workitems/edit/1000703
+    broken_tests.insert({"fp16_test_tiny_yolov2", "Computed value is off by a bit more than tol."});
+    broken_tests.insert({"keras2coreml_Repeat_ImageNet", "this test fails with Nuphar EP."});
+    broken_tests.insert({"fp16_coreml_FNS-Candy", "this test fails with Nuphar EP."});
   }
 
   if (provider_name == "nnapi") {
@@ -425,6 +453,17 @@ TEST_P(ModelTest, Run) {
   broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_1", "This model uses contrib ops."});
   broken_tests.insert({"cdist_float64_sqeuclidean_1000_2000_500", "This model uses contrib ops."});
   broken_tests.insert({"cdist_float64_sqeuclidean_1_1_1", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Average_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"bidaf", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_test_tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_coreml_FNS-Candy", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Repeat_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_BiDirectional_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_coreml_LinearRegression_NYCTaxi", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Average_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_GRU_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_SimpleRNN_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Dot_imageNet", "This model uses contrib ops."});
 #endif
 
   std::basic_string<ORTCHAR_T> model_dir;
@@ -447,20 +486,26 @@ TEST_P(ModelTest, Run) {
   if (provider_name == "cpu" && !is_single_node)
     execution_modes.push_back(ExecutionMode::ORT_PARALLEL);
 
+#ifndef _OPENMP
   std::vector<bool> use_single_thread{false};
   // Test the model with intra op threadpool disabled
-  if (provider_name == "cpu" && !is_single_node)
+  if (provider_name == "cpu" && is_single_node)
     use_single_thread.push_back(true);
+#endif
 
   std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToMBString(test_case_name), std::move(model_info),
                                                     per_sample_tolerance, relative_per_sample_tolerance);
+#ifndef _OPENMP
   for (bool is_single_thread : use_single_thread) {
+#endif
     for (ExecutionMode execution_mode : execution_modes) {
       SessionOptions so;
+#ifndef _OPENMP
       if (!is_single_thread)
         so.use_per_session_threads = false;
       else
         so.intra_op_param.thread_pool_size = 1;  // Disable intra op thread pool
+#endif
       so.execution_mode = execution_mode;
       so.session_logid = ToMBString(test_case_name);
       so.session_log_severity_level = (int)logging::Severity::kERROR;
@@ -469,8 +514,6 @@ TEST_P(ModelTest, Run) {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "dnnl") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultDnnlExecutionProvider()));
-      } else if (provider_name == "ngraph") {
-        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNGraphExecutionProvider()));
       } else if (provider_name == "nuphar") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
@@ -485,8 +528,7 @@ TEST_P(ModelTest, Run) {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRknpuExecutionProvider()));
       } else if (provider_name == "acl") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultAclExecutionProvider()));
-      }
-      if (provider_name == "armnn") {
+      } else if (provider_name == "armnn") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultArmNNExecutionProvider()));
       }
 
@@ -498,7 +540,7 @@ TEST_P(ModelTest, Run) {
       const size_t data_count = l->GetDataCount();
       for (size_t task_id = 0; task_id != data_count; ++task_id) {
         onnxruntime::test::HeapBuffer holder;
-        std::unordered_map<std::string, OrtValue*> feeds;
+        std::unordered_map<std::string, Ort::Value> feeds;
         l->LoadTestData(task_id, holder, feeds, true);
 
         std::pair<common::Status, const OutputDefList*> output_meta_data = session_object.GetModelOutputs();
@@ -514,20 +556,20 @@ TEST_P(ModelTest, Run) {
         {
           std::unordered_map<std::string, OrtValue> input;
           for (auto& p : feeds) {
-            input[p.first] = *p.second;
-            delete p.second;
+            const OrtValue* v = p.second;
+            input.emplace(p.first, *v);
           }
           ASSERT_STATUS_OK(session_object.Run(input, output_names, &output_values));
         }
 
         bool post_procesing = false;
         Status status;
-        ASSERT_STATUS_OK(l->GetPerSampleTolerance(&per_sample_tolerance));
-        ASSERT_STATUS_OK(l->GetRelativePerSampleTolerance(&relative_per_sample_tolerance));
-        ASSERT_STATUS_OK(l->GetPostProcessing(&post_procesing));
+        l->GetPerSampleTolerance(&per_sample_tolerance);
+        l->GetRelativePerSampleTolerance(&relative_per_sample_tolerance);
+        l->GetPostProcessing(&post_procesing);
 
         // TODO: if there are no output value files, just skip the validation
-        std::unordered_map<std::string, OrtValue*> expected_output_values;
+        std::unordered_map<std::string, Ort::Value> expected_output_values;
         l->LoadTestData(task_id, holder, expected_output_values, false);
 
         std::unordered_map<std::string, OrtValue*> name_fetch_output_map;
@@ -543,7 +585,7 @@ TEST_P(ModelTest, Run) {
         }
 
         for (auto& output : expected_output_values) {
-          OrtValue* expected_output_value = output.second;
+          const OrtValue* expected_output_value = output.second;
           const std::string& output_name = output.first;
           auto iter = name_fetch_output_map.find(output_name);
           ASSERT_NE(iter, name_fetch_output_map.end());
@@ -566,12 +608,11 @@ TEST_P(ModelTest, Run) {
             break;
           }
         }
-        for (auto& kvp : expected_output_values) {
-          delete kvp.second;
-        }
       }
     }
+#ifndef _OPENMP
   }
+#endif
 }
 
 // TODO: all providers
@@ -593,13 +634,11 @@ TEST_P(ModelTest, Run) {
 #ifdef USE_DNNL
   provider_names.push_back(ORT_TSTR("dnnl"));
 #endif
-#ifdef USE_NGRAPH
-  provider_names.push_back(ORT_TSTR("ngraph"));
-#endif
 #ifdef USE_NUPHAR
   provider_names.push_back(ORT_TSTR("nuphar"));
 #endif
-#ifdef USE_NNAPI
+// For any non-Android system, NNAPI will only be used for ort model converter
+#if defined(USE_NNAPI) && defined(__ANDROID__)
   provider_names.push_back(ORT_TSTR("nnapi"));
 #endif
 #ifdef USE_RKNPU
@@ -615,134 +654,145 @@ TEST_P(ModelTest, Run) {
   // Permanently exclude following tests because ORT support only opset starting from 7,
   // Please make no more changes to the list
   static const ORTCHAR_T* immutable_broken_tests[] = {
-            ORT_TSTR("AvgPool1d"),
-            ORT_TSTR("AvgPool1d_stride"),
-            ORT_TSTR("AvgPool2d"),
-            ORT_TSTR("AvgPool2d_stride"),
-            ORT_TSTR("AvgPool3d"),
-            ORT_TSTR("AvgPool3d_stride"),
-            ORT_TSTR("AvgPool3d_stride1_pad0_gpu_input"),
-            ORT_TSTR("BatchNorm1d_3d_input_eval"),
-            ORT_TSTR("BatchNorm2d_eval"),
-            ORT_TSTR("BatchNorm2d_momentum_eval"),
-            ORT_TSTR("BatchNorm3d_eval"),
-            ORT_TSTR("BatchNorm3d_momentum_eval"),
-            ORT_TSTR("GLU"),
-            ORT_TSTR("GLU_dim"),
-            ORT_TSTR("Linear"),
-            ORT_TSTR("PReLU_1d"),
-            ORT_TSTR("PReLU_1d_multiparam"),
-            ORT_TSTR("PReLU_2d"),
-            ORT_TSTR("PReLU_2d_multiparam"),
-            ORT_TSTR("PReLU_3d"),
-            ORT_TSTR("PReLU_3d_multiparam"),
-            ORT_TSTR("PoissonNLLLLoss_no_reduce"),
-            ORT_TSTR("Softsign"),
-            ORT_TSTR("operator_add_broadcast"),
-            ORT_TSTR("operator_add_size1_broadcast"),
-            ORT_TSTR("operator_add_size1_right_broadcast"),
-            ORT_TSTR("operator_add_size1_singleton_broadcast"),
-            ORT_TSTR("operator_addconstant"),
-            ORT_TSTR("operator_addmm"),
-            ORT_TSTR("operator_basic"),
-            ORT_TSTR("operator_mm"),
-            ORT_TSTR("operator_non_float_params"),
-            ORT_TSTR("operator_params"),
-            ORT_TSTR("operator_pow"),
-        };
+      ORT_TSTR("AvgPool1d"),
+      ORT_TSTR("AvgPool1d_stride"),
+      ORT_TSTR("AvgPool2d"),
+      ORT_TSTR("AvgPool2d_stride"),
+      ORT_TSTR("AvgPool3d"),
+      ORT_TSTR("AvgPool3d_stride"),
+      ORT_TSTR("AvgPool3d_stride1_pad0_gpu_input"),
+      ORT_TSTR("BatchNorm1d_3d_input_eval"),
+      ORT_TSTR("BatchNorm2d_eval"),
+      ORT_TSTR("BatchNorm2d_momentum_eval"),
+      ORT_TSTR("BatchNorm3d_eval"),
+      ORT_TSTR("BatchNorm3d_momentum_eval"),
+      ORT_TSTR("GLU"),
+      ORT_TSTR("GLU_dim"),
+      ORT_TSTR("Linear"),
+      ORT_TSTR("PReLU_1d"),
+      ORT_TSTR("PReLU_1d_multiparam"),
+      ORT_TSTR("PReLU_2d"),
+      ORT_TSTR("PReLU_2d_multiparam"),
+      ORT_TSTR("PReLU_3d"),
+      ORT_TSTR("PReLU_3d_multiparam"),
+      ORT_TSTR("PoissonNLLLLoss_no_reduce"),
+      ORT_TSTR("Softsign"),
+      ORT_TSTR("operator_add_broadcast"),
+      ORT_TSTR("operator_add_size1_broadcast"),
+      ORT_TSTR("operator_add_size1_right_broadcast"),
+      ORT_TSTR("operator_add_size1_singleton_broadcast"),
+      ORT_TSTR("operator_addconstant"),
+      ORT_TSTR("operator_addmm"),
+      ORT_TSTR("operator_basic"),
+      ORT_TSTR("operator_mm"),
+      ORT_TSTR("operator_non_float_params"),
+      ORT_TSTR("operator_params"),
+      ORT_TSTR("operator_pow"),
+  };
 
-    static const ORTCHAR_T* cuda_flaky_tests[] = {
-        ORT_TSTR("fp16_inception_v1"),
-        ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2"),ORT_TSTR("candy"),
-        ORT_TSTR("tinyyolov3"),
-        ORT_TSTR("mlperf_ssd_mobilenet_300"),
-        ORT_TSTR("mlperf_ssd_resnet34_1200"),
-        ORT_TSTR("tf_inception_v1"),
-        ORT_TSTR("faster_rcnn"),
-        ORT_TSTR("split_zero_size_splits"),
-        ORT_TSTR("convtranspose_3d")};
-    static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
-                                                         ORT_TSTR("tinyyolov3"),
-                                                         ORT_TSTR("faster_rcnn"),
-                                                         ORT_TSTR("mask_rcnn"),
-                                                         ORT_TSTR("coreml_FNS-Candy_ImageNet"),
-                                                         ORT_TSTR("tf_mobilenet_v2_1.0_224"),
-                                                         ORT_TSTR("tf_mobilenet_v2_1.4_224"),
-                                                         ORT_TSTR("operator_permute2"),
-                                                         ORT_TSTR("operator_repeat"),
-                                                         ORT_TSTR("operator_repeat_dim_overflow"),
-                                                         ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                         ORT_TSTR("candy"),
-                                                         ORT_TSTR("cntk_simple_seg"),
-                                                         ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight"),
-                                                         ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded"),
-                                                         ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
-                                                         ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded"),
-                                                         ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight"),
-                                                         ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded"),
-                                                         ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob"),
-                                                         ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob_expanded"),
-                                                         ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
-                                                         ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded"),
-                                                         ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob"),
-                                                         ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded")};
-    static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                    ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"),
-                                                    ORT_TSTR("faster_rcnn"), ORT_TSTR("tf_pnasnet_large"),
-                                                    ORT_TSTR("zfnet512"),ORT_TSTR("keras2coreml_Dense_ImageNet")        };
-    static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("densenet121"), ORT_TSTR("resnet18v2"),
-                                                     ORT_TSTR("resnet34v2"), ORT_TSTR("resnet50v2"),
-                                                     ORT_TSTR("resnet101v2"),
-                                                     ORT_TSTR("resnet101v2"), ORT_TSTR("vgg19"),
-                                                     ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"),
-                                                     ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"),
-                                                     ORT_TSTR("tf_mobilenet_v1_1.0_224"),
-                                                     ORT_TSTR("tf_mobilenet_v2_1.0_224"),
-                                                     ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"),
-                                                     ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"),
-                                                     ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
-                                                     ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"),
-                                                     ORT_TSTR("batchnorm_example_training_mode"),
-                                                     ORT_TSTR("batchnorm_epsilon_training_mode"),
-                                                     ORT_TSTR("mobilenetv2-1.0"),
-                                                     ORT_TSTR("candy"),
-                                                     ORT_TSTR("range_float_type_positive_delta_expanded"),
-                                                     ORT_TSTR("range_int32_type_negative_delta_expanded"),
-                                                     ORT_TSTR("averagepool_2d_ceil"),
-                                                     ORT_TSTR("maxpool_2d_ceil"),
-                                                     ORT_TSTR("maxpool_2d_dilations"),
-                                                     ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                     ORT_TSTR("convtranspose_1d"),
-                                                     ORT_TSTR("convtranspose_3d"),
-                                                     ORT_TSTR("maxpool_2d_uint8")};
-    static const ORTCHAR_T* tensorrt_disabled_tests[] = {ORT_TSTR("udnie"), ORT_TSTR("rain_princess"),
-                                                     ORT_TSTR("pointilism"), ORT_TSTR("mosaic"),
-                                                     ORT_TSTR("LSTM_Seq_lens_unpacked"),
-                                                     ORT_TSTR("cgan"), ORT_TSTR("candy"),
-                                                     ORT_TSTR("tinyyolov3"), ORT_TSTR("yolov3"),
-                                                     ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"),
-                                                     ORT_TSTR("mask_rcnn"),
-                                                     ORT_TSTR("faster_rcnn"),
-                                                    ORT_TSTR("fp16_shufflenet"),
-                                                    ORT_TSTR("fp16_inception_v1"),
-                                                    ORT_TSTR("fp16_tiny_yolov2"),
-                                                    ORT_TSTR("tf_inception_v3"),
-                                                    ORT_TSTR("tf_mobilenet_v1_1.0_224"),
-                                                    ORT_TSTR("tf_mobilenet_v2_1.0_224"),
-                                                    ORT_TSTR("tf_mobilenet_v2_1.4_224"),
-                                                    ORT_TSTR("tf_resnet_v1_101"),
-                                                    ORT_TSTR("tf_resnet_v1_152"),
-                                                    ORT_TSTR("tf_resnet_v1_50"),
-                                                    ORT_TSTR("tf_resnet_v2_101"),
-                                                    ORT_TSTR("tf_resnet_v2_152"),
-                                                    ORT_TSTR("tf_resnet_v2_50"),
-                                                    ORT_TSTR("convtranspose_1d"),
-                                                    ORT_TSTR("convtranspose_3d"),
-                                                    ORT_TSTR("conv_with_strides_and_asymmetric_padding"),
-                                                    ORT_TSTR("conv_with_strides_padding"),
-                                                    ORT_TSTR("size") //INVALID_ARGUMENT: Cannot find binding of given name: x
-    };
-    for (const ORTCHAR_T* provider_name : provider_names) {
+  static const ORTCHAR_T* cuda_flaky_tests[] = {
+      ORT_TSTR("fp16_inception_v1"),
+      ORT_TSTR("fp16_shufflenet"),
+      ORT_TSTR("fp16_tiny_yolov2"),
+      ORT_TSTR("candy"),
+      ORT_TSTR("tinyyolov3"),
+      ORT_TSTR("mlperf_ssd_mobilenet_300"),
+      ORT_TSTR("mlperf_ssd_resnet34_1200"),
+      ORT_TSTR("tf_inception_v1"),
+      ORT_TSTR("faster_rcnn"),
+      ORT_TSTR("split_zero_size_splits"),
+      ORT_TSTR("convtranspose_3d"),
+      ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
+      ORT_TSTR("fp16_coreml_FNS-Candy"),
+      ORT_TSTR("fp16_test_tiny_yolov2"),
+      ORT_TSTR("fp16_test_shufflenet")};
+  static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+                                                       ORT_TSTR("bertsquad"),
+                                                       ORT_TSTR("yolov3"),
+                                                       ORT_TSTR("LSTM_Seq_lens_unpacked"),
+                                                       ORT_TSTR("tinyyolov3"),
+                                                       ORT_TSTR("faster_rcnn"),
+                                                       ORT_TSTR("mask_rcnn"),
+                                                       ORT_TSTR("coreml_FNS-Candy_ImageNet"),
+                                                       ORT_TSTR("tf_mobilenet_v2_1.0_224"),
+                                                       ORT_TSTR("tf_mobilenet_v2_1.4_224"),
+                                                       ORT_TSTR("operator_permute2"),
+                                                       ORT_TSTR("operator_repeat"),
+                                                       ORT_TSTR("operator_repeat_dim_overflow"),
+                                                       ORT_TSTR("mlperf_ssd_resnet34_1200"),
+                                                       ORT_TSTR("candy"),
+                                                       ORT_TSTR("cntk_simple_seg"),
+                                                       ORT_TSTR("GPT2_LM_HEAD"),
+                                                       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight"),
+                                                       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded"),
+                                                       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
+                                                       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded"),
+                                                       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight"),
+                                                       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded"),
+                                                       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob"),
+                                                       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob_expanded"),
+                                                       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
+                                                       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded"),
+                                                       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob"),
+                                                       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded")};
+  static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
+                                                  ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"),
+                                                  ORT_TSTR("faster_rcnn"), ORT_TSTR("tf_pnasnet_large"),
+                                                  ORT_TSTR("zfnet512"), ORT_TSTR("keras2coreml_Dense_ImageNet")};
+  static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("densenet121"), ORT_TSTR("resnet18v2"),
+                                                   ORT_TSTR("resnet34v2"), ORT_TSTR("resnet50v2"),
+                                                   ORT_TSTR("resnet101v2"),
+                                                   ORT_TSTR("resnet101v2"), ORT_TSTR("vgg19"),
+                                                   ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"),
+                                                   ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"),
+                                                   ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+                                                   ORT_TSTR("tf_mobilenet_v2_1.0_224"),
+                                                   ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"),
+                                                   ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"),
+                                                   ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
+                                                   ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"),
+                                                   ORT_TSTR("batchnorm_example_training_mode"),
+                                                   ORT_TSTR("batchnorm_epsilon_training_mode"),
+                                                   ORT_TSTR("mobilenetv2-1.0"),
+                                                   ORT_TSTR("candy"),
+                                                   ORT_TSTR("range_float_type_positive_delta_expanded"),
+                                                   ORT_TSTR("range_int32_type_negative_delta_expanded"),
+                                                   ORT_TSTR("averagepool_2d_ceil"),
+                                                   ORT_TSTR("maxpool_2d_ceil"),
+                                                   ORT_TSTR("maxpool_2d_dilations"),
+                                                   ORT_TSTR("mlperf_ssd_resnet34_1200"),
+                                                   ORT_TSTR("convtranspose_1d"),
+                                                   ORT_TSTR("convtranspose_3d"),
+                                                   ORT_TSTR("maxpool_2d_uint8")};
+  static const ORTCHAR_T* tensorrt_disabled_tests[] = {
+      ORT_TSTR("udnie"), ORT_TSTR("rain_princess"),
+      ORT_TSTR("pointilism"), ORT_TSTR("mosaic"),
+      ORT_TSTR("LSTM_Seq_lens_unpacked"),
+      ORT_TSTR("cgan"), ORT_TSTR("candy"),
+      ORT_TSTR("tinyyolov3"), ORT_TSTR("yolov3"),
+      ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"),
+      ORT_TSTR("mask_rcnn"),
+      ORT_TSTR("faster_rcnn"),
+      ORT_TSTR("fp16_shufflenet"),
+      ORT_TSTR("fp16_inception_v1"),
+      ORT_TSTR("fp16_tiny_yolov2"),
+      ORT_TSTR("tf_inception_v3"),
+      ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+      ORT_TSTR("tf_mobilenet_v2_1.0_224"),
+      ORT_TSTR("tf_mobilenet_v2_1.4_224"),
+      ORT_TSTR("tf_resnet_v1_101"),
+      ORT_TSTR("tf_resnet_v1_152"),
+      ORT_TSTR("tf_resnet_v1_50"),
+      ORT_TSTR("tf_resnet_v2_101"),
+      ORT_TSTR("tf_resnet_v2_152"),
+      ORT_TSTR("tf_resnet_v2_50"),
+      ORT_TSTR("convtranspose_1d"),
+      ORT_TSTR("convtranspose_3d"),
+      ORT_TSTR("conv_with_strides_and_asymmetric_padding"),
+      ORT_TSTR("conv_with_strides_padding"),
+      ORT_TSTR("size")  //INVALID_ARGUMENT: Cannot find binding of given name: x
+  };
+  for (const ORTCHAR_T* provider_name : provider_names) {
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
                                                                         std::end(immutable_broken_tests));
     if (CompareCString(provider_name, ORT_TSTR("cuda")) == 0) {
@@ -765,13 +815,20 @@ TEST_P(ModelTest, Run) {
 
 #if !defined(__amd64__) && !defined(_M_AMD64)
     // out of memory
-    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
+    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("BERT_Squad"),
+                                                    ORT_TSTR("bvlc_alexnet"),
+                                                    ORT_TSTR("bvlc_reference_caffenet"),
+                                                    ORT_TSTR("coreml_VGG16_ImageNet"),
+                                                    ORT_TSTR("faster_rcnn"),
+                                                    ORT_TSTR("GPT2"),
+                                                    ORT_TSTR("GPT2_LM_HEAD"),
+                                                    ORT_TSTR("keras_lotus_resnet3D"),
+                                                    ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                     ORT_TSTR("mask_rcnn_keras"),
                                                     ORT_TSTR("mask_rcnn"),
-                                                    ORT_TSTR("faster_rcnn"),
+                                                    ORT_TSTR("ssd"),
                                                     ORT_TSTR("vgg19"),
-                                                    ORT_TSTR("zfnet512"),
-                                                    ORT_TSTR("coreml_VGG16_ImageNet")};
+                                                    ORT_TSTR("zfnet512")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
@@ -784,15 +841,15 @@ TEST_P(ModelTest, Run) {
 #endif
 #endif
 
-// TENSORRT has too many test failures in the single node tests
-#if !defined(_WIN32) && !defined(USE_TENSORRT)
+// TENSORRT/OpenVino has too many test failures in the single node tests
+#if !defined(_WIN32) && !defined(USE_TENSORRT) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
 #endif
     while (!paths.empty()) {
       std::basic_string<ORTCHAR_T> node_data_root_path = paths.back();
       paths.pop_back();
       std::basic_string<ORTCHAR_T> my_dir_name = GetLastComponent(node_data_root_path);
-      try {
+      ORT_TRY {
         LoopDir(node_data_root_path, [&](const ORTCHAR_T* filename, OrtFileType f_type) -> bool {
           if (filename[0] == ORT_TSTR('.'))
             return true;
@@ -827,7 +884,8 @@ TEST_P(ModelTest, Run) {
           v.emplace_back(r);
           return true;
         });
-      } catch (std::exception&) {
+      }
+      ORT_CATCH(const std::exception&) {
       }  // ignore non-exist dir
     }
   }

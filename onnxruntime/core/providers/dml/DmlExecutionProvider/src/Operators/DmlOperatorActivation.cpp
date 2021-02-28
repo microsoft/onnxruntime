@@ -30,6 +30,7 @@ public:
         switch (operatorType)
         {
         case DML_OPERATOR_ACTIVATION_ELU:
+        case DML_OPERATOR_ACTIVATION_CELU:
             operatorDesc.elu.Alpha = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Alpha, ActivationHelper::GetDefaultAlpha(operatorType));
             break;
 
@@ -154,6 +155,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(HardSigmoid,         DmlOperatorActivationTempla
 DML_OP_DEFINE_CREATION_FUNCTION(Tanh,                DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_TANH>);
 DML_OP_DEFINE_CREATION_FUNCTION(ScaledTanh,          DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_SCALED_TANH>);
 DML_OP_DEFINE_CREATION_FUNCTION(Relu,                DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_RELU>);
+DML_OP_DEFINE_CREATION_FUNCTION(Celu,                DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_CELU>);
 DML_OP_DEFINE_CREATION_FUNCTION(LeakyRelu,           DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_LEAKY_RELU>);
 DML_OP_DEFINE_CREATION_FUNCTION(PRelu,               DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_PARAMETERIZED_RELU>);
 DML_OP_DEFINE_CREATION_FUNCTION(ThresholdedRelu,     DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU>);

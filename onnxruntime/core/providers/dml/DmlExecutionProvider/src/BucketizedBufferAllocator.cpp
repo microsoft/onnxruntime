@@ -226,7 +226,7 @@ namespace Dml
     }
 
     CPUAllocator::CPUAllocator(OrtMemType memType)
-        : onnxruntime::IDeviceAllocator(
+        : onnxruntime::IAllocator(
               OrtMemoryInfo("DML CPU",
                             OrtAllocatorType::OrtDeviceAllocator,
                             OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),

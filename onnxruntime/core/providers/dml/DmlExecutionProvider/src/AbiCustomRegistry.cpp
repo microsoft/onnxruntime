@@ -334,6 +334,9 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     bool supportsGraph,
     const uint32_t* requiredInputCountForGraph,
     bool requiresFloatFormatsForGraph,
+    bool supportedWith64BitTensorsVia32BitStrides,
+    bool supportedWith64BitTensorsVia32BitStridesFromAnyEp,
+    bool prefer64BitTensorsDirectly,
     _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
     uint32_t constantCpuInputCount) const noexcept try
 {
@@ -456,6 +459,9 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     {
         auto regInfo = std::make_shared<InternalRegistrationInfo>();
         regInfo->requiredConstantCpuInputs = constantCpuInputCapture;
+        regInfo->supportedWith64BitTensorsVia32BitStrides = supportedWith64BitTensorsVia32BitStrides;
+        regInfo->supportedWith64BitTensorsVia32BitStridesFromAnyEp = supportedWith64BitTensorsVia32BitStridesFromAnyEp;
+        regInfo->prefer64BitTensorsDirectly = prefer64BitTensorsDirectly;
 
         // Only internal operators support usage in DML graphs
         if (supportsGraph)
@@ -527,8 +533,14 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     else
     {
         // Currently unsupported for external operators
-        if (canAliasFirstInput || supportsGraph || requiredInputCountForGraph || 
-            requiresFloatFormatsForGraph || requiredConstantCpuInputs)
+        if (canAliasFirstInput ||
+            supportsGraph ||
+            requiredInputCountForGraph ||
+            requiresFloatFormatsForGraph ||
+            requiredConstantCpuInputs ||
+            supportedWith64BitTensorsVia32BitStrides ||
+            supportedWith64BitTensorsVia32BitStridesFromAnyEp ||
+            prefer64BitTensorsDirectly)
         {
             THROW_HR(E_INVALIDARG);
         }

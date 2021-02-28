@@ -12,10 +12,11 @@ namespace contrib {
 class AttentionBase {
  protected:
   AttentionBase(const OpKernelInfo& info);
+
   Status CheckInputs(const TensorShape& input_shape,
                      const TensorShape& weights_shape,
                      const TensorShape& bias_shape,
-                     const Tensor* mask_index,
+                     const Tensor*& mask_index,  // For dummy mask with shape (1, 1) or (batch_size, 1), it will be updated to nullptr.
                      const Tensor* past) const;
 
   Tensor* GetPresent(OpKernelContext* context,

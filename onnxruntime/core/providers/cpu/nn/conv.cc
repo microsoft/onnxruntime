@@ -71,7 +71,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const size_t kernel_rank = kernel_shape.size();
 
   BufferUniquePtr col_buffer;
-  std::vector<int64_t> col_buffer_shape;
 
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
@@ -81,13 +80,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
-
-    if (kernel_rank != 2) {
-      const auto& output_dims = output_shape.GetDims();
-      col_buffer_shape.reserve(1 + output_dims.size());
-      col_buffer_shape.push_back(kernel_dim);
-      col_buffer_shape.insert(col_buffer_shape.end(), output_dims.begin(), output_dims.end());
-    }
   }
 
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
@@ -118,12 +110,11 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
               strides[1],
               col_buffer_data);
         } else {
-          math::Im2colNd<T, StorageOrder::NCHW>()(
+          math::Im2col<T, StorageOrder::NCHW>()(
               Xdata + group_id * X_offset,
-              X->Shape().GetDims().data() + 1,
-              col_buffer_shape.data(),
-              C * input_image_size,
-              col_buffer_size,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),
@@ -251,19 +242,13 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
     auto* col_buffer_data = static_cast<float*>(col_buffer.get());
 
-    TensorShape image_shape = X->Shape().Slice(1);
-    std::vector<int64_t> col_buffer_shape{kernel_dim};
-    col_buffer_shape.insert(col_buffer_shape.end(), output_shape.GetDims().begin(),
-                            output_shape.GetDims().end());
-
     for (int image_id = 0; image_id < N; ++image_id) {
       for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-        math::Im2colNd<float, StorageOrder::NCHW>()(
+        math::Im2col<float, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
-            image_shape.GetDims().data(),
-            col_buffer_shape.data(),
-            C * input_image_size,
-            col_buffer_size,
+            input_shape.GetDims().data(),
+            output_shape.GetDims().data(),
+            kernel_dim,
             kernel_shape.data(),
             strides.data(),
             dilations.data(),

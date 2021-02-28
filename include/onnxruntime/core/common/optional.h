@@ -3,40 +3,22 @@
 
 #pragma once
 
-#include "core/common/common.h"
+#include <nonstd/optional.hpp>
 
 namespace onnxruntime {
-// This is a version of std::optional with limited functionality and plenty of
-// room to improve. We should use std::optional when we move to C++17.
-template <typename T>
-class optional {
- public:
-  optional() : has_value_{false}, value_{} {}
 
-  optional(const optional&) = default;
-  optional& operator=(const optional&) = default;
-  optional(optional&&) = default;
-  optional& operator=(optional&&) = default;
+using nonstd::optional;
 
-  optional(T value) : has_value_{true}, value_{value} {}
-  optional& operator=(T value) {
-    has_value_ = true;
-    value_ = value;
-    return *this;
-  }
+#ifndef ORT_NO_EXCEPTIONS
+using nonstd::bad_optional_access;
+#endif
 
-  bool has_value() const { return has_value_; }
-  const T& value() const {
-    ORT_ENFORCE(has_value_);
-    return value_;
-  }
-  T& value() {
-    ORT_ENFORCE(has_value_);
-    return value_;
-  }
+using nonstd::nullopt;
+using nonstd::nullopt_t;
 
- private:
-  bool has_value_;
-  T value_;
-};
+using nonstd::in_place;
+using nonstd::in_place_t;
+
+using nonstd::make_optional;
+
 }  // namespace onnxruntime

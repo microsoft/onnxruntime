@@ -14,16 +14,32 @@ class DnnlLrn : public DnnlKernel {
  public:
   DnnlLrn(const DnnlNode& node,
           DNNLExecutionProvider* provider,
-          const Provider_NodeAttributes& attributes,
+          const NodeAttributes& attributes,
           const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
 
   void CreatePrimitives(const OrtCustomOpApi* api,
                         OrtKernelContext* context,
-                        dnnl::engine& cpu_engine,
+                        const std::unordered_map<dnnl::engine::kind, dnnl::engine>& dnnl_engine,
                         std::vector<dnnl::primitive>& net,
                         std::vector<std::unordered_map<int, dnnl::memory>>& net_args) override {
+    dnnl::engine cpu_engine;
+    dnnl::engine engine_to_use;
+    std::unordered_map<dnnl::engine::kind, dnnl::engine>::const_iterator iter = dnnl_engine.find(dnnl::engine::kind::cpu);
+    if (iter != dnnl_engine.end()) {
+      cpu_engine = (dnnl::engine)iter->second;
+      engine_to_use = cpu_engine;
+    }
+    gpu_available_ = false;
+    dnnl::engine gpu_engine;
+    iter = dnnl_engine.find(dnnl::engine::kind::gpu);
+    if (iter != dnnl_engine.end()) {
+      gpu_engine = (dnnl::engine)(iter->second);
+      gpu_available_ = true;
+      engine_to_use = gpu_engine;
+      LOGS_DEFAULT(INFO) << "gpu engine found" << std::endl;
+    }
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
@@ -48,10 +64,20 @@ class DnnlLrn : public DnnlKernel {
           dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_));
       src_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(*src_md_, cpu_engine, nullptr));
+      if (gpu_available_) {
+        src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(*src_md_, gpu_engine);
+        net.push_back(mkldnn::reorder(*src_mem_, *src_mem_gpu_));
+        net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
+                            {MKLDNN_ARG_DST, *src_mem_gpu_}});
+      }
     } else {
       src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
-      src_mem_ = parents_[0].get()->primitive_dst_mem_;
+      if (!gpu_available_) {
+        src_mem_ = parents_[0].get()->primitive_dst_mem_;
+      } else {  // gpu_available_
+        src_mem_gpu_ = parents_[0].get()->primitive_dst_mem_;
+      }
       x_shape = parents_[0].get()->primitive_dst_shape_;
       ort_source_format_ = parents_[0].get()->ort_source_format_;
       ort_source_desc_ = parents_[0].get()->ort_source_desc_;
@@ -66,41 +92,51 @@ class DnnlLrn : public DnnlKernel {
                                 size_, alpha_, beta_, bias_));
 
     fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::lrn_forward::primitive_desc>(
-        dnnl::lrn_forward::primitive_desc(*fwd_desc_, cpu_engine));
+        dnnl::lrn_forward::primitive_desc(*fwd_desc_, engine_to_use));
 
     primitive_src_desc_ = fwd_primitive_desc_.get()->src_desc();
     primitive_dst_desc_ = fwd_primitive_desc_.get()->dst_desc();
 
-    if (mklnode_ptr_->output_index >= 0) {
-      // last node of sub-graph. need to allocate memory for output_tensor
-      if (primitive_dst_desc_ != ort_source_desc_) {
-        // reorder neded. Use primitive output as input to reorder and
-        // allocate buffer for reorder output, final output of this subgraph
+    if (!gpu_available_) {
+      if (mklnode_ptr_->output_index >= 0) {
+        // last node of sub-graph. need to allocate memory for output_tensor
+        if (primitive_dst_desc_ != ort_source_desc_) {
+          // reorder neded. Use primitive output as input to reorder and
+          // allocate buffer for reorder output, final output of this subgraph
+          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
+        } else {
+          // Last node but re-order not needed. Allocate buffer to output of this node
+          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+              dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine, nullptr));
+        }
+      } else {
+        // Intermediate node. Use Dnnl kernel internal memory for output and
+        // use this as input to next node.
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
-      } else {
-        // Last node but re-order not needed. Allocate buffer to output of this node
-        primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
-            dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine, nullptr));
       }
-    } else {
-      // Intermediate node. Use Dnnl kernel internal memory for output and
-      // use this as input to next node.
+    } else {  // gpu_available_
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
-          dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
+          dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), gpu_engine));
     }
 
     lrn_fwd_ = onnxruntime::make_unique<dnnl::lrn_forward>(
         dnnl::lrn_forward(*fwd_primitive_desc_));
-    net.push_back(*lrn_fwd_);
-    net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
-                        {DNNL_ARG_DST, *primitive_dst_mem_}});
-
+    if (!gpu_available_) {
+      net.push_back(*lrn_fwd_);
+      net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
+                          {DNNL_ARG_DST, *primitive_dst_mem_}});
+    } else {  // gpu_available_
+      net.push_back(*lrn_fwd_);
+      net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
+                          {DNNL_ARG_DST, *primitive_dst_mem_}});
+    }
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
       dnnl::memory::data_type t = DnnnType<T>();
-      InitDstReorderOutput(cpu_engine, t, net, net_args);
+      InitDstReorderOutput(cpu_engine, t, net, net_args, gpu_available_);
     }
   }
 
@@ -121,10 +157,14 @@ class DnnlLrn : public DnnlKernel {
       OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
       T* dst_data = ort.GetTensorMutableData<T>(output);
 
-      if (primitive_dst_desc_ != ort_source_desc_) {
+      if (!gpu_available_) {
+        if (primitive_dst_desc_ != ort_source_desc_) {
+          reorder_dst_mem_to_->set_data_handle(dst_data);
+        } else {
+          primitive_dst_mem_->set_data_handle(dst_data);
+        }
+      } else {  // gpu_available_
         reorder_dst_mem_to_->set_data_handle(dst_data);
-      } else {
-        primitive_dst_mem_->set_data_handle(dst_data);
       }
     }
 
@@ -132,7 +172,7 @@ class DnnlLrn : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const Provider_NodeAttributes& attributes,
+  void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "size");
     if (attr != attributes.end() &&
@@ -170,12 +210,15 @@ class DnnlLrn : public DnnlKernel {
 
  private:
   std::shared_ptr<dnnl::memory> src_mem_;
+  std::shared_ptr<dnnl::memory> src_mem_gpu_;
 
   std::unique_ptr<dnnl::lrn_forward::desc> fwd_desc_;
   std::unique_ptr<dnnl::lrn_forward::primitive_desc> fwd_primitive_desc_;
   std::unique_ptr<dnnl::primitive> lrn_fwd_;
 
   std::unique_ptr<dnnl::memory::desc> src_md_;
+
+  bool gpu_available_;
 };
 }  // namespace ort_dnnl
 }  // namespace onnxruntime

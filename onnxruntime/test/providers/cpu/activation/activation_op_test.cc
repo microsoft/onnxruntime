@@ -8,81 +8,94 @@ namespace onnxruntime {
 namespace test {
 
 TEST_F(ActivationOpTest, Sigmoid) {
-  TestActivationOp("Sigmoid",
-    input_values,
-    [](float x) {
-      auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
-      y = x > 0 ? y : 1 - y;
-      return y;
-    });
+  TestActivationOp<float>("Sigmoid",
+                          input_values,
+                          [](float x) {
+                            auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
+                            y = x > 0 ? y : 1 - y;
+                            return y;
+                          });
+  TestActivationOp<double>("Sigmoid",
+                           input_values_double,
+                           [](double x) {
+                             auto y = 1. / (1. + std::exp(-std::abs(x)));  // safe sigmoid
+                             y = x > 0 ? y : 1 - y;
+                             return y;
+                           });
 }
 
 TEST_F(ActivationOpTest, HardSigmoid) {
   float alpha = 0.2f;
   float beta = 0.5f;
-  TestActivationOp("HardSigmoid",
-    input_values,
-    [alpha, beta](float x) {
-      return std::max(std::min((alpha * x + beta), 1.0f), 0.0f);
-    },
-    {{"alpha", alpha}, {"beta", beta}});
+  TestActivationOp<float>("HardSigmoid",
+                          input_values,
+                          [alpha, beta](float x) {
+                            return std::max(std::min((alpha * x + beta), 1.0f), 0.0f);
+                          },
+                          {{"alpha", alpha}, {"beta", beta}});
 }
 
 TEST_F(ActivationOpTest, Tanh) {
-  TestActivationOp("Tanh",
-    input_values,
-    [](float x) { return std::tanh(x); });
+  TestActivationOp<float>("Tanh",
+                          input_values,
+                          [](float x) { return std::tanh(x); });
+  TestActivationOp<double>("Tanh",
+                           input_values_double,
+                           [](double x) { return std::tanh(x); });
 }
 
 TEST_F(ActivationOpTest, Relu) {
-  TestActivationOp("Relu",
-    input_values,
-    [](float x) { return std::max(x, 0.0f); });
+  TestActivationOp<float>("Relu",
+                          input_values,
+                          [](float x) { return std::max(x, 0.0f); });
+  TestActivationOp<double>("Relu",
+                           input_values_double,
+                           [](double x) { return std::max(x, 0.0); });
 }
 
 TEST_F(ActivationOpTest, Elu) {
   float alpha = 0.1f;
-  TestActivationOp("Elu",
-    input_values,
-    [alpha](float x) { return (x >= 0) ? x : alpha * (exp(x) - 1); },
-    {{"alpha", alpha}});
+  TestActivationOp<float>("Elu",
+                          input_values,
+                          [alpha](float x) { return (x >= 0) ? x : alpha * (exp(x) - 1); },
+                          {{"alpha", alpha}});
 }
 
 TEST_F(ActivationOpTest, LeakyRelu) {
   float alpha = 0.1f;
-  TestActivationOp("LeakyRelu",
-    input_values,
-    [alpha](float x) { return (x >= 0) ? x : alpha * x; },
-    {{"alpha", alpha}});
+  TestActivationOp<float>("LeakyRelu",
+                          input_values,
+                          [alpha](float x) { return (x >= 0) ? x : alpha * x; },
+                          {{"alpha", alpha}});
 }
 
 TEST_F(ActivationOpTest, ThresholdedRelu) {
   float alpha = 0.1f;
-  TestActivationOp(
-    "ThresholdedRelu",
-    input_values,
-    [alpha](float x) { return (x >= alpha) ? x : 0; },
-    {{"alpha", alpha}}, true, 10);
+  TestActivationOp<float>(
+      "ThresholdedRelu",
+      input_values,
+      [alpha](float x) { return (x >= alpha) ? x : 0; },
+      {{"alpha", alpha}}, true, 10);
 }
 
 TEST_F(ActivationOpTest, Selu) {
   static constexpr float alpha = 1.6732f;
   static constexpr float gamma = 1.0507f;
 
-  TestActivationOp("Selu",
-    input_values,
-    [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-    {{"alpha", alpha}, {"gamma", gamma}});
+  TestActivationOp<float>("Selu",
+                          input_values,
+                          [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
+                          {{"alpha", alpha}, {"gamma", gamma}});
 }
 
 TEST_F(ActivationOpTest, Selu_Attributes) {
   static constexpr float alpha = 1.8f;
   static constexpr float gamma = 0.5f;
 
-  TestActivationOp("Selu",
-    input_values,
-    [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-    {{"alpha", alpha}, {"gamma", gamma}});
+  TestActivationOp<float>("Selu",
+                          input_values,
+                          [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
+                          {{"alpha", alpha}, {"gamma", gamma}});
 }
 
 TEST_F(ActivationOpTest, PRelu) {
@@ -144,21 +157,47 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel) {
 }
 
 TEST_F(ActivationOpTest, Softplus) {
-  TestActivationOp("Softplus",
-    input_values,
-    [](float x) {
-      if (x > 0)
-        return x + logf(expf(-x) + 1);
-      else
-        return logf(expf(x) + 1);
-    });
+  TestActivationOp<float>("Softplus",
+                          input_values,
+                          [](float x) {
+                            if (x > 0)
+                              return x + logf(expf(-x) + 1);
+                            else
+                              return logf(expf(x) + 1);
+                          });
 }
 
 TEST_F(ActivationOpNoInfTest, Softsign) {
-  TestActivationOp(
-    "Softsign",
-    input_values,
-    [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
+  TestActivationOp<float>(
+      "Softsign",
+      input_values,
+      [](float x) {
+        auto result = x / (1 + std::abs(x));
+
+#if defined(__arm__)
+        // Softsign uses Eigen inverse(), which on ARM32 results in a different value when x is FLT_MAX or -FLT_MAX
+        // 3.40282347e+38 -> 0 with ARM32 inverse() vs something like 2.939e-39#DEN with other platforms.
+        //
+        // Possibly explained by https://en.wikipedia.org/wiki/ARM_architecture#Advanced_SIMD_(Neon)
+        // 'A quirk of Neon in Armv7 devices is that it flushes all subnormal numbers to zero'
+        //
+        // c.f.
+        // cmake\external\eigen\Eigen\src\Core\arch\SSE\PacketMath.h uses _mm_div_ps for 'pdiv<Packet4f>'
+        // cmake\external\eigen\Eigen\src\Core\arch\NEON\PacketMath.h uses a custom implementation for 'pdiv<Packet4f>'
+        //
+        // Special case the expected values to allow for that. If handling FLT_MAX more consistently is required
+        // we'd need to not use Eigen for Softsign on ARM32.
+        //
+        if (x == FLT_MAX) {
+          result = 0.;
+        } else if (x == -FLT_MAX) {
+          result = -0.;
+        }
+#endif
+
+        return result;
+      },
+      {}, false);  // Disable TensorRT because result mismatches
 }
 
 }  // namespace test

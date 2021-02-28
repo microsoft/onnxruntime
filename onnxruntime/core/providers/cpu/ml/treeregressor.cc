@@ -24,7 +24,7 @@ template <typename T>
 TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
     : OpKernel(info),
       tree_ensemble_(
-          100,
+          80,
           50,
           info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"),
           info.GetAttrsOrDefault<float>("base_values"),
@@ -56,7 +56,7 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
   Tensor* Y = context->Output(0, {N, tree_ensemble_.n_targets_or_classes_});
 
-  tree_ensemble_.compute(context->GetOperatorThreadPool(), X, Y, NULL);
+  tree_ensemble_.compute(context, X, Y, NULL);
 
   return Status::OK();
 }

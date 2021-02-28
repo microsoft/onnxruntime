@@ -6,6 +6,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
@@ -25,8 +26,10 @@
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -34,6 +37,7 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -107,20 +111,21 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 }
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
-                                                                    gsl::span<const FreeDimensionOverride> free_dimension_overrides,
+                                                                    const SessionOptions& session_options,
                                                                     const IExecutionProvider& execution_provider, /*required by constant folding*/
                                                                     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
+  bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";
   switch (level) {
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
 
       transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionElimination>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, enable_quant_qdq, l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
+      transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(session_options.free_dimension_overrides));
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;
@@ -133,19 +138,23 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
 #ifndef DISABLE_CONTRIB_OPS
       transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatMulIntegerToFloatFusion>(cpu_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<DynamicQuantizeMatMulFusion>(cpu_execution_providers));
 
       std::unordered_set<std::string> cpu_acl_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kAclExecutionProvider};
+      std::unordered_set<std::string> cpu_cuda_acl_armnn_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider, onnxruntime::kAclExecutionProvider, onnxruntime::kArmNNExecutionProvider};
 
-      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_acl_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_cuda_acl_armnn_execution_providers));
 
       std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
 
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasSoftmaxFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
 
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_execution_providers));
@@ -160,6 +169,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
       }
+
+      transformers.emplace_back(onnxruntime::make_unique<NhwcTransformer>());
 #endif
     } break;
 
@@ -177,8 +188,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     return transformers;
   }
 
-  // Some transformers have side-effect like result is not exactly same.
-  // These transformers could only be enabled by custom transformer list.
+// Some transformers have side-effect like result is not exactly same.
+// These transformers could only be enabled by custom transformer list.
 #ifndef DISABLE_CONTRIB_OPS
   if (level == TransformerLevel::Level2) {
     std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};

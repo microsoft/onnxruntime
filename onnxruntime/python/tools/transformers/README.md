@@ -9,12 +9,12 @@ This tool can help in the following senarios:
 * Disable or enable some fusions to see its impact on performance or accuracy.
 
 ## Installation
+
 First you need install onnxruntime or onnxruntime-gpu package for CPU or GPU inference. To use onnxruntime-gpu, it is required to install CUDA and cuDNN and add their bin directories to PATH environment variable.
 
-This tool can be installed using pip:
-```console
-pip install --upgrade onnxruntime-tools
-```
+## Limitations
+
+Due to CUDA implementation of Attention kernel, maximum hidden dimension is 4096 for float16 model and 2048 for float32 model in GPU. Normally, maximum supported sequence length is 4096 for Longformer and 1024 for other types of models.
 
 ## Export a transformer model to ONNX
 
@@ -29,19 +29,41 @@ Converting GPT-2 model from PyTorch to ONNX is not straightforward when past sta
 
 You can use commands like the following to convert a pre-trained PyTorch GPT-2 model to ONNX for given precision (float32, float16 or int8):
 ```
-python -m onnxruntime_tools.transformers.convert_to_onnx -m gpt2 --model_class GPT2LMHeadModel --output gpt2.onnx -p fp32
-python -m onnxruntime_tools.transformers.convert_to_onnx -m distilgpt2 --model_class GPT2LMHeadModel --output distilgpt2.onnx -p fp16 --use_gpu --optimize_onnx
-python -m onnxruntime_tools.transformers.convert_to_onnx -m [path_to_gpt2_pytorch_model_directory] --output quantized.onnx -p int32 --optimize_onnx
+python -m onnxruntime.transformers.convert_to_onnx -m gpt2 --model_class GPT2LMHeadModel --output gpt2.onnx -p fp32
+python -m onnxruntime.transformers.convert_to_onnx -m distilgpt2 --model_class GPT2LMHeadModel --output distilgpt2.onnx -p fp16 --use_gpu --optimize_onnx
+python -m onnxruntime.transformers.convert_to_onnx -m [path_to_gpt2_pytorch_model_directory] --output quantized.onnx -p int32 --optimize_onnx
 ```
 
 The tool will also verify whether the ONNX model and corresponding PyTorch model generate same outputs given same random inputs.
+
+### Longformer Model conversion
+
+Requirement: Linux OS (For example Ubuntu 18.04 or 20.04) and a python environment like the following:
+```
+conda create -n longformer python=3.6
+conda activate longformer
+conda install pytorch torchvision torchaudio cpuonly -c pytorch
+pip install onnx transformers onnxruntime
+```
+Next, get the source of [torch extensions for Longformer exporting](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/torch_extensions), and run the following:
+```
+python setup.py install
+```
+It will generate file like "build/lib.linux-x86_64-3.6/longformer_attention.cpython-36m-x86_64-linux-gnu.so" under the directory.
+
+Finally, use [convert_longformer_to_onnx](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/longformer/convert_longformer_to_onnx.py) to convert to ONNX model like the following:
+```
+python convert_longformer_to_onnx.py -m longformer-base-4096
+```
+
+The exported ONNX model can only run in GPU right now.
 
 ## Model Optimizer
 
 In your python code, you can use the optimizer like the following:
 
 ```python
-from onnxruntime_tools import optimizer
+from onnxruntime.transformers import optimizer
 optimized_model = optimizer.optimize_model("gpt2.onnx", model_type='gpt2', num_heads=12, hidden_size=768)
 optimized_model.convert_model_float32_to_float16()
 optimized_model.save_model_to_file("gpt2_fp16.onnx")
@@ -49,7 +71,7 @@ optimized_model.save_model_to_file("gpt2_fp16.onnx")
 
 You can also use command line. Example of optimizing a BERT-large model to use mixed precision (float16):
 ```console
-python -m onnxruntime_tools.optimizer_cli --input bert_large.onnx --output bert_large_fp16.onnx --num_heads 16 --hidden_size 1024 --float16
+python -m onnxruntime.transformers.optimizer --input bert_large.onnx --output bert_large_fp16.onnx --num_heads 16 --hidden_size 1024 --float16
 ```
 
 You can also download the latest script files from [here](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/). Then run it like the following:
@@ -143,8 +165,8 @@ Since past state is used, sequence length in input_ids is 1. For example, s=4 me
 [benchmark_gpt2.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/benchmark_gpt2.py) is used to get the results like the following commands:
 
 ```console
-python -m onnxruntime_tools.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp32
-python -m onnxruntime_tools.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp16
+python -m onnxruntime.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp32
+python -m onnxruntime.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp16
 ```
 
 ### Benchmark.py
@@ -154,10 +176,10 @@ If you use run_benchmark.sh, you need not use benchmark.py directly. You can ski
 Below is example to runing benchmark.py on pretrained model bert-base-cased on GPU.
 
 ```console
-python -m onnxruntime_tools.transformers.benchmark -g -m bert-base-cased -o -v -b 0
-python -m onnxruntime_tools.transformers.benchmark -g -m bert-base-cased -o
-python -m onnxruntime_tools.transformers.benchmark -g -m bert-base-cased -e torch
-python -m onnxruntime_tools.transformers.benchmark -g -m bert-base-cased -e torchscript
+python -m onnxruntime.transformers.benchmark -g -m bert-base-cased -o -v -b 0
+python -m onnxruntime.transformers.benchmark -g -m bert-base-cased -o
+python -m onnxruntime.transformers.benchmark -g -m bert-base-cased -e torch
+python -m onnxruntime.transformers.benchmark -g -m bert-base-cased -e torchscript
 ```
 The first command will generate ONNX models (both before and after optimizations), but not run performance tests since batch size is 0. The other three commands will run performance test on each of three engines: OnnxRuntime, PyTorch and PyTorch+TorchScript.
 
@@ -178,7 +200,7 @@ If your BERT model has three inputs (like input_ids, token_type_ids and attentio
 Example of verifying models optimized for CPU:
 
 ```console
-python -m onnxruntime_tools.transformers.compare_bert_results --baseline_model original_model.onnx --optimized_model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100
+python -m onnxruntime.transformers.compare_bert_results --baseline_model original_model.onnx --optimized_model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100
 ```
 
 For GPU, please append --use_gpu to the command.
@@ -188,10 +210,23 @@ For GPU, please append --use_gpu to the command.
 bert_perf_test.py can be used to check the BERT model inference performance. Below are examples:
 
 ```console
-python -m onnxruntime_tools.transformers.bert_perf_test --model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --test_times 10 --inclusive
+python -m onnxruntime.transformers.bert_perf_test --model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128
 ```
 
 For GPU, please append --use_gpu to the command.
 
 After test is finished, a file like perf_results_CPU_B1_S128_<date_time>.txt or perf_results_GPU_B1_S128_<date_time>.txt will be output to the model directory.
 
+## Profiling
+
+profiler.py can be used to run profiling on a transformer model. It can help figure out the bottleneck of a model, and CPU time spent on a node or subgraph.
+
+Examples commands:
+
+```console
+python -m onnxruntime.transformers.profiler --model bert.onnx --batch_size 8 --sequence_length 128 --samples 1000 --dummy_inputs bert --thread_num 8 --kernel_time_only
+python -m onnxruntime.transformers.profiler --model gpt2.onnx --batch_size 1 --sequence_length 1 --past_sequence_length 128 --samples 1000 --dummy_inputs gpt2 --use_gpu
+python -m onnxruntime.transformers.profiler --model longformer.onnx --batch_size 1 --sequence_length 4096 --global_length 8 --samples 1000 --dummy_inputs longformer --use_gpu
+```
+
+Result file like onnxruntime_profile__<date_time>.json will be output to current directory. Summary of nodes, top expensive nodes and results grouped by operator type will be printed to console.

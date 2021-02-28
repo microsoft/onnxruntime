@@ -21,7 +21,26 @@ void InterOpDomainDeleter(OrtCustomOpDomain* domain) {
 
 void LoadInterOp(const std::basic_string<ORTCHAR_T>& model_uri, InterOpDomains& domains, const InterOpLogFunc& log_func) {
   int fd;
-  ORT_ENFORCE(Env::Default().FileOpenRd(model_uri, fd).IsOK(), "Failed to read model file");
+
+  // match the error message from model.cc to keep the nodejs tests happy.
+  // as this is deprecated just cut-and-paste equivalent code for now.
+  auto status = Env::Default().FileOpenRd(model_uri, fd);
+  if (!status.IsOK()) {
+    if (status.Category() == common::SYSTEM) {
+      switch (status.Code()) {
+        case ENOENT:
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(model_uri),
+                                   " failed. File doesn't exist");
+        case EINVAL:
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(model_uri), " failed");
+        default:
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
+      }
+    }
+  }
+
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+
   google::protobuf::io::FileInputStream f(fd);
   f.SetCloseOnDelete(true);
   ONNX_NAMESPACE::ModelProto model_proto;

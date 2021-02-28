@@ -20,9 +20,9 @@ class OrtEventPool final {
     return instance_;
   }
   void SignalEvent(int64_t id);
-  void ResetEvent(int64_t id);
   bool QueryEvent(int64_t id) const;
   void WaitEvent(int64_t id) const;
+  void ResetAllEvents();
 
   static size_t GetPoolSize() {
     return MaxNumItems;

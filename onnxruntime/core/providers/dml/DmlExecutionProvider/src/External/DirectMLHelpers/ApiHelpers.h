@@ -7,6 +7,7 @@ union ActivationOperatorDescUnion
 {
     DML_ACTIVATION_IDENTITY_OPERATOR_DESC identity;
     DML_ACTIVATION_ELU_OPERATOR_DESC elu;
+    DML_ACTIVATION_CELU_OPERATOR_DESC celu;
     DML_ACTIVATION_HARDMAX_OPERATOR_DESC hardmax;
     DML_ACTIVATION_HARD_SIGMOID_OPERATOR_DESC hardSigmoid;
     DML_ACTIVATION_LEAKY_RELU_OPERATOR_DESC leakyRelu;
@@ -36,6 +37,7 @@ struct ActivationOperatorDesc
         switch (activationType)
         {
         case DML_OPERATOR_ACTIVATION_ELU: return { activationType, &params.elu };
+        case DML_OPERATOR_ACTIVATION_CELU: return { activationType, &params.celu };
         case DML_OPERATOR_ACTIVATION_HARDMAX: return { activationType, &params.hardmax };
         case DML_OPERATOR_ACTIVATION_HARD_SIGMOID: return { activationType, &params.sigmoid };
         case DML_OPERATOR_ACTIVATION_IDENTITY: return { activationType, &params.identity };

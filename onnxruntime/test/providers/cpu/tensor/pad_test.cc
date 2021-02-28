@@ -33,8 +33,8 @@ static void RunOnnxOpsetTypedTest(
   }
   test.AddOutput<T>("output", output_dims, output);
   if (opset >= 11) {
-    // NGraph and TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
-    test.Run(expect, error_msg, {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+    // TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
+    test.Run(expect, error_msg, {kTensorrtExecutionProvider});
   }
   else {
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
@@ -360,6 +360,233 @@ TYPED_TEST(PadOpTest, Pad_Reflect_2D) {
                                   "reflect");
 }
 
+TYPED_TEST(PadOpTest, Pad_Constant_3D_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, 1, 0, 1, 1, 0},
+                                  T(31),
+                                  {5, 4, 5},
+                                  {T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31),
+
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(31), T(31), T(31), T(31), T(31),
+
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(31), T(31), T(31), T(31), T(31),
+
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(31), T(31), T(31), T(31), T(31),
+
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31),
+                                   T(31), T(31), T(31), T(31), T(31)},
+                                  "constant");
+}
+
+TYPED_TEST(PadOpTest, Pad_Edge_3D_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, 1, 0, 1, 1, 0},
+                                  T(0),
+                                  {5, 4, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(6), T(7), T(8), T(9), T(10),
+
+                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(6), T(7), T(8), T(9), T(10),
+
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(16), T(17), T(18), T(19), T(20),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(26), T(27), T(28), T(29), T(30),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  "edge");
+}
+
+TYPED_TEST(PadOpTest, Pad_Edge_3D_Last_Pad_Slice_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, -1, 0, 1, 1, 0},
+                                  T(0),
+                                  {5, 2, 5},
+                                  {T(6), T(7), T(8), T(9), T(10),
+                                   T(6), T(7), T(8), T(9), T(10),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(6), T(7), T(8), T(9), T(10),
+
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(16), T(17), T(18), T(19), T(20),
+
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(26), T(27), T(28), T(29), T(30),
+
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  "edge");
+}
+
+TYPED_TEST(PadOpTest, Pad_Edge_3D_Last_Slice_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 3, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, -1, 0, 1, 0, 0},
+                                  T(0),
+                                  {4, 2, 5},
+                                  {T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  "edge");
+}
+
+TYPED_TEST(PadOpTest, Pad_Reflect_3D_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, 1, 0, 1, 1, 0},
+                                  T(0),
+                                  {5, 4, 5},
+                                  {T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(1), T(2), T(3), T(4), T(5),
+
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15),
+
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21), T(22), T(23), T(24), T(25),
+
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(11), T(12), T(13), T(14), T(15)},
+                                  "reflect");
+}
+
+TYPED_TEST(PadOpTest, Pad_Reflect_3D_Last_Pad_Slice_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 3, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, -1, 0, 1, 1, 0},
+                                  T(0),
+                                  {4, 3, 5},
+                                  {T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21), T(22), T(23), T(24), T(25),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(6), T(7), T(8), T(9), T(10),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+                                   T(21), T(22), T(23), T(24), T(25),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(6), T(7), T(8), T(9), T(10)},
+                                  "reflect");
+}
+
+TYPED_TEST(PadOpTest, Pad_Reflect_3D_Last_Slice_Inner_No_Padding) {
+  using T = TypeParam;
+  RunAllOpsetAllDomainPadTests<T>({2, 3, 5},
+                                  {T(1), T(2), T(3), T(4), T(5),
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+                                   T(16), T(17), T(18), T(19), T(20),
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30)},
+                                  {1, -1, 0, 1, 0, 0},
+                                  T(0),
+                                  {4, 2, 5},
+                                  {T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15),
+
+                                   T(21), T(22), T(23), T(24), T(25),
+                                   T(26), T(27), T(28), T(29), T(30),
+
+                                   T(6), T(7), T(8), T(9), T(10),
+                                   T(11), T(12), T(13), T(14), T(15)},
+                                  "reflect");
+}
 
 /*
 Example numpy for testing behavior

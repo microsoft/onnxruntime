@@ -16,6 +16,7 @@ size_t CalcResizeBufferSize(const onnxruntime::UpsampleMode upsample_mode,
 
 template <typename T>
 void ResizeImpl(
+    cudaStream_t stream,
     const onnxruntime::UpsampleMode upsample_mode,
     const int rank,
     TArray<int64_t>& input_shape,
@@ -23,7 +24,7 @@ void ResizeImpl(
     TArray<int64_t>& input_strides,
     TArray<fast_divmod>& output_div_pitches,
     TArray<float>& scales_vals,
-    TArray<float>& roi,
+    TArray<float, 10>& roi,
     const T* input_data,
     T* output_data,
     const size_t N,

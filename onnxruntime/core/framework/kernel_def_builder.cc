@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/framework/kernel_def_builder.h"
+#include "core/framework/murmurhash3.h"
+#include "gsl/gsl"
+
 #include <unordered_set>
 #include <string>
 
@@ -22,7 +25,45 @@ inline bool AreVectorsOverlap(const std::vector<T>& v1, const std::vector<T>& v2
   }
   return false;
 }
+
 }  // namespace
+
+void KernelDef::CalculateHash() {
+  uint32_t hash[4] = {0, 0, 0, 0};
+
+  auto hash_int = [&hash](int i) { MurmurHash3::x86_128(&i, sizeof(i), hash[0], &hash); };
+  auto hash_str = [&hash](const std::string& str) {
+    MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+  };
+
+  // use name, start/end, domain, provider and the type constraints.
+  // we wouldn't have two kernels that only differed by the inplace or alias info or memory types.
+  // currently nothing sets exec_queue_id either (and would assumably be a runtime thing and not part of the base
+  // kernel definition)
+
+  hash_str(op_name_);
+  hash_int(op_since_version_start_);
+
+  // If we include op_since_version_end_ the hash of an existing op changes when it's superseded.
+  // e.g. Unsqueeze 11 had no end version until Unsqueeze 13, at which point the existing op is changed to have
+  // an end version of 12. That would result in a new ORT build having a different hash for Unsqueeze 11 and a
+  // previously serialized ORT format model wouldn't find the kernel. In order to select the kernel to include
+  // in the ORT model the full OpSchema info is used, so it's safe to exclude op_since_version_end_ from the hash.
+
+  hash_str(op_domain_);
+  hash_str(provider_type_);
+
+  // use the supported_type_constraints_ list for the hash so the value in an ORT format model is stable.
+  for (const auto& key_value : supported_type_constraints_) {
+    hash_str(key_value.first);
+    for (const auto& data_type : key_value.second) {
+      hash_str(std::string(DataTypeImpl::ToString(data_type)));
+    }
+  }
+
+  hash_ = hash[0] & 0xfffffff8;  // save low 3 bits for hash version info in case we need it in the future
+  hash_ |= uint64_t(hash[1]) << 32;
+}
 
 // TODO: Tell user why it has conflicts
 // TODO: Investigate why IsConflict() was not triggered when there were duplicate Tile CUDA
@@ -49,7 +90,7 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   //check types
   const auto& other_types = other.TypeConstraints();
   bool type_has_conflict = true;
-  for (const auto& it : type_constraints_) {
+  for (const auto& it : supported_type_constraints_) {
     auto iter = other_types.find(it.first);
     if (iter != other_types.end()) {
       if (!AreVectorsOverlap(it.second, iter->second)) {
@@ -125,20 +166,41 @@ KernelDefBuilder& KernelDefBuilder::Provider(const char* provider_type) {
   return *this;
 }
 
+KernelDefBuilder& KernelDefBuilder::TypeConstraintImpl(const std::string& arg_name,
+                                                       const std::vector<MLDataType>& supported_types,
+                                                       const std::vector<MLDataType>* enabled_types) {
+  // use the enabled types list if provided
+  kernel_def_->enabled_type_constraints_[arg_name] = enabled_types ? *enabled_types : supported_types;
+  kernel_def_->supported_type_constraints_[arg_name] = supported_types;
+  return *this;
+}
+
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
                                                    const std::vector<MLDataType>& supported_types) {
-  kernel_def_->type_constraints_[arg_name] = supported_types;
-  return *this;
+  return TypeConstraintImpl(arg_name, supported_types, nullptr);
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
                                                    const std::vector<MLDataType>& supported_types) {
-  return TypeConstraint(std::string(arg_name), supported_types);
+  return TypeConstraintImpl(arg_name, supported_types, nullptr);
+}
+
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
+                                                   const std::vector<MLDataType>& supported_types,
+                                                   const std::vector<MLDataType>& enabled_types) {
+  return TypeConstraintImpl(arg_name, supported_types, &enabled_types);
+}
+
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
+                                                   const std::vector<MLDataType>& supported_types,
+                                                   const std::vector<MLDataType>& enabled_types) {
+  return TypeConstraintImpl(arg_name, supported_types, &enabled_types);
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
                                                    MLDataType supported_type) {
-  kernel_def_->type_constraints_[arg_name] = std::vector<MLDataType>{supported_type};
+  kernel_def_->enabled_type_constraints_[arg_name] = std::vector<MLDataType>{supported_type};
+  kernel_def_->supported_type_constraints_[arg_name] = std::vector<MLDataType>{supported_type};
   return *this;
 }
 
@@ -165,6 +227,12 @@ KernelDefBuilder& KernelDefBuilder::Alias(const std::vector<std::pair<int, int>>
 
 KernelDefBuilder& KernelDefBuilder::Alias(int input_index, int output_index) {
   kernel_def_->alias_map_.emplace_back(input_index, output_index);
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::VariadicAlias(int input_offset, int output_offset) {
+  ORT_ENFORCE(input_offset >= 0 && output_offset >= 0);
+  kernel_def_->variadic_alias_offsets_ = std::make_pair(input_offset, output_offset);
   return *this;
 }
 

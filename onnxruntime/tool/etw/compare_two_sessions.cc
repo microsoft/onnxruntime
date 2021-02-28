@@ -50,7 +50,7 @@ std::pair<double, double> CalcMeanAndStdSquare(const T* input, size_t input_len)
   return std::make_pair(mean, std);
 }
 // see: "Statistical Distributions", 4th Edition, by Catherine Forbes, Merran Evans, Nicholas Hastings and Brian
-// Peacock. Chapter 42: "Student’s t Distribution". I only implemented when v is even.
+// Peacock. Chapter 42: "Studentï¿½s t Distribution". I only implemented when v is even.
 double TDistributionCDF(int v, double x) {
   assert(v >= 2 && (v & 1) == 0);
   double t = x / (2 * std::sqrt(v + x * x));
@@ -135,11 +135,17 @@ int real_main(int argc, TCHAR* argv[]) {
 
 int _tmain(int argc, TCHAR* argv[]) {
   int retval = -1;
-  try {
+#ifndef ORT_NO_EXCEPTIONS
+  try
+#endif
+  {
     retval = real_main(argc, argv);
-  } catch (std::exception& ex) {
+  }
+#ifndef ORT_NO_EXCEPTIONS
+  catch (std::exception& ex) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
   }
+#endif
   return retval;
 }

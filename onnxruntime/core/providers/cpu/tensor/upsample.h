@@ -69,6 +69,12 @@ class UpsampleBase {
                                                      ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
                                                      : "asymmetric";
     coordinate_transform_mode_ = StringToCoordinateTransformationMode(coordinate_transform_mode_name);
+    if (opset >= 13 && coordinate_transform_mode_ == TF_HALF_PIXEL_FOR_NN) {
+      LOGS_DEFAULT(WARNING)
+          << "`tf_half_pixel_for_nn` is deprecated since opset 13, "
+          << "yet this opset " << opset << " model uses the deprecated attribute";
+    }
+
     get_original_coordinate_ = GetOriginalCoordinateFromResizedCoordinate(coordinate_transform_mode_);
     use_extrapolation_ = need_roi_input_ = (coordinate_transform_mode_ == TF_CROP_AND_RESIZE);
 
@@ -276,15 +282,26 @@ class UpsampleBase {
       }
     }
 
-    if (UpsampleMode::LINEAR == mode || UpsampleMode::CUBIC == mode) {
+    if (UpsampleMode::LINEAR == mode) {
+      ORT_ENFORCE(scales.size() == 2 ||
+                      (scales.size() == 4 && scales[0] == 1 && scales[1] == 1) ||
+                      scales.size() == 3 ||
+                      (scales.size() == 5 && scales[0] == 1 && scales[1] == 1),
+                  "'Linear' mode only support 2-D inputs or 3-D inputs ('Bilinear', 'Trilinear') "
+                  "or 4-D inputs or 5-D inputs with the corresponding outermost 2 scale values being 1 in the ",
+                  is_resize_ ? "Resize operator" : "Upsample operator");
+    }
+
+    else if (UpsampleMode::CUBIC == mode) {
       ORT_ENFORCE(scales.size() == 2 || (scales.size() == 4 && scales[0] == 1 && scales[1] == 1),
-                  "'Linear' mode and 'Cubic' mode only support 2-D inputs ('Bilinear', 'Bicubic') or 4-D inputs "
+                  "'Cubic' mode only support 2-D inputs ('Bicubic') or 4-D inputs "
                   "with the corresponding outermost 2 scale values being 1 in the ",
                   is_resize_ ? "Resize operator" : "Upsample operator");
     }
   }
 
-  void ParseScalesData(const Tensor* scale, std::vector<float>& scales) const {
+  void
+  ParseScalesData(const Tensor* scale, std::vector<float>& scales) const {
     const auto* scale_data = scale->template Data<float>();
     int64_t scales_size = scale->Shape().Size();
     ORT_ENFORCE(scales_size > 0, "scales size should be greater than 0.");

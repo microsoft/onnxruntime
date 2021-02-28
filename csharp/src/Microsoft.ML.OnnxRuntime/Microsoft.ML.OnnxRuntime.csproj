@@ -12,8 +12,6 @@
     <!--internal build related properties-->
     <OnnxRuntimeRoot>..\..\..</OnnxRuntimeRoot>
     <OnnxRuntimeCsharpRoot>$(OnnxRuntimeRoot)\csharp</OnnxRuntimeCsharpRoot>
-    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
-    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>  
     
     <!--- packaging properties -->
@@ -43,6 +41,18 @@
     <!--EmbedUntrackedSources>true</EmbedUntrackedSources-->
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
+    <!--internal build related properties for Linux -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Linux</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='false'">
+    <!--internal build related properties for Windows -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
   </PropertyGroup>
 
   <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
@@ -75,13 +85,22 @@
           CopyToOutputDirectory="Never"
           Visible="false"
     />
+    <None Include="$(NativeBuildOutputDir)\libonnxruntime.so"
+          Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.so')"
+          PackagePath="\runtimes\linux-$(TargetArchitecture)\native"
+          Pack="false"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
+          Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.lib')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.dll')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
@@ -89,14 +108,6 @@
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb"
           Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\DirectML.dll"
-          Condition="Exists('$(NativeBuildOutputDir)\DirectML.dll')
-                     And '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
@@ -135,11 +146,6 @@
           Pack="true"
           Visible="false"
     />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\docs\CSharp_API.md"
-          PackagePath="\README.md"
-          Pack="true"
-          Visible="false"
-    />
     <None Include="$(PackageId).targets" 
           PackagePath="\build\$(TargetFramework)"
           Pack="true"
@@ -171,8 +177,14 @@
   <Target Name="CopyMiscFiles" BeforeTargets="Pack">
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')" />
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')" />
-
   </Target>
+
+  <Target Name="CopyPackage" AfterTargets="Pack">
+  <Copy
+    SourceFiles="$(OutputPath)..\$(PackageId).$(PackageVersion).nupkg"
+    DestinationFolder="$(NativeBuildOutputDir)\nuget-artifacts"
+    />
+</Target>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
@@ -180,4 +192,3 @@
   </ItemGroup>
 
 </Project>
-

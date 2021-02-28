@@ -27,22 +27,45 @@ typedef std::set<const Node*, NodeCompare> NodeSet;
 
 static std::unordered_map<std::string, std::unordered_set<size_t>>
     STOP_GRADIENT_EDGES = {
-        {"Pow", {1}},
+        {"Not", {0}},
+        {"And", {0, 1}},
+        {"Or", {0, 1}},
+        {"Xor", {0, 1}},
+        {"Equal", {0, 1}},
+        {"Less", {0, 1}},
+        {"LessOrEqual", {0, 1}},
+        {"Greater", {0, 1}},
+        {"GreaterOrEqual", {0, 1}},
+        {"IsInf", {0}},
+        {"IsNaN", {0}},
+        {"NonZero", {0}},
+        {"Pow", {1}},  // TODO: Pow's input_1 is differentiable, but gradient not yet implemented
         {"Gather", {1}},
+        {"GatherElements", {1}},
+        {"GatherND", {1}},
+        {"Shape", {0}},
+        {"Size", {0}},
         {"Reshape", {1}},
         {"Expand", {1}},
-        {"TrainableDropout", {1}},
         {"Dropout", {1, 2}},
         {"Slice", {1, 2, 3, 4}},
         {"SparseSoftmaxCrossEntropy", {1, 2}},
         {"SoftmaxCrossEntropyLoss", {1, 2}},
         {"ConstantOfShape", {0}},
         {"Scatter", {1}},
+        {"ScatterElements", {1}},
+        {"ScatterND", {1}},
         {"OneHot", {0, 1, 2}},
         {"Where", {0}},
         {"Range", {0, 1, 2}},
         {"Tile", {1}},
-        {"BroadcastGradientArgs", {0, 1}}};
+        {"BroadcastGradientArgs", {0, 1}},
+        {"TopK", {1}},
+        {"Squeeze", {1}},
+        {"Unsqueeze", {1}},
+        {"ReduceSum", {1}},
+        {"Split", {1}},
+        {"Clip", {1, 2}}};
 
 class GradientGraphBuilder {
  public:
@@ -63,7 +86,7 @@ class GradientGraphBuilder {
                        const GradientGraphConfiguration& gradient_graph_config,
                        const logging::Logger& logger);
 
-  Status Build();
+  Status Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr);
 
  private:
   std::unordered_set<const NodeArg*> y_node_args_;
@@ -71,6 +94,7 @@ class GradientGraphBuilder {
 
   NodeSet y_nodes_;
   NodeSet x_nodes_;
+  NodeSet reachable_nodes_;
 
   Graph* graph_;
 
@@ -99,14 +123,22 @@ class GradientGraphBuilder {
   @param nodes Starting nodes for ReverseBFS
   @returns All the nodes visited during ReverseBFS
   */
-  NodeSet ReverseBFS(const NodeSet& nodes);
+  NodeSet ReverseBFS(const NodeSet& nodes) const;
 
   /**
   Check if 'x_node_args_' are reachable from 'y_node_args_' for computing the partial derivative
   @param reachable_nodes All the nodes reachable from the 'y_node_args_'
   @returns OK if all 'x_node_args_' are reachable, else an ONNXRUNTIME INVALID_ARGUMENT status
   */
-  Status CheckNodeArgsReachable(const NodeSet& reachable_nodes);
+
+  Status CheckNodeArgsReachable() const;
+
+  /** 
+  Check if node is reachable from the 'y_node_args_'
+   **/
+  bool IsReachable(const Node* node) const {
+    return reachable_nodes_.find(node) != reachable_nodes_.end();
+  }
 };
 
 }  // namespace training

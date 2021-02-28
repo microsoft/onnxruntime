@@ -3,15 +3,10 @@
 
 # -*- coding: UTF-8 -*-
 import unittest
-import os
-import sys
 import numpy as np
 from numpy.testing import assert_allclose
 import onnxruntime as onnxrt
-from onnxruntime import datasets
 import onnxruntime.backend as backend
-from onnxruntime.backend.backend import OnnxRuntimeBackend as ort_backend
-from onnx import load
 from helper import get_name
 
 class TestBackend(unittest.TestCase):

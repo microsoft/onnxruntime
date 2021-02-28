@@ -24,7 +24,7 @@ template <typename T>
 thread_local std::map<OpKernel*, armnn::NetworkId> Conv<T>::convLayers;
 
 template <typename T>
-armnn::IRuntimePtr Conv<T>::run = Conv<T>::initRuntime();
+armnn::IRuntimePtr Conv<T>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
 armnn::Convolution2dDescriptor createConvDescriptor(std::vector<int64_t> pads, std::vector<int64_t> dilations, std::vector<int64_t> strides, bool biasEnabled) {
   std::vector<int64_t> armnnStrides(2);

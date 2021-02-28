@@ -31,7 +31,12 @@ class Precision(Enum):
         return self.value
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=True, num_threads=-1, verbose=False):
+def create_onnxruntime_session(onnx_model_path,
+                               use_gpu,
+                               enable_all_optimization=True,
+                               num_threads=-1,
+                               enable_profiling=False,
+                               verbose=False):
     session = None
     try:
         from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
@@ -42,16 +47,17 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization
         else:
             sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
 
+        if enable_profiling:
+            sess_options.enable_profiling = True
+
         if num_threads > 0:
             sess_options.intra_op_num_threads = num_threads
             logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
-        elif (not use_gpu) and (version.parse(onnxruntime_version) < version.parse('1.3.0')):
-            # Set intra_op_num_threads = 1 to enable OpenMP for onnxruntime 1.2.0 (cpu)
-            # onnxruntime-gpu is not built with openmp so it is better to use default (0) or cpu_count instead.
-            sess_options.intra_op_num_threads = 1
 
         if verbose:
             sess_options.log_severity_level = 0
+        else:
+            sess_options.log_severity_level = 4
 
         logger.debug(f"Create session for onnx model: {onnx_model_path}")
         execution_providers = ['CPUExecutionProvider'
@@ -88,9 +94,10 @@ def prepare_environment(cache_dir, output_dir, use_gpu):
     logger.info(f'Transformers Version:{transformers.__version__}')
     logger.info(f'Onnxruntime Version:{onnxruntime.__version__}')
 
+    # Support three major versions of PyTorch and OnnxRuntime, and up to 6 months of transformers.
     from packaging import version
-    assert version.parse(torch.__version__) >= version.parse('1.4.0')
-    assert version.parse(transformers.__version__) >= version.parse('2.11.0')
+    assert version.parse(torch.__version__) >= version.parse('1.5.0')
+    assert version.parse(transformers.__version__) >= version.parse('3.0.0')
     assert version.parse(onnxruntime.__version__) >= version.parse('1.4.0')
 
 
@@ -113,8 +120,8 @@ def get_latency_result(runtimes, batch_size):
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "precision", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
-            "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
+            "engine", "version", "device", "precision", "optimizer", "io_binding", "model_name", "inputs", "threads",
+            "batch_size", "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
             "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
@@ -128,7 +135,9 @@ def output_details(results, csv_filename):
 
 def output_summary(results, csv_filename, args):
     with open(csv_filename, mode="a", newline='') as csv_file:
-        header_names = ["model_name", "inputs", "engine", "version", "device", "precision", "optimizer", "io_binding"]
+        header_names = [
+            "model_name", "inputs", "engine", "version", "device", "precision", "optimizer", "io_binding", "threads"
+        ]
         data_names = []
         for batch_size in args.batch_sizes:
             for sequence_length in args.sequence_lengths:
@@ -140,22 +149,24 @@ def output_summary(results, csv_filename, args):
             for input_count in [1, 2, 3]:
                 for engine_name in args.engines:
                     for io_binding in [True, False, ""]:
-                        row = {}
-                        for result in results:
-                            if result["model_name"] == model_name and result["inputs"] == input_count and result[
-                                    "engine"] == engine_name and result["io_binding"] == io_binding:
-                                headers = {k: v for k, v in result.items() if k in header_names}
-                                if not row:
-                                    row.update(headers)
-                                    row.update({k: "" for k in data_names})
-                                else:
-                                    for k in header_names:
-                                        assert row[k] == headers[k]
-                                b = result["batch_size"]
-                                s = result["sequence_length"]
-                                row[f"b{b}_s{s}"] = result["average_latency_ms"]
-                        if row:
-                            csv_writer.writerow(row)
+                        for threads in args.num_threads:
+                            row = {}
+                            for result in results:
+                                if result["model_name"] == model_name and result["inputs"] == input_count and result[
+                                        "engine"] == engine_name and result["io_binding"] == io_binding and result[
+                                            "threads"] == threads:
+                                    headers = {k: v for k, v in result.items() if k in header_names}
+                                    if not row:
+                                        row.update(headers)
+                                        row.update({k: "" for k in data_names})
+                                    else:
+                                        for k in header_names:
+                                            assert row[k] == headers[k]
+                                    b = result["batch_size"]
+                                    s = result["sequence_length"]
+                                    row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                            if row:
+                                csv_writer.writerow(row)
 
     logger.info(f"Summary results are saved to csv file: {csv_filename}")
 
@@ -185,8 +196,17 @@ def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_
     return result
 
 
-def inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times, ort_output_names, ort_outputs,
-                                  output_buffers, max_last_state_size, max_pooler_size, batch_size, device):
+def inference_ort_with_io_binding(ort_session,
+                                  ort_inputs,
+                                  result_template,
+                                  repeat_times,
+                                  ort_output_names,
+                                  ort_outputs,
+                                  output_buffers,
+                                  output_buffer_max_sizes,
+                                  batch_size,
+                                  device,
+                                  data_type=numpy.longlong):
     result = {}
 
     # Bind inputs and outputs to onnxruntime session
@@ -194,19 +214,14 @@ def inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repe
     # Bind inputs to device
     for name in ort_inputs.keys():
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
-        io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
-    has_pooler = True if len(ort_output_names) == 2 else False
+        io_binding.bind_input(name, np_input.device.type, 0, data_type, np_input.shape, np_input.data_ptr())
     # Bind outputs buffers with the sizes needed if not allocated already
-    if output_buffers["last_state"] is None:
-        allocateOutputBuffers(output_buffers, max_last_state_size, max_pooler_size, device, has_pooler)
-    last_state_buffer = output_buffers["last_state"]
-    pooler_buffer = output_buffers["pooler"]
-    io_binding.bind_output(ort_output_names[0], last_state_buffer.device.type, 0, numpy.float32, ort_outputs[0].shape,
-                           last_state_buffer.data_ptr())
-    if has_pooler:
-        io_binding.bind_output(ort_output_names[1], pooler_buffer.device.type, 0, numpy.float32, ort_outputs[1].shape,
-                               pooler_buffer.data_ptr())
+    if len(output_buffers) == 0:
+        allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device)
 
+    for i in range(len(ort_output_names)):
+        io_binding.bind_output(ort_output_names[i], output_buffers[i].device.type, 0, numpy.float32,
+                               ort_outputs[i].shape, output_buffers[i].data_ptr())
     runtimes = timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
     result.update(result_template)
     result.update({"io_binding": True})
@@ -214,12 +229,96 @@ def inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repe
     return result
 
 
-def allocateOutputBuffers(output_buffers, max_last_state_size, max_pooler_size, device, has_pooler=False):
+def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):
     # Allocate output tensors with the largest test size needed. So the allocated memory can be reused
     # for each test run.
-    # dummy last state
-    if output_buffers["last_state"] is None:
-        output_buffers["last_state"] = torch.empty(max_last_state_size, dtype=torch.float32, device=device)
-    # create dummy pooler
-    if output_buffers["pooler"] is None and has_pooler:
-        output_buffers["pooler"] = torch.empty(max_pooler_size, dtype=torch.float32, device=device)
+
+    for i in output_buffer_max_sizes:
+        output_buffers.append(torch.empty(i, dtype=torch.float32, device=device))
+
+
+def set_random_seed(seed=123):
+    """Set random seed manully to get deterministic results"""
+    import random
+    random.seed(seed)
+    numpy.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    #torch.backends.cudnn.enabled = False
+    #torch.backends.cudnn.benchmark = False
+    #torch.backends.cudnn.deterministic = True
+
+
+def measure_memory(is_gpu, func):
+    import os
+    import psutil
+    from time import sleep
+
+    class MemoryMonitor:
+        def __init__(self, keep_measuring=True):
+            self.keep_measuring = keep_measuring
+
+        def measure_cpu_usage(self):
+            max_usage = 0
+            while True:
+                max_usage = max(max_usage, psutil.Process(os.getpid()).memory_info().rss / 1024**2)
+                sleep(0.005)  # 5ms
+                if not self.keep_measuring:
+                    break
+            return max_usage
+
+        def measure_gpu_usage(self):
+            from py3nvml.py3nvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, \
+                                 nvmlDeviceGetMemoryInfo, nvmlDeviceGetName, nvmlShutdown, NVMLError
+            max_gpu_usage = []
+            gpu_name = []
+            try:
+                nvmlInit()
+                deviceCount = nvmlDeviceGetCount()
+                max_gpu_usage = [0 for i in range(deviceCount)]
+                gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(deviceCount)]
+                while True:
+                    for i in range(deviceCount):
+                        info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
+                        max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
+                    sleep(0.005)  # 5ms
+                    if not self.keep_measuring:
+                        break
+                nvmlShutdown()
+                return [{
+                    "device_id": i,
+                    "name": gpu_name[i],
+                    "max_used_MB": max_gpu_usage[i]
+                } for i in range(deviceCount)]
+            except NVMLError as error:
+                if not self.silent:
+                    self.logger.error("Error fetching GPU information using nvml: %s", error)
+                return None
+
+    monitor = MemoryMonitor(False)
+
+    memory_before_test = monitor.measure_gpu_usage() if is_gpu else monitor.measure_cpu_usage()
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor() as executor:
+        monitor = MemoryMonitor()
+        mem_thread = executor.submit(monitor.measure_gpu_usage if is_gpu else monitor.measure_cpu_usage)
+        try:
+            fn_thread = executor.submit(func)
+            result = fn_thread.result()
+        finally:
+            monitor.keep_measuring = False
+            max_usage = mem_thread.result()
+
+        if is_gpu:
+            print(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
+            if len(memory_before_test) >= 1 and len(max_usage) >= 1:
+                before = memory_before_test[0]["max_used_MB"]
+                after = max_usage[0]["max_used_MB"]
+                return after - before
+            else:
+                return None
+        else:
+            print(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")
+            return max_usage - memory_before_test

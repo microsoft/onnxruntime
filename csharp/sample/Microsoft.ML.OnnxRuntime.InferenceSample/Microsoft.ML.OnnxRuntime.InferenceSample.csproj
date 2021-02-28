@@ -5,17 +5,32 @@
     <TargetFramework>netcoreapp2.1</TargetFramework>
     <Platforms>AnyCPU;x86</Platforms>
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
-    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
-    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
+    <IsLinuxBuild Condition="'$(IsLinuxBuild)' == ''">false</IsLinuxBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
+    <!--internal build related properties for Linux -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Linux</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='false'">
+    <!--internal build related properties for Windows -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>    
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll">
+    <None Include="$(NativeBuildOutputDir)\libonnxruntime.so" Condition="'$(IsLinuxBuild)'=='true'">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll" Condition="'$(IsLinuxBuild)'=='false'">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="'$(IsLinuxBuild)'=='false'And Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
@@ -23,7 +38,19 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
+    <None Include="$(NativeBuildOutputDir)\libdnnl.so.1" Condition="Exists('$(NativeBuildOutputDir)\libdnnl.so.1')">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
     <None Include="$(NativeBuildOutputDir)\mklml.dll" Condition="Exists('$(NativeBuildOutputDir)\mklml.dll')">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\libmklml_intel.so" Condition="Exists('$(NativeBuildOutputDir)\libmklml_intel.so')">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\libmklml_gnu.so" Condition="Exists('$(NativeBuildOutputDir)\libmklml_gnu.so')">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>

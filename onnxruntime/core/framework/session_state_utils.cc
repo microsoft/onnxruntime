@@ -13,7 +13,6 @@
 
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
-#include "core/graph/graph_utils.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/ort_value_pattern_planner.h"
@@ -24,6 +23,9 @@
 #include "core/framework/utils.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_allocator.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+#include "core/framework/memory_info.h"
+#endif
 
 namespace onnxruntime {
 namespace session_state_utils {
@@ -91,61 +93,123 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 common::Status SaveInitializedTensors(
     const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
     const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
-    const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator& planner,
+    const OrtValueNameIdxMap& ort_value_name_idx_map,
+    const std::vector<OrtValueIndex>& initializer_allocation_order,
+    ITensorAllocator& planner,
     const std::function<Status(int idx, const OrtValue& value, const OrtCallback& d, bool constant)>& save_tensor_func,
-    const logging::Logger& logger, const DataTransferManager& data_transfer_mgr) {
+    const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
+    const ExecutionPlanBase& exec_plan,
+    const SessionOptions& session_options) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
+
+  // Determine if an intializer was supplied by the user for the purpose of sharing and if it requires a cross-device
+  // copy. In case a cross-device copy is required, sharing cannot be accomplished since we allocate our own buffer
+  // for the destn device which cannot be shared between sessions.
+  auto use_user_supplied_initializer =
+      [&session_options, &exec_plan, &logger, &ort_value_name_idx_map](const std::string& name) -> bool {
+    bool retval = false;
+    auto it = session_options.initializers_to_share_map.find(name);
+    if (it == session_options.initializers_to_share_map.end()) {
+      retval = false;
+    } else {
+      int ort_value_index = -1;
+      if (!ort_value_name_idx_map.GetIdx(name, ort_value_index).IsOK()) {
+        retval = false;
+      } else {
+        auto planned_mem_info = exec_plan.GetLocation(ort_value_index);
+        auto user_mem_info = it->second->Get<Tensor>().Location();
+        retval = user_mem_info.device == planned_mem_info.device;
+        if (!retval) {
+          LOGS(logger, WARNING) << "Cannot use user supplied initializer with name: ("
+                                << name << ") because the ORT planned memory location device "
+                                << planned_mem_info.ToString()
+                                << " ) is different from what is supplied (" << user_mem_info.ToString() << ")";
+        }
+      }
+    }
+
+    return retval;
+  };
 
   //1. first plan the memory
   const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
   std::unordered_map<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
+  std::set<int> user_supplied_initializer_ids;  // set containing the ort value ids of all user supplied initializers
   for (const auto& entry : initialized_tensor_set) {
     int ort_value_index;
     ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(entry.first, ort_value_index));
+    if (use_user_supplied_initializer(entry.first)) {
+      user_supplied_initializer_ids.insert(ort_value_index);
+    }
     id_to_initialized_tensor[ort_value_index] = entry.second;
   }
 
-  for (const auto& entry : id_to_initialized_tensor) {
-    ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
+  // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
+  auto initialized_tensors_to_allocate = id_to_initialized_tensor;
+  for (int ort_value_index : initializer_allocation_order) {
+    const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
+    ORT_ENFORCE(entry != initialized_tensors_to_allocate.end());
+    ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
+    initialized_tensors_to_allocate.erase(entry);
   }
 
+  for (const auto& entry : initialized_tensors_to_allocate) {
+    // We don't want to trace shared initializers since their memory is provided by the user
+    if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
+      continue;
+    }
+    ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
+  }
   //2. allocate weight buffer on different locations
   // planned_initializers_memory_size_in_byte is not actual physical size.
   // It's the virtual size computed by planner.
   std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::RecordPatternInfo(planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
+  MemoryInfo::MemoryInfoProfile::CreateEvents("initializer_" + std::to_string(MemoryInfo::GetIteration()),
+                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
+#endif
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }
 
-  OrtCallback deleter;
+  OrtCallback deleter{nullptr, nullptr};
 
   //3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
     int ort_value_index = entry.first;
     const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
-    const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
-
-    std::unique_ptr<MemBuffer> m;
-    // TODO: if the tensor need be copied, does it have enough room?
-    ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m));
-#ifndef NDEBUG
-    ORT_ENFORCE(m != nullptr);
-    ORT_ENFORCE(m->GetBuffer() != nullptr || m->GetLen() == 0);
-#endif
     OrtValue ort_value;
-    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, default_cpu_memory_info, ort_value, deleter,
-                                       data_transfer_mgr);
-    if (!st.IsOK()) {
-      std::ostringstream oss;
-      oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
-      return Status(st.Category(), st.Code(), oss.str());
+
+    if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
+      ort_value = *(session_options.initializers_to_share_map.at(name));
+      LOGS(logger, INFO) << "Using user supplied initializer with name (" << name << ").";
+    } else {
+      const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
+
+      std::unique_ptr<MemBuffer> m;
+      // TODO: if the tensor need be copied, does it have enough room?
+      ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m));
+#ifndef NDEBUG
+      ORT_ENFORCE(m != nullptr);
+      ORT_ENFORCE(m->GetBuffer() != nullptr || m->GetLen() == 0);
+#endif
+      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, default_cpu_memory_info, ort_value, deleter,
+                                         data_transfer_mgr);
+      if (!st.IsOK()) {
+        std::ostringstream oss;
+        oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
+        return Status(st.Category(), st.Code(), oss.str());
+      }
     }
 
+    // any outer scope value is shadowed by a local value and can't override it.
+    // due to that check_outer_scope is false
     bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
     ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant));
 

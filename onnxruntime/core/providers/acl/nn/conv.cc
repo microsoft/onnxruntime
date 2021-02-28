@@ -154,7 +154,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
     const arm_compute::DataLayout data_layout = tconv.in->info()->data_layout();
     const int idx_channel = arm_compute::get_data_layout_dimension_index(data_layout, arm_compute::DataLayoutDimension::CHANNEL);
-    bool isDepthwise = (1 == tconv.k->info()->tensor_shape()[idx_channel]);
+    bool isDepthwise = (conv_attrs_.group > 1 && conv_attrs_.group == tconv.in->info()->tensor_shape()[idx_channel]);
     tconv.isDepthwiseCPU = isDepthwise;
 
     std::vector<int64_t> aclStrides(2);
@@ -208,29 +208,41 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                                                                                              tconv.in->info()->data_type(),
                                                                                              1 /* depth multiplier */,
                                                                                              tconv.in->info()->data_layout());
-#endif
-#if defined(ACL_1905) || defined(ACL_1908)
+#elif defined(ACL_1905) || defined(ACL_1908)
       bool optimizable =
           arm_compute::NEDepthwiseConvolutionAssemblyDispatch::is_optimized_supported(tconv.in->info(),
                                                                                       tconv.k->info(),
                                                                                       aclPadStride,
                                                                                       1 /* depth multiplier */,
                                                                                       arm_compute::Size2D(aclDilation0, dilations[0]));
+#elif defined(ACL_2002)
+      bool optimizable = bool(arm_compute::NEDepthwiseConvolutionLayerOptimized::validate(tconv.in->info(),
+                                                                           tconv.k->info(),
+                                                                           (B != nullptr) ? tconv.b->info() : nullptr,
+                                                                           tconv.out->info(),
+                                                                           aclPadStride,
+                                                                           1 /* depth multiplier */,
+                                                                           acl_activ_enabled ?
+                                                                              arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) :
+                                                                              arm_compute::ActivationLayerInfo(),
+                                                                           arm_compute::Size2D(aclDilation0, dilations[0])));
 #endif
+
       if (optimizable) {
         LOGS_DEFAULT(VERBOSE) << "ACL optimized depthwise convolution";
 #if defined(ACL_1902) || defined(ACL_1905)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer3x3>();
-#endif
-#ifdef ACL_1908
+#elif defined(ACL_1908)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayerOptimized>();
+#elif defined(ACL_2002)
+        auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer>();
 #endif
+
 #ifdef ACL_1902
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo());
-#endif
-#if defined(ACL_1905) || defined(ACL_1908)
+#elif defined(ACL_1905) || defined(ACL_1908) || defined(ACL_2002)
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
@@ -283,7 +295,12 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   }
 
   const T* x_data = X->template Data<T>();
-  ACLImportMemory(pConv->in->allocator(), (void*)x_data, X->Shape().Size() * 4);
+  if(X->Shape().Size() != 0 && pConv->in->info()->has_padding() ){
+    pConv->in->allocator()->allocate();
+    importDataToTensor<T>(pConv->in.get(), x_data);
+  }else{
+    ACLImportMemory(pConv->in->allocator(), (void*)x_data, X->Shape().Size() * 4);
+  }
 
   const T* k_data = W->template Data<T>();
   ACLImportMemory(pConv->k->allocator(), (void*)k_data, W->Shape().Size() * 4);
@@ -294,12 +311,20 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   }
 
   T* y_data = Y->template MutableData<T>();
-  ACLImportMemory(pConv->out->allocator(), (void*)y_data, Y->Shape().Size() * 4);
+  if(Y->Shape().Size() != 0 && pConv->out->info()->has_padding() ){
+    pConv->out->allocator()->allocate();
+  } else {
+    ACLImportMemory(pConv->out->allocator(), (void*)y_data, Y->Shape().Size() * 4);
+  }
 
   arm_compute::Allocator alloc_mm{};
   pConv->mm_layer->populate(alloc_mm, 1);
   pConv->layer->run();
   pConv->mm_layer->clear();
+
+  if(Y->Shape().Size() != 0 && pConv->out->info()->has_padding() ){
+    importDataFromTensor<T>(pConv->out.get(), y_data);
+  }
 
   pConv->in->allocator()->free();
   pConv->k->allocator()->free();

@@ -15,14 +15,14 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
-#ifdef USE_OPENVINO
-#include "core/providers/openvino/openvino_execution_provider.h"
-#endif
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #endif
 #ifdef USE_RKNPU
 #include "core/providers/rknpu/rknpu_execution_provider.h"
+#endif
+#ifdef USE_COREML
+#include "core/providers/coreml/coreml_execution_provider.h"
 #endif
 
 namespace onnxruntime {
@@ -54,6 +54,10 @@ IExecutionProvider* TestNnapiExecutionProvider();
 IExecutionProvider* TestRknpuExecutionProvider();
 #endif
 
+#ifdef USE_COREML
+IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags);
+#endif
+
 template <typename T>
 inline void CopyVectorToTensor(const std::vector<T>& value, Tensor& tensor) {
   gsl::copy(gsl::make_span(value), tensor.MutableDataAsSpan<T>());
@@ -80,6 +84,21 @@ void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const s
     CopyVectorToTensor(value, *p_tensor);
   }
 
+  p_mlvalue->Init(p_tensor.release(),
+                  DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+}
+
+// Lifetime of data_buffer should be managed by the caller.
+template <typename T>
+void CreateMLValue(const std::vector<int64_t>& dims, T* data_buffer, const OrtMemoryInfo& info,
+                   OrtValue* p_mlvalue) {
+  TensorShape shape(dims);
+  auto element_type = DataTypeImpl::GetType<T>();
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+                                                                      shape,
+                                                                      data_buffer,
+                                                                      info);
   p_mlvalue->Init(p_tensor.release(),
                   DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());

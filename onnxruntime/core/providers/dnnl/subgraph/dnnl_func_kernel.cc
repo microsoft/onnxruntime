@@ -15,9 +15,15 @@
 #include "core/providers/dnnl/subgraph/dnnl_pool.h"
 #include "core/providers/dnnl/subgraph/dnnl_sum.h"
 #include "core/providers/dnnl/subgraph/dnnl_lrn.h"
+#ifdef ENABLE_TRAINING
+#include "core/providers/dnnl/subgraph/dnnl_convgrad.h"
+#include "core/providers/dnnl/subgraph/dnnl_relugrad.h"
+#include "core/providers/dnnl/subgraph/dnnl_maxpoolgrad.h"
+#endif  // ENABLE_TRAINING
 
 namespace onnxruntime {
 namespace ort_dnnl {
+DnnlEngineInstance* DnnlEngineInstance::instance = 0;
 
 namespace {
 template <typename T>
@@ -25,9 +31,14 @@ class SubgraphPrimitive : public PrimitiveBase {
  public:
   SubgraphPrimitive(const OrtCustomOpApi* api,
                     OrtKernelContext* context,
-                    const SubgraphParams& params)
-      : cpu_engine_(GetEngine()) {
-    context_.stream = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(cpu_engine_));
+                    const SubgraphParams& params) {
+    dnnl_engine_instance_ = DnnlEngineInstance::getInstance();
+    std::unordered_map<dnnl::engine::kind, dnnl::engine>::const_iterator iter = dnnl_engine_instance_->getEngineMap().find(dnnl::engine::kind::gpu);
+    if (iter != dnnl_engine_instance_->getEngineMap().end()) {
+      context_.stream = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(dnnl_engine_instance_->getEngine(dnnl::engine::kind::gpu)));
+    } else {
+      context_.stream = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(dnnl_engine_instance_->getEngine(dnnl::engine::kind::cpu)));
+    }
 
     if (context_.net.size() == 0) {
       CreateKernels(params);
@@ -64,6 +75,9 @@ class SubgraphPrimitive : public PrimitiveBase {
         os << "Conv-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlConv<T>> kernel;
         kernel = std::make_shared<DnnlConv<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+#ifdef ENABLE_TRAINING
+        params.provider->SetForwardConvKernel(dnnl_node.weight_name, kernel);
+#endif  // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -83,6 +97,12 @@ class SubgraphPrimitive : public PrimitiveBase {
         os << "Relu-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlRelu<T>> kernel;
         kernel = std::make_shared<DnnlRelu<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+#ifdef ENABLE_TRAINING
+        // TODO only need to populate the fwd_kernel_map map if training
+        // figure out way to read the training_mode parameter from
+        // onnxruntime\core\framwork\run_options.h
+        params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
+#endif  // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -130,6 +150,9 @@ class SubgraphPrimitive : public PrimitiveBase {
         os << "MaxPool-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlPool<T>> kernel;
         kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+#ifdef ENABLE_TRAINING
+        params.provider->SetForwardKernel(dnnl_node.onnx_index, kernel);
+#endif  // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -180,6 +203,60 @@ class SubgraphPrimitive : public PrimitiveBase {
         }
         context_.kernels.push_back(kernel);
       }
+#ifdef ENABLE_TRAINING
+      else if (dnnl_node.name == "ConvGrad") {
+        std::ostringstream os;
+        os << "ConvGrad-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlConvGrad<T>> kernel;
+        kernel = std::make_shared<DnnlConvGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+
+        auto fwd_kernel = params.provider->GetForwardConvKernel(dnnl_node.weight_name);
+        kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlConv<T>>(fwd_kernel));
+
+        for (auto index : dnnl_node.parent_nodes) {
+          kernel->parents_.push_back(context_.kernels[index]);
+        }
+        context_.kernels.push_back(kernel);
+      } else if (dnnl_node.name == "ReluGrad") {
+        std::ostringstream os;
+        os << "ReluGrad-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlReluGrad<T>> kernel;
+        kernel = std::make_shared<DnnlReluGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+
+        // walk the input_nodes for this ReluGrad dnnl_node find the node index of the Relu input_node
+        // use that index to obtain the Relu kernel pointer from the fwd_kernel_map.
+        for (auto iter = dnnl_node.input_nodes.begin(); iter != dnnl_node.input_nodes.end(); ++iter) {
+          if (iter->op_type == "Relu") {
+            auto fwd_kernel = params.provider->GetForwardKernel(iter->index);
+            kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlRelu<T>>(fwd_kernel));
+            break;
+          }
+        }
+
+        for (auto index : dnnl_node.parent_nodes) {
+          kernel->parents_.push_back(context_.kernels[index]);
+        }
+        context_.kernels.push_back(kernel);
+      } else if (dnnl_node.name == "MaxPoolGrad") {
+        std::ostringstream os;
+        os << "MaxPoolGrad-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlMaxPoolGrad<T>> kernel;
+        kernel = std::make_shared<DnnlMaxPoolGrad<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+
+        for (auto iter = dnnl_node.input_nodes.begin(); iter != dnnl_node.input_nodes.end(); ++iter) {
+          if (iter->op_type == "MaxPool") {
+            auto fwd_kernel = params.provider->GetForwardKernel(iter->index);
+            kernel->AddForwardDnnlKernel(std::dynamic_pointer_cast<DnnlPool<T>>(fwd_kernel));
+            break;
+          }
+        }
+
+        for (auto index : dnnl_node.parent_nodes) {
+          kernel->parents_.push_back(context_.kernels[index]);
+        }
+        context_.kernels.push_back(kernel);
+      }
+#endif  //ENABLE_TRAINING
     }
   }
 
@@ -196,15 +273,15 @@ class SubgraphPrimitive : public PrimitiveBase {
     // Propagate Dnnl block format
     // dst format of current node to src format of next node
     for (auto& kernel : context_.kernels) {
-      kernel->CreatePrimitives(api, context, cpu_engine_, context_.net, context_.net_args);
+      kernel->CreatePrimitives(api, context, dnnl_engine_instance_->getEngineMap(), context_.net, context_.net_args);
       if (kernel->primitive_created_status_.IsOK()) {
-        kernel->ReorderWeights(api, context, cpu_engine_);
+        kernel->ReorderWeights(api, context, dnnl_engine_instance_->getEngine(dnnl::engine::kind::cpu));
       }
     }
   }
 
   SubgraphContext context_;
-  dnnl::engine& cpu_engine_;
+  DnnlEngineInstance* dnnl_engine_instance_;
 };
 
 // Pool which allows for reuse of DNNL Conv primitives which are expensive to instantiate.
@@ -253,7 +330,19 @@ template <typename T>
 Status DnnlFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
   Status status;
   try {
+    // The training runner sets up the training graph then calls it via the inferance runner using a new thread
+    // each call. Since the SubgraphPrimitivePool stashes the nodes based on the thread_local memory it results in a new
+    // stash being created per-call from the training loop.  In theory the thread_local memory should be freed when the calling
+    // thread is destroyed but this was not being seen when actually running the code.  Instead of relying on the thread_local
+    // memory being freed we name a new SubgraphPrimitive instead of using the SubgraphPrimitivePool when the code is built for
+    // training. (If the training running is updated to use a thread pool instead of a new thread each run we may be able to
+    // revert back to the SubgraphPrimitivePool.)
+#ifdef ENABLE_TRAINING
+    std::unique_ptr<SubgraphPrimitive<T>> primitive = onnxruntime::make_unique<SubgraphPrimitive<T>>(api, context, params_);
+#else
     SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
+#endif  // ENABLE_TRAINING
+
     primitive->UpdateProvider(params_);
     status = primitive->Compute(api, context);
   } catch (const dnnl::error& e) {

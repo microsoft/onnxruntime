@@ -119,7 +119,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   int64_t batch_size = X.Shape()[1];
   int64_t input_size = X.Shape()[2];
 
-  auto status = rnn::detail::ValidateCommonRnnInputs(X, W, R, B, 1, sequence_lens, initial_h,
+  auto status = rnn::detail::ValidateCommonRnnInputs(X, W.Shape(), R.Shape(), B, 1, sequence_lens, initial_h,
                                                      num_directions, hidden_size_);
   ORT_RETURN_IF_ERROR(status);
 

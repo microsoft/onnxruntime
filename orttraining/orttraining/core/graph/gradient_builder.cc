@@ -67,12 +67,11 @@ static bool SimplifyReshape(const std::vector<Dimension>& target_shape,  // the 
 
 IMPLEMENT_GRADIENT_BUILDER(GetCastGradient) {
   // TODO: handle invalid conversion cases
-  const auto data_type = I(0).type_proto->tensor_type().elem_type();
   return std::vector<NodeDef>{
       NodeDef("Cast",
               {GO(0)},
               {GI(0)},
-              {MakeAttribute("to", int64_t(data_type))})};
+              {MakeAttribute("to", int64_t(IElemType(0)))})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
@@ -90,39 +89,120 @@ IMPLEMENT_GRADIENT_BUILDER(GetLogGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetTanhGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("TanhGrad",
-              {O(0), GO(0)},
-              {GI(0)})};
+  ArgDef Y = O(0);
+  std::vector<NodeDef> result;
+  NodeDef one_constant_node = OneConstantNode(OElemType(0));
+  ArgDef one_arg = one_constant_node.output_args[0];
+  result.push_back(one_constant_node);
+  result.push_back(NodeDef("Mul", {Y, Y}, {IA("Squared_Y")}));
+  result.push_back(NodeDef("Sub", {one_arg, IA("Squared_Y")}, {IA("Sub_Squared_Y")}));
+  result.push_back(NodeDef("Mul", {GO(0), IA("Sub_Squared_Y")}, {GI(0)}));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSqrtGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("SqrtGrad",
-              {O(0), GO(0)},
-              {GI(0)})};
+  std::vector<NodeDef> result;
+  NodeDef half_constant_node = HalfConstantNode(OElemType(0));
+  ArgDef half_arg = half_constant_node.output_args[0];
+  result.push_back(half_constant_node);
+  result.push_back(NodeDef("Div", {half_arg, O(0)}, {IA("Div_O0")}));
+  result.push_back(NodeDef("Mul", {GO(0), IA("Div_O0")}, {GI(0)}));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetErfGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("ErfGrad",
-              {I(0), GO(0)},
-              {GI(0)})};
+  ArgDef X = I(0);
+  std::vector<NodeDef> result;
+  NodeDef two_sqrt_pi_node = ConstantScalarNode(static_cast<float>(M_2_SQRTPI), Name("Two_Sqrt_Pi"), IElemType(0));
+  ArgDef two_sqrt_pi_arg = two_sqrt_pi_node.output_args[0];
+  result.push_back(two_sqrt_pi_node);
+  result.push_back(NodeDef("Mul", {X, X}, {IA("Squared_X")}));
+  result.push_back(NodeDef("Neg", {IA("Squared_X")}, {IA("Neg_Squared_X")}));
+  result.push_back(NodeDef("Exp", {IA("Neg_Squared_X")}, {IA("Exp_Neg_Squared_X")}));
+  result.push_back(NodeDef("Mul", {two_sqrt_pi_arg, IA("Exp_Neg_Squared_X")}, {IA("Mul_Exp_Neg_Squared_X")}));
+  result.push_back(NodeDef("Mul", {GO(0), IA("Mul_Exp_Neg_Squared_X")}, {GI(0)}));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   std::vector<NodeDef> result;
 
   ArgDef A = I(0), B = I(1), Y = O(0);
+  int elem_type = OElemType(0);
   std::vector<Dimension> A_shape, B_shape, Y_shape;
-  if (GetShape(A, A_shape).IsOK() && GetShape(B, B_shape).IsOK() && GetShape(Y, Y_shape).IsOK()) {
+  const bool A_has_shape = GetShape(A, A_shape).IsOK();
+  const bool B_has_shape = GetShape(B, B_shape).IsOK();
+  const bool Y_has_shape = GetShape(Y, Y_shape).IsOK();
+
+  auto dB_2d_case = [&]() {
+    NodeDef zero_float_const_node = ConstantScalarNode(0.0f, Name("zero_float"), elem_type);
+    ArgDef ZERO_F = zero_float_const_node.output_args[0];
+
+    if (B_shape[0].has_dim_value() && B_shape[1].has_dim_value()) {
+      // B[K, N] is a weight with known size
+      int64_t K = B_shape[0].dim_value();
+      int64_t N = B_shape[1].dim_value();
+
+      std::vector<int64_t> A_shape_2d{-1, K};
+      NodeDef A_target_shape_node = ConstantVectorNode(A_shape_2d, Name("A_target_shape"));
+
+      std::vector<int64_t> dY_shape_2d{-1, N};
+      NodeDef dY_target_shape_node = ConstantVectorNode(dY_shape_2d, Name("dY_target_shape"));
+
+      return std::vector<NodeDef>{
+          A_target_shape_node,
+          dY_target_shape_node,
+          zero_float_const_node,
+
+          // reshape A to 2D [M, K]
+          NodeDef("Reshape", {A, A_target_shape_node.output_args[0]}, {IA("A_reshape_2d")}),
+
+          // reshape dY to 2D [M, N]
+          NodeDef("Reshape", {GO(0), dY_target_shape_node.output_args[0]}, {IA("dY_reshape_2d")}),
+
+          // dB = A' * dY
+          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
+    } else {
+      NodeDef zero_int64_const_node = ConstantScalarNode(int64_t{0}, {1}, Name("zero_int64"));
+      NodeDef one_const_node = ConstantScalarNode(int64_t{1}, {1}, Name("one"));
+      NodeDef neg_one_const_node = ConstantScalarNode(int64_t{-1}, {1}, Name("neg_one"));
+
+      ArgDef ZERO_I = zero_int64_const_node.output_args[0];
+      ArgDef ONE = one_const_node.output_args[0];
+      ArgDef NEG_ONE = neg_one_const_node.output_args[0];
+
+      return std::vector<NodeDef>{
+          zero_int64_const_node,
+          one_const_node,
+          neg_one_const_node,
+          zero_float_const_node,
+
+          NodeDef("Shape", {B}, {IA("B_shape")}),
+
+          // reshape A to 2D [M, K]
+          NodeDef("Gather", {IA("B_shape"), ZERO_I}, {IA("K_dim")}, {MakeAttribute("axis", int64_t(0))}),
+          NodeDef("Concat", {NEG_ONE, IA("K_dim")}, {IA("A_target_shape")}, {MakeAttribute("axis", int64_t(0))}),
+          NodeDef("Reshape", {A, IA("A_target_shape")}, {IA("A_reshape_2d")}),
+
+          // reshape dY to 2D [M, N]
+          NodeDef("Gather", {IA("B_shape"), ONE}, {IA("N_dim")}, {MakeAttribute("axis", int64_t(0))}),
+          NodeDef("Concat", {NEG_ONE, IA("N_dim")}, {IA("dY_target_shape")}, {MakeAttribute("axis", int64_t(0))}),
+          NodeDef("Reshape", {GO(0), IA("dY_target_shape")}, {IA("dY_reshape_2d")}),
+
+          // dB = A' * dY
+          NodeDef("Gemm", {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO_F}, {GI(1)}, {MakeAttribute("transA", int64_t(1))})};
+    }
+  };
+
+  if (A_has_shape && B_has_shape && Y_has_shape &&
+      A_shape.size() >= 2 && B_shape.size() >= 2) {
     std::vector<AttributeProto> shared_attributes;
     shared_attributes.push_back(MakeAttribute("beta", float(0)));
     AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
     AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
 
     if (A_shape.size() == 2 && B_shape.size() == 2) {
-      NodeDef zero_constant_node = ZeroConstantNode();
+      NodeDef zero_constant_node = ZeroConstantNode(elem_type);
       ArgDef ZERO = zero_constant_node.output_args[0];
       result.push_back(zero_constant_node);
 
@@ -167,7 +247,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
         output_shape.push_back(B_shape[B_shape.size() - 2]);
 
         std::vector<int64_t> A_axes;
-        ComputeBroadcastBackwardAxes(A_shape, output_shape, &A_axes, nullptr);
+        ComputeBroadcastBackwardAxes(A_shape, output_shape, &A_axes, nullptr, NodeName());
 
         result.push_back(
             NodeDef("Transpose",
@@ -183,72 +263,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
                     {matmul_out}));
 
         if (A_axes.size() > 0) {
-          result.push_back(
-              NodeDef("ReduceSum",
-                      {IA("PreReduceGrad0")},
-                      {IA("ReduceGrad0")},
-                      {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
-                       {"axes", MakeAttribute("axes", A_axes)}}));
-
-          result.push_back(
-              NodeDef("Shape",
-                      {A},
-                      {IA("A_shape")}));
-
-          result.push_back(
-              NodeDef("Reshape",
-                      {IA("ReduceGrad0"), IA("A_shape")},
-                      {GI(0)}));
+          AddReduceSumNode(IA("PreReduceGrad0"), IA("ReduceGrad0"), A_axes, true, result);
+          result.push_back(NodeDef("Shape", {A}, {IA("A_shape")}));
+          result.push_back(NodeDef("Reshape", {IA("ReduceGrad0"), IA("A_shape")}, {GI(0)}));
         }
       }
       if (IsGradientRequiredForSrcNodeInput(1)) {
-        if (B_shape.size() == 2 &&
-            (B_shape[0].has_dim_value() || A_shape[A_shape.size() - 1].has_dim_value()) &&
-            (B_shape[1].has_dim_value() || Y_shape[Y_shape.size() - 1].has_dim_value())) {
-          // A[M, K], B[K, N], Y[M, N]
-          int64_t K, N;
-          if (B_shape[0].has_dim_value()) {
-            K = B_shape[0].dim_value();
-          } else {
-            K = A_shape[A_shape.size() - 1].dim_value();
-          }
-          if (B_shape[1].has_dim_value()) {
-            N = B_shape[1].dim_value();
-          } else {
-            N = Y_shape[Y_shape.size() - 1].dim_value();
-          }
-
-          std::vector<int64_t> A_shape_2d{-1, K};
-          NodeDef A_shape_2d_node = ConstantValueNode(A_shape_2d, Name("A_shape_2d"));
-          ArgDef A_shape_2d_arg = A_shape_2d_node.output_args[0];
-          result.push_back(A_shape_2d_node);
-
-          std::vector<int64_t> dY_shape_2d{-1, N};
-          NodeDef dY_shape_2d_node = ConstantValueNode(dY_shape_2d, Name("dY_shape_2d"));
-          ArgDef dY_shape_2d_arg = dY_shape_2d_node.output_args[0];
-          result.push_back(dY_shape_2d_node);
-
-          NodeDef zero_constant_node = ZeroConstantNode();
-          ArgDef ZERO = zero_constant_node.output_args[0];
-          result.push_back(zero_constant_node);
-
-          result.push_back(
-              NodeDef("Reshape",
-                      {A, A_shape_2d_arg},
-                      {IA("A_reshape_2d")}));
-          result.push_back(
-              NodeDef("Reshape",
-                      {GO(0), dY_shape_2d_arg},
-                      {IA("dY_reshape_2d")}));
-
-          // dB = A' * dY
-          std::vector<AttributeProto> attrs(shared_attributes);
-          attrs.push_back(transpose_first_input);
-          result.push_back(
-              NodeDef("Gemm",
-                      {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO},
-                      {GI(1)},
-                      attrs));
+        if (B_shape.size() == 2) {
+          // for case: A[M1, M2, ... , K], B[K, N], Y[M1, M2, ..., N]
+          const std::vector<NodeDef> dB_subgraph = dB_2d_case();
+          result.insert(result.end(), dB_subgraph.begin(), dB_subgraph.end());
         } else {
           int64_t A_rank = A_shape.size();
           std::vector<int64_t> A_perm(A_rank);
@@ -263,7 +287,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
           output_shape.push_back(Y_shape[Y_shape.size() - 1]);
 
           std::vector<int64_t> B_axes;
-          ComputeBroadcastBackwardAxes(B_shape, output_shape, &B_axes, nullptr);
+          ComputeBroadcastBackwardAxes(B_shape, output_shape, &B_axes, nullptr, NodeName());
 
           result.push_back(
               NodeDef("Transpose",
@@ -279,20 +303,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
                       {matmul_out}));
 
           if (B_axes.size() > 0) {
-            result.push_back(
-                NodeDef("ReduceSum",
-                        {IA("PreReduceGrad1")},
-                        {IA("ReduceGrad1")},
-                        {{"keepdims", MakeAttribute("keepdims", int64_t(0))},
-                         {"axes", MakeAttribute("axes", B_axes)}}));
-            result.push_back(
-                NodeDef("Shape",
-                        {B},
-                        {IA("B_shape")}));
-            result.push_back(
-                NodeDef("Reshape",
-                        {IA("ReduceGrad1"), IA("B_shape")},
-                        {GI(1)}));
+            AddReduceSumNode(IA("PreReduceGrad1"), IA("ReduceGrad1"), B_axes, false, result);
+            result.push_back(NodeDef("Shape", {B}, {IA("B_shape")}));
+            result.push_back(NodeDef("Reshape", {IA("ReduceGrad1"), IA("B_shape")}, {GI(1)}));
           }
         }
       }
@@ -306,7 +319,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     if (IsGradientRequiredForSrcNodeInput(0)) {
       ArgDef pre_reduce_grad_0 = IA("PreReduceGrad0");
       result.push_back(
-          NodeDef(OpDef{"TransposeScaleMatMul", kMSDomain, 1},
+          NodeDef(OpDef{"FusedMatMul", kMSDomain, 1},
                   {GO(0), B},
                   {pre_reduce_grad_0},
                   {{"transB", MakeAttribute("transB", int64_t(1))}}));
@@ -317,17 +330,23 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
       HandleBroadcastingDynamic(pre_reduce_grad_0, A, a_shape, GI(0), a_axes, result);
     }
     if (IsGradientRequiredForSrcNodeInput(1)) {
-      ArgDef pre_reduce_grad_1 = IA("PreReduceGrad1");
-      result.push_back(
-          NodeDef(OpDef{"TransposeScaleMatMul", kMSDomain, 1},
-                  {A, GO(0)},
-                  {pre_reduce_grad_1},
-                  {{"transA", MakeAttribute("transA", int64_t(1))}}));
+      if (B_has_shape && B_shape.size() == 2) {
+        // for case: A[M1, M2, ... , K], B[K, N], Y[M1, M2, ..., N]
+        const std::vector<NodeDef> dB_subgraph = dB_2d_case();
+        result.insert(result.end(), dB_subgraph.begin(), dB_subgraph.end());
+      } else {
+        ArgDef pre_reduce_grad_1 = IA("PreReduceGrad1");
+        result.push_back(
+            NodeDef(OpDef{"FusedMatMul", kMSDomain, 1},
+                    {A, GO(0)},
+                    {pre_reduce_grad_1},
+                    {{"transA", MakeAttribute("transA", int64_t(1))}}));
 
-      b_axes = IA("ReduceAxes_" + B.name + "_for_" + B.name);
-      ia_shape = IA("Shape_" + pre_reduce_grad_1.name);
-      ComputeBroadcastBackwardAxesDynamic(pre_reduce_grad_1, B, ia_shape, b_shape, nullptr, &b_axes, result);
-      HandleBroadcastingDynamic(pre_reduce_grad_1, B, b_shape, GI(1), b_axes, result);
+        b_axes = IA("ReduceAxes_" + B.name + "_for_" + B.name);
+        ia_shape = IA("Shape_" + pre_reduce_grad_1.name);
+        ComputeBroadcastBackwardAxesDynamic(pre_reduce_grad_1, B, ia_shape, b_shape, nullptr, &b_axes, result);
+        HandleBroadcastingDynamic(pre_reduce_grad_1, B, b_shape, GI(1), b_axes, result);
+      }
     }
   }
 
@@ -344,10 +363,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
 
   ArgDef A = I(0), B = I(1), C = I(2), dY = GO(0),
          dA = GI(0), dB = GI(1), dC = GI(2);
+  int elem_type = OElemType(0);
   AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
   AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
 
-  NodeDef zero_contant_node = ZeroConstantNode();
+  NodeDef zero_contant_node = ZeroConstantNode(elem_type);
   ArgDef ZERO = zero_contant_node.output_args[0];
 
   std::vector<NodeDef> result;
@@ -430,13 +450,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
     std::vector<Dimension> C_shape, dY_shape;
     if (GetShape(C, C_shape).IsOK() && GetShape(dY, dY_shape).IsOK()) {
       std::vector<int64_t> C_axes, dY_axes;
-      ComputeBroadcastBackwardAxes(C_shape, dY_shape, &C_axes, &dY_axes);
+      ComputeBroadcastBackwardAxes(C_shape, dY_shape, &C_axes, &dY_axes, NodeName());
 
       if (C_axes.size() > 0) {
         HandleBroadcasting(dY, C, IA("dC_reduced"), C_axes, result);
 
         if (has_beta && beta != 1.0f) {
-          NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+          NodeDef scale_node = ConstantScalarNode(beta, Name("Scale"), elem_type);
           ArgDef SCALE = scale_node.output_args[0];
           result.push_back(scale_node);
           result.push_back(
@@ -449,7 +469,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         }
       } else {
         if (has_beta && beta != 1.0f) {
-          NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+          NodeDef scale_node = ConstantScalarNode(beta, Name("Scale"), elem_type);
           ArgDef SCALE = scale_node.output_args[0];
           result.push_back(scale_node);
           result.push_back(
@@ -474,7 +494,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       HandleBroadcastingDynamic(dY, C, c_shape, IA("dC_reduced"), c_axes, result);
 
       if (has_beta && beta != 1.0f) {
-        NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+        NodeDef scale_node = ConstantScalarNode(beta, Name("Scale"), elem_type);
         ArgDef SCALE = scale_node.output_args[0];
         result.push_back(scale_node);
         result.push_back(
@@ -620,9 +640,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {
     }
   }
   return std::vector<NodeDef>{
-      NodeDef("ReshapeGrad",
-              {I(0), GO(0)},
-              {GI(0)})};
+      NodeDef("Shape", {I(0)}, {IA("x_shape")}),
+      NodeDef("Reshape", {GO(0), IA("x_shape")}, {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {
@@ -690,18 +709,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
               {SrcNodeAttributes()})};
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetTrainableDropoutGradient) {
-  std::vector<ArgDef> inputs{GO(0), O(1)};
-  for (int i = 1; i < GetSrcNodeInputSize(); i++) {
-    inputs.push_back(I(i));
-  }
-  return std::vector<NodeDef>{
-      NodeDef(OpDef{"TrainableDropoutGrad", kMSDomain, 1},
-              inputs,
-              {GI(0)},
-              {SrcNodeAttributes()})};
-}
-
 IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
   std::vector<ArgDef> outputs;
   for (int i = 0; i < 3; i++) {
@@ -720,7 +727,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSigmoidGradient) {
-  auto const_one = OneConstantNode();
+  auto const_one = OneConstantNode(OElemType(0));
   return std::vector<NodeDef>{
       const_one,
       NodeDef("Sub",
@@ -750,11 +757,19 @@ IMPLEMENT_GRADIENT_BUILDER(GetLogSoftmaxGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetUnsqueezeGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("Squeeze",
-              {GO(0)},
-              {GI(0)},
-              SrcNodeAttributes())};
+  if (SrcNodeOpsetVersion() < 13) {
+    return std::vector<NodeDef>{
+        NodeDef("Squeeze",
+                {GO(0)},
+                {GI(0)},
+                SrcNodeAttributes())};
+  } else { // mandatory input 'axes' since opset 13
+    return std::vector<NodeDef>{
+        NodeDef(OpDef{"Squeeze", kOnnxDomain, 13},
+                {GO(0), I(1)},
+                {GI(0)},
+                SrcNodeAttributes())};
+  }
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
@@ -788,26 +803,34 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
   std::vector<NodeDef> result;
-  auto attributes = SrcNodeAttributes();
-  std::vector<int64_t> axes_values;
-  if (attributes.find("axes") != attributes.end()) {
-    axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+  size_t numInputs = GetSrcNodeInputSize();
+  if (SrcNodeOpsetVersion() < 13) { //axes attribute
+    auto attributes = SrcNodeAttributes();
+    std::vector<int64_t> axes_values;
+    if (attributes.find("axes") != attributes.end()) {
+      axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      result.push_back(
+          NodeDef("Unsqueeze",
+                  {GO(0)},
+                  {GI(0)},
+                  {MakeAttribute("axes", axes_values)}));
+    } 
+  } else if(numInputs == 2){ //optional input 'axes' is provided
     result.push_back(
-        NodeDef("Unsqueeze",
-                {GO(0)},
-                {GI(0)},
-                {MakeAttribute("axes", axes_values)}));
-    // if axes attribute not provided for squeeze
-  } else {
-    result.push_back(
-        NodeDef("Shape",
-                {I(0)},
-                {IA("I0_shape")}));
-    result.push_back(
-        NodeDef("Reshape",
-                {GO(0), IA("I0_shape")},
+        NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13},
+                {GO(0), I(1)},
                 {GI(0)}));
+  } else { // if axes attribute/input not provided for squeeze
+      result.push_back(
+          NodeDef("Shape",
+                  {I(0)},
+                  {IA("I0_shape")}));
+      result.push_back(
+          NodeDef("Reshape",
+                  {GO(0), IA("I0_shape")},
+                  {GI(0)}));
   }
+
   return result;
 }
 
@@ -819,7 +842,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
   std::vector<Dimension> a_shape, b_shape;
   if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
     std::vector<int64_t> a_axes, b_axes;
-    ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
+    ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes, NodeName());
     if (IsGradientRequiredForSrcNodeInput(0)) {
       if (a_axes.size() > 0) {
         HandleBroadcasting(GO(0), a, GI(0), a_axes, output);
@@ -890,7 +913,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
   std::vector<Dimension> a_shape, b_shape;
   if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
     std::vector<int64_t> a_axes, b_axes;
-    ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
+    ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes, NodeName());
 
     if (IsGradientRequiredForSrcNodeInput(0)) {
       output.push_back(
@@ -966,7 +989,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
     std::vector<Dimension> a_shape, b_shape;
     if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
       std::vector<int64_t> a_axes, b_axes;
-      ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
+      ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes, NodeName());
 
       ArgDef tmp_grad = IA("PreReduceGrad0", OType(0));
       output.push_back(NodeDef("Div", {GO(0), I(1)}, {tmp_grad}));
@@ -1001,6 +1024,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
   }
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetNegGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Neg", {GO(0)}, {GI(0)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   std::vector<NodeDef> result;
   auto attributes = SrcNodeAttributes();
@@ -1017,24 +1045,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
     result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
   }
 
-  const int64_t type_float = static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  result.push_back(NodeDef("Size", {I(0)}, {IA("Scale_Denominator")}));
-  result.push_back(
-      NodeDef("Cast",
-              {IA("Scale_Denominator")},
-              {IA("Casted_Scale_Denominator")},
-              {MakeAttribute("to", type_float)}));
-  result.push_back(NodeDef("Size", {GO(0)}, {IA("Scale_Numerator")}));
-  result.push_back(
-      NodeDef("Cast",
-              {IA("Scale_Numerator")},
-              {IA("Casted_Scale_Numerator")},
-              {MakeAttribute("to", type_float)}));
-  result.push_back(
-      NodeDef("Div",
-              {IA("Casted_Scale_Numerator"), IA("Casted_Scale_Denominator")},
-              {IA("Scale")}));
-  result.push_back(NodeDef("Mul", {grad, IA("Scale")}, {IA("Scaled_Grad")}));
+  result.push_back(NodeDef("Size", {I(0)}, {IA("Sized_X")}));
+  result.push_back(NodeDef("Size", {GO(0)}, {IA("Sized_Grad")}));
+  result.push_back(NodeDef("Div", {IA("Sized_X"), IA("Sized_Grad")}, {IA("Scale")}));
+  result.push_back(NodeDef(OpDef{"Scale", kMSDomain, 1},
+                           {grad, IA("Scale")},
+                           {IA("Scaled_Grad")},
+                           {MakeAttribute("scale_down", int64_t(1))}));
   result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));
   result.push_back(NodeDef("Expand", {IA("Scaled_Grad"), IA("Shaped_X")}, {GI(0)}));
   return result;
@@ -1073,6 +1090,35 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceLogSumExpGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetReduceL2Gradient) {
+  std::vector<NodeDef> result;
+  auto attributes = SrcNodeAttributes();
+  bool keepdims = true;
+  if (attributes.find("keepdims") != attributes.end() && attributes.at("keepdims").has_i()) {
+    keepdims = static_cast<bool>(attributes.at("keepdims").i());
+  }
+
+  result.emplace_back(NodeDef("Div", {GO(0), O(0)}, {IA("Scaled_dY")}));
+
+  // Handle 0 elements in Y.
+  NodeDef zero_constant_node = ZeroConstantNode(IElemType(0));
+  ArgDef ZERO = zero_constant_node.output_args[0];
+  result.push_back(zero_constant_node);
+  result.emplace_back(NodeDef("Equal", {O(0), ZERO}, {IA("Masked_Y")}));
+  ArgDef scaled_dy_arg_def = IA("Masked_Scaled_dY");
+  result.emplace_back(NodeDef("Where", {IA("Masked_Y"), ZERO, IA("Scaled_dY")}, {scaled_dy_arg_def}));
+
+  if (!keepdims && attributes.find("axes") != attributes.end()) {
+    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+    scaled_dy_arg_def = IA("Unsqueezed_Masked_Scaled_dY");
+    result.emplace_back(
+        NodeDef("Unsqueeze", {IA("Masked_Scaled_dY")}, {scaled_dy_arg_def}, {MakeAttribute("axes", axes_values)}));
+  }
+
+  result.emplace_back(NodeDef("Mul", {I(0), scaled_dy_arg_def}, {GI(0)}));
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
   std::vector<NodeDef> result;
   auto attributes = SrcNodeAttributes();
@@ -1083,10 +1129,20 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
   }
 
   ArgDef grad = GO(0);
-  if (!keepdims && attributes.find("axes") != attributes.end()) {
-    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-    grad = IA("Unqueezed_Grad");
-    result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+  if (!keepdims) {
+    size_t numInputs = GetSrcNodeInputSize();
+    if (SrcNodeOpsetVersion() < 13) {  //axes is attribute
+      if (attributes.find("axes") != attributes.end()) {
+        std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+
+        grad = IA("Unqueezed_Grad");
+        result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+
+      } 
+    } else if (numInputs == 2) {  //optional input 'axes' is available as input I(1)
+      grad = IA("Unqueezed_Grad");
+      result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), I(1)}, {grad}));
+    } //axes is not available, the GO(0) is a scalar which can be expanded to required shape
   }
 
   result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));
@@ -1098,10 +1154,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
   if (IsGradientRequiredForSrcNodeInput(1)) {
     ORT_THROW("GradientBuilder is not implemented for CUDA Pow's input exponent.");
   }
-  return std::vector<NodeDef>{
-      NodeDef("PowGrad",
-              {GO(0), I(0), I(1)},
-              {GI(0)})};
+
+  std::vector<NodeDef> result;
+  NodeDef one_constant_node = OneConstantNode(IElemType(0));
+  ArgDef one_arg = one_constant_node.output_args[0];
+  result.push_back(one_constant_node);
+  result.push_back(NodeDef("Sub", {I(1), one_arg}, {IA("Sub_I1")}));
+  result.push_back(NodeDef("Pow", {I(0), IA("Sub_I1")}, {IA("Pow_I0")}));
+  result.push_back(NodeDef("Mul", {IA("Pow_I0"), I(1)}, {IA("Mul_Pow_I0_I1")}));
+  result.push_back(NodeDef("Mul", {IA("Mul_Pow_I0_I1"), GO(0)}, {GI(0)}));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
@@ -1167,7 +1229,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
     }
   }
 
-  NodeDef scale_node = ConstantValueNode(1.0f / static_cast<float>(scale), Name("Scale"));
+  NodeDef scale_node = ConstantScalarNode(1.0f / static_cast<float>(scale), Name("Scale"), IElemType(0));
   ArgDef SCALE = scale_node.output_args[0];
   return std::vector<NodeDef>{
       scale_node,
@@ -1189,55 +1251,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
               {GI(0)})};
 }
 
-namespace {
-std::vector<NodeDef> GetBiasGeluGradNodes(
-    bool use_approximation,
-    const ArgDef& dY, const ArgDef& X, const ArgDef& B,                    // inputs
-    const ArgDef& dX, const ArgDef& dB,                                    // outputs
-    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape) {  //intermediate args
-  std::vector<Dimension> B_shape, X_shape;
-  if (GetShape(B, B_shape).IsOK() && GetShape(X, X_shape).IsOK()) {
-    ORT_ENFORCE(B_shape.size() == 1, "B must have exactly one dimension.");
-
-    const std::vector<int64_t> B_axes = [&B_shape, &X_shape]() {
-      std::vector<int64_t> result{};
-      ComputeBroadcastBackwardAxes(B_shape, X_shape, &result, nullptr);
-      return result;
-    }();
-    return std::vector<NodeDef>{
-        NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
-                {dY, X, B},
-                {dX}),
-        NodeDef("ReduceSum",
-                {dX},
-                {dB},
-                {{"keepdims", MakeAttribute("keepdims", int64_t{0})},
-                 {"axes", MakeAttribute("axes", B_axes)}})};
-  } else {
-    std::vector<NodeDef> result;
-    ComputeBroadcastBackwardAxesDynamic(B, X, b_shape, x_shape, &b_axes, nullptr, result);
-    result.push_back(
-        NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
-                {dY, X, B},
-                {dX}));
-    result.push_back(
-        NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
-                {dX,
-                 b_axes},
-                {dB},
-                {{"keepdims", MakeAttribute("keepdims", int64_t{0})}}));
-    return result;
-  }
-}
-}  // namespace
-
 IMPLEMENT_GRADIENT_BUILDER(GetBiasGeluGradient) {
   const auto dY = GO(0), X = I(0), B = I(1),
              dX = GI(0), dB = GI(1);
   ArgDef b_axes = IA("ReduceAxes_" + B.name);
   ArgDef b_shape = IA("Shape_" + B.name);
   ArgDef x_shape = IA("Shape_" + X.name);
-  return GetBiasGeluGradNodes(false, dY, X, B, dX, dB, b_axes, b_shape, x_shape);
+  return GetBiasGeluGradNodes(false, dY, X, B, dX, dB, b_axes, b_shape, x_shape, NodeName());
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
@@ -1251,8 +1271,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
     ArgDef b_axes = IA("ReduceAxes_" + B.name);
     ArgDef b_shape = IA("Shape_" + B.name);
     ArgDef x_shape = IA("Shape_" + X.name);
-    return GetBiasGeluGradNodes(true, dY, X, B, dX, dB, b_axes, b_shape, x_shape);
+    return GetBiasGeluGradNodes(true, dY, X, B, dX, dB, b_axes, b_shape, x_shape, NodeName());
   }
+  
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{
         NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},
@@ -1276,6 +1297,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
                 {GI(0), GI(1), GI(2)},
                 {SrcNodeAttributes()})};
   }
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetSimplifiedLayerNormalizationGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"SimplifiedLayerNormalizationGrad", kMSDomain, 1},
+              {GO(0), I(0), I(1), O(1)},
+              {GI(0), GI(1)},
+              {SrcNodeAttributes()})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
@@ -1325,7 +1354,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSliceGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetWhereGradient) {
   std::vector<NodeDef> result;
-  const int64_t data_type = static_cast<int64_t>(I(1).type_proto->tensor_type().elem_type());
+  const int64_t data_type = static_cast<int64_t>(IElemType(1));
   if (IsGradientRequiredForSrcNodeInput(1)) {
     result.push_back(NodeDef("Cast", {I(0)}, {IA("Positive_Mask")}, {MakeAttribute("to", data_type)}));
     result.push_back(NodeDef("Mul", {GO(0), IA("Positive_Mask")}, {GI(1)}));
@@ -1382,7 +1411,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
   std::vector<Dimension> a_shape, y_shape;
   if (GetShape(a, a_shape).IsOK() && GetShape(y, y_shape).IsOK()) {
     std::vector<int64_t> a_axes;
-    ComputeBroadcastBackwardAxes(a_shape, y_shape, &a_axes, nullptr);
+    ComputeBroadcastBackwardAxes(a_shape, y_shape, &a_axes, nullptr, NodeName());
 
     if (a_axes.size() > 0) {
       HandleBroadcasting(GO(0), a, GI(0), a_axes, output);
@@ -1404,6 +1433,73 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
   }
 
   return output;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetExpGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Mul",
+              {GO(0), O(0)},
+              {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetFlattenGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Shape", {I(0)}, {IA("input_shape")}),
+      NodeDef("Reshape", {GO(0), IA("input_shape")}, {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetTopKGradient) {
+  // TopK's default axis is -1, which is different from GatherElements.
+  auto attributes = SrcNodeAttributes();
+  auto axis = utils::HasInt(attributes.at("axis")) ? attributes.at("axis").i() : -1;
+  return std::vector<NodeDef>{
+      NodeDef("Shape",
+              {I(0)},
+              {IA("x_shape")}),
+      NodeDef(OpDef{"GatherElementsGrad", kMSDomain, 1},
+              {GO(0), IA("x_shape"), O(1)},
+              {GI(0)},
+              {MakeAttribute("axis", axis)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetClipGradient) {
+  std::vector<NodeDef> output;
+  size_t numInputs = GetSrcNodeInputSize();
+  bool has_i1 = false, has_i2 = false;
+  ArgDef intermediate_arg_def = ArgDef("");
+  // Gradients not defined on min and max, so we return the subgradient 1 for these cases.
+  if (numInputs >= 2 && I(1).Exists()) {
+    has_i1 = true;
+    intermediate_arg_def = IA("Masked_Min");
+    output.emplace_back(NodeDef("GreaterOrEqual", {I(0), I(1)}, {intermediate_arg_def}));
+  }
+
+  if (numInputs >= 3 && I(2).Exists()) {
+    has_i2 = true;
+    intermediate_arg_def = IA("Masked_Max");
+    output.emplace_back(NodeDef("LessOrEqual", {I(0), I(2)}, {intermediate_arg_def}));
+    if (has_i1) {
+      intermediate_arg_def = IA("Masked_Min_Max");
+      output.emplace_back(NodeDef("And", {IA("Masked_Min"), IA("Masked_Max")}, {intermediate_arg_def}));
+    }
+  }
+
+  if (!has_i1 && !has_i2) {
+    output.emplace_back(NodeDef("Identity", {GO(0)}, {GI(0)}));
+  } else {
+    output.emplace_back(
+        NodeDef("Cast", {intermediate_arg_def}, {IA("Casted_Mask")}, {MakeAttribute("to", int64_t(IElemType(0)))}));
+    output.emplace_back(NodeDef("Mul", {GO(0), IA("Casted_Mask")}, {GI(0)}));
+  }
+
+  return output;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Sign", {I(0)}, {IA("Sign_Input")}),
+      NodeDef("Mul", {GO(0), IA("Sign_Input")}, {GI(0)})
+  };
 }
 
 }  // namespace training

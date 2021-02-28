@@ -293,6 +293,13 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
           MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
 }
 
+bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                       const char* op_type,
+                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
+                                       const char* domain) {
+  return IsSupportedOptypeVersionAndDomain(node, std::string(op_type), versions, std::string(domain));
+}
+
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
   return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
@@ -540,7 +547,7 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
   return true;
 }
 
-const Node* FirstChildByType(Node& node, const std::string& child_type) {
+const Node* FirstChildByType(const Node& node, const std::string& child_type) {
   for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
     if ((*it).OpType().compare(child_type) == 0) {
       return &(*it);
@@ -549,7 +556,7 @@ const Node* FirstChildByType(Node& node, const std::string& child_type) {
   return nullptr;
 }
 
-const Node* FirstParentByType(Node& node, const std::string& parent_type) {
+const Node* FirstParentByType(const Node& node, const std::string& parent_type) {
   for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
     if ((*it).OpType().compare(parent_type) == 0) {
       return &(*it);
@@ -580,6 +587,13 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
 
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+  RemoveGraphEdges(graph, output_edges);
+
+  return output_edges.size();
+}
+
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx) {
+  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node, output_idx);
   RemoveGraphEdges(graph, output_edges);
 
   return output_edges.size();
@@ -753,19 +767,27 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const std::vec
 }
 
 bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
-  std::queue<const Node*> q;
-  std::vector<NodeIndex> nodes_to_remove;
-  q.push(&start_node);
+  std::queue<NodeIndex> q;
+  std::unordered_set<NodeIndex> removed_nodes;
+
+  NodeIndex start_node_index = start_node.Index();
+  q.push(start_node_index);
+
   // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output.
-  while (q.size() != 0) {
-    const Node& cur_node = *(q.front());
+  while (!q.empty()) {
+    NodeIndex cur_node_index = q.front();
     q.pop();
+
+    if (removed_nodes.find(cur_node_index) != removed_nodes.end()) {
+      continue;
+    }
     // Each eligible node in the subgraph must have less than one output edge and no output should be
     // the graph output
+    const Node& cur_node = *graph.GetNode(cur_node_index);
     if (cur_node.GetOutputEdgesCount() > 1 || !graph.GetNodeOutputsInGraphOutputs(cur_node).empty()) {
       continue;
     }
-    nodes_to_remove.push_back(cur_node.Index());
+
     // push the parents of current node to the queue.
     for (unsigned int i = 0; i < cur_node.InputDefs().size(); ++i) {
       const std::string& input_name = GetNodeInputName(cur_node, i);
@@ -773,19 +795,27 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
         // skip initializers and graph inputs
         continue;
       }
-      q.push(GetInputNode(cur_node, i));
+      const Node* parent_node = GetInputNode(cur_node, i);
+      if (nullptr == parent_node) {
+        continue;
+      }
+      q.push(parent_node->Index());
+    }
+
+    if (cur_node_index == start_node_index || cur_node.GetOutputEdgesCount() == 0) {
+      Node* cur_node_p = graph.GetNode(cur_node_index);
+      RemoveNodeOutputEdges(graph, *cur_node_p);
+      graph.RemoveNode(cur_node_index);
+
+      removed_nodes.insert(cur_node_index);
     }
   }
-  if (nodes_to_remove.size() <= 0) {
+
+  if (removed_nodes.size() == 0) {
     // Nothing to remove
     return false;
   }
-  // Remove nodes that are not used anymore.
-  for (const auto& node_index : nodes_to_remove) {
-    Node* node = graph.GetNode(node_index);
-    RemoveNodeOutputEdges(graph, *node);
-    graph.RemoveNode(node->Index());
-  }
+
   return true;
 }
 

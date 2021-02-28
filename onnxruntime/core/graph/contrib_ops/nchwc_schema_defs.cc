@@ -4,7 +4,6 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
-#include "core/graph/contrib_ops/nchwc_schema_defs.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(

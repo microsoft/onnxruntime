@@ -100,8 +100,12 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
 target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
-    # safeint is part of onnxruntime_common public interface, so we want to propagate its includes
-    PUBLIC $<TARGET_PROPERTY:safeint_interface,INTERFACE_INCLUDE_DIRECTORIES>)
+    # propagate include directories of dependencies that are part of public interface
+    PUBLIC
+        $<TARGET_PROPERTY:safeint_interface,INTERFACE_INCLUDE_DIRECTORIES>
+        ${OPTIONAL_LITE_INCLUDE_DIR})
+
+target_link_libraries(onnxruntime_common Boost::mp11)
 
 if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
@@ -134,4 +138,14 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   else()
     target_link_libraries(onnxruntime_common rt)
   endif()
+endif()
+
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+  target_compile_definitions(onnxruntime_common PRIVATE "BUILD_INBOX=1")
+endif()
+
+# check if we need to link against libatomic due to std::atomic usage by the threadpool code
+# e.g. Raspberry Pi requires this
+if (onnxruntime_LINK_LIBATOMIC)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES atomic)
 endif()

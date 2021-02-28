@@ -4,6 +4,7 @@
 #--------------------------------------------------------------------------
 
 from logging import getLogger
+from typing import List
 from onnx import TensorProto, helper
 from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
@@ -30,14 +31,16 @@ class BertOptimizationOptions:
         self.enable_bias_skip_layer_norm = True
         self.enable_bias_gelu = True
         self.enable_gelu_approximation = False
-        self.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
+        self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
         if model_type == 'gpt2':
             self.enable_skip_layer_norm = False
-            self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
-    def use_raw_attention_mask(self):
-        self.attention_mask_format = AttentionMaskFormat.AttentionMask
+    def use_raw_attention_mask(self, use_raw_mask=True):
+        if use_raw_mask:
+            self.attention_mask_format = AttentionMaskFormat.AttentionMask
+        else:
+            self.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
 
     def disable_attention_mask(self):
         self.attention_mask_format = AttentionMaskFormat.NoMask
@@ -54,6 +57,7 @@ class BertOnnxModel(OnnxModel):
 
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        self.utils = FusionUtils(self)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
@@ -95,40 +99,43 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionSkipLayerNormalization(self)
         fusion.apply()
 
-    def get_graph_inputs_from_embed_nodes(self, casted=False):
+    def get_graph_inputs_from_node_type(self, op_type: str, input_indices: List[int], casted: bool):
         """
-        Get graph inputs that feed into EmbedLayerNormaliazation.
+        Get graph inputs that feed into node type (like EmbedLayerNormalization or Attention).
         Returns a list of the graph input names based on the filter whether it is casted or not.
         """
-        embed_graph_inputs = []
+        graph_inputs = []
 
         output_name_to_node = self.output_name_to_node()
-        embed_nodes = self.get_nodes_by_op_type('EmbedLayerNormalization')
-        for embed_node in embed_nodes:
-            bert_inputs = embed_node.input[:2] + embed_node.input[
-                7:]  # inputs 0, 1 and 7 are input_ids, segment_ids and attention mask
+        nodes = self.get_nodes_by_op_type(op_type)
+        for node in nodes:
+            bert_inputs = [node.input[i] for i in input_indices if i < len(node.input)]
             for bert_input in bert_inputs:
                 if self.find_graph_input(bert_input):
                     if not casted:
-                        embed_graph_inputs.append(bert_input)
+                        graph_inputs.append(bert_input)
                 elif bert_input in output_name_to_node:
                     parent = output_name_to_node[bert_input]
                     if parent.op_type == 'Cast' and self.find_graph_input(parent.input[0]) is not None:
                         if casted:
-                            embed_graph_inputs.append(parent.input[0])
-        return embed_graph_inputs
+                            graph_inputs.append(parent.input[0])
+        return graph_inputs
+
+    def get_graph_inputs_from_fused_nodes(self, casted: bool):
+        inputs = self.get_graph_inputs_from_node_type('EmbedLayerNormalization', [0, 1, 7], casted)
+        inputs += self.get_graph_inputs_from_node_type('Attention', [3], casted)
+        return inputs
 
     def change_input_to_int32(self):
         original_opset_version = self.model.opset_import[0].version
         graph = self.graph()
 
         new_graph_inputs = []
-        casted_bert_graph_inputs = self.get_graph_inputs_from_embed_nodes(casted=True)
-        utils = FusionUtils(self)
+        casted_bert_graph_inputs = self.get_graph_inputs_from_fused_nodes(casted=True)
 
         for input in graph.input:
             if input.name in casted_bert_graph_inputs:
-                utils.remove_cast_int32(input.name)
+                self.utils.remove_cast_int32(input.name)
                 int32_input = helper.make_tensor_value_info(input.name, TensorProto.INT32,
                                                             self.tensor_shape_to_list(input.type.tensor_type))
                 new_graph_inputs.append(int32_input)
@@ -151,8 +158,8 @@ class BertOnnxModel(OnnxModel):
         """
         Update input and output shape to use dynamic axes.
         """
-        bert_graph_inputs = self.get_graph_inputs_from_embed_nodes(
-            casted=True) + self.get_graph_inputs_from_embed_nodes(casted=False)
+        bert_graph_inputs = self.get_graph_inputs_from_fused_nodes(
+            casted=True) + self.get_graph_inputs_from_fused_nodes(casted=False)
 
         dynamic_batch_inputs = {}
         for input in self.model.graph.input:
@@ -168,7 +175,39 @@ class BertOnnxModel(OnnxModel):
             dim_proto.dim_param = dynamic_batch_dim
 
     def preprocess(self):
+        self.adjust_reshape_and_expand()
         return
+
+    def adjust_reshape_and_expand(self):
+        nodes_to_remove = []
+        for node in self.nodes():
+            if node.op_type == 'Reshape':
+                # Clean up unneccessary reshape nodes.
+                # Find reshape nodes with no actually data in "shape" attribute and remove.
+                reshape_shape = self.get_constant_value(node.input[1])
+                if reshape_shape is not None and reshape_shape.size == 0:
+                    nodes_to_remove.extend([node])
+                    self.replace_input_of_all_nodes(node.output[0], node.input[0])
+                    continue
+
+                # Find path "Slice" -> "Reshape" -> "Expand" -> "Expand" -> current "Reshape", simplify the graph by
+                # changing current reshape's input to output of slice.
+                reshape_path = self.match_parent_path(node, ['Expand', 'Expand', 'Reshape', 'Slice'], [0, 0, 0, 0],
+                                                      self.output_name_to_node())
+                if reshape_path is not None:
+                    expand_node = reshape_path[-3]
+                    expand_shape_value = self.get_constant_value(expand_node.input[1])
+
+                    reshape_before_expand = reshape_path[-2]
+                    shape_value = self.get_constant_value(reshape_before_expand.input[1])
+
+                    slice_node = reshape_path[-1]
+                    if expand_shape_value is not None and shape_value is not None and len(
+                            expand_shape_value) is 2 and len(
+                                shape_value) is 1 and expand_shape_value[1] == shape_value[0]:
+                        node.input[0] = slice_node.output[0]
+        self.remove_nodes(nodes_to_remove)
+        logger.info(f"Removed Reshape and Expand count: {len(nodes_to_remove)}")
 
     def clean_graph(self):
         output_name_to_node = self.output_name_to_node()
@@ -301,6 +340,6 @@ class BertOnnxModel(OnnxModel):
             logger.debug("Embed Layer not fused")
 
         if attention == 0:
-            logger.debug("Attention not fused")
+            logger.warning("Attention not fused")
 
         return is_perfect

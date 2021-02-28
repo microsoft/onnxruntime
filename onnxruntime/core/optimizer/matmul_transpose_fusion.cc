@@ -55,14 +55,15 @@ static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg) {
 
   bool is_trans_on_last_two_dims = true;
   for (int64_t i = 0; i < rank - 2; i++) {
-    if (perms[i] != i) {
+    if (perms[static_cast<size_t>(i)] != i) {
       is_trans_on_last_two_dims = false;
       break;
     }
   }
 
   if (is_trans_on_last_two_dims) {
-    is_trans_on_last_two_dims = perms[rank - 2] == rank - 1 && perms[rank - 1] == rank - 2;
+    // rank is atleast 2 (checked above) and so it is safe to cast (rank - 2) and (rank - 1) to size_t
+    is_trans_on_last_two_dims = perms[static_cast<size_t>(rank - 2)] == rank - 1 && perms[static_cast<size_t>(rank - 1)] == rank - 2;
   }
 
   if (!is_trans_on_last_two_dims) {
@@ -97,7 +98,8 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if ((!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
-         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeScaleMatMul", {1, 13}, kMSDomain)) ||
+         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedMatMul", {1}, kMSDomain) &&
+         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -130,14 +132,14 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     const std::vector<NodeArg*> output_defs{node.MutableOutputDefs()[0]};
 
     Node& matmul_node = graph.AddNode(graph.GenerateNodeName("MatMul_With_Transpose"),
-                                      "TransposeScaleMatMul",
+                                      "FusedMatMul",
                                       "fused MatMul and Transpose ",
                                       input_defs,
                                       output_defs, {}, kMSDomain);
     bool transpose_left = (left != nullptr);
     bool transpose_right = (right != nullptr);
     float alpha = 1.0f;
-    if (node.OpType() == "TransposeScaleMatMul") {
+    if ((node.OpType() == "TransposeMatMul") || (node.OpType() == "FusedMatMul")) {
       transpose_left ^= static_cast<bool>(node.GetAttributes().at("transA").i());
       transpose_right ^= static_cast<bool>(node.GetAttributes().at("transB").i());
       alpha = node.GetAttributes().at("alpha").f();

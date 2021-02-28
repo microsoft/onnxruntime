@@ -3,10 +3,9 @@
 
 #pragma once
 
-#include "core/common/common.h"
-#include "core/graph/basic_types.h"
-
 namespace onnxruntime {
+
+using ProviderType = const std::string&;
 
 /*
   We use a simple fence mechanism for async compute. Assumptions in this fence mechanism:

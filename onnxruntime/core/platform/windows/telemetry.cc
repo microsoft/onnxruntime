@@ -57,6 +57,7 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 OrtMutex WindowsTelemetry::mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
 bool WindowsTelemetry::enabled_ = true;
+uint32_t WindowsTelemetry::projection_ = 0;
 
 
 WindowsTelemetry::WindowsTelemetry() {
@@ -88,6 +89,10 @@ void WindowsTelemetry::DisableTelemetryEvents() const {
   enabled_ = false;
 }
 
+void WindowsTelemetry::SetLanguageProjection(uint32_t projection) const {
+  projection_ = projection;
+}
+
 void WindowsTelemetry::LogProcessInfo() const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
@@ -97,7 +102,10 @@ void WindowsTelemetry::LogProcessInfo() const {
   // did we already log the process info?  we only need to log it once
   if (process_info_logged.exchange(true))
     return;
-
+  bool isRedist = true;
+#if BUILD_INBOX
+  isRedist = false;
+#endif
   TraceLoggingWrite(telemetry_provider_handle,
                     "ProcessInfo",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -106,7 +114,7 @@ void WindowsTelemetry::LogProcessInfo() const {
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingBool(true, "isRedist"));
+                    TraceLoggingBool(isRedist, "isRedist"));
 
   process_info_logged = true;
 }
@@ -127,10 +135,7 @@ void WindowsTelemetry::LogEvaluationStop() const {
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
-                    "EvaluationStop",
-                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+                    "EvaluationStop");
 }
 
 void WindowsTelemetry::LogEvaluationStart() const {
@@ -138,10 +143,7 @@ void WindowsTelemetry::LogEvaluationStart() const {
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
-                    "EvaluationStart",
-                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+                    "EvaluationStart");
 }
 
 void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
@@ -202,6 +204,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingInt64(ir_version, "irVersion"),
+                    TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
                     TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
                     TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
                     TraceLoggingString(model_domain.c_str(), "modelDomain"),

@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T>
+template <typename T, bool simplified>
 class LayerNorm final : public OpKernel {
  public:
   LayerNorm(const OpKernelInfo& op_kernel_info);

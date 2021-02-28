@@ -228,6 +228,36 @@ graph = helper.make_graph(
         helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
         helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
 
+        helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
+        helper.make_node("Slice", ["shape2_out"], ["slice_out"], "slice1", starts = [2], ends = [3]),
+
+        helper.make_node("Concat", ["unsqueeze0_out", "unsqueeze1_out", "slice_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
+    ],
+    "Reshape_Fusion",  #name
+    [  # inputs
+        helper.make_tensor_value_info('SubgraphRoot', TensorProto.FLOAT, [10, 20, 30]),
+    ],
+    [  # outputs
+        helper.make_tensor_value_info('Result', TensorProto.FLOAT, [10, 20, 'unk']),
+    ],
+    [  # initializers
+        helper.make_tensor('indices0', TensorProto.INT64, [], [0]),
+        helper.make_tensor('indices1', TensorProto.INT64, [], [1]),
+    ]
+)
+# Save this model without checking
+onnx.save(helper.make_model(graph), 'reshape_fusion_with_slice1.onnx')
+
+graph = helper.make_graph(
+    [ # nodes
+        helper.make_node("Shape", ["SubgraphRoot"], ["shape0_out"], "shape0"),
+        helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
+
         helper.make_node("Shape", ["unsqueeze0_out"], ["dummy_out"], "dummy"),
 
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),

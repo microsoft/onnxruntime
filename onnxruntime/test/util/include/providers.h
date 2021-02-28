@@ -10,9 +10,6 @@
 #ifdef USE_DNNL
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #endif
-#ifdef USE_NGRAPH
-#include "core/providers/ngraph/ngraph_provider_factory.h"
-#endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #endif
@@ -24,6 +21,9 @@
 #endif
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_provider_factory.h"
+#endif
+#ifdef USE_COREML
+#include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
@@ -37,4 +37,3 @@
 #ifdef USE_MIGRAPHX
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #endif
-

@@ -20,3 +20,6 @@ jobs:
     sln_platform: 'x64'
     BuildConfigurations: ['Debug', 'RelWithDebInfo']
     EnableLto: false
+    # Enable unreleased onnx opsets in CI builds
+    # This facilitates testing the implementation for the new opsets
+    AllowReleasedOpsetOnly: '0'

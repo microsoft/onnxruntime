@@ -13,7 +13,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "gtest/gtest.h"
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
 
@@ -194,7 +194,7 @@ std::string CreateModel() {
 TEST(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
   std::string model_str = CreateModel();
 
-  try {
+  ORT_TRY {
     // initialize session options if needed
     Ort::SessionOptions session_options;
     Ort::Session session(*ort_env.get(), model_str.data(), model_str.size(), session_options);
@@ -258,9 +258,12 @@ TEST(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
     str_tensor_value.GetStringTensorContent(actual_result_string.get(), str_len, &offset, 1);
     actual_result_string[str_len] = 0;
     ASSERT_EQ(expected_output.compare(actual_result_string.get()), 0);
-  } catch (const std::exception& ex) {
-    std::cerr << "Exception: " << ex.what() << std::endl;
-    ASSERT_TRUE(false);
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&ex]() {
+      std::cerr << "Exception: " << ex.what() << std::endl;
+      ASSERT_TRUE(false);
+    });
   }
 }
 }  // namespace test

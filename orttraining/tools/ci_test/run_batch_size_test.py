@@ -13,22 +13,47 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Runs a BERT batch size test.")
     parser.add_argument("--binary_dir", required=True, help="Path to the ORT binary directory.")
     parser.add_argument("--model_root", required=True, help="Path to the model root directory.")
+    parser.add_argument("--gpu_sku", choices=['V100_16G', 'MI100_32G'], default='V100_16G', required=False, 
+            help="GPU model (e.g. V100_16G, MI100_32G).")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
-    Config = collections.namedtuple("Config", ["enable_mixed_precision", "sequence_length", "max_batch_size"])
-    configs = [
-        Config(True, 128, 66),
-        Config(True, 512, 10),
-        Config(False, 128, 33),
-        Config(False, 512, 5),
+    Config = collections.namedtuple("Config", ["enable_mixed_precision", 
+                                               "sequence_length", 
+                                               "max_batch_size", 
+                                               "max_predictions_per_seq", 
+                                               "additional_options"])
+
+    configs = {}
+    configs['V100_16G'] = [
+        Config(True, 128, 76, 20, ""),
+        Config(True, 512, 11, 80, ""),
+        Config(False, 128, 39, 20, ""),
+        Config(False, 512, 6, 80, ""),
+
+        # BertLarge Phase 1 recompute
+        Config(True, 128, 91, 20, "--gelu_recompute"),
+        Config(True, 128, 83, 20, "--attn_dropout_recompute"),
+        Config(True, 128, 344, 20, "--transformer_layer_recompute"),
+
+        # BertLarge Phase 2 recompute
+        Config(True, 512, 12, 80, "--gelu_recompute"),
+        Config(True, 512, 14, 80, "--attn_dropout_recompute"),
+        Config(True, 512, 50, 80, "--transformer_layer_recompute"),
     ]
 
+    configs['MI100_32G'] = [
+        Config(True, 128, 201, 20, ""),
+        Config(True, 512, 31, 80, ""),
+        Config(False, 128, 109, 20, ""),
+        Config(False, 512, 16, 80, ""),
+    ]
+ 
     # run BERT training
-    for config in configs:
+    for config in configs[args.gpu_sku]:
         print("##### testing name - {}-{} #####".format("fp16" if config.enable_mixed_precision else "fp32",
                                                         config.sequence_length))
         cmds = [
@@ -52,6 +77,7 @@ def main():
             "--use_nccl",
             "--seed", "42",
             "--enable_grad_norm_clip=false",
+            config.additional_options
         ]
 
         if config.enable_mixed_precision:

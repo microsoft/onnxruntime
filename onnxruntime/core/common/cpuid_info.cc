@@ -55,6 +55,7 @@ CPUIDInfo::CPUIDInfo() noexcept {
       const int AVX512_MASK = 0xE6;
       int value = XGETBV();
       bool has_sse2 = (data[3] & (1 << 26));
+      has_sse3_ = (data[2] & 0x1);
       bool has_ssse3 = (data[2] & (1 << 9));
       has_avx_ = has_sse2 && has_ssse3 && (data[2] & (1 << 28)) && ((value & AVX_MASK) == AVX_MASK);
       bool has_avx512 = (value & AVX512_MASK) == AVX512_MASK;
@@ -67,6 +68,7 @@ CPUIDInfo::CPUIDInfo() noexcept {
         // Add check for AVX512 Skylake since tensorization GEMM need intrinsics from avx512bw/avx512dq.
         // avx512_skylake = avx512f | avx512vl | avx512cd | avx512bw | avx512dq
         has_avx512_skylake_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 17) | (1 << 28) | (1 << 30) | (1 << 31)));
+        is_hybrid_ = (data[3] & (1 << 15));
       }
     }
   }

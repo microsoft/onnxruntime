@@ -12,9 +12,16 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     SpaceToDepth,
     1,
+    12,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    SpaceToDepth<float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    SpaceToDepth,
+    13,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SpaceToDepth<float>);
 
@@ -24,9 +31,16 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     DepthToSpace<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     DepthToSpace,
     11,
+    12,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    DepthToSpace<float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    DepthToSpace,
+    13,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     DepthToSpace<float>);
 

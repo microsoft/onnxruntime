@@ -64,12 +64,6 @@ if (onnxruntime_ENABLE_TRAINING)
       "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
       "${ORTTRAINING_SOURCE_DIR}/core/graph/*.cc"
       )
-  if (NOT onnxruntime_USE_HOROVOD)
-    list(REMOVE_ITEM orttraining_graph_src
-        "${ORTTRAINING_SOURCE_DIR}/core/graph/horovod_adapters.h"
-        "${ORTTRAINING_SOURCE_DIR}/core/graph/horovod_adapters.cc"
-        )
-  endif()
 endif()
 
 set(onnxruntime_graph_lib_src ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
@@ -78,8 +72,8 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 add_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
-add_dependencies(onnxruntime_graph onnx_proto)
-onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf)
+add_dependencies(onnxruntime_graph onnx_proto flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf flatbuffers)
 
 if (onnxruntime_ENABLE_TRAINING)
   #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas
@@ -91,8 +85,8 @@ target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
 if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_graph PRIVATE ${ORTTRAINING_ROOT})
 
-    if (onnxruntime_USE_HOROVOD)
-        target_include_directories(onnxruntime_graph PRIVATE ${HOROVOD_INCLUDE_DIRS})
+    if (onnxruntime_USE_NCCL)
+        target_include_directories(onnxruntime_graph PRIVATE ${NCCL_INCLUDE_DIRS})
     endif()
 endif()
 
@@ -104,18 +98,24 @@ if (onnxruntime_ENABLE_TRAINING)
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${orttraining_graph_src})
 endif()
 
+if (onnxruntime_BUILD_MS_EXPERIMENTAL_OPS)
+  target_compile_definitions(onnxruntime_graph PRIVATE BUILD_MS_EXPERIMENTAL_OPS=1)
+endif()
+
 if (WIN32)
-    set(onnxruntime_graph_static_library_flags
-        -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
-    )
+  set(onnxruntime_graph_static_library_flags
+      -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
+  )
 
-    set_target_properties(onnxruntime_graph PROPERTIES
-        STATIC_LIBRARY_FLAGS "${onnxruntime_graph_static_library_flags}")
+  set_target_properties(onnxruntime_graph PROPERTIES
+      STATIC_LIBRARY_FLAGS "${onnxruntime_graph_static_library_flags}")
 
+  if (NOT onnxruntime_DISABLE_EXCEPTIONS)  
     target_compile_options(onnxruntime_graph PRIVATE
         /EHsc   # exception handling - C++ may throw, extern "C" will not
     )
+  endif()
 
-    # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-    set_target_properties(onnxruntime_graph PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
+  # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
+  set_target_properties(onnxruntime_graph PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
 endif()

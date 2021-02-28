@@ -10,6 +10,7 @@
 #include <limits.h>
 
 #include "core/common/common.h"
+#include "core/common/optional.h"
 #include "core/graph/basic_types.h"
 #include "core/framework/data_types.h"
 #include "core/framework/allocator.h"
@@ -52,8 +53,8 @@ class KernelDef {
     return provider_type_;
   }
 
-  const std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
-    return type_constraints_;
+  const std::map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
+    return enabled_type_constraints_;
   }
 
   const std::vector<std::pair<int, int>>& MayInplace() const {
@@ -62,6 +63,10 @@ class KernelDef {
 
   const std::vector<std::pair<int, int>>& Alias() const {
     return alias_map_;
+  }
+
+  const optional<std::pair<int, int>>& VariadicAlias() const {
+    return variadic_alias_offsets_;
   }
 
   OrtMemType InputMemoryType(size_t input_index) const {
@@ -74,6 +79,8 @@ class KernelDef {
   bool IsInputOnCpu(size_t input_index) const { return MemTypeOnCpuExplicitly(InputMemoryType(input_index)); }
 
   bool IsOutputOnCpu(size_t output_index) const { return MemTypeOnCpuExplicitly(OutputMemoryType(output_index)); }
+
+  bool AllocateInputsContiguously() const { return allocate_inputs_contiguously_; }
 
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
@@ -98,26 +105,8 @@ class KernelDef {
  private:
   friend class KernelDefBuilder;
 
-  // call once the KernelDef has been built
-  void CalculateHash() {
-    // use name, start/end, domain, provider and the type constraints.
-    // we wouldn't have two kernels that only differed by the inplace or alias info or memory types.
-    // currently nothing sets exec_queue_id either (and would assumably be a runtime thing and not part of the base
-    // kernel definition)
-    hash_ = 0;  // reset in case this is called multiple times
-    HashCombine(hash_, op_name_);
-    HashCombine(hash_, op_since_version_start_);
-    HashCombine(hash_, op_since_version_end_);
-    HashCombine(hash_, op_domain_);
-    HashCombine(hash_, provider_type_);
-    for (const auto& key_value : type_constraints_) {
-      HashCombine(hash_, key_value.first);
-      for (const auto& data_type : key_value.second) {
-        // need to construct a std::string so it doesn't hash the address of a const char*
-        HashCombine(hash_, std::string(DataTypeImpl::ToString(data_type)));
-      }
-    }
-  }
+  // called once by KernelDefBuilder::Build
+  void CalculateHash();
 
   // The operator name supported by <*this> kernel..
   std::string op_name_;
@@ -138,13 +127,26 @@ class KernelDef {
 
   // The supported data types for inputs/outputs.
   // Key is input/output name defined in op schema, Value are supported types.
-  std::unordered_map<std::string, std::vector<MLDataType>> type_constraints_;
+  // note: std::map as we need the order to be deterministic for the hash
+  // Note: supported_type_constraints_ are used to calculate the kernel hash so that the hash is
+  // stable across builds with and without kernel type reduction enabled.
+  std::map<std::string, std::vector<MLDataType>> supported_type_constraints_;
+
+  // the type constraints that are enabled in this build for the kernel
+  std::map<std::string, std::vector<MLDataType>> enabled_type_constraints_;
 
   // An element <i, j> means that output j reuses the memory of input i.
   std::vector<std::pair<int, int>> inplace_map_;
 
   // An element <i, j> means that output j is an alias of input i.
   std::vector<std::pair<int, int>> alias_map_;
+
+  // This variable stores <input_offset, output_offset> for the variadic alias mapping
+  // output 'i + output_offset' is an alias of input 'i + input_offset' for all i >= 0
+  optional<std::pair<int, int>> variadic_alias_offsets_;
+
+  // Require input tensors to be allocated contiguously.
+  bool allocate_inputs_contiguously_ = false;
 
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
@@ -204,11 +206,19 @@ class KernelDefBuilder {
      of the set of types specified in the op schema.
      The arg name could be either op formal parameter name, say "X", or type
      argument name specified in op schema, say "T".
+     If this build uses type reduction the enabled types can optionally be provided.
   */
   KernelDefBuilder& TypeConstraint(const std::string& arg_name,
                                    const std::vector<MLDataType>& supported_types);
   KernelDefBuilder& TypeConstraint(const char* arg_name,
                                    const std::vector<MLDataType>& supported_types);
+
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name,
+                                   const std::vector<MLDataType>& supported_types,
+                                   const std::vector<MLDataType>& enabled_types);
+  KernelDefBuilder& TypeConstraint(const char* arg_name,
+                                   const std::vector<MLDataType>& supported_types,
+                                   const std::vector<MLDataType>& enabled_types);
 
   /**
      Like TypeConstraint but supports just a single type.
@@ -231,6 +241,22 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases);
   KernelDefBuilder& Alias(int input_index, int output_index);
+
+  /**
+     Apply variadic number of alias mapping from inputs to outputs. 
+     This is effectively applying Alias(i + input_offset, i + output_offset) for i >= 0
+  */
+  KernelDefBuilder& VariadicAlias(int input_offset, int output_offset);
+
+  /**
+     Specify that this kernel requires input tensors to be allocated
+     contiguously. This allows kernels to execute as a single large
+     computation, rather than numerous smaller computations.
+  */
+  KernelDefBuilder& AllocateInputsContiguously() {
+    kernel_def_->allocate_inputs_contiguously_ = true;
+    return *this;
+  }
 
   /**
      Specify that this kernel requires an input arg
@@ -319,6 +345,10 @@ class KernelDefBuilder {
   }
 
  private:
+  KernelDefBuilder& TypeConstraintImpl(const std::string& arg_name,
+                                       const std::vector<MLDataType>& supported_types,
+                                       const std::vector<MLDataType>* enabled_types = nullptr);
+
   // we own the KernelDef until Build() is called.
   std::unique_ptr<KernelDef> kernel_def_;
 };

@@ -17,7 +17,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const 
   Init(p_type, shape, p_data, nullptr, offset);
 }
 
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, ptrdiff_t offset)
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator)
     : alloc_info_(allocator->Info()) {
   ORT_ENFORCE(p_type != nullptr);
   int64_t shape_size = shape.Size();  // value returned is checked for overflow by TensorShape::Size()
@@ -30,13 +30,10 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
     if (!allocator->CalcMemSizeForArray(SafeInt<size_t>(shape_size), p_type->Size(), &len))
       ORT_THROW("tensor failed memory size calculation");
 
-    // TODO: Use case for this isn't clear. We allocate a buffer based on the tensor shape and increase it by offset.
-    // Who is going to use the memory prior to offset, and/or why should it be allocated here?
-    len += offset;
     p_data = allocator->Alloc(len);
   }
 
-  Init(p_type, shape, p_data, allocator, offset);
+  Init(p_type, shape, p_data, allocator);
 }
 
 size_t Tensor::SizeInBytes() const {

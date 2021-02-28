@@ -11,6 +11,7 @@
 #include <string>
 #include <thread>
 
+#include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/error_code_helper.h"
@@ -27,7 +28,6 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/utils.h"
 #include "core/graph/graph_viewer.h"
-#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/graph_transformer.h"
@@ -39,21 +39,26 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
-#if !defined(ORT_MINIMAL_BUILD)
+// custom ops are not available in a minimal build unless ORT_MINIMAL_BUILD_CUSTOM_OPS is set
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
 #include "core/session/custom_ops.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
+using namespace onnxruntime::experimental;
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace {
@@ -93,6 +98,33 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
+
+// The current model versions for saving the ort format models
+// This version is NOT onnxruntime version
+// Only update this version when there is a file format change which will break the compatibilites
+// Once this model version is updated, the kSupportedOrtModelVersions in IsOrtModelVersionSupported
+// below will also need to be updated.
+// See onnxruntime/core/session/flatbuffers/schema/README.md for more details on versioning.
+// Version 1 - history begins
+// Version 2 - add serialization/deserialization of sparse_initializer
+// Version 3 - add `graph_doc_string` to Model
+static constexpr const char* kOrtModelVersion = "3";
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+// Check if the given ort model version is supported in this build
+static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
+  // The ort model versions we will support in this build
+  // This may contain more versions than the kOrtModelVersion, based on the compatibilities
+  static const std::unordered_set<std::string> kSupportedOrtModelVersions{
+      std::string("1.4.0"),  // This is a special model version for existing converted model
+      std::string("1"),
+      std::string("2"),
+      std::string(kOrtModelVersion),
+  };
+
+  return kSupportedOrtModelVersions.find(ort_model_version) != kSupportedOrtModelVersions.cend();
+}
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
@@ -137,14 +169,14 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
     ORT_ENFORCE(is_model_proto_parsed, "ModelProto needs to be parsed to check for ORT config within it");
 
     // Use default logger as the session_logger_ hasn't been initialized yet.
-    InferenceSessionUtils inference_session_utils(default_logger);
+    inference_session_utils::JsonConfigParser config_parser(default_logger);
 
-    auto status = inference_session_utils.ParseOrtConfigJsonInModelProto(model_proto);
+    auto status = config_parser.ParseOrtConfigJsonInModelProto(model_proto);
     if (!status.IsOK()) {
       return status;
     }
 
-    status = inference_session_utils.ParseSessionOptionsFromModelProto(constructed_session_options);
+    status = config_parser.ParseSessionOptionsFromModelProto(constructed_session_options);
     if (!status.IsOK()) {
       return status;
     }
@@ -179,6 +211,22 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   ORT_ENFORCE(graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
 #endif
 
+  bool set_denormal_as_zero = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
+
+  // The only first session option for flush-to-zero and denormal-as-zero is effective to main thread and OpenMP threads.
+  {
+    static std::once_flag once;
+
+    std::call_once(once, [&] {
+#ifdef _OPENMP
+      InitializeWithDenormalAsZero(set_denormal_as_zero);
+#endif
+      SetDenormalAsZero(set_denormal_as_zero);
+
+      LOGS(*session_logger_, INFO) << "Flush-to-zero and denormal-as-zero are " << ((set_denormal_as_zero) ? "on" : "off");
+    });
+  }
+
   use_per_session_threads_ = session_options.use_per_session_threads;
 
   if (use_per_session_threads_) {
@@ -188,6 +236,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       if (to.name == nullptr) {
         to.name = ORT_TSTR("intra-op");
       }
+      to.set_denormal_as_zero = set_denormal_as_zero;
       // If the thread pool can use all the processors, then
       // we set affinity of each thread to each processor.
       to.auto_set_affinity = to.thread_pool_size == 0 &&
@@ -204,6 +253,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
       if (to.name == nullptr)
         to.name = ORT_TSTR("intra-op");
+      to.set_denormal_as_zero = set_denormal_as_zero;
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {
@@ -228,6 +278,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
+  allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
@@ -306,22 +357,30 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 
 InferenceSession::~InferenceSession() {
   if (session_options_.enable_profiling) {
-    try {
+    ORT_TRY {
       EndProfiling();
-    } catch (std::exception& e) {
+    }
+    ORT_CATCH(const std::exception& e) {
       // TODO: Currently we have no way to transport this error to the API user
       // Maybe this should be refactored, so that profiling must be explicitly
       // started and stopped via C-API functions.
       // And not like now a session option and therefore profiling must be started
       // and stopped implicitly.
-      LOGS(*session_logger_, ERROR) << "Error during EndProfiling(): " << e.what();
-    } catch (...) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        LOGS(*session_logger_, ERROR) << "Error during EndProfiling(): " << e.what();
+      });
+    }
+    ORT_CATCH(...) {
       LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
     }
   }
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
     TraceLoggingWriteStop(session_activity, "OrtInferenceSessionActivity");
+#endif
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryInfo::GenerateMemoryProfile();
 #endif
 }
 
@@ -342,15 +401,41 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 
   const std::string& provider_type = p_exec_provider->Type();
 
-  // DML's memory is not byte addressable and hence mem pattern doesn't work.
+  p_exec_provider->RegisterAllocator(allocator_manager_);
+
+  // Some session option values (default or user provided) may not work with some EPs.
+  // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
   if (provider_type == onnxruntime::kDmlExecutionProvider) {
+    // DML's memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                    "Memory pattern must be disabled before registering DMLExecutionProvider");
+      LOGS(*session_logger_, WARNING)
+          << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
+          << "So disabling it for this session since it uses the DML Execution Provider.";
+      session_options_.enable_mem_pattern = false;
     }
+
+    // Parallel execution mode does not support DML EP
     if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                    "Sequential execution must be enabled before registering DMLExecutionProvider");
+      LOGS(*session_logger_, WARNING)
+          << "Parallel execution mode does not support the DML Execution Provider. "
+          << "So making the execution mode sequential for this session since it uses the DML Execution Provider.";
+
+      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    }
+  }
+
+  if (provider_type == onnxruntime::kCudaExecutionProvider) {
+    // Parallel execution mode does not support the CUDA EP
+    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+      LOGS(*session_logger_, WARNING)
+          << "Parallel execution mode does not support the CUDA Execution Provider. "
+          << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
+      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    }
+
+    auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);
+    if (trt_ep) {
+      p_exec_provider->SetComputeStream(trt_ep->GetComputeStream());
     }
   }
 
@@ -367,8 +452,33 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return execution_providers_.Add(provider_type, std::move(p_exec_provider));
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+// Custom Op support
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
+  std::shared_ptr<CustomRegistry> custom_registry;
+  ORT_RETURN_IF_ERROR_SESSIONID_(CreateCustomRegistry(op_domains, custom_registry));
+  ORT_RETURN_IF_ERROR_SESSIONID_(RegisterCustomRegistry(custom_registry));
+  return Status::OK();
+}
 
+common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) {
+  if (custom_registry == nullptr) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
+  }
+
+  custom_registries_.push_back(custom_registry);
+
+  // Insert session-level customized kernel registry.
+  kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
+
+#if !defined(ORT_MINIMAL_BUILD)
+  custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
+#endif
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
+#if !defined(ORT_MINIMAL_BUILD)
 common::Status InferenceSession::RegisterGraphTransformer(
     std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, TransformerLevel level) {
   if (p_graph_transformer == nullptr) {
@@ -393,25 +503,43 @@ common::Status InferenceSession::AddCustomTransformerList(const std::vector<std:
   return Status::OK();
 }
 
-common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
-  std::shared_ptr<CustomRegistry> custom_registry;
-  ORT_RETURN_IF_ERROR_SESSIONID_(CreateCustomRegistry(op_domains, custom_registry));
-  ORT_RETURN_IF_ERROR_SESSIONID_(RegisterCustomRegistry(custom_registry));
-  return Status::OK();
-}
+common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const {
+  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-edian machines");
 
-common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) {
-  if (custom_registry == nullptr) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
+  // Get the byte size of the ModelProto and round it to the next MB and use it as flatbuffers' init_size
+  // TODO: Investigate whether we should set a max size, and clarify the cost of having a buffer smaller than
+  // what the total flatbuffers serialized size will be.
+  constexpr size_t m_bytes = 1024 * 1024;
+  size_t fbs_buffer_size = std::max(m_bytes, model_->ToProto().ByteSizeLong());
+  fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
+  flatbuffers::FlatBufferBuilder builder(fbs_buffer_size);
+
+  auto ort_model_version = builder.CreateString(kOrtModelVersion);
+  flatbuffers::Offset<fbs::Model> model;
+  ORT_RETURN_IF_ERROR(
+      model_->SaveToOrtFormat(builder, model));
+
+  flatbuffers::Offset<fbs::SessionState> session_state;
+  ORT_RETURN_IF_ERROR(
+      session_state_->SaveToOrtFormat(builder, session_state));
+
+  fbs::InferenceSessionBuilder sb(builder);
+  sb.add_ort_version(ort_model_version);
+  sb.add_model(model);
+  sb.add_session_state(session_state);
+  auto session = sb.Finish();
+  builder.Finish(session, fbs::InferenceSessionIdentifier());
+
+  // TODO: Do we need to catch any std::exceptions from creating/writing to disk and convert to Status codes?
+  {
+    std::ofstream file(filepath, std::ios::binary);
+
+    uint8_t* buf = builder.GetBufferPointer();
+    int size = builder.GetSize();
+    file.write(reinterpret_cast<const char*>(buf), size);
+    file.close();
   }
 
-  custom_registries_.push_back(custom_registry);
-
-  // Insert session-level customized kernel registry.
-  kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
-  //    if (custom_schema_registries_.empty())
-  //      custom_schema_registries_.push_back();
-  custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
   return Status::OK();
 }
 
@@ -422,7 +550,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
   }
-  try {
+  ORT_TRY {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
       LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
@@ -442,10 +570,13 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     is_model_loaded_ = true;
 
     telemetry_.event_name_ = event_name;
-
-  } catch (const std::exception& ex) {
-    status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
-  } catch (...) {
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
+    });
+  }
+  ORT_CATCH(...) {
     LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
     status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
   }
@@ -480,7 +611,22 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
   return Status::OK();
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 common::Status InferenceSession::Load(const std::string& model_uri) {
+  std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
+  bool has_explicit_type = !model_type.empty();
+
+  if ((has_explicit_type && model_type == "ORT") ||
+      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+    return LoadOrtModel(model_uri);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
+#endif
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
   if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
@@ -488,10 +634,26 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
   }
 
   return Load<char>(model_uri);
+#else
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
+#endif
 }
 
 #ifdef _WIN32
 common::Status InferenceSession::Load(const std::wstring& model_uri) {
+  std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
+  bool has_explicit_type = !model_type.empty();
+
+  if ((has_explicit_type && model_type == "ORT") ||
+      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+    return LoadOrtModel(model_uri);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
+#endif
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
   if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
@@ -499,8 +661,59 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
   }
 
   return Load<PATH_CHAR_TYPE>(model_uri);
+#else
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
+#endif
 }
 #endif
+
+common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+  std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
+  bool has_explicit_type = !model_type.empty();
+
+  if ((has_explicit_type && model_type == "ORT") ||
+      (!has_explicit_type &&
+       experimental::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+    return LoadOrtModel(model_data, model_data_len);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
+#endif
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (is_model_proto_parsed_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "ModelProto corresponding to the model to be loaded has already been parsed. "
+                           "Invoke Load().");
+  }
+
+  auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
+    ModelProto model_proto;
+
+    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
+    if (!result) {
+      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
+                    "Failed to load model because protobuf parsing failed.");
+    }
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
+    }
+#endif
+
+    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+  };
+
+  return Load(loader, "model_loading_array");
+#else
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
+#endif
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
   if (is_model_proto_parsed_) {
@@ -571,35 +784,6 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
   return Load(loader, "model_loading_istream");
 }
 
-common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
-  if (is_model_proto_parsed_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "ModelProto corresponding to the model to be loaded has already been parsed. "
-                           "Invoke Load().");
-  }
-
-  auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
-    ModelProto model_proto;
-
-    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
-    if (!result) {
-      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
-                    "Failed to load model because protobuf parsing failed.");
-    }
-#ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
-    for (const auto& domain : interop_domains_) {
-      ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
-    }
-#endif
-
-    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
-  };
-
-  return Load(loader, "model_loading_array");
-}
-
 common::Status InferenceSession::Load() {
   if (!is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -627,7 +811,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 const ExecutionProviders& providers,
                                                 KernelRegistryManager& kernel_registry_manager,
                                                 const InsertCastTransformer& insert_cast_transformer,
-                                                SessionState& session_state) {
+                                                SessionState& session_state,
+                                                bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. built-in graph rewriter
   // 2. each execution provider's transformer
@@ -656,10 +841,17 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   }
 #endif
 
+  // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
+  // we do this to preserve the original nodes in the model but prevent optimizers from changing them.
+  // at runtime, the ORT format model will re-do the partitioning/compilation of these nodes, which may change
+  // to cover fewer nodes due to device capabilities.
+  auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
+                                         : GraphPartitioner::Mode::kNormal;
+
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
-                                                       session_state.GetMutableFuncMgr()));
+                                                       session_state.GetMutableFuncMgr(), mode));
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
@@ -722,8 +914,142 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   return common::Status::OK();
 }
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+Status InferenceSession::PartitionOrtFormatModel(onnxruntime::Graph& graph,
+                                                 const ExecutionProviders& providers,
+                                                 KernelRegistryManager& kernel_registry_manager,
+                                                 SessionState& session_state) const {
+  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes;
+
+  GraphPartitioner partitioner(kernel_registry_manager, providers);
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
+                                                       session_state.GetMutableFuncMgr(),
+                                                       GraphPartitioner::Mode::kOrtFormatLoad,
+                                                       &compiled_kernel_hashes));
+
+  if (!compiled_kernel_hashes.empty()) {
+    session_state.SetCompiledKernelHashes(std::move(compiled_kernel_hashes));
+  }
+
+  return Status::OK();
+}
+#endif
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+template <typename T>
+static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
+                                std::basic_string<ORTCHAR_T>& model_location,
+                                std::vector<uint8_t>& bytes) {
+  size_t num_bytes = 0;
+  model_location = ToWideString(model_uri);
+  ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(model_location.c_str(), num_bytes));
+
+  bytes.resize(num_bytes);
+
+  std::ifstream bytes_stream(model_uri, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(bytes.data()), num_bytes);
+
+  if (!bytes_stream) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Load model from ", ToMBString(model_uri), " failed. Only ",
+                           bytes_stream.gcount(), "/", num_bytes, " bytes were able to be read.");
+  }
+
+  return Status::OK();
+}
+
+Status InferenceSession::LoadOrtModel(const std::string& model_uri) {
+  return LoadOrtModel(
+      [&]() {
+        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_, ort_format_model_bytes_));
+        return Status::OK();
+      });
+}
+
+#ifdef WIN32
+Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
+  return LoadOrtModel(
+      [&]() {
+        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_, ort_format_model_bytes_));
+        return Status::OK();
+      });
+}
+#endif
+
+Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
+  return LoadOrtModel([&]() {
+    // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
+    //
+    // TODO: Provide Load API where we can take ownership of memory to avoid the copy,
+    // and/or a combined Load+Initialize where we don't need this temporary copy.
+    ort_format_model_bytes_.resize(model_data_len);
+    std::copy_n(reinterpret_cast<const uint8_t*>(model_data), model_data_len, ort_format_model_bytes_.data());
+
+    return Status::OK();
+  });
+}
+
+Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) {
+  static_assert(FLATBUFFERS_LITTLEENDIAN, "ORT format only supports little-endian machines");
+
+  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+
+  if (is_model_loaded_) {  // already loaded
+    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
+    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    return status;
+  }
+
+  if (is_inited_) {
+    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
+    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    return status;
+  }
+
+  ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());
+
+  // Verify the ort_format_model_bytes_ is a valid InferenceSessionBuffer before we access the data
+  flatbuffers::Verifier verifier(ort_format_model_bytes_.data(), ort_format_model_bytes_.size());
+  ORT_RETURN_IF_NOT(fbs::VerifyInferenceSessionBuffer(verifier), "ORT model verification failed.");
+
+  const auto* fbs_session = fbs::GetInferenceSession(ort_format_model_bytes_.data());
+  ORT_RETURN_IF(nullptr == fbs_session, "InferenceSession is null. Invalid ORT format model.");
+
+  // Check version mismatch, for now we will only proceed when runtime version matches the model's ort version
+  const auto* fbs_ort_model_version = fbs_session->ort_version();
+  ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
+  ORT_RETURN_IF_NOT(IsOrtModelVersionSupported(fbs_ort_model_version->str()),
+                    "The ORT format model version [", fbs_ort_model_version->str(),
+                    "] is not supported this build ", ORT_VERSION);
+
+  const auto* fbs_model = fbs_session->model();
+  ORT_RETURN_IF(nullptr == fbs_model, "Missing Model. Invalid ORT format model.");
+
+  // need to go from unique_ptr to shared_ptr when moving into model_
+  std::unique_ptr<Model> tmp_model;
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model,
+                                               HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                               *session_logger_, tmp_model));
+
+#else
+  ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, *session_logger_, tmp_model));
+#endif
+
+  ORT_RETURN_IF_ERROR(SaveModelMetadata(*tmp_model));
+  model_ = std::move(tmp_model);
+
+  // Initialize takes the session_mutex_ as well so we need to have released it prior to calling this
+  const auto* fbs_sess_state = fbs_session->session_state();
+  ORT_RETURN_IF(nullptr == fbs_sess_state, "SessionState is null. Invalid ORT format model.");
+
+  is_model_loaded_ = true;
+
+  return Status::OK();
+}
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 bool InferenceSession::IsInitialized() const {
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -777,7 +1103,7 @@ common::Status InferenceSession::Initialize() {
     tp = session_profiler_.StartTime();
   }
 
-  try {
+  ORT_TRY {
     LOGS(*session_logger_, INFO) << "Initializing session.";
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart();
@@ -824,9 +1150,10 @@ common::Status InferenceSession::Initialize() {
     // since we've to take into account the per-thread cuda allocators.
     // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
     // from IAllocator to keep things clean.
-    std::string use_env_allocators = GetSessionConfigOrDefault(session_options_,
-                                                               ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "0");
+    std::string use_env_allocators = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators,
+                                                                         "0");
     if (use_env_allocators == "1") {
+      LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
       UpdateProvidersWithSharedAllocators();
     }
 
@@ -847,14 +1174,6 @@ common::Status InferenceSession::Initialize() {
         session_profiler_,
         session_options_.use_deterministic_compute);
 
-    if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
-        execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
-      status = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                              "Parallel execution mode doesn't support CUDA Execution Provider currently.");
-      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-      return status;
-    }
-
     onnxruntime::Graph& graph = model_->MainGraph();
 
     // Collect the kernel registries from execution provider instances;
@@ -867,44 +1186,92 @@ common::Status InferenceSession::Initialize() {
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
+    bool loading_ort_format = !ort_format_model_bytes_.empty();
+    bool saving_model = !session_options_.optimized_model_filepath.empty();
+    bool saving_ort_format = false;
+    if (saving_model) {
+      std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
+      bool has_explicit_type = !model_type.empty();
+      saving_ort_format = ((has_explicit_type && model_type == "ORT") ||
+                           (!has_explicit_type &&
+                            experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)));
+    }
+
 #if !defined(ORT_MINIMAL_BUILD)
-    // add predefined transformers
-    AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
-                              transformers_to_enable_);
+    if (!loading_ort_format) {
+      // add predefined transformers
+      AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level,
+                                transformers_to_enable_);
 
-    // apply any transformations to the main graph and any subgraphs
-    ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
-                                                  execution_providers_, kernel_registry_manager_,
-                                                  insert_cast_transformer_,
-                                                  *session_state_));
+      // apply any transformations to the main graph and any subgraphs
+      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
+                                                    execution_providers_, kernel_registry_manager_,
+                                                    insert_cast_transformer_,
+                                                    *session_state_,
+                                                    saving_ort_format));
 
-    // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
-    ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
+      // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
+
+      // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
+      ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
+    } else
 #endif  // !defined(ORT_MINIMAL_BUILD)
+    {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+      // nodes are already partitioned, but a custom EP may compile some at runtime.
+      // run the partitioning to allow that to happen.
+      //
+      // We always have the CPU EP, so only need to run this if some other EP is enabled
+      if (execution_providers_.NumProviders() > 1) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
+                                                               *session_state_));
+      }
+#endif
+    }
 
-    // need to keep the initializers if we're going to save the optimized model
-    bool keep_initializers = !session_options_.optimized_model_filepath.empty();
+    const experimental::fbs::SessionState* serialized_session_state =
+        loading_ort_format
+            ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
+            : nullptr;
 
-    ORT_RETURN_IF_ERROR_SESSIONID_(session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
-                                                                        session_options_,
-                                                                        !keep_initializers));
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
+                                             session_options_,
+                                             serialized_session_state,
+                                             // need to keep the initializers if saving the optimized model
+                                             !saving_model,
+                                             saving_ort_format));
 
 #if !defined(ORT_MINIMAL_BUILD)
-    if (!session_options_.optimized_model_filepath.empty()) {
-      // Serialize optimized ONNX model.
-      ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
+    if (saving_model) {
+      if (session_state_->GetFuncMgr().NumFuncs() > 0) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(
+            ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                            "Unable to serialize model as it contains compiled nodes. "
+                            "Please disable any execution providers which generate compiled nodes."));
+      }
+
       if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
-        LOGS(*session_logger_, WARNING) << "Serializing Optimized ONNX model with Graph Optimization"
-                                           " level greater than ORT_ENABLE_EXTENDED. The generated"
-                                           " model may contain hardware and execution provider specific"
-                                           " optimizations, and should only be used in the same environment"
-                                           " the model was optimized for.";
+        LOGS(*session_logger_, WARNING)
+            << "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED. "
+               "The generated model may contain hardware and execution provider specific optimizations, "
+               "and should only be used in the same environment the model was optimized for.";
+      }
+
+      if (saving_ort_format) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
+      } else {
+        ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
       }
     }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
     session_state_->ResolveMemoryPatternFlag();
     is_inited_ = true;
+
+    // we don't directly use the ORT format bytes currently, so free those now
+    std::vector<uint8_t>().swap(ort_format_model_bytes_);
 
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
@@ -913,13 +1280,20 @@ common::Status InferenceSession::Initialize() {
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
-  } catch (const NotImplementedException& ex) {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-  } catch (const std::exception& ex) {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception during initialization: ", ex.what());
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-  } catch (...) {
+  }
+  ORT_CATCH(const NotImplementedException& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
+      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    });
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception during initialization: ", ex.what());
+      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    });
+  }
+  ORT_CATCH(...) {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   }
@@ -1004,22 +1378,25 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name, cons
     ostr << " Please fix either the inputs or the model.";
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
   }
-
   return Status::OK();
 }
 
-static common::Status CheckTypes(MLDataType actual, MLDataType expected) {
+static common::Status CheckTypes(MLDataType actual, MLDataType expected, const std::string& base_type) {
   if (actual == expected) {
     return Status::OK();
   }
-#ifdef ORT_NO_RTTI
-  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unexpected input data type");
-#else
-  auto actual_name = std::string(typeid(*actual).name());
-  auto expected_name = std::string(typeid(*expected).name());
-  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                "Unexpected input data type. Actual: (" + actual_name + ") , expected: (" + expected_name + ")");
-#endif
+  std::ostringstream ostr;
+  ostr << "Unexpected input data type. Actual: (";
+  ostr << base_type;
+  ostr << "(";
+  ostr << DataTypeImpl::ToString(actual);
+  ostr << ")) , expected: (";
+  ostr << base_type;
+  ostr << "(";
+  ostr << DataTypeImpl::ToString(expected);
+  ostr << "))";
+
+  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
 }
 
 common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
@@ -1047,7 +1424,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
       auto expected_element_type = expected_type->AsTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "tensor"));
 
       // check for shape
       const auto& expected_shape = iter->second.tensor_shape;
@@ -1061,9 +1438,15 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
                                " is not expected to be of type sparse tensor.");
       }
       auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
-      auto input_element_type = input_ml_value.Get<SparseTensor>().Values().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
-      // TODO: In the future, when sparsetensors are in use, find out how to properly verify the shape
+      const SparseTensor& sparse_tensor = input_ml_value.Get<SparseTensor>();
+      auto input_element_type = sparse_tensor.Values().DataType();
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "sparse_tensor"));
+      // Check shape
+      const auto& expected_shape = iter->second.tensor_shape;
+      if (expected_shape.NumDimensions() > 0) {
+        const auto& input_shape = sparse_tensor.Shape();
+        ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
+      }
     } else if (input_ml_value.IsTensorSequence()) {
       if (!expected_type->IsTensorSequenceType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
@@ -1071,10 +1454,10 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
       auto expected_element_type = expected_type->AsSequenceTensorBase()->GetElementType();
       auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "seq"));
     } else {
       auto input_type = input_ml_value.Type();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_type, expected_type));
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_type, expected_type, ""));
     }
   }
 
@@ -1129,20 +1512,14 @@ Status InferenceSession::Run(const RunOptions& run_options,
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
-  try {
+  ORT_TRY {
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
       return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
     }
 
-    // check the frequency to send Evalutaion Stop event
-    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_evalutation_start_) >
-        telemetry_.kDurationBetweenSendingEvaluationStart) {
-      env.GetTelemetryProvider().LogEvaluationStart();
-      // reset counters
-      telemetry_.time_sent_last_evalutation_start_ = std::chrono::high_resolution_clock::now();
-      telemetry_.isEvaluationStart = true;
-    }
+    // log evaluation start to trace logging provider
+    env.GetTelemetryProvider().LogEvaluationStart();
 
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
@@ -1165,8 +1542,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
     }
 
     ++current_num_runs_;
-
-    // TODO should we add this exec to the list of executors? i guess its not needed now?
 
     // scope of owned_run_logger is just the call to Execute.
     // If Execute ever becomes async we need a different approach
@@ -1198,9 +1573,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches));
-  } catch (const std::exception& e) {
-    retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
-  } catch (...) {
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
+    });
+  }
+  ORT_CATCH(...) {
     retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
   }
 
@@ -1227,11 +1606,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
     telemetry_.total_run_duration_since_last_ = 0;
   }
 
-  // check the frequency to send Evalutaion Stop event
-  if (telemetry_.isEvaluationStart) {
-    env.GetTelemetryProvider().LogEvaluationStop();
-    telemetry_.isEvaluationStart = false;
-  }
+  // log evaluation stop to trace logging provider
+  env.GetTelemetryProvider().LogEvaluationStop();
+
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
@@ -1374,6 +1751,10 @@ std::string InferenceSession::EndProfiling() {
   return std::string();
 }
 
+const profiling::Profiler& InferenceSession::GetProfiling() const {
+  return session_profiler_;
+}
+
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
   return session_state_->GetAllocator(mem_info);
 }
@@ -1394,16 +1775,19 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   // save model metadata
   model_metadata_.producer_name = model.ProducerName();
   model_metadata_.description = model.DocString();
+  model_metadata_.graph_description = model.GraphDocString();
   model_metadata_.domain = model.Domain();
   model_metadata_.version = model.ModelVersion();
   model_metadata_.custom_metadata_map = model.MetaData();
   model_metadata_.graph_name = graph.Name();
 
+  required_inputs_.clear();
   for (auto input : graph.GetInputs()) {
     required_inputs_.insert(input->Name());
   }
 
   auto add_inputs = [this](const InputDefList& inputs) {
+    input_def_map_.clear();
     input_def_map_.reserve(inputs.size());
     for (auto elem : inputs) {
       auto elem_type = utils::GetMLDataType(*elem);
@@ -1429,6 +1813,8 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   // save outputs
   const auto& outputs = graph.GetOutputs();
   output_def_list_ = outputs;  // A direct copy of outputs
+
+  model_output_names_.clear();
   model_output_names_.reserve(outputs.size());
   for (const auto& elem : outputs) {
     model_output_names_.insert(elem->Name());
@@ -1512,7 +1898,7 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register =
-        optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides,
+        optimizer_utils::GenerateTransformers(level, session_options_,
                                               *execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
                                               custom_list);
     for (auto& entry : transformers_to_register) {

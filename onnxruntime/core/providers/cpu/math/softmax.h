@@ -14,38 +14,37 @@ namespace onnxruntime {
 template <typename T>
 class Softmax final : public OpKernel {
  public:
-  Softmax(const OpKernelInfo& info) : OpKernel{info}, axis_{1} {
+  Softmax(const OpKernelInfo& info) : OpKernel{info} {
+    const auto& node = info.node();
+    opset_ = node.SinceVersion();
+
     int64_t axis;
     Status status = info.GetAttr<int64_t>("axis", &axis);
 
     if (status.IsOK()) {
       axis_ = gsl::narrow_cast<int>(axis);
+    } else {
+      if (opset_ < 13) {
+        axis_ = 1;  // opset-12 and below, the default axis value is 1
+      } else {
+        axis_ = -1;  // opset-13, the default axis value is -1
+      }
     }
 
     log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
   }
 
-  Status Compute(OpKernelContext* ctx) const override {
-    const auto* X = ctx->Input<Tensor>(0);
-    const auto& X_shape = X->Shape();
-    auto* Y = ctx->Output(0, X_shape);
-
-    // edge case. one or more dims with value of 0. nothing to do
-    if (X_shape.Size() == 0) {
-      return Status::OK();
-    }
-
-    const int64_t axis = HandleNegativeAxis(axis_, X_shape.NumDimensions());
-    const size_t N = X_shape.SizeToDimension(axis);
-    const size_t D = X_shape.SizeFromDimension(axis);
-
-    concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-
-    return SoftmaxCPU(N, D, X->template Data<T>(), Y->template MutableData<T>(), log_softmax_, thread_pool);
-  }
+  Status Compute(OpKernelContext* ctx) const override;
 
  private:
+  Status ComputeImpl(const Tensor& input, Tensor& output, size_t axis,
+                     concurrency::ThreadPool* thread_pool) const;
+
+  Status ComputeImplOpset13(const Tensor& input, Tensor& output, size_t axis,
+                            concurrency::ThreadPool* thread_pool, OpKernelContext* ctx) const;
+
   int axis_;
+  int opset_;
   bool log_softmax_;
 };
 

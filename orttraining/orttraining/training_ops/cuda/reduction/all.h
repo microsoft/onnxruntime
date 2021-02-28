@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -16,7 +16,7 @@ class All final : public CudaKernel {
 };
 
 template<typename T>
-void LaunchAllKernel(const T* data, const int size, bool* output);
+void LaunchAllKernel(cudaStream_t stream, const T* data, const int size, bool* output);
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -42,9 +42,9 @@ public:
         std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
 
         // Zero the output tensor's memory for 64-bit integer emulation with strides.
-        if (m_toDataType == MLOperatorTensorDataType::UInt64 || m_toDataType == MLOperatorTensorDataType::Int64)
+        if (m_zeroOperator)
         {
-            assert(m_zeroOperator);
+            assert(m_toDataType == MLOperatorTensorDataType::UInt64 || m_toDataType == MLOperatorTensorDataType::Int64);
             ExecuteZeroInt64Tensor(m_zeroOperator.Get(), outputTensors[0]);
         }
 

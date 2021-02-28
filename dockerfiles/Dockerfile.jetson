@@ -23,8 +23,9 @@ RUN apt update && \
         libpython3.6-dev \
         python3-pip \
         python3-dev \
-	cmake
-
+        cmake \
+        unattended-upgrades
+RUN unattended-upgrade
 RUN pip3 install --upgrade pip
 RUN pip3 install setuptools
 RUN pip3 install wheel pybind11 pytest

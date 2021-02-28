@@ -7,10 +7,9 @@ REM Please install PyTorch (see https://pytorch.org/) before running this benchm
 REM   GPU:   conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
 REM   CPU:   conda install pytorch torchvision cpuonly -c pytorch
 
-REM When run_cli=true, this script is self-contained and you need not copy other files to run benchmarks
-REM                    it will use onnxruntime-tools package.
-REM If run_cli=false, it depends on other python script (*.py) files in this directory.
-set run_cli=false
+REM When use_package=true, you need not copy other files to run benchmarks except this sh file.
+REM Otherwise, it will use python script (*.py) files in this directory.
+set use_package=false
 
 REM only need once
 set run_install=false
@@ -71,13 +70,13 @@ if %run_install% == true (
     )
   )
 
-  pip install --upgrade onnxruntime-tools
-  pip install --upgrade git+https://github.com/huggingface/transformers
+  pip install --upgrade onnxconverter_common
+  pip install --upgrade transformers
 )
 
-if %run_cli% == true (
-  echo Use onnxruntime_tools.transformers.benchmark
-  set optimizer_script=-m onnxruntime_tools.transformers.benchmark
+if %use_package% == true (
+  echo Use onnxruntime.transformers.benchmark
+  set optimizer_script=-m onnxruntime.transformers.benchmark
 ) else (
   set optimizer_script=benchmark.py
 )
@@ -145,7 +144,7 @@ if %run_torch% == true (
   >>benchmark.log echo python %optimizer_script% -e torch -m %1 %benchmark_options% %2 %3 %4
   if %run_tests%==true python %optimizer_script% -e torch -m %1 %benchmark_options% %2 %3 %4
 )
-  
+
 if %run_torchscript% == true (
   >>benchmark.log echo python %optimizer_script% -e torchscript -m %1 %benchmark_options% %2 %3 %4
   if %run_tests%==true python %optimizer_script% -e torchscript -m %1 %benchmark_options% %2 %3 %4

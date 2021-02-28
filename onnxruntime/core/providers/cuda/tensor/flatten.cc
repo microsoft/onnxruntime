@@ -28,10 +28,20 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Flatten);
 
 // explicitly support negative axis
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Flatten,
+    kOnnxDomain,
+    11, 12,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Flatten);
+
 ONNX_OPERATOR_KERNEL_EX(
     Flatten,
     kOnnxDomain,
-    11,
+    13,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
@@ -56,7 +66,7 @@ Status Flatten::ComputeInternal(OpKernelContext* ctx) const {
   void* target = Y->MutableDataRaw();
   if (target != source) {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, X_shape.Size() * X->DataType()->Size(),
-                                         cudaMemcpyDeviceToDevice));
+                                         cudaMemcpyDeviceToDevice, Stream()));
   }
 
   return Status::OK();

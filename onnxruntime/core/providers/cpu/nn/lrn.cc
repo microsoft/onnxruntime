@@ -16,7 +16,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/lrn.h"
-#include "core/providers/cpu/activation/element_wise_ranged_transform.h"
+#include "core/providers/cpu/element_wise_ranged_transform.h"
 
 #include "core/common/safeint.h"
 #include "core/util/math.h"
@@ -116,7 +116,9 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(LRN, 1, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LRN, 1, 12, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                   LRN<float>);
+ONNX_CPU_OPERATOR_KERNEL(LRN, 13, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                          LRN<float>);
 
 }  // namespace onnxruntime

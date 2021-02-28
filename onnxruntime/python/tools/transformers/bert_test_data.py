@@ -140,7 +140,8 @@ def generate_test_data(batch_size, sequence_length, test_cases, seed, verbose, i
 
 
 def get_graph_input_from_embed_node(onnx_model, embed_node, input_index):
-    assert input_index < len(embed_node.input)
+    if input_index >= len(embed_node.input):
+        return None
 
     input = embed_node.input[input_index]
     graph_input = onnx_model.find_graph_input(input)
@@ -151,16 +152,16 @@ def get_graph_input_from_embed_node(onnx_model, embed_node, input_index):
     return graph_input
 
 
-def get_bert_inputs(onnx_file, input_ids_name=None, segment_ids_name=None, input_mask_name=None):
-    """
-    Get graph inputs for bert model.
+def find_bert_inputs(onnx_model, input_ids_name=None, segment_ids_name=None, input_mask_name=None):
+    """Find graph inputs for BERT model.
     First, we will deduce from EmbedLayerNormalization node. If not found, we will guess based on naming.
-    """
-    model = ModelProto()
-    with open(onnx_file, "rb") as f:
-        model.ParseFromString(f.read())
 
-    onnx_model = OnnxModel(model)
+    Args:
+        onnx_model (OnnxModel): onnx model object
+        input_ids_name (str, optional): Name of graph input for input IDs. Defaults to None.
+        segment_ids_name (str, optional): Name of graph input for segment IDs. Defaults to None.
+        input_mask_name (str, optional): Name of graph input for attention mask. Defaults to None.
+    """
     graph_inputs = onnx_model.get_graph_inputs_excluding_initializers()
 
     if input_ids_name is not None:
@@ -195,6 +196,15 @@ def get_bert_inputs(onnx_file, input_ids_name=None, segment_ids_name=None, input
         input_ids = get_graph_input_from_embed_node(onnx_model, embed_node, 0)
         segment_ids = get_graph_input_from_embed_node(onnx_model, embed_node, 1)
         input_mask = get_graph_input_from_embed_node(onnx_model, embed_node, 7)
+
+        if input_mask is None:
+            for input in graph_inputs:
+                input_name_lower = input.name.lower()
+                if "mask" in input_name_lower:
+                    input_mask = input
+        if input_mask is None:
+            raise ValueError(f"Failed to find attention mask input")
+            
         return input_ids, segment_ids, input_mask
 
     # Try guess the inputs based on naming.
@@ -214,6 +224,24 @@ def get_bert_inputs(onnx_file, input_ids_name=None, segment_ids_name=None, input
         return input_ids, segment_ids, input_mask
 
     raise ValueError("Fail to assign 3 inputs. You might try rename the graph inputs.")
+
+
+def get_bert_inputs(onnx_file, input_ids_name=None, segment_ids_name=None, input_mask_name=None):
+    """Find graph inputs for BERT model.
+    First, we will deduce from EmbedLayerNormalization node. If not found, we will guess based on naming.
+
+    Args:
+        onnx_file (str): onnx model path
+        input_ids_name (str, optional): Name of graph input for input IDs. Defaults to None.
+        segment_ids_name (str, optional): Name of graph input for segment IDs. Defaults to None.
+        input_mask_name (str, optional): Name of graph input for attention mask. Defaults to None.
+    """
+    model = ModelProto()
+    with open(onnx_file, "rb") as f:
+        model.ParseFromString(f.read())
+
+    onnx_model = OnnxModel(model)
+    return find_bert_inputs(onnx_model, input_ids_name, segment_ids_name, input_mask_name)
 
 
 def parse_arguments():

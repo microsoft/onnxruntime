@@ -56,10 +56,10 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
 /*
  * Class:     ai_onnxruntime_OnnxTensor
  * Method:    createTensorFromBuffer
- * Signature: (JJLjava/nio/Buffer;J[JI)J
+ * Signature: (JJLjava/nio/Buffer;IJ[JI)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensorFromBuffer
-        (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong allocatorHandle, jobject buffer, jlong bufferSize, jlongArray shape, jint onnxTypeJava) {
+        (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong allocatorHandle, jobject buffer, jint bufferPos, jlong bufferSize, jlongArray shape, jint onnxTypeJava) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -70,7 +70,9 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensorFromBuffer
     ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeJava);
 
     // Extract the buffer
-    void* bufferArr = (*jniEnv)->GetDirectBufferAddress(jniEnv,buffer);
+    char* bufferArr = (char*)(*jniEnv)->GetDirectBufferAddress(jniEnv,buffer);
+    // Increment by bufferPos bytes
+    bufferArr = bufferArr + bufferPos;
 
     // Extract the shape information
     jboolean mkCopy;
@@ -152,7 +154,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
     checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator,sizeof(jobject)*length,(void**)&javaStrings));
 
     // Copy the java strings into the buffers
-    for (int i = 0; i < length; i++) {
+    for (jsize i = 0; i < length; i++) {
         javaStrings[i] = (*jniEnv)->GetObjectArrayElement(jniEnv,stringArr,i);
         strings[i] = (*jniEnv)->GetStringUTFChars(jniEnv,javaStrings[i],NULL);
     }
@@ -166,7 +168,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
     }
 
     // Release the buffers
-    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, strings));
+    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)strings));
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaStrings));
 
     return (jlong) ortValue;

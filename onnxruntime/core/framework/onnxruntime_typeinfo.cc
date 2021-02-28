@@ -144,10 +144,9 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
       auto sequence_type_info = new OrtSequenceTypeInfo(element_type_info);
       *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, sequence_type_info);
       return nullptr;
-    }
-    else {
+    } else {
       return OrtApis::CreateStatus(ORT_FAIL, "OrtValue is TensorSequence type but has no element Tensor DataType.");
-    } 
+    }
   }
 
   const auto* type_proto = type->GetTypeProto();
@@ -312,8 +311,7 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
 OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
   switch (type) {
     case ONNX_TYPE_TENSOR:
-    case ONNX_TYPE_SPARSETENSOR:
-    {
+    case ONNX_TYPE_SPARSETENSOR: {
       OrtTensorTypeAndShapeInfo* clone;
       if (auto status = data->Clone(&clone)) {
         return status;
@@ -322,8 +320,7 @@ OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
       (*out)->denotation = denotation;
       return nullptr;
     }
-    case ONNX_TYPE_SEQUENCE:
-    {
+    case ONNX_TYPE_SEQUENCE: {
       OrtSequenceTypeInfo* clone;
       if (auto status = sequence_type_info->Clone(&clone)) {
         return status;
@@ -341,8 +338,7 @@ OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
       (*out)->denotation = denotation;
       return nullptr;
     }
-    case ONNX_TYPE_OPAQUE:
-    {
+    case ONNX_TYPE_OPAQUE: {
       *out = new OrtTypeInfo(type);
       (*out)->denotation = denotation;
       return nullptr;

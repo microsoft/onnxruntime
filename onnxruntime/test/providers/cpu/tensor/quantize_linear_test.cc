@@ -28,6 +28,16 @@ TEST(DequantizeLinearOpTest, Int8) {
   test.Run();
 }
 
+// scalar zero & scale with int8
+TEST(DequantizeLinearOpTest, Int32) {
+  OpTester test("DequantizeLinear", 10);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int32_t>("x", dims, {-30, -3, 100, 127});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddOutput<float>("y", dims, {-60.f, -6.f, 200.f, 254.f});
+  test.Run();
+}
+
 // 2d inputs
 TEST(DequantizeLinearOpTest, 2D) {
   OpTester test("DequantizeLinear", 10);
@@ -61,7 +71,7 @@ TEST(DequantizeLinearOpTest, Without_Zero_Point) {
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", {}, {200.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 // 1d zero & scale with default axis
@@ -134,7 +144,7 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_0) {
 }
 
 // 1d zero & scale with int8 broadcast axis 1
-TEST(DequantizeLinearOpTest, Per_Channel_Axis_1) {
+TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int8) {
   OpTester test("DequantizeLinear", 13);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<int8_t>("X", dims,
@@ -148,6 +158,24 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_1) {
                         {0, 22, 88, 264,
                          0, 24, 96, 288,
                          0, 40, 160, 480});
+  test.Run();
+}
+
+// 1d zero & scale with int32 broadcast axis 1
+TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int32) {
+  OpTester test("DequantizeLinear", 13);
+  std::vector<int64_t> dims{3, 4};
+  test.AddInput<int32_t>("X", dims,
+                        {0, 1, 2, 3,
+                         0, 2, 4, 6,
+                         0, 10, 20, 30});
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddInput<float>("scale", {4}, {1, 2, 4, 8});
+  test.AddInput<int32_t>("zero_point", {4}, {0, 0, 0, 0});
+  test.AddOutput<float>("Y", dims,
+                        {0, 2, 8, 24,
+                         0, 4, 16, 48,
+                         0, 20, 80, 240});
   test.Run();
 }
 
@@ -252,7 +280,7 @@ TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_Without_Zero_Point) {
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddOutput<uint8_t>("y", {}, {2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 }
 
 TEST(QuantizeLinearOpTest, Per_Channel_Axis_Default) {

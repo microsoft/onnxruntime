@@ -23,11 +23,25 @@
 #include "core/graph/function.h"
 #include "gsl/gsl"
 
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
+
 namespace onnxruntime {
 class Graph;
 struct IndexedSubGraph;
 class Model;
 class OpSignature;
+
+namespace experimental {
+namespace fbs {
+struct Graph;
+struct Node;
+struct NodeEdge;
+}  // namespace fbs
+}  // namespace experimental
 
 /**
 @class Node
@@ -94,13 +108,24 @@ class Node {
   /** Gets the domain of the OperatorSet that specifies the operator returned by #OpType. */
   const std::string& Domain() const noexcept { return domain_; }
 
+  /** Gets the path of the owning model if any. */
+  const Path& ModelPath() const noexcept;
+
+  /** Gets the Node's execution priority.
+  @remarks Lower value means higher priority  */
+  int Priority() const noexcept { return priority_; };
+
+  /** Sets the execution priority of a node.
+  @remarks Lower value means higher priority  */
+  void SetPriority(int priority) noexcept;
+
   /** Gets the node description. */
   const std::string& Description() const noexcept { return description_; }
 
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept { return node_type_; }
 
-  /** Gets the opset version that the Node's operator was first defined in. 
+  /** Gets the opset version that the Node's operator was first defined in.
   @returns Opset version. If -1 the Node's operator has not been set.
   @remarks Prefer over Op()->SinceVersion() as Op() is disabled in a minimal build
   */
@@ -111,22 +136,23 @@ class Node {
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
 
-  /** 
+  /**
   Gets the function body if applicable otherwise nullptr
   @param try_init_func_body If not already intialized, initialize the function body
   (only applicable to operators which are defined as function in ONNX spec).
-  Function body can be initialized in 2 cases : 
-  1. For nodes of type "Fused" 
+  Function body can be initialized in 2 cases :
+  1. For nodes of type "Fused"
   2. For nodes which are defined as functions in ONNX spec (example: DynamicQuantizeLinear)
   For all other cases this will always return nullptr.
-  Nodes of type "Fused" are created during partitioning and the function body 
-  initialization for such nodes also happens during node creation. Therefore, 
+  Nodes of type "Fused" are created during partitioning and the function body
+  initialization for such nodes also happens during node creation. Therefore,
   initialization of function body will happen via this method only in case 2 mentioned above.
   */
   const Function* GetFunctionBody(bool try_init_func_body = true);
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept { return func_body_; }
+
 #endif
 
   /**
@@ -346,7 +372,9 @@ class Node {
   ProviderType GetExecutionProviderType() const noexcept { return execution_provider_type_; }
 
   /** Sets the execution ProviderType that this Node will be executed by. */
-  void SetExecutionProviderType(ProviderType execution_provider_type);
+  void SetExecutionProviderType(ProviderType execution_provider_type) {
+    execution_provider_type_ = execution_provider_type;
+  }
 
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
       If the NodeArg is an explicit or implicit input, is_input will be true when func is called.
@@ -368,6 +396,21 @@ class Node {
                           to ensure the complete Graph is valid.
   */
   void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
+
+  Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                         flatbuffers::Offset<onnxruntime::experimental::fbs::Node>& fbs_node) const;
+
+  flatbuffers::Offset<onnxruntime::experimental::fbs::NodeEdge>
+  SaveEdgesToOrtFormat(flatbuffers::FlatBufferBuilder& builder) const;
+
+#endif
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+  static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, Graph& graph,
+                                  const logging::Logger& logger, std::unique_ptr<Node>& node);
+
+  Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, const logging::Logger& logger);
+  Status LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
 #endif
 
   /**
@@ -439,7 +482,7 @@ class Node {
 
   Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph) {}
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   void Init(const std::string& name,
             const std::string& op_type,
             const std::string& description,
@@ -448,25 +491,24 @@ class Node {
             const NodeAttributes* attributes,
             const std::string& domain);
 
-  // create a Graph instance for an attribute that contains a GraphProto
-  void CreateSubgraph(const std::string& attr_name);
-
   // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
   Definitions& MutableDefinitions() noexcept;
 
   // internal only method to allow selected classes to directly alter the links between nodes.
   Relationships& MutableRelationships() noexcept;
 
+  void SetNodeType(Node::Type node_type) noexcept { node_type_ = node_type; }
+#endif
+
+  // create a Graph instance for an attribute that contains a GraphProto
+  void CreateSubgraph(const std::string& attr_name);
+
   const std::vector<std::unique_ptr<Graph>>& MutableSubgraphs() noexcept { return subgraphs_; }
-
-  void SetNodeType(Node::Type node_type) noexcept;
-
-  void SetFunctionBody(const Function& func);
 
   // validate and update the input arg count
   common::Status UpdateInputArgCount();
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+  void SetFunctionBody(const Function& func);
 
   const Definitions& GetDefinitions() const noexcept { return definitions_; }
   const Relationships& GetRelationships() const noexcept { return relationships_; }
@@ -487,6 +529,9 @@ class Node {
   // OperatorSchema that <*this> node refers to.
   const ONNX_NAMESPACE::OpSchema* op_ = nullptr;
 #endif
+
+  // Execution priority, lower value for higher priority
+  int priority_ = 0;
 
   // set from op_->SinceVersion() or via deserialization when OpSchema is not available
   int since_version_ = -1;
@@ -538,6 +583,15 @@ class Graph {
   /** Gets the path of the owning model, if any. */
   const Path& ModelPath() const;
 
+  /** Returns true if this is a subgraph or false if it is a high-level graph. */
+  bool IsSubgraph() const { return parent_graph_ != nullptr; }
+
+  /** Returns the parent graph if this is a subgraph */
+  const Graph* ParentGraph() const { return parent_graph_; }
+
+  /** Returns the mutable parent graph if this is a subgraph */
+  Graph* MutableParentGraph() { return parent_graph_; }
+
 #if !defined(ORT_MINIMAL_BUILD)
   /** Sets the Graph name. */
   void SetName(const std::string& name);
@@ -578,10 +632,11 @@ class Graph {
   /** Returns true if an initializer value can be overridden by a graph input with the same name. */
   bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
 
-  /** returns the initializer's TensorProto if 'name' is an initializer, is constant and 
+  /** returns the initializer's TensorProto if 'name' is an initializer, is constant and
   cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
-  @param check_outer_scope If true and the graph is a subgraph, 
+  @param check_outer_scope If true and the graph is a subgraph,
          check ancestor graph/s for 'name' if not found in 'graph'.
+  @remarks check_outer_scope of true is not supported in a minimal build
   */
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 
@@ -599,7 +654,8 @@ class Graph {
 
   /** Return true if "node_arg" is a input or an initializer. Otherwise, returns false. */
   bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept {
-    return std::find(graph_inputs_including_initializers_.begin(), graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
+    return std::find(graph_inputs_including_initializers_.begin(),
+                     graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
   }
 
   /** Gets the Graph inputs that are initializers
@@ -658,6 +714,15 @@ class Graph {
   /** Get a GraphNodes instance that provides const access to all valid Nodes in the Graph. */
   const GraphNodes& Nodes() const noexcept { return iterable_nodes_; }
 
+  /** Get a ConstGraphNodes instance that provides access to a filtered set of valid Nodes in the Graph.
+  @remarks We can't use GraphNodes as that would provide mutable access to the nodes by default, and we can't prevent
+           that by returning a const instance of GraphNodes as we're creating a new instance here due to the filter
+           being something we don't control (i.e. we have to return a new instance so it can't be const).
+  */
+  ConstGraphNodes FilteredNodes(GraphNodes::NodeFilterFunc&& filter_func) const noexcept {
+    return ConstGraphNodes(nodes_, std::move(filter_func));
+  }
+
   /** Gets the maximum NodeIndex value used in the Graph. */
   int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  //assume the casting won't overflow
 
@@ -682,6 +747,9 @@ class Graph {
     return const_cast<Graph*>(this)->GetNodeArg(name);
   }
 
+  // search this and up through any parent_graph_ instance for a NodeArg
+  NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name);
+
   /** Gets a mutable NodeArg by name. Creates a new NodeArg that is owned by this Graph if not found.
   @param name The NodeArg name.
   @param[in] p_arg_type Optional TypeProto to use if the NodeArg needs to be created.
@@ -703,6 +771,15 @@ class Graph {
   /** Generate a unique name in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
 
+  /** Copy a Node and add it to this Graph.
+  @param other Node to copy
+  @returns Reference to the Node that was created and added to this Graph.
+  @remarks Do not call AddNode and Remove Node concurrently as they are not thread-safe.
+  */
+  Node& AddNode(const Node& other);
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Add a Node to this Graph.
   @param name The Node name. Must be unique in this Graph.
   @param op_type The operator type. e.g. ONNX operator name.
@@ -721,13 +798,6 @@ class Graph {
                 const std::vector<NodeArg*>& output_args,
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = "");
-
-  /** Copy a Node and add it to this Graph.
-  @param other Node to copy
-  @returns Reference to the Node that was created and added to this Graph.
-  @remarks Do not call AddNode and Remove Node concurrently as they are not thread-safe.
-  */
-  Node& AddNode(const Node& other);
 
   /** Remove a Node from this Graph and free it.
   The output edges of this specified node MUST have been removed before removing the node.
@@ -756,14 +826,15 @@ class Graph {
   @param dst_arg_index node arg index of destination node.
   */
   void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index, int dst_arg_index);
+#endif
 
+#if !defined(ORT_MINIMAL_BUILD)
   /**
   Add a control edge between two Nodes in this Graph.
   The source Node does not produce output that is directly consumed by the destination Node, however the
   destination Node must execute after the source node. The control edge allows this ordering to occur.
   */
   bool AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /** Mark the Graph as needing Resolve() to be called.
@@ -827,10 +898,43 @@ class Graph {
                       const std::function<bool(const Node*, const Node*)>& comp,
                       const std::function<bool(const Node*, const Node*)>& stop) const;
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /** Performs topological sort with Kahn's algorithm on the graph/s.
+  @param enter Visit function that will be invoked on a node when it is visited.
+  @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
+  */
+  void KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
+                            const std::function<bool(const Node*, const Node*)>& comp) const;
+
+#endif
+
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
     return domain_to_version_;
   }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  /**
+  Create a single Node that will be the result of the a fusion of multiple nodes in this Graph.
+  @param sub_graph A IndexSubGraph instance with details of the nodes to fuse.
+  @param fused_node_name The name for the new Node.
+  @returns Node with fused subgraph.
+  @remarks As a new Graph instance for the fused nodes is not created, a GraphViewer can be constructed with the
+           IndexedSubGraph information to provide a view of the subgraph. The original nodes are left in place
+           while this is in use.
+		   Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
+  */
+  Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
+
+  /**
+  If we have BeginFuseSubGraph, but somehow hit errors, such as Compile of an EP failed on thesub_graph.
+  We can call CancelFuseSubGraph to undo the changes of BeginFuseSubGraph
+  @param fused_node The fused node and it's function body to be removed from the graph
+  */
+  void CancelFuseSubGraph(const Node& fused_node);
+
+  void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the GraphProto representation of this Graph. */
@@ -841,12 +945,13 @@ class Graph {
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
 
   /**
-  Create a single Node that is the result of the a fusion of multiple nodes in this Graph.
-  @param sub_graph A IndexSubGraph instance with details of the nodes to fuse.
+  Create a single Function based Node that is the result of the a fusion of multiple nodes in this Graph.
+  A new Graph instance will be created for the fused nodes.
+  @param sub_graph A IndexSubGraph instance with details of the nodes to fuse. Ownership is transferred to the new Node
   @param fused_node_name The name for the new Node.
-  @returns Node with fused subgraph.
+  @returns Function based Node with fused subgraph. The Node body will contain a Function instance.
   */
-  Node& FuseSubGraph(std::unique_ptr<IndexedSubGraph> sub_graph, const std::string& fused_node_name);
+  Node& FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.
@@ -879,18 +984,7 @@ class Graph {
   @remarks Note that the output order matters for subgraphs.
   */
   void SetOutputs(const std::vector<const NodeArg*>& outputs);
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
-  /** Returns true if this is a subgraph or false if it is a high-level graph. */
-  bool IsSubgraph() const { return parent_graph_ != nullptr; }
-
-  /** Returns the parent graph if this is a subgraph */
-  const Graph* ParentGraph() const { return parent_graph_; }
-
-  /** Returns the mutable parent graph if this is a subgraph */
-  Graph* MutableParentGraph() { return parent_graph_; }
-
-#if !defined(ORT_MINIMAL_BUILD)
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
   void SetNodeArgType(NodeArg& arg, const onnx::TypeProto& type_proto);
 
@@ -965,6 +1059,9 @@ class Graph {
     return Resolve(default_options);
   }
 
+  common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                 flatbuffers::Offset<onnxruntime::experimental::fbs::Graph>& fbs_graph) const;
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
@@ -972,7 +1069,12 @@ class Graph {
 
   /** Returns true if the name is for a value that is coming from outer scope */
   bool IsOuterScopeValue(const std::string& name) const {
-    return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
+    if (!parent_node_) return false;
+    const auto& implicit_input_defs = parent_node_->ImplicitInputDefs();
+    return std::any_of(implicit_input_defs.cbegin(), implicit_input_defs.cend(),
+                       [&name](const NodeArg* implicit_input) {
+                         return implicit_input->Name() == name;
+                       });
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -987,6 +1089,20 @@ class Graph {
 
   virtual ~Graph();
 
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+  static common::Status LoadFromOrtFormat(
+      const onnxruntime::experimental::fbs::Graph& fbs_graph, const Model& owning_model,
+      const std::unordered_map<std::string, int>& domain_to_version,
+#if !defined(ORT_MINIMAL_BUILD)
+      IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+#endif
+      const logging::Logger& logger, std::unique_ptr<Graph>& graph);
+
+  // deserialize a subgraph
+  static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph,
+                                  Graph& parent_graph, const Node& parent_node,
+                                  const logging::Logger& logger, std::unique_ptr<Graph>& graph);
+#endif
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
@@ -995,6 +1111,20 @@ class Graph {
   friend class Model;
 
   Graph() = delete;
+
+  // Create empty Graph instance to re-create from ORT format serialized data.
+  Graph(const Model& owning_model,
+        const std::unordered_map<std::string, int>& domain_to_version,
+#if !defined(ORT_MINIMAL_BUILD)
+        IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+#endif
+        Graph* parent_graph, const Node* parent_node,
+        const logging::Logger& logger);
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+  // Populate Graph instance from ORT format serialized data.
+  common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph);
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct
@@ -1064,9 +1194,6 @@ class Graph {
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResolveContext);
   };
 
-  // search this and up through any parent_graph_ instance for a NodeArg
-  NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name);
-
   // Initialize all the graph inputs, initializers and outputs
   common::Status InitInputsInitializersOutputs();
 
@@ -1122,12 +1249,6 @@ class Graph {
   // Clear all unused initializers
   void CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
-  gsl::not_null<Node*> AllocateNode();
-
-  // Release the node.
-  // @returns false if node_index was invalid.
-  bool ReleaseNode(NodeIndex node_index);
-
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);
 
@@ -1160,6 +1281,16 @@ class Graph {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  gsl::not_null<Node*> AllocateNode();
+
+  // Release the node.
+  // @returns false if node_index was invalid.
+  bool ReleaseNode(NodeIndex node_index);
+
+  Node& CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
+#endif
+
   Node* NodeAtIndexImpl(NodeIndex node_index) const {
     // if we are trying to access a node that doesn't exist there's (most
     // likely) either a logic issue or a graph consistency/correctness issue.
@@ -1179,15 +1310,20 @@ class Graph {
   // This pointer is owned by parent model.
   ONNX_NAMESPACE::GraphProto* graph_proto_;
 
+  // GraphProto that provides storage for the ONNX proto types deserialized from a flexbuffer/flatbuffer
+  ONNX_NAMESPACE::GraphProto deserialized_proto_data_;
+
   InitializedTensorSet name_to_initial_tensor_;
 
-#if !defined(ORT_MINIMAL_BUILD)
+  std::unordered_set<std::reference_wrapper<const std::string>,
+                     std::hash<std::string>, std::equal_to<std::string>>
+      sparse_tensor_names_;
 
+#if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
   std::vector<std::unique_ptr<onnxruntime::Function>> function_container_;
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif
 
   // Graph nodes.
   // Element in <nodes_> may be nullptr due to graph optimization.

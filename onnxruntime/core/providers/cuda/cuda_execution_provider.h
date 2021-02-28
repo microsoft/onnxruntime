@@ -8,23 +8,15 @@
 
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/bfc_arena.h"
+#include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_pch.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
-
-const int CPU_ALLOCATOR_DEVICE_ID = 0;
-
-// Information needed to construct CUDA execution providers.
-struct CUDAExecutionProviderInfo {
-  OrtDevice::DeviceId device_id{0};
-  size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
-  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
-};
 
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
@@ -45,15 +37,16 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
+  Status SetComputeStream(void* stream) override;
+
+  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
+
   cublasHandle_t PerThreadCublasHandle() {
     return GetPerThreadContext().CublasHandle();
   }
 
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
-  }
-  curandGenerator_t PerThreadCurandGenerator() {
-    return GetPerThreadContext().CurandGenerator();
   }
 
   template <typename T>
@@ -68,7 +61,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
@@ -78,15 +71,23 @@ class CUDAExecutionProvider : public IExecutionProvider {
       const onnxruntime::GraphViewer& graph,
       const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
-  int GetDeviceId() const { return device_id_; }
+  int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
-  void UpdateProviderOptionsInfo();
+  int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }
+
+  ProviderOptions GetProviderOptions() const override {
+    return CUDAExecutionProviderInfo::ToProviderOptions(info_);
+  }
+
+  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+  static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                                          CUDAExecutionProviderExternalAllocatorInfo external_alloc_info);
 
  private:
-  OrtDevice::DeviceId device_id_;
+  CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
-  size_t cuda_mem_limit_;
-  ArenaExtendStrategy arena_extend_strategy_;
+  bool external_stream_ = false;
+  cudaStream_t stream_ = nullptr;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
@@ -98,7 +99,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy);
+    PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                     CUDAExecutionProviderExternalAllocatorInfo external_alloc_info);
     ~PerThreadContext();
 
     cublasHandle_t CublasHandle() const {
@@ -107,10 +109,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
-    }
-
-    curandGenerator_t CurandGenerator() const {
-      return curand_generator_;
     }
 
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
@@ -123,17 +121,24 @@ class CUDAExecutionProvider : public IExecutionProvider {
         if (!constant_ones_float_) {
           constant_ones_float_ = cuda::CreateConstantOnes<float>();
         }
-        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
+        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream_, count));
       } else if (std::is_same<T, double>::value) {
         if (!constant_ones_double_) {
           constant_ones_double_ = cuda::CreateConstantOnes<double>();
         }
-        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
+        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream_, count));
       } else if (std::is_same<T, half>::value) {
         if (!constant_ones_half_) {
           constant_ones_half_ = cuda::CreateConstantOnes<half>();
         }
-        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
+        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream_, count));
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+      } else if (std::is_same<T, nv_bfloat16>::value) {
+        if (!constant_ones_bfloat16_) {
+          constant_ones_bfloat16_ = cuda::CreateConstantOnes<nv_bfloat16>();
+        }
+        return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(stream_, count));
+#endif
       } else {
         return nullptr;
       }
@@ -144,9 +149,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
     }
 
    private:
+    cudaStream_t stream_ = nullptr;
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
-    curandGenerator_t curand_generator_ = nullptr;
 
     // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
     // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
@@ -156,6 +161,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+    std::unique_ptr<cuda::IConstantBuffer<nv_bfloat16>> constant_ones_bfloat16_;
+#endif
 
     AllocatorPtr allocator_;
   };

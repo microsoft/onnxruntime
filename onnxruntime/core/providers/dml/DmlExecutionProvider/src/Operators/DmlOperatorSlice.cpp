@@ -47,23 +47,12 @@ public:
     }
 };
 
-// A specific type of operation for registration.
-template <uint32_t opsetVersion>
-class DmlOperatorSliceTemplate : public DmlOperatorSlice
-{
-public:
-    DmlOperatorSliceTemplate(const MLOperatorKernelCreationContext& kernelInfo)
-    :   DmlOperatorSlice(kernelInfo, opsetVersion)
-    {
-    }
-};
-
 void CALLBACK QuerySlice(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
 {
     *isSupported = (context->GetInputCount() <= 5);
 }
 
-DML_OP_DEFINE_CREATION_FUNCTION(Slice7,  DmlOperatorSliceTemplate<7>);
-DML_OP_DEFINE_CREATION_FUNCTION(Slice10, DmlOperatorSliceTemplate<10>);
-DML_OP_DEFINE_CREATION_FUNCTION(Slice11, DmlOperatorSliceTemplate<11>);
+DML_OP_DEFINE_CREATION_FUNCTION(Slice7,  VersionedKernel<DmlOperatorSlice, 7> );
+DML_OP_DEFINE_CREATION_FUNCTION(Slice10, VersionedKernel<DmlOperatorSlice, 10>);
+DML_OP_DEFINE_CREATION_FUNCTION(Slice11, VersionedKernel<DmlOperatorSlice, 11>);
 } // namespace Dml

@@ -9,6 +9,10 @@ else()
   set(OUTPUT_STYLE vc)
 endif()
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  set(CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG "-Wl,-rpath,")
+  set(OUTPUT_STYLE xcode)
+endif()
 
 #If you want to verify if there is any extra line in symbols.txt, run
 # nm -C -g --defined libonnxruntime.so |grep -v '\sA\s' | cut -f 3 -d ' ' | sort
@@ -20,22 +24,24 @@ foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
 endforeach()
 
 add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
-  COMMAND ${PYTHON_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py" --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}" --config ${ONNXRUNTIME_PROVIDER_NAMES} --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE} --output_source ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
+  COMMAND ${PYTHON_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
+    --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
+    --config ${ONNXRUNTIME_PROVIDER_NAMES} --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
+    --output_source ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
   DEPENDS ${SYMBOL_FILES}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
 if(WIN32)
-    add_library(onnxruntime SHARED
+    onnxruntime_add_shared_library(onnxruntime
       ${SYMBOL_FILE}
       "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc"
       "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
     )
 else()
-    add_library(onnxruntime SHARED ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+    onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
 endif()
 
-set_target_properties(onnxruntime PROPERTIES VERSION ${ORT_VERSION})
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
 onnxruntime_add_include_to_target(onnxruntime)
@@ -61,33 +67,50 @@ else()
 endif()
 
 if (NOT WIN32)
-  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
+  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
+    if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+      set_target_properties(onnxruntime PROPERTIES
+        SOVERSION ${ORT_VERSION}
+        MACOSX_RPATH TRUE
+        INSTALL_RPATH_USE_LINK_PATH FALSE
+        BUILD_WITH_INSTALL_NAME_DIR TRUE
+        INSTALL_NAME_DIR @rpath)
+      set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
+    else()
+        set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
+    endif()
   else()
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
   endif()
 endif()
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Android")
-  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
-  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
+
+# strip binary on Android, or for a minimal build on Unix
+if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
+  if (onnxruntime_MINIMAL_BUILD AND ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
+    # don't strip
+  else()
+    set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
+    set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
+  endif()
 endif()
 
 target_link_libraries(onnxruntime PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_NGRAPH}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
+    ${PROVIDERS_INTERNAL_TESTING}
     ${onnxruntime_winml}
+    ${PROVIDERS_ROCM}
+    ${PROVIDERS_COREML}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -96,6 +119,7 @@ target_link_libraries(onnxruntime PRIVATE
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
+    onnxruntime_flatbuffers
     ${onnxruntime_EXTERNAL_LIBRARIES})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
@@ -104,10 +128,10 @@ endif()
 
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
 set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
-if(onnxruntime_ENABLE_LTO)
-  set_target_properties(onnxruntime PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
-  set_target_properties(onnxruntime PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
-endif()
+
+
+set_target_properties(onnxruntime PROPERTIES VERSION ${ORT_VERSION})
+
 install(TARGETS onnxruntime
         ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}

@@ -126,7 +126,8 @@ class FusionReshape(Fusion):
                                     value=helper.make_tensor(name='const_tensor',
                                                              data_type=TensorProto.INT64,
                                                              dims=shape_value.shape,
-                                                             vals=shape_value))
+                                                             vals=bytes(shape_value),
+                                                             raw=True))
         reshape_node.input[1] = constant_shape_name
         reshape_node.name = self.model.create_node_name('Reshape', 'Reshape_Fuse')
         self.nodes_to_remove.extend([concat_node])

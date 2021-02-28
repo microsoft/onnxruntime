@@ -20,6 +20,7 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/session_options.h"
+#include "core/framework/TensorSeq.h"
 
 #include "gsl/gsl"
 
@@ -34,9 +35,9 @@ namespace onnxruntime {
 /*
 ONNX_OPERATOR_SET_SCHEMA(
     Loop,
-    1,
+    13,
     OpSchema()
-        .SetDoc(Loop_ver1_doc)
+        .SetDoc(Loop_ver13_doc)
         .Input(
             0,
             "M",
@@ -56,13 +57,17 @@ ONNX_OPERATOR_SET_SCHEMA(
             "The initial values of any loop-carried dependencies (values that "
             "change across loop iterations)",
             "V",
-            OpSchema::Variadic)
+            OpSchema::Variadic,
+            false,
+            0)
         .Output(
             0,
             "v_final_and_scan_outputs",
-            "Final N loop carried dependency values then K scan_outputs",
+            "Final N loop carried dependency values then K scan_outputs. "
+            "Scan outputs must be Tensors.",
             "V",
-            OpSchema::Variadic)
+            OpSchema::Variadic,
+            false)
         .Attr(
             "body",
             "The graph run each iteration. It has 2+N inputs: (iteration_num, "
@@ -73,9 +78,23 @@ ONNX_OPERATOR_SET_SCHEMA(
             " if the dimensions or data type of these scan_outputs change across loop"
             " iterations.",
             AttributeProto::GRAPH)
-        .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
-        .TypeConstraint("I", {"int64"}, "Only int64")
-        .TypeConstraint("B", {"bool"}, "Only bool")
+        .TypeConstraint(
+            "V",
+            []() {
+              auto t = OpSchema::all_tensor_types();
+              auto s = OpSchema::all_tensor_sequence_types();
+              t.insert(t.end(), s.begin(), s.end());
+              return t;
+            }(),
+            "All Tensor and Sequence types")
+        .TypeConstraint(
+            "I",
+            {"tensor(int64)"},
+            "tensor of int64, which should be a scalar.")
+        .TypeConstraint(
+            "B",
+            {"tensor(bool)"},
+            "tensor of bool, which should be a scalar.")
         .TypeAndShapeInferenceFunction(LoopInferenceFunction));
 */
 
@@ -87,12 +106,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                    Loop);
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
+                                   11, 12,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   Loop);
+
 ONNX_CPU_OPERATOR_KERNEL(Loop,
-                         11,
+                         13,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                          Loop);
 
 struct Loop::Info {
@@ -151,7 +178,8 @@ class LoopImpl {
   LoopImpl(OpKernelContextInternal& context,
            const SessionState& session_state,
            const Loop::Info& info,
-           const Loop::ConcatOutput& concat_output_func);
+           const Loop::ConcatOutput& concat_output_func,
+           void* stream);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -184,9 +212,11 @@ class LoopImpl {
   std::vector<std::vector<OrtValue>> loop_output_tensors_;
 
   const Loop::ConcatOutput& concat_output_func_;
+  void* stream_;
 };
 
-static Status ConcatenateCpuOutput(std::vector<OrtValue>& per_iteration_output,
+static Status ConcatenateCpuOutput(void* /*stream*/,
+                                   std::vector<OrtValue>& per_iteration_output,
                                    void* output, size_t output_size_in_bytes) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
@@ -226,6 +256,7 @@ Loop::Loop(const OpKernelInfo& info) : IControlFlowKernel(info) {
   ORT_IGNORE_RETURN_VALUE(proto);
 
   concat_output_func_ = ConcatenateCpuOutput;
+  stream_ = nullptr;
 }
 
 // we need this to be in the .cc so 'unique_ptr<Info> info_' can be handled
@@ -318,7 +349,7 @@ Status Loop::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
   ORT_ENFORCE(feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
-  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_};
+  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_, stream_};
 
   auto status = loop_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -331,12 +362,14 @@ Status Loop::Compute(OpKernelContext* ctx) const {
 LoopImpl::LoopImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
                    const Loop::Info& subgraph_info,
-                   const Loop::ConcatOutput& concat_output_func)
+                   const Loop::ConcatOutput& concat_output_func,
+                   void* stream)
     : context_(context),
       session_state_(session_state),
       info_(subgraph_info),
       implicit_inputs_(context_.GetImplicitInputs()),
-      concat_output_func_(concat_output_func) {
+      concat_output_func_(concat_output_func),
+      stream_(stream) {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
 
@@ -411,6 +444,7 @@ void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<OrtValue>& last_outpu
 
   // save loop outputs as we have to concatenate at the end
   for (int j = info_.num_loop_carried_vars; j < info_.num_outputs; ++j) {
+    ORT_ENFORCE(last_outputs[j + 1].IsTensor(), "All scan outputs MUST be tensors");
     loop_output_tensors_[j - info_.num_loop_carried_vars].push_back(last_outputs[j + 1]);  // skip 'cond' in output
   }
 }
@@ -429,7 +463,7 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_outp
   TensorShape output_shape{dims};
   Tensor* output = context_.Output(output_index, output_shape);
 
-  ORT_RETURN_IF_ERROR(concat_output_func_(per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
+  ORT_RETURN_IF_ERROR(concat_output_func_(stream_, per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
 
   return Status::OK();
 }
@@ -463,9 +497,31 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   // As the loop carried variables may change shape across iterations there's no way to avoid a copy
   // as we need the final shape.
   auto copy_tensor_from_mlvalue_to_output = [this](const OrtValue& input, int output_idx) {
-    auto& data = input.Get<Tensor>();
-    Tensor* output = context_.Output(output_idx, data.Shape());
-    session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output);
+    auto type = input.Type();
+    if (type == DataTypeImpl::GetType<Tensor>()) {
+      auto& data = input.Get<Tensor>();
+      Tensor* output = context_.Output(output_idx, data.Shape());
+      session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output);
+    } else if (type == DataTypeImpl::GetType<TensorSeq>()) {
+      std::vector<Tensor> tensors;
+
+      auto& data = input.Get<TensorSeq>();
+      TensorSeq* output = context_.Output<TensorSeq>(output_idx);
+      output->SetType(data.DataType());
+
+      AllocatorPtr alloc;
+      auto status = context_.GetTempSpaceAllocator(&alloc);
+      if (!status.IsOK()) {
+        ORT_THROW("Unable to get an allocator");
+      }
+      for (auto it = data.begin(), end = data.end(); it != end; ++it) {
+        Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+        session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
+        tensors.push_back(std::move(tmp));
+      }
+
+      output->SetElements(std::move(tensors));
+    }
   };
 
   // copy to Loop output

@@ -11,6 +11,7 @@
 #include <fstream>
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
@@ -35,6 +36,7 @@
 #include "core/session/IOBinding.h"
 #include "core/session/device_allocator.h"
 #include "core/session/allocator_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
 #include "test/capturing_sink.h"
@@ -42,16 +44,19 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/optimizer/dummy_graph_transformer.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 #include "gtest/gtest.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
+using namespace onnxruntime::concurrency;
+
 namespace {
 struct KernelRegistryAndStatus {
   std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
-  Status st;
+  onnxruntime::Status st;
 };
 }  // namespace
 namespace onnxruntime {
@@ -96,13 +101,11 @@ KernelRegistryAndStatus GetFusedKernelRegistry() {
 class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
-    DeviceAllocatorRegistrationInfo device_info(
-        {OrtMemTypeDefault,
-         [](int) {
-           return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Fuse", OrtAllocatorType::OrtDeviceAllocator));
-         },
-         std::numeric_limits<size_t>::max()});
-    InsertAllocator(device_info.factory(0));
+    AllocatorCreationInfo device_info{
+        [](int) {
+          return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Fuse", OrtAllocatorType::OrtDeviceAllocator));
+        }};
+    InsertAllocator(device_info.device_alloc_factory(0));
   }
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -131,18 +134,6 @@ class FuseExecutionProvider : public IExecutionProvider {
     // throw if the registry failed to initialize
     ORT_THROW_IF_ERROR(k.st);
     return k.kernel_registry;
-  }
-};
-
-// InferenceSession wrapper to expose loaded graph.
-class InferenceSessionGetGraphWrapper : public InferenceSession {
- public:
-  explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
-                                           const Environment& env) : InferenceSession(session_options, env) {
-  }
-
-  const Graph& GetGraph() {
-    return model_->MainGraph();
   }
 };
 
@@ -339,7 +330,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                                           shape,
                                                                           cpu_allocator);
-    st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get(), 0);
+    cudaStream_t stream = static_cast<cudaStream_t>(static_cast<const onnxruntime::CUDAExecutionProvider*>(TestCudaExecutionProvider())->GetComputeStream());
+    st = GPUDataTransfer(stream).CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
     ml_value.Init(cpu_tensor.release(),
@@ -410,7 +402,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   const string test_model = "testdata/transform/abs-id-max.onnx";
   so.session_logid = "InferenceSessionTests.TestModelSerialization";
   so.graph_optimization_level = TransformerLevel::Default;
-  InferenceSessionGetGraphWrapper session_object_noopt{so, GetEnvironment()};
+  InferenceSessionWrapper session_object_noopt{so, GetEnvironment()};
   ASSERT_TRUE(session_object_noopt.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_noopt.Initialize().IsOK());
 
@@ -422,7 +414,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   // Load model with level 1 transform level.
   so.graph_optimization_level = TransformerLevel::Level1;
   so.optimized_model_filepath = ToWideString(test_model + "-TransformLevel-" + std::to_string(static_cast<uint32_t>(so.graph_optimization_level)));
-  InferenceSessionGetGraphWrapper session_object{so, GetEnvironment()};
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_TRUE(session_object.Load(test_model).IsOK());
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -668,6 +660,31 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
     }
     count++;
   }
+}
+
+TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
+  // Test whether the InferenceSession can access the profiler's start time
+  SessionOptions so;
+
+  so.session_logid = "CheckRunProfiler";
+  so.enable_profiling = true;
+  so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
+
+  InferenceSession session_object(so, GetEnvironment());
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                   std::chrono::high_resolution_clock::now().time_since_epoch())
+                                   .count();  // get current time
+  session_object.StartProfiling("onnxruntime_profile_start");
+  uint64_t profiling_start_time = session_object.GetProfiling().GetStartTimeNs();
+  uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  std::chrono::high_resolution_clock::now().time_since_epoch())
+                                  .count();
+
+  // the profiler's start time needs to be between before_time and after_time
+  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
 }
 
 TEST(InferenceSessionTests, MultipleSessionsNoTimeout) {
@@ -1848,7 +1865,8 @@ TEST(InferenceSessionTests, TestLenientShapeInferencing) {
   old_opset.AddInput("data", input_shape, input_data);
   old_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
   // TensorRT doesn't handle Unsqueeze
-  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // OpenVINO: Disabled temporarily
+  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 #ifdef USE_CUDA
@@ -1869,7 +1887,13 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 
   auto status = session_object.Initialize();
 
-  ASSERT_TRUE(!status.IsOK());
+  ASSERT_TRUE(status.IsOK());
+
+  const auto& so_queried = session_object.GetSessionOptions();
+
+  // execution mode is sequential since we have registered the CUDA EP
+  // (which isn't supported by the parallel execution mode)
+  ASSERT_TRUE(so_queried.execution_mode == ExecutionMode::ORT_SEQUENTIAL);
 }
 
 #endif
@@ -2013,18 +2037,21 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
   std::string model_path = "testdata/model_with_invalid_ort_config_json.onnx";
 
   // Create session (should throw as the json within the model is invalid/improperly formed)
-  try {
+  ORT_TRY {
     InferenceSession session_object_1{so, GetEnvironment(), model_path};
-  } catch (const std::exception& e) {
-    std::string e_message(std::string(e.what()));
-    ASSERT_TRUE(e_message.find("Could not finalize session options while constructing the inference session. Error Message:") != std::string::npos);
-    ASSERT_TRUE(e_message.find("Json stored in the `ort_config` key cannot be parsed.") != std::string::npos);
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      std::string e_message(std::string(e.what()));
+      ASSERT_TRUE(e_message.find("Could not finalize session options while constructing the inference session. Error Message:") != std::string::npos);
+      ASSERT_TRUE(e_message.find("Json stored in the `ort_config` key cannot be parsed.") != std::string::npos);
+    });
   }
 
   // Part 2 - Load config from model feature disabled
   // The invalid/improperly formed config json in the model should not come into the picture here
 #ifdef _WIN32
-  (void)_putenv(ort_load_config_from_model_env_var_disabled);
+  ORT_IGNORE_RETURN_VALUE(_putenv(ort_load_config_from_model_env_var_disabled));
 #else
   putenv(ort_load_config_from_model_env_var_disabled);
 #endif
@@ -2107,18 +2134,22 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
   std::string model_path = "testdata/model_with_valid_ort_config_json.onnx";
 
   // Create session (should throw because of the unsupported value for the env var - ORT_LOAD_CONFIG_FROM_MODEL)
-  try {
+  ORT_TRY {
     InferenceSession session_object_1{so, GetEnvironment(), model_path};
-  } catch (const std::exception& e) {
-    std::string e_message(std::string(e.what()));
-    ASSERT_TRUE(e_message.find("Could not finalize session options while constructing the inference session. Error Message:") != std::string::npos);
-    ASSERT_TRUE(e_message.find("The only supported values for the environment variable ") != std::string::npos);
-    ASSERT_TRUE(e_message.find("The environment variable contained the value: 10") != std::string::npos);
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      std::string e_message(std::string(e.what()));
+      ASSERT_TRUE(e_message.find("Could not finalize session options while constructing the inference session. Error Message:") != std::string::npos);
+      ASSERT_TRUE(e_message.find("The only supported values for the environment variable ") != std::string::npos);
+      ASSERT_TRUE(e_message.find("The environment variable contained the value: 10") != std::string::npos);
+    });
   }
 
   // Disable the feature before exiting the test as this process is likely to be used for running other tests
 #ifdef _WIN32
-  (void)_putenv(ort_load_config_from_model_env_var_disabled);
+  (void)
+      _putenv(ort_load_config_from_model_env_var_disabled);
 #else
   putenv(ort_load_config_from_model_env_var_disabled);
 #endif
@@ -2126,11 +2157,11 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
 
 // Global threadpool related tests
 // We test for 4 combinations
-class InferenceSessionTestGlobalThreadPools : public InferenceSession {
+class InferenceSessionTestGlobalThreadPools : public InferenceSessionWrapper {
  public:
   InferenceSessionTestGlobalThreadPools(const SessionOptions& session_options,
                                         const Environment& env)
-      : InferenceSession(session_options, env) {
+      : InferenceSessionWrapper(session_options, env) {
   }
 
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
@@ -2140,8 +2171,6 @@ class InferenceSessionTestGlobalThreadPools : public InferenceSession {
   onnxruntime::concurrency::ThreadPool* GetInterOpThreadPoolToUse() const {
     return InferenceSession::GetInterOpThreadPoolToUse();
   }
-
-  const SessionState& GetSessionState() { return InferenceSession::GetSessionState(); }
 };
 
 // Test 1: env created WITHOUT global tp / use per session tp (default case): in this case per session tps should be in use
@@ -2282,26 +2311,27 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
   auto st = Environment::Create(std::move(logging_manager), env);
   ASSERT_TRUE(st.IsOK());
 
-  try {
+  ORT_TRY {
     InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
-  } catch (const std::exception& e) {
-    std::string e_message(std::string(e.what()));
-    ASSERT_TRUE(e_message.find(
-                    "When the session is not configured to use per session"
-                    " threadpools, the env must be created with the the CreateEnvWithGlobalThreadPools API") !=
-                std::string::npos);
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      std::string e_message(std::string(e.what()));
+      ASSERT_TRUE(e_message.find(
+                      "When the session is not configured to use per session"
+                      " threadpools, the env must be created with the the CreateEnvWithGlobalThreadPools API") !=
+                  std::string::npos);
+    });
   }
 }
 
 // Tests for sharing allocators between sessions
-class InferenceSessionTestSharingAllocator : public InferenceSession {
+class InferenceSessionTestSharingAllocator : public InferenceSessionWrapper {
  public:
   InferenceSessionTestSharingAllocator(const SessionOptions& session_options,
                                        const Environment& env)
-      : InferenceSession(session_options, env) {
+      : InferenceSessionWrapper(session_options, env) {
   }
-
-  const SessionState& GetSessionState() { return InferenceSession::GetSessionState(); }
 };
 
 // Ensure sessions use the same allocator. It uses ORT created allocator.
@@ -2315,29 +2345,27 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
-  size_t max_mem = std::numeric_limits<size_t>::max();
-  DeviceAllocatorRegistrationInfo device_info{
-      OrtMemTypeDefault,
+  AllocatorCreationInfo device_info{
       [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
-      max_mem};
+      0, use_arena};
 
-  AllocatorPtr allocator_ptr = CreateAllocator(device_info, 0, use_arena);
+  AllocatorPtr allocator_ptr = CreateAllocator(device_info);
   st = env->RegisterAllocator(allocator_ptr);
   ASSERT_STATUS_OK(st);
   // create sessions to share the allocator
 
   SessionOptions so1;
-  AddSessionConfigEntryImpl(so1, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
+  so1.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  AddSessionConfigEntryImpl(so2, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
+  so2.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
@@ -2362,29 +2390,27 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
-  size_t max_mem = std::numeric_limits<size_t>::max();
-  DeviceAllocatorRegistrationInfo device_info{
-      OrtMemTypeDefault,
+  AllocatorCreationInfo device_info{
       [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
-      max_mem};
+      0, use_arena};
 
-  AllocatorPtr allocator_ptr = CreateAllocator(device_info, 0, use_arena);
+  AllocatorPtr allocator_ptr = CreateAllocator(device_info);
   st = env->RegisterAllocator(allocator_ptr);
   ASSERT_STATUS_OK(st);
   // create sessions to share the allocator
 
   SessionOptions so1;
-  AddSessionConfigEntryImpl(so1, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "1");
+  so1.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  AddSessionConfigEntryImpl(so2, ORT_SESSION_OPTIONS_CONFIG_USE_ENV_ALLOCATORS, "0");
+  so2.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "0");
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
@@ -2397,5 +2423,267 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   ASSERT_NE(sess1.GetSessionState().GetAllocator(mem_info).get(),
             sess2.GetSessionState().GetAllocator(mem_info).get());
 }
+
+class InferenceSessionTestSharingInitializer : public InferenceSessionWrapper {
+ public:
+  InferenceSessionTestSharingInitializer(const SessionOptions& session_options,
+                                         const Environment& env)
+      : InferenceSessionWrapper(session_options, env) {
+  }
+};
+
+TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitializer) {
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  // create initializer to share between sessions
+  const char* init_name = "W";
+  OrtValue val_to_share_from_allocator;
+  OrtValue val_to_share;
+  std::vector<float> input_data_vec{1., 2., 3., 4., 5., 6.};
+
+  auto allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  CreateMLValue<float>(allocator, {3, 2}, input_data_vec, &val_to_share_from_allocator);
+
+  OrtMemoryInfo mem_info{CPU, OrtArenaAllocator};
+  CreateMLValue<float>({3, 2}, input_data_vec.data(), mem_info, &val_to_share);
+
+  // create sessions to share the allocator
+  SessionOptions so1;
+  ASSERT_STATUS_OK(so1.AddInitializer(init_name, &val_to_share));
+
+  // ensure an error is returned when an initializer with the same name is added.
+  ASSERT_FALSE(so1.AddInitializer(init_name, &val_to_share).IsOK());
+
+  // ensure an error is returned when an initializer with a buffer NOT owned by the user is added.
+  ASSERT_FALSE(so1.AddInitializer(init_name, &val_to_share_from_allocator).IsOK());
+
+  InferenceSessionTestSharingInitializer sess1(so1, *env);
+  ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
+  ASSERT_STATUS_OK(sess1.Initialize());
+
+  SessionOptions so2;
+  ASSERT_STATUS_OK(so2.AddInitializer(init_name, &val_to_share));
+  InferenceSessionTestSharingInitializer sess2(so2, *env);
+  ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
+  ASSERT_STATUS_OK(sess2.Initialize());
+
+  SessionOptions so3;
+  InferenceSessionTestSharingInitializer sess3(so3, *env);
+  ASSERT_STATUS_OK(sess3.Load(MODEL_URI));
+  ASSERT_STATUS_OK(sess3.Initialize());
+
+  int so1_idx;
+  ASSERT_STATUS_OK(sess1.GetSessionState().GetOrtValueNameIdxMap().GetIdx(init_name, so1_idx));
+  const auto* so1_init_buffer = sess1.GetSessionState().GetInitializedTensors().at(so1_idx).Get<Tensor>().Data<float>();
+
+  int so2_idx;
+  ASSERT_STATUS_OK(sess2.GetSessionState().GetOrtValueNameIdxMap().GetIdx(init_name, so2_idx));
+  const auto* so2_init_buffer = sess2.GetSessionState().GetInitializedTensors().at(so2_idx).Get<Tensor>().Data<float>();
+
+  // Ensure session1 stores the same data ptr as the one supplied by the user
+  ASSERT_EQ(so1_init_buffer, val_to_share.Get<Tensor>().Data<float>());
+
+  // Ensure both sessions share the same data ptr
+  ASSERT_EQ(so1_init_buffer, so2_init_buffer);
+
+  int so3_idx;
+  ASSERT_STATUS_OK(sess3.GetSessionState().GetOrtValueNameIdxMap().GetIdx(init_name, so3_idx));
+  const auto* so3_init_buffer = sess3.GetSessionState().GetInitializedTensors().at(so3_idx).Get<Tensor>().Data<float>();
+
+  // Ensure session 3 doesn't share the same data ptr as any other session
+  ASSERT_NE(so3_init_buffer, so1_init_buffer);
+  ASSERT_NE(so3_init_buffer, so2_init_buffer);
+
+  // Ensure session 3 doesn't share the same data ptr as the one supplied by the user for any of the other sessions
+  ASSERT_NE(so3_init_buffer, val_to_share.Get<Tensor>().Data<float>());
+}
+
+void RunModelWithDenormalAsZero(InferenceSession& session_object,
+                                const RunOptions& run_options,
+                                bool set_denormal_as_zero) {
+  const float denormal_float = 1e-38f;
+
+  // prepare input X
+  std::vector<int64_t> dims_mul{3, 2};
+  std::vector<float> values_mul(6);
+  std::fill(values_mul.begin(), values_mul.end(), denormal_float);
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul, values_mul, &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+
+  // prepare output C
+  std::vector<std::string> output_names;
+  output_names.push_back("Y");
+  std::vector<OrtValue> fetches;
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_mul{3, 1};
+  std::vector<float> expected_values_mul(3);
+  std::fill(expected_values_mul.begin(), expected_values_mul.end(),
+            (set_denormal_as_zero) ? 0.0f : denormal_float * 3);
+
+  // Now run
+  common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+  if (!st.IsOK()) {
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  }
+  ASSERT_TRUE(st.IsOK());
+  VerifyOutputs(fetches, expected_dims_mul, expected_values_mul);
+}
+
+void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp,
+                                        bool set_denormal_as_zero) {
+  const int num_tasks = 4;
+  const float denormal_float = 1e-38f;
+  const double denormal_double = 1e-308;
+
+  std::array<float, num_tasks> input_float;
+  input_float.fill(denormal_float);
+  std::array<double, num_tasks> input_double;
+  input_double.fill(denormal_double);
+
+  ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+    input_float[i] *= 2;
+    input_double[i] *= 2;
+  });
+  std::for_each(input_float.begin(), input_float.end(), [&](float f) {
+    EXPECT_EQ(f, (set_denormal_as_zero) ? 0.0f : denormal_float * 2);
+  });
+  std::for_each(input_double.begin(), input_double.end(), [&](double d) {
+    EXPECT_EQ(d, (set_denormal_as_zero) ? 0.0 : denormal_double * 2);
+  });
+}
+
+// test global thread pool with setting denormal as zero
+TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
+  // test if denormal-as-zero mode is supported
+  if (!SetDenormalAsZero(false)) {
+    return;
+  }
+
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  OrtThreadingOptions tp_options;
+  tp_options.inter_op_thread_pool_params.thread_pool_size = 2;
+  tp_options.inter_op_thread_pool_params.set_denormal_as_zero = true;
+  tp_options.intra_op_thread_pool_params.thread_pool_size = 2;
+  tp_options.intra_op_thread_pool_params.set_denormal_as_zero = true;
+  auto st = Environment::Create(std::move(logging_manager), env, &tp_options, true);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  so.use_per_session_threads = false;
+
+  std::string configValue;
+  so.TryGetConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, configValue);
+  EXPECT_EQ(configValue, "1");
+
+  // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
+  // set them manually here for a test.
+#ifdef _OPENMP
+  InitializeWithDenormalAsZero(true);
+#endif
+  SetDenormalAsZero(true);
+
+  InferenceSessionTestGlobalThreadPools session{so, *env};
+  ASSERT_STATUS_OK(session.Load("testdata/matmul_1.onnx"));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "global_thread_pool_denormal_as_zero";
+  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
+  RunModelWithDenormalAsZero(session, run_options, true);
+
+#ifndef _OPENMP
+  VerifyThreadPoolWithDenormalAsZero(env->GetIntraOpThreadPool(), true);
+#endif
+  VerifyThreadPoolWithDenormalAsZero(env->GetInterOpThreadPool(), true);
+
+  // Set back to default.
+#ifdef _OPENMP
+  InitializeWithDenormalAsZero(false);
+#endif
+  SetDenormalAsZero(false);
+}
+
+// test inter thread pool with setting denormal as zero
+TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
+  // test if denormal-as-zero mode is supported
+  if (!SetDenormalAsZero(false)) {
+    return;
+  }
+
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+
+  // inference session without denormal as zero.
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  // inference session with denormal as zero
+  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+
+  // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
+  // set them manually here for a test.
+#ifdef _OPENMP
+  InitializeWithDenormalAsZero(true);
+#endif
+  SetDenormalAsZero(true);
+
+  InferenceSessionTestGlobalThreadPools session1{so, *env};
+  ASSERT_STATUS_OK(session1.Load("testdata/matmul_1.onnx"));
+  ASSERT_STATUS_OK(session1.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "inter_thread_pool_denormal_as_zero";
+  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
+  RunModelWithDenormalAsZero(session1, run_options, true);
+
+#ifndef _OPENMP
+  VerifyThreadPoolWithDenormalAsZero(session1.GetIntraOpThreadPoolToUse(), true);
+#endif
+  VerifyThreadPoolWithDenormalAsZero(session1.GetInterOpThreadPoolToUse(), true);
+
+  // inference session without denormal as zero.
+  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "0");
+
+  // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
+  // set them manually here for a test.
+#ifdef _OPENMP
+  InitializeWithDenormalAsZero(false);
+#endif
+  SetDenormalAsZero(false);
+
+  InferenceSessionTestGlobalThreadPools session2{so, *env};
+  ASSERT_STATUS_OK(session2.Load("testdata/matmul_1.onnx"));
+  ASSERT_STATUS_OK(session2.Initialize());
+
+  // Since it's parallel, it runs on threads.
+  RunModelWithDenormalAsZero(session2, run_options, false);
+
+#ifndef _OPENMP
+  VerifyThreadPoolWithDenormalAsZero(session2.GetIntraOpThreadPoolToUse(), false);
+#endif
+  VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

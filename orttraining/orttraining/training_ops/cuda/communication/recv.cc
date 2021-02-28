@@ -1,56 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(ORT_USE_NCCL) || defined(USE_MPI)
 
 #include "orttraining/training_ops/cuda/communication/recv.h"
-#include "orttraining/training_ops/cuda/communication/common.h"
+#include "orttraining/training_ops/communication_common.h"
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/profile/profile.h"
+#include "core/profile/context.h"
+#include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
 #include <mpi.h>
 
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {
 namespace cuda {
-
-void Recv::ReceiveShapeInfo(
-    const int src,
-    const int num_tensors,
-    size_t& aggregated_aligned_tensor_bytes,
-    std::vector<size_t>& prefix_tensor_shape_sizes,
-    std::vector<int64_t>& aggregated_tensor_shapes) const {
-  // Resize vector so that the following .data() returns meaningful pointer.
-  prefix_tensor_shape_sizes.resize(num_tensors);
-  CommInfo_t info_shape_sizes{prefix_tensor_shape_sizes.data(),
-                              num_tensors * static_cast<int>(sizeof(size_t)),
-                              src,
-                              static_cast<int>(tag_)};
-  CommInfo_t info_aggregated_size{&aggregated_aligned_tensor_bytes,
-                                  static_cast<int>(sizeof(size_t)),
-                                  src,
-                                  static_cast<int>(tag_)};
-  // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
-  // MPI_Recv may block the entire GPU until it returns.
-  MPI_CHECK(MPI_Recv(
-      info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
-      info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
-
-  MPI_CHECK(MPI_Recv(
-      info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
-      info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
-
-  // prefix_tensor_shape_sizes's last element is the number of total dimensions.
-  // If a 3-D tensor and a 2-D tensor are sent, its value is 2 + 3 = 5.
-  aggregated_tensor_shapes.resize(prefix_tensor_shape_sizes[num_tensors - 1]);
-  CommInfo_t info_shapes{aggregated_tensor_shapes.data(),
-                         static_cast<int>(aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t)),
-                         src,
-                         static_cast<int>(tag_)};
-  MPI_CHECK(MPI_Recv(
-      info_shapes.buffer, info_shapes.size, MPI_CHAR,
-      info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
-}
 
 void Recv::ReceiveData(
     const int num_tensors,
@@ -59,22 +24,45 @@ void Recv::ReceiveData(
     const size_t aggregated_aligned_tensor_bytes,
     IAllocatorUniquePtr<char>& buffer) const {
 #ifdef ENABLE_NVTX_PROFILE
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+
   profile::NvtxRangeCreator recvRange(
-      "Recv-" + std::to_string(src), profile::Color::Green);
+      "Batch-" + tag +
+          " Recv-" + std::to_string(src),
+      profile::Color::Green);
   // Begin of major communication tasks.
   // The first MPI_Recv is not included because we don't want to
   // count waiting time before setting up the actual communication.
   recvRange.Begin();
 #endif
+
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+  buffer = GetScratchBuffer<char>(aggregated_aligned_tensor_bytes);
+#else
   buffer = AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
+#endif
+
   CommInfo_t info_data{buffer.get(),
                        static_cast<int>(aggregated_aligned_tensor_bytes),
                        src,
                        static_cast<int>(tag_)};
 
+// The following NCCL call is equivalent to the following MPI call. User can
+// uncomment the MPI call to debug.
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#ifndef NDEBUG
+  CheckIfMemoryOnCurrentGpuDevice(info_data.buffer);
+#endif
+  auto& nccl_service = cuda::NcclService::GetInstance();
+  nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
+#elif defined(use_mpi)
   MPI_CHECK(MPI_Recv(
       info_data.buffer, info_data.size, MPI_CHAR,
       info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+#else
+  ORT_THROW("Failed to recv from rank: ", info_data.rank);
+#endif
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of actual communication.
@@ -83,7 +71,9 @@ void Recv::ReceiveData(
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator memcpyRange(
-      "RecvMemcpy-" + std::to_string(src), profile::Color::Green);
+      "Batch-" + tag +
+          " RecvMemcpy-" + std::to_string(src),
+      profile::Color::Green);
   // Begin of host-to-device memory copy.
   memcpyRange.Begin();
 #endif
@@ -96,13 +86,29 @@ void Recv::ReceiveData(
     // Find the next aligned offset in the tensor buffer to meet alignment requirement
     tensor_offset_in_bytes = GetAggregatedAlignedAddress(tensor_offset_in_bytes);
 
-    // Keep the sync copy in the previous design
-    // TODO they can be moved to async call after global stream becoming accessible
+    assert(tensor_offset_in_bytes + tensor->SizeInBytes() <= aggregated_aligned_tensor_bytes);
+    // Copy data out from buffer.
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
     CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                              tensor->SizeInBytes(), cudaMemcpyHostToDevice));
+                         tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+#else
+    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                         tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream()));
+#endif
+
+#ifndef NDEBUG
+  // In addition to the first output, other tensors are allocated on GPU.
+  // We check if the allocated memory is on the current CUDA device.
+  CheckIfMemoryOnCurrentGpuDevice(tensor->DataRaw());
+#endif
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
+  assert(tensor_offset_in_bytes == aggregated_aligned_tensor_bytes);
+
+#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#else
   AddDeferredReleaseCPUPtr(buffer.release());
+#endif
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of host-to-device copy.
@@ -136,15 +142,22 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   const int src = static_cast<int>(*remote_rank);
 
 #ifdef ENABLE_NVTX_PROFILE
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+
   profile::NvtxRangeCreator preRange(
-      "PreRecv-" + std::to_string(src), profile::Color::Green);
+      "Batch-" + tag +
+          " PreRecv-" + std::to_string(src),
+      profile::Color::Green);
   // Begin of preparation for receiving data.
   preRange.Begin();
 #endif
 
   // Start communication
   int world_rank;
+#ifdef USE_MPI
   MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
+#endif
   ORT_ENFORCE(world_rank != src, "Receive data from rank ", src, " on the rank ", world_rank, ".");
 
   const int num_tensors = static_cast<int>(element_types_.size());
@@ -202,12 +215,17 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
         aggregated_tensor_shapes,
         tensor_offsets_in_bytes);
   } else {
+#ifdef USE_MPI
     ReceiveShapeInfo(
         src,
+        tag_,
         num_tensors,
         aggregated_aligned_tensor_bytes,
         prefix_tensor_shape_sizes,
         aggregated_tensor_shapes);
+#else
+    ORT_THROW("ORT must be built with MPI to send shape info.");
+#endif
 
     // Create output tensors. Unlike the case where we can infer output shapes before communication,
     // we need to create outputs after receiving shapes.
@@ -235,7 +253,9 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator postRange(
-      "PostRecv-" + std::to_string(src), profile::Color::Green);
+      "Batch-" + tag +
+          " PostRecv-" + std::to_string(src),
+      profile::Color::Green);
   postRange.Begin();
 #endif
 

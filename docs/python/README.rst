@@ -8,6 +8,32 @@ For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://ak
 Changes
 -------
 
+1.7.0
+^^^^^
+
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.7.0
+
+1.6.0
+^^^^^
+
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.6.0
+
+1.5.3
+^^^^^
+
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.5.3
+
+1.5.2
+^^^^^
+
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.5.2
+
+1.5.1
+^^^^^
+
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.5.1
+
+
 1.4.0
 ^^^^^
 

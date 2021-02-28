@@ -19,7 +19,27 @@ namespace onnxruntime {
 
 namespace EinsumOp {
 
-constexpr size_t num_of_letters = 26;
+// Einsum accepts 'a' - 'z' and 'A' - 'Z' and needs to differentiate between lower-cased
+// and upper-cased letters in the equation string (26 * 2 = 52).
+constexpr size_t num_of_letters = 52;
+
+/** Returns the index associated with the input character
+  * Returns a value between 0 - 25 for input in 'a' - 'z'
+  * Returns a value between 26 - 51 for input in 'A' - 'Z'
+  * Returns -1 for invalid input not in 'a' - 'z' or 'A' - 'Z' (caller should handle the returned result)
+ */
+inline int64_t LetterToIndex(char ch) {
+  if (ch >= 'a' && ch <= 'z') {
+    return static_cast<int64_t>(ch - 'a');
+  }
+
+  if (ch >= 'A' && ch <= 'Z') {
+    return 26 + static_cast<int64_t>(ch - 'A');
+  }
+
+  // invalid character - return error value
+  return -1;
+}
 
 }  // namespace EinsumOp
 

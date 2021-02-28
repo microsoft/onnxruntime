@@ -9,6 +9,7 @@
 #include "winrt/windows.graphics.imaging.h"
 #include "winrt/windows.foundation.h"
 #include "winrt/windows.foundation.collections.h"
+#include "winrt/windows.storage.streams.h"
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)

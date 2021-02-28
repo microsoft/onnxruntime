@@ -9,7 +9,7 @@ import sys
 import argparse
 import numpy as np
 from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper
+from onnx import ModelProto, TensorProto, numpy_helper, helper
 from onnx_model_bert import BertOnnxModel
 
 logger = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ class BertOnnxModelTF(BertOnnxModel):
 
         return initializers
 
-    def find_segment_ids(self, segment_embedding):
+    def find_segment_ids(self, segment_embedding, input_ids):
         input_name_to_nodes = self.input_name_to_nodes()
         if segment_embedding not in input_name_to_nodes:
             return None
@@ -154,11 +154,32 @@ class BertOnnxModelTF(BertOnnxModel):
             return None
 
         graph_inputs = self.get_graph_inputs(nodes[0], recursive=True)
-        if len(graph_inputs) == 1:
+        if len(graph_inputs) > 1:
+            print("Found multiple candidates of segment_ids", graph_inputs)
+            return None
+        # Find segment ids in graph inputs. The segment id input must not be the same as input_ids.
+        if len(graph_inputs) == 1 and graph_inputs[0] != input_ids:
             return graph_inputs[0]
 
-        print("Found multiple candidates of segment_ids", graph_inputs)
-        return None
+        # If the segment id candidate is the same as the input_ids, try to assign alternative segment ids and simplify the graph if needed.
+        segment_ids = nodes[0].input[1]
+        _, segment_id_path, _ = self.match_parent_paths(
+            nodes[0], [(["ConstantOfShape", "Cast", "Concat", "Slice", "Cast", "Shape"], [1, 0, 0, 0, 0, 0]),
+                       (["ConstantOfShape", "Cast", "Concat", "Unsqueeze", "Squeeze", "Slice", "Cast", "Shape"
+                         ], [1, 0, 0, 0, 0, 0, 0, 0])], None)
+
+        if segment_id_path and input_ids and input_ids == segment_id_path[-1].input[0]:
+            logger.debug("Simplify semgent id path...")
+            self.add_node(helper.make_node('Shape', inputs=[input_ids], outputs=["input_shape"]))
+            constantofshape_node = segment_id_path[0]
+            constantofshape_value = helper.get_attribute_value(constantofshape_node.attribute[0])
+            self.add_node(
+                helper.make_node('ConstantOfShape',
+                                 inputs=["input_shape"],
+                                 outputs=["zeros_for_input_shape"],
+                                 value=constantofshape_value))
+            segment_ids = "zeros_for_input_shape"
+        return segment_ids
 
     def find_input_ids(self, word_embedding):
         input_name_to_nodes = self.input_name_to_nodes()
@@ -179,27 +200,50 @@ class BertOnnxModelTF(BertOnnxModel):
     def find_mask_input(self, excluded_graph_inputs):
         for node in self.nodes():
             if node.op_type == 'Softmax':
-                mask_path = self.match_parent_path(node, ['Add', 'Mul', 'Sub'], [0, 1, None])
+                mask_path = self.match_parent_path(node, ['Add', 'Mul', 'Sub', 'Cast', 'Slice', 'Unsqueeze'],
+                                                   [0, 1, None, 1, 0, 0])
                 if mask_path is None:
                     continue
-                add_node, mul_node, sub_node = mask_path
+                add_node, mul_node, sub_node, cast_node, slice_node, unsqueeze_node = mask_path
                 if self.has_constant_input(mul_node, -10000) and self.has_constant_input(sub_node, 1):
                     graph_inputs = self.get_graph_inputs(sub_node, recursive=True)
                     inputs = [input for input in graph_inputs if input not in excluded_graph_inputs]
+                    if len(inputs) > 1:
+                        print("Found multiple candidates of mask input", inputs)
+                        return None
                     if len(inputs) == 1:
                         return inputs[0]
-
+                    # Duplicated input found. Try to simplify the graph.
+                    path_to_be_simplified = self.match_parent_path(
+                        mask_path[-1],
+                        ["ConstantOfShape", "Cast", "Concat", "Unsqueeze", "Squeeze", "Slice", "Cast", "Shape"],
+                        [0, 0, 0, 0, 0, 0, 0, 0])
+                    duplicated_inputs = [input for input in graph_inputs if input in excluded_graph_inputs]
+                    # Simplify graph for dynamic axes.
+                    if path_to_be_simplified and duplicated_inputs and len(
+                            duplicated_inputs) == 1 and duplicated_inputs[0] == path_to_be_simplified[-1].input[0]:
+                        logger.debug("Simplify semgent id path...")
+                        constantofshape_node = path_to_be_simplified[0]
+                        constantofshape_value = helper.get_attribute_value(constantofshape_node.attribute[0])
+                        self.add_node(
+                            helper.make_node('Shape', inputs=[duplicated_inputs[0]], outputs=["input_shape_for_mask"]))
+                        self.add_node(
+                            helper.make_node('ConstantOfShape',
+                                             inputs=["input_shape_for_mask"],
+                                             outputs=[unsqueeze_node.input[0]],
+                                             value=constantofshape_value))
+                    return unsqueeze_node.input[0]
         return None
 
     def create_embedding_subgraph(self, normalize_node, word_embedding, segment_embedding, position_embedding):
-        segment_ids = self.find_segment_ids(segment_embedding)
-        if segment_ids is None:
-            logger.info("Failed to find segment_ids. Cannot fuse embedding layer.")
-            return False
-
         input_ids = self.find_input_ids(word_embedding)
         if input_ids is None:
             logger.info("Failed to find input_ids. Cannot fuse embedding layer.")
+            return False
+
+        segment_ids = self.find_segment_ids(segment_embedding, input_ids)
+        if segment_ids is None:
+            logger.info("Failed to find segment_ids. Cannot fuse embedding layer.")
             return False
 
         mask_input = self.find_mask_input([segment_ids, input_ids])
@@ -213,13 +257,17 @@ class BertOnnxModelTF(BertOnnxModel):
         self.attention_mask.set_mask_indice(mask_input, mask_index)
 
         if self.find_graph_input(input_ids).type.tensor_type.elem_type != TensorProto.INT32:
-            casted, input_ids = self.cast_graph_input_to_int32(input_ids)
+            casted, input_ids = self.utils.cast_graph_input_to_int32(input_ids)
 
-        if self.find_graph_input(segment_ids).type.tensor_type.elem_type != TensorProto.INT32:
-            casted, segment_ids = self.cast_graph_input_to_int32(segment_ids)
+        if self.find_graph_input(segment_ids):
+            casted, segment_ids = self.utils.cast_graph_input_to_int32(segment_ids)
+        else:
+            segment_ids, segment_id_cast_node = self.utils.cast_input_to_int32(segment_ids)
 
-        if self.find_graph_input(mask_input).type.tensor_type.elem_type != TensorProto.INT32:
-            casted, mask_input = self.cast_graph_input_to_int32(mask_input)
+        if self.find_graph_input(mask_input):
+            casted, mask_input = self.utils.cast_graph_input_to_int32(mask_input)
+        else:
+            mask_input, mask_input_cast_node = self.utils.cast_input_to_int32(mask_input)
 
         embed_output = self.create_node_name('embed_output')
         embed_node = onnx.helper.make_node(
@@ -295,6 +343,125 @@ class BertOnnxModelTF(BertOnnxModel):
                 self.prune_graph()
                 break
 
+    def check_attention_input(self, matmul_q, matmul_k, matmul_v, parent, output_name_to_node):
+        for x in [matmul_q, matmul_k, matmul_v]:
+            root_input = x.input[0]
+            root_node = output_name_to_node[root_input]
+            if root_node == parent:
+                continue
+            logger.debug(f"Check attention input failed:{root_input}, {parent.output[0]}")
+            return False
+
+        return True
+
+    def fuse_attention(self):
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        attention_count = 0
+
+        skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
+        for normalize_node in skip_layer_norm_nodes:
+            # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
+            parent = self.get_parent(normalize_node, 1)
+            if parent is None or parent.op_type not in ["SkipLayerNormalization", "LayerNormalization", "Reshape"]:
+                parent = self.get_parent(normalize_node, 0)
+                if parent is None or parent.op_type not in ["SkipLayerNormalization", "LayerNormalization", "Reshape"]:
+                    logger.debug("Failed to match parent of normalize_node")
+                    continue
+
+            qkv_nodes = self.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
+                                               [0, 0, 0, 0, 0])
+            if qkv_nodes is None:
+                qkv_nodes = self.match_parent_path(normalize_node, ['MatMul', 'Reshape', 'Transpose', 'MatMul'],
+                                                   [1, 0, 0, 0])
+                if qkv_nodes is None:
+                    logger.debug("Failed to match qkv nodes")
+                    continue
+
+            (reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes[-3:]
+            v_nodes = self.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+            if v_nodes is None:
+                logger.debug("Failed to match v path")
+                continue
+
+            (transpose_v, reshape_v, add_v, matmul_v) = v_nodes
+            qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', "Mul", 'MatMul'], [0, 0, 0, 0])
+            if qk_nodes is None:
+                logger.debug("Failed to match qk_paths")
+                continue
+            (softmax_qk, add_qk, mul_qk, matmul_qk) = qk_nodes
+
+            q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
+            if q_nodes is None:
+                logger.debug("Failed to match q path")
+                continue
+            (transpose_q, reshape_q, add_q, matmul_q) = q_nodes
+
+            k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+            if k_nodes is None:
+                logger.debug("Failed to match k path")
+                continue
+            (transpose_k, reshape_k, add_k, matmul_k) = k_nodes
+
+            mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Unsqueeze'], [1, 0, 1])
+            if mask_nodes is None:
+                mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Mul'], [1, 0, 1, 0, 0])
+                if mask_nodes is None:
+                    logger.debug("Failed to match mask path")
+                    continue
+
+            if not self.has_constant_input(mask_nodes[1], 1):
+                logger.debug("Sub node expected to have an input with constant value 1.0.")
+                continue
+
+            # add a squeeze node to convert a 3-d mask to 2-d
+            squeeze_node = self.match_parent_path(mask_nodes[-1], ['Squeeze'], [0])
+            squeeze_node_name = "Squeeze_3d_to_2d_mask"
+            squeeze_output_name = squeeze_node_name + "_output"
+            if squeeze_node is None and len(mask_nodes) == 5:
+                mask_input = mask_nodes[-1].input[1]
+                self.add_node(
+                    helper.make_node("Squeeze", [mask_input], [squeeze_output_name], squeeze_node_name, axes=[1]))
+                mask_nodes[-1].input[0] = squeeze_output_name
+
+            is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent, output_name_to_node)
+            if is_same_root:
+                mask_index = self.attention_mask.process_mask(squeeze_output_name)
+                logger.debug("Create an Attention node.")
+                attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v,
+                                                                             add_q, add_k, add_v, parent.output[0],
+                                                                             reshape_qkv.output[0])
+                if parent.op_type == 'Reshape':
+                    # Temporary work around: we require the skiplayernorm and attention op be fed with 3-d input
+                    hidden_size = numpy_helper.to_array(self.get_initializer(parent.input[1]))[1]
+                    tensor = helper.make_tensor(name=parent.name + "_modified",
+                                                data_type=TensorProto.INT64,
+                                                dims=[3],
+                                                vals=np.int64([[1, -1, hidden_size]]).tobytes(),
+                                                raw=True)
+                    self.add_initializer(tensor)
+                    parent.input[1] = parent.name + "_modified"
+
+                if attention_node is None:
+                    continue
+
+                self.add_node(attention_node)
+                attention_count += 1
+
+                nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
+                nodes_to_remove.extend(qk_nodes)
+                nodes_to_remove.extend(q_nodes)
+                nodes_to_remove.extend(k_nodes)
+                nodes_to_remove.extend(v_nodes)
+                nodes_to_remove.extend(mask_nodes)
+            else:
+                logger.debug("Root node not matched.")
+                continue
+        self.remove_nodes(nodes_to_remove)
+        self.update_graph()
+        logger.info(f"Fused Attention count:{attention_count}")
+
     def preprocess(self):
         self.remove_identity()
         self.process_embedding()
@@ -315,4 +482,5 @@ class BertOnnxModelTF(BertOnnxModel):
 
     def postprocess(self):
         self.remove_reshape_before_first_attention()
-        self.prune_graph()
+        # Temporary work around for the following comment as it will cause topological issues for a bert model
+        # self.prune_graph()

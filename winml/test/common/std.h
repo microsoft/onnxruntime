@@ -3,10 +3,13 @@
 
 #pragma once
 
+#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
+
 // stl
 #include <algorithm>
 #include <codecvt>
 #include <fcntl.h>
+#include <filesystem>
 #include <future>
 #include <io.h>
 #include <locale>
@@ -16,5 +19,4 @@
 #include <utility>
 #include <vector>
 #include <sstream>
-
 #include "test.h"

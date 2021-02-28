@@ -7,8 +7,7 @@
 
 namespace ml = Microsoft::AI::MachineLearning;
 
-void RunOnDevice(ml::learning_model& model, ml::learning_model_device& device, bool copy_inputs)
-{
+void RunOnDevice(ml::learning_model& model, ml::learning_model_device& device, InputStrategy strategy) {
     const wchar_t input_name[] = L"data_0";
     const wchar_t output_name[] = L"softmaxout_1";
 
@@ -22,21 +21,41 @@ void RunOnDevice(ml::learning_model& model, ml::learning_model_device& device, b
     auto input_data = std::vector<float>(1 * 3 * 224 * 224);
     auto output_shape = std::vector<ml::tensor_shape_type>{ 1, 1000, 1, 1 };
 
-    if (copy_inputs)
+    std::iota(begin(input_data), end(input_data), 0.f);
+
+    if (strategy == InputStrategy::CopyInputs)
     {
       WINML_EXPECT_HRESULT_SUCCEEDED(
         binding->bind<float>(
           input_name, _countof(input_name) - 1,
           input_shape.data(), input_shape.size(),
           input_data.data(), input_data.size()));
-    }
-    else
+    } else if (strategy == InputStrategy::BindAsReference)
     {
       WINML_EXPECT_HRESULT_SUCCEEDED(
         binding->bind_as_reference<float>(
           input_name, _countof(input_name) - 1,
           input_shape.data(), input_shape.size(),
           input_data.data(), input_data.size()));
+    } else if (strategy == InputStrategy::BindWithMultipleReferences) {
+      size_t channel_size = 224 * 224;
+      auto channel_buffers_sizes = std::vector<size_t>{
+          channel_size,
+          channel_size,
+          channel_size
+      };
+
+      auto channel_buffers_pointers = std::vector<float*>{
+          &input_data.at(0),
+          &input_data.at(0) + channel_buffers_sizes[0],
+          &input_data.at(0) + channel_buffers_sizes[0] + +channel_buffers_sizes[1]
+      };
+
+      WINML_EXPECT_HRESULT_SUCCEEDED(
+          binding->bind_as_references<float>(
+              input_name, _countof(input_name) - 1,
+              channel_buffers_pointers.data(), channel_buffers_sizes.data(),
+              channel_buffers_sizes.size()));
     }
 
     WINML_EXPECT_HRESULT_SUCCEEDED(

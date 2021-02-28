@@ -5,8 +5,7 @@
 
 #include "gsl/gsl"
 #include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
 namespace onnxruntime {
@@ -24,6 +23,7 @@ class Transpose final : public CudaKernel, public TransposeBase {
 
   //  `input_shape_override` (if provided) overrides the shape of `input` for compute purposes
   static Status DoTranspose(const cudaDeviceProp& prop,
+                            cudaStream_t stream,
                             const cublasHandle_t cublas_handle,
                             const std::vector<size_t>& permutations,
                             const Tensor& input, Tensor& output, const TensorShape* input_shape_override = nullptr);

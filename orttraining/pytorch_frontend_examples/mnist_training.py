@@ -1,10 +1,7 @@
 ## This code is from https://github.com/pytorch/examples/blob/master/mnist/main.py
 ## with modification to do training using onnxruntime as backend on cuda device.
 ## A private PyTorch build from https://aiinfra.visualstudio.com/Lotus/_git/pytorch (ORTTraining branch) is needed to run the demo.
-## To run the demo with ORT backend:
-##      python mnist_training.py --use-ort
 
-## When "--use-ort" is not given, it will run training with PyTorch as backend.
 ## Model testing is not complete.
 
 from __future__ import print_function
@@ -19,7 +16,10 @@ import os
 
 from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
 from mpi4py import MPI
-from onnxruntime.capi._pybind_state import set_cuda_device_id
+try:
+    from onnxruntime.capi._pybind_state import set_cuda_device_id
+except ImportError:
+    pass
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
@@ -88,8 +88,6 @@ def main():
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                         help='learning rate (default: 0.01)')
-    parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
-                        help='SGD momentum (default: 0.5)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
@@ -97,11 +95,6 @@ def main():
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
 
-    parser.add_argument('--save-model', action='store_true', default=False,
-                        help='For Saving the current Model')
-
-    parser.add_argument('--use-ort', action='store_true', default=False,
-                        help='to use onnxruntime as training backend')
 
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
@@ -126,13 +119,13 @@ def main():
     args.local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK']) if ('OMPI_COMM_WORLD_LOCAL_RANK' in os.environ) else 0
     args.world_rank = int(os.environ['OMPI_COMM_WORLD_RANK']) if ('OMPI_COMM_WORLD_RANK' in os.environ) else 0
     args.world_size=comm.Get_size()
-    torch.cuda.set_device(args.local_rank)
     if use_cuda:
+        torch.cuda.set_device(args.local_rank)
         device = torch.device("cuda", args.local_rank)
+        args.n_gpu = 1
+        set_cuda_device_id(args.local_rank)
     else:
         device = torch.device("cpu")
-    args.n_gpu = 1
-    set_cuda_device_id(args.local_rank)
 
     input_size = 784
     hidden_size = 500
@@ -141,8 +134,18 @@ def main():
 
     model_desc = mnist_model_description()
     # use log_interval as gradient accumulate steps
-    trainer = ORTTrainer(model, my_loss, model_desc, "LambOptimizer", None, IODescription('Learning_Rate', [1,], torch.float32), device, 1, None,
-    args.world_rank, args.world_size, use_mixed_precision=False, allreduce_post_accumulation = True)
+    trainer = ORTTrainer(model,
+                         my_loss,
+                         model_desc,
+                         "SGDOptimizer",
+                         None,
+                         IODescription('Learning_Rate', [1,], torch.float32),
+                         device,
+                         1,
+                         args.world_rank,
+                         args.world_size,
+                         use_mixed_precision=False,
+                         allreduce_post_accumulation=True)
     print('\nBuild ort model done.')
 
     for epoch in range(1, args.epochs + 1):

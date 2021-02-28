@@ -193,8 +193,7 @@ OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape& shape, const st
   return GetTensorShapeAndTypeHelper(type, shape, dim_params, out);
 }
 
-OrtStatus* OrtTensorTypeAndShapeInfo::Clone(OrtTensorTypeAndShapeInfo** out)
-{
+OrtStatus* OrtTensorTypeAndShapeInfo::Clone(OrtTensorTypeAndShapeInfo** out) {
   return GetTensorShapeAndTypeHelper(type, shape, &dim_params, out);
 }
 

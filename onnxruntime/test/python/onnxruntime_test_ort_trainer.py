@@ -161,7 +161,7 @@ def runBertTrainingTest(gradient_accumulation_steps,
 
         if batch_count == num_batches - 1:
             # test eval_step api with fetches at the end of the training.
-            # if eval_step is called during the training, it will affect the actual training loss (training session is stateful),
+            # if eval_step is called during the training, it will affect the actual training loss (training session is stateful).
             eval_loss = model.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels, fetches=['loss'])
             eval_loss = eval_loss.cpu().numpy().item(0)
 
@@ -340,9 +340,6 @@ class TestOrtTrainer(unittest.TestCase):
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_test_losses, actual_test_losses, rtol=rtol, err_msg="test loss mismatch")
         assert_allclose(expected_test_accuracies, actual_accuracies, rtol=rtol, err_msg="test accuracy mismatch")
-
-    def testMNISTTrainingAndTestingOpset10(self):
-        TestOrtTrainer.run_mnist_training_and_testing(onnx_opset_ver = 10)
 
     def testMNISTTrainingAndTestingOpset12(self):
         TestOrtTrainer.run_mnist_training_and_testing(onnx_opset_ver = 12)
@@ -655,8 +652,8 @@ class TestOrtTrainer(unittest.TestCase):
             assert np.array_equal(state_dict[key], loaded_state_dict[key])
 
     def testBertTrainingBasic(self):
-        expected_losses = [11.034271, 11.125311, 11.006095, 11.046938, 11.027476, 11.015745, 11.060884, 10.971851]
-        expected_eval_loss = [10.95898914]
+        expected_losses = [11.027887, 11.108191, 11.055356, 11.040912, 10.960277, 11.02691, 11.082471, 10.920979]
+        expected_eval_loss = [10.958977]
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=False, allreduce_post_accumulation=False)
 
@@ -672,8 +669,8 @@ class TestOrtTrainer(unittest.TestCase):
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
     def testBertTrainingGradientAccumulation(self):
-        expected_losses = [11.034271, 11.125311, 11.006093, 11.046929, 11.027471, 11.015731, 11.060894, 10.971855]
-        expected_eval_loss = [10.959011]
+        expected_losses = [11.027887, 11.108191, 11.055354, 11.040904, 10.960266, 11.026897, 11.082475, 10.920998]
+        expected_eval_loss = [10.958998]
 
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=False, allreduce_post_accumulation=False)
@@ -701,7 +698,7 @@ class TestOrtTrainer(unittest.TestCase):
         sd['bert.encoder.layer.0.attention.output.LayerNorm.weight'] +=1
         model.load_state_dict(sd)
 
-        ckpt_dir = get_name("ort_ckpt")
+        ckpt_dir = 'testdata'
         save_checkpoint(model, ckpt_dir, 'bert_toy_save_test')
         del model
 
@@ -718,35 +715,6 @@ class TestOrtTrainer(unittest.TestCase):
 
         for k,v in loaded_sd.items():
             assert torch.all(torch.eq(v, sd[k]))
-
-    def testBertCheckpointingLoadZero(self):
-        return # disable flaky test temporarily
-        torch.manual_seed(1)
-        onnxruntime.set_seed(1)
-        model,_,device = create_ort_trainer(gradient_accumulation_steps=1,
-                        use_mixed_precision=False,
-                        allreduce_post_accumulation=True,
-                        use_simple_model_desc=True,
-                        loss_scaler=None)
-
-        ckpt_dir = get_name("ort_ckpt")
-        load_checkpoint(model, ckpt_dir, 'bert_toy_lamb')
-
-        expected_eval_loss = [10.997552871]
-
-        input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[  635],[27399],[20647],[18519],[15546]], device=device)
-        segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
-        input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
-        masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
-        next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
-
-        actual_eval_loss = model.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels, fetches=['loss'])
-        actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
-        # import pdb; pdb.set_trace()
-        print(actual_eval_loss)
-
-        rtol = 1e-03
-        assert_allclose(expected_eval_loss, actual_eval_loss, err_msg="evaluation loss mismatch")
 
     def testWrapModelLossFnStateDict(self):
         torch.manual_seed(1)

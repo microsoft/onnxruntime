@@ -15,9 +15,17 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Concat);
 
 // Opset 11 starts to support Neg Axis.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Concat,
     11,
+    12,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Concat);
+
+// Opset 13 .
+ONNX_CPU_OPERATOR_KERNEL(
+    Concat,
+    13,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Concat);
 
@@ -130,7 +138,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     auto& data_n = *data_n_ptr;
 
     // Type sanity check (Make sure we are working on homogeneous types)
-    ORT_RETURN_IF_NOT(data_n.DataType() == p.output_tensor->DataType());
+    ORT_RETURN_IF_NOT(data_n.DataType() == p.output_tensor->DataType(), "Data type mismatch");
 
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
     // Can handle stacking as well (as the "new dummy dimension" in the input is of unit value).

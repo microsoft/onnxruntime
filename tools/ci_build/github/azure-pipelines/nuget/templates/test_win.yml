@@ -27,14 +27,14 @@ jobs:
       architecture: x64
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
+    displayName: Use Nuget 5.7.0
     inputs:
-      versionSpec: 4.9.4
+      versionSpec: 5.7.0
 
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda.bat'
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda_11.bat'
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 

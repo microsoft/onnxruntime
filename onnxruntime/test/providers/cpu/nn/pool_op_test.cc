@@ -1533,7 +1533,7 @@ TEST(PoolTest, MaxPoolDimWithZeroForN) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

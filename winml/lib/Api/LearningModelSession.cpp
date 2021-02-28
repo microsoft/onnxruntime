@@ -27,6 +27,15 @@ static const GUID WINML_PIX_EVAL_CAPTURABLE_WORK_GUID = __uuidof(guid_details::W
 
 namespace WINMLP {
 
+LearningModelSession::LearningModelSession(_winml::IEngine* engine) : model_(nullptr),
+                                                                      device_(LearningModelDeviceKind::Cpu),
+                                                                      session_options_(nullptr),
+                                                                      operator_registry_(nullptr, nullptr)
+{ 
+    engine_.copy_from(engine);
+}
+
+
 LearningModelSession::LearningModelSession(
     winml::LearningModel const& model) try : LearningModelSession(model,
                                                                   make<LearningModelDevice>(LearningModelDeviceKind::Default)) {}
@@ -352,7 +361,7 @@ LearningModelSession::EvaluateAsync(
   }
 
   // Get the Results on a background thread whenever they're ready
-  return GetResults(binding_impl, correlation_id, evaluation_complete_fence);
+  co_return GetResults(binding_impl, correlation_id, evaluation_complete_fence);
 }
 
 winml::LearningModelEvaluationResult
@@ -432,4 +441,9 @@ STDMETHODIMP LearningModelSession::GetIntraOpNumThreads(uint32_t* numThreads)
 {
   return engine_->GetNumberOfIntraOpThreads(numThreads);
 }
+
+winml::LearningModelSession LearningModelSession::CreateInertSession(_winml::IEngine* engine) {
+  return winrt::make<winmlp::LearningModelSession>(engine);
+}
+
 }  // namespace WINMLP

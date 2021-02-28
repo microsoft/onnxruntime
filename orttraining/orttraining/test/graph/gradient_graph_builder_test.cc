@@ -9,7 +9,9 @@
 #include "core/common/path_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/models/runner/training_runner.h"
+#include "orttraining/test/session/training_session_test_utils.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
@@ -22,35 +24,14 @@ using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 using namespace google::protobuf::util;
 using namespace onnxruntime::path_utils;
+using namespace onnxruntime::test::training_session_test_utils;
 
 namespace onnxruntime {
 namespace test {
 
 namespace {
-constexpr auto ORIGINAL_MODEL_PATH = ORT_TSTR("testdata/test_training_model.onnx");
-constexpr auto BACKWARD_MODEL_PATH = ORT_TSTR("testdata/temp_backward_model.onnx");
 constexpr auto CONCAT_MODEL_PATH = ORT_TSTR("testdata/transform/concat_trainable.onnx");
-
-std::unordered_set<std::string> GetModelOutputNames(const InferenceSession& session) {
-  const auto outputs_result = session.GetModelOutputs();
-  ORT_ENFORCE(outputs_result.first.IsOK(), "Failed to get model outputs: ", outputs_result.first.ErrorMessage());
-  std::unordered_set<std::string> output_names{};
-  for (const auto* output : *outputs_result.second) {
-    output_names.insert(output->Name());
-  }
-  return output_names;
-}
 }  // namespace
-
-static TrainingSession::TrainingConfiguration MakeBasicTrainingConfig() {
-  TrainingSession::TrainingConfiguration config{};
-  config.model_with_training_graph_path = BACKWARD_MODEL_PATH;
-  config.loss_function_config = TrainingSession::TrainingConfiguration::LossFunctionConfiguration{};
-  config.loss_function_config.value().loss_function_info =
-      LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
-
-  return config;
-}
 
 static Status BuildBackPropGraph(
     const PathString& forward_model_file,
@@ -186,8 +167,8 @@ TEST(GradientGraphBuilderTest, BuildConcatGradientGraphTest) {
 
   ASSERT_EQ(op_to_count["Concat"], 0);
   ASSERT_EQ(op_to_count["Split"], 0);
-  ASSERT_EQ(op_to_count["ConcatTraining"], 1);
-  ASSERT_EQ(op_to_count["SplitTraining"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.ConcatTraining"], 1);
+  ASSERT_EQ(op_to_count["com.microsoft.SplitTraining"], 1);
 }
 
 TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
@@ -1022,25 +1003,35 @@ class PipelineBatchPlanner {
 
 void RetrieveEventOperators(
   Graph& graph,
-  Node** forward_wait_before_recv,
-  Node** forward_wait_after_recv,
-  Node** forward_record_before_send,
-  Node** forward_record_after_send,
-  Node** backward_wait_before_recv,
-  Node** backward_wait_after_recv,
-  Node** backward_record_before_send,
-  Node** backward_record_after_send) {
+  const int stage_index,
+  const int num_stages,
+  Node** forward_recv_wait,
+  Node** forward_recv_record,
+  Node** forward_compute_wait,
+  Node** forward_compute_record,
+  Node** forward_send_wait,
+  Node** forward_send_record,
+  Node** backward_recv_wait,
+  Node** backward_recv_record,
+  Node** backward_compute_wait,
+  Node** backward_compute_record,
+  Node** backward_send_wait,
+  Node** backward_send_record) {
   // Initialize retrieved nodes.
   // Non-existing nodes may hold NULL forever.
   // Existing nodes may get valid pointers below.
-  *forward_wait_before_recv = nullptr;
-  *forward_wait_after_recv = nullptr;
-  *forward_record_before_send = nullptr;
-  *forward_record_after_send = nullptr;
-  *backward_wait_before_recv = nullptr;
-  *backward_wait_after_recv = nullptr;
-  *backward_record_before_send = nullptr;
-  *backward_record_after_send = nullptr;
+  *forward_recv_wait = nullptr;
+  *forward_recv_record = nullptr;
+  *forward_compute_wait = nullptr;
+  *forward_compute_record = nullptr;
+  *forward_send_wait = nullptr;
+  *forward_send_record = nullptr;
+  *backward_recv_wait = nullptr;
+  *backward_recv_record = nullptr;
+  *backward_compute_wait = nullptr;
+  *backward_compute_record = nullptr;
+  *backward_send_wait = nullptr;
+  *backward_send_record = nullptr;
 
   // Declare container for WaitEvent's in topological order.
   std::vector<Node*> waits;
@@ -1058,32 +1049,60 @@ void RetrieveEventOperators(
     }
   }
 
-  if (waits.size() == size_t(4)) {
-    // Each of first stage and middle stages has 4 WaitEvent's.
-    *forward_wait_before_recv = waits[0];
-    *forward_wait_after_recv = waits[1];
-    *backward_wait_before_recv = waits[2];
-    *backward_wait_after_recv = waits[3];
-  } else if (waits.size() == size_t(2)) {
-    // Last stage has 2 WaitEvent's.
-    *forward_wait_before_recv = waits[0];
-    *forward_wait_after_recv = waits[1];
-  } else {
-    ORT_THROW("Wrong number of WaitEvent operators: ", waits.size(), "Expected value is either 2 or 4.");
-  }
+  // For different stages, assign nodes based on different rules.
+  if (stage_index != 0 && stage_index != num_stages - 1) {
+    // Wait/Record patterns at middle stages:
+    //   Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
+    //   Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
 
-  if (records.size() == size_t(4)) {
-    // Each of first stage and middle stages has 4 RecordEvent's.
-    *forward_record_before_send = records[0];
-    *forward_record_after_send = records[1];
-    *backward_record_before_send = records[2];
-    *backward_record_after_send = records[3];
-  } else if (waits.size() == size_t(2)) {
-    // Last stage has 2 RecordEvent's.
-    *backward_record_before_send = records[0];
-    *backward_record_after_send = records[1];
+    ORT_ENFORCE(waits.size() == 6, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_recv_wait = waits[0];
+    *forward_compute_wait = waits[1];
+    *forward_send_wait = waits[2];
+    *backward_recv_wait = waits[3];
+    *backward_compute_wait = waits[4];
+    *backward_send_wait = waits[5];
+
+    ORT_ENFORCE(records.size() == 6, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_recv_record = records[0];
+    *forward_compute_record = records[1];
+    *forward_send_record = records[2];
+    *backward_recv_record = records[3];
+    *backward_compute_record = records[4];
+    *backward_send_record = records[5];
+  } else if (stage_index == 0) {
+    // Wait/Record patterns at the 1st stages:
+    //                             Wait -> FW -> Record -> Wait -> Send -> Record ->
+    //   Wait -> Recv -> Record -> Wait -> BW -> Record
+
+    ORT_ENFORCE(waits.size() == 4, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_compute_wait = waits[0];
+    *forward_send_wait = waits[1];
+    *backward_recv_wait = waits[2];
+    *backward_compute_wait = waits[3];
+
+    ORT_ENFORCE(records.size() == 4, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_compute_record = records[0];
+    *forward_send_record = records[1];
+    *backward_recv_record = records[2];
+    *backward_compute_record = records[3];
+  } else if (stage_index == num_stages - 1) {
+    // Wait/Record patterns at the last stages:
+    //   Wait -> Recv -> Record -> Wait -> FW ->
+    //                                     BW -> Record -> Wait -> Send -> Record
+
+    ORT_ENFORCE(waits.size() == 3, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_recv_wait = waits[0];
+    *forward_compute_wait = waits[1];
+    *backward_send_wait = waits[2];
+
+    ORT_ENFORCE(records.size() == 3, " size is ", waits.size(), " at stage ", stage_index);
+    *forward_recv_record = records[0];
+    *backward_compute_record = records[1];
+    *backward_send_record = records[2];
   } else {
-    ORT_THROW("Wrong number of RecordEvent operators: ", waits.size(), ". Expected value is either 2 or 4.");
+    ORT_THROW("Wrong number of WaitEvent operators: ",
+        waits.size(), " allowed value range is [0, ", num_stages - 1, ").");
   }
 }
 
@@ -1142,6 +1161,57 @@ PathString GenerateFileNameWithIndex(const std::string& base_str, int index, con
   return path_utils::MakePathString(base_str, index, file_suffix);
 }
 
+// DistributedRunTestContext provides a method to override existing DistributedRunTestContext instance.
+// This is for test purpose only. Please don't use it for other scenarios.
+class DistributedRunTestContext : public DistributedRunContext
+{
+public:
+    DistributedRunTestContext(const TrainingSession::TrainingConfiguration &config)
+        : DistributedRunContext(config.distributed_config.world_rank,
+                                config.distributed_config.world_size,
+                                config.distributed_config.local_rank,
+                                config.distributed_config.local_size,
+                                config.distributed_config.data_parallel_size,
+                                config.distributed_config.horizontal_parallel_size,
+                                config.distributed_config.pipeline_parallel_size)
+    {
+    }
+
+    // Reset the static DistributedRunContext object with new value.
+    void ResetDistributedRunContext(){
+      DistributedRunContext::GetRunConfig() = params_;
+      auto& dp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::DataParallel);
+      dp_group = groups_[WorkerGroupType::DataParallel];
+
+      auto& hp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::HorizontalParallel);
+      hp_group = groups_[WorkerGroupType::HorizontalParallel];
+
+      auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::PipelineParallel);
+      mp_group = groups_[WorkerGroupType::PipelineParallel];
+    }
+};
+
+void OverwritePipelineRank(const TrainingSession::TrainingConfiguration& config, const int pipeline_rank) {
+  // DistributedRunContext is a static global. Create one if it hasn't been created yet.
+  DistributedRunContext::CreateInstance({config.distributed_config.world_rank,
+                                         config.distributed_config.world_size,
+                                         config.distributed_config.local_rank,
+                                         config.distributed_config.local_size,
+                                         config.distributed_config.data_parallel_size,
+                                         config.distributed_config.horizontal_parallel_size,
+                                         config.distributed_config.pipeline_parallel_size});
+
+  // If DistributedRunContext has already been created prior to this test, the CreateInstance() call above won't
+  // create a new DistributedRunContext instance, as it is statically cached in the process.
+  // In this case, we create a DistributedRunTestContext object and assign its value to the static object's field.
+  DistributedRunTestContext ctx(config);
+  ctx.ResetDistributedRunContext();
+
+  // Overwrite the pipeline rank in case the static DistributedRunContext has been created and is stale and not up-to-date.
+  auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::PipelineParallel);
+  mp_group.rank_in_group = pipeline_rank;
+}
+
 TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   const auto model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
 
@@ -1162,14 +1232,14 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   pipe.cut_list.emplace_back(cut1);
 
   TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
-  mixed_precision_config.use_fp16_initializers = true;
+  mixed_precision_config.use_mixed_precision_initializers = true;
 
   // 2 test variations - full precision and mixed precision
   const std::vector<bool> test_with_fp32{true, false};
   for (auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < static_cast<int>(total_partition_count); ++i) {
-
+      PathString partition_file = GenerateFileNameWithIndex("pipeline_partition_", i, ".onnx");
       PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
       auto config = MakeBasicTrainingConfig();
 
@@ -1192,7 +1262,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
           "position_01",            // Slice's dat input
           "op_min_ends_expand_10",  //op_min_ends_expand_10
       };
-
+      pipe.partitioned_model_path = partition_file;
       config.pipeline_config = pipe;
       config.distributed_config.world_rank = i;
       config.distributed_config.world_size = total_partition_count;
@@ -1202,6 +1272,8 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
       config.distributed_config.horizontal_parallel_size = 1;
       config.distributed_config.pipeline_parallel_size = total_partition_count;
       config.model_with_training_graph_path = output_file;
+
+      OverwritePipelineRank(config, i);
 
       if (!is_fp32) {
         config.mixed_precision_config = mixed_precision_config;
@@ -1255,7 +1327,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
   pipe.cut_list.emplace_back(cut1);
 
   TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
-  mixed_precision_config.use_fp16_initializers = true;
+  mixed_precision_config.use_mixed_precision_initializers = true;
 
   // 2 test variations - full precision and mixed precision
   const std::vector<bool> test_with_fp32{true, false};
@@ -1275,6 +1347,8 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
       config.distributed_config.horizontal_parallel_size = 1;
       config.distributed_config.pipeline_parallel_size = 3;
       config.model_with_training_graph_path = output_file;
+
+      OverwritePipelineRank(config, i);
 
       if (!is_fp32) {
         config.mixed_precision_config = mixed_precision_config;
@@ -1300,8 +1374,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
 }
 
 Status RunOnlinePartition(const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_list,
-                          int pipeline_stage_size,
-                          std::set<int> status_check_stages = {}) {
+                          int pipeline_stage_size) {
   auto model_uri = ORIGINAL_MODEL_PATH;
 
   TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
@@ -1321,15 +1394,14 @@ Status RunOnlinePartition(const std::vector<TrainingSession::TrainingConfigurati
     config.distributed_config.data_parallel_size = 1;
     config.distributed_config.horizontal_parallel_size = 1;
     config.distributed_config.pipeline_parallel_size = pipeline_stage_size;
+
+    OverwritePipelineRank(config, i);
+
     config.model_with_training_graph_path = output_file;
 
     PathString backprop_model_file;
-    if (status_check_stages.count(i) > 0) {
-      auto status = BuildBackPropGraph(model_uri, config, backprop_model_file);
-      EXPECT_FALSE(status.IsOK());
-    } else {
-      EXPECT_THROW(BuildBackPropGraph(model_uri, config, backprop_model_file), OnnxRuntimeException);
-    }
+    auto status = BuildBackPropGraph(model_uri, config, backprop_model_file);
+    EXPECT_FALSE(status.IsOK());
   }
   return Status::OK();
 }
@@ -1339,17 +1411,17 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_Invalid_Input) {
   using CutInfo = TrainingSession::TrainingConfiguration::CutInfo;
 
   // Test with invalid cut edge
-  TrainingSession::TrainingConfiguration::CutInfo invalid_cut_edge = {TrainingSession::TrainingConfiguration::CutEdge("3")};
-  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<TrainingSession::TrainingConfiguration::CutInfo>{invalid_cut_edge}, 2 /* pipeline_stage_size */));
+  CutInfo invalid_cut_edge = {CutEdge("3")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{invalid_cut_edge}, 2 /* pipeline_stage_size */));
 
   // Test mis-matched cut list with stage size
-  TrainingSession::TrainingConfiguration::CutInfo cut_edge = {TrainingSession::TrainingConfiguration::CutEdge("T3")};
-  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<TrainingSession::TrainingConfiguration::CutInfo>{cut_edge}, 3 /* pipeline_stage_size */));
+  CutInfo cut_edge = {CutEdge("T3")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{cut_edge}, 3 /* pipeline_stage_size */));
 
   // Test unordered cut_info list
   CutInfo cut0 = {CutEdge("T3")};
   CutInfo cut1 = {CutEdge("T6")};
-  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{cut1, cut0}, 3 /* pipeline_stage_size */, {0, 2} /* status_check_stages */));
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{cut1, cut0}, 3 /* pipeline_stage_size */));
 }
 
 // verify pipeline config can load and gradient graph can construct.
@@ -1372,60 +1444,92 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 
     // Declare forward event nodes.
     // The nodes are declared according to their topological order.
-    Node* forward_wait_before_recv{nullptr};
-    Node* forward_wait_after_recv{nullptr};
-    Node* forward_record_before_send{nullptr};
-    Node* forward_record_after_send{nullptr};
+    Node* forward_recv_wait{nullptr};
+    Node* forward_recv_record{nullptr};
+    Node* forward_compute_wait{nullptr};
+    Node* forward_compute_record{nullptr};
+    Node* forward_send_wait{nullptr};
+    Node* forward_send_record{nullptr};
 
     // Declare backward event nodes.
     // The nodes are declared according to their topological order.
-    Node* backward_wait_before_recv{nullptr};
-    Node* backward_wait_after_recv{nullptr};
-    Node* backward_record_before_send{nullptr};
-    Node* backward_record_after_send{nullptr};
+    Node* backward_recv_wait{nullptr};
+    Node* backward_recv_record{nullptr};
+    Node* backward_compute_wait{nullptr};
+    Node* backward_compute_record{nullptr};
+    Node* backward_send_wait{nullptr};
+    Node* backward_send_record{nullptr};
 
     // Find event nodes.
     RetrieveEventOperators(
       graph,
-      &forward_wait_before_recv,
-      &forward_wait_after_recv,
-      &forward_record_before_send,
-      &forward_record_after_send,
-      &backward_wait_before_recv,
-      &backward_wait_after_recv,
-      &backward_record_before_send,
-      &backward_record_after_send);
+      stageIdx,
+      3,
+      &forward_recv_wait,
+      &forward_recv_record,
+      &forward_compute_wait,
+      &forward_compute_record,
+      &forward_send_wait,
+      &forward_send_record,
+      &backward_recv_wait,
+      &backward_recv_record,
+      &backward_compute_wait,
+      &backward_compute_record,
+      &backward_send_wait,
+      &backward_send_record);
 
     // Check event nodes.
     if (stageIdx == 2) {
-      ASSERT_TRUE(forward_wait_before_recv);
-      ASSERT_TRUE(forward_wait_after_recv);
+      // Last stage's event pattern:
+      //   Wait -> Recv -> Record -> Wait -> FW ->
+      //                                     BW -> Record -> Wait -> Send -> Record
+      ASSERT_TRUE(forward_recv_wait);
+      ASSERT_TRUE(forward_recv_record);
+      ASSERT_TRUE(forward_compute_wait);
+      ASSERT_TRUE(!forward_compute_record);
+      ASSERT_TRUE(!forward_send_wait);
+      ASSERT_TRUE(!forward_send_record);
 
-      // Last pipeline stage can perform backward right after its forward.
-      // It won't have event operators to divide forward from backward.
-      ASSERT_TRUE(!forward_record_before_send);
-      ASSERT_TRUE(!forward_record_after_send);
-      ASSERT_TRUE(!backward_wait_before_recv);
-      ASSERT_TRUE(!backward_wait_after_recv);
+      ASSERT_TRUE(!backward_recv_wait);
+      ASSERT_TRUE(!backward_recv_record);
+      ASSERT_TRUE(!backward_compute_wait);
+      ASSERT_TRUE(backward_compute_record);
+      ASSERT_TRUE(backward_send_wait);
+      ASSERT_TRUE(backward_send_record);
+    } else if (stageIdx == 1) {
+      // Middle stage's event pattern:
+      //   Wait -> Recv -> Record -> Wait -> FW -> Record -> Wait -> Send -> Record ->
+      //   Wait -> Recv -> Record -> Wait -> BW -> Record -> Wait -> Send -> Record
+      ASSERT_TRUE(forward_recv_wait);
+      ASSERT_TRUE(forward_recv_record);
+      ASSERT_TRUE(forward_compute_wait);
+      ASSERT_TRUE(forward_compute_record);
+      ASSERT_TRUE(forward_send_wait);
+      ASSERT_TRUE(forward_send_record);
 
-      ASSERT_TRUE(backward_record_before_send);
-      ASSERT_TRUE(backward_record_after_send);
+      ASSERT_TRUE(backward_recv_wait);
+      ASSERT_TRUE(backward_recv_record);
+      ASSERT_TRUE(backward_compute_wait);
+      ASSERT_TRUE(backward_compute_record);
+      ASSERT_TRUE(backward_send_wait);
+      ASSERT_TRUE(backward_send_record);
     } else {
-      // Beginning of forward.
-      ASSERT_TRUE(forward_wait_before_recv);
-      ASSERT_TRUE(forward_wait_after_recv);
+      // First stage's event pattern:
+      //                             Wait -> FW -> Record -> Wait -> Send -> Record ->
+      //   Wait -> Recv -> Record -> Wait -> BW -> Record
+      ASSERT_TRUE(!forward_recv_wait);
+      ASSERT_TRUE(!forward_recv_record);
+      ASSERT_TRUE(forward_compute_wait);
+      ASSERT_TRUE(forward_compute_record);
+      ASSERT_TRUE(forward_send_wait);
+      ASSERT_TRUE(forward_send_record);
 
-      // End of forward.
-      ASSERT_TRUE(forward_record_before_send);
-      ASSERT_TRUE(forward_record_after_send);
-
-      // Beginning of backward.
-      ASSERT_TRUE(backward_wait_before_recv);
-      ASSERT_TRUE(backward_wait_after_recv);
-
-      // End of backward.
-      ASSERT_TRUE(backward_record_before_send);
-      ASSERT_TRUE(backward_record_after_send);
+      ASSERT_TRUE(backward_recv_wait);
+      ASSERT_TRUE(backward_recv_record);
+      ASSERT_TRUE(backward_compute_wait);
+      ASSERT_TRUE(backward_compute_record);
+      ASSERT_TRUE(!backward_send_wait);
+      ASSERT_TRUE(!backward_send_record);
     }
 
     Node* forward_send{nullptr};
@@ -1504,14 +1608,15 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         {},
         {}},
        {{
-            "MeanSquaredError_reduce_mean_Grad/Scale_Denominator",
-            "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Denominator",
-            "MeanSquaredError_reduce_mean_Grad/Scale_Numerator",
-            "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Numerator",
+            "MeanSquaredError_reduce_mean_Grad/Sized_X",
+            "MeanSquaredError_reduce_mean_Grad/Sized_Grad",
             "MeanSquaredError_reduce_mean_Grad/Scale",
             "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
             "MeanSquaredError_reduce_mean_Grad/Shaped_X",
             "MeanSquaredError_diff_square_grad",
+            "MeanSquaredError_pow_Grad/Sub_I1",
+            "MeanSquaredError_pow_Grad/Pow_I0",
+            "MeanSquaredError_pow_Grad/Mul_Pow_I0_I1",
             "MeanSquaredError_diff_grad",
             "predictions_grad",
             "B3_grad",

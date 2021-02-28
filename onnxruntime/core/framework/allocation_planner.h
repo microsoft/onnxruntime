@@ -28,22 +28,28 @@ class ISequentialPlannerContext {
   // If it returns true, planner won't reuse output tensors
   // see PlannerImpl::ComputeReusePlan
   virtual bool IsParallelExecutionEnabled() const { return false; }
+
+  virtual ExecutionOrder GetExecutionOrder() const { return ExecutionOrder::DEFAULT; }
 };
 
 class SequentialPlannerContext : public ISequentialPlannerContext {
  public:
-  SequentialPlannerContext(ExecutionMode execution_mode)
-      : m_execution_mode(execution_mode) {
+  SequentialPlannerContext(ExecutionMode execution_mode, ExecutionOrder execution_order)
+      : execution_mode_(execution_mode),
+        exection_order_(execution_order) {
   }
 
   const ONNX_NAMESPACE::TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
     return arg.Shape();
   }
 
-  bool IsParallelExecutionEnabled() const override { return m_execution_mode == ExecutionMode::ORT_PARALLEL; }
+  bool IsParallelExecutionEnabled() const override { return execution_mode_ == ExecutionMode::ORT_PARALLEL; }
+
+  ExecutionOrder GetExecutionOrder() const override { return exection_order_; }
 
  private:
-  ExecutionMode m_execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  ExecutionMode execution_mode_ = ExecutionMode::ORT_SEQUENTIAL;
+  ExecutionOrder exection_order_ = ExecutionOrder::DEFAULT;
 };
 
 class SequentialPlanner {

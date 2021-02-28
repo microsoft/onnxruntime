@@ -37,10 +37,10 @@ class OpKernelContextInternal : public OpKernelContext {
     }
   }
 
-  bool GetUseDeterministicCompute() const {
+  bool GetUseDeterministicCompute() const override {
     return session_state_.GetUseDeterministicCompute();
   }
-  
+
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }

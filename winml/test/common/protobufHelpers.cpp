@@ -83,7 +83,10 @@ std::vector<int64_t> GetTypeSpecificDataFromTensorProto(
 template <>
 std::vector<uint8_t> GetTypeSpecificDataFromTensorProto(
     onnx::TensorProto tensorProto) {
+#pragma warning(push)
+#pragma warning(disable:4244)  // conversion with possible loss of data
   return std::vector<uint8_t>(std::begin(tensorProto.int32_data()), std::end(tensorProto.int32_data()));
+#pragma warning(pop)
 }
 template <>
 std::vector<double> GetTypeSpecificDataFromTensorProto(

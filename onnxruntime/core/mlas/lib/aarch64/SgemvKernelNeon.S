@@ -131,7 +131,7 @@ Return Value:
         ldr     q7,[x1,#240]
         add     x1,x1,x5,lsl #2             // compute next matrix B row address
         cbz     x13,.LSgemvN.StoreOutputBy64
-        ldr     q4,[x1]                     // load data for the next iteration
+        ldr     q4,[x1]                     // load data for next iteration
         fmla    v29.4s,v5.4s,v0.4s
         ldr     q5,[x1,#16]
         fmla    v30.4s,v6.4s,v0.4s
@@ -141,7 +141,7 @@ Return Value:
 
 .LSgemvN.StoreOutputBy64:
         stp     q16,q17,[x2]
-        fmla    v29.4s,v5.4s,v0.4s          // finish computing the tail vectors
+        fmla    v29.4s,v5.4s,v0.4s          // finish computing tail vectors
         stp     q18,q19,[x2,#32]
         fmla    v30.4s,v6.4s,v0.4s
         stp     q20,q21,[x2,#64]

@@ -317,6 +317,17 @@ TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloat) {
   test.Run();
 }
 
+TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitLong) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<int64_t>("input", {4, 2}, GetConsequtiveVector<int64_t>(1, 8));
+  test.AddInput<int64_t>("split", {1, 2}, {2, 2});
+  SeqTensors<int64_t> output;
+  output.AddTensor({2, 2}, {1, 2, 3, 4});
+  output.AddTensor({2, 2}, {5, 6, 7, 8});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloatScalarSplit) {
   OpTester test("SplitToSequence", 11);
   test.AddInput<float>("input", {4, 2}, GetConsequtiveVector<float>(1.f, 8));

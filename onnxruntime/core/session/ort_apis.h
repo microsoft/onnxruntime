@@ -26,9 +26,16 @@ _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL CreateStatus(OrtErrorCode c
 OrtErrorCode ORT_API_CALL GetErrorCode(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 const char* ORT_API_CALL GetErrorMessage(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
-ORT_API_STATUS_IMPL(CreateEnv, OrtLoggingLevel default_logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out)
+ORT_API_STATUS_IMPL(CreateEnv, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out)
 ORT_ALL_ARGS_NONNULL;
-ORT_API_STATUS_IMPL(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+ORT_API_STATUS_IMPL(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+ORT_API_STATUS_IMPL(CreateEnvWithGlobalThreadPools, OrtLoggingLevel logging_level, _In_ const char* logid,
+                    _In_ const struct OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out)
+ORT_ALL_ARGS_NONNULL;
+ORT_API_STATUS_IMPL(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
+                    _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out)
+ORT_ALL_ARGS_NONNULL;
+
 ORT_API_STATUS_IMPL(EnableTelemetryEvents, _In_ const OrtEnv* env);
 ORT_API_STATUS_IMPL(DisableTelemetryEvents, _In_ const OrtEnv* env);
 
@@ -63,7 +70,7 @@ ORT_API_STATUS_IMPL(SetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, in
 ORT_API_STATUS_IMPL(SetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
 ORT_API_STATUS_IMPL(CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out);
-ORT_API_STATUS_IMPL(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op);
+ORT_API_STATUS_IMPL(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ const OrtCustomOp* op);
 ORT_API_STATUS_IMPL(AddCustomOpDomain, _Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain);
 ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle);
 
@@ -89,6 +96,8 @@ ORT_API_STATUS_IMPL(ModelMetadataGetGraphName, _In_ const OrtModelMetadata* mode
 ORT_API_STATUS_IMPL(ModelMetadataGetDomain, _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(ModelMetadataGetDescription, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(ModelMetadataGetGraphDescription, _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(ModelMetadataLookupCustomMetadataMap, _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _In_ const char* key, _Outptr_result_maybenull_ char** value);
@@ -187,10 +196,6 @@ ORT_API_STATUS_IMPL(GetMapValueType, _In_ const OrtMapTypeInfo* map_type_info, _
 // OrtSequenceTypeInfo Accessors
 ORT_API_STATUS_IMPL(GetSequenceElementType, _In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info);
 
-ORT_API_STATUS_IMPL(CreateEnvWithGlobalThreadPools, OrtLoggingLevel default_logging_level, _In_ const char* logid,
-                    _In_ const struct OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out)
-ORT_ALL_ARGS_NONNULL;
-
 ORT_API_STATUS_IMPL(DisablePerSessionThreads, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(CreateThreadingOptions, _Outptr_ OrtThreadingOptions** out);
 ORT_API(void, ReleaseThreadingOptions, _Frees_ptr_opt_ OrtThreadingOptions*);
@@ -204,7 +209,7 @@ ORT_API_STATUS_IMPL(CreateAllocator, const OrtSession* sess, const OrtMemoryInfo
                     _Outptr_ OrtAllocator** out);
 ORT_API(void, ReleaseAllocator, _Frees_ptr_opt_ OrtAllocator* allocator);
 
-ORT_API_STATUS_IMPL(RunWithBinding, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
+ORT_API_STATUS_IMPL(RunWithBinding, _Inout_ OrtSession* sess, _In_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
 
 ORT_API_STATUS_IMPL(CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out);
 ORT_API(void, ReleaseIoBinding, _Frees_ptr_opt_ OrtIoBinding* allocator);
@@ -213,9 +218,9 @@ ORT_API_STATUS_IMPL(BindInput, _Inout_ OrtIoBinding* binding_ptr, _In_ const cha
 ORT_API_STATUS_IMPL(BindOutput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
 ORT_API_STATUS_IMPL(BindOutputToDevice, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtMemoryInfo* val_ptr);
 ORT_API_STATUS_IMPL(GetBoundOutputNames, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
-                    _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count);
+                    _Out_ char** buffer, _Outptr_result_maybenull_ size_t** lengths, _Out_ size_t* count);
 ORT_API_STATUS_IMPL(GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
-                    _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count);
+                    _Outptr_result_maybenull_ OrtValue*** output, _Out_ size_t* output_count);
 
 ORT_API(void, ClearBoundInputs, _Inout_ OrtIoBinding* binding_ptr);
 ORT_API(void, ClearBoundOutputs, _Inout_ OrtIoBinding* binding_ptr);
@@ -228,9 +233,32 @@ ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char** ptr,
 ORT_API_STATUS_IMPL(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value);
 
-ORT_API_STATUS_IMPL(TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
+ORT_API_STATUS_IMPL(TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count, _Outptr_ void** out);
 
 ORT_API_STATUS_IMPL(CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg);
+
+ORT_API_STATUS_IMPL(SetLanguageProjection, _In_ const OrtEnv* ort_env, _In_ OrtLanguageProjection projection);
+ORT_API_STATUS_IMPL(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess, _Out_ uint64_t* out);
+
+ORT_API_STATUS_IMPL(SetGlobalIntraOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int intra_op_num_threads);
+ORT_API_STATUS_IMPL(SetGlobalInterOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int inter_op_num_threads);
+ORT_API_STATUS_IMPL(SetGlobalSpinControl, _Inout_ OrtThreadingOptions* tp_options, int allow_spinning);
+ORT_API_STATUS_IMPL(AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
+                    _In_ const OrtValue* val);
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_CUDA,
+                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options);
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_OpenVINO,
+                    _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options);
+ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* options);
+
+ORT_API_STATUS_IMPL(CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+                    int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out);
+ORT_API(void, ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg*);
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_TensorRT,
+                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options);
+ORT_API_STATUS_IMPL(SetCurrentGpuDeviceId, _In_ int device_id);
+ORT_API_STATUS_IMPL(GetCurrentGpuDeviceId, _In_ int* device_id);
 
 ORT_API_STATUS_IMPL(CreateKernelSession, _In_ const OrtSessionOptions* options, OrtKernelSession** session, int opset_version);
 

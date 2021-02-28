@@ -5,7 +5,7 @@
 #include <type_traits>
 
 namespace onnxruntime {
-BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
+BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    size_t total_memory,
                    ArenaExtendStrategy arena_extend_strategy,
                    int initial_chunk_size_bytes,
@@ -85,19 +85,23 @@ Status BFCArena::Extend(size_t rounded_bytes) {
 
   auto safe_alloc = [this](size_t alloc_bytes) {
     void* new_mem = nullptr;
-    try {
+    ORT_TRY {
       new_mem = device_allocator_->Alloc(alloc_bytes);
-    } catch (const std::bad_alloc&) {
+    }
+    ORT_CATCH(const std::bad_alloc&) {
       // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
       // so swallow the exception
-    } catch (const OnnxRuntimeException& ort_exception) {
+    }
+    ORT_CATCH(const OnnxRuntimeException& ort_exception) {
       // swallow if exception is our throw from a failed cudaMalloc call.
       // re-throw otherwise.
-      if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos) {
-        throw;
-      }
+      ORT_HANDLE_EXCEPTION([&ort_exception]() {
+        if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos &&
+            std::string(ort_exception.what()).find("hipMalloc") == std::string::npos) {
+          ORT_RETHROW;
+        }
+      });
     }
-
     return new_mem;
   };
 
@@ -140,7 +144,14 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   // Try allocating less memory.
   while (mem_addr == nullptr) {
     bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
-    if (bytes < rounded_bytes)
+
+    // give up if we can't satisfy the requested size, or we're attempting an allocation of less than 8K.
+    //
+    // the latter protects against an infinite loop that occurs when bytes is less than 2560. at that point the 10%
+    // reduction to 2304 bytes is undone by rounding to a 256 boundary in RoundedBytes, leading to an infinite loop.
+    // the 8K value is just to give up a little earlier vs. getting all the way down to 2560 bytes.
+    // If we can't allocate 8K, we're pretty much dead.
+    if (bytes < rounded_bytes || bytes < 8 * 1024)
       break;
 
     mem_addr = safe_alloc(bytes);

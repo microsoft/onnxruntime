@@ -4,12 +4,18 @@
 #include "core/graph/graph_utils.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
+#include "orttraining/core/optimizer/dropout_recompute.h"
 
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 
-bool GeluRecompute::SatisfyCondition(const Graph& /*graph*/, const Node& node, const logging::Logger& /*logger*/) const {
+bool GeluRecompute::SatisfyCondition(const Node& node) const {
+  static const std::unordered_set<std::string> target_optypes = {"Gelu", "FastGelu", "BiasGelu"};
+  if (target_optypes.find(node.OpType()) == target_optypes.end()) {
+    return false;
+  }
+
   const auto next_node = node.OutputNodesBegin();
   if (next_node != node.OutputNodesEnd() && next_node->OpType() == "MatMul") {
     return true;
@@ -17,25 +23,44 @@ bool GeluRecompute::SatisfyCondition(const Graph& /*graph*/, const Node& node, c
   return false;
 }
 
-Status GeluRecompute::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
-  const auto& output = node.OutputDefs()[0];
+Status GeluRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
+  GraphViewer graph_viewer(graph);
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  auto& recomputed_output = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
-                                                     output->TypeAsProto());
+  // Traverse backward from the bottom of the graph, so that the recompute nodes
+  // for lower layers are executed earlier
+  for (int i = static_cast<int>(node_ids.size() - 1); i >= 0; --i) {
+    Node& node = *graph.GetNode(node_ids[i]);
 
-  graph.AddNode(node.Name() + "_recompute",
-                node.OpType(),
-                "Recompute of " + node.Name(),
-                {node.MutableInputDefs()[0]},
-                {&recomputed_output},
-                &node.GetAttributes(),
-                node.Domain());
+    if (!SatisfyCondition(node)) {
+      continue;
+    }
 
-  rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
+    const auto& output = node.OutputDefs()[0];
+
+    auto& recomputed_output = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
+                                                       output->TypeAsProto());
+
+    Node& recompute_node = graph.AddNode(node.Name() + "_recompute",
+                                         node.OpType(),
+                                         "Recompute of " + node.Name(),
+                                         node.MutableInputDefs(),
+                                         {&recomputed_output},
+                                         &node.GetAttributes(),
+                                         node.Domain());
+
+    recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+
+    modified = true;
+  }
+
   return Status::OK();
 }
 
-bool AttentionDropoutRecompute::SatisfyCondition(const Graph& /*graph*/, const Node& node, const logging::Logger& /*logger*/) const {
+bool AttentionDropoutRecompute::SatisfyCondition(const Node& node) const {
+  if (node.OpType() != "Dropout")
+    return false;
+
   const auto prev_node = node.InputNodesBegin();
   const auto next_node = node.OutputNodesBegin();
   if (prev_node != node.InputNodesEnd() && prev_node->OpType() == "Softmax" &&
@@ -45,26 +70,24 @@ bool AttentionDropoutRecompute::SatisfyCondition(const Graph& /*graph*/, const N
   return false;
 }
 
-Status AttentionDropoutRecompute::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
-  const auto& output = node.OutputDefs()[0];
+Status AttentionDropoutRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
+  GraphViewer graph_viewer(graph);
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  auto& recomputed_output = graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
-                                                     output->TypeAsProto());
+  // Traverse backward from the bottom of the graph, so that the recompute nodes
+  // for lower layers are executed earlier
+  for (int i = static_cast<int>(node_ids.size() - 1); i >= 0; --i) {
+    Node& node = *graph.GetNode(node_ids[i]);
 
-  graph.AddNode(node.Name() + "_recompute",
-                "DropoutGrad",                    // Reusing DropoutGrad as the recompute op 
-                "Recompute of " + node.Name(),
-                {
-                    node.MutableInputDefs()[0],   // X
-                    node.MutableOutputDefs()[1],  // mask
-                    node.MutableInputDefs()[1],   // ratio
-                    node.MutableInputDefs()[2]    // training_mode 
-                },
-                {&recomputed_output},
-                {},
-                kMSDomain);
+    if (!SatisfyCondition(node)) {
+      continue;
+    }
 
-  rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
+    Node& recompute_node = InsertDropoutRecompute(graph, node, /*use_original_input*/ true);
+    recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+
+    modified = true;
+  }
   return Status::OK();
 }
 

@@ -1,5 +1,7 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/providers/common.h"
-#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 
 #include "helper.h"
 #include "shaper.h"
@@ -130,6 +132,20 @@ Status Shaper::Squeeze(const std::string& input_name,
   SHAPER_FUNC(Squeeze, input_name, axes, output_name);
 }
 
+Status Shaper::ResizeUsingScales(const std::string& input_name,
+                                 const float scale_h, const float scale_w,
+                                 bool nchw,
+                                 const std::string& output_name) {
+  SHAPER_FUNC(ResizeUsingScales, input_name, scale_h, scale_w, nchw, output_name);
+}
+
+Status Shaper::ResizeUsingOutputSizes(const std::string& input_name,
+                                      const uint32_t output_h, const uint32_t output_w,
+                                      bool nchw,
+                                      const std::string& output_name) {
+  SHAPER_FUNC(ResizeUsingOutputSizes, input_name, output_h, output_w, nchw, output_name);
+}
+
 #undef SHAPER_FUNC
 
 Status Shaper::ConvImpl(const std::string& input_name,
@@ -226,7 +242,7 @@ Status Shaper::ReshapeImpl(const std::string& input_name,
                            const std::vector<int32_t>& shape,
                            const std::string& output_name) {
   const Shape& input_dimen = shape_map_.at(input_name);
-  int64_t input_size = Product(input_dimen);
+  uint32_t input_size = Product(input_dimen);
   std::vector<uint32_t> output_dimen(shape.size());
 
   int64_t capacity = 1;
@@ -360,17 +376,12 @@ Status Shaper::SqueezeImpl(const std::string& input_name,
                            const std::string& output_name) {
   const Shape& input_dimen = shape_map_.at(input_name);
   int32_t input_size = input_dimen.size();
-  size_t axes_size = axes.size();
   std::unordered_set<int32_t> axes_to_be_squeezed;
-  if (axes_size == 0) {
-    for (int32_t idx = 0; idx < input_size; ++idx) {
-      if (input_dimen[idx] == 1)
-        axes_to_be_squeezed.insert(idx);
-    }
-  } else {
-    for (const auto& axis : axes)
-      axes_to_be_squeezed.insert(axis);
-  }
+
+  // If the Op is squeezing all by not specifying axes, the axes is pre-populate
+  // with axes of all single dimensions by the caller
+  for (const auto& axis : axes)
+    axes_to_be_squeezed.insert(axis);
 
   // Make output dimensions
   std::vector<uint32_t> output_dimen;
@@ -380,6 +391,43 @@ Status Shaper::SqueezeImpl(const std::string& input_name,
       output_dimen.push_back(input_dimen[i]);
   }
 
+  // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets squeezed all
+  // the output shape will be {1}
+  if (output_dimen.empty())
+    output_dimen.push_back(1);
+
+  shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::ResizeUsingScalesImpl(const std::string& input_name,
+                                     const float scale_h, const float scale_w,
+                                     bool nchw,
+                                     const std::string& output_name) {
+  Shape output_dimen = shape_map_.at(input_name);
+  if (nchw) {
+    output_dimen[2] *= scale_h;
+    output_dimen[3] *= scale_w;
+  } else {  // nhwc
+    output_dimen[1] *= scale_h;
+    output_dimen[2] *= scale_w;
+  }
+  shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::ResizeUsingOutputSizesImpl(const std::string& input_name,
+                                          const uint32_t output_h, const uint32_t output_w,
+                                          bool nchw,
+                                          const std::string& output_name) {
+  Shape output_dimen = shape_map_.at(input_name);
+  if (nchw) {
+    output_dimen[2] = output_h;
+    output_dimen[3] = output_w;
+  } else {  // nhwc
+    output_dimen[1] = output_h;
+    output_dimen[2] = output_w;
+  }
   shape_map_[output_name] = output_dimen;
   return Status::OK();
 }
@@ -410,16 +458,6 @@ Status Shaper::UpdateDynamicDimensions() {
 void Shaper::Clear() {
   shape_map_.clear();
   shape_ops_.clear();
-}
-
-std::string Shape2String(const Shaper::Shape& shape) {
-  std::ostringstream os;
-  os << "[ ";
-  for (const auto& dim : shape)
-    os << dim << " ";
-
-  os << "]";
-  return os.str();
 }
 
 }  // namespace nnapi

@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/session/onnxruntime_cxx_api.h>
 #include <set>
 #include <iostream>
 #include <fstream>
@@ -12,15 +11,15 @@
 #include <thread>
 #endif
 #include "TestResultStat.h"
+#include "TestCase.h"
 #include "testenv.h"
-#include "runner.h"
-#include "sync_api.h"
 #include "providers.h"
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace onnxruntime;
 
@@ -36,8 +35,8 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
-      "'openvino', 'nuphar', 'migraphx', 'acl' or 'armnn'. "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
+      "'openvino', 'nuphar', 'migraphx', 'acl', 'armnn', 'nnapi' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -94,12 +93,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
   bool enable_dnnl = false;
-  bool enable_ngraph = false;
   bool enable_openvino = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_nnapi = false;
+  bool enable_coreml = false;
   bool enable_dml = false;
   bool enable_acl = false;
   bool enable_armnn = false;
@@ -107,6 +106,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
+  bool set_denormal_as_zero = false;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
@@ -114,7 +114,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:p"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:pz"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -158,8 +158,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_cuda = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
             enable_dnnl = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
-            enable_ngraph = true;
           } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
             enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
@@ -168,6 +166,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_tensorrt = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
+            enable_coreml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
             enable_dml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
@@ -222,6 +222,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             return -1;
           }
           break;
+        case 'z':
+          set_denormal_as_zero = true;
+          break;
         case '?':
         case 'h':
         default:
@@ -254,14 +257,23 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   if (pause) {
     printf("Enter to continue...\n");
     fflush(stdout);
-    getchar();
+    (void)getchar();
   }
 
-  try {
-    env = Ort::Env{logging_level, "Default"};
-  } catch (std::exception& ex) {
-    fprintf(stderr, "Error creating environment: %s \n", ex.what());
-    return -1;
+  {
+    bool failed = false;
+    ORT_TRY {
+      env = Ort::Env{logging_level, "Default"};
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        fprintf(stderr, "Error creating environment: %s \n", ex.what());
+        failed = true;
+      });
+    }
+
+    if (failed)
+      return -1;
   }
 
   std::vector<std::basic_string<PATH_CHAR_TYPE>> data_dirs;
@@ -289,11 +301,27 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     else
       sf.DisableMemPattern();
     sf.SetExecutionMode(execution_mode);
+    if (set_denormal_as_zero)
+      sf.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      OrtTensorRTProviderOptions tensorrt_options{
+          0,
+          0,
+          nullptr};
+
+      OrtCUDAProviderOptions cuda_options{
+          0,
+          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+          std::numeric_limits<size_t>::max(),
+          0,
+          true,
+          0,
+          nullptr};
+
+      sf.AppendExecutionProvider_TensorRT(tensorrt_options);
+      sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -303,20 +331,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_OPENVINO
       //Setting default optimization level for OpenVINO can be overriden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-      if (p_models != 1) {
-        fprintf(stderr, "OpenVINO doesn't support more than 1 model running simultaneously default value of 1 will be set \n");
-        p_models = 1;
-      }
-      if (concurrent_session_runs != 1) {
-        fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
-        concurrent_session_runs = 1;
-      }
-      if (execution_mode == ExecutionMode::ORT_PARALLEL) {
-        fprintf(stderr, "OpenVINO doesn't support parallel executor switching to sequential executor\n");
-        sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
-      }
-
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, ""));
+      sf.AppendExecutionProvider_OpenVINO(OrtOpenVINOProviderOptions{});
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
@@ -324,7 +339,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      OrtCUDAProviderOptions cuda_options{
+          0,
+          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+          std::numeric_limits<size_t>::max(),
+          0,
+          true,
+          0,
+          nullptr};
+      sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
@@ -346,19 +369,19 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_ngraph) {  // TODO: Re-order the priority?
-#ifdef USE_NGRAPH
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
+    if (enable_nnapi) {
+#ifdef USE_NNAPI
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf, 0));
 #else
-      fprintf(stderr, "nGraph is not supported in this build");
+      fprintf(stderr, "NNAPI is not supported in this build");
       return -1;
 #endif
     }
-    if (enable_nnapi) {
-#ifdef USE_NNAPI
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
+    if (enable_coreml) {
+#ifdef USE_COREML
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sf, 0));
 #else
-      fprintf(stderr, "NNAPI is not supported in this build");
+      fprintf(stderr, "CoreML is not supported in this build");
       return -1;
 #endif
     }
@@ -472,7 +495,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
     std::vector<ITestCase*> tests;
-
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
@@ -480,9 +502,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv args(tests, stat, env, sf);
-    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
-                         GetDefaultThreadPool(Env::Default()));
+    TestEnv test_env(env, sf, TestEnv::GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
@@ -549,6 +570,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
       {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
       {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
+      {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
   };
 
 #ifdef DISABLE_ML_OPS
@@ -565,29 +587,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
   }
 #endif
-
-  if (enable_ngraph) {
-    broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-    broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
-    broken_tests.insert({"clip", "not implemented yet for opset 11"});
-    broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
-    broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
-    broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
-    broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
-    broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
-    broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
-    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
-  }
 
   if (enable_openvino) {
     broken_tests.insert({"operator_permute2", "Disabled temporariliy"});
@@ -794,7 +793,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
     broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
     broken_tests.insert({"split_zero_size_splits", "alloc failed"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
   }
 
   if (enable_dml) {
@@ -921,12 +919,16 @@ int main(int argc, char* argv[]) {
 #endif
   Ort::Env env{nullptr};
   int retval = -1;
-  try {
+  ORT_TRY {
     retval = real_main(argc, argv, env);
-  } catch (std::exception& ex) {
-    fprintf(stderr, "%s\n", ex.what());
-    retval = -1;
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      fprintf(stderr, "%s\n", ex.what());
+      retval = -1;
+    });
+  }
+
   ::google::protobuf::ShutdownProtobufLibrary();
   return retval;
 }

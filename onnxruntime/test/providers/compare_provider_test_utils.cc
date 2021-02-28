@@ -20,8 +20,6 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultCudaExecutionProvider();
   else if (provider_type == onnxruntime::kDnnlExecutionProvider)
     execution_provider = DefaultDnnlExecutionProvider();
-  else if (provider_type == onnxruntime::kNGraphExecutionProvider)
-    execution_provider = DefaultNGraphExecutionProvider();
   else if (provider_type == onnxruntime::kNupharExecutionProvider)
     execution_provider = DefaultNupharExecutionProvider();
   else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
@@ -32,6 +30,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultNnapiExecutionProvider();
   else if (provider_type == onnxruntime::kAclExecutionProvider)
     execution_provider = DefaultAclExecutionProvider();
+  else if (provider_type == onnxruntime::kRocmExecutionProvider)
+    execution_provider = DefaultRocmExecutionProvider();
   // skip if execution provider is disabled
   if (execution_provider == nullptr) {
     return nullptr;

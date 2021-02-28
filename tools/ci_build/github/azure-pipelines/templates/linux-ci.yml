@@ -1,13 +1,15 @@
 parameters:
-  AgentPool : 'Linux-CPU'
+  AgentPool : 'Linux-CPU-2019'
   JobName : 'Linux_CI_Dev'
   SubmoduleCheckoutMode: ''
-  BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
+  RunDockerBuildArgs: '-o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--build_wheel"'
   DoNodejsPack: 'false'
   DoNugetPack: 'false'
   NuPackScript: ''
   ArtifactName: 'drop-linux'
   TimeoutInMinutes: 120
+  # Controls whether unreleased onnx opsets are allowed. Default is set to 1
+  AllowReleasedOpsetOnly: '1' 
   # to inject strategy, you need to pass in the whole yaml structure - 
   # https://docs.microsoft.com/en-us/azure/devops/pipelines/yaml-schema?view=azure-devops&tabs=schema#strategies
   # see example in orttraining-linux-gpu-ci-pipeline.yml
@@ -18,6 +20,8 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes:  ${{ parameters.TimeoutInMinutes }}
+  variables:
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
   pool: ${{ parameters.AgentPool }}
   ${{ if ne(parameters.Strategy, '') }}:
     strategy:
@@ -26,12 +30,12 @@ jobs:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
         submodules: ${{ parameters.SubmoduleCheckoutMode }}
-    - template: linux-set-variables-and-download.yml
     - task: NodeTool@0
       inputs:
         versionSpec: '12.16.3'
-    - script: ${{ parameters.BuildCommand }}
-      displayName: 'Command Line Script'
+    - template: run-docker-build-steps.yml
+      parameters:
+        RunDockerBuildArgs: '${{ parameters.RunDockerBuildArgs }}'
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
       inputs:

@@ -30,7 +30,7 @@ struct PrepareContext {
   const float* iou_threshold_ = nullptr;
   int64_t num_batches_ = 0;
   int64_t num_classes_ = 0;
-  int64_t num_boxes_ = 0;
+  int num_boxes_ = 0;
 };
 
 struct SelectedIndex {

@@ -9,7 +9,7 @@ def parse_arguments():
     parser.add_argument("--output", required=True, help="output file")
     parser.add_argument("--output_source", required=True, help="output file")
     parser.add_argument("--version_file", required=True, help="VERSION_NUMBER file")
-    parser.add_argument("--style", required=True, choices=["gcc", "vc"])
+    parser.add_argument("--style", required=True, choices=["gcc", "vc", "xcode"])
     parser.add_argument("--config", required=True, nargs="+")
     return parser.parse_args()
 
@@ -38,6 +38,8 @@ with open(args.output, 'w') as file:
     if args.style == 'vc':
         file.write('LIBRARY "onnxruntime.dll"\n')
         file.write('EXPORTS\n')
+    elif args.style == 'xcode':
+        pass    # xcode compile don't has any header.
     else:
         file.write('VERS_%s {\n' % VERSION_STRING)
         file.write(' global:\n')
@@ -45,6 +47,8 @@ with open(args.output, 'w') as file:
     for symbol in symbols:
         if args.style == 'vc':
             file.write(" %s @%d\n" % (symbol, symbol_index))
+        elif args.style == 'xcode':
+            file.write("_%s\n" % symbol)
         else:
             file.write("  %s;\n" % symbol)
         symbol_index += 1

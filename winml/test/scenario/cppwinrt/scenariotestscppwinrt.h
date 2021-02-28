@@ -40,6 +40,10 @@ struct ScenarioTestsApi
     VoidTest DeviceLostRecovery;
     VoidTest Scenario8SetDeviceSampleD3D11Device;
     VoidTest D2DInterop;
+    VoidTest BindMultipleCPUBuffersInputsOnCpu;
+    VoidTest BindMultipleCPUBuffersInputsOnGpu;
+    VoidTest BindMultipleCPUBuffersOutputsOnCpu;
+    VoidTest BindMultipleCPUBuffersOutputsOnGpu;
 };
 const ScenarioTestsApi& getapi();
 
@@ -81,4 +85,8 @@ WINML_TEST(ScenarioCppWinrtTests, DeviceLostRecovery)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleD3D11Device)
 WINML_TEST(ScenarioCppWinrtTests, D2DInterop)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleMyCameraDevice)
+WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersInputsOnCpu)
+WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersInputsOnGpu)
+WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersOutputsOnCpu)
+WINML_TEST(ScenarioCppWinrtTests, BindMultipleCPUBuffersOutputsOnGpu)
 WINML_TEST_CLASS_END()

@@ -5,12 +5,12 @@
 
 namespace onnxruntime {
 namespace test {
-void OrtRunCallback(OrtCallback* f) noexcept {
-  if (f == nullptr) return;
-  if (f->f != nullptr) {
-    f->f(f->param);
-    delete f;
+
+void OrtCallback::Run() noexcept {
+  if (f != nullptr) {
+    f(param);
   }
 }
+
 }  // namespace test
 }  // namespace onnxruntime

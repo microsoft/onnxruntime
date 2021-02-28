@@ -108,7 +108,14 @@ public:
                 if (hasOutputIndices || hasDilations)
                 {
                     DML_MAX_POOLING2_OPERATOR_DESC desc = {};
-                    desc.OutputIndicesTensor = hasOutputIndices ? &outputDescs[1] : nullptr;
+
+                    if (hasOutputIndices)
+                    {
+                        DmlOperator::Remap64bitDmlDataTypesTo32bit();
+                        m_outputTensorDescs[1].ForceUnsignedDataType(); // MaxPool accepts uint32_t.
+                        desc.OutputIndicesTensor = &outputDescs[1];
+                    }
+
                     desc.Dilations = m_kernel.dilations;
                     SetOpDesc(desc);
                 }

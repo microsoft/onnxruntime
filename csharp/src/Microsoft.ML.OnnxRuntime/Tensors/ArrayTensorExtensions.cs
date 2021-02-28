@@ -14,6 +14,9 @@ using System;
 
 namespace Microsoft.ML.OnnxRuntime.Tensors
 {
+    /// <summary>
+    /// A static class that houses static DenseTensor<T> extension methods
+    /// </summary>
     public static class ArrayTensorExtensions
     {
         /// <summary>

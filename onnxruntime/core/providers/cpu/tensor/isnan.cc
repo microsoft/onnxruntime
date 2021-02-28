@@ -9,16 +9,28 @@
 
 namespace onnxruntime {
 // https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsNaN
-#define ADD_TYPED_ISNAN_OP(data_type)                                     \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                         \
+#define ADD_TYPED_ISNAN_OP_9(data_type)                                   \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                               \
       IsNaN,                                                              \
-      9,                                                                  \
+      9, 12,                                                              \
       data_type,                                                          \
       KernelDefBuilder()                                                  \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),     \
       IsNaN<data_type>);
 
+#define ADD_TYPED_ISNAN_OP(data_type)                                     \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                         \
+      IsNaN,                                                              \
+      13,                                                                 \
+      data_type,                                                          \
+      KernelDefBuilder()                                                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),     \
+      IsNaN<data_type>);
+
+ADD_TYPED_ISNAN_OP_9(float);
+ADD_TYPED_ISNAN_OP_9(MLFloat16);
 ADD_TYPED_ISNAN_OP(float);
 ADD_TYPED_ISNAN_OP(MLFloat16);
 
@@ -48,7 +60,10 @@ Status IsNaN<MLFloat16>::Compute(OpKernelContext* context) const {
   auto shape_size = dims.Size();
   auto& Y = *context->Output(0, dims);
 
-  EigenMap<bool>(Y) = ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(X_data)), shape_size).array().isNaN();
+  EigenMap<bool>(Y) =
+      ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(X_data)), shape_size)
+          .array()
+          .isNaN();
 
   return Status::OK();
 }

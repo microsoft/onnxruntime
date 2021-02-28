@@ -7,10 +7,21 @@
 namespace onnxruntime {
 namespace cuda {
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Size,
+    kOnnxDomain,
+    1, 12,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .OutputMemoryType<OrtMemTypeCPUInput>(0)
+        .TypeConstraint("T",  DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    Size);
+
 ONNX_OPERATOR_KERNEL_EX(
     Size,
     kOnnxDomain,
-    1,
+    13,
     kCudaExecutionProvider,
     KernelDefBuilder()
         // properly force CPU/GPU synch inside the kernel

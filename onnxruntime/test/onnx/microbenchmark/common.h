@@ -6,15 +6,19 @@
 #include <new>
 #include <random>
 
+#include "core/common/common.h"
+
 // aligned memory allocate and free functions
 inline void* aligned_alloc(size_t size, size_t align) {
   void* ptr;
 #if _MSC_VER
   ptr = _aligned_malloc(size, align);
-  if (ptr == nullptr) throw std::bad_alloc();
+  if (ptr == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
 #else
   int ret = posix_memalign(&ptr, align, size);
-  if (ret != 0) throw std::bad_alloc();
+  if (ret != 0)
+    ORT_THROW_EX(std::bad_alloc);
 #endif
   return ptr;
 }

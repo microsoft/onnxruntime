@@ -13,9 +13,11 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
+                                 bool skip_dequantize_linear,
                                  const std::unordered_set<std::string>& compatible_execution_providers,
                                  const std::unordered_set<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
+      skip_dequantize_linear_(skip_dequantize_linear),
       excluded_initializers_(excluded_initializers),
       execution_provider_(execution_provider) {
 }
@@ -66,6 +68,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
+    // avoid to constant fold DequantizeLinear for QDQ format
+    if (skip_dequantize_linear_ && node->OpType().compare("DequantizeLinear") == 0) {
+      continue;
+    }
+
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     // Updating a node may allow shape inferencing to infer output shapes of following nodes,
@@ -104,8 +111,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
 
       // Create execution frame for executing constant nodes.
-      // Create execution frame for executing constant nodes.
-      OptimizerExecutionFrame::Info info({node}, constant_inputs, execution_provider_);
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_);
 
       std::vector<int> fetch_mlvalue_idxs;
       for (const auto* node_out : node->OutputDefs()) {
@@ -175,6 +181,17 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     if (converted_to_constant) {
+      // Remove single-output node chain for inputs of the node
+      auto p_ip_node = node->InputNodesBegin();
+      const auto p_ip_node_end = node->InputNodesEnd();
+      while (p_ip_node != p_ip_node_end) {
+        const auto& input_node = *p_ip_node;
+        // Update the node iterator before removing the corresponding node because removing
+        // the node will invalidate the node iterator
+        ++p_ip_node;
+        graph_utils::RemoveNodesWithOneOutputBottomUp(graph, input_node);
+      }
+
       // Remove the output edges of the constant node and then remove the node itself.
       graph_utils::RemoveNodeOutputEdges(graph, *node);
       graph.RemoveNode(node->Index());

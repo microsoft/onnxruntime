@@ -39,6 +39,8 @@ class GraphTransformer {
   */
   common::Status Apply(Graph& graph, bool& modified, const logging::Logger& logger) const;
 
+  virtual bool ShouldOnlyApplyOnce() const { return false; }
+
  protected:
   /** Helper method to call ApplyImpl on any subgraphs in the Node. */
   common::Status Recurse(Node& node, bool& modified, int graph_level, const logging::Logger& logger) const {

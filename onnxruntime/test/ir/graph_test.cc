@@ -8,6 +8,8 @@
 #include "test/providers/provider_test_utils.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "onnx/defs/function.h"
+#include "core/graph/function_impl.h"
 
 #ifdef __GNUC__
 #define UNUSED __attribute__((unused))
@@ -98,8 +100,56 @@ static bool RegisterCustomSchemas() {
         fail_shape_inference("try harder");
       });
 
+  OPERATOR_SCHEMA(Fake_Sub)
+      .SinceVersion(1)
+      .SetDomain(kMSNchwcDomain)
+      .Input(0, "A", "First operand.", "T")
+      .Input(1, "B", "Second operand.", "T")
+      .Output(0, "C", "Result, has same element type as two inputs", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
+  // Fake Function Op where the domain for the Op itself and the Ops in the function body is not same.
+  // Function Op belongs to com.microsoft domain where as function body ops belong to onnx domain and nchwdomain.
+  OPERATOR_SCHEMA(Fake_FunctionOp)
+      .SetName("Fake_FunctionOp")
+      .SetDomain("com.microsoft")
+      .SinceVersion(1)
+      .SetDoc("Fake function operator")
+      .Input(0, "x", "Input tensor", "T1")
+      .Output(0, "y", "Quantized output tensor", "T2")
+      .Output(1, "y_scale", "Output scale. It's a scalar, which means a per-tensor/layer quantization.", "tensor(float)")
+      .Output(2, "y_zero_point", "Output zero point. It's a scalar, which means a per-tensor/layer quantization.", "T2")
+      .TypeConstraint("T1", {"tensor(float)"}, "Constrain 'x' to float tensor.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain 'y_zero_point' and 'y' to 8-bit unsigned integer tensor.")
+      .FunctionBody([]() {
+        auto nodes = ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes({// nodes: {outputs, op, inputs, attributes}
+                                                                     ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Min", 0.f),
+                                                                     ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Max", 255.f),
+                                                                     {{"X_Min"}, "ReduceMin", {"x"}, {ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))}},
+                                                                     {{"X_Max"}, "ReduceMax", {"x"}, {ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))}},
+                                                                     {{"X_Range"}, "Fake_Sub", {"X_Max", "X_Min"}},
+                                                                     {{"Scale"}, "Div", {"X_Range", "Q_Max"}},
+                                                                     {{"Initial_ZeroPoint_FP"}, "Sub", {"Q_Min", "X_Min"}},
+                                                                     {{"Clipped_ZeroPoint_FP"}, "Clip", {"Initial_ZeroPoint_FP", "Q_Min", "Q_Max"}},
+                                                                     {{"Rounded_ZeroPoint_FP"}, "Round", {"Clipped_ZeroPoint_FP"}},
+                                                                     {{"Zeropoint"}, "Cast", {"Initial_ZeroPoint_FP"}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t(2))}},
+                                                                     {{"y_scale"}, "Identity", {"Scale"}},
+                                                                     {{"y_zero_point"}, "Identity", {"Zeropoint"}},
+                                                                     {{"y"}, "QuantizeLinear", {"x", "Scale", "Zeropoint"}}});
+        for (auto& node : nodes) {
+          if (node.op_type() == "Fake_Sub") {
+            node.set_domain(kMSNchwcDomain);
+          }
+        }
+        return nodes;
+      }());
+
   return true;
 }
+
 static std::once_flag once;
 
 class GraphTest : public ::testing::Test {
@@ -144,6 +194,73 @@ static void ConstructASimpleAddGraph(GraphProto& g, const char* domain) {
   ValueInfoProto* output = g.add_output();
   output->set_name("sum");
   SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+}
+
+namespace sparse_details {
+const std::vector<int64_t> shape = {3, 4, 5};
+const std::vector<float> values = {13.f,
+                                   17.f,
+                                   19.f};
+
+const std::vector<int64_t> indices = {9, 30, 50};  // Not to exceed 59
+}  // namespace sparse_details
+
+// To match a simple Add graph above
+static void ConstructSparseTensor(const std::string& name,
+                                  SparseTensorProto& sparse_proto) {
+  const std::vector<int64_t>& shape = sparse_details::shape;
+  const std::vector<float>& values = sparse_details::values;
+
+  auto& m_values = *sparse_proto.mutable_values();
+  m_values.set_name(name);
+  m_values.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  *m_values.mutable_dims()->Add() = static_cast<int64_t>(values.size());
+  std::string& raw_data = *m_values.mutable_raw_data();
+  raw_data.resize(values.size() * sizeof(float));
+  auto dest_span = gsl::make_span<float>(reinterpret_cast<float*>(&raw_data[0]), values.size());
+  std::copy(values.cbegin(), values.cend(), dest_span.begin());
+
+  const std::vector<int64_t>& indices = sparse_details::indices;  // Not to exceed 59
+  auto& m_indicies = *sparse_proto.mutable_indices();
+  m_indicies.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  *m_indicies.mutable_dims()->Add() = static_cast<int64_t>(indices.size());
+  auto* m_indicies_data = m_indicies.mutable_int64_data();
+  m_indicies_data->Resize(static_cast<int>(indices.size()), 0);
+  std::copy(indices.cbegin(), indices.cend(), m_indicies_data->begin());
+
+  auto& m_dims = *sparse_proto.mutable_dims();
+  m_dims.Resize(static_cast<int>(shape.size()), 0);
+  std::copy(shape.cbegin(), shape.cend(), m_dims.begin());
+}
+
+static void ValidateSparseTensorProto(const SparseTensorProto& proto) {
+  // check values. We always generate float
+  EXPECT_EQ(proto.values().data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  EXPECT_EQ(proto.values().raw_data().size() % sizeof(float), 0U);
+  auto actual_values = gsl::make_span<const float>(reinterpret_cast<const float*>(proto.values().raw_data().data()),
+                                                   proto.values().raw_data().size() / sizeof(float));
+  // Can't use ContainerEq on float
+  EXPECT_EQ(actual_values.size(), sparse_details::values.size());
+  // std::equal() with a predicate is only in C++20
+  auto actual_begin = actual_values.cbegin();
+  const auto actual_end = actual_values.cend();
+  auto expected_begin = sparse_details::values.cbegin();
+  while (actual_begin != actual_end) {
+    auto diff = *actual_begin - *expected_begin;
+    EXPECT_TRUE(diff < std::numeric_limits<float>::epsilon()) << "Actual :" << *actual_begin << " does not match expected: " << *expected_begin;
+    ++actual_begin;
+    ++expected_begin;
+  }
+  // Check indices
+  EXPECT_EQ(proto.indices().data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  auto expected_indices = gsl::make_span(sparse_details::indices);
+  auto actual_indices = gsl::make_span<const int64_t>(proto.indices().int64_data().data(), proto.indices().int64_data_size());
+  EXPECT_THAT(actual_indices, testing::ContainerEq(expected_indices));
+  // check shape
+  const auto& dims = proto.dims();
+  auto actual_shape = gsl::make_span<const int64_t>(dims.data(), dims.size());
+  auto expected_shape = gsl::make_span(sparse_details::shape);
+  EXPECT_THAT(actual_shape, testing::ContainerEq(expected_shape));
 }
 
 TEST_F(GraphTest, SimpleAddWithoutDomain) {
@@ -231,12 +348,12 @@ TEST_F(GraphTest, SimpleUnique) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
-  
+
 TEST_F(GraphTest, UnusedValueInfoSerializes) {
   ModelProto m;
   m.set_ir_version(4);
   ImportOpset(m, "", 11);
-  GraphProto& g = *m.mutable_graph();   
+  GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
   *node->add_input() = "x";
   *node->add_output() = "sum";
@@ -326,6 +443,43 @@ TEST_F(GraphTest, LocalCustomRegistry) {
   Status st;
   std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, &regs, *logger_));
+}
+
+// Tests the case where function op and function body ops belong to different domains.
+// Tests that such a model can be loaded successfully, function body initialization is 
+// successful and domain and verison mapping for each node is successful (by verifying 
+// op schema for each of the function body nodes can be found).
+TEST_F(GraphTest, FunctionOpsetImportTest) {
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/function_opset_test.onnx"), model, {},
+                               *logger_));
+  auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
+  const auto& graph = model->MainGraph();
+  for (const auto& node : graph.Nodes()) {
+    const auto schema = schema_registry->GetSchema(node.OpType(), node.SinceVersion(), node.Domain());
+    auto func_ptr = node.GetFunctionBody();
+    if (func_ptr == nullptr) {
+      // If Op Schema has function body then func_ptr cannot be nullptr
+      // This is because we construct function body during graph resolve.
+      // However in future if we move the function initialization in the graph partitioning
+      // phase .i.e. Init function body only if none of EPs have a kernel matching the function op
+      // then this check will not hold true and should be removed.
+      ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());
+      continue;
+    }
+    const auto& function_op_schema = func_ptr->OpSchema();
+    ASSERT_TRUE(function_op_schema.domain() == node.Domain());
+
+    const auto& domain_version_map = func_ptr->Body().DomainToVersionMap();
+    // validate schema for each node in the function body can be found
+    for (auto& n : func_ptr->Body().Nodes()) {
+      auto it = domain_version_map.find(n.Domain());
+      ASSERT_TRUE(it != domain_version_map.end());
+      auto domain_version = it->second;
+      const auto op_schema = schema_registry->GetSchema(n.OpType(), domain_version, n.Domain());
+      ASSERT_TRUE(op_schema != nullptr);
+    }
+  }
 }
 
 TEST_F(GraphTest, LocalCustomRegistryWrongOpsetImportVersion) {
@@ -633,9 +787,6 @@ TEST_F(GraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
   //                 node_5 (Merge)
   //                     |
 
-  std::unordered_map<std::string, std::pair<std::vector<NodeArg*>, std::vector<NodeArg*>>>
-      expected_node_name_to_input_output_args;
-
   TypeProto tensor_int32;
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
@@ -655,29 +806,24 @@ TEST_F(GraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
 
   inputs.push_back(&input_arg1);
   outputs.push_back(&output_arg1);
-  expected_node_name_to_input_output_args["node_1"] = {inputs, outputs};
   graph.AddNode("node_1", "Identity_Fake", "node 1", inputs, outputs);
 
   inputs[0] = &input_arg2;
   outputs[0] = &output_arg2;
-  expected_node_name_to_input_output_args["node_2"] = {inputs, outputs};
   graph.AddNode("node_2", "Identity_Fake", "node 2", inputs, outputs);
 
   inputs[0] = &output_arg2;
   outputs[0] = &output_arg3;
-  expected_node_name_to_input_output_args["node_3"] = {inputs, outputs};
   graph.AddNode("node_3", "Identity_Fake", "node 3", inputs, outputs);
 
   inputs[0] = &output_arg1;
   outputs[0] = &output_arg4;
-  expected_node_name_to_input_output_args["node_4"] = {inputs, outputs};
   graph.AddNode("node_4", "Identity_Fake", "node 4", inputs, outputs);
 
   inputs.resize(2);
   inputs[0] = &output_arg4;
   inputs[1] = &output_arg3;
   outputs[0] = &output_arg5;
-  expected_node_name_to_input_output_args["node_5"] = {inputs, outputs};
   graph.AddNode("node_5", "Merge_Fake", "node 3", inputs, outputs);
 
   auto status = graph.Resolve();
@@ -696,6 +842,223 @@ TEST_F(GraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
     } else if (node->Name() == "node_2") {
       EXPECT_TRUE(seen1) << "node_1 should be before node_2 after the topological sort.";
       seen2 = true;
+    }
+  }
+}
+
+TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompress) {
+  Model model("graph_1", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  /*
+                          |
+                  node_0 (Identity)
+                      /      \
+        node_1 (Identity)   compress (pri = LOCAL_HIGH)
+                    |         |
+        node_4 (Identity)  decompress (pri = LOCAL_LOW)
+                      \       /
+                      node_5 (Merge)
+                          |                   
+  */
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_arg0 = graph.GetOrCreateNodeArg("node_0_in_1", &tensor_int32);
+  auto& output_arg0 = graph.GetOrCreateNodeArg("node_0_out_1", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
+  auto& output_arg2 = graph.GetOrCreateNodeArg("node_2_out_1", &tensor_int32);
+  auto& output_arg3 = graph.GetOrCreateNodeArg("node_3_out_1", &tensor_int32);
+  auto& output_arg4 = graph.GetOrCreateNodeArg("node_4_out_1", &tensor_int32);
+  auto& output_arg5 = graph.GetOrCreateNodeArg("node_5_out_1", &tensor_int32);
+
+  graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
+  graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
+
+  auto& compress_node = graph.AddNode("compress", "Identity_Fake", "compress node", {&output_arg0}, {&output_arg2});
+  compress_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_HIGH));
+
+  auto& decompress_node = graph.AddNode("decompress", "Identity_Fake", "decompress node", {&output_arg2}, {&output_arg3});
+  decompress_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+
+  graph.AddNode("node_4", "Identity_Fake", "node 4", {&output_arg1}, {&output_arg4});
+  graph.AddNode("node_5", "Merge_Fake", "node 3", {&output_arg4, &output_arg3}, {&output_arg5});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  GraphViewer graph_viewer(graph);
+
+  // PRIORITY_BASED order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+    const std::vector<std::string> expected_priority_based_order =
+        {"node_0", "compress", "node_1", "node_4", "decompress", "node_5"};
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "Priority based execution order is wrong.";
+    }
+  }
+
+  // TOPOLOGICAL order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
+    const std::vector<std::string> expected_topological_order = {
+        "node_0", "node_1", "node_4", "compress", "decompress", "node_5"};
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_topological_order[i]) << "Priority based execution order is wrong.";
+    }
+  }
+}
+
+TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
+  Model model("graph_1", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  /*
+                         |
+                  node_0 (Identity)
+                     /       \
+        node_1 (Identity)  recompute_node_1 (pri = LOCAL_LOW)
+                    |         |
+        node_4 (Identity)     |
+                     \       /           
+               node_1_grad (Merge)
+                        |
+  */
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_arg0 = graph.GetOrCreateNodeArg("node_0_in_1", &tensor_int32);
+  auto& output_arg0 = graph.GetOrCreateNodeArg("node_0_out_1", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
+  auto& output_arg2 = graph.GetOrCreateNodeArg("node_2_out_1", &tensor_int32);
+  auto& output_arg4 = graph.GetOrCreateNodeArg("node_4_out_1", &tensor_int32);
+  auto& output_arg5 = graph.GetOrCreateNodeArg("node_5_out_1", &tensor_int32);
+
+  graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
+  graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
+
+  auto& recompute_node = graph.AddNode("recompute_node_1", "Identity_Fake", "recompute node 1", {&output_arg0}, {&output_arg2});
+  recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+
+  graph.AddNode("node_4", "Identity_Fake", "node 4", {&output_arg1}, {&output_arg4});
+  graph.AddNode("node_1_grad", "Merge_Fake", "node_1 gradient", {&output_arg4, &output_arg2}, {&output_arg5});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  GraphViewer graph_viewer(graph);
+
+  // PRIORITY_BASED order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+    const std::vector<std::string> expected_priority_based_order =
+        {"node_0", "node_1", "node_4", "recompute_node_1", "node_1_grad"};
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "Priority based execution order is wrong.";
+    }
+  }
+}
+
+TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_MultiLayerRecompute) {
+  Model model("graph_1", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  /*
+                         |
+                  node_0 (Identity)
+                     /            \
+            node_1 (Identity)       \
+                    |        \        \
+           node_2 (Identity)   \        \
+                    |      \     \        \
+        node_3 (Identity)   \      \        \
+                    |    \   \       \        \
+          loss (Identity) \   \        \        \
+                    |     |    \         \        \
+             1            |     |         \        \
+               \         /      |          \        | 
+                loss_grad  recom_node_3    |        |
+                     \         /           |        |
+                     node_3_grad      recom_node_2  |
+                            \          /            |
+                             node_2_grad       recom_node_1
+                                   \           /
+                                    node_1_grad
+                                         |
+  */
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // FW graph
+  auto& input_arg0 = graph.GetOrCreateNodeArg("node_0_in", &tensor_int32);
+  auto& output_arg0 = graph.GetOrCreateNodeArg("node_0_out", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out", &tensor_int32);
+  auto& output_arg2 = graph.GetOrCreateNodeArg("node_2_out", &tensor_int32);
+  auto& output_arg3 = graph.GetOrCreateNodeArg("node_3_out", &tensor_int32);
+  auto& output_loss = graph.GetOrCreateNodeArg("loss_out", &tensor_int32);
+
+  graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
+  graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
+  graph.AddNode("node_2", "Identity_Fake", "node 2", {&output_arg1}, {&output_arg2});
+  graph.AddNode("node_3", "Identity_Fake", "node 3", {&output_arg2}, {&output_arg3});
+  graph.AddNode("loss", "Identity_Fake", "loss node", {&output_arg3}, {&output_loss});
+
+  // Recompute graph
+  auto& recomputed_arg3 = graph.GetOrCreateNodeArg("node_3_out_recomputed", &tensor_int32);
+  auto& recomputed_arg2 = graph.GetOrCreateNodeArg("node_2_out_recomputed", &tensor_int32);
+  auto& recomputed_arg1 = graph.GetOrCreateNodeArg("node_1_out_recomputed", &tensor_int32);
+
+  auto& recompute_node3 = graph.AddNode("node_3_recompute", "Identity_Fake", "node 3 recompute", {&output_arg2}, {&recomputed_arg3});
+  auto& recompute_node2 = graph.AddNode("node_2_recompute", "Identity_Fake", "node 2 recompute", {&output_arg1}, {&recomputed_arg2});
+  auto& recompute_node1 = graph.AddNode("node_1_recompute", "Identity_Fake", "node 1 recompute", {&output_arg0}, {&recomputed_arg1});
+  recompute_node3.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+  recompute_node2.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+  recompute_node1.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+
+  // BW Graph
+  auto& gradient_start = graph.GetOrCreateNodeArg("gradient_start", &tensor_int32);
+  auto& loss_grad_output = graph.GetOrCreateNodeArg("loss_grad_output", &tensor_int32);
+  auto& node_3_grad_output = graph.GetOrCreateNodeArg("node_3_grad_output", &tensor_int32);
+  auto& node_2_grad_output = graph.GetOrCreateNodeArg("node_2_grad_output", &tensor_int32);
+  auto& node_1_grad_output = graph.GetOrCreateNodeArg("node_1_grad_output", &tensor_int32);
+
+  graph.AddNode("loss_grad", "Merge_Fake", "loss gradient", {&gradient_start, &output_arg3}, {&loss_grad_output});
+  graph.AddNode("node_3_grad", "Merge_Fake", "node 3 gradient", {&loss_grad_output, &recomputed_arg3}, {&node_3_grad_output});
+  graph.AddNode("node_2_grad", "Merge_Fake", "node 2 gradient", {&node_3_grad_output, &recomputed_arg2}, {&node_2_grad_output});
+  graph.AddNode("node_1_grad", "Merge_Fake", "node 1 gradient", {&node_2_grad_output, &recomputed_arg1}, {&node_1_grad_output});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  GraphViewer graph_viewer(graph);
+
+  // PRIORITY_BASED order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+    const std::vector<std::string> expected_priority_based_order = {
+        "node_0",
+        "node_1",
+        "node_2",
+        "node_3",
+        "loss",
+        "loss_grad",
+        "node_3_recompute",
+        "node_3_grad",
+        "node_2_recompute",
+        "node_2_grad",
+        "node_1_recompute",
+        "node_1_grad",
+    };
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "Priority based execution order is wrong.";
     }
   }
 }
@@ -853,6 +1216,37 @@ TEST_F(GraphTest, UnusedInitializerIsIgnored) {
   status = graph2.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
+}
+
+TEST_F(GraphTest, UnusedSparseInitializerIsIgnored) {
+  std::string s1;
+  {
+    Model model("UnusedSparseInitializerIsIgnored", false, *logger_);
+    auto model_proto = model.ToProto();
+    auto* m_graph = model_proto.mutable_graph();
+    ConstructASimpleAddGraph(*m_graph, nullptr);
+    auto* m_sparse_initializer = m_graph->add_sparse_initializer();
+    ConstructSparseTensor("unused_sparse_initializer", *m_sparse_initializer);
+    model_proto.SerializeToString(&s1);
+  }
+
+  ModelProto model_proto_1;
+  const bool result = model_proto_1.ParseFromString(s1);
+  ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
+  ASSERT_EQ(model_proto_1.graph().initializer_size(), 0);
+  ASSERT_EQ(model_proto_1.graph().sparse_initializer_size(), 1);
+
+  std::shared_ptr<onnxruntime::Model> p_tmp_model;
+  auto x = onnxruntime::Model::Load(model_proto_1, p_tmp_model, nullptr, *logger_);
+  ASSERT_STATUS_OK(x);
+
+  auto& graph2 = p_tmp_model->MainGraph();
+  EXPECT_STATUS_OK(graph2.Resolve());
+  // Because the sparse initializer was unused, it was also removed
+  // from initializer as well as from sparse_initializer
+  ASSERT_TRUE(graph2.GetAllInitializedTensors().empty());
+  auto& graph_proto = graph2.ToGraphProto();
+  ASSERT_TRUE(graph_proto.sparse_initializer().empty());
 }
 
 TEST_F(GraphTest, GraphConstruction_CheckIsNotAcyclic) {
@@ -1316,6 +1710,57 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
   auto num_initializers = graph_proto_from_resolved_graph.initializer_size();
   ASSERT_EQ(num_initializers, 0) << "Expected unused initializers to be removed from proto. "
                                  << num_initializers << " remain.";
+}
+
+TEST_F(GraphTest, SparseInitializerHandling) {
+  const char* const input_initializer_name = "x";
+  Model model("SparseInitializerHandling", false, *logger_);
+  std::string s1;
+  // Create model proto with sparse initializer
+  {
+    auto model_proto = model.ToProto();
+    auto* m_graph = model_proto.mutable_graph();
+    ConstructASimpleAddGraph(*m_graph, nullptr);
+    auto* m_sparse_initializer = m_graph->add_sparse_initializer();
+    ConstructSparseTensor(input_initializer_name, *m_sparse_initializer);
+    model_proto.SerializeToString(&s1);
+  }
+
+  ModelProto model_proto_sparse;
+  const bool result = model_proto_sparse.ParseFromString(s1);
+  ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
+  {
+    auto& graph_proto = model_proto_sparse.graph();
+    ASSERT_EQ(graph_proto.initializer_size(), 0);
+    ASSERT_EQ(graph_proto.sparse_initializer_size(), 1);
+    ValidateSparseTensorProto(graph_proto.sparse_initializer().at(0));
+  }
+
+  std::shared_ptr<onnxruntime::Model> p_tmp_model;
+  auto x = onnxruntime::Model::Load(model_proto_sparse, p_tmp_model, nullptr, *logger_);
+
+  auto& graph2 = p_tmp_model->MainGraph();
+  EXPECT_STATUS_OK(graph2.Resolve());
+  // Sparse initializer got converted to dense and appears on the list of initializers
+  ASSERT_EQ(graph2.GetAllInitializedTensors().size(), 1U);
+  ASSERT_EQ(graph2.GetAllInitializedTensors().cbegin()->first.compare(input_initializer_name), 0);
+
+  auto& graph_proto = graph2.ToGraphProto();
+  // Got propagated to initializers list
+  ASSERT_EQ(graph_proto.initializer_size(), 1);
+  ASSERT_EQ(graph_proto.initializer().at(0).name().compare(input_initializer_name), 0);
+  // Got removed from sparse initializer list
+  ASSERT_EQ(graph_proto.sparse_initializer_size(), 0);
+
+  {
+    // Check that Model::ToProto() does not return sparse among the normal initializers
+    // but reconstitutes sparse initializer from dense. Thus, here we have dense initializer list empty
+    // but it appears to be in the sparse.
+    auto model_proto_get = p_tmp_model->ToProto();
+    ASSERT_EQ(model_proto_get.graph().initializer_size(), 0);
+    ASSERT_EQ(model_proto_get.graph().sparse_initializer_size(), 1);
+    ValidateSparseTensorProto(model_proto_get.graph().sparse_initializer().at(0));
+  }
 }
 
 TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {

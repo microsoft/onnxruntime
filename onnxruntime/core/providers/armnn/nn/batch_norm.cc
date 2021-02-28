@@ -24,7 +24,7 @@ template <typename T>
 thread_local std::map<OpKernel*, armnn::NetworkId> BatchNorm<T>::batchNormLayers;
 
 template <typename T>
-armnn::IRuntimePtr BatchNorm<T>::run = BatchNorm<T>::initRuntime();
+armnn::IRuntimePtr BatchNorm<T>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
 template <typename T>
 Status BatchNorm<T>::Compute(OpKernelContext* context) const {

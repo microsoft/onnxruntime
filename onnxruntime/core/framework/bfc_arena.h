@@ -20,13 +20,16 @@ limitations under the License.
 #include <mutex>
 #include <sstream>
 
+#include "onnxruntime_config.h"
+
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/common/safeint.h"
+
 #include "core/platform/ort_mutex.h"
 #include "core/framework/arena.h"
-#include "core/common/safeint.h"
-#include "onnxruntime_config.h"
+#include "core/framework/arena_extend_strategy.h"
 
 #if defined(PLATFORM_WINDOWS)
 #include <intrin.h>
@@ -38,11 +41,6 @@ namespace onnxruntime {
 #pragma GCC diagnostic ignored "-Wnull-dereference"
 #endif
 #endif
-
-enum class ArenaExtendStrategy : int32_t {
-  kNextPowerOfTwo = 0,
-  kSameAsRequested,
-};
 
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's
@@ -57,8 +55,9 @@ class BFCArena : public IArenaAllocator {
   static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
   static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1048576;
   static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
+  static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
 
-  BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
+  BFCArena(std::unique_ptr<IAllocator> resource_allocator,
            size_t total_memory,
            ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
            int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
@@ -432,7 +431,7 @@ class BFCArena : public IArenaAllocator {
   // The size of the current region allocation.
   SafeInt<size_t> curr_region_allocation_bytes_;
 
-  std::unique_ptr<IDeviceAllocator> device_allocator_;
+  std::unique_ptr<IAllocator> device_allocator_;
 
   mutable OrtMutex lock_;
 

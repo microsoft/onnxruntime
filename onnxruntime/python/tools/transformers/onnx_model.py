@@ -5,8 +5,10 @@
 
 from typing import List, Tuple
 import logging
+import os
 import sys
 import argparse
+from pathlib import Path
 import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
@@ -403,8 +405,17 @@ class OnnxModel:
         self.model.opset_import[0].version = original_opset_version
 
     def convert_model_float32_to_float16(self, cast_input_output=True):
-        """ Convert a graph to FLOAT16
+        """Convert a graph to FLOAT16. By default, we will keep data types of inputs and outputs.
+           For decoder model with past_key_values, it is recommended to set cast_input_output=False for better performance.
+        Args:
+            cast_input_output (bool, optional): keep data type of inputs and outputs, and add Cast nodes to convert float32 inputs to float16, and float16 to float32 for outputs. Defaults to True.
         """
+        from packaging.version import Version
+        import onnxconverter_common as oc
+        if Version(oc.__version__) > Version("1.7.0"):
+            self.model = oc.float16.convert_float_to_float16(self.model, keep_io_types=cast_input_output)
+            return
+
         graph = self.model.graph
         initializers = graph.initializer
 
@@ -660,6 +671,8 @@ class OnnxModel:
     def save_model_to_file(self, output_path, use_external_data_format=False):
         logger.info(f"Output model to {output_path}")
 
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
         if output_path.endswith(".json"):  # Output text for testing small model.
             assert isinstance(self.model, ModelProto)
             with open(output_path, "w") as out:
@@ -667,10 +680,12 @@ class OnnxModel:
         else:
             # Save model to external data, which is needed for model size > 2GB
             if use_external_data_format:
-                from pathlib import Path
+                data_file = str(Path(output_path).name + ".data")
+                if os.path.isfile(data_file):
+                    os.remove(data_file)
                 external_data_helper.convert_model_to_external_data(self.model,
                                                                     all_tensors_to_one_file=True,
-                                                                    location=Path(output_path).name + ".data")
+                                                                    location=data_file)
             save_model(self.model, output_path)
 
     def get_graph_inputs_excluding_initializers(self):

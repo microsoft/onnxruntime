@@ -186,11 +186,11 @@ def _parse_arguments():
                         help="enable Gelu/BiasGelu to FastGelu conversion")
     parser.set_defaults(enable_gelu_approximation=False)
 
-    parser.add_argument('--use_raw_attention_mask',
+    parser.add_argument('--use_mask_index',
                         required=False,
                         action='store_true',
-                        help="use raw attention mask instead of mask index in attention operator")
-    parser.set_defaults(use_raw_attention_mask=False)
+                        help="use mask index instead of raw attention mask in attention operator")
+    parser.set_defaults(use_mask_index=False)
 
     parser.add_argument('--no_attention_mask',
                         required=False,
@@ -213,6 +213,12 @@ def _parse_arguments():
                         choices=[0, 1, 2, 99],
                         default=0,
                         help="onnxruntime optimization level. 0 will disable onnxruntime.")
+
+    parser.add_argument('--use_external_data_format',
+                        required=False,
+                        action='store_true',
+                        help="use external data format")
+    parser.set_defaults(use_external_data_format=False)
 
     args = parser.parse_args()
 
@@ -237,8 +243,8 @@ def _get_optimization_options(args):
         optimization_options.enable_bias_gelu = False
     if args.enable_gelu_approximation:
         optimization_options.enable_gelu_approximation = True
-    if args.use_raw_attention_mask:
-        optimization_options.use_raw_attention_mask()
+    if args.use_mask_index:
+        optimization_options.use_raw_attention_mask(False)
     if args.no_attention_mask:
         optimization_options.disable_attention_mask()
 
@@ -303,8 +309,9 @@ def optimize_model(input,
         os.remove(temp_model_path)
         logger.debug("Remove tempoary model: {}".format(temp_model_path))
 
-    optimizer.model.producer_name = "onnxruntime_tools"
-    optimizer.model.producer_version = "1.4"
+    optimizer.model.producer_name = "onnxruntime.transformers"
+    from onnxruntime import __version__ as onnxruntime_version
+    optimizer.model.producer_version = onnxruntime_version
 
     return optimizer
 
@@ -320,6 +327,9 @@ def main():
     args = _parse_arguments()
 
     _setup_logger(args.verbose)
+
+    if os.path.realpath(args.input) == os.path.realpath(args.output):
+        logger.warning(f"Specified the same input and output path. Note that this may overwrite the original model")
 
     optimization_options = _get_optimization_options(args)
 
@@ -338,7 +348,7 @@ def main():
     if args.input_int32:
         optimizer.change_input_to_int32()
 
-    optimizer.save_model_to_file(args.output)
+    optimizer.save_model_to_file(args.output, args.use_external_data_format)
 
     if optimizer.is_fully_optimized():
         logger.info("The model has been fully optimized.")

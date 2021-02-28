@@ -52,32 +52,14 @@ from benchmark_helper import (create_onnxruntime_session, Precision, setup_logge
                               output_summary, output_fusion_statistics, inference_ort, inference_ort_with_io_binding,
                               allocateOutputBuffers)
 from quantize_helper import QuantizeHelper
-from onnx_exporter import create_onnxruntime_input, load_pretrained_model, export_onnx_model
+from onnx_exporter import create_onnxruntime_input, load_pretrained_model, export_onnx_model_from_pt, export_onnx_model_from_tf
 
 logger = logging.getLogger('')
 
-# List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
-# Pretrained model name to a tuple of input names, opset_version, use_external_data_format and optimization model type
-MODELS = {
-    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
-    "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, False, "bert"),
-    "roberta-base": (["input_ids", "attention_mask"], 11, False, "bert"),
+from huggingface_models import MODELS, MODEL_CLASSES
 
-    # No past state inputs for GPT models.
-    "gpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
-    "gpt2-large": (["input_ids"], 11, True, "gpt2"),  # Model>2GB. Need use_external_data_format=True to export it.
-    "distilgpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
+cpu_count = psutil.cpu_count(logical=False)
 
-    #"openai-gpt": (["input_ids"], 11, False, "gpt2"),  # no past state inputs
-
-    # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
-    "albert-base-v2": (["input_ids"], 12, False, "bert"),
-    #"xlnet-base-cased": (["input_ids"], 12, False, "bert"),
-
-    #"xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
-}
-
-cpu_count = psutil.cpu_count(logical=True)
 # Set OMP environment variable before importing onnxruntime or torch.
 if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
@@ -86,9 +68,9 @@ import torch
 from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model)
 
 
-def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengths, repeat_times, input_counts,
-                    optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite, disable_ort_io_binding,
-                    use_raw_attention_mask, thread_num, model_fusion_statistics):
+def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths,
+                    repeat_times, input_counts, optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite,
+                    disable_ort_io_binding, use_raw_attention_mask, model_fusion_statistics, model_source):
     import onnxruntime
 
     results = []
@@ -98,9 +80,6 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
         )
         return results
 
-    if (not use_gpu) and ('CUDAExecutionProvider' in onnxruntime.get_available_providers()):
-        logger.warning("Please install onnxruntime package instead of onnxruntime-gpu to get best cpu performance.")
-
     for model_name in model_names:
         all_input_names = MODELS[model_name][0]
         for num_inputs in input_counts:
@@ -109,23 +88,31 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
 
             input_names = all_input_names[:num_inputs]
 
-            with torch.no_grad():
-                onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model(
-                    model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], cache_dir,
-                    onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask,
-                    overwrite, model_fusion_statistics)
+            if 'pt' in model_source:
+                with torch.no_grad():
+                    onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_pt(
+                        model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
+                        cache_dir, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
+                        use_raw_attention_mask, overwrite, model_fusion_statistics)
+            if 'tf' in model_source:
+                onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_tf(
+                    model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
+                    cache_dir, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
+                    use_raw_attention_mask, overwrite, model_fusion_statistics)
+
             if not is_valid_onnx_model:
                 continue
 
             ort_session = create_onnxruntime_session(onnx_model_file,
                                                      use_gpu,
                                                      enable_all_optimization=True,
-                                                     num_threads=thread_num)
+                                                     num_threads=num_threads,
+                                                     verbose=verbose)
             if ort_session is None:
                 continue
 
             ort_output_names = [node_arg.name for node_arg in ort_session.get_outputs()]
-            output_buffers = {"last_state": None, "pooler": None}
+            output_buffers = []
             device = "cuda" if use_gpu else "cpu"
             config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
             max_last_state_size = numpy.prod(
@@ -139,7 +126,9 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
                     if max_sequence_length is not None and sequence_length > max_sequence_length:
                         continue
 
-                    ort_inputs = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names)
+                    input_value_type = numpy.int64 if 'pt' in model_source else numpy.int32
+                    ort_inputs = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names,
+                                                          input_value_type)
 
                     result_template = {
                         "engine": "onnxruntime",
@@ -147,35 +136,43 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
                         "device": device,
                         "optimizer": optimize_onnx,
                         "precision": precision,
-                        "io_binding": False,
+                        "io_binding": not disable_ort_io_binding,
                         "model_name": model_name,
                         "inputs": num_inputs,
+                        "threads": num_threads,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
                         "datetime": str(datetime.now()),
                     }
+
                     logger.info("Run onnxruntime on {} with input shape {}".format(model_name,
                                                                                    [batch_size, sequence_length]))
-                    result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size)
-                    logger.info(result)
-                    results.append(result)
 
-                    if not disable_ort_io_binding:
-                        logger.info("Run onnxruntime with io binding on {} with input shape {}".format(
-                            model_name, [batch_size, sequence_length]))
+                    if disable_ort_io_binding:
+                        result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size)
+                    else:
                         # Get output sizes from a dummy ort run
                         ort_outputs = ort_session.run(ort_output_names, ort_inputs)
+                        output_buffer_max_sizes = [max_last_state_size]
+                        for i in range(len(ort_outputs)):
+                            if i == 2 and MODELS[model_name][3] == "gpt":
+                                # past state output max size
+                                output_buffer_max_sizes.append(max_pooler_size)
+                            else:
+                                output_buffer_max_sizes.append(max_last_state_size)
+
+                        data_type = numpy.longlong if 'pt' in model_source else numpy.intc
                         result = inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times,
                                                                ort_output_names, ort_outputs, output_buffers,
-                                                               max_last_state_size, max_pooler_size, batch_size, device)
-                        logger.info(result)
-                        results.append(result)
+                                                               output_buffer_max_sizes, batch_size, device, data_type)
+                    logger.info(result)
+                    results.append(result)
 
     return results
 
 
-def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, repeat_times, torchscript, cache_dir,
-                verbose):
+def run_pytorch(use_gpu, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths, repeat_times,
+                torchscript, cache_dir, verbose):
     results = []
     if use_gpu and not torch.cuda.is_available():
         logger.error("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
@@ -185,9 +182,12 @@ def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, 
 
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, torchscript=torchscript, cache_dir=cache_dir)
-        model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
+        model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-        max_input_size = tokenizer.max_model_input_sizes[model_name]
+
+        max_input_size = tokenizer.max_model_input_sizes[
+            model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+
         logger.debug(f"Model {model}")
         logger.debug(f"Number of parameters {model.num_parameters()}")
 
@@ -229,6 +229,7 @@ def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, 
                         "io_binding": "",
                         "model_name": model_name,
                         "inputs": 1,
+                        "threads": num_threads,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
                         "datetime": str(datetime.now()),
@@ -239,6 +240,129 @@ def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, 
                 except RuntimeError as e:
                     logger.exception(e)
                     torch.cuda.empty_cache()
+
+    return results
+
+
+def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
+    import tensorflow as tf
+    from functools import wraps
+
+    def run_func(func):
+        @wraps(func)
+        def run_in_eager_mode(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        @wraps(func)
+        @tf.function(experimental_compile=use_xla)
+        def run_in_graph_mode(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        if do_eager_mode is True:
+            assert (
+                use_xla is False
+            ), "Cannot run model in XLA, if `args.eager_mode` is set to `True`. Please set `args.eager_mode=False`."
+            return run_in_eager_mode
+        else:
+            return run_in_graph_mode
+
+    return run_func
+
+
+def run_tensorflow(use_gpu, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths,
+                   repeat_times, cache_dir, verbose):
+    results = []
+
+    import tensorflow as tf
+    tf.config.threading.set_intra_op_parallelism_threads(num_threads)
+
+    if not use_gpu:
+        tf.config.set_visible_devices([], 'GPU')
+
+    if use_gpu and not tf.test.is_built_with_cuda():
+        logger.error("Please install Tensorflow-gpu, and use a machine with GPU for testing gpu performance.")
+        return results
+
+    if use_gpu:  # Restrict TensorFlow to only use the first GPU
+        physical_devices = tf.config.list_physical_devices('GPU')
+        try:
+            tf.config.set_visible_devices(physical_devices[0], 'GPU')
+            tf.config.experimental.set_memory_growth(physical_devices[0], True)
+            tf.distribute.OneDeviceStrategy(device='/gpu:0')
+        except RuntimeError as e:
+            logger.exception(e)
+
+    if precision == Precision.FLOAT16 or precision == Precision.INT8:
+        raise NotImplementedError("Mixed precision is currently not supported.")
+
+    for model_name in model_names:
+        config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
+
+        model = load_pretrained_model(model_name,
+                                      config=config,
+                                      cache_dir=cache_dir,
+                                      custom_model_class=model_class,
+                                      is_tf_model=True)
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+
+        max_input_size = tokenizer.max_model_input_sizes[
+            model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+
+        for batch_size in batch_sizes:
+            if batch_size <= 0:
+                continue
+
+            for sequence_length in sequence_lengths:
+                if max_input_size is not None and sequence_length > max_input_size:
+                    continue
+
+                logger.info("Run Tensorflow on {} with input shape {}".format(model_name,
+                                                                              [batch_size, sequence_length]))
+
+                import random
+                rng = random.Random()
+                values = [rng.randint(0, config.vocab_size - 1) for i in range(batch_size * sequence_length)]
+                input_ids = tf.constant(values, shape=(batch_size, sequence_length), dtype=tf.int32)
+
+                try:
+                    # Disable both for better inference perf
+                    @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
+                    def encoder_forward():
+                        return model(input_ids, training=False)
+
+                    @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
+                    def encoder_decoder_forward():
+                        return model(input_ids, decoder_input_ids=input_ids, training=False)
+
+                    inference = encoder_decoder_forward if config.is_encoder_decoder else encoder_forward
+
+                    inference()
+
+                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)
+
+                    result = {
+                        "engine": "tensorflow",
+                        "version": tf.__version__,
+                        "device": "cuda" if use_gpu else "cpu",
+                        "optimizer": "",
+                        "precision": precision,
+                        "io_binding": "",
+                        "model_name": model_name,
+                        "inputs": 1,
+                        "threads": num_threads,
+                        "batch_size": batch_size,
+                        "sequence_length": sequence_length,
+                        "datetime": str(datetime.now()),
+                    }
+                    result.update(get_latency_result(runtimes, batch_size))
+                    logger.info(result)
+                    results.append(result)
+                except RuntimeError as e:
+                    logger.exception(e)
+                    from numba import cuda
+                    device = cuda.get_current_device()
+                    device.reset()
 
     return results
 
@@ -255,13 +379,28 @@ def parse_arguments():
                         choices=list(MODELS.keys()),
                         help="Pre-trained models in the list: " + ", ".join(MODELS.keys()))
 
+    parser.add_argument("--model_source",
+                        required=False,
+                        nargs=1,
+                        type=str,
+                        default='pt',
+                        choices=['pt', 'tf'],
+                        help="Export onnx from pt or tf")
+
+    parser.add_argument('--model_class',
+                        required=False,
+                        type=str,
+                        default=None,
+                        choices=list(MODEL_CLASSES),
+                        help='Model type selected in the list: ' + ', '.join(MODEL_CLASSES))
+
     parser.add_argument("-e",
                         "--engines",
                         required=False,
                         nargs="+",
                         type=str,
                         default=['onnxruntime'],
-                        choices=['onnxruntime', 'torch', 'torchscript'],
+                        choices=['onnxruntime', 'torch', 'torchscript', 'tensorflow'],
                         help="Engines to benchmark")
 
     parser.add_argument("-c",
@@ -335,13 +474,7 @@ def parse_arguments():
                         help='Disable running ONNX Runtime with binded inputs and outputs. ')
     parser.set_defaults(disable_ort_io_binding=False)
 
-    parser.add_argument('--use_raw_attention_mask',
-                        required=False,
-                        action='store_true',
-                        help='Use raw attention mask in Attention operator for Bert models.')
-    parser.set_defaults(use_raw_attention_mask=False)
-
-    parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
+    parser.add_argument("-n", "--num_threads", required=False, nargs="+", type=int, default=[0], help="Threads to use")
 
     args = parser.parse_args()
     return args
@@ -360,6 +493,8 @@ def main():
         logger.error("int8 is for CPU only")
         return
 
+    args.num_threads = sorted(set(cpu_count if x <= 0 else x for x in args.num_threads))
+
     logger.info(f"Arguments: {args}")
 
     if not os.path.exists(args.cache_dir):
@@ -371,34 +506,43 @@ def main():
     enable_torch = "torch" in args.engines
     enable_torchscript = "torchscript" in args.engines
     enable_onnxruntime = "onnxruntime" in args.engines
+    enable_tensorflow = "tensorflow" in args.engines
 
     results = []
 
-    torch.set_num_threads(cpu_count if args.thread_num <= 0 else args.thread_num)
-    logger.debug(torch.__config__.parallel_info())
+    for num_threads in args.num_threads:
+        torch.set_num_threads(num_threads)
+        logger.debug(torch.__config__.parallel_info())
+        if enable_torch or enable_torchscript:
+            if args.input_counts != [1]:
+                logger.warning("--input_counts is not implemented for torch or torchscript engine.")
 
-    if enable_torch or enable_torchscript:
-        if args.input_counts != [1]:
-            logger.warning("--input_counts is not implemented for torch or torchscript engine.")
+            if enable_torchscript:
+                results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                                       args.batch_sizes, args.sequence_lengths, args.test_times, True, args.cache_dir,
+                                       args.verbose)
 
-        if enable_torchscript:
-            results += run_pytorch(args.use_gpu, args.models, args.precision, args.batch_sizes, args.sequence_lengths,
-                                   args.test_times, True, args.cache_dir, args.verbose)
+            if enable_torch:
+                results += run_pytorch(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                                       args.batch_sizes, args.sequence_lengths, args.test_times, False, args.cache_dir,
+                                       args.verbose)
 
-        if enable_torch:
-            results += run_pytorch(args.use_gpu, args.models, args.precision, args.batch_sizes, args.sequence_lengths,
-                                   args.test_times, False, args.cache_dir, args.verbose)
+        if enable_tensorflow:
+            results += run_tensorflow(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                                      args.batch_sizes, args.sequence_lengths, args.test_times, args.cache_dir,
+                                      args.verbose)
 
-    model_fusion_statistics = {}
-    if enable_onnxruntime:
-        try:
-            results += run_onnxruntime(args.use_gpu, args.models, args.precision, args.batch_sizes,
-                                       args.sequence_lengths, args.test_times, args.input_counts, args.optimize_onnx,
-                                       args.validate_onnx, args.cache_dir, args.onnx_dir, args.verbose, args.overwrite,
-                                       args.disable_ort_io_binding, args.use_raw_attention_mask, args.thread_num,
-                                       model_fusion_statistics)
-        except:
-            logger.error(f"Exception", exc_info=True)
+        model_fusion_statistics = {}
+        if enable_onnxruntime:
+            try:
+                use_raw_attention_mask = True
+                results += run_onnxruntime(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                                           args.batch_sizes, args.sequence_lengths, args.test_times, args.input_counts,
+                                           args.optimize_onnx, args.validate_onnx, args.cache_dir, args.onnx_dir,
+                                           args.verbose, args.overwrite, args.disable_ort_io_binding,
+                                           use_raw_attention_mask, model_fusion_statistics, args.model_source)
+            except:
+                logger.error(f"Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if model_fusion_statistics:

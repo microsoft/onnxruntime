@@ -7,10 +7,10 @@
 
 namespace onnxruntime {
 
-class CUDAAllocator : public IDeviceAllocator {
+class CUDAAllocator : public IAllocator {
  public:
   CUDAAllocator(OrtDevice::DeviceId device_id, const char* name)
-      : IDeviceAllocator(
+      : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
                           device_id, OrtMemTypeDefault)) {}
@@ -20,13 +20,33 @@ class CUDAAllocator : public IDeviceAllocator {
 
  private:
   void CheckDevice(bool throw_when_fail) const;
+  void SetDevice(bool throw_when_fail) const;
+};
+
+class CUDAExternalAllocator : public CUDAAllocator {
+  typedef void* (*ExternalAlloc)(size_t size);
+  typedef void (*ExternalFree)(void* p);
+
+ public:
+  CUDAExternalAllocator(OrtDevice::DeviceId device_id, const char* name, const void* alloc, const void* free)
+      : CUDAAllocator(device_id, name) {
+    alloc_ = reinterpret_cast<ExternalAlloc>(alloc);
+    free_ = reinterpret_cast<ExternalFree>(free);
+  }
+
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
+
+ private:
+  ExternalAlloc alloc_;
+  ExternalFree free_;
 };
 
 //TODO: add a default constructor
-class CUDAPinnedAllocator : public IDeviceAllocator {
+class CUDAPinnedAllocator : public IAllocator {
  public:
   CUDAPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
-      : IDeviceAllocator(
+      : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, device_id),
                           device_id, OrtMemTypeCPUOutput)) {}

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 #include "core/providers/cpu/tensor/utils.h"
 
@@ -219,7 +219,8 @@ class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
  public:
   CompareFunction(const OpKernelInfo& info) : BinaryElementwise(info) {}
 
-  typedef void (*ImplCompare)(int32_t output_rank_or_simple_broadcast,
+  typedef void (*ImplCompare)(cudaStream_t stream,
+                              int32_t output_rank_or_simple_broadcast,
                               const TArray<int64_t>* lhs_padded_strides,
                               const CudaT* lhs_data,
                               const TArray<int64_t>* rhs_padded_strides,
@@ -227,7 +228,7 @@ class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
                               const TArray<fast_divmod>* fdm_output_strides,
                               const fast_divmod& fdm_H,
                               const fast_divmod& fdm_C,
-                              CudaT* output_data,
+                              bool* output_data,
                               size_t count);
 
   Status CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const;

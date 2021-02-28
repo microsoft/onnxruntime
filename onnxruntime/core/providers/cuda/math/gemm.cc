@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gemm.h"
+#include "core/providers/cuda/math/gemm.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -30,10 +30,20 @@ namespace cuda {
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);                                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Gemm,                                                       \
       kOnnxDomain,                                                \
       11,                                                         \
+      12,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Gemm<T>);                                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Gemm,                                                       \
+      kOnnxDomain,                                                \
+      13,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -43,6 +53,9 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+REGISTER_KERNEL_TYPED(BFloat16)
+#endif
 
 template <typename T>
 Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -73,6 +86,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (b_shape.Size() == 1) {
       // if B is (), (1,) or (1, 1), broadcast the scalar
       CUBLAS_RETURN_IF_ERROR(cublasCopyHelper(
+          Stream(),
           CublasHandle(),
           M * N,
           b_data,
@@ -105,7 +119,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           out_data, N, device_prop));
     } else {
       // B is (M, N), no broadcast needed.
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(float), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
     }
   }
 
