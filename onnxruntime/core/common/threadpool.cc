@@ -31,14 +31,16 @@ ThreadPoolProfiler::ThreadPoolProfiler() {
 }
 
 bool ThreadPoolProfiler::Enabled() const {
-  return std::this_thread::get_id() == main_thread_id_;
+  return enabled_ && std::this_thread::get_id() == main_thread_id_;
 }
 void ThreadPoolProfiler::Start() {
+  enabled_ = true;
   main_thread_id_ = std::this_thread::get_id();
 }
 
 std::string ThreadPoolProfiler::Stop() {
   if (Enabled()) {
+    enabled_ = false;
     ORT_ENFORCE(points_.empty(), "LogStart must pair with LogEnd");
     main_thread_id_ = std::thread::id{};
     std::stringstream ss;
@@ -49,7 +51,7 @@ std::string ThreadPoolProfiler::Stop() {
     memset(events_, 0, sizeof(uint64_t) * MAX_EVENT);
     return ss.str();
   } else {
-    return std::string{};
+    return {};
   }
 }
 

@@ -162,6 +162,7 @@ class ThreadPoolProfiler {
 
  private:
   inline const char* GetEventName(ThreadPoolEvent) const;
+  bool enabled_ = false;
   std::thread::id main_thread_id_;
   uint64_t events_[MAX_EVENT];
   std::vector<onnxruntime::TimePoint> points_;
