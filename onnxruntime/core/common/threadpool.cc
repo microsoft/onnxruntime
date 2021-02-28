@@ -27,7 +27,7 @@ namespace onnxruntime {
 namespace concurrency {
 
 ThreadPoolProfiler::ThreadPoolProfiler() {
-  memset(events_, 0, sizeof(uint64_t) * MAX);
+  memset(events_, 0, sizeof(uint64_t) * MAX_EVENT);
 }
 
 bool ThreadPoolProfiler::Enabled() const {
@@ -42,11 +42,11 @@ std::string ThreadPoolProfiler::Stop() {
     ORT_ENFORCE(points_.empty(), "LogStart must pair with LogEnd");
     main_thread_id_ = std::thread::id{};
     std::stringstream ss;
-    for (int i = 0; i < MAX; ++i) {
+    for (int i = 0; i < MAX_EVENT; ++i) {
       ss << GetEventName(static_cast<ThreadPoolEvent>(i))
-         << ": " << events_[i] << ((i == MAX - 1) ? std::string{} : ", ");
+         << ": " << events_[i] << ((i == MAX_EVENT - 1) ? std::string{} : ", ");
     }
-    memset(events_, 0, sizeof(uint64_t) * MAX);
+    memset(events_, 0, sizeof(uint64_t) * MAX_EVENT);
     return ss.str();
   } else {
     return std::string{};
@@ -90,6 +90,9 @@ const char* ThreadPoolProfiler::GetEventName(ThreadPoolEvent event) const {
       break;
     case WAIT:
       name = "Wait";
+      break;
+    case WAIT_REVOKE:
+      name = "WaitRevoke";
       break;
     default:
       break;

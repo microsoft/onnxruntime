@@ -146,7 +146,8 @@ class ThreadPoolProfiler {
     DISTRIBUTION_ENQUEUE,
     RUN,
     WAIT,
-    MAX
+    WAIT_REVOKE,
+    MAX_EVENT
   };
   ThreadPoolProfiler();
   ~ThreadPoolProfiler() = default;
@@ -162,7 +163,7 @@ class ThreadPoolProfiler {
  private:
   inline const char* GetEventName(ThreadPoolEvent) const;
   std::thread::id main_thread_id_;
-  uint64_t events_[MAX];
+  uint64_t events_[MAX_EVENT];
   std::vector<onnxruntime::TimePoint> points_;
 };
 
@@ -861,13 +862,13 @@ void EndParallelSectionInternal(PerThread &pt,
     }
     ps.tasks.pop_back();
   }
+  profiler_.LogEnd(ThreadPoolProfiler::WAIT_REVOKE);
 
   // Wait for workers to exit ParLoopWorker
   auto tasks_to_wait_for = tasks_started - tasks_revoked;
   while (ps.tasks_finished < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
   }
-  profiler_.LogEnd(ThreadPoolProfiler::WAIT);
   // Clear status to allow the ThreadPoolParallelSection to be
   // re-used.
   ps.tasks_finished = 0;
