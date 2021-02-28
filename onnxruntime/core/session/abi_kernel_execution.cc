@@ -49,6 +49,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
     // initialize the providers
     for(auto& factory : options->provider_factories) {
       auto provider = factory->CreateProvider();
+      provider->RegisterAllocator(session->allocator_mgr_);
 
       auto data_xfr = provider->GetDataTransfer();
       if (data_xfr) {
@@ -59,6 +60,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
       }
       session->provider_list.push_back(std::move(provider));
     }
+
 
     // Create the session state. We need only this because some CUDA ops static_cast
     // the OpKernelContext to OpKernelContextInternal. That could be decoupled better

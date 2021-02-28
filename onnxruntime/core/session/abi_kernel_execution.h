@@ -105,9 +105,10 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
 
 struct KernelSessionImpl {
   KernelSessionImpl() :
-      logger_(logging::LoggingManager::DefaultLogger()),
-      profiler_() {
+      logger_(logging::LoggingManager::DefaultLogger())
+  {
       profiler_.Initialize(&logger_);
+      allocator_mgr_ = std::make_shared<AllocatorManager>();
   }
 
   // the model who's MainGraph holds the nodes for the kernels that we will execute
@@ -116,9 +117,8 @@ struct KernelSessionImpl {
   // providers for the session
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
 
-  // providers for the session
   std::unique_ptr<SessionState> session_state_;
-
+  std::shared_ptr<AllocatorManager> allocator_mgr_;
   DataTransferManager data_transfer_mgr_;
 
   // these are just for the session state
