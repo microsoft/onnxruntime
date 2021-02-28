@@ -27,7 +27,7 @@ namespace onnxruntime {
 namespace concurrency {
 
 ThreadPoolProfiler::ThreadPoolProfiler() {
-  memset(events_, 0, sizeof(uint64_t) * All);
+  memset(events_, 0, sizeof(uint64_t) * MAX_EVENT);
 }
 
 bool ThreadPoolProfiler::Enabled() const {
@@ -42,11 +42,11 @@ std::string ThreadPoolProfiler::Stop() {
     ORT_ENFORCE(points_.empty(), "LogStart must pair with LogEnd");
     main_thread_id_ = std::thread::id{};
     std::stringstream ss;
-    for (int i = 0; i < All; ++i) {
-      ss << GetEventName(static_cast<Event>(events_[i]))
-         << ": " << events_[i] << ((i == All - 1) ? std::string{} : ", ");
+    for (int i = 0; i < MAX_EVENT; ++i) {
+      ss << GetEventName(static_cast<ThreadPoolEvent>(i))
+         << ": " << events_[i] << ((i == MAX_EVENT - 1) ? std::string{} : ", ");
     }
-    memset(events_, 0, sizeof(uint64_t) * All);
+    memset(events_, 0, sizeof(uint64_t) * MAX_EVENT);
     return ss.str();
   } else {
     return std::string{};
@@ -59,7 +59,7 @@ void ThreadPoolProfiler::LogStart() {
   }
 }
 
-void ThreadPoolProfiler::LogEnd(const Event& evt) {
+void ThreadPoolProfiler::LogEnd(ThreadPoolEvent evt) {
   if (Enabled()) {
     ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
     events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
@@ -67,7 +67,7 @@ void ThreadPoolProfiler::LogEnd(const Event& evt) {
   }
 }
 
-void ThreadPoolProfiler::LogEndAndStart(const Event& evt) {
+void ThreadPoolProfiler::LogEndAndStart(ThreadPoolEvent evt) {
   if (Enabled()) {
     ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
     events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
@@ -76,20 +76,23 @@ void ThreadPoolProfiler::LogEndAndStart(const Event& evt) {
   }
 }
 
-const char* ThreadPoolProfiler::GetEventName(const Event& event) const {
+const char* ThreadPoolProfiler::GetEventName(ThreadPoolEvent event) const {
   const char* name = "UnknownEvent";
   switch (event) {
-    case Distribution:
+    case DISTRIBUTION:
       name = "Distribution";
       break;
-    case Enqueue:
-      name = "Enqueue";
+    case DISTRIBUTION_ENQUEUE:
+      name = "DistributionEnqueue";
       break;
-    case Run:
+    case RUN:
       name = "Run";
       break;
-    case Wait:
+    case WAIT:
       name = "Wait";
+      break;
+    case WAIT_REVOKE:
+      name = "WaitRevoke";
       break;
     default:
       break;
@@ -305,13 +308,13 @@ void ThreadPool::Schedule(std::function<void()> fn) {
   }
 }
 
-void ThreadPool::StartProfiling() const {
+void ThreadPool::StartProfiling() {
   if (underlying_threadpool_) {
     underlying_threadpool_->StartProfiling();
   }
 }
 
-std::string ThreadPool::StopProfiling() const {
+std::string ThreadPool::StopProfiling() {
   if (underlying_threadpool_) {
     return underlying_threadpool_->StopProfiling();
   } else {
@@ -490,20 +493,6 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
     return 1;
   }
 #endif
-}
-
-void ThreadPool::StartProfiling(const concurrency::ThreadPool* tp) {
-  if (tp) {
-    tp->StartProfiling();
-  }
-}
-
-std::string ThreadPool::StopProfiling(const concurrency::ThreadPool* tp) {
-  if (tp) {
-    return tp->StopProfiling();
-  } else {
-    return "";
-  }
 }
 
 // Return the number of threads created by the pool.
