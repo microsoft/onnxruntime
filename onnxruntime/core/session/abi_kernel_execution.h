@@ -92,7 +92,7 @@ class SingleKernelExecutionFrame final : public IExecutionFrame {
   CopyTensor(const Tensor &src, Tensor &dest) const override {
     ORT_UNUSED_PARAMETER(src);
     ORT_UNUSED_PARAMETER(dest);
-    return Status(ONNXRUNTIME, NOT_IMPLEMENTED, "CopyTensor is not implemented for Single Kernel Execution.");
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED, "CopyTensor is not implemented for Single Kernel Execution.");
   }
 
   Status CreateNodeOutputMLValueImpl(OrtValue &ort_value, int ort_value_idx, const TensorShape *shape,

@@ -320,7 +320,7 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeTensor,
         std::ostringstream oss;
         oss << "type " << type << " is not supported in this function";
         std::string errmsg = oss.str();
-        return ToOrtStatus(Status(ONNXRUNTIME, NOT_IMPLEMENTED, errmsg));
+        return ToOrtStatus(Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED, errmsg));
       }
     }
 
@@ -372,7 +372,7 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_AddAttributeTensor,
           std::ostringstream oss;
           oss << "type " << type << " is not supported in this function";
           std::string errmsg = oss.str();
-          return ToOrtStatus(Status(ONNXRUNTIME, NOT_IMPLEMENTED, errmsg));
+          return ToOrtStatus(Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED, errmsg));
         }
       }
     }
@@ -556,7 +556,7 @@ Status ExecutableKernelContextImpl::CreateExecutionFrame(KernelSessionImpl* sess
   }
   if (node.Op() == nullptr) {
     std::string message("Unable to resolve node op. This may happen when the node has no outputs.");
-    return Status(ONNXRUNTIME, NOT_IMPLEMENTED, message);
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED, message);
   }
 
   auto const& execution_provider = session->provider_list[provider_id];
@@ -645,7 +645,7 @@ Status ExecutableKernelContextImpl::SetupTensorType(const std::unique_ptr<ONNX_N
       std::ostringstream oss;
       oss << "type " << type << " is not supported in this function";
       std::string errmsg = oss.str();
-      return Status(ONNXRUNTIME, NOT_IMPLEMENTED, errmsg);
+      return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED, errmsg);
     }
   }
   return Status::OK();
@@ -671,6 +671,6 @@ SingleKernelExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue &ort_value,
   if (!status.IsOK()) {
     return status;
   }
-  return Status(ONNXRUNTIME, RUNTIME_EXCEPTION, "All outputs should already be allocated, but output "
-                                                + name + " was not");
+  return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::RUNTIME_EXCEPTION, "All outputs should already be allocated, but output "
+          + name + " was not");
 }
