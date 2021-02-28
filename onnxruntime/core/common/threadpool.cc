@@ -495,6 +495,20 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
 #endif
 }
 
+void ThreadPool::StartProfiling(concurrency::ThreadPool* tp) {
+  if (tp) {
+    tp->StartProfiling();
+  }
+}
+
+std::string ThreadPool::StopProfiling(concurrency::ThreadPool* tp) {
+  if (tp) {
+    return tp->StopProfiling();
+  } else {
+    return {};
+  }
+}
+
 // Return the number of threads created by the pool.
 int ThreadPool::NumThreads() const {
   if (underlying_threadpool_) {

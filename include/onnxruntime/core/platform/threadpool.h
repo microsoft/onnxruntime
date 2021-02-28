@@ -380,9 +380,9 @@ class ThreadPool {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
-  void StartProfiling();
+  static void StartProfiling(concurrency::ThreadPool* tp);
 
-  std::string StopProfiling();
+  static std::string StopProfiling(concurrency::ThreadPool* tp);
 
  private:
   friend class LoopCounter;
@@ -428,6 +428,10 @@ class ThreadPool {
   void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn);
 
   void Schedule(std::function<void()> fn);
+
+  void StartProfiling();
+
+  std::string StopProfiling();
 
   ThreadOptions thread_options_;
 
