@@ -141,28 +141,28 @@ class ThreadPoolLoop;
 */
 class ThreadPoolProfiler {
  public:
-  enum Event {
-    Distribution = 0,
-    Enqueue,
-    Run,
-    Wait,
-    All
+  enum ThreadPoolEvent {
+    DISTRIBUTION = 0,
+    DISTRIBUTION_ENQUEUE,
+    RUN,
+    WAIT,
+    MAX
   };
   ThreadPoolProfiler();
   ~ThreadPoolProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
   using Clock = std::chrono::high_resolution_clock;
   inline bool Enabled() const;
-  void Start();                       //start profiling
-  std::string Stop();                 //stop profiling and return collected numbers
-  void LogStart();                    //record the starting time point
-  void LogEnd(const Event&);          //calculate and save the time elpased from last start point
-  void LogEndAndStart(const Event&);  //same as LogEnd but add a starting point before return
+  void Start();                          //start profiling
+  std::string Stop();                    //stop profiling and return collected numbers
+  void LogStart();                       //record the starting time point
+  void LogEnd(ThreadPoolEvent);          //calculate and save the time elpased from last start point
+  void LogEndAndStart(ThreadPoolEvent);  //same as LogEnd but add a starting point before return
 
  private:
-  inline const char* GetEventName(const Event&) const;
+  inline const char* GetEventName(ThreadPoolEvent) const;
   std::thread::id main_thread_id_;
-  uint64_t events_[All];
+  uint64_t events_[MAX];
   std::vector<onnxruntime::TimePoint> points_;
 };
 
@@ -234,8 +234,8 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // two loops execute in series in a parallel section. ]
   virtual void RunInParallel(std::function<void(unsigned idx)> fn,
                              unsigned n) = 0;
-  virtual void StartProfiling() const = 0;
-  virtual std::string StopProfiling() const = 0;
+  virtual void StartProfiling()  = 0;
+  virtual std::string StopProfiling() = 0;
 };
 
 
@@ -596,15 +596,15 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     return 0;
   }
 
-  mutable ThreadPoolProfiler profiler_;
+  ThreadPoolProfiler profiler_;
 
  public:
 
-  void StartProfiling() const override {
+  void StartProfiling() override {
     profiler_.Start();
   }
 
-  std::string StopProfiling() const override {
+  std::string StopProfiling() override {
     return profiler_.Stop();
   }
 
@@ -867,7 +867,7 @@ void EndParallelSectionInternal(PerThread &pt,
   while (ps.tasks_finished < tasks_to_wait_for) {
     onnxruntime::concurrency::SpinPause();
   }
-  profiler_.LogEnd(ThreadPoolProfiler::Wait);
+  profiler_.LogEnd(ThreadPoolProfiler::WAIT);
   // Clear status to allow the ThreadPoolParallelSection to be
   // re-used.
   ps.tasks_finished = 0;
@@ -963,7 +963,7 @@ void SummonWorkers(PerThread &pt,
         td.EnsureAwake();
       }
     }
-    profiler_.LogEnd(ThreadPoolProfiler::Enqueue);
+    profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
   }
 }
 
@@ -1004,18 +1004,18 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
     }
   };
   SummonWorkers(*pt, ps, n, worker_fn);
-  profiler_.LogEnd(ThreadPoolProfiler::Distribution);
+  profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
   loop.fn(0);
-  profiler_.LogEndAndStart(ThreadPoolProfiler::Run);
+  profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
 
   // Wait for workers to exit the loop
   ps.current_loop = 0;
   while (ps.workers_in_loop) {
     onnxruntime::concurrency::SpinPause();
   }
-  profiler_.LogEnd(ThreadPoolProfiler::Wait);
+  profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
 // Run a single parallel loop _without_ a parallel section.  This is a
@@ -1033,18 +1033,18 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n) override {
   // multi-loop RunInParallelSection, this single-loop worker can run
   // fn directly without needing to receive it via ps.current_loop.
   SummonWorkers(*pt, ps, n, fn);
-  profiler_.LogEndAndStart(ThreadPoolProfiler::Distribution);
+  profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
   fn(0);
-  profiler_.LogEndAndStart(ThreadPoolProfiler::Run);
+  profiler_.LogEndAndStart(ThreadPoolProfiler::RUN);
 
   // Wait for workers to exit the parallel section and hence to have
   // completed the loop (i.e., ps.tasks_finished matches the number of
   // tasks that have been created less the number successfully
   // revoked).
   EndParallelSectionInternal(*pt, ps);
-  profiler_.LogEnd(ThreadPoolProfiler::Wait);
+  profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
 void Cancel() override {

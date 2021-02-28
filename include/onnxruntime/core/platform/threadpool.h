@@ -378,11 +378,11 @@ class ThreadPool {
   // working in combination with the thread initiating the loop.
   static int DegreeOfParallelism(const ThreadPool* tp);
 
-  static void StartProfiling(const concurrency::ThreadPool* tp);
-
-  static std::string StopProfiling(const concurrency::ThreadPool* tp);
-
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
+
+  void StartProfiling();
+
+  std::string StopProfiling();
 
  private:
   friend class LoopCounter;
@@ -428,10 +428,6 @@ class ThreadPool {
   void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn);
 
   void Schedule(std::function<void()> fn);
-
-  void StartProfiling() const;
-
-  std::string StopProfiling() const;
 
   ThreadOptions thread_options_;
 
