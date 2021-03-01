@@ -187,10 +187,10 @@ def main():
         logger.info("finished quantizing model")
         output_path = onnx_model_paths['int8']
 
-        if args.output.endswith('.onnx') and output_path != args.output and not args.use_external_data_format:
-            import shutil
-            shutil.move(output_path, args.output)
-            output_path = args.output
+    if args.output.endswith('.onnx') and output_path != args.output and not args.use_external_data_format:
+        import shutil
+        shutil.move(output_path, args.output)
+        output_path = args.output
 
     logger.info(f"Output path: {output_path}")
 
