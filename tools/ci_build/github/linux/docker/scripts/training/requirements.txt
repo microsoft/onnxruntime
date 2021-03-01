@@ -11,9 +11,7 @@ torchtext
 tensorboard==v2.0.0
 h5py
 wget
-<<<<<<< HEAD
 mysql-connector-python
-=======
+GitPython
 # PyTorch Lightning (nightly) is used for CI tests only
 https://github.com/PyTorchLightning/pytorch-lightning/archive/master.zip
->>>>>>> thiagofc/ortmodule-api
