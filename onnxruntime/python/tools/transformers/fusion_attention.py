@@ -114,7 +114,7 @@ class FusionAttention(Fusion):
         # Check if all matrices have the same shape
         assert qw.shape == kw.shape == vw.shape
 
-        # All the matrices have the same shape (hidden_size, hidden_size)
+        # All the matrices have the same shape (in_size, out_size)
         in_size, out_size = qw.shape
         qkv_weight = np.stack((qw, kw, vw), axis=-2)
 
