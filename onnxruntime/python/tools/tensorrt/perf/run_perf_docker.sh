@@ -25,7 +25,7 @@ fi
 if [ $OPTION == "many-models" ]
 then 
     MODEL_PATH=/usr/share/mount/many-models
-    VOLUME=$VOLUME' -v /home/hcsuser/mount/test:/usr/share/mount/many-models'
+    VOLUME=$VOLUME' -v /home/hcsuser/mount/many-models:/usr/share/mount/many-models'
 fi 
 
 if [ $OPTION == "partner-models" ]
