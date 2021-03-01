@@ -119,7 +119,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       } else {
         continue;
       }
-    }
+    } 
 
     Node& conv_node = *node;
     Node& act_node = *graph.GetNode(next_node.Index());
