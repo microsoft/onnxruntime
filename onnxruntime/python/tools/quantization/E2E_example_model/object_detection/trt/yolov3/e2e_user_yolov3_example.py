@@ -1,7 +1,8 @@
 import os
 from onnxruntime.quantization import create_calibrator, write_calibration_table, CalibrationMethod
 from data_reader import YoloV3DataReader, YoloV3VariantDataReader
-from evaluate import YoloV3Evaluator, YoloV3VariantEvaluator
+from preprocessing import yolov3_preprocess_func, yolov3_preprocess_func_2, yolov3_variant_preprocess_func, yolov3_variant_preprocess_func_2
+from evaluate import YoloV3Evaluator, YoloV3VariantEvaluator,YoloV3Variant2Evaluator, YoloV3Variant3Evaluator
 
 
 def get_calibration_table(model_path, augmented_model_path, calibration_dataset):
@@ -72,35 +73,48 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
     '''
     1. Use serial processing
     
-    We can use only one DataReader to do serial processing, however,
+    We can use only one data reader to do serial processing, however,
     some machines don't have sufficient memory to hold all dataset images and all intermediate output.
-    So let multiple DataReader do handle different stride of dataset one by one.
+    So let multiple data readers to handle different stride of dataset one by one.
     DataReader will use serial processing when batch_size is 1.
     '''
 
+    width = 512
+    height = 288 
+    width = 608
+    height = 608
+
     total_data_size = len(os.listdir(calibration_dataset))
     start_index = 0
-    stride = 25
+    stride = 20 
+    batch_size = 1
     for i in range(0, total_data_size, stride):
         data_reader = YoloV3VariantDataReader(calibration_dataset,
-                                              width=608,
-                                              height=608,
+                                              width=width,
+                                              height=height,
                                               start_index=start_index,
                                               end_index=start_index + stride,
                                               stride=stride,
-                                              batch_size=1,
+                                              batch_size=batch_size,
                                               model_path=augmented_model_path)
         calibrator.collect_data(data_reader)
         start_index += stride
     '''
     2. Use batch processing (much faster)
     
-    Batch processing requires less memory for intermediate output, therefore let only one DataReader to handle dataset in batch. 
-    However, if encountering OOM, we can make multiple DataReader to do the job just like serial processing does. 
+    Batch processing requires less memory for intermediate output, therefore let only one data reader to handle dataset in batch. 
+    However, if encountering OOM, we can make multiple data reader to do the job just like serial processing does. 
     DataReader will use batch processing when batch_size > 1.
     '''
 
-    # data_reader = YoloV3VariantDataReader(calibration_dataset, width=608, height=608, stride=1000, batch_size=20, model_path=augmented_model_path)
+    # batch_size = 20
+    # stride=1000
+    # data_reader = YoloV3VariantDataReader(calibration_dataset,
+                                          # width=width,
+                                          # height=height,
+                                          # stride=stride,
+                                          # batch_size=batch_size,
+                                          # model_path=augmented_model_path)
     # calibrator.collect_data(data_reader)
 
     write_calibration_table(calibrator.compute_range())
@@ -108,38 +122,71 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
 
 
 def get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, providers):
-    data_reader = YoloV3VariantDataReader(validation_dataset,
-                                          width=608,
-                                          height=608,
-                                          stride=1000,
-                                          batch_size=1,
-                                          model_path=model_path,
-                                          is_evaluation=True)
-    evaluator = YoloV3VariantEvaluator(model_path, data_reader, width=608, height=608, providers=providers)
+    # width = 512 
+    # height = 288 
+    width = 608 
+    height = 608 
 
-    evaluator.predict()
+
+    evaluator = YoloV3VariantEvaluator(model_path, None, width=width, height=height, providers=providers)
+
+    total_data_size = len(os.listdir(validation_dataset)) 
+    start_index = 0
+    stride=1000
+    for i in range(0, total_data_size, stride):
+        data_reader = YoloV3VariantDataReader(validation_dataset, width=width, height=height ,start_index=start_index, end_index=start_index+stride, stride=stride, batch_size=1, model_path=model_path, is_evaluation=True)
+
+        evaluator.set_data_reader(data_reader)
+        evaluator.predict()
+        start_index += stride
+
+
     result = evaluator.get_result()
-
-    annotations = './annotations/instances_val2017.json'
-    print(result)
+    annotations = './annotations/instances_val2017_eval_all.json'
+    # annotations = './annotations/instances_val2017.json'
+    annotations = './instances_val2017_random_eval.json'
+    # print(result)
     evaluator.evaluate(result, annotations)
 
 
 if __name__ == '__main__':
+    '''
+    TensorRT EP INT8 Inference on Yolov3 model.
 
-    yolov3 = 'model zoo'
+    The script is using COCO 2017 Val images for calibration and evaluation.
+    1. Please create workspace folders 'val2017/calib' and 'val2017/eval'.
+    2. 2017 val dataset annotations is already in 'annotations/instances_val2017.json', or 
+       download it from http://images.cocodataset.org/annotations/annotations_trainval2017.zip
+    3. Run following script to split dataset into two subsets for calibration and evaluation respectively:
+        python3 coco_filter.py -i annotations/instances_val2017.json -o annotations/instances_val2017_eval_all.json -f val2017 -c all 
+
+        (Reference and modify from https://github.com/immersive-limit/coco-manager)
+    4. Download Yolov3 model:
+        (i) ONNX model zoo yolov3: https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/yolov3/model/yolov3-10.onnx 
+        (ii) yolov3 variants: https://github.com/jkjung-avt/tensorrt_demos.git
+    '''
+
     augmented_model_path = 'augmented_model.onnx'
-    calibration_dataset = './test2017'
-    validation_dataset = './val2017'
+    calibration_dataset = './val2017/calib'
+    validation_dataset = './val2017/eval'
+    # validation_dataset = './val2017_person_subset_random_eval'
+    # validation_dataset = './val2017'
+    is_onnx_model_zoo_yolov3 = False 
 
-    if yolov3 == 'model zoo':
-        # ONNX Model Zoo yolov3
+    # TensorRT EP INT8 settings
+    os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"  # Enable FP16 precision
+    os.environ["ORT_TENSORRT_INT8_ENABLE"] = "0"  # Enable INT8 precision
+    os.environ["ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME"] = "calibration.flatbuffers"  # Calibration table name
+    os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"  # Enable engine caching
+    execution_provider = ["TensorrtExecutionProvider"]
+
+    if is_onnx_model_zoo_yolov3:
         model_path = 'yolov3.onnx'
         get_calibration_table(model_path, augmented_model_path, calibration_dataset)
-        get_prediction_evaluation(model_path, validation_dataset, ["TensorrtExecutionProvider"])
+        get_prediction_evaluation(model_path, validation_dataset, execution_provider)
     else:
         # Yolov3 variants from here
         # https://github.com/jkjung-avt/tensorrt_demos.git
         model_path = 'yolov3-608.onnx'
         get_calibration_table_yolov3_variant(model_path, augmented_model_path, calibration_dataset)
-        get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, ["TensorrtExecutionProvider"])
+        get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, execution_provider)
