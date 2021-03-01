@@ -26,6 +26,8 @@ from pathlib import Path
 from transformers import AutoConfig
 from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_tester import Gpt2Tester
+from gpt2_beamsearch_helper import Gpt2BeamSearchHelper
+from gpt2_beamsearch_tester import Gpt2BeamSearchTester
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
 
@@ -98,6 +100,9 @@ def parse_arguments():
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
 
+    parser.add_argument('--batch_size', required=False, type=int, default=1, help='Batch size for GPT model with beam search')
+    parser.add_argument('--beam_size', required=False, type=int, default=4, help='Beam size for beam search')
+
     args = parser.parse_args()
 
     return args
@@ -129,8 +134,12 @@ def main():
         assert not args.output.endswith('.onnx'), "output shall be a directory for --use_external_data_format"
 
     model_class = MODEL_CLASSES[args.model_class][0]
+    use_beam_search_step = args.model_class == "GPT2LMHeadModel_BeamSearchStep"
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
-    model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
+    if use_beam_search_step:
+        model = model_class.from_pretrained(args.model_name_or_path, config=config, batch_size=args.batch_size, beam_size=args.beam_size, cache_dir=cache_dir)
+    else:
+        model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.eval().to(device)
@@ -147,13 +156,19 @@ def main():
 
     logger.info(f"Exporting ONNX model to {raw_onnx_model}")
     use_padding = MODEL_CLASSES[args.model_class][2]
-    Gpt2Helper.export_onnx(model,
-                           device,
-                           raw_onnx_model,
-                           args.verbose,
-                           args.use_external_data_format,
-                           has_position_ids=use_padding,
-                           has_attention_mask=use_padding)
+    if use_beam_search_step:
+        print("Processing beam search step onnx file generation")
+        Gpt2BeamSearchHelper.export_onnx(
+            model, device, raw_onnx_model, args.verbose, args.use_external_data_format
+        )
+    else:
+        Gpt2Helper.export_onnx(model,
+                               device,
+                               raw_onnx_model,
+                               args.verbose,
+                               args.use_external_data_format,
+                               has_position_ids=use_padding,
+                               has_attention_mask=use_padding)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else 'fp32']
@@ -172,24 +187,34 @@ def main():
         logger.info("finished quantizing model")
         output_path = onnx_model_paths['int8']
 
-    if args.output.endswith('.onnx') and output_path != args.output and not args.use_external_data_format:
-        import shutil
-        shutil.move(output_path, args.output)
-        output_path = args.output
+        if args.output.endswith('.onnx') and output_path != args.output and not args.use_external_data_format:
+            import shutil
+            shutil.move(output_path, args.output)
+            output_path = args.output
 
     logger.info(f"Output path: {output_path}")
 
     session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
     if session is not None:
-        Gpt2Helper.test_parity(session,
-                               model,
-                               device,
-                               args.precision == Precision.FLOAT16,
-                               rtol=args.tolerance,
-                               atol=args.tolerance,
-                               model_class=args.model_class,
-                               has_position_ids=use_padding,
-                               has_attention_mask=use_padding)
+        if use_beam_search_step:
+            Gpt2BeamSearchHelper.test_parity(
+                session,
+                model,
+                device,
+                args.precision == Precision.FLOAT16,
+                rtol=args.tolerance,
+                atol=args.tolerance,
+                model_class=args.model_class)
+        else:
+            Gpt2Helper.test_parity(session,
+                                   model,
+                                   device,
+                                   args.precision == Precision.FLOAT16,
+                                   rtol=args.tolerance,
+                                   atol=args.tolerance,
+                                   model_class=args.model_class,
+                                   has_position_ids=use_padding,
+                                   has_attention_mask=use_padding)
 
     if args.input_test_file:
         test_inputs = []
@@ -215,7 +240,7 @@ def main():
 
                     if "position_ids" in data:
                         position_ids = torch.from_numpy(numpy.asarray(data["position_ids"],
-                                                                      dtype=numpy.int64)).to(device)
+                                                                    dtype=numpy.int64)).to(device)
                     else:
                         position_ids = (attention_mask.long().cumsum(-1) - 1)
                         position_ids.masked_fill_(position_ids < 0, 0)
@@ -224,21 +249,52 @@ def main():
                 else:
                     inputs = {"input_ids": input_ids}
 
-                test_inputs.append(inputs)
+                if use_beam_search_step:
+                    beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()
 
-        Gpt2Tester.test_generation(session,
-                                   model,
-                                   device,
-                                   test_inputs,
-                                   precision=args.precision,
-                                   model_class=args.model_class,
-                                   top_k=20,
-                                   top_k_no_order=True,
-                                   max_steps=24,
-                                   max_inputs=0,
-                                   verbose=args.verbose,
-                                   save_test_data=3,
-                                   save_test_data_dir=Path(output_path).parent)
+                    input_log_probs = torch.zeros([input_ids.shape[0], 1])
+                    input_unfinished_sents = torch.ones(
+                        [input_ids.shape[0], 1], dtype=torch.bool
+                    )
+                    inputs.update(
+                        {
+                            "beam_select_idx": beam_select_idx,
+                            "input_log_probs": input_log_probs,
+                            "input_unfinished_sents": input_unfinished_sents,
+                        }
+                    )
+
+            test_inputs.append(inputs)
+
+        if use_beam_search_step:
+            Gpt2BeamSearchTester.test_generation(session,
+                                                 model,
+                                                 device,
+                                                 test_inputs,
+                                                 tokenize_latency=0,
+                                                 precision=args.precision,
+                                                 model_class=args.model_class,
+                                                 top_k=beam_size,
+                                                 top_k_no_order=True,
+                                                 max_steps=24,
+                                                 max_inputs=0,
+                                                 verbose=args.verbose,
+                                                 save_test_data=3,
+                                                 save_test_data_dir=Path(output_path).parent)
+        else:
+             Gpt2Tester.test_generation(session,
+                                        model,
+                                        device,
+                                        test_inputs,
+                                        precision=args.precision,
+                                        model_class=args.model_class,
+                                        top_k=20,
+                                        top_k_no_order=True,
+                                        max_steps=24,
+                                        max_inputs=0,
+                                        verbose=args.verbose,
+                                        save_test_data=3,
+                                        save_test_data_dir=Path(output_path).parent)
 
     logger.info(f"Done. Output model: {output_path}")
 
