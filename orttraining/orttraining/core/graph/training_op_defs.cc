@@ -942,6 +942,12 @@ Example 4:
             "4 - horozontal parallel, 5 - model parallel.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
+      .Attr("index",
+            "The global unique index of collective operations in the whole graph. "
+            "It is assumed all ranks should contains exactly same collective operations "
+            "and the orders we build the ops are strictly recorded to do a match between ranks.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
       .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
@@ -962,6 +968,12 @@ Example 4:
             "4 - horozontal parallel, 5 - model parallel.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
+      .Attr("index",
+            "The global unique index of collective operations in the whole graph. "
+            "It is assumed all ranks should contains exactly same collective operations "
+            "and the orders we build the ops are strictly recorded to do a match between ranks.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
       .Output(0, "output", "gathered tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
@@ -980,6 +992,12 @@ Example 4:
             "0 - global parallel group, 1 - data parallel group, "
             "2 - node local data parallel group, 3 - cross node data parallel group, "
             "4 - horozontal parallel, 5 - model parallel.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("index",
+            "The global unique index of collective operations in the whole graph. "
+            "It is assumed all ranks should contains exactly same collective operations "
+            "and the orders we build the ops are strictly recorded to do a match between ranks.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced and scattered", "T", OpSchema::Variadic)

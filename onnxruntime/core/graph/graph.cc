@@ -1553,6 +1553,11 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp,
                            const std::function<bool(const Node* from, const Node* to)>& stop) const {
+#ifdef ENABLE_TRAINING
+  std::unordered_map<NodeIndex, NodeIndex> collective_op_dependency_relation;
+  utils::BuildCollectiveOperationDependency(Nodes(), collective_op_dependency_relation);
+#endif
+
   using WorkEntry = std::pair<const Node*, bool>;  // bool represents leave or not
   std::vector<WorkEntry> stack(from.size());
   for (size_t i = 0; i < from.size(); i++) {
@@ -1589,6 +1594,16 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
         if (stop && stop(&n, &(*iter))) continue;
         sorted_nodes.push_back(&(*iter));
       }
+
+#ifdef ENABLE_TRAINING
+      if (collective_op_dependency_relation.find(n.Index()) != collective_op_dependency_relation.end()) {
+        const NodeIndex& idx = collective_op_dependency_relation[n.Index()];
+        if (idx > 0) {
+          sorted_nodes.push_back(GetNode(idx));
+        }
+      }
+#endif
+
       std::sort(sorted_nodes.begin(), sorted_nodes.end(), comp);
       for (const auto* in : sorted_nodes) {
         const NodeIndex idx = in->Index();
@@ -1604,6 +1619,15 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
           stack.emplace_back(GetNode(idx), false);
         }
       }
+
+#ifdef ENABLE_TRAINING
+      if (collective_op_dependency_relation.find(n.Index()) != collective_op_dependency_relation.end()) {
+        const NodeIndex& idx = collective_op_dependency_relation[n.Index()];
+        if (idx > 0 && !visited[idx]) {
+          stack.emplace_back(GetNode(idx), false);
+        }
+      }
+#endif
     }
   }
 }
@@ -1682,6 +1706,11 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
                   }
                 });
 
+#ifdef ENABLE_TRAINING
+  std::unordered_map<NodeIndex, NodeIndex> collective_op_dependency_relation;
+  utils::BuildCollectiveOperationDependency(nodes_in_original_order, collective_op_dependency_relation);
+#endif
+
   // start at the bottom and work our way up the graph
   for (auto iter = Nodes().begin(); iter != Nodes().end(); ++iter) {
     if (iter->relationships_.output_edges.empty()) {
@@ -1727,6 +1756,23 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
         stack.push(idx);
       }
     }
+
+#ifdef ENABLE_TRAINING
+    if (collective_op_dependency_relation.find(current) != collective_op_dependency_relation.end()) {
+      const NodeIndex& idx = collective_op_dependency_relation[current];
+      if (idx > 0) {
+        if (output_nodes.find(idx) != output_nodes.end()) {
+          Status status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
+          return status;
+        }
+
+        // avoid re-processing nodes
+        if (nodes_added_for_processing.find(idx) == nodes_added_for_processing.end()) {
+          stack.push(idx);
+        }
+      }
+    }
+#endif
 
     nodes_added_for_processing.insert(current);
   }
@@ -3541,7 +3587,7 @@ Status Graph::InlineFunction(Node& node) {
       ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, model_path, *tensor));
       name_to_initial_tensor_[tensor->name()] = tensor;
     } else {
-      std::vector<NodeArg*> inputs, outputs;
+      std::vector<NodeArg *> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
         auto it = remap_input_output.find(input->Name());
         if (it != remap_input_output.end())

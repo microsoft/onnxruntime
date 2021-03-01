@@ -158,6 +158,11 @@ int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
 #ifdef ENABLE_TRAINING
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
+
+int64_t GenerateCollectiveIndex();
+
+common::Status BuildCollectiveOperationDependency(const GraphNodes& nodes_in_original_order,
+                                                  std::unordered_map<NodeIndex, NodeIndex>& collective_op_dependency_relation);
 #endif
 
 }  // namespace utils

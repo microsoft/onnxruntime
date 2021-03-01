@@ -596,6 +596,37 @@ common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context)
   }
   return Status::OK();
 }
+
+int64_t GenerateCollectiveIndex() {
+  static int64_t index = 0;
+  return ++index;
+}
+
+common::Status BuildCollectiveOperationDependency(const GraphNodes& nodes_in_original_order,
+                                                  std::unordered_map<NodeIndex, NodeIndex>& collective_op_dependency_relation) {
+  std::map<int64_t, NodeIndex> all_reduce_ops;
+  std::for_each(nodes_in_original_order.cbegin(), nodes_in_original_order.cend(),
+                [&](const Node& node) {
+                  if (node.OpType().compare("NcclAllReduce") == 0 || node.OpType().compare("MegatronG") == 0 ||
+                      node.OpType().compare("NcclAllGather") == 0 || node.OpType().compare("NcclReduceScatter") == 0) {
+                    auto node_index = node.Index();
+                    int64_t all_reduce_global_index = node.GetAttributes().at("index").i();
+                    if (all_reduce_ops.find(all_reduce_global_index) != all_reduce_ops.end()) {
+                      ORT_THROW("Duplicate " + node.OpType() + " global index." + std::to_string(all_reduce_global_index));
+                    }
+                    all_reduce_ops.insert(std::pair<int64_t, NodeIndex>(all_reduce_global_index, node_index));
+                  }
+                });
+
+  NodeIndex prev_collective_op_node_index = -1;
+  for (auto it = all_reduce_ops.begin(); it != all_reduce_ops.end(); ++it) {
+    collective_op_dependency_relation.insert(std::pair<NodeIndex, NodeIndex>(it->second, prev_collective_op_node_index));
+    prev_collective_op_node_index = it->second;
+  }
+
+  return Status::OK();
+}
+
 #endif
 
 }  // namespace utils
