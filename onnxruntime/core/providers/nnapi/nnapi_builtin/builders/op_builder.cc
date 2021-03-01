@@ -272,10 +272,13 @@ enum DataLayout {
   L_1230 = 1,
 };
 
-// This is primarily used for adding the weight (an initializer) of Conv
+// This is primarily used for adding the weight (an initializer) of Conv/QlinearConv
 // And perform layout change from ONNX -> NNAPI
-// If the QlinearConv is per-tensor u8s8, B will be converted from int8 to uint8
-// TODO, replace this with more efficient code in optimizers
+// If is_per_tensor_u8s8 is true, the QlinearConv is per-tensor u8s8 (input X is unsigned int8
+// and weight W is signed int8 and it is per-tensor (NOT per-channel) quantized), in this case,
+// since NNAPI requires X and W to be same type for per-tensor quantization,
+// the initializer tensor W will be converted from int8 to uint8 by flip each byte by XOR 0x80
+// byte ^ 0x80 == byte + 128
 static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                         const std::string& name,
                                         const OperandType& source_operand_type,
@@ -328,8 +331,6 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   uint8_t* buffer = buffer_holder.get();
   size_t element_size = operand_type.GetElementByteSize();
 
-  // If necessary, convert int8 tensor to uint8 tensor for per-tensor u8s8
-  // i^0x80 == i + 128
   uint8_t bit_flip_val = is_per_tensor_u8s8 ? 0x80 : 0;
   for (uint32_t out = 0; out < out_t; out++) {
     for (uint32_t in = 0; in < in_t; in++) {
@@ -364,10 +365,13 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 }
 
-// This is primarily used for adding the input B (an initializer) of MatMul/Gemm (not transposed)
+// This is primarily used for adding the input B (an initializer) of MatMul/QlinearMatMul/Gemm (not transposed)
 // and transpose it, since for NNAPI only supports A*B'
-// If the QlinearMatMul is per-tensor u8s8, B will be converted from int8 to uint8
-// TODO, replace this with more efficient code in optimizers
+//
+// If is_per_tensor_u8s8 is true, the QlinearMatMul is per-tensor u8s8 (input A is unsigned int8
+// and input B is signed int8), in this case, since NNAPI requires A and B to be same type,
+// the initializer tensor B will be converted from int8 to uint8 by flip each byte by XOR 0x80
+// byte ^ 0x80 == byte + 128
 static Status AddInitializerTransposed(ModelBuilder& model_builder,
                                        const OperandType& source_operand_type,
                                        const std::string& name,
@@ -411,8 +415,6 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
   uint8_t* buffer = buffer_holder.get();
   size_t element_size = operand_type.GetElementByteSize();
-  // If necessary, convert int8 tensor to uint8 tensor for per-tensor u8s8
-  // i^0x80 == i + 128
   uint8_t bit_flip_val = is_per_tensor_u8s8 ? 0x80 : 0;
   for (uint32_t x = 0; x < x_t; x++) {
     for (uint32_t y = 0; y < y_t; y++) {
@@ -538,9 +540,11 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint(
 // Get scale and zero point for
 // [QlinearConv] input, weight, output
 // [QlinearMatMul] A, B, Y
+//
+// In case of u8s8 (input/A is uint8 and weight/B is int8)
 // If the QlinearConv is using per-channel u8s8, return the scales vector
 // If the Qlinear[Conv/MatMul] is using per-tensor u8s8, the weight/B tensor
-// will be convert to uint8 later, will return the same scale and zero point as 128
+// will be convert to uint8 later, will return the same scale and 128 as zero point
 // Also will set is_per_tensor_u8s8 to true to be used later
 static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,

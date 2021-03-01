@@ -271,7 +271,8 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
           node.ModelPath(),
           unpacked_tensor, tensor_byte_size);
       if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor:" << status.ErrorMessage();
+        LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor: " << zero_point_name
+                            << ", error msg: " << status.ErrorMessage();
         return false;
       }
 
