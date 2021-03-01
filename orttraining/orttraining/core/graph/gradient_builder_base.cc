@@ -59,8 +59,8 @@ void ComputeBroadcastBackwardAxes(
       auto A_dim = A_dims[i].dim_param(),
            B_dim = B_dims[j].dim_param();
       if (A_dim != B_dim) {
-        ORT_THROW("Gradient building error for node ", node_name, ": symbolic dimension doesn't match. ",
-                  "A_dims:", ToString(A_dims), ", B_dims:", ToString(B_dims));
+        LOGS_DEFAULT(WARNING) << "Gradient building error for node " << node_name << ": symbolic dimension doesn't match. " <<
+                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims); 
       }
     } else if (A_dims[i].has_dim_param() && B_dims[j].has_dim_value()) {
       auto A_dim = A_dims[i].dim_param();
