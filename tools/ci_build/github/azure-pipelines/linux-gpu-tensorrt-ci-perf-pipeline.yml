@@ -7,13 +7,13 @@ jobs:
   timeoutInMinutes: 2000 
   steps:
   
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_images.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b master -i $(image)'
-      displayName: 'Build latest ORT Images'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_images.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b master -i $(image)'
+    #   displayName: 'Build latest ORT Images'
+    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -o "onnx-zoo-models"'
-      displayName: 'Onnx Zoo Models Perf'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -o "onnx-zoo-models"'
+    #   displayName: 'Onnx Zoo Models Perf'
+    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
     - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "many-models"'
       displayName: 'Many Models Perf'
