@@ -314,7 +314,10 @@ def format_time(elapsed):
 def log_perf_metrics(args, perf_metrics):
     from perf_log.create_table_perf_test_training_ort_module_data import ConnectAndInsertPerfMetrics
     from perf_log.create_table_perf_test_training_ort_module_data import get_repo_commit
-    perf_metrics['CommitId'] = get_repo_commit(os.path.realpath(__file__))
+    if args.perf_repo_path:
+        perf_metrics['CommitId'] = get_repo_commit(args.perf_repo_path)
+    else:
+        perf_metrics['CommitId'] = get_repo_commit(os.path.realpath(__file__))
     ConnectAndInsertPerfMetrics(
         args.perf_mysql_server_name,
         args.perf_power_bi_user_name,
@@ -356,6 +359,7 @@ def main():
     parser.add_argument('--perf_power_bi_user_name', type=str, help='perfmance power BI account user name')
     parser.add_argument('--perf_power_bi_password', type=str, help='perfmance power BI account password')
     parser.add_argument('--perf_database', type=str, help='perfmance database')
+    parser.add_argument('--perf_repo_path', type=str, help='path of ort source')
 
     args = parser.parse_args()
 
