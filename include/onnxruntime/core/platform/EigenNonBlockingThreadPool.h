@@ -149,7 +149,7 @@ class ThreadPoolProfiler {
     WAIT_REVOKE,
     MAX_EVENT
   };
-  ThreadPoolProfiler();
+  ThreadPoolProfiler() = default;
   ~ThreadPoolProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
   using Clock = std::chrono::high_resolution_clock;
@@ -157,14 +157,14 @@ class ThreadPoolProfiler {
   void Start();                          //start profiling
   std::string Stop();                    //stop profiling and return collected numbers
   void LogStart();                       //record the starting time point
-  void LogEnd(ThreadPoolEvent);          //calculate and save the time elpased from last start point
+  void LogEnd(ThreadPoolEvent);          //calculate and save the time elapsed from last start point
   void LogEndAndStart(ThreadPoolEvent);  //same as LogEnd but add a starting point before return
 
  private:
-  inline const char* GetEventName(ThreadPoolEvent) const;
+  static const char* GetEventName(ThreadPoolEvent);
   bool enabled_ = false;
   std::thread::id main_thread_id_;
-  uint64_t events_[MAX_EVENT];
+  uint64_t events_[MAX_EVENT] = {};
   std::vector<onnxruntime::TimePoint> points_;
 };
 
