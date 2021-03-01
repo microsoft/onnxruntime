@@ -10,7 +10,7 @@ import os
 import numpy as np
 import onnx
 import onnxruntime
-from onnx import helper, TensorProto, ModelProto, shape_inference
+from onnx import helper, TensorProto, ModelProto
 from onnx import onnx_pb as onnx_proto
 from six import string_types
 from enum import Enum
@@ -51,9 +51,6 @@ class CalibraterBase:
             self.model = model
         else:
             raise ValueError('model should be either model path or onnx.ModelProto.')
-
-        # Apply shape inference on the model
-        self.model = onnx.shape_inference.infer_shapes(self.model)
 
         self.op_types_to_calibrate = op_types_to_calibrate
         self.augmented_model_path = augmented_model_path
@@ -163,27 +160,22 @@ class MinMaxCalibrater(CalibraterBase):
 
         added_nodes = []
         added_outputs = []
-        tensors, value_infos = self.select_tensors_to_calibrate(model) 
+        tensors, _ = self.select_tensors_to_calibrate(model) 
 
         for tensor in tensors:
-
-            # Get tensor's shape 
-            dim = len(value_infos[tensor].type.tensor_type.shape.dim)
-            shape = (1,) if dim == 1 else list(1 for i in range(dim))
-
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
-            reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'], reduce_min_name)
+            reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'], reduce_min_name, keepdims=0)
 
             added_nodes.append(reduce_min_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, shape))
+            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
 
             # Adding ReduceMax nodes
             reduce_max_name = tensor + '_ReduceMax'
-            reduce_max_node = onnx.helper.make_node('ReduceMax', [tensor], [tensor + '_ReduceMax'], reduce_max_name)
+            reduce_max_node = onnx.helper.make_node('ReduceMax', [tensor], [tensor + '_ReduceMax'], reduce_max_name, keepdims=0)
 
             added_nodes.append(reduce_max_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, shape))
+            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
 
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
@@ -200,6 +192,23 @@ class MinMaxCalibrater(CalibraterBase):
                 break
             self.intermediate_outputs.append(self.infer_session.run(None, inputs))
 
+        if len(self.intermediate_outputs) == 0:
+            raise ValueError("No data is collected.")
+
+        self.compute_range()
+        self.clear_collected_data()
+
+    def merge_range(self, old_range, new_range):
+        if not old_range:
+            return new_range
+
+        for key, value in old_range.items(): 
+            min_value = min(value[0], new_range[key][0])
+            max_value = max(value[1], new_range[key][1])
+            new_range[key] = (min_value, max_value)
+
+        return new_range
+
     def compute_range(self):
         ''' 
         Compute the min-max range of tensor
@@ -207,7 +216,7 @@ class MinMaxCalibrater(CalibraterBase):
         '''
 
         if len(self.intermediate_outputs) == 0:
-            raise ValueError("No data is collected.")
+            return self.calibrate_tensors_range
 
         output_names = [self.infer_session.get_outputs()[i].name for i in range(len(self.intermediate_outputs[0]))]
         output_dicts_list = [
@@ -239,7 +248,11 @@ class MinMaxCalibrater(CalibraterBase):
 
             pairs.append(tuple([min_value, max_value]))
 
-        self.calibrate_tensors_range = dict(zip(calibrate_tensor_names, pairs))
+        new_calibrate_tensors_range = dict(zip(calibrate_tensor_names, pairs))
+        if self.calibrate_tensors_range:
+            self.calibrate_tensors_range = self.merge_range(self.calibrate_tensors_range, new_calibrate_tensors_range)
+        else:
+            self.calibrate_tensors_range = new_calibrate_tensors_range 
 
         return self.calibrate_tensors_range
 
@@ -310,6 +323,8 @@ class EntropyCalibrater(CalibraterBase):
         if not self.collector:
             self.collector = HistogramCollector()
         self.collector.collect(clean_merged_dict)
+
+        self.clear_collected_data()
 
     def compute_range(self):
         ''' 
