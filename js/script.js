@@ -12,7 +12,7 @@ var supportedOperatingSystemsNew = [
 var opts = {
     os: getAnchorSelectedOS() || getDefaultSelectedOS(),
     architecture: 'X64',
-    language: 'Python(3.5-3.7)',
+    language: 'Python(3.6-3.9)',
     hardwareAcceleration: 'DefaultCPU',
 };
 var ot_opts = {
@@ -240,10 +240,10 @@ function commandMessage(key) {
         "windows,C#,X64,CUDA":
             "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
 
-        "windows,Python(3.5-3.7),X64,CUDA":
+        "windows,Python(3.6-3.9),X64,CUDA":
             "pip install onnxruntime-gpu",
 	
-	"linux,Python(3.5-3.7),ARM64,CUDA":
+	"linux,Python(3.6-3.9),ARM64,CUDA":
             "For Jetpack 4.4+, follow installation instructions from <a href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
 	    
         "linux,C,X64,CUDA":
@@ -255,7 +255,7 @@ function commandMessage(key) {
         "linux,C#,X64,CUDA":
             "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
 
-        "linux,Python(3.5-3.7),X64,CUDA":
+        "linux,Python(3.6-3.9),X64,CUDA":
             "pip install onnxruntime-gpu",
 
         "windows,C,ARM32,DirectML":
@@ -267,32 +267,32 @@ function commandMessage(key) {
         "windows,C#,ARM32,DirectML":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
 
-        "windows,Python(3.5-3.7),ARM32,DirectML":
+        "windows,Python(3.6-3.9),ARM32,DirectML":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
 
         "mac,C,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),ARM32,DirectML":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "linux,C,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "linux,C++,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "linux,C#,ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "linux,Python(3.5-3.7),ARM32,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "linux,Python(3.6-3.9),ARM32,DirectML":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "windows,C,ARM64,DirectML":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
@@ -303,7 +303,7 @@ function commandMessage(key) {
         "windows,C#,ARM64,DirectML":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
 
-        "windows,Python(3.5-3.7),ARM64,DirectML":
+        "windows,Python(3.6-3.9),ARM64,DirectML":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
 
         "linux,C,ARM32,DefaultCPU":
@@ -312,7 +312,7 @@ function commandMessage(key) {
         "linux,C++,ARM32,DefaultCPU":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
 
-        "linux,Python(3.5-3.7),ARM32,DefaultCPU":
+        "linux,Python(3.6-3.9),ARM32,DefaultCPU":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
 
         "windows,C,X64,DefaultCPU":
@@ -320,10 +320,27 @@ function commandMessage(key) {
 
         "windows,C,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-        "windows,C++,X64,DefaultCPU":
+	
+	"windows,C,ARM32,DefaultCPU":
             "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-            
+        
+	"windows,C++,ARM32,DefaultCPU":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+	    
+	"windows,C#,ARM32,DefaultCPU":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+	    
+	"windows,C,ARM64,DefaultCPU":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+         
+	"windows,C++,ARM64,DefaultCPU":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+	    
+	"windows,C#,ARM64,DefaultCPU":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+	    
+	"windows,C++,X64,DefaultCPU":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
         "windows,C++,X86,DefaultCPU":
         	"Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
         
@@ -352,16 +369,16 @@ function commandMessage(key) {
         "mac,C#,X64,DefaultCPU":
             "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
 
-        "windows,Python(3.5-3.7),X64,DefaultCPU":
+        "windows,Python(3.6-3.9),X64,DefaultCPU":
             "pip install onnxruntime",
 
-        "mac,Python(3.5-3.7),X64,DefaultCPU":
+        "mac,Python(3.6-3.9),X64,DefaultCPU":
             "pip install onnxruntime",
 
-        "linux,Python(3.5-3.7),X64,DefaultCPU":
+        "linux,Python(3.6-3.9),X64,DefaultCPU":
             "pip install onnxruntime",
 
-        "linux,Python(3.5-3.7),ARM64,DefaultCPU":
+        "linux,Python(3.6-3.9),ARM64,DefaultCPU":
             "pip install onnxruntime",
 
         "windows,C,X64,DNNL":
@@ -373,7 +390,7 @@ function commandMessage(key) {
         "windows,C#,X64,DNNL":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-        "windows,Python(3.5-3.7),X64,DNNL":
+        "windows,Python(3.6-3.9),X64,DNNL":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
         "linux,C,X64,DNNL": 
@@ -385,7 +402,7 @@ function commandMessage(key) {
         "linux,C#,X64,DNNL":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-        "linux,Python(3.5-3.7),X64,DNNL": 
+        "linux,Python(3.6-3.9),X64,DNNL": 
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
         "windows,C,X64,MKL-ML":
@@ -423,7 +440,7 @@ function commandMessage(key) {
         "linux,C#,X64,nGraph":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
 
-        "linux,Python(3.5-3.7),X64,nGraph":
+        "linux,Python(3.6-3.9),X64,nGraph":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
 
         "windows,C,X64,nGraph":
@@ -435,7 +452,7 @@ function commandMessage(key) {
         "windows,C#,X64,nGraph":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
 
-        "windows,Python(3.5-3.7),X64,nGraph":
+        "windows,Python(3.6-3.9),X64,nGraph":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
 
         "windows,C,X64,NUPHAR":
@@ -447,7 +464,7 @@ function commandMessage(key) {
         "windows,C#,X64,NUPHAR":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
 
-        "windows,Python(3.5-3.7),X64,NUPHAR":
+        "windows,Python(3.6-3.9),X64,NUPHAR":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
 
         "linux,C,X64,NUPHAR":
@@ -459,7 +476,7 @@ function commandMessage(key) {
         "linux,C#,X64,NUPHAR":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
 
-        "linux,Python(3.5-3.7),X64,NUPHAR":
+        "linux,Python(3.6-3.9),X64,NUPHAR":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
 
         "linux,C,X64,OpenVINO":
@@ -471,7 +488,7 @@ function commandMessage(key) {
         "linux,C#,X64,OpenVINO":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
-        "linux,Python(3.5-3.7),X64,OpenVINO":
+        "linux,Python(3.6-3.9),X64,OpenVINO":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
         "windows,C,X64,OpenVINO":
@@ -483,7 +500,7 @@ function commandMessage(key) {
         "windows,C#,X64,OpenVINO":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
-        "windows,Python(3.5-3.7),X64,OpenVINO":
+        "windows,Python(3.6-3.9),X64,OpenVINO":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
         "windows,C,X64,TensorRT":
@@ -495,7 +512,7 @@ function commandMessage(key) {
         "windows,C#,X64,TensorRT":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
-        "windows,Python(3.5-3.7),X64,TensorRT":
+        "windows,Python(3.6-3.9),X64,TensorRT":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
         "linux,C,X64,TensorRT":
@@ -507,7 +524,7 @@ function commandMessage(key) {
         "linux,C#,X64,TensorRT":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
-        "linux,Python(3.5-3.7),X64,TensorRT":
+        "linux,Python(3.6-3.9),X64,TensorRT":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
         "linux,C,ARM64,TensorRT":
@@ -519,173 +536,173 @@ function commandMessage(key) {
         "linux,C#,ARM64,TensorRT":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
-        "linux,Python(3.5-3.7),ARM64,TensorRT":
+        "linux,Python(3.6-3.9),ARM64,TensorRT":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
         "mac,C,X64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,X86,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,ARM32,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,ARM32,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,X64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,X86,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,ARM32,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),ARM32,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),ARM32,nGraph":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,X64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,X86,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,ARM32,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,ARM32,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),X64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X64,nGraph":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),X86,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X86,nGraph":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,ARM32,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),ARM32,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),ARM32,CUDA":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,X64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,X86,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,ARM32,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,ARM32,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,X64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,X86,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,ARM32,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),ARM32,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),ARM32,TensorRT":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,X64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,X86,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),X64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X64,CUDA":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),X86,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X86,CUDA":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),ARM64,DirectML":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,X64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,X86,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,ARM32,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,ARM32,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,X64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,X86,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,ARM32,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),ARM32,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),ARM32,OpenVINO":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,X64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,X86,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,ARM64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),X64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X64,TensorRT":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),X86,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X86,TensorRT":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,ARM64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,ARM64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "linux,C,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "linux,C++,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),ARM64,nGraph":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),ARM64,nGraph":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,ARM64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "linux,C#,ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "linux,Python(3.5-3.7),ARM64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "linux,Python(3.6-3.9),ARM64,DirectML":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,ARM64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,ARM64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "windows,C,X64,DirectML":
             "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
@@ -693,134 +710,134 @@ function commandMessage(key) {
         "windows,C++,X64,DirectML":
             "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
 
-        "mac,Python(3.5-3.7),ARM64,CUDA":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),ARM64,CUDA":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,ARM64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "windows,C#,X64,DirectML":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
 
-        "windows,Python(3.5-3.7),X64,DirectML":
+        "windows,Python(3.6-3.9),X64,DirectML":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
 
         "mac,C++,ARM64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,ARM64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,X64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,X86,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),ARM64,TensorRT":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),ARM64,TensorRT":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C,X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,X64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,X86,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C++,X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,X64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,X86,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
-        "mac,Python(3.5-3.7),X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X64,DirectML":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
         "mac,C,ARM64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
-        "mac,Python(3.5-3.7),X64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X64,OpenVINO":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
-        "mac,Python(3.5-3.7),X86,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X86,OpenVINO":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
         "mac,C++,ARM64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "mac,C#,ARM64,OpenVINO":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
-        "mac,Python(3.5-3.7),ARM64,OpenVINO":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),ARM64,OpenVINO":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "mac,C,X86,NUPHAR":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "mac,C++,X86,NUPHAR":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
         "mac,C#,X86,NUPHAR":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
-        "mac,Python(3.5-3.7),X86,NUPHAR":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X86,NUPHAR":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "mac,C,X86,DefaultCPU":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "mac,C++,X86,DefaultCPU":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
         "mac,C#,X86,DefaultCPU":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
-        "mac,Python(3.5-3.7),X86,DefaultCPU":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X86,DefaultCPU":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "mac,C,X86,MKL-ML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "mac,C++,X86,MKL-ML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "mac,C#,X86,MKL-ML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
-        "mac,Python(3.5-3.7),X86,MKL-ML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X86,MKL-ML":
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
         "mac,C,X86,DNNL":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "mac,C++,X86,DNNL":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
         "mac,C#,X86,DNNL":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
-        "mac,Python(3.5-3.7),X86,DNNL":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X86,DNNL":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
         "linux,C,X64,DirectML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
         "linux,C++,X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "linux,C#,X64,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
-        "linux,Python(3.5-3.7),X64,DirectML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "linux,Python(3.6-3.9),X64,DirectML":
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "windows,C,X86,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
@@ -831,32 +848,32 @@ function commandMessage(key) {
         "windows,C#,X86,DirectML":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
 
-        "windows,Python(3.5-3.7),X86,DirectML":
+        "windows,Python(3.6-3.9),X86,DirectML":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
 
         "mac,C,X86,DirectML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
         "mac,C++,X86,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "mac,C#,X86,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
-        "mac,Python(3.5-3.7),X86,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "mac,Python(3.6-3.9),X86,DirectML":
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 
         "linux,C,X86,DirectML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
         
         "linux,C++,X86,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
         "linux,C#,X86,DirectML":
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
             
-        "linux,Python(3.5-3.7),X86,DirectML":
-        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
+        "linux,Python(3.6-3.9),X86,DirectML":
+        	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
 		
 		"linux,Java,X64,DefaultCPU":
 			"Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
@@ -898,173 +915,173 @@ function commandMessage(key) {
             "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle",
 
         "windows,Java,X64,TensorRT":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "windows,Java,X64,DNNL":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "windows,Java,X64,MKL-ML":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "windows,Java,X64,nGraph":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "windows,Java,X64,NUPHAR":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "windows,Java,X64,OpenVINO":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "linux,Java,X64,TensorRT":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "linux,Java,X64,DNNL":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "linux,Java,X64,MKL-ML":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "linux,Java,X64,nGraph":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "linux,Java,X64,NUPHAR":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
         "linux,Java,X64,OpenVINO":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
         
         "windows,Javascript,X64,DefaultCPU":
             "npm install onnxruntime",
 
         "android,C,X86,DefaultCPU":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>here</a>",
         
         "android,C++,X86,DefaultCPU":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>here</a>",
         
         "android,Java,X86,DefaultCPU":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
         
         "android,C,ARM64,DefaultCPU":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>here</a>",
         
         "android,C++,ARM64,DefaultCPU":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>here</a>",
         
         "android,Java,ARM64,DefaultCPU":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
         
         "android,C,X86,NNAPI":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
         
         "android,C++,X86,NNAPI":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
         
         "android,Java,X86,NNAPI":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
         
         "android,C,ARM64,NNAPI":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
         
         "android,C++,ARM64,NNAPI":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>here</a>",
         
         "android,Java,ARM64,NNAPI":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Android-NNAPI-Execution-Provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Android-NNAPI-Execution-Provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
         
         "ios,C,ARM64,DefaultCPU":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#iOS' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#iOS' target='_blank'>here</a>",
         
         "ios,C++,ARM64,DefaultCPU":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#iOS' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#iOS' target='_blank'>here</a>",
         
-        "windows,Python(3.5-3.7),X86,VitisAI":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+        "windows,Python(3.6-3.9),X86,VitisAI":
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
         
         "windows,C,X86,VitisAI":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
         
         "windows,C++,X86,VitisAI":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
         
-        "linux,Python(3.5-3.7),X86,VitisAI":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+        "linux,Python(3.6-3.9),X86,VitisAI":
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
         
         "linux,C,X86,VitisAI":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
         
         "linux,C++,X86,VitisAI":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#Vitis-AI' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#Vitis-AI' target='_blank'>here</a>",
         
-        "windows,Python(3.5-3.7),X86,MIGraphX":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+        "windows,Python(3.6-3.9),X86,MIGraphX":
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
         
         "windows,C,X86,MIGraphX":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
         
         "windows,C++,X86,MIGraphX":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
         
-        "linux,Python(3.5-3.7),X86,MIGraphX":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+        "linux,Python(3.6-3.9),X86,MIGraphX":
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
         
         "linux,C,X86,MIGraphX":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
         
         "linux,C++,X86,MIGraphX":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#AMD-MIGraphX' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#AMD-MIGraphX' target='_blank'>here</a>",
         
-        "linux,Python(3.5-3.7),ARM64,ACL":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+        "linux,Python(3.6-3.9),ARM64,ACL":
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
         
         "linux,C,ARM64,ACL":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
         
         "linux,C++,ARM64,ACL":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
         
-        "linux,Python(3.5-3.7),ARM32,ACL":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+        "linux,Python(3.6-3.9),ARM32,ACL":
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
         
         "linux,C,ARM32,ACL":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
         
         "linux,C++,ARM32,ACL":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ARM-Compute-Library' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ARM-Compute-Library' target='_blank'>here</a>",
         
-        "linux,Python(3.5-3.7),ARM64,ArmNN":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+        "linux,Python(3.6-3.9),ARM64,ArmNN":
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
         
         "linux,C,ARM64,ArmNN":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
         
         "linux,C++,ARM64,ArmNN":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
         
-        "linux,Python(3.5-3.7),ARM32,ArmNN":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+        "linux,Python(3.6-3.9),ARM32,ArmNN":
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
         
         "linux,C,ARM32,ArmNN":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
         
         "linux,C++,ARM32,ArmNN":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#ArmNN' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ArmNN' target='_blank'>here</a>",
         
-        "linux,Python(3.5-3.7),ARM64,RockchipNPU":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#RKNPU' target='_blank'>here</a>",
+        "linux,Python(3.6-3.9),ARM64,RockchipNPU":
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#RKNPU' target='_blank'>here</a>",
         
         "linux,C,ARM64,RockchipNPU":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#RKNPU' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#RKNPU' target='_blank'>here</a>",
         
         "linux,C++,ARM64,RockchipNPU":
-            "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#RKNPU' target='_blank'>here</a>",
+            "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#RKNPU' target='_blank'>here</a>",
         
         
     };
 
     if (!object.hasOwnProperty(key)) {
         $("#command span").html(
-            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>."
+            "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>."
         );
     } else {
         $("#command span").html(object[key]);
