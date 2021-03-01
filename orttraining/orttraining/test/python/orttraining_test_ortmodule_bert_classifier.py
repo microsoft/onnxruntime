@@ -350,7 +350,7 @@ def main():
                         help='Log level (default: WARNING)')
     parser.add_argument('--num-hidden-layers', type=int, default=1, metavar='H',
                         help='Number of hidden layers for the BERT model. A vanila BERT has 12 hidden layers (default: 1)')
-    parser.add_argument('--data_dir', type=str, default='./cola_public/raw',
+    parser.add_argument('--data-dir', type=str, default='./cola_public/raw',
                         help='Path to the bert data directory')
 
     parser.add_argument('--log_perf_metrics', action='store_true', default=False,
