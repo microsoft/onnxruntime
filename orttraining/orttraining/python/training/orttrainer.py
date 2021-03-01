@@ -620,6 +620,7 @@ class ORTTrainer(object):
         ort_parameters.world_rank = self.options.distributed.world_rank
         ort_parameters.world_size = self.options.distributed.world_size
         ort_parameters.gradient_accumulation_steps = self.options.batch.gradient_accumulation_steps
+        ort_parameters.allreduce_in_mixed_precision_type = self.options.distributed.allreduce_in_mixed_precision_type
         ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
         ort_parameters.enable_adasum = self.options.distributed.enable_adasum
         ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_optimization.stage

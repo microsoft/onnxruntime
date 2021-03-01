@@ -123,6 +123,10 @@ class ORTTrainerOptions(object):
                                 }
                             }
                         },
+                        'allreduce_in_mixed_precision_type': {
+                            'type': 'boolean',
+                            'default': True
+                        },
                         'allreduce_post_accumulation': {
                             'type': 'boolean',
                             'default': False
@@ -577,6 +581,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     }
                 }
             },
+            'allreduce_in_mixed_precision_type': {
+                'type': 'boolean',
+                'default': True
+            },            
             'allreduce_post_accumulation': {
                 'type': 'boolean',
                 'default': False

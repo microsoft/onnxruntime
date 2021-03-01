@@ -394,7 +394,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                use_deterministic_compute=False,
                                                use_invertible_layernorm_grad=False,
                                                enable_adasum=False,
-                                               optimized_model_filepath=""):
+                                               optimized_model_filepath="",
+                                               allreduce_in_mixed_precision_type=True):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -408,6 +409,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.set_gradients_as_graph_outputs = False
     ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
     ort_parameters.enable_adasum = enable_adasum
+    ort_parameters.allreduce_in_mixed_precision_type = allreduce_in_mixed_precision_type
     output_types = {}
     for output in model.graph.output:
         output_types[output.name] = output.type.tensor_type

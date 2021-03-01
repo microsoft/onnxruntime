@@ -39,6 +39,7 @@ struct TrainingParameters {
   bool use_fp16_moments = false;
 
   bool use_mixed_precision = false;
+  bool allreduce_in_mixed_precision_type = true;
   bool allreduce_post_accumulation = false;
   float loss_scale = 0.0f;
   int world_rank = 0;
@@ -193,7 +194,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
       return it->second;
     };
     opt.use_mixed_precision_moments = parameters.use_fp16_moments;
-    opt.do_all_reduce_in_mixed_precision_type = true;
+    opt.do_all_reduce_in_mixed_precision_type = parameters.allreduce_in_mixed_precision_type;
     // TODO: this mapping is temporary.
     // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
     // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
