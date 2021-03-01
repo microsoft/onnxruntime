@@ -2,16 +2,16 @@
 
 ## Overview
 
-<img align="left" width=40% src="images/Mobile.png" alt="Steps to build the reduced binary size."/>
+<img align="left" width=40% src="images/Mobile.png" alt="Steps to build for mobile platforms."/>
 
 ONNX Runtime now supports an internal model format to minimize the build size for usage in mobile and embedded scenarios. An ONNX model can be converted to an internal ONNX Runtime format ('ORT format model') using the below instructions.
 
-The minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included in the build.
-    i.e. the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed.
+A minimal build can be used with any ORT format model, provided that the kernels for the operators used in the model were included in the build.
+I.e., the custom build provides a set of kernels, and if that set satisfies a given ORT format model's needs, the model can be loaded and executed.
 
 ## Steps to create model and minimal build
 
-You will need a script from the the ONNX Runtime repository, and to also perform a custom build, so you will need to clone the repository locally. See [here](https://www.onnxruntime.ai/docs/how-to/build.html#prerequisites) for initial steps.
+You will need a script from the ONNX Runtime repository and to also perform a custom build, so you will need to clone the repository locally. See [here](https://www.onnxruntime.ai/docs/how-to/build.html#prerequisites) for initial steps.
 
 The directory the ONNX Runtime repository was cloned into is referred to as `<ONNX Runtime repository root>` in this documentation.
 
@@ -20,21 +20,36 @@ Once you have cloned the repository, perform the following steps to create a min
 ### 1. Create ORT format model and configuration file with required operators
 
 We will use a helper python script to convert ONNX format models into ORT format models, and to create the configuration file for use with the minimal build.
-This will require the standard ONNX Runtime python package to be installed.
-  - Install the ONNX Runtime python package from https://pypi.org/project/onnxruntime/. Version 1.5.2 or later is required.
-    - `pip install onnxruntime`
-    - ensure that any existing ONNX Runtime python package was uninstalled first, or use `-U` with the above command to upgrade an existing package
-  - Copy all the ONNX models you wish to convert and use with the minimal build into a directory
-  - Convert the ONNX models to ORT format
-    - `python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py <path to directory containing one or more .onnx models>`
-      - For each ONNX model an ORT format model will be created with '.ort' as the file extension.
-      - A `required_operators.config` configuration file will also be created.
+
+The configuration file specifies what operator kernels to include in the build.
+This allows unused operator kernels to be pruned in order to decrease the binary size.
+
+It is also possible (and optional) to further prune the operator kernel implementations based on their input and output type usage detected in the ORT format models.
+This pruning is referred to as "operator type reduction" in this documentation.
+
+- The helper python script requires the standard ONNX Runtime python package to be installed. Install the ONNX Runtime python package from https://pypi.org/project/onnxruntime/. Version 1.5.2 or later is required.
+  To enable operator type reduction, version 1.7 or later is required.
+  - `pip install onnxruntime`
+  - Ensure that any existing ONNX Runtime python package was uninstalled first, or use `-U` with the above command to upgrade an existing package.
+
+- Additionally, if you want to enable operator type reduction, the Flatbuffers python package should be installed.
+  - `pip install flatbuffers`
+
+- Copy all the ONNX models you wish to convert and use with the minimal build into a directory.
+
+- Convert the ONNX models to ORT format
+  - `python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py <path to directory containing one or more .onnx models>`
+    - To enable operator type reduction, specify the `--enable_type_reduction` option.
+  - For each ONNX model an ORT format model will be created with '.ort' as the file extension.
+  - A configuration file will also be created.
+    If operator type reduction is enabled, the file will be called `required_operators_and_types.config`.
+    Otherwise, the file will be called `required_operators.config`.
 
 Example:
 
 Running `'python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py /models'` where the '/models' directory contains ModelA.onnx and ModelB.onnx
   - Will create /models/ModelA.ort and /models/ModelB.ort
-  - Will create /models/required_operators.config/
+  - Will create /models/required_operators.config
 
 ### 2. Create the minimal build
 
@@ -48,6 +63,7 @@ See [here](https://www.onnxruntime.ai/docs/how-to/build.html#cpu) for the genera
 The follow options can be used to reduce the build size. Enable all options that your scenario allows.
   - Reduce build to required operator kernels
     - Add `--include_ops_by_config <config file produced by step 1> --skip_tests` to the build parameters.
+      - To enable operator type reduction, also add `--enable_reduced_operator_type_support`.
     - See the documentation on the [Reduced Operator Kernel build](Reduced_Operator_Kernel_build.md) for more information. This step can also be done pre-build if needed.
       - NOTE: This step will edit some of the ONNX Runtime source files to exclude unused kernels. If you wish to go back to creating a full build, or wish to change the operator kernels included, you should run `git reset --hard` or `git checkout HEAD -- ./onnxruntime/core/providers` to undo these changes.
 

@@ -83,4 +83,8 @@ jobs:
     displayName: 'Populate perf metrics'
     workingDirectory: $(Build.SourcesDirectory)/tools/perf_util
 
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
+
   - template: templates/clean-agent-build-directory-step.yml

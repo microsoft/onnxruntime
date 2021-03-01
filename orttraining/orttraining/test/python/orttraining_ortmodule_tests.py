@@ -46,7 +46,7 @@ def run_ortmodule_poc_net(cwd, log, no_cuda, data_dir):
         command.extend(['--no-cuda', '--epochs', str(3)])
 
     if data_dir:
-        command.extend(['--data_dir', data_dir])
+        command.extend(['--data-dir', data_dir])
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
@@ -58,12 +58,12 @@ def run_ortmodule_torch_lightning(cwd, log, data_dir):
                '--epochs=2', '--batch-size=256']
 
     if data_dir:
-        command.extend(['--data_dir', data_dir])
+        command.extend(['--data-dir', data_dir])
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
-def run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda, data_dir, transformers_cache):
+def run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda, data_dir, transformers_cache):
     log.debug('Running: ORTModule HuggingFace BERT for sequence classification with --no-cuda arg {}.'.format(no_cuda))
 
     env = get_env_with_transformers_cache(transformers_cache)
@@ -73,7 +73,7 @@ def run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log,
         command.extend(['--no-cuda', '--epochs', str(3)])
 
     if data_dir:
-        command.extend(['--data_dir', data_dir])
+        command.extend(['--data-dir', data_dir])
 
     run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
 
@@ -90,14 +90,13 @@ def main():
 
     run_ortmodule_poc_net(cwd, log, no_cuda=True, data_dir=args.mnist)
 
-    run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=False,
+    run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=False,
         data_dir=args.bert_data, transformers_cache=args.transformers_cache)
 
-    run_ort_module_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True,
+    run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True,
         data_dir=args.bert_data, transformers_cache=args.transformers_cache)
 
-    # TODO: Re-enable when PyTorch Lightning works with newer torchtext (nightlies after 2021-02-19)
-    # run_ortmodule_torch_lightning(cwd, log, args.args.mnist)
+    run_ortmodule_torch_lightning(cwd, log, args.mnist)
 
     return 0
 

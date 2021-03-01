@@ -4,9 +4,15 @@ import pprint
 import logging
 import coloredlogs
 import re
+import sys
 
 debug = False
 debug_verbose = False 
+
+def get_output(command):
+    p = subprocess.run(command, check=True, stdout=subprocess.PIPE)
+    output = p.stdout.decode("ascii").strip()
+    return output
 
 def find(regex_string): 
     import glob
@@ -14,10 +20,12 @@ def find(regex_string):
     results.sort()
     return results
 
+def pretty_print(pp, json_object):
+    pp.pprint(json_object)
+    sys.stdout.flush()
+
 def get_latest_commit_hash():
-    p1 = subprocess.Popen(["git", "rev-parse", "--short", "HEAD"], stdout = subprocess.PIPE)
-    stdout, sterr = p1.communicate()
-    commit = stdout.decode("utf-8").strip()
+    commit = get_output(["git", "rev-parse", "--short", "HEAD"])
     return commit
 
 def parse_single_file(f):

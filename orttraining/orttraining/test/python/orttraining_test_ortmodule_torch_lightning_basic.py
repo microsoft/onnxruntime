@@ -30,8 +30,7 @@ class LitAutoEncoder(pl.LightningModule):
         )
         if use_ortmodule:
             self.encoder = ORTModule(self.encoder)
-            # TODO: Remove this comment below when multiple ORTModule instances is supported
-            # self.decoder = ORTModule(self.decoder)
+            self.decoder = ORTModule(self.decoder)
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
