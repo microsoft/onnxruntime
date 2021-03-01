@@ -47,7 +47,7 @@ if [[ $BUILD_REASON == "IndividualCI" || $BUILD_REASON == "BatchedCI" ]] && [[ $
         --build_project=onnxruntime \
         --build_id=$BUILD_ID
 else
-    echo "No binary size report for build reason: [$BUILD_REASON] and build branch: [$BUILD_SOURCEVERSION]"
+    echo "No binary size report for build reason: [$BUILD_REASON] and build branch: [$BUILD_BRANCH]"
     echo "The content of binary_size_data.txt"
     cat /build/MinSizeRel/binary_size_data.txt
 fi
