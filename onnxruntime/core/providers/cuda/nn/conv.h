@@ -121,18 +121,9 @@ struct CudnnConvState {
   size_t workspace_bytes;
   decltype(AlgoPerfType().algo) algo;
   CudnnTensor x_tensor;
-  const void* x_data = nullptr;
-  size_t element_size = 0;
-  CudnnFilterDescriptor w_desc;
-  const void* w_data = nullptr;
+  CudnnFilterDescriptor filter_desc;
   CudnnTensor b_tensor;
-  const void* b_data = nullptr;
-  void* b_zero = nullptr;
   CudnnTensor y_tensor;
-  Tensor* Y = nullptr;
-  void* y_data = nullptr;
-  CudnnTensor z_tensor;
-  const void* z_data = nullptr;
   CudnnConvolutionDescriptor conv_desc;
 
   struct PerfResultParams {
@@ -151,14 +142,6 @@ struct CudnnConvState {
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;
-  IAllocatorUniquePtr<void> memory_for_cudnn_conv_results;
-
-  ~CudnnConvState() {
-    if (b_zero) {
-      CUDA_CALL_THROW(cudaFree(b_zero));
-      b_zero = nullptr;
-    }
-  }
 };
 
 enum : size_t {
@@ -168,8 +151,6 @@ enum : size_t {
 template <typename T>
 class Conv : public CudaKernel {
  public:
-  using CudaT = typename ToCudaType<T>::MappedType;
-
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
@@ -177,26 +158,10 @@ class Conv : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
- protected:
-  inline IAllocatorUniquePtr<void> GetWorkSpace() const {
-    return GetScratchBuffer<void>(s_.workspace_bytes);
-  }
-  const CudaT alpha_ = Consts<CudaT>::One;
-  const CudaT beta_ = Consts<CudaT>::Zero;
-  Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
+ private:
   ConvAttributes conv_attrs_;
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
 };
-
-Status SliceOutUnwantedOutputSection(cudaStream_t stream,
-                                     const void* input_data,
-                                     const std::vector<int64_t>& input_dims,
-                                     void* output_data,
-                                     const std::vector<int64_t>& output_dims,
-                                     std::vector<int64_t> starts,
-                                     const std::vector<int64_t>& ends,
-                                     const std::vector<int64_t>& axes,
-                                     size_t element_size);
 }  // namespace cuda
 }  // namespace onnxruntime
