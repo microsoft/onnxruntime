@@ -8,7 +8,7 @@
 
 
 /*
-ConvGrad: (According to OnnxRuntime discovered using code inspection and Onnx documentation)
+MaxPoolGrad: (According to OnnxRuntime discovered using code inspection and Onnx documentation)
   Inputs:
     0) dY - Gradient of output Y
     1) indices - indices
@@ -158,8 +158,7 @@ class DnnlMaxPoolGrad : public DnnlKernel {
     if (!gpu_available_) {
       // reorder source memory for best performance (AVX512);
       if (primitive_dst_desc_ != source_desc_) {
-        //dnnl::memory::dims src_dims(xgrad_shape_.GetDims().begin(), xgrad_shape_.GetDims().end());
-        auto pd = dnnl::memory::desc(source_desc_);
+        dnnl::memory::desc pd(source_desc_);
 
         if (mklnode_ptr_->parent_nodes.empty())
           diff_dst_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
@@ -183,7 +182,7 @@ class DnnlMaxPoolGrad : public DnnlKernel {
     } else {  //gpu_available_
       if (primitive_dst_desc_ != source_desc_) {
         //dnnl::memory::dims src_dims(xgrad_shape_.GetDims().begin(), xgrad_shape_.GetDims().end());
-        auto pd = dnnl::memory::desc(source_desc_);
+        dnnl::memory::desc pd(source_desc_);
 
         if (mklnode_ptr_->parent_nodes.empty())
           diff_dst_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
@@ -397,8 +396,8 @@ class DnnlMaxPoolGrad : public DnnlKernel {
   bool gpu_available_;
  private:
   dnnl::memory::format_tag GetAVXFormat(const dnnl::memory::dims& src_dims_mkl) {
-    bool is_2D = src_dims_mkl.size() == 4 ? true : false;
-    bool is_1D = src_dims_mkl.size() == 3 ? true : false;
+    bool is_2D = src_dims_mkl.size() == 4;
+    bool is_1D = src_dims_mkl.size() == 3;
     dnnl::memory::format_tag fmt = dnnl::memory::format_tag::any;
     if (gpu_available_) {
       if (is_1D)
