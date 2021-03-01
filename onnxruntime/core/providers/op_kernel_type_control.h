@@ -28,7 +28,7 @@
  *    Zero or more allowed type sets may be given.
  *    The supported type set (1) will be limited by set intersection with all allowed type sets.
  *
- * 4. Enabled types are the types that are actually supported.
+ * 4. Enabled types are the types that are actually supported in this build.
  *    These are the required types and the supported, allowed types.
  *    Defined with set operations:
  *      enabled (4) = union( required (2),
@@ -121,7 +121,8 @@ struct EnabledTypes {
   template <typename T>
   using GetTypesMemberAsSetOrEmpty =
       // !HasTypesMember<T>::value ? TypeList<> : GetTypesMemberAsSet<T>
-      // doesn't evaluate the else branch if the condition is true
+      // if !HasTypesMember<T>::value, GetTypesMemberAsSet<T> is not valid
+      // mp_eval_if_not does not evaluate it in that case
       boost::mp11::mp_eval_if_not<
           HasTypesMember<T>,
           TypeList<>,
