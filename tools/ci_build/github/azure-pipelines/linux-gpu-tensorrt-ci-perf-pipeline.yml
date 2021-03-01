@@ -11,9 +11,9 @@ jobs:
     #   displayName: 'Build latest ORT Images'
     #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -o "onnx-zoo-models"'
-      displayName: 'Onnx Zoo Models Perf'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    # - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -o "onnx-zoo-models"'
+    #   displayName: 'Onnx Zoo Models Perf'
+    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
     - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  $(image) -o "many-models"'
       displayName: 'Many Models Perf'
