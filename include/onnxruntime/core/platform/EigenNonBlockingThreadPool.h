@@ -1006,7 +1006,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
     }
   };
   SummonWorkers(*pt, ps, n, worker_fn);
-  profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION);
+  profiler_.LogEndAndStart(ThreadPoolProfiler::DISTRIBUTION);
 
   // Run work in the main thread
   loop.fn(0);
