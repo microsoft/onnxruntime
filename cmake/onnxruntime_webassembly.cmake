@@ -40,8 +40,25 @@ target_link_libraries(onnxruntime_wasm PRIVATE
   re2::re2
 )
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "-s \"EXTRA_EXPORTED_RUNTIME_METHODS=['UTF8ToString','stringToUTF8','lengthBytesUTF8']\" -s DEMANGLE_SUPPORT=1 -s ASYNCIFY=1 -s EXPORT_NAME=onnxjs -s WASM=1 -s NO_EXIT_RUNTIME=0 -s ALLOW_MEMORY_GROWTH=1 -s SAFE_HEAP=0 -s MODULARIZE=1 -s SAFE_HEAP_LOG=0 -s STACK_OVERFLOW_CHECK=0 -s EXPORT_ALL=0 -s LLD_REPORT_UNDEFINED -s VERBOSE=0 -s ASSERTIONS=1 -s NO_FILESYSTEM=1 -s DISABLE_EXCEPTION_CATCHING=0 --no-entry")
+set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "                                                   \
+                      -s \"EXTRA_EXPORTED_RUNTIME_METHODS=['UTF8ToString','stringToUTF8','lengthBytesUTF8']\"    \
+                      -s EXPORT_NAME=onnxjs                                                                      \
+                      -s WASM=1                                                                                  \
+                      -s NO_EXIT_RUNTIME=0                                                                       \
+                      -s ALLOW_MEMORY_GROWTH=1                                                                   \
+                      -s SAFE_HEAP=0                                                                             \
+                      -s MODULARIZE=1                                                                            \
+                      -s SAFE_HEAP_LOG=0                                                                         \
+                      -s STACK_OVERFLOW_CHECK=0                                                                  \
+                      -s EXPORT_ALL=0                                                                            \
+                      -s LLD_REPORT_UNDEFINED                                                                    \
+                      -s VERBOSE=0                                                                               \
+                      -s ASSERTIONS=1                                                                            \
+                      -s NO_FILESYSTEM=1                                                                         \
+                      -s DISABLE_EXCEPTION_CATCHING=0                                                            \
+                      --no-entry")
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set_property(TARGET onnxruntime_wasm APPEND_STRING PROPERTY LINK_FLAGS " -s DEMANGLE_SUPPORT=1 -s DISABLE_EXCEPTION_CATCHING=0")
 else()
-  set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "-s \"EXTRA_EXPORTED_RUNTIME_METHODS=['UTF8ToString','stringToUTF8','lengthBytesUTF8']\" -s DEMANGLE_SUPPORT=0 -s ASYNCIFY=0 -s EXPORT_NAME=onnxjs -s WASM=1 -s NO_EXIT_RUNTIME=0 -s ALLOW_MEMORY_GROWTH=1 -s SAFE_HEAP=0 -s MODULARIZE=1 -s SAFE_HEAP_LOG=0 -s STACK_OVERFLOW_CHECK=0 -s EXPORT_ALL=0 -s LLD_REPORT_UNDEFINED -s NO_FILESYSTEM=1 -s DISABLE_EXCEPTION_CATCHING=1 --no-entry")
+  set_property(TARGET onnxruntime_wasm APPEND_STRING PROPERTY LINK_FLAGS " -s DEMANGLE_SUPPORT=0 -s DISABLE_EXCEPTION_CATCHING=1")
 endif()

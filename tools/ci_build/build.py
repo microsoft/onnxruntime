@@ -5,6 +5,7 @@
 import argparse
 import contextlib
 import glob
+import json
 import os
 import re
 import shutil
@@ -893,15 +894,26 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             ]
 
     if args.wasm:
-        if not path_to_protoc_exe:
-            raise BuildError(
-                "protoc executable path is required")
-        wasm_toolchain_file = os.path.join(
-            cmake_dir, "external", "emsdk", "upstream", "emscripten", "cmake", "Modules", "Platform",
-            "Emscripten.cmake")
+        # install emscripten if not exist
+        emsdk_version = "2.0.13"
+
+        emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
+        emsdk_file = "emsdk.bat" if is_windows() else "emsdk"
+        emsdk_version_file = os.path.join(emsdk_dir, "upstream", "emscripten", "emscripten-version.txt")
+        emscripten_cmake_toolchain_file = os.path.join(emsdk_dir, "upstream", "emscripten", "cmake", "Modules",
+                                                       "Platform", "Emscripten.cmake")
+
+        if os.path.exists(emsdk_version_file):
+            with open(emsdk_version_file) as f:
+                emsdk_version_data = json.load(f)
+            emsdk_version_match = isinstance(emsdk_version_data, str) and emsdk_version_data == emsdk_version
+        if not os.path.exists(emscripten_cmake_toolchain_file) or not emsdk_version_match:
+            print("Installing emsdk...")
+            run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
+
         cmake_args += [
             "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
-            "-DCMAKE_TOOLCHAIN_FILE=" + wasm_toolchain_file
+            "-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file
         ]
 
     if path_to_protoc_exe:
@@ -1843,7 +1855,9 @@ def main():
         path_to_protoc_exe = args.path_to_protoc_exe
         if not args.skip_submodule_sync:
             update_submodules(source_dir)
-        if is_windows():
+        if args.wasm:
+            cmake_extra_args = ['-G', 'Ninja']
+        elif is_windows():
             if args.cmake_generator == 'Ninja':
                 if args.x86 or args.arm or args.arm64:
                     raise BuildError(
@@ -1913,7 +1927,7 @@ def main():
                         "Cannot test ARM64 build on X86_64. Will skip test running after build.")
                     args.test = False
 
-        if (args.android or args.ios or args.enable_windows_store
+        if (args.android or args.ios or args.enable_windows_store or args.wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
             # Cross-compiling for Android and iOS
             path_to_protoc_exe = build_protoc_for_host(

@@ -19,16 +19,14 @@
 
     Call `build` command in root folder. There are some restrictions to build WebAssembly.
     
-    - Use 'Ninja' as cmake generator to use an emscripten as compiler.
     - Add '--wasm'.
-    - Specify 'protoc' command path to compile onnx proto.
     - Don't build as a shared lib to compile onnx protobuf properly.
     - Skip unit test.
 
     In example,
 
     ```cmd
-    build.bat --config=Release --cmake_generator="Ninja" --wasm --path_to_protoc_exe=<path_to_protoc>\protoc.exe --skip_tests
+    build.bat --config=Release --wasm --skip_tests
     ```
 
 2. Reduce WebAssembly binary size and run with ort model format
@@ -38,7 +36,7 @@
     Keep the same restrictions listed at #1 above. In example,
 
     ```cmd
-    build.bat --config=MinSizeRel --cmake_generator="Ninja" --wasm --path_to_protoc_exe=<path_to_protoc>\protoc.exe --skip_tests --include_ops_by_config required_operators.config --enable_reduced_operator_type_support --minimal_build --disable_exceptions --disable_ml_ops
+    build.bat --config=MinSizeRel --wasm --skip_tests --include_ops_by_config required_operators.config --enable_reduced_operator_type_support --minimal_build --disable_exceptions --disable_ml_ops
     ```
 
 ### Output
