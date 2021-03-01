@@ -49,7 +49,7 @@ static Status SliceOutUnwantedOutputSection(const void* input_data,
   // As a sanity check, ensure that the slice operator's output shape matches with the expected output shape
   ORT_ENFORCE(compute_metadata.output_dims_ == output_dims);
 
-  return SliceCuda::Impl(stream, input_data, input_dims, output_data, compute_metadata, element_size);
+  return SliceCuda::Impl(Stream(), input_data, input_dims, output_data, compute_metadata, element_size);
 }
 
 template <typename T>
