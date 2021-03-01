@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
-#include "core/providers/cpu/controlflow/event_pool.h"
-#include "core/providers/cpu/controlflow/message_queue.h"
+#include "orttraining/training_ops/cpu/controlflow/ort_tasks.h"
 #include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
@@ -21,27 +20,26 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status YieldOp::Compute(OpKernelContext* ctx) const {
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  for (int i_in = 0; i_in < ctx->InputCount(); ++i_in) {
-    onnxruntime::contrib::OrtMessageQueue::GetInstance().Push(*ctx_internal->GetInputMLValue(i_in));
+
+  std::vector<OrtValue> forward_outputs;
+  forward_outputs.reserve(ctx->InputCount());
+  for (int i = 0; i < ctx->InputCount(); ++i) {
+    forward_outputs.push_back(*ctx_internal->GetInputMLValue(i));
   }
 
-  // Reset background event before returning to main thread
-  const int64_t background_thread_event_id = 1;
-  onnxruntime::contrib::OrtEventPool::GetInstance().ResetEvent(background_thread_event_id);
+  // return forward output and single that FW graph is completed
+  OrtTasks::GetInstance().SetForwardOutputs(Status::OK(), forward_outputs);
 
-  // single event for InferenceSession::RunInBackgroundAndWaitForYield() that FW graph is done
-  const int64_t main_thread_event_id = 0;
-  OrtEventPool::GetInstance().SignalEvent(main_thread_event_id);
+  // wait for data from SetBackwardInputs() to continue executing the BW graph
+  auto backward_inputs = OrtTasks::GetInstance().WaitForBackwardInputs();
+  bool terminate = backward_inputs.first;
 
-  // wait for event from InferenceSession::ContinueRunInBackground() to continue the BW graph
-  OrtEventPool::GetInstance().WaitAndResetEvent(background_thread_event_id);
-
-  if (ctx_internal->GetTerminateFlag()) {
-    LOGS(ctx->Logger(), WARNING) << "Resumed executing backward subgraph, terminate_flag is set to true.";
+  if (terminate) {
+    ORT_THROW("Terminating backward run, since the terminate is set to true.");
   } else {
-    // Get output grad from somewhere and prepare Op outputs.
-    for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
-      ctx_internal->SetOutputMLValue(i_out, OrtMessageQueue::GetInstance().Pop());
+    ORT_ENFORCE(backward_inputs.second.size() == static_cast<size_t>(ctx->OutputCount()));
+    for (int i = 0; i < ctx->OutputCount(); ++i) {
+      ctx_internal->SetOutputMLValue(i, backward_inputs.second[i]);
     }
   }
 

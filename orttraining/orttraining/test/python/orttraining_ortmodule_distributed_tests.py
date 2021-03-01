@@ -29,7 +29,7 @@ def run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log, data_dir):
         '--deepspeed_config', 'orttraining_test_ortmodule_deepspeed_zero_stage_1_config.json']
 
     if data_dir:
-        command.extend(['--data_dir', data_dir])
+        command.extend(['--data-dir', data_dir])
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
