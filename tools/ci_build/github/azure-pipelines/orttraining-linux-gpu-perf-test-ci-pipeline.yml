@@ -47,7 +47,7 @@ jobs:
           --perf_mysql_server_name onnxruntimedashboard.mysql.database.azure.com \
           --perf_power_bi_user_name powerbi@onnxruntimedashboard \
           --perf_power_bi_password  $(ortperf) \
-          --perf_database onnxruntime \
+          --perf_power_bi_database onnxruntime \
           --perf_repo_path /onnxruntime_src \
     displayName: 'Run orttraining_test_ortmodule_bert_classifier.py'
     condition: succeededOrFailed() # ensure all tests are run

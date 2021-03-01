@@ -3,6 +3,7 @@
 import mysql.connector
 from mysql.connector import errorcode
 import git
+import os
 
 import argparse
 from datetime import datetime
@@ -120,14 +121,74 @@ def ConnectToPerfDashboardDb(mysql_server_name, power_bi_user_name, password, da
         else:
             print(err)
 
+def log_perf_metrics(perf_metrics,
+    mysql_server_name, power_bi_user_name, power_bi_password, power_bi_database, perf_repo_path=None):
+    if perf_repo_path:
+        perf_metrics['CommitId'] = get_repo_commit(perf_repo_path)
+    else:
+        perf_metrics['CommitId'] = get_repo_commit(os.path.realpath(__file__))
+
+    ConnectAndInsertPerfMetrics(
+        mysql_server_name,
+        power_bi_user_name,
+        power_bi_password,
+        power_bi_database,
+        perf_metrics)
+
+required_attributes_for_perf_metrics = ['model_name', 'optimizer', 'batch_size', 'epochs', 'train_steps',
+    'sequence_length']
+
+def calculate_and_log_perf_metrics(args, start_time,
+    mysql_server_name, power_bi_user_name, power_bi_password, power_bi_database, ort_repo_path=None):
+    completion_time = datetime.datetime.now()
+    perf_metrics_duration = completion_time - start_time
+
+    for attribute in required_attributes_for_perf_metrics:
+        if not hasattr(args, attribute):
+            raise ValueError('args does not contain all attributes needed to calculate perf metrics. \
+                Please prepare perf_metrics and call log_perf_metrics instead')
+
+    perf_metrics = {}    
+    perf_metrics['Model'] = args.model_name
+    perf_metrics['BatchId'] = 'NA'
+    perf_metrics['ModelName'] = args.model_name
+    perf_metrics['DisplayName'] = args.model_name
+    perf_metrics['UseMixedPrecision'] = args.fp16 if hasattr(args, 'fp16') else False
+    perf_metrics['UseAutoCast'] = args.use_auto_cast if hasattr(args, 'use_auto_cast') else False
+    perf_metrics['UseDeepSpeed'] = args.use_deep_speed if hasattr(args, 'use_deep_speed') else False
+    perf_metrics['Optimizer'] = args.optimizer
+    perf_metrics['BatchSize'] = args.batch_size
+    perf_metrics['SeqLen'] = args.sequence_length
+    perf_metrics['PredictionsPerSeq'] = args.prediction_per_seq if hasattr(args, 'prediction_per_seq') else 0
+    perf_metrics['NumOfBatches'] = args.epochs * args.train_steps
+    perf_metrics['WeightUpdateSteps'] = args.epochs * args.train_steps
+    perf_metrics['Round'] = 0                                       # NA
+    perf_metrics['GradAccSteps'] = args.gradient_accumulation_steps
+
+    perf_metrics['AvgTimePerBatch'] = \
+        perf_metrics_duration.microseconds / args.train_steps
+
+    perf_metrics['Throughput'] = \
+        args.batch_size * args.train_steps / perf_metrics_duration.seconds
+
+    perf_metrics['StabilizedThroughput'] = 0    # TODO
+    perf_metrics['EndToEndThroughput'] = 0      # TODO
+    perf_metrics['TotalTime'] = perf_metrics_duration.seconds
+
+    perf_metrics['AvgCPU'] = 0                  # TODO
+    perf_metrics['Memory'] = 0                  # TODO
+    perf_metrics['RunConfig'] = 'na'
+    perf_metrics['Time'] = completion_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    log_perf_metrics(perf_metrics, mysql_server_name, power_bi_user_name, power_bi_password, power_bi_database,
+        ort_repo_path)
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--action', help='what to do')
     parser.add_argument('--mysql_server_name', help='Perf dashboard mysql server name')
     parser.add_argument('--power_bi_user_name', help='Power BI user name')
     parser.add_argument('--password', help='password', default=None)
     parser.add_argument('--database', help='The dashboard database')
-    parser.add_argument('--perf_metrics', help='The perf metrics')
     return parser.parse_args()
 
 def ConnectAndInsertPerfMetrics(mysql_server_name, power_bi_user_name, password, database, perf_metrics):
@@ -166,35 +227,5 @@ def ConnectAndInsertPerfMetrics(mysql_server_name, power_bi_user_name, password,
 
 if __name__ == '__main__':
     args = parse_arguments()
-    if args.action == 'create_perf_table':
-        conn = ConnectToPerfDashboardDb(args.mysql_server_name, args.power_bi_user_name, args.password, args.database)
-        conn.cursor().execute(create_table_script)
-    elif args.action == 'insert_perf_table':
-        perf_metrics = {}
-        perf_metrics['Model'] = "model"
-        perf_metrics['BatchId'] = "batch_id2"
-        perf_metrics['CommitId'] = "commit id"
-        perf_metrics['ModelName'] = "model name"
-        perf_metrics['DisplayName'] = "disp name"
-        perf_metrics['UseMixedPrecision'] = True
-        perf_metrics['UseAutoCast'] = False
-        perf_metrics['UseDeepSpeed'] = True
-        perf_metrics['Optimizer'] = "optim"
-        perf_metrics['BatchSize'] = 20
-        perf_metrics['SeqLen'] = 128
-        perf_metrics['PredictionsPerSeq'] = 200
-        perf_metrics['NumOfBatches'] = 300
-        perf_metrics['WeightUpdateSteps'] = 20
-        perf_metrics['Round'] = 10
-        perf_metrics['GradAccSteps'] = 12
-        perf_metrics['AvgTimePerBatch'] = 0.2
-        perf_metrics['Throughput'] = 20
-        perf_metrics['StabilizedThroughput'] = 30
-        perf_metrics['EndToEndThroughput'] = 40
-        perf_metrics['TotalTime'] = 2.3
-        perf_metrics['AvgCPU'] = 2
-        perf_metrics['Memory'] = 3
-        perf_metrics['RunConfig'] ="run  config"
-        perf_metrics['Time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        ConnectAndInsertPerfMetrics(args.mysql_server_name, args.power_bi_user_name, args.password, args.database, perf_metrics)
+    conn = ConnectToPerfDashboardDb(args.mysql_server_name, args.power_bi_user_name, args.password, args.database)
+    conn.cursor().execute(create_table_script)

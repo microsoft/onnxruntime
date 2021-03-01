@@ -17,6 +17,7 @@ import datetime
 
 import onnxruntime
 from onnxruntime.training import ORTModule
+from perf_log.ort_module_perf_test_tools import log_perf_metrics
 
 def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     # ========================================
@@ -311,20 +312,6 @@ def format_time(elapsed):
     # Format as hh:mm:ss
     return str(datetime.timedelta(seconds=elapsed_rounded))
 
-def log_perf_metrics(args, perf_metrics):
-    from perf_log.create_table_perf_test_training_ort_module_data import ConnectAndInsertPerfMetrics
-    from perf_log.create_table_perf_test_training_ort_module_data import get_repo_commit
-    if args.perf_repo_path:
-        perf_metrics['CommitId'] = get_repo_commit(args.perf_repo_path)
-    else:
-        perf_metrics['CommitId'] = get_repo_commit(os.path.realpath(__file__))
-    ConnectAndInsertPerfMetrics(
-        args.perf_mysql_server_name,
-        args.perf_power_bi_user_name,
-        args.perf_power_bi_password,
-        args.perf_database,
-        perf_metrics)
-
 def main():
     # 1. Basic setup
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -358,7 +345,7 @@ def main():
     parser.add_argument('--perf_mysql_server_name', type=str, help='perfmance mysql name')
     parser.add_argument('--perf_power_bi_user_name', type=str, help='perfmance power BI account user name')
     parser.add_argument('--perf_power_bi_password', type=str, help='perfmance power BI account password')
-    parser.add_argument('--perf_database', type=str, help='perfmance database')
+    parser.add_argument('--perf_power_bi_database', type=str, help='perfmance database')
     parser.add_argument('--perf_repo_path', type=str, help='path of ort source')
 
     args = parser.parse_args()
@@ -456,7 +443,6 @@ def main():
 
     if args.log_perf_metrics:
         perf_metrics = {}
-        
         perf_metrics['Model'] = 'orttraining_test_ortmodule_bert_classifier'
         perf_metrics['BatchId'] = 'na'
         perf_metrics['ModelName'] = 'bert'
@@ -488,7 +474,9 @@ def main():
         perf_metrics['Memory'] = 0                  # TODO
         perf_metrics['RunConfig'] = 'na'
         perf_metrics['Time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_perf_metrics(args, perf_metrics)
+
+        log_perf_metrics(perf_metrics, args.perf_mysql_server_name, args.perf_power_bi_user_name,
+            args.perf_power_bi_password, args.perf_power_bi_database, args.perf_repo_path)
 
 
 if __name__ == '__main__':

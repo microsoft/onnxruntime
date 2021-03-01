@@ -282,7 +282,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/perf_log
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/perf_log
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
@@ -298,7 +298,7 @@ add_custom_command(
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_perf_log_srcs}
-      $<TARGET_FILE_DIR:${test_data_target}>/perf_log/
+      $<TARGET_FILE_DIR:${build_output_target}>/perf_log/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_backend_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend/
