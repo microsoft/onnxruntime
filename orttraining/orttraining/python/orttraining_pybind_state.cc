@@ -304,6 +304,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("sliced_axes", &TrainingParameters::sliced_axes)
       .def_readwrite("use_fp16_moments", &TrainingParameters::use_fp16_moments)
       .def_readwrite("use_mixed_precision", &TrainingParameters::use_mixed_precision)
+      .def_readwrite("allreduce_in_mixed_precision_type", &TrainingParameters::allreduce_in_mixed_precision_type)
       .def_readwrite("allreduce_post_accumulation", &TrainingParameters::allreduce_post_accumulation)
       .def_readwrite("loss_scale", &TrainingParameters::loss_scale)
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
