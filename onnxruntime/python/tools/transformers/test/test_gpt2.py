@@ -26,7 +26,7 @@ class TestGpt2(unittest.TestCase):
 
     def test_gpt2_fp16(self):
         if 'CUDAExecutionProvider' in onnxruntime.get_available_providers():
-            self.run_benchmark_gpt2('-m gpt2 --precision fp16 -o -b 1 -s 128')
+            self.run_benchmark_gpt2('-m gpt2 --precision fp16 -o -b 1 -s 128 --use_gpu')
 
     def test_gpt2_int8(self):
         self.run_benchmark_gpt2('-m gpt2 --precision int8 -o -b 1 -s 128')

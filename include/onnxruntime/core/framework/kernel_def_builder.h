@@ -82,6 +82,8 @@ class KernelDef {
 
   bool AllocateInputsContiguously() const { return allocate_inputs_contiguously_; }
 
+  bool ExternalOutputs() const { return external_outputs_; }
+
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
     if (it == output_memory_type_args_.end())
@@ -147,6 +149,9 @@ class KernelDef {
 
   // Require input tensors to be allocated contiguously.
   bool allocate_inputs_contiguously_ = false;
+
+  // Whether the outputs are from external.
+  bool external_outputs_ = false;
 
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
@@ -255,6 +260,14 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& AllocateInputsContiguously() {
     kernel_def_->allocate_inputs_contiguously_ = true;
+    return *this;
+  }
+
+  /**
+     Specify that this kernel's outputs are passed from external.
+  */
+  KernelDefBuilder& ExternalOutputs() {
+    kernel_def_->external_outputs_ = true;
     return *this;
   }
 

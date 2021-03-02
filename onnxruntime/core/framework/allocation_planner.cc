@@ -600,6 +600,15 @@ class PlannerImpl {
     return Status::OK();
   }
 
+  bool ExternalOutputs(const Node& node) const {
+    const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
+    if (ci.kernel_def == nullptr) {
+      return false;
+    }
+
+    return ci.kernel_def->ExternalOutputs();
+  }
+
   // Should only be used after ProcessDef()
   Status ComputeReusePlan() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
@@ -647,6 +656,8 @@ class PlannerImpl {
       const auto* pnode = graph_viewer_.GetNode(step.node_index);
       // node outputs.
       const auto& output_defs = pnode->OutputDefs();
+      // External outputs flag.
+      bool external_outputs = ExternalOutputs(*pnode);
       // output_arg_def_index is the index of ArgDefs in pnode's output list.
       // At the i-th iteration, we build the allocation plan for the i-th
       // NodeArg in pnode's output list. Allocation plan remains untouched for
@@ -702,6 +713,12 @@ class PlannerImpl {
               }
             }
           }
+        } else if (external_outputs) {
+          ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
+          AllocPlan(current).alloc_kind = AllocKind::kPreExisting;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+          AllocPlan(current).life_interval.second = execution_plan.size();
+#endif
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
