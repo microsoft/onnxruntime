@@ -491,7 +491,7 @@ struct ProviderHost {
 
 extern ProviderHost* g_host;
 
-#ifndef PROVIDER_BRIDGE_ORT
+#ifdef SHARED_PROVIDER
 
 struct CPUIDInfo {
   static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
@@ -771,7 +771,7 @@ struct KernelDef {
 
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 
-#ifndef PROVIDER_BRIDGE_ORT
+#ifdef SHARED_PROVIDER
 struct KernelDefBuilder {
   static std::unique_ptr<KernelDefBuilder> Create() { return g_host->KernelDefBuilder__construct(); }
   static void operator delete(void* p) { g_host->KernelDefBuilder__operator_delete(reinterpret_cast<KernelDefBuilder*>(p)); }
@@ -1027,7 +1027,7 @@ struct Path {
 
 #endif
 
-#ifndef PROVIDER_BRIDGE_ORT
+#ifdef SHARED_PROVIDER
 struct OpKernelContext {
   const Tensor* Input_Tensor(int index) const { return g_host->OpKernelContext__Input_Tensor(this, index); }
 

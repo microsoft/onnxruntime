@@ -7,7 +7,7 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
-#define PROVIDER_BRIDGE_PROVIDER 1
+#define SHARED_PROVIDER 1
 
 #include <vector>
 #include <string>
@@ -154,7 +154,7 @@ enum OperatorStatus : int {
 
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
-#include "core/framework/op_kernel_shared.h"
+#include "core/framework/op_kernel.h"
 #include "core/framework/data_types_internal.h"
 
 namespace onnxruntime {

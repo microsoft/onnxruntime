@@ -26,7 +26,7 @@
 #endif
 
 namespace onnxruntime {
-// These Provider types are really just internal types, so we #define PROVIDER_BRIDGE_ORT so that only these definitions are seen by provider_interfaces.h
+// These Provider types are really just internal types, since we don't include provider_api.h only these definitions are seen by provider_interfaces.h
 // Users of provider_interfaces.h (through provider_api.h) will see the wrappers that call through the provider shared interface which is implemented by this file
 using Provider_int64s = google::protobuf::RepeatedField<int64_t>;
 using Provider_AttributeProto = ONNX_NAMESPACE::AttributeProto;
@@ -46,7 +46,6 @@ using Provider_ValueInfoProtos = google::protobuf::RepeatedPtrField<ONNX_NAMESPA
 using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 }  // namespace onnxruntime
 
-#define PROVIDER_BRIDGE_ORT
 #include "core/common/cpuid_info.h"
 #include "onnx/common/stl_backports.h"
 #include "core/common/logging/logging.h"
