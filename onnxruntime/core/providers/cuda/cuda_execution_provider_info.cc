@@ -36,7 +36,8 @@ const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
 
 CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   CUDAExecutionProviderInfo info{};
-
+  void* alloc = nullptr;
+  void* free = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -55,18 +56,18 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
               })
           .AddValueParser(
               cuda::provider_option_names::kcudaExternalAlloc,
-              [&info](const std::string& value_str) -> Status {
+              [&alloc](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                info.external_allocator_info.alloc  = reinterpret_cast<void*>(address);
+                alloc  = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
           .AddValueParser(
               cuda::provider_option_names::kcudaExternalFree,
-              [&info](const std::string& value_str) -> Status {
+              [&free](const std::string& value_str) -> Status {
                 size_t address;
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                info.external_allocator_info.free  = reinterpret_cast<void*>(address);
+                free  = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
           .AddAssignmentToReference(cuda::provider_option_names::kMemLimit, info.cuda_mem_limit)
@@ -79,6 +80,8 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .Parse(options));
 
+  CUDAExecutionProviderExternalAllocatorInfo alloc_info{alloc, free};
+  info.external_allocator_info = alloc_info;
   return info;
 }
 
