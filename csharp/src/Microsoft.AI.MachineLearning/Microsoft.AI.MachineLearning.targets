@@ -9,9 +9,9 @@
     <RuntimesDirectory Condition="'$(TargetPlatformIdentifier)' == 'UAP'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\lib\uap10.0</RuntimesDirectory>
     <RuntimesDirectory Condition="'$(TargetPlatformIdentifier)' != 'UAP'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\_native</RuntimesDirectory>
     <WindowsAIBinarySubfolder Condition="'$(UseWindowsMLStaticRuntime)' == 'true'">static\</WindowsAIBinarySubfolder>
-    <WindowsAIBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
-    <WindowsAIWinMD>$(MSBuildThisFileDirectory)..\..\lib\uap10.0\Microsoft.AI.MachineLearning.winmd</WindowsAIWinMD>
-    <WindowsAIExperimentalWinMD>$(MSBuildThisFileDirectory)..\..\lib\uap10.0\Microsoft.AI.MachineLearning.Experimental.winmd</WindowsAIExperimentalWinMD>
+    <WindowsAIBinary>$([System.IO.Path]::GetFullPath($(RuntimesDirectory)\$(WindowsAIBinarySubfolder)Microsoft.AI.MachineLearning.dll))</WindowsAIBinary>
+    <WindowsAIWinMD>$([System.IO.Path]::GetFullPath($(MSBuildThisFileDirectory)..\..\lib\uap10.0\Microsoft.AI.MachineLearning.winmd))</WindowsAIWinMD>
+    <WindowsAIExperimentalWinMD>$([System.IO.Path]::GetFullPath($(MSBuildThisFileDirectory)..\..\lib\uap10.0\Microsoft.AI.MachineLearning.Experimental.winmd))</WindowsAIExperimentalWinMD>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true'">
@@ -19,10 +19,10 @@
   </PropertyGroup>
   
   <ItemGroup>
-    <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap10.0\Microsoft.AI.MachineLearning.winmd">
+    <Reference Include="$(WindowsAIWinMD)">
       <Implementation>$(WindowsAIBinary)</Implementation>
     </Reference>
-    <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap10.0\Microsoft.AI.MachineLearning.Experimental.winmd">
+    <Reference Include="$(WindowsAIExperimentalWinMD)">
       <Implementation>$(WindowsAIBinary)</Implementation>
     </Reference>
     <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);$(OnnxRuntimeBinary)" />
