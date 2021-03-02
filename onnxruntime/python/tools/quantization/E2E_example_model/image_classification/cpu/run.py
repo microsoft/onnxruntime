@@ -12,7 +12,7 @@ from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
-from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantFormat
+from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantFormat, QuantType
 
 
 class ResNet50DataReader(CalibrationDataReader):
@@ -107,7 +107,8 @@ def main():
                     output_model_path,
                     dr,
                     quant_format=args.quant_format,
-                    per_channel=args.per_channel)
+                    per_channel=args.per_channel,
+                    weight_type=QuantType.QInt8)
     print('Calibrated and quantized model saved.')
 
     print('benchmarking fp32 model...')

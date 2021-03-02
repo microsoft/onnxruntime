@@ -13,8 +13,11 @@ from .operators.gavgpool import QGlobalAveragePool
 from .operators.lstm import LSTMQuant
 from .operators.split import QSplit
 from .operators.pad import QPad
+from .operators.reshape import ReshapeQuant
 
-CommonOpsRegistry = {"Gather": GatherQuant, "EmbedLayerNormalization": EmbedLayerNormalizationQuant}
+CommonOpsRegistry = {"Gather": GatherQuant,
+                     "EmbedLayerNormalization": EmbedLayerNormalizationQuant,
+                     "Reshape": ReshapeQuant}
 
 IntegerOpsRegistry = {
     "Conv": ConvInteger,
