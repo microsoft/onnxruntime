@@ -597,7 +597,7 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
 
     y1, _ = model(x1, x2)
     s1 = y1.sum()
-    s1.backward()
+    s1.backward()   # y2's gradient will be materialized.
     assert x1.grad is not None and x2.grad is not None
 
     # named_params[0] and named_params[1] correspond to weight and bias for fc1, similarly
@@ -614,14 +614,58 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
 
     _, y2 = model(x1,x2)
     s2 = y2.sum()
-    s2.backward()
+    s2.backward()   # y1's gradient will be materialized.
     named_params = list(model.named_parameters())
     assert named_params[0][1].grad is None or torch.count_nonzero(named_params[0][1].grad) == 0
     assert named_params[1][1].grad is None or torch.count_nonzero(named_params[1][1].grad) == 0
     assert torch.count_nonzero(named_params[2][1].grad) > 0
     assert torch.count_nonzero(named_params[3][1].grad) > 0
 
+@pytest.mark.parametrize("device", ['cuda'])
+def test_loss_combines_two_outputs_with_dependency(device):
 
+    def run_step(model, x1, x2):
+        y1, y2 = model(x1, x2)
+        loss = y1.sum() + y2.sum()
+        loss.backward()
+
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = NeuralNetMultiplePositionalArgumentsMultipleOutputs0(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x1 = torch.randn(N, D_in, device=device, requires_grad=False)
+    pt_x2 = torch.randn(N, D_in, device=device, requires_grad=False)
+    ort_x1 = pt_x1.clone()
+    ort_x2 = pt_x2.clone()
+
+    # Both y1 and y2's gradients are not None.
+    run_step(pt_model, pt_x1, pt_x2)
+    run_step(ort_model, ort_x1, ort_x2)
+
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+@pytest.mark.parametrize("device", ['cuda'])
+def test_loss_combines_two_outputs_with_dependency(device):
+
+    def run_step(model, x1, x2):
+        y1, y2 = model(x1, x2)
+        loss = y1.sum() + y2.sum()
+        loss.backward()
+
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = NeuralNetMultiplePositionalArgumentsMultipleOutputs1(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x1 = torch.randn(N, D_in, device=device, requires_grad=False)
+    pt_x2 = torch.randn(N, D_in, device=device, requires_grad=False)
+    ort_x1 = pt_x1.clone()
+    ort_x2 = pt_x2.clone()
+
+    # Both y1 and y2's gradients are not None.
+    run_step(pt_model, pt_x1, pt_x2)
+    run_step(ort_model, ort_x1, ort_x2)
+
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 @pytest.mark.parametrize("x1_requires_grad, x2_requires_grad", [(True, True), (True, False), (False, False), (False, True)])
 def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_requires_grad, x2_requires_grad):
@@ -629,7 +673,7 @@ def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_require
     def run_step(model, x1, x2):
         y1, y2 = model(x1, x2)
         s = y2.sum()
-        s.backward()
+        s.backward()    # y1's gradient will be None, and we will use scalar-0 tensor for ORT calculation.
 
     N, D_in, H, D_out = 32, 784, 500, 10
     device = 'cuda'

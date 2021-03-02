@@ -134,6 +134,9 @@ class ORTModule(torch.nn.Module):
                     Module outputs are returned to the user
                     '''
 
+                    # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
+                    ctx.set_materialize_grads(False)
+
                     # Use IO binding
                     _create_iobinding(self._training_io_binding, inputs, self._onnx_training, self._device)
 
@@ -141,6 +144,8 @@ class ORTModule(torch.nn.Module):
                     forward_outputs, run_id = self._training_session.run_forward(self._training_io_binding, self._run_options)
                     user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) for forward_output in forward_outputs)
                     ctx.run_id = run_id
+                    # Save shape, device and type info for materializing tensor in backward if output grad is None.
+                    ctx.output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
 
                     return user_outputs
 
@@ -152,14 +157,17 @@ class ORTModule(torch.nn.Module):
                     # Use IO binding
                     # Push user output grads to ONNX backend.
                     backward_grad_output_ortvalue = []
-
-                    # backward_output_grad_names_map only contains the subset of module outputs that need a gradient,
-                    # we filter out the invalid entries in grad_outputs, accessing using the mapped index.
-
-                    for _, i in self._onnx_graphs_info.backward_output_grad_names_map.items():
-                        grad_output = grad_outputs[i]
-                        if not grad_output.is_contiguous():
+                    contiguous_grad_outputs = []
+                    for idx, grad_output in enumerate(grad_outputs):
+                        if grad_output is None:
+                            if idx in self._onnx_graphs_info.output_grad_indices_require_materialized:
+                                grad_output = torch.zeros(ctx.output_info[idx][0], device=ctx.output_info[idx][1], dtype=ctx.output_info[idx][2])
+                            else:
+                                grad_output = torch.tensor(0., device=ctx.output_info[idx][1], dtype=ctx.output_info[idx][2])
+                        elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
+                        contiguous_grad_outputs.append(grad_output)
+                    for grad_output in contiguous_grad_outputs:
                         backward_grad_output_ortvalue.append(onnxruntime.OrtValue.ortvalue_from_data_ptr(list(grad_output.size()), _utils.dtype_torch_to_numpy(
                             grad_output.dtype), grad_output.device.type, _utils.get_device_index(grad_output.device), grad_output.data_ptr()))
 
