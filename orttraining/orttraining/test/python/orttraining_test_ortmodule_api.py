@@ -630,29 +630,6 @@ def test_loss_combines_two_outputs_with_dependency(device):
         loss.backward()
 
     N, D_in, H, D_out = 32, 784, 500, 10
-    pt_model = NeuralNetMultiplePositionalArgumentsMultipleOutputs0(D_in, H, D_out).to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model))
-
-    pt_x1 = torch.randn(N, D_in, device=device, requires_grad=False)
-    pt_x2 = torch.randn(N, D_in, device=device, requires_grad=False)
-    ort_x1 = pt_x1.clone()
-    ort_x2 = pt_x2.clone()
-
-    # Both y1 and y2's gradients are not None.
-    run_step(pt_model, pt_x1, pt_x2)
-    run_step(ort_model, ort_x1, ort_x2)
-
-    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
-
-@pytest.mark.parametrize("device", ['cuda'])
-def test_loss_combines_two_outputs_with_dependency(device):
-
-    def run_step(model, x1, x2):
-        y1, y2 = model(x1, x2)
-        loss = y1.sum() + y2.sum()
-        loss.backward()
-
-    N, D_in, H, D_out = 32, 784, 500, 10
     pt_model = NeuralNetMultiplePositionalArgumentsMultipleOutputs1(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
