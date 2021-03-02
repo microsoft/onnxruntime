@@ -270,13 +270,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
       yield_out_def("T", &tensor_float),
       gemm_out_def("Y", &tensor_float);
 
-  ONNX_NAMESPACE::AttributeProto required_grad;
-  const std::string attribute_name = "required_grad";
-  required_grad.set_name(attribute_name);
-  required_grad.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
-  required_grad.add_ints(static_cast<int64_t>(0));
-  NodeAttributes attributes({{attribute_name, required_grad}});
-  graph.AddNode("node1", "YieldOp", "yield", ArgMap{&input_def}, ArgMap{&yield_out_def}, &attributes, kMSDomain)
+  graph.AddNode("node1", "YieldOp", "yield", ArgMap{&input_def}, ArgMap{&yield_out_def}, nullptr, kMSDomain)
       .SetExecutionProviderType(xp_type);
   // Add another node after YieldOp as YieldOp should not be graph output.
   graph.AddNode("node2", "MatMul", "gemm1", ArgMap{&yield_out_def, &input_def}, ArgMap{&gemm_out_def})
