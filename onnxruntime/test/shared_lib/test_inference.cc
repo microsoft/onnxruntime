@@ -339,9 +339,6 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
         ORT_THROW("Invalid input index: ", index);
     }
   };
-  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /*index*/) const {
-    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_NONOPTIONAL;
-  }
 
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t index) const {
@@ -352,9 +349,6 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
       default:
         ORT_THROW("Invalid output index: ", index);
     }
-  }
-  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
-    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_NONOPTIONAL;
   }
 
  private:
@@ -452,7 +446,7 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
 }
 
 TEST(CApiTest, optional_input_output_custom_op_handler) {
-  MyCustomOpFooBar custom_op{onnxruntime::kCpuExecutionProvider};
+  MyCustomOpWithOptionalInput custom_op{onnxruntime::kCpuExecutionProvider};
 
   // `MyCustomOpFooBar` defines a custom op with atmost 3 inputs and the second input is optional.
   // In this test, we are going to try and run 2 models - one with the optional input and one without

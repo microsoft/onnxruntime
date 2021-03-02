@@ -7,7 +7,7 @@
 #include <string.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 7
+#define ORT_API_VERSION 8
 
 #ifdef __cplusplus
 extern "C" {
@@ -1190,7 +1190,7 @@ struct OrtApi {
 // 2) Optional (input/output may be absent in the node)
 typedef enum OrtCustomOpInputOutputCharacteristic {
   // TODO: Support 'Variadic' inputs/outputs
-  INPUT_OUTPUT_NONOPTIONAL = 0,
+  INPUT_OUTPUT_REQUIRED = 0,
   INPUT_OUTPUT_OPTIONAL,
 } OrtCustomOpInputOutputCharacteristic;
 

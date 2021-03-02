@@ -66,7 +66,7 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
 #endif
 }
 
-void MyCustomFooBarKernel::Compute(OrtKernelContext* context) {
+void MyCustomKernelWithOptionalInput::Compute(OrtKernelContext* context) {
   // Setup inputs
   const OrtValue* input_X1 = ort_.KernelContext_GetInput(context, 0);
   const OrtValue* input_X2 = ort_.KernelContext_GetInput(context, 1);

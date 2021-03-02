@@ -352,11 +352,9 @@ const char* PyCustomOp::GetName() const { return "PyOp"; }
 
 size_t PyCustomOp::GetInputTypeCount() const { return inputs_type_.size(); }
 ONNXTensorElementDataType PyCustomOp::GetInputType(size_t index) const { return inputs_type_[index]; }
-OrtCustomOpInputOutputCharacteristic PyCustomOp::GetInputCharacteristic(size_t /*index*/) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_NONOPTIONAL; }
 
 size_t PyCustomOp::GetOutputTypeCount() const { return outputs_type_.size(); }
 ONNXTensorElementDataType PyCustomOp::GetOutputType(size_t index) const { return outputs_type_[index]; }
-OrtCustomOpInputOutputCharacteristic PyCustomOp::GetOutputCharacteristic(size_t /*index*/) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_NONOPTIONAL; }
 
 PyCustomOp* LoadPyOp(const ONNX_NAMESPACE::NodeProto& node_proto, PyOpLogFunc log_func) {
   OnnxAttrs onnx_attrs;
