@@ -75,7 +75,7 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes: 120
-  pool: 'Linux-GPU-CUDA10'
+  pool: 'Onnxruntime-Linux-GPU'
   steps:
     - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/get-docker-image-steps.yml
@@ -237,7 +237,7 @@ jobs:
 
 - template: test_linux.yml
   parameters:
-    AgentPool : 'Linux-GPU-CUDA10'
+    AgentPool : 'Onnxruntime-Linux-GPU'
     TestGPU : 'true'
     
 - job: Publish_NuGet_Package_And_Report

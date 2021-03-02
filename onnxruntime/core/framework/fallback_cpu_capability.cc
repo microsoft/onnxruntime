@@ -14,9 +14,9 @@ using namespace ONNX_NAMESPACE::Utils;
 namespace onnxruntime {
 
 namespace {
-const int64_t Small_Initializer_Threshold = 100;
+const int64_t kSmallInitializerThreshold = 100;
 
-bool IsSmallInitializerWithSingleConsumer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
+bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
   const ONNX_NAMESPACE::TensorProto* initializer_tensor;
   if (!graph.GetInitializedTensor(arg->Name(), initializer_tensor))
     return false;
@@ -24,8 +24,8 @@ bool IsSmallInitializerWithSingleConsumer(const onnxruntime::GraphViewer& graph,
   for (auto& dim : initializer_tensor->dims()) {
     size *= dim;
   }
-  return size <= Small_Initializer_Threshold &&
-         graph.GetConsumerNodes(arg->Name()).size() == 1;
+
+  return size <= kSmallInitializerThreshold;
 }
 }  // namespace
 
@@ -112,7 +112,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       }
 
       // allow placing on CPU if it's a small initializer or graph input
-      if (IsSmallInitializerWithSingleConsumer(graph, input) ||
+      if (IsSmallInitializer(graph, input) ||
           std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end()) {
         continue;
       }

@@ -9,6 +9,22 @@
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
+  return onnxruntime::make_unique<OpKernelInfo>(info);
+}
+
+const onnxruntime::Node& OpKernel::Node() const {
+  return op_kernel_info_->node();
+}
+
+const onnxruntime::KernelDef& OpKernel::KernelDef() const {
+  return op_kernel_info_->GetKernelDef();
+}
+
+const OrtMemoryInfo& OpKernel::Allocator(int id, OrtMemType mem_type) const {
+  return op_kernel_info_->GetMemoryInfo(id, mem_type);
+}
+
 OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
     : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger) {

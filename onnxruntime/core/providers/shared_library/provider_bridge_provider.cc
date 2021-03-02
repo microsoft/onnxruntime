@@ -63,10 +63,6 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
   return g_host->DataTypeImpl_GetTensorType_float();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
-  return g_host->DataTypeImpl_AllFixedSizeTensorTypes();
-}
-
 TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
     : std::vector<int64_t>(dimension_count) {
   for (size_t i = 0; i < dimension_count; ++i) {
@@ -219,6 +215,10 @@ std::vector<std::string> GetStackTrace() { return g_host->GetStackTrace(); }
 void LogRuntimeError(uint32_t session_id, const common::Status& status,
                      const char* file, const char* function, uint32_t line) {
   return g_host->LogRuntimeError(session_id, status, file, function, line);
+}
+
+std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
+  return g_host->CopyOpKernelInfo(info);
 }
 
 }  // namespace onnxruntime
