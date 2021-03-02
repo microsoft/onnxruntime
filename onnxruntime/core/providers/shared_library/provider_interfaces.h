@@ -27,8 +27,6 @@ using DataType = const std::string*;
 
 namespace onnxruntime {
 // These types don't directly map to internal types
-struct Provider_KernelCreateInfo;
-struct Provider_OpKernel_Base;
 struct ProviderHost;
 
 class TensorShape;
@@ -64,19 +62,6 @@ struct Provider_TensorShapeProto_Dimension_Iterator {
 
   virtual void operator++() = 0;
   virtual const Provider_TensorShapeProto_Dimension& operator*() = 0;
-};
-
-class DataTypeImpl;
-using MLDataType = const DataTypeImpl*;
-
-struct Provider_OpKernel {
-  Provider_OpKernel() {}
-  virtual ~Provider_OpKernel() = default;
-
-  virtual Status Compute(OpKernelContext* context, const Provider_OpKernel_Base& base) const = 0;
-
-  Provider_OpKernel(const Provider_OpKernel&) = delete;
-  void operator=(const Provider_OpKernel&) = delete;
 };
 
 using NodeIndex = size_t;
@@ -142,10 +127,19 @@ struct ProviderHost {
 
   virtual std::string GetEnvironmentVar(const std::string& var_name) = 0;
 
+  // PrimitiveDataTypeBase
+  virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;
+
+  // DataTypeImpl
   MLDataType (*DataTypeImpl_GetType_Tensor)();
   MLDataType (*DataTypeImpl_GetType_float)();
   MLDataType (*DataTypeImpl_GetTensorType_float)();
-  virtual const std::vector<MLDataType>& DataTypeImpl_AllFixedSizeTensorTypes() = 0;
+
+  virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
+  virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
+  virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
@@ -335,6 +329,7 @@ struct ProviderHost {
 
   // KernelDef
   virtual void KernelDef__operator_delete(KernelDef* p) = 0;
+  virtual int KernelDef__ExecQueueId(const KernelDef* p) = 0;
 
   // KernelDefBuilder
   virtual std::unique_ptr<KernelDefBuilder> KernelDefBuilder__construct() = 0;
@@ -355,7 +350,7 @@ struct ProviderHost {
   // KernelRegistry
   virtual std::shared_ptr<KernelRegistry> KernelRegistry__construct() = 0;
   virtual void KernelRegistry__operator_delete(KernelRegistry* p) = 0;
-  virtual Status KernelRegistry__Register(KernelRegistry* p, Provider_KernelCreateInfo&& create_info) = 0;
+  virtual Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) = 0;
 
   // Function
   virtual const Graph& Function__Body(const Function* p) = 0;
@@ -465,19 +460,18 @@ struct ProviderHost {
   // Path
   virtual PathString Path__ToPathString(const Path* p) noexcept = 0;
 
-  // Provider_OpKernel_Base
-  virtual const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) = 0;
-
   // OpKernelContext
   virtual const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
 
   // OpKernelInfo
+  virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;
+  virtual void OpKernelInfo__operator_delete(OpKernelInfo* p) = 0;
   virtual Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) = 0;
   virtual Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) = 0;
 
   virtual const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept = 0;
-  virtual int OpKernelInfo__GetKernelDef_ExecQueueId(const OpKernelInfo* p) noexcept = 0;
+  virtual const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) = 0;
 
   // Tensor
   virtual float* Tensor__MutableData_float(Tensor* p) = 0;
@@ -497,7 +491,7 @@ struct ProviderHost {
 
 extern ProviderHost* g_host;
 
-#ifndef PROVIDER_BRIDGE_ORT
+#ifdef SHARED_PROVIDER
 
 struct CPUIDInfo {
   static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
@@ -767,32 +761,17 @@ struct IndexedSubGraph {
 struct KernelDef {
   static void operator delete(void* p) { g_host->KernelDef__operator_delete(reinterpret_cast<KernelDef*>(p)); }
 
+  int ExecQueueId() const { return g_host->KernelDef__ExecQueueId(this); }
+
   KernelDef() = delete;
   KernelDef(const KernelDef*) = delete;
   void operator=(const KernelDef&) = delete;
 };
 #endif
 
-using Provider_KernelCreateFn = std::function<Provider_OpKernel*(const OpKernelInfo& info)>;
-using Provider_KernelCreatePtrFn = std::add_pointer<Provider_OpKernel*(const OpKernelInfo& info)>::type;
+using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 
-struct Provider_KernelCreateInfo {
-  std::unique_ptr<KernelDef> kernel_def;  // Owned and stored in the global kernel registry.
-  Provider_KernelCreateFn kernel_create_func;
-
-  Provider_KernelCreateInfo(std::unique_ptr<KernelDef> definition,
-                            Provider_KernelCreateFn create_func)
-      : kernel_def(std::move(definition)),
-        kernel_create_func(create_func) {}
-
-  Provider_KernelCreateInfo(Provider_KernelCreateInfo&& other) noexcept
-      : kernel_def(std::move(other.kernel_def)),
-        kernel_create_func(std::move(other.kernel_create_func)) {}
-};
-
-using Provider_BuildKernelCreateInfoFn = Provider_KernelCreateInfo (*)();
-
-#ifndef PROVIDER_BRIDGE_ORT
+#ifdef SHARED_PROVIDER
 struct KernelDefBuilder {
   static std::unique_ptr<KernelDefBuilder> Create() { return g_host->KernelDefBuilder__construct(); }
   static void operator delete(void* p) { g_host->KernelDefBuilder__operator_delete(reinterpret_cast<KernelDefBuilder*>(p)); }
@@ -845,11 +824,36 @@ struct KernelRegistry {
   static std::shared_ptr<KernelRegistry> Create() { return g_host->KernelRegistry__construct(); }
   static void operator delete(void* p) { g_host->KernelRegistry__operator_delete(reinterpret_cast<KernelRegistry*>(p)); }
 
-  Status Register(Provider_KernelCreateInfo&& create_info) { return g_host->KernelRegistry__Register(this, std::move(create_info)); }
+  Status Register(KernelCreateInfo&& create_info) { return g_host->KernelRegistry__Register(this, std::move(create_info)); }
 
   KernelRegistry() = delete;
   KernelRegistry(const KernelRegistry&) = delete;
   void operator=(const KernelRegistry&) = delete;
+};
+
+struct PrimitiveDataTypeBase {
+  int32_t GetDataType() const { return g_host->PrimitiveDataTypeBase__GetDataType(this); }
+
+  PROVIDER_DISALLOW_ALL(PrimitiveDataTypeBase)
+};
+
+class DataTypeImpl {
+ public:
+  size_t Size() const { return g_host->DataTypeImpl__Size(this); }
+
+  template <typename T>
+  static MLDataType GetType();
+  template <typename elemT>
+  static MLDataType GetTensorType();
+
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorTypes(); }
+  static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
+
+  const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
+
+  static const char* ToString(MLDataType type) { return g_host->DataTypeImpl__ToString(type); }
+
+  PROVIDER_DISALLOW_ALL(DataTypeImpl)
 };
 
 struct Function {
@@ -1023,13 +1027,7 @@ struct Path {
 
 #endif
 
-struct Provider_OpKernel_Base {
-  const OpKernelInfo& GetInfo() const { return g_host->Provider_OpKernel_Base__GetInfo(this); }
-
-  PROVIDER_DISALLOW_ALL(Provider_OpKernel_Base)
-};
-
-#ifndef PROVIDER_BRIDGE_ORT
+#ifdef SHARED_PROVIDER
 struct OpKernelContext {
   const Tensor* Input_Tensor(int index) const { return g_host->OpKernelContext__Input_Tensor(this, index); }
 
@@ -1047,6 +1045,8 @@ inline const Tensor* OpKernelContext::Input<Tensor>(int index) const {
 }
 
 struct OpKernelInfo {
+  static void operator delete(void* p) { g_host->OpKernelInfo__operator_delete(reinterpret_cast<OpKernelInfo*>(p)); }
+
   template <typename T>
   Status GetAttr(const std::string& name, T* value) const;
 
@@ -1054,9 +1054,11 @@ struct OpKernelInfo {
   Status GetAttr(const std::string& name, float* value) const { return g_host->OpKernelInfo__GetAttr_float(this, name, value); }
 
   const DataTransferManager& GetDataTransferManager() const noexcept { return g_host->OpKernelInfo__GetDataTransferManager(this); }
-  int GetKernelDef_ExecQueueId() const noexcept { return g_host->OpKernelInfo__GetKernelDef_ExecQueueId(this); }
+  const KernelDef& GetKernelDef() const { return g_host->OpKernelInfo__GetKernelDef(this); }
 
-  PROVIDER_DISALLOW_ALL(OpKernelInfo)
+  OpKernelInfo() = delete;
+  OpKernelInfo(const OpKernelInfo&) = delete;
+  void operator=(const OpKernelInfo&) = delete;
 };
 
 template <>
