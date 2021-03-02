@@ -150,7 +150,7 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 
         // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
         // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
-        if (op->version >= 8 && op->GetInputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+        if (op->version >= 8 && op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
           option = onnx::OpSchema::FormalParameterOption::Optional;
         }
 
