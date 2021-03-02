@@ -209,6 +209,4 @@ inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   return p_ml_value->GetMutable<Tensor>();
 }
 
-using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
-
 }  // namespace onnxruntime
