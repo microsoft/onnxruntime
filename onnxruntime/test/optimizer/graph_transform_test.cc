@@ -523,48 +523,20 @@ TEST_F(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   }
 }
 
-#if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
-TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
-  auto model_uri = MODEL_FOLDER "fusion/conv_add_relu.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-  for (auto& node : p_model->MainGraph().Nodes()) {
-    node.SetExecutionProviderType(kCudaExecutionProvider);
-  }
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
-  ASSERT_TRUE(op_to_count["Relu"] == 1);
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["Relu"] == 0);
-}
-#endif
-
 #ifndef DISABLE_CONTRIB_OPS
 TEST_F(GraphTransformationTests, FuseConvActivation) {
-#ifdef USE_CUDA
-  std::unordered_map<std::basic_string<ORTCHAR_T>, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"}};
-#else
   std::unordered_map<std::basic_string<ORTCHAR_T>, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
                                                                                  {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
                                                                                  {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
                                                                                  {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},
                                                                                  {ORT_TSTR("fusion/conv_leakyrelu.onnx"), "LeakyRelu"}};
-#endif
+
   for (const auto& model : model_to_op_name) {
     auto model_uri = MODEL_FOLDER + model.first;
     std::shared_ptr<Model> p_model;
     ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
     Graph& graph = p_model->MainGraph();
-#ifdef USE_CUDA
-    for (auto& node : p_model->MainGraph().Nodes()) {
-      node.SetExecutionProviderType(kCudaExecutionProvider);
-    }
-#endif
+
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count[model.second] >= 1);
 

@@ -94,11 +94,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       s_.y_dims = y_dims;
 
       if (w_dims_changed)
-        ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+        ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
 
       // Special case when there is a dim value of 0 in the shape.
       // Return only after we have cached the following for subsequent runs :
-      // 1) `w_dims` in the `w_desc`
+      // 1) `w_dims` in the `filter_desc`
       // 2) `y_dims` in s_.y_dims
       if (p.Y->Shape().Size() == 0) {
         return Status::OK();
@@ -138,7 +138,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         int algo_count = 1;
         CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
             CudnnHandle(),
-            s_.w_desc,
+            s_.filter_desc,
             w_data,
             s_.x_tensor,
             x_data,
@@ -184,7 +184,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         cudnnConvolutionBackwardData(
             CudnnHandle(),
             &alpha,
-            s_.w_desc,
+            s_.filter_desc,
             w_data,
             s_.x_tensor,
             x_data,
