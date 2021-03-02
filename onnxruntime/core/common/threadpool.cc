@@ -29,9 +29,9 @@ namespace concurrency {
 bool ThreadPoolProfiler::Enabled() const {
   return enabled_ && std::this_thread::get_id() == main_thread_id_;
 }
+
 void ThreadPoolProfiler::Start() {
-  ORT_ENFORCE(!enabled_, "Profiler already started");
-  enabled_ = true;
+  enabled_ = true; //not thread-safe
   main_thread_id_ = std::this_thread::get_id();
 }
 

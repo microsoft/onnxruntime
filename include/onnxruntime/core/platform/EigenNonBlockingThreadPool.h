@@ -138,6 +138,7 @@ class ThreadPoolLoop;
 2. Inside thread pool, call LogStart() before interested section and LogEnd... after to log elapsed time;
 3. To extend, just add more events in enum Event before "All", and update GetEventName(...) accordingly.
 4. Note LogStart must pair with either LogEnd or LogEndAndStart, otherwise ORT_ENFORCE will fail.
+5. ThreadPoolProfiler is not designed to be thread-safe, please avoid using it under concurrent inference.
 */
 class ThreadPoolProfiler {
  public:
