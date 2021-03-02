@@ -266,7 +266,7 @@ void DataOps::populate_op_mode_supported() {
         auto ceil_attr = attributes.find("ceil_mode");
         // default value of ceil_mode (0) is supported.
         if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0) return true;
-        return dimension_unsupported(node);
+        return (!dimension_unsupported(node));
       }
     };
     op_list_.insert({"AveragePool", obj});
@@ -439,7 +439,7 @@ void DataOps::populate_op_mode_supported() {
       // dilations attrs are not supported in nGraph  
       if (attributes.find("dilations") != attributes.end()) 
         return true;
-      return(this->dimension_unsupported(node));
+      return(!this->dimension_unsupported(node));
     }
   };
     op_list_.insert({"MaxPool", obj});
@@ -687,7 +687,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2020_4,V_2021_2}, 
       [this](const Node* node, const Provider_InitializedTensorSet&) {
-        return this->dimension_unsupported(node);
+        return (!this->dimension_unsupported(node));
       }
     };
     op_list_.insert({"Unsqueeze", obj});
