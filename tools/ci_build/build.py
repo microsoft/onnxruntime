@@ -907,7 +907,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             print("Installing emsdk...")
             run_subprocess([emsdk_file, "install", "latest"], cwd=emsdk_dir)
         print("Activating emsdk...")
-        run_subprocess([emsdk_file, "activate"], cwd=emsdk_dir)
+        run_subprocess([emsdk_file, "activate", "latest"], cwd=emsdk_dir)
 
         cmake_args += [
             "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
@@ -1020,7 +1020,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
 
         build_tool_args = []
         if num_parallel_jobs != 1:
-            if is_windows() and args.cmake_generator != 'Ninja':
+            if is_windows() and args.cmake_generator != 'Ninja' and not args.wasm:
                 build_tool_args += [
                     "/maxcpucount:{}".format(num_parallel_jobs),
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
@@ -1855,8 +1855,8 @@ def main():
             update_submodules(source_dir)
         if is_windows():
             if args.wasm:
-                args.cmake_generator = 'Ninja'
-            if args.cmake_generator == 'Ninja':
+                cmake_extra_args = ['-G', 'Ninja']
+            elif args.cmake_generator == 'Ninja':
                 if args.x86 or args.arm or args.arm64:
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
