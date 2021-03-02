@@ -26,6 +26,6 @@
       <Implementation>$(WindowsAIBinary)</Implementation>
     </Reference>
     <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);$(OnnxRuntimeBinary)" />
-    <ReferenceCopyLocalPaths Condition="'$(NuGetProjectStyle)' == 'PackageReference'" Include="$(WindowsAIWinMD);$(WindowsAIExperimentalWinMD)" />
+    <ReferenceCopyLocalPaths Include="$(WindowsAIWinMD);$(WindowsAIExperimentalWinMD)" />
   </ItemGroup>
 </Project>
