@@ -68,6 +68,7 @@ class QuantizeHelper:
 
         if use_external_data_format:
             from pathlib import Path
+            Path(os.path.split(quantized_model_path)[0]).mkdir(parents=True, exist_ok=True)
             onnx.external_data_helper.convert_model_to_external_data(quantized_onnx_model,
                                                                      all_tensors_to_one_file=True,
                                                                      location=Path(quantized_model_path).name + ".data")
