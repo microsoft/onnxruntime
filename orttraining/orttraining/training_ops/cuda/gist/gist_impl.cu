@@ -453,9 +453,9 @@ void GistPackMsfp15EncoderImpl(
     const T* input_data,
     uint8_t* output_data,
     const size_t pre_axis_size,
-    const size_t axis_size) {
+    const size_t axis_size,
+    const size_t tile_size) {
 
-  const int tile_size = 8;
   assert(axis_size % tile_size == 0);
   const int num_tiles = axis_size / tile_size;
 
@@ -478,9 +478,9 @@ void GistPackMsfp15DecoderImpl(
   const uint8_t* input_data,
   T* output_data,
   const size_t pre_axis_size,
-  const size_t axis_size) {
+  const size_t axis_size,
+  const size_t tile_size) {
 
-  const int tile_size = 8;
   assert(axis_size % tile_size == 0);
   const int num_tiles = axis_size / tile_size;
 
@@ -515,9 +515,9 @@ void GistPackMsfp15DecoderImpl(
 #define SPECIALIZED_IMPL_PACK16_DEC(T) \
   template void GistPack16DecoderImpl<T>(const half* input_data, T* output_data, const size_t N);
 #define SPECIALIZED_IMPL_PACKMSFP15_ENC(T) \
-  template void GistPackMsfp15EncoderImpl<T>(const T* input_data, uint8_t* output_data, const size_t pre_axis_size, const size_t axis_size);
+  template void GistPackMsfp15EncoderImpl<T>(const T* input_data, uint8_t* output_data, const size_t pre_axis_size, const size_t axis_size, const size_t tile_size);
 #define SPECIALIZED_IMPL_PACKMSFP15_DEC(T) \
-  template void GistPackMsfp15DecoderImpl<T>(const uint8_t* input_data, T* output_data, const size_t pre_axis_size, const size_t axis_size);
+  template void GistPackMsfp15DecoderImpl<T>(const uint8_t* input_data, T* output_data, const size_t pre_axis_size, const size_t axis_size, const size_t tile_size);
 
 SPECIALIZED_IMPL_BIN_ENC(float)
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 700

@@ -63,14 +63,16 @@ void GistPackMsfp15EncoderImpl(
     const T* input_data,
     uint8_t* output_data,
     const size_t pre_axis_size,
-    const size_t axis_size);
+    const size_t axis_size,
+    const size_t tile_size);
 
 template <typename T>
 void GistPackMsfp15DecoderImpl(
     const uint8_t* input_data,
     T* output_data,
     const size_t pre_axis_size,
-    const size_t axis_size);
+    const size_t axis_size,
+    const size_t tile_size);
 
 }  // namespace cuda
 }  // namespace onnxruntime

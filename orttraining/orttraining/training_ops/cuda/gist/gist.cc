@@ -265,15 +265,19 @@ Status GistPackMsfp15EncoderOp<T>::ComputeInternal(OpKernelContext* context) con
   const auto shape = X->Shape();
   const size_t ndims = shape.NumDimensions();
   const size_t pre_axis_size = shape.SizeToDimension(ndims - 1);
-  const size_t axis_size = shape.SizeFromDimension(ndims - 1);
-
+  size_t axis_size = shape.SizeFromDimension(ndims - 1);
+  const size_t tile_size = 8;
+  if (axis_size % tile_size != 0)
+    axis_size = shape.SizeToDimension(ndims - 2);
+  
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPackMsfp15EncoderImpl<CudaT>(
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       reinterpret_cast<uint8_t*>(Y->template MutableData<uint8_t>()),
       pre_axis_size,
-      axis_size);
+      axis_size,
+      tile_size);
 
   return Status::OK();
 }
@@ -299,15 +303,18 @@ Status GistPackMsfp15DecoderOp<T>::ComputeInternal(OpKernelContext* context) con
   const auto shape = X->Shape();
   const size_t ndims = shape.NumDimensions();
   const size_t pre_axis_size = shape.SizeToDimension(ndims - 1);
-  const size_t axis_size = shape.SizeFromDimension(ndims - 1);
-
+  size_t axis_size = shape.SizeFromDimension(ndims - 1);
+  const size_t tile_size = 8;
+  if (axis_size % tile_size != 0)
+    axis_size = shape.SizeToDimension(ndims - 2);
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   GistPackMsfp15DecoderImpl<CudaT>(
       reinterpret_cast<const uint8_t*>(X->template Data<uint8_t>()),
       reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
       pre_axis_size,
-      axis_size);
+      axis_size,
+      tile_size);
 
   return Status::OK();
 }
