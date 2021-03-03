@@ -44,8 +44,8 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
         `{"inputs": {"0": ["float", "int32_t"], "1": ["int32_t"]}}`
 
     Finally some operators do non-standard things and store their type information under a 'custom' key.
-    ai.onnx.OneHot is an example of this, where 3 type names from the inputs are combined into a string.
-        `{"custom": ["float_int64_t_int64_t", "int64_t_string_int64_t"]}`
+    ai.onnx.OneHot is an example of this, where the three input types are combined into a triple.
+        `{"custom": [["float", "int64_t", "int64_t"], ["int64_t", "std::string", "int64_t"]]}`
 
     2. Specifying globally allowed types for all operators
 

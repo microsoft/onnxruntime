@@ -77,13 +77,13 @@ class TypeUsageProcessor(ABC):
         # Not all operators have typed registrations, so this is optionally implemented by derived classes
         raise RuntimeError('Did not expect processor for {} to have typed registrations.'.format(self.name))
 
-    @abstractmethod
     def get_cpp_entry(self):
         '''
         Get the C++ code that specifies this operator's required types.
         :return: List with any applicable C++ code for this operator's required types. One line per entry.
         '''
-        pass
+        # Not applicable for some ops, so return no lines by default.
+        return []
 
     @abstractmethod
     def to_config_entry(self):
@@ -266,7 +266,7 @@ class OneHotProcessor(TypeUsageProcessor):
         type0 = value_name_to_typestr(node.Inputs(0), value_name_to_typeinfo)
         type1 = value_name_to_typestr(node.Inputs(1), value_name_to_typeinfo)
         type2 = value_name_to_typestr(node.Inputs(2), value_name_to_typeinfo)
-        key = (type0, type1, type2)
+        key = (type0, type2, type1)  # types in kernel registration are ordered this way: input (T1), output (T3), depth (T2)
         self._triples.add(key)
 
     def is_typed_registration_needed(self, type_in_registration: str,
@@ -277,11 +277,6 @@ class OneHotProcessor(TypeUsageProcessor):
             return all(reg_type in globally_allowed_types for reg_type in reg_types)
         else:
             return reg_types in self._triples
-
-    def get_cpp_entry(self):
-        # exclusion is via commenting out the registration entry, so don't need to write additional C++ code
-        # to disable type support for the OneHot operator
-        return None
 
     def to_config_entry(self):
         if not self._triples:
