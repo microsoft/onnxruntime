@@ -14,8 +14,14 @@ except ImportError:
 
 def parse_config(config_file: str, enable_type_reduction: bool = False):
     '''
-    Parse the configuration file and return the required operators dictionary, and an OperatorTypeUsageManager.
-    The basic configuration file format is `domain;opset;op1,op2...`
+    Parse the configuration file and return the required operators dictionary, and possibly either an
+    OperatorTypeUsageManager or a globally allowed types list.
+
+    Configuration file lines can do the following:
+    1. specify required operators
+    2. specify globally allowed types for all operators
+
+    The basic format for specifying required operators (1) is `domain;opset;op1,op2...`
     e.g. `ai.onnx;11;Add,Cast,Clip,...
 
     If the configuration file is generated from ORT format models it may optionally contain JSON for per-operator
@@ -38,16 +44,27 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
     ai.onnx.OneHot is an example of this, where 3 type names from the inputs are combined into a string.
         `{"custom": ["float_int64_t_int64_t", "int64_t_string_int64_t"]}`
 
+    The format for specifying globally allowed types for all operators (2) is `!globally_allowed_types;T0,T1,...`
+    Ti should be a C++ scalar type supported by ONNX and ORT.
+    At most one globally allowed types specification is allowed.
+
+    Specifying per-operator type information and specifying globally allowed types are mutually exclusive - it is an
+    error to specify both.
+
     :param config_file: Configuration file to parse
     :param enable_type_reduction: Set to True to use the type information in the config.
                                   If False the type information will be ignored.
-                                  If the flatbuffers module is unavailable any type information will be ignored
-                                  as the usage of the type information is via OperatorTypeUsageManager which has a
-                                  dependency on the ORT flatbuffers python schema.
-    :return: required_ops, op_type_usage_manager:
+                                  If the flatbuffers module is unavailable op-specific type information will be ignored
+                                  as the per-op usage of the type information is via OperatorTypeUsageManager which has
+                                  a dependency on the ORT flatbuffers python schema.
+    :return: required_ops, op_type_usage_manager, globally_allowed_types:
              Dictionary of domain:opset:[ops] for required operators
              OperatorTypeUsageManager manager with operator specific type usage information if available. None if
-             type reduction was disabled, or the flatbuffers module is not available.
+             type reduction was disabled, per-op type reduction was not specified, or the flatbuffers module is not
+             available.
+             List of globally allowed types. None if type reduction was disabled, or globally allowed types were not
+             specified.
+             At most one of the op_type_usage_manager and globally_allowed_types tuple elements will not be None.
     '''
 
     if not os.path.isfile(config_file):
@@ -55,10 +72,19 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
 
     required_ops = {}
     op_type_usage_manager = OperatorTypeUsageManager() if enable_type_reduction and have_flatbuffers else None
+    has_op_type_reduction_info = False
+    globally_allowed_types = None
 
     with open(config_file, 'r') as config:
         for line in [orig_line.strip() for orig_line in config.readlines()]:
             if not line or line.startswith("#"):  # skip empty lines and comments
+                continue
+
+            if line.startswith("!globally_allowed_types;"):  # handle globally allowed types
+                if enable_type_reduction:
+                    if globally_allowed_types is not None:
+                        raise RuntimeError("Globally allowed types were already specified.")
+                    globally_allowed_types = [segment.strip() for segment in line.split(';')[1].split(',')]
                 continue
 
             domain, opset_str, operators_str = [segment.strip() for segment in line.split(';')]
@@ -67,6 +93,8 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
             # any type reduction information is serialized json that starts/ends with { and }.
             # type info is optional for each operator.
             if '{' in operators_str:
+                has_op_type_reduction_info = True
+
                 # parse the entries in the json dictionary with type info
                 operators = set()
                 cur = 0
@@ -123,4 +151,11 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
             else:
                 required_ops[domain][opset].update(operators)
 
-    return required_ops, op_type_usage_manager
+    if enable_type_reduction:
+        if not has_op_type_reduction_info:
+            op_type_usage_manager = None
+        if globally_allowed_types is not None and op_type_usage_manager is not None:
+            raise RuntimeError(
+                "Specifying globally allowed types and per-op type reduction info together is unsupported.")
+
+    return required_ops, op_type_usage_manager, globally_allowed_types

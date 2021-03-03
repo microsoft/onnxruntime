@@ -297,7 +297,7 @@ jobs:
       command: restore
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
+      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: DotNetCoreCLI@2
@@ -306,7 +306,7 @@ jobs:
       command: build
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - template: win-esrp-dll.yml
@@ -321,7 +321,7 @@ jobs:
       command: build
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: BatchScript@1

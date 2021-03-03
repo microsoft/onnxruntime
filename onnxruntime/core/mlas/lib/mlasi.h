@@ -796,6 +796,9 @@ struct MLAS_PLATFORM {
     PMLAS_QUANTIZE_LINEAR_U8_KERNEL QuantizeLinearU8Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
+    uint32_t MaximumThreadCount;
+#else
+    static constexpr uint32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
 };
 
