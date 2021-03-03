@@ -66,6 +66,39 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
   return onnxruntime::ToOrtStatus(status);
 }
 
+template <typename T>
+static Status CopyNonStringDataFromVectorToMemory(const std::vector<T>& values, T* out, size_t* size) {
+  if (*size >= values.size()) {
+    std::memcpy(out, values.data(), values.size() * sizeof(T));
+    *size = values.size();
+  } else {
+    *size = values.size();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Result buffer is not large enough");
+  }
+
+  return Status::OK();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Out_ float* out, _Inout_ size_t* size) {
+  std::vector<float> values;
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<float>(name, values);
+  if (status.IsOK()) {
+    status = CopyNonStringDataFromVectorToMemory<float>(values, out, size);
+  }
+  return onnxruntime::ToOrtStatus(status);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Out_ int64_t* out, _Inout_ size_t* size) {
+  std::vector<int64_t> values;
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<int64_t>(name, values);
+  if (status.IsOK()) {
+    status = CopyNonStringDataFromVectorToMemory<int64_t>(values, out, size);
+  }
+  return onnxruntime::ToOrtStatus(status);
+}
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
 namespace onnxruntime {

@@ -81,7 +81,12 @@ void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
   ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
   // This kernel only supports CPU EP
-  for (int64_t i = 0; i < size; i++) {
-    out[i] = X[i] + float_attr_ + static_cast<float>(int_attr_);
+  if (string_arr_ == "add") {  // Test that the string attribute parsing went correctly
+    for (int64_t i = 0; i < size; i++) {
+      out[i] = X[i] +
+               float_attr_ + static_cast<float>(int_attr_) +
+               floats_attr_[0] + floats_attr_[1] +
+               static_cast<float>(ints_attr_[0]) + static_cast<float>(ints_attr_[1]);
+    }
   }
 }

@@ -1179,6 +1179,42 @@ struct OrtApi {
    * Get the current device id of the GPU execution provider (cuda/tensorrt/rocm).
    */
   ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
+
+  /**
+     * Fetch an array of float values stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of attribute array
+     * (If the `size` parameter is greater than or equal to the actual attribute array's size,
+        the value of `size` is set to the true size of the attribute array's size,
+        the provided memory is filled with the attribute's contents, 
+        and a success status is returned.
+        
+        If the `size` parameter is lesser than the actual attribute array's size,
+        the value of `size` is set to the true size of the attribute array's size
+        and a failure status is returned.)
+     */
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                  _Out_ float* out, _Inout_ size_t* size);
+
+  /**
+     * Fetch an array of int64_t values stored as an attribute in the graph node
+     * \info - OrtKernelInfo instance
+     * \name - name of the attribute to be parsed
+     * \out - pointer to memory where the attribute's contents are to be stored
+     * \size - actual size of attribute array
+     * (If the `size` parameter is greater than or equal to the actual attribute array's size,
+        the value of `size` is set to the true size of the attribute array's size,
+        the provided memory is filled with the attribute's contents, 
+        and a success status is returned.
+        
+        If the `size` parameter is lesser than the actual attribute array's size,
+        the value of `size` is set to the true size of the attribute array's size
+        and a failure status is returned.)
+     */
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                  _Out_ int64_t* out, _Inout_ size_t* size);
 };
 
 /*

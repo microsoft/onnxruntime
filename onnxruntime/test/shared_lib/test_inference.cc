@@ -462,8 +462,8 @@ TEST(CApiTest, custom_op_with_attributes_handler) {
 
   // input 0 (float type)
   input_names.emplace_back("X");
-  std::vector<float> input_0_data = {2.f, 2.f};
-  std::vector<int64_t> input_0_dims = {2};
+  std::vector<float> input_0_data = {1.f};
+  std::vector<int64_t> input_0_dims = {1};
   ort_inputs.emplace_back(
       Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
                                       input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
@@ -475,8 +475,8 @@ TEST(CApiTest, custom_op_with_attributes_handler) {
   ASSERT_EQ(ort_outputs.size(), 1u);
 
   // Validate results
-  std::vector<int64_t> y_dims = {2};
-  std::vector<float> values_y = {6.f, 6.f};
+  std::vector<int64_t> y_dims = {1};
+  std::vector<float> values_y = {15.f};
   auto type_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
   ASSERT_EQ(type_info.GetShape(), y_dims);
   size_t total_len = type_info.GetElementCount();

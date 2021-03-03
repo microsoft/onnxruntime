@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include <vector>
 
 struct Input {
   const char* name = nullptr;
@@ -82,14 +83,25 @@ struct MyCustomKernelWithAttributes {
   MyCustomKernelWithAttributes(Ort::CustomOpApi ort, const OrtKernelInfo* info) : ort_(ort) {
     int_attr_ = ort_.KernelInfoGetAttribute<int64_t>(info, "int_attr");
     float_attr_ = ort_.KernelInfoGetAttribute<float>(info, "float_attr");
+
+    ints_attr_ = ort_.KernelInfoGetAttributeArray<int64_t>(info, "ints_attr");
+    floats_attr_ = ort_.KernelInfoGetAttributeArray<float>(info, "floats_attr");
+
+    string_arr_ = ort_.KernelInfoGetAttribute<std::string>(info, "string_attr");
   }
 
   void Compute(OrtKernelContext* context);
 
  private:
   Ort::CustomOpApi ort_;
+
   int64_t int_attr_;
   float float_attr_;
+
+  std::vector<int64_t> ints_attr_;
+  std::vector<float> floats_attr_;
+
+  std::string string_arr_;
 };
 
 struct MyCustomOpWithAttributes : Ort::CustomOpBase<MyCustomOpWithAttributes, MyCustomKernelWithAttributes> {

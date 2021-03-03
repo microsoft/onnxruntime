@@ -891,6 +891,39 @@ inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const O
   return out;
 }
 
+template <>
+std::vector<float> CustomOpApi::KernelInfoGetAttributeArray(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+  size_t size = 0;
+  std::vector<float> out;
+  OrtStatus* status = api_.KernelInfoGetAttributeArray_float(info, name, nullptr, &size);
+
+  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the attribute array
+  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT) {
+    api_.ReleaseStatus(status);
+    out.resize(size);
+    ThrowOnError(api_.KernelInfoGetAttributeArray_float(info, name, out.data(), &size));
+  } else {
+    ThrowOnError(status);
+  }
+  return out;
+}
+
+template <>
+std::vector<int64_t> CustomOpApi::KernelInfoGetAttributeArray(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+  size_t size = 0;
+  std::vector<int64_t> out;
+  OrtStatus* status = api_.KernelInfoGetAttributeArray_int64(info, name, nullptr, &size);
+
+  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the attribute array
+  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT) {
+    api_.ReleaseStatus(status);
+    out.resize(size);
+    ThrowOnError(api_.KernelInfoGetAttributeArray_int64(info, name, out.data(), &size));
+  } else {
+    ThrowOnError(status);
+  }
+  return out;
+}
 inline OrtTensorTypeAndShapeInfo* CustomOpApi::GetTensorTypeAndShape(_In_ const OrtValue* value) {
   OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(api_.GetTensorTypeAndShape(value, &out));
