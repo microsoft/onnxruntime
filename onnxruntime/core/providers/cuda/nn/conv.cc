@@ -55,6 +55,9 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 
 template <typename T>
 Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const {
+  if (!context) {
+    return Status::OK();
+  }
   //set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
@@ -319,8 +322,8 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
+  UpdateState(nullptr);
   typedef typename ToCudaType<T>::MappedType CudaT;
-
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   const auto& x_dims = x_shape.GetDims();
