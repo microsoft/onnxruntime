@@ -14,6 +14,7 @@ namespace onnxruntime {
 namespace cuda {
 
 Status NonMaxSuppressionImpl(
+    cudaStream_t stream,
     std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
     const PrepareContext& pc,
     const int64_t center_point_box,

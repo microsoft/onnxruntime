@@ -77,6 +77,7 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   if (p.indices_tensor->IsDataType<int32_t>() ||
       p.indices_tensor->IsDataType<int64_t>()) {
     GatherImpl(
+        Stream(),
         input_block_size,
         indices_max,
         divmod_output_block_size,

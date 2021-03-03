@@ -88,6 +88,8 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 ### **1. Using MCR container images**
 
+*Note: ONNX Runtime 1.7 will be the last release that will publish MCR container images. Please switch to using PyPi packages or bulding from Dockefile section below from ONNX Runtime 1.8 onwards.*
+
 The unified MCR container image can be used to run an application on any of the target accelerators. In order to select the target accelerator, the application should explicitly specifiy the choice using the *device_type*  configuration option for OpenVINO Execution provider. Refer to [OpenVINO EP runtime configuration documentation](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md#runtime-configuration-options) for details on specifying this option in the application code. 
 If the *device_type* runtime config option is not explicitly specified, CPU will be chosen as the hardware target execution.
 ### **2. Building from Dockerfile**
@@ -133,34 +135,34 @@ If the *device_type* runtime config option is not explicitly specified, CPU will
 1. Build the docker image from the DockerFile in this repository.
 
      ```
-     docker build --rm -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 --network host -f <Dockerfile> .
+     docker build --rm -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 -f <Dockerfile> .
      ```
 2. Run the docker image
     ```
-     docker run -it onnxruntime-cpu
+     docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb onnxruntime-cpu:latest
     ```
 
 ### OpenVINO on GPU
 
 1. Build the docker image from the DockerFile in this repository.
      ```
-      docker build --rm -t onnxruntime-gpu --build-arg DEVICE=GPU_FP32 --network host -f <Dockerfile> .
+     docker build --rm -t onnxruntime-gpu --build-arg DEVICE=GPU_FP32 -f <Dockerfile> .
      ```
 2. Run the docker image
     ```
-    docker run -it --device /dev/dri:/dev/dri onnxruntime-gpu:latest
+    docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb onnxruntime-gpu:latest
     ```
 ### OpenVINO on Myriad VPU Accelerator
 
 1. Build the docker image from the DockerFile in this repository.
      ```
-      docker build --rm -t onnxruntime-myriad --build-arg DEVICE=MYRIAD_FP16 --network host -f <Dockerfile> .
+      docker build --rm -t onnxruntime-myriad --build-arg DEVICE=MYRIAD_FP16 -f <Dockerfile> .
      ```
 2. Install the Myriad rules drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
 
 3. Run the docker image by mounting the device drivers
     ```
-    docker run -it --network host --privileged -v /dev:/dev  onnxruntime-myriad:latest
+    docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb onnxruntime-myriad:latest
 
     ```
 

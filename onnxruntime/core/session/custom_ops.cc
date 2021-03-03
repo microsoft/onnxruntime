@@ -4,16 +4,15 @@
 #ifdef _WIN32
 #pragma warning(disable : 4267)
 #endif
-#include "core/graph/onnx_protobuf.h"
-#include "core/session/inference_session.h"
-#include "core/session/ort_apis.h"
+
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/tensor_type_and_shape.h"
-
-ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
+#include "core/graph/onnx_protobuf.h"
+#include "core/session/inference_session.h"
+#include "core/session/ort_apis.h"
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
@@ -67,23 +66,24 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
   return onnxruntime::ToOrtStatus(status);
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
-
 namespace onnxruntime {
 
 struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
-    if (op_.version > ORT_API_VERSION)
+    if (op_.version > ORT_API_VERSION) {
       ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<const OrtKernelInfo*>(&info));
+    }
+
+    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
+                                  reinterpret_cast<const OrtKernelInfo*>(&info));
   }
 
   ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
 
   Status Compute(OpKernelContext* ctx) const override {
-    auto* ictx = static_cast<OpKernelContextInternal*>(ctx);
-    op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ictx));
+    op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
     return Status::OK();
   }
 
@@ -94,12 +94,20 @@ struct CustomOpKernel : OpKernel {
   void* op_kernel_;
 };
 
-common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_domains, std::shared_ptr<CustomRegistry>& output) {
+common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_domains,
+                                    std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
-  for (auto& domain : op_domains) {
+
+  for (const auto& domain : op_domains) {
+    // Create an OpSchema for each op and register them
+
+    // Container to hold type template parameters
+    std::unordered_map<const OrtCustomOp*, std::vector<std::string>> type_constraint_ids;
+
+#if !defined(ORT_MINIMAL_BUILD)
     // Domain is not empty - add it to the DomainToVersion ONNX map
     // If domain is empty, it is assumed to be part of the ONNX domain
-    if (domain->domain_[0]) {
+    if (!domain->domain_.empty()) {
       // Add it to the DomainToVersion ONNX map if it doesn't already exist
       // For example, two sessions using the same session_options should not add the same custom op domain to the version map twice
       auto& domain_to_version_range_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
@@ -111,55 +119,93 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
     }
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
+    for (const auto* op : domain->custom_ops_) {
+      ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
 
-    for (auto& op : domain->custom_ops_) {
-      ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
-
+      size_t type_id_counter = 0;
       auto input_count = op->GetInputTypeCount(op);
       for (size_t i = 0; i < input_count; i++) {
         auto type = op->GetInputType(op, i);
-        schema.Input(i, "A", "Description",
-                     ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type ? "T" :
-                     DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
+          schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter));
+          schema.TypeConstraint("T" + std::to_string(type_id_counter), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+          type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
+        } else {
+          schema.Input(i, "Input" + std::to_string(i), "", DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        }
       }
 
       auto output_count = op->GetOutputTypeCount(op);
       for (size_t i = 0; i < output_count; i++) {
         auto type = op->GetOutputType(op, i);
-        schema.Output(i, "A", "Description",
-                      ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type ? "T":
-                      DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
+          ORT_ENFORCE(type_id_counter == 1,
+                      "There must be one (and only one) dynamic typed input to the custom op. "
+                      "Its type info at runtime will be used to infer the type info of this dynamic typed output "
+                      "which is required for the success of the model loading step. "
+                      "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
+                      "cannot be inferred without which model loading cannot proceed.");
+
+          schema.Output(i, "Output" + std::to_string(i), "", "T0");
+        } else {
+          schema.Output(i, "Output" + std::to_string(i), "", DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        }
       }
 
-      schema.TypeConstraint("T", DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
       schema.SetDomain(domain->domain_);
       schema.SinceVersion(1);
       schema.AllowUncheckedAttributes();
       schemas_list.push_back(schema);
-
-      KernelDefBuilder def_builder;
-      def_builder.SetName(op->GetName(op))
-          .SetDomain(domain->domain_)
-          .SinceVersion(1)
-          .TypeConstraint("T", DataTypeImpl::AllTensorTypes());
-
-      if (const char* provider_type = op->GetExecutionProviderType(op))
-        def_builder.Provider(provider_type);
-      else
-        def_builder.Provider(onnxruntime::kCpuExecutionProvider);
-      KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
-      KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
-      output->RegisterCustomKernel(create_info);
     }
 
     ORT_RETURN_IF_ERROR(output->RegisterOpSet(schemas_list,
                                               domain->domain_,
                                               1 /* baseline opset version */,
                                               1000 /* opset version */));
+
+#else
+    // For a minimal build, we may not need any of the ONNX schema stuff but we still need to track
+    // the type template parameters to be used during the kernel def building step below
+    for (const auto* op : domain->custom_ops_) {
+      size_t type_id_counter = 0;
+      auto input_count = op->GetInputTypeCount(op);
+      for (size_t i = 0; i < input_count; i++) {
+        auto type = op->GetInputType(op, i);
+        if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
+          type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
+        }
+      }
+    }
+#endif
+
+    // create the KernelDef for each op and register it
+    for (const auto* op : domain->custom_ops_) {
+      KernelDefBuilder def_builder;
+      def_builder.SetName(op->GetName(op))
+          .SetDomain(domain->domain_)
+          .SinceVersion(1);
+
+      for (auto& id : type_constraint_ids[op]) {
+        def_builder.TypeConstraint(id, DataTypeImpl::AllTensorTypes());
+      }
+
+      if (const char* provider_type = op->GetExecutionProviderType(op)) {
+        def_builder.Provider(provider_type);
+      } else {
+        def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+      }
+
+      KernelCreateFn kernel_create_fn = [op](const OpKernelInfo& info) -> OpKernel* {
+        return new CustomOpKernel(info, *op);
+      };
+
+      KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
+      ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(create_info));
+    }
   }
+
   return Status::OK();
 }
 
 }  // namespace onnxruntime
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)

@@ -4,6 +4,10 @@
 // Public wrappers around internal ort interfaces (currently)
 // In the future the internal implementations could derive from these to remove the need for the wrapper implementations
 
+#ifdef USE_TENSORRT
+#include <cuda_runtime.h>
+#endif
+
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
   TypeName() = delete;                      \
   TypeName(const TypeName&) = delete;       \
@@ -22,9 +26,7 @@ using DataType = const std::string*;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
-
 // These types don't directly map to internal types
-//struct Provider_OpKernel_Base;
 struct ProviderHost;
 
 class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
@@ -65,21 +67,6 @@ struct Provider_TensorShapeProto_Dimension_Iterator {
   virtual void operator++() = 0;
   virtual const Provider_TensorShapeProto_Dimension& operator*() = 0;
 };
-
-class DataTypeImpl;
-using MLDataType = const DataTypeImpl*;
-
-#if 0
-struct Provider_OpKernel {
-  Provider_OpKernel() {}
-  virtual ~Provider_OpKernel() = default;
-
-  virtual Status Compute(OpKernelContext* context, const Provider_OpKernel_Base& base) const = 0;
-
-  Provider_OpKernel(const Provider_OpKernel&) = delete;
-  void operator=(const Provider_OpKernel&) = delete;
-};
-#endif
 
 using NodeIndex = size_t;
 using Provider_NodeArgInfo = Provider_ValueInfoProto;
@@ -133,10 +120,10 @@ struct ProviderHost {
 #ifdef USE_TENSORRT
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
 
-  virtual void cuda__Impl_Cast(const int64_t* input_data, int32_t* output_data, size_t count) = 0;
-  virtual void cuda__Impl_Cast(const int32_t* input_data, int64_t* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
 
   virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
@@ -194,6 +181,7 @@ struct ProviderHost {
   // IExecutionProvider
   virtual AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) = 0;
   virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
+  virtual void IExecutionProvider__TryInsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const std::vector<const KernelRegistry*>& kernel_registries) = 0;
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
@@ -202,6 +190,7 @@ struct ProviderHost {
 
   virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) = 0;
 
+  virtual void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) = 0;
   // Status
   virtual std::string Status__ToString(const Status* p) = 0;
 
@@ -373,6 +362,7 @@ struct ProviderHost {
 
   // KernelDef
   virtual void KernelDef__operator_delete(KernelDef* p) = 0;
+  virtual int KernelDef__ExecQueueId(const KernelDef* p) = 0;
   virtual void KernelDef__SinceVersion(const KernelDef* p, int* start, int* end) = 0;
   virtual const std::string& KernelDef__Domain(const KernelDef* p) = 0;
   virtual const std::string& KernelDef__OpName(const KernelDef* p) = 0;
@@ -488,6 +478,7 @@ struct ProviderHost {
   virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger) = 0;
 
   virtual const std::string& GraphViewer__Name(const GraphViewer* p) noexcept = 0;
+  virtual const Path& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
 
   virtual const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) = 0;
   virtual const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) = 0;
@@ -508,8 +499,8 @@ struct ProviderHost {
   virtual const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) = 0;
   virtual const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept = 0;
 
-  // Provider_OpKernel_Base
-  //  virtual const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) = 0;
+  // Path
+  virtual PathString Path__ToPathString(const Path* p) noexcept = 0;
 
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;
@@ -521,6 +512,7 @@ struct ProviderHost {
   virtual int OpKernelContext__OutputCount(const OpKernelContext* p) = 0;
 
   // OpKernelInfo
+  virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;
   virtual void OpKernelInfo__operator_delete(OpKernelInfo* p) = 0;
   virtual const IExecutionProvider* OpKernelInfo__GetExecutionProvider(const OpKernelInfo* p) = 0;
   virtual Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) = 0;
@@ -531,7 +523,7 @@ struct ProviderHost {
   virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<std::string>& values) = 0;
 
   virtual const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept = 0;
-  virtual int OpKernelInfo__GetKernelDef_ExecQueueId(const OpKernelInfo* p) noexcept = 0;
+  virtual const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) = 0;
 
   virtual const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) = 0;
   virtual bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) = 0;
@@ -644,11 +636,15 @@ struct ProviderHost {
   virtual Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors, Prepare& prepare) = 0;
   // From cpu/tensor/gatherbase.h
   virtual Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) = 0;
+
+  // AllocatorManager
+  virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
+  virtual AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type) = 0;
 };
 
 extern ProviderHost* g_host;
 
-#ifndef PROVIDER_BRIDGE_ORT
+#ifdef SHARED_PROVIDER
 
 struct CPUIDInfo {
   static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }
@@ -925,6 +921,8 @@ struct IndexedSubGraph {
 struct KernelDef {
   static void operator delete(void* p) { g_host->KernelDef__operator_delete(reinterpret_cast<KernelDef*>(p)); }
 
+  int ExecQueueId() const { return g_host->KernelDef__ExecQueueId(this); }
+
   void SinceVersion(/*out*/ int* start, /*out*/ int* end) const { g_host->KernelDef__SinceVersion(this, start, end); }
   const std::string& Domain() const { return g_host->KernelDef__Domain(this); }
   const std::string& OpName() const { return g_host->KernelDef__OpName(this); }
@@ -934,40 +932,9 @@ struct KernelDef {
   void operator=(const KernelDef&) = delete;
 };
 
-using KernelCreateFn = std::function<OpKernel*(const OpKernelInfo& info)>;
-using KernelCreatePtrFn = std::add_pointer<OpKernel*(const OpKernelInfo& info)>::type;
-
-struct KernelCreateInfo {
-  std::unique_ptr<KernelDef> kernel_def;  // Owned and stored in the global kernel registry.
-  KernelCreateFn kernel_create_func;
-
-  KernelCreateInfo(std::unique_ptr<KernelDef> definition,
-                   KernelCreateFn create_func)
-      : kernel_def(std::move(definition)),
-        kernel_create_func(create_func) {}
-
-  KernelCreateInfo(KernelCreateInfo&& other) noexcept
-      : kernel_def(std::move(other.kernel_def)),
-        kernel_create_func(std::move(other.kernel_create_func)) {}
-
-  KernelCreateInfo() = default;
-};
-
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-
-namespace contrib {
-namespace cuda {
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-}  // namespace cuda
-}  // namespace contrib
-
-#endif
-
-#ifndef PROVIDER_BRIDGE_ORT
+#ifdef SHARED_PROVIDER
 struct KernelDefBuilder {
   static std::unique_ptr<KernelDefBuilder> Create() { return g_host->KernelDefBuilder__construct(); }
   static void operator delete(void* p) { g_host->KernelDefBuilder__operator_delete(reinterpret_cast<KernelDefBuilder*>(p)); }
@@ -1208,6 +1175,7 @@ struct GraphViewer {
   std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
 
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
+  const Path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
 
   const Node* GetNode(NodeIndex node_index) const { return g_host->GraphViewer__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->GraphViewer__GetNodeArg(this, name); }
@@ -1234,17 +1202,17 @@ struct GraphViewer {
   GraphViewer(const GraphViewer&) = delete;
   void operator=(const GraphViewer&) = delete;
 };
-#endif
 
-#if 0
-struct Provider_OpKernel_Base {
-  const OpKernelInfo& GetInfo() const { return g_host->Provider_OpKernel_Base__GetInfo(this); }
+struct Path {
+  PathString ToPathString() const noexcept { return g_host->Path__ToPathString(this); }
 
-  PROVIDER_DISALLOW_ALL(Provider_OpKernel_Base)
+  PROVIDER_DISALLOW_ALL(Path)
 };
 #endif
 
-#ifndef PROVIDER_BRIDGE_ORT
+#endif
+
+#ifdef SHARED_PROVIDER
 struct OpKernelContext {
   const Tensor* Input_Tensor(int index) const { return g_host->OpKernelContext__Input_Tensor(this, index); }
 

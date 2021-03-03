@@ -67,11 +67,6 @@ struct OpSupportCheckParams;
         "ResultCode: ", GetErrorCause(ret), ", ", (note)); \
   }
 
-template <class Map, class Key>
-inline bool Contains(const Map& map, const Key& key) {
-  return map.find(key) != map.end();
-}
-
 std::string GetErrorCause(int error_code);
 
 enum class QLinearOpType : uint8_t {
@@ -81,6 +76,7 @@ enum class QLinearOpType : uint8_t {
   QLinearConv,
   QLinearMatMul,
   QLinearAdd,
+  QLinearSigmoid,
   // Not yet supported
   // QLinearAveragePool,
   // QLinearMul,
@@ -112,6 +108,11 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
                                     const std::vector<size_t>& indices);
 
+float GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node, size_t idx);
+
+common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
+                                        const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
+
 // Get initialize tensort float/int32/int64 data without unpacking
 // TODO, move to ort framework
 const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor);
@@ -137,25 +138,6 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
 
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
-
-/**
- * Wrapping onnxruntime::Node for retrieving attribute values
- */
-class NodeAttrHelper {
- public:
-  NodeAttrHelper(const onnxruntime::Node& node);
-
-  float Get(const std::string& key, float def_val) const;
-  int32_t Get(const std::string& key, int32_t def_val) const;
-  std::vector<float> Get(const std::string& key, const std::vector<float>& def_val) const;
-  std::vector<int32_t> Get(const std::string& key, const std::vector<int32_t>& def_val) const;
-  std::string Get(const std::string& key, const std::string& def_val) const;
-
-  bool HasAttr(const std::string& key) const;
-
- private:
-  const onnxruntime::NodeAttributes& node_attributes_;
-};
 
 }  // namespace nnapi
 }  // namespace onnxruntime

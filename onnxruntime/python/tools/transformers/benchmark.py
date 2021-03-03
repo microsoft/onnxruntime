@@ -80,9 +80,6 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
         )
         return results
 
-    if (not use_gpu) and ('CUDAExecutionProvider' in onnxruntime.get_available_providers()):
-        logger.warning("Please install onnxruntime package instead of onnxruntime-gpu to get best cpu performance.")
-
     for model_name in model_names:
         all_input_names = MODELS[model_name][0]
         for num_inputs in input_counts:
@@ -167,8 +164,7 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
                         data_type = numpy.longlong if 'pt' in model_source else numpy.intc
                         result = inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times,
                                                                ort_output_names, ort_outputs, output_buffers,
-                                                               output_buffer_max_sizes, batch_size, device,
-                                                               data_type)
+                                                               output_buffer_max_sizes, batch_size, device, data_type)
                     logger.info(result)
                     results.append(result)
 

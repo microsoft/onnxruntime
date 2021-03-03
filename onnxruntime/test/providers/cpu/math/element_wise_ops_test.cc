@@ -203,9 +203,9 @@ TEST(MathOpTest, Add_Broadcast_0x1) {
     test.AddInput<float>("B", {1}, {2.0f});
     test.AddOutput<float>("C", {1}, {12.0f});
 #if defined(OPENVINO_CONFIG_MYRIAD)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily on MYRIADX due to a bug
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily on MYRIADX due to a bug
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 #endif
   };
 
@@ -221,9 +221,9 @@ TEST(MathOpTest, Add_Broadcast_1x0) {
     test.AddInput<float>("B", {}, {2.0f}, scalar_as_initializer);
     test.AddOutput<float>("C", {1}, {12.0f});
 #if defined(OPENVINO_CONFIG_MYRIAD)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily on MYRIADX due to a bug
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily on MYRIADX due to a bug
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 #endif
   };
 
@@ -1241,6 +1241,44 @@ TEST(MathOpTest, Min_12_UInt64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
 
+TEST(MathOpTest, Min_12_MLFLoat16) {
+  OpTester test("Min", 12);
+  test.AddInput<MLFloat16>("data_0", {1, 3},
+                           MakeMLFloat16({1.f, 1.f, 1.f}));
+  test.AddInput<MLFloat16>("data_1", {1, 3},
+                           MakeMLFloat16({2.f, -1.f, -2.f}));
+  test.AddInput<MLFloat16>("data_2", {1, 3},
+                           MakeMLFloat16({3.f, 2.f, -3.f}));
+  test.AddOutput<MLFloat16>("min", {1, 3},
+                            MakeMLFloat16({1.f, -1.f, -3.f}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Min_12_MLFLoat16_Scalar0) {
+  OpTester test("Min", 12);
+  test.AddInput<MLFloat16>("data_0", {},
+                           MakeMLFloat16({-10.f}));
+  test.AddInput<MLFloat16>("data_1", {1, 3},
+                           MakeMLFloat16({2.f, -1.f, -2.f}));
+  test.AddInput<MLFloat16>("data_2", {1, 3},
+                           MakeMLFloat16({3.f, 2.f, -3.f}));
+  test.AddOutput<MLFloat16>("min", {1, 3},
+                            MakeMLFloat16({-10.f, -10.f, -10.f}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Min_12_MLFLoat16_Scalar1) {
+  OpTester test("Min", 12);
+  test.AddInput<MLFloat16>("data_0", {1, 3},
+                           MakeMLFloat16({2.f, 3.f, 4.f}));
+  test.AddInput<MLFloat16>("data_1", {},
+                           MakeMLFloat16({-10.f}));
+  test.AddInput<MLFloat16>("data_2", {1, 3},
+                           MakeMLFloat16({3.f, 2.f, -3.f}));
+  test.AddOutput<MLFloat16>("min", {1, 3},
+                            MakeMLFloat16({-10.f, -10.f, -10.f}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
 TEST(MathOpTest, Max_6) {
   OpTester test("Max", 6);
   std::vector<int64_t> dims{3, 3};
@@ -1415,6 +1453,45 @@ TEST(MathOpTest, Max_12_UInt64) {
                            {10, 20, 30,
                             40, 50, 60,
                             300, 300, 300});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_MLFLoat16) {
+  OpTester test("Max", 12);
+  test.AddInput<MLFloat16>("data_0", {1, 3},
+                           MakeMLFloat16({-1.f, -1.f, -1.f}));
+  test.AddInput<MLFloat16>("data_1", {1, 3},
+                           MakeMLFloat16({-2.f, -1.f, -2.f}));
+  test.AddInput<MLFloat16>("data_2", {1, 3},
+                           MakeMLFloat16({-3.f, -2.f, -3.f}));
+  test.AddOutput<MLFloat16>("max", {1, 3},
+                            MakeMLFloat16({-1.f, -1.f, -1.f}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_MLFLoat16_Scalar0) {
+  OpTester test("Max", 12);
+  test.AddInput<MLFloat16>("data_0", {},
+                           MakeMLFloat16({-1.f}));
+  test.AddInput<MLFloat16>("data_1", {1, 3},
+                           MakeMLFloat16({-11.f, -12.f, -22.f}));
+  test.AddInput<MLFloat16>("data_2", {1, 3},
+                           MakeMLFloat16({-10.f, -11.f, -13.f}));
+  test.AddOutput<MLFloat16>("max", {1, 3},
+                            MakeMLFloat16({-1.f, -1.f, -1.f}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_MLFLoat16_Scalar1) {
+  OpTester test("Max", 12);
+  test.AddInput<MLFloat16>("data_0", {1, 3},
+                           MakeMLFloat16({-1.f, -2.f, -3.f}));
+  test.AddInput<MLFloat16>("data_1", {},
+                           MakeMLFloat16({2.f}));
+  test.AddInput<MLFloat16>("data_2", {1, 3},
+                           MakeMLFloat16({-2.f, -3.f, -4.f}));
+  test.AddOutput<MLFloat16>("max", {1, 3},
+                            MakeMLFloat16({2.f, 2.f, 2.f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
 
@@ -1787,7 +1864,8 @@ void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
 }
 
 template <double (&op)(double value)>
-void TrigDoubleTest(OpTester& test, std::initializer_list<double> input) {
+void TrigDoubleTest(OpTester& test, std::initializer_list<double> input,
+                    const std::unordered_set<std::string> excluded_provider_types = {}) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
 
   std::vector<double> output;
@@ -1796,9 +1874,24 @@ void TrigDoubleTest(OpTester& test, std::initializer_list<double> input) {
 
   test.AddInput<double>("X", dims, input);
   test.AddOutput<double>("Y", dims, output);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
+template <float (&op)(float value)>
+void TrigFloat16Test(OpTester& test, std::initializer_list<float> input) {
+  std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
+
+  std::vector<MLFloat16> float16_input;
+  std::vector<MLFloat16> float16_output;
+  for (auto v : input) {
+    float16_input.push_back(MLFloat16(math::floatToHalf(v)));
+    float16_output.push_back(MLFloat16(math::floatToHalf(op(v))));
+  }
+
+  test.AddInput<MLFloat16>("X", dims, float16_input);
+  test.AddOutput<MLFloat16>("Y", dims, float16_output);
+  test.Run();
+}
 TEST(MathOpTest, SinFloat) {
   OpTester test("Sin");
   TrigFloatTest<std::sin>(test, {1.1f, -1.1f, 2.2f, -2.2f});
@@ -1809,11 +1902,33 @@ TEST(MathOpTest, SinDouble) {
   TrigDoubleTest<std::sin>(test, {1.1, -1.1, 2.2, -2.2});
 }
 
-TEST(MathOpTest, Cos) {
+TEST(MathOpTest, SinFloat16) {
+  if (DefaultCudaExecutionProvider().get() != nullptr) {  // MLFloat16 type not supported on CPU
+    OpTester test("Sin");
+    TrigFloat16Test<std::sin>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+  }
+}
+
+TEST(MathOpTest, CosFloat) {
   OpTester test("Cos");
   TrigFloatTest<std::cos>(test, {1.1f, -1.1f, 2.2f, -2.2f});
 }
 
+TEST(MathOpTest, CosDouble) {
+  if (DefaultCudaExecutionProvider().get() != nullptr) {  // double type not supported on CPU
+    OpTester test("Cos");
+    TrigDoubleTest<std::cos>(test, {1.1, -1.1, 2.2, -2.2}, {kTensorrtExecutionProvider});
+    // Fails TensorRT unit-test because the unit tests only test one EP at a time and the TensorRT EP will not be able to find an implementation in the fall-back CPU EP,
+    // so skip it
+  }
+}
+
+TEST(MathOpTest, CosFloat16) {
+  if (DefaultCudaExecutionProvider().get() != nullptr) {  // MLFloat16 type not supported on CPU
+    OpTester test("Cos");
+    TrigFloat16Test<std::cos>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+  }
+}
 TEST(MathOpTest, Tan) {
   OpTester test("Tan");
   TrigFloatTest<std::tan>(test, {-100.0f, -50.0f, 0.0f, 50.0f, 100.0f});

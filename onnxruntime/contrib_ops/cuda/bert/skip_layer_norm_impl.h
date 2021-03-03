@@ -8,6 +8,7 @@ namespace contrib {
 namespace cuda {
 
 bool LaunchSkipLayerNormKernel(
+    cudaStream_t stream,
     void* output,        // output tensor
     const void* input,   // input tensor
     const void* skip,    // skip tensor

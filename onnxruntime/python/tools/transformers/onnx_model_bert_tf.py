@@ -200,7 +200,8 @@ class BertOnnxModelTF(BertOnnxModel):
     def find_mask_input(self, excluded_graph_inputs):
         for node in self.nodes():
             if node.op_type == 'Softmax':
-                mask_path = self.match_parent_path(node, ['Add', 'Mul', 'Sub', 'Cast', 'Slice', 'Unsqueeze'], [0, 1, None, 1, 0, 0])
+                mask_path = self.match_parent_path(node, ['Add', 'Mul', 'Sub', 'Cast', 'Slice', 'Unsqueeze'],
+                                                   [0, 1, None, 1, 0, 0])
                 if mask_path is None:
                     continue
                 add_node, mul_node, sub_node, cast_node, slice_node, unsqueeze_node = mask_path
@@ -434,12 +435,11 @@ class BertOnnxModelTF(BertOnnxModel):
                 if parent.op_type == 'Reshape':
                     # Temporary work around: we require the skiplayernorm and attention op be fed with 3-d input
                     hidden_size = numpy_helper.to_array(self.get_initializer(parent.input[1]))[1]
-                    tensor = helper.make_tensor(
-                        name=parent.name + "_modified",
-                        data_type=TensorProto.INT64,
-                        dims=[3],
-                        vals=np.int64([[1, -1, hidden_size]]).tobytes(),
-                        raw=True)
+                    tensor = helper.make_tensor(name=parent.name + "_modified",
+                                                data_type=TensorProto.INT64,
+                                                dims=[3],
+                                                vals=np.int64([[1, -1, hidden_size]]).tobytes(),
+                                                raw=True)
                     self.add_initializer(tensor)
                     parent.input[1] = parent.name + "_modified"
 

@@ -66,7 +66,7 @@ Status Flatten::ComputeInternal(OpKernelContext* ctx) const {
   void* target = Y->MutableDataRaw();
   if (target != source) {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, X_shape.Size() * X->DataType()->Size(),
-                                         cudaMemcpyDeviceToDevice));
+                                         cudaMemcpyDeviceToDevice, Stream()));
   }
 
   return Status::OK();

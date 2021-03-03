@@ -13,11 +13,11 @@ std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
   return onnxruntime::make_unique<OpKernelInfo>(info);
 }
 
-const Node& OpKernel::Node() const {
+const onnxruntime::Node& OpKernel::Node() const {
   return op_kernel_info_->node();
 }
 
-const KernelDef& OpKernel::KernelDef() const {
+const onnxruntime::KernelDef& OpKernel::KernelDef() const {
   return op_kernel_info_->GetKernelDef();
 }
 

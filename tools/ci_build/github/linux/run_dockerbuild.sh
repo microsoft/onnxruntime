@@ -25,7 +25,7 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 c) CUDA_VER=${OPTARG};;
 # x86 or other, only for ubuntu16.04 os
 a) BUILD_ARCH=${OPTARG};;
-# openvino version tag: 2020.2 (OpenVINO EP 2.0 supports version starting 2020.2)
+# openvino version tag: 2020.3 (OpenVINO EP 2.0 supports version starting 2020.3)
 v) OPENVINO_VERSION=${OPTARG};;
 # YOCTO 4.19 + ACL 19.05, YOCTO 4.14 + ACL 19.02
 y) YOCTO_VERSION=${OPTARG};;
@@ -77,9 +77,6 @@ else
     if [ $BUILD_DEVICE = "gpu" ]; then
         IMAGE="$BUILD_OS-$CUDA_VER"
         DOCKER_FILE=Dockerfile.ubuntu_gpu
-        if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
-            DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
-        fi
         if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
         fi
@@ -90,8 +87,8 @@ else
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\"" \
             --dockerfile $DOCKER_FILE --context .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
-        # TensorRT container release 20.07
-        IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
+        # TensorRT container release 20.12
+        IMAGE="$BUILD_OS-cuda11.1-cudnn8.0-tensorrt7.2"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
@@ -104,16 +101,9 @@ else
             --dockerfile $DOCKER_FILE --context .
     else
         IMAGE="$BUILD_OS"
-        if [ $BUILD_ARCH = "x86" ]; then
-            IMAGE="$IMAGE.x86"
-            $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-                --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
-                --dockerfile Dockerfile.ubuntu_x86 --context .
-        else
-            $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
+        $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
                 --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
                 --dockerfile Dockerfile.ubuntu --context .
-        fi
     fi
 fi
 
@@ -131,8 +121,6 @@ fi
 
 if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ] || [ $BUILD_DEVICE = "arm" ]; then
     RUNTIME=
-elif [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
-    RUNTIME="--gpus all --shm-size=1024m"
 else
     RUNTIME="--gpus all"
 fi
@@ -141,20 +129,11 @@ DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
                       --volume $SOURCE_ROOT:/onnxruntime_src \
                       --volume $BUILD_DIR:/build \
                       --volume /data/models:/build/models:ro \
+                      --volume /data/onnx:/data/onnx:ro \
                       --volume $HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime \
                       --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
-fi
-
-if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
-    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_data/hf_data:/bert_data/hf_data"
-    # DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER -u0"
-fi
-
-if [[ $BUILD_EXTR_PAR = *--enable_training_pipeline_e2e_tests* ]]; then
-    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --volume /bert_ort:/bert_ort \
-                                                --volume /bert_data:/bert_data"
 fi
 
 $DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true

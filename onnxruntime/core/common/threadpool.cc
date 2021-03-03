@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "core/platform/threadpool.h"
 #include "core/common/common.h"
+#include "core/common/cpuid_info.h"
 #include "core/common/eigen_common_wrapper.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
@@ -28,8 +29,8 @@ namespace concurrency {
 // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
 // the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
 // to it), and it claims iterations via atomic operations on its home shard.  It then proceeds through the other
-// shards until all of the shards' iterations are complete.  This approach serves to purposes.  First, compared
-// with atomic operations on a single counter, it reduces contention on a single counter in the case of loops with
+// shards until all of the shards' iterations are complete.  This approach serves two purposes.  First, compared
+// with atomic operations on a single counter, it reduces contention on the counter in the case of loops with
 // large numbers of short-running iteration.  Second, by having a thread work on its home shard initially, it
 // promotes affinity between the work that a thread performs in one loop and the work that it performs in the next.
 
@@ -41,6 +42,10 @@ namespace concurrency {
 static constexpr int CACHE_LINE_BYTES = 64;
 static constexpr unsigned MAX_SHARDS = 8;
 
+#ifndef _OPENMP
+static constexpr int TaskGranularityFactor = 4;
+#endif
+
 struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
   ::std::atomic<uint64_t> _next{0};
   uint64_t _end{0};
@@ -51,8 +56,11 @@ static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop count
 class alignas(CACHE_LINE_BYTES) LoopCounter {
 public:
  LoopCounter(uint64_t num_iterations,
+             uint64_t d_of_p,
              uint64_t block_size = 1) : _block_size(block_size),
-                                        _num_shards(GetNumShards(num_iterations, block_size)) {
+                                        _num_shards(GetNumShards(num_iterations,
+                                                                 d_of_p,
+                                                                 block_size)) {
    // Divide the iteration space between the shards.  If the iteration
    // space does not divide evenly into shards of multiples of
    // block_size then the final shard is left uneven.
@@ -66,10 +74,10 @@ public:
      // threads is provided via the thread pool
      _shards[shard]._next.store(shard * iterations_per_shard,
                                 ::std::memory_order_relaxed);
-     _shards[shard]._end = (shard+1) * iterations_per_shard;
-   }
 
-   _shards[_num_shards - 1]._end = num_iterations;
+     bool is_last_shard = (shard == _num_shards-1);
+     _shards[shard]._end = is_last_shard ? num_iterations : ((shard+1) * iterations_per_shard);
+   }
  }
 
  // Allocate each thread to a home shard, from which it starts
@@ -111,9 +119,18 @@ public:
 
 private:
   // Derive the number of shards to use for a given loop.  We require
-  // at least one block of work per shard, and subject to that
-  // constraint we use [1,MAX_SHARDS) shards.
+  // at least one block of work per shard, and subject to the
+  // constraints:
+  //
+  // - We use no more than MAX_SHARDS (limiting the amount of space needed
+  //   for the LoopCounter, and work needed to confirm that all shards have been
+  //   completed at the end of a loop).
+  //
+  // - The number of shards is <= the number of threads (d_of_p).
+  //   Hence, at low thread counts, each of N threads will get its own
+  //   shard representing 1/N of the work.
   static unsigned GetNumShards(uint64_t num_iterations,
+                               uint64_t d_of_p,
                                uint64_t block_size) {
     unsigned num_shards;
     auto num_blocks = num_iterations / block_size;
@@ -123,6 +140,9 @@ private:
       num_shards = static_cast<unsigned>(num_blocks);
     } else {
       num_shards = MAX_SHARDS;
+    }
+    if (num_shards > d_of_p) {
+      num_shards = static_cast<unsigned>(d_of_p);
     }
     return num_shards;
   }
@@ -181,7 +201,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(d_of_p), num_blocks));
   assert(num_work_items > 0);
 
-  LoopCounter lc(total, block_size);
+  LoopCounter lc(total, d_of_p, block_size);
   std::function<void(unsigned)> run_work = [&](unsigned idx) {
     unsigned my_home_shard = lc.GetHomeShard(idx);
     unsigned my_shard = my_home_shard;
@@ -375,7 +395,15 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
 #else
   // When not using OpenMP, we parallelise over the N threads created by the pool
   // tp, plus 1 for the thread entering a loop.
-  return tp ? (tp->NumThreads()+1) : 1;
+  if (tp) {
+    if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
+      return ((tp->NumThreads() + 1)) * TaskGranularityFactor;
+    } else {
+      return ((tp->NumThreads() + 1));
+    }
+  } else {
+    return 1;
+  }
 #endif
 }
 

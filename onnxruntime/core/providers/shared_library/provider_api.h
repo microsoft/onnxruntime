@@ -7,7 +7,7 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
-#define PROVIDER_BRIDGE_PROVIDER 1
+#define SHARED_PROVIDER 1
 
 #include <vector>
 #include <string>
@@ -17,11 +17,14 @@
 #include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/float16.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
+#include "core/common/path_string.h"
 
 namespace onnxruntime {
 namespace logging {
@@ -74,6 +77,7 @@ struct Function;
 struct Graph;
 struct GraphViewer;
 struct Model;
+struct Path;
 struct Node;
 struct NodeArg;
 struct NodeAttributes;
@@ -90,6 +94,9 @@ class ScatterNDBase;
 enum class Mode : int;
 class GatherBase;
 class ConcatBase;
+
+class DataTypeImpl;
+using MLDataType = const DataTypeImpl*;
 }  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
@@ -159,6 +166,7 @@ enum OperatorStatus : int {
 #include "core/framework/op_kernel_base.h"
 #include "core/framework/float16.h"
 #include "provider_interfaces.h"
+#include "core/framework/op_kernel.h"
 #include "core/framework/data_types_internal.h"
 
 namespace onnxruntime {
@@ -199,16 +207,19 @@ std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info)
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
+
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const std::string& provider_type,
                                                    const std::vector<const KernelRegistry*>& kernel_registries,
                                                    const std::vector<NodeIndex>& tentative_nodes);
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
-
 std::string GetEnvironmentVar(const std::string& var_name);
 
 inline AutoPadType StringToAutoPadType(const std::string& str) { return g_host->StringToAutoPadType(str); }
+
+void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator);
+AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type);
 
 inline int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) { return g_host->HandleNegativeAxis(axis, tensor_rank); }
 //inline bool IsScalarOr1ElementVector(const Tensor* input) { return g_host->IsScalarOr1ElementVector(input); }
@@ -233,76 +244,6 @@ constexpr T roundUpPow2(T a) {
 }
 
 uint16_t floatToHalf(float f);
-
-}  // namespace math
-
-#define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \
-  provider##_##name##_##domain##_ver##ver
-
-#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                                            \
-  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                                                 \
-  template <>                                                                                                         \
-  KernelCreateInfo                                                                                                    \
-  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {                             \
-    return KernelCreateInfo(                                                                                          \
-        builder.SetName(#name)                                                                                        \
-            .SetDomain(domain)                                                                                        \
-            .SinceVersion(ver)                                                                                        \
-            .Provider(provider)                                                                                       \
-            .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
-  }
-
-#define ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, endver, provider, builder, ...)                     \
-  class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name);                          \
-  template <>                                                                                                         \
-  KernelCreateInfo                                                                                                    \
-  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name)>() {      \
-    return KernelCreateInfo(                                                                                          \
-        builder.SetName(#name)                                                                                        \
-            .SetDomain(domain)                                                                                        \
-            .SinceVersion(startver, endver)                                                                           \
-            .Provider(provider)                                                                                       \
-            .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
-  }
-
-#define ONNX_OPERATOR_TYPED_KERNEL_EX(name, domain, ver, type, provider, builder, ...)                                \
-  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name);                                     \
-  template <>                                                                                                         \
-  KernelCreateInfo                                                                                                    \
-  BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>() {                 \
-    return KernelCreateInfo(                                                                                          \
-        builder.SetName(#name)                                                                                        \
-            .SetDomain(domain)                                                                                        \
-            .SinceVersion(ver)                                                                                        \
-            .Provider(provider)                                                                                       \
-            .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
-  }
-
-#define ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name) \
-  provider##_##name##_##domain##_ver##ver##_##type
-
-#define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, domain, startver, endver, type, provider, builder, ...)                \
-  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name);                     \
-  template <>                                                                                                                \
-  KernelCreateInfo                                                                                                           \
-  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name)>() { \
-    return KernelCreateInfo(                                                                                                 \
-        builder.SetName(#name)                                                                                               \
-            .SetDomain(domain)                                                                                               \
-            .SinceVersion(startver, endver)                                                                                  \
-            .Provider(provider)                                                                                              \
-            .Build(),                                                                                                        \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); }));        \
-  }
-
-#define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name) \
-  provider##_##name##_##domain##_ver##startver##_##endver##_##type
-
-#define ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name) \
-  provider##_##name##_##domain##_ver##startver##_##endver
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
   ::onnxruntime::logging::Capture::Create(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)

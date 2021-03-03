@@ -8,6 +8,7 @@
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/profile/profile.h"
 #include "core/profile/context.h"
+#include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
 #include <mpi.h>
 
@@ -50,9 +51,12 @@ void Recv::ReceiveData(
 // The following NCCL call is equivalent to the following MPI call. User can
 // uncomment the MPI call to debug.
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#ifndef NDEBUG
+  CheckIfMemoryOnCurrentGpuDevice(info_data.buffer);
+#endif
   auto& nccl_service = cuda::NcclService::GetInstance();
   nccl_service.SubmitRecvAndWait(info_data.buffer, info_data.size, info_data.rank);
-#elif defined(USE_MPI)
+#elif defined(use_mpi)
   MPI_CHECK(MPI_Recv(
       info_data.buffer, info_data.size, MPI_CHAR,
       info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
@@ -85,11 +89,17 @@ void Recv::ReceiveData(
     assert(tensor_offset_in_bytes + tensor->SizeInBytes() <= aggregated_aligned_tensor_bytes);
     // Copy data out from buffer.
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL(cudaMemcpy(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                         tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
+    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                         tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
 #else
-    CUDA_CALL(cudaMemcpy(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                         tensor->SizeInBytes(), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                         tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream()));
+#endif
+
+#ifndef NDEBUG
+  // In addition to the first output, other tensors are allocated on GPU.
+  // We check if the allocated memory is on the current CUDA device.
+  CheckIfMemoryOnCurrentGpuDevice(tensor->DataRaw());
 #endif
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }

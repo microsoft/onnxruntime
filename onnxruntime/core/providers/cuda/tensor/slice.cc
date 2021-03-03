@@ -83,7 +83,8 @@ REGISTER_V13_TYPED_SLICE(int32_t)
 REGISTER_V13_TYPED_SLICE(int64_t)
 REGISTER_V13_TYPED_SLICE(float)
 
-static Status SliceImpCore(const void* input_data, void* output_data,
+static Status SliceImpCore(cudaStream_t stream,
+                           const void* input_data, void* output_data,
                            size_t element_size, size_t dimension_count,
                            const TArray<int64_t>& starts_buffer, const TArray<int64_t>& steps_buffer,
                            const TArray<int64_t>& input_strides, const TArray<fast_divmod>& output_strides,
@@ -92,7 +93,8 @@ static Status SliceImpCore(const void* input_data, void* output_data,
     return Status::OK();
   }
 
-  return SliceImpl(element_size,
+  return SliceImpl(stream,
+                   element_size,
                    gsl::narrow_cast<int32_t>(dimension_count),
                    starts_buffer,
                    steps_buffer,
@@ -146,7 +148,8 @@ static Status ComputeSliceStrides(const TensorShape& input_shape,
   return Status::OK();
 }
 
-Status Impl(const void* input_data,
+Status Impl(cudaStream_t stream,
+            const void* input_data,
             const TensorShape& input_shape,
             void* output_data,
             SliceOp::PrepareForComputeMetadata& compute_metadata,
@@ -163,7 +166,8 @@ Status Impl(const void* input_data,
 
   TensorShape output_shape(compute_metadata.output_dims_);
 
-  ORT_RETURN_IF_ERROR(SliceImpCore(input_data,
+  ORT_RETURN_IF_ERROR(SliceImpCore(stream,
+                                   input_data,
                                    output_data,
                                    element_size,
                                    gsl::narrow_cast<int32_t>(dimension_count),
@@ -237,7 +241,8 @@ Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
   const auto* input_tensor = ctx->Input<Tensor>(0);
   auto* output_tensor = ctx->Output(0, output_shape);
 
-  return SliceImpCore(input_tensor->DataRaw(),
+  return SliceImpCore(Stream(),
+                      input_tensor->DataRaw(),
                       output_tensor->MutableDataRaw(),
                       element_size,
                       gsl::narrow_cast<int32_t>(dimension_count),

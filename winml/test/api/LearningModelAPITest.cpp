@@ -242,6 +242,36 @@ static void CloseModelCheckMetadata() {
   WINML_EXPECT_EQUAL(123456, version);
 }
 
+static void CheckLearningModelPixelRange() {
+  std::vector<std::wstring> modelPaths = {
+      // NominalRange_0_255 and image output
+      L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx",
+      // Normalized_0_1 and image output
+      L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
+      // Normalized_1_1 and image output
+      L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"};
+  std::vector<LearningModelPixelRange> pixelRanges = {
+      LearningModelPixelRange::ZeroTo255,
+      LearningModelPixelRange::ZeroToOne,
+      LearningModelPixelRange::MinusOneToOne};
+  for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
+    LearningModel learningModel = nullptr;
+    WINML_EXPECT_NO_THROW(APITest::LoadModel(modelPaths[model_i], learningModel));
+    auto inputs = learningModel.InputFeatures();
+    for (auto&& input : inputs) {
+      ImageFeatureDescriptor imageDescriptor = nullptr;
+      WINML_EXPECT_NO_THROW(input.as(imageDescriptor));
+      WINML_EXPECT_EQUAL(imageDescriptor.PixelRange(), pixelRanges[model_i]);
+    }
+    auto outputs = learningModel.OutputFeatures();
+    for (auto&& output : outputs) {
+      ImageFeatureDescriptor imageDescriptor = nullptr;
+      WINML_EXPECT_NO_THROW(output.as(imageDescriptor));
+      WINML_EXPECT_EQUAL(imageDescriptor.PixelRange(), pixelRanges[model_i]);
+    }
+  }
+}
+
 static void CloseModelCheckEval() {
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
@@ -301,6 +331,7 @@ const LearningModelApiTestsApi& getapi() {
     EnumerateInputs,
     EnumerateOutputs,
     CloseModelCheckMetadata,
+    CheckLearningModelPixelRange,
     CloseModelCheckEval,
     CloseModelNoNewSessions,
     CheckMetadataCaseInsensitive,

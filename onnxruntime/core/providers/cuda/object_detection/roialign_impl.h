@@ -12,6 +12,7 @@ namespace cuda {
 
 template <typename T>
 void RoiAlignImpl(
+    cudaStream_t stream,
     const int64_t nthreads,
     const T* bottom_data,
     const T spatial_scale,

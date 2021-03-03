@@ -44,7 +44,7 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
   std::string name_;
   std::string domain_;
   std::string description_;
-  int64_t version_;
+  int64_t version_ = 0;
   std::unordered_map<std::string, std::string> model_metadata_;
   wfc::IVector<winml::ILearningModelFeatureDescriptor> input_features_;
   wfc::IVector<winml::ILearningModelFeatureDescriptor> output_features_;
@@ -65,8 +65,23 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
   ();
   STDMETHOD(CloneModel)
   (IModel** copy);
+  STDMETHOD(SaveModel)
+  (_In_ const wchar_t* const file_name,
+   _In_ unsigned size);
   STDMETHOD(DetachOrtModel)
   (OrtModel** model);
+
+  STDMETHOD(AddOperator)
+  (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,
+   _In_ const char* const* op_input_names, _In_ const char* const* actual_input_names, size_t num_inputs,
+   _In_ const char* const* op_output_names, _In_ const char* const* actual_output_names, size_t num_outputs,
+   _In_ const char* const* op_attribute_names, _In_ IValue** constant_value, size_t num_attributes);
+    
+  STDMETHOD(AddModelInput)
+  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* default_value);
+
+  STDMETHOD(AddModelOutput)
+  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider);
 
  private:
   UniqueOrtModel ort_model_;

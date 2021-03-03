@@ -11,6 +11,7 @@ namespace cuda {
 
 template <typename T>
 void WhereImpl(
+    cudaStream_t stream,
     size_t output_rank_or_simple_broadcast,
     BroadcastIndexType cond_index_type,
     const TArray<int64_t>& cond_padded_strides,

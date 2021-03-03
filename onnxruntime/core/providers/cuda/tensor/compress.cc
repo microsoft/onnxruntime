@@ -52,10 +52,24 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
 
   auto condition_cumulative_sum_buffer = GetScratchBuffer<int32_t>(valid_condition_length);
   auto condition_cumulative_sum = condition_cumulative_sum_buffer.get();
-  PrefixSumImpl(reinterpret_cast<const int8_t*>(condition_data), condition_cumulative_sum, valid_condition_length);
+  size_t temp_storage_bytes = 0;
+  CUDA_RETURN_IF_ERROR(CompressCalcPrefixSumTempStorageBytes(Stream(),
+                                                             reinterpret_cast<const int8_t*>(condition_data),
+                                                             condition_cumulative_sum,
+                                                             static_cast<int>(valid_condition_length),
+                                                             temp_storage_bytes));
+  auto temp_buffer = GetScratchBuffer<uint8_t>(temp_storage_bytes);
+  auto d_temp_storage = temp_buffer.get();
+  CUDA_RETURN_IF_ERROR(CompressInclusivePrefixSum(Stream(),
+                                                  d_temp_storage,
+                                                  temp_storage_bytes,
+                                                  reinterpret_cast<const int8_t*>(condition_data),
+                                                  condition_cumulative_sum,
+                                                  static_cast<int>(valid_condition_length)));
 
+  // cudaMemcpyAsync from device memory to pageable host memory will return only once the copy has completed.
   int32_t positive_condition_count = 0;
-  CUDA_RETURN_IF_ERROR(cudaMemcpy(&positive_condition_count, condition_cumulative_sum + valid_condition_length - 1, sizeof(int32_t), cudaMemcpyDeviceToHost));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&positive_condition_count, condition_cumulative_sum + valid_condition_length - 1, sizeof(int32_t), cudaMemcpyDeviceToHost, Stream()));
 
   std::vector<int64_t> output_dims(input_dimensions);
   if (has_axis_) {
@@ -80,7 +94,8 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  ORT_RETURN_IF_ERROR(CompressImpl(element_bytes,
+  ORT_RETURN_IF_ERROR(CompressImpl(Stream(),
+                                   element_bytes,
                                    gsl::narrow_cast<int32_t>(valid_condition_length),
                                    gsl::narrow_cast<int32_t>(axis_right_stride),
                                    has_axis_ ? gsl::narrow_cast<int32_t>(input_dimensions[axis])
