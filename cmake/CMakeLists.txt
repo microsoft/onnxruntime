@@ -1185,7 +1185,7 @@ if (onnxruntime_USE_CUDA)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
 
-  include_directories(onnxruntime_sparse_initializer_main_adjustment.cmake)
+  include(onnxruntime_sparse_initializer_main_adjustment.cmake)
   
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
