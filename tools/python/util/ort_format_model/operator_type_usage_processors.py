@@ -266,13 +266,13 @@ class OneHotProcessor(TypeUsageProcessor):
         type0 = value_name_to_typestr(node.Inputs(0), value_name_to_typeinfo)
         type1 = value_name_to_typestr(node.Inputs(1), value_name_to_typeinfo)
         type2 = value_name_to_typestr(node.Inputs(2), value_name_to_typeinfo)
-        key = tuple(type0, type1, type2)
+        key = (type0, type1, type2)
         self._triples.add(key)
 
     def is_typed_registration_needed(self, type_in_registration: str,
                                      globally_allowed_types: typing.Optional[typing.Set[str]]):
         # the OneHot registration involves a concatenation of the 3 types involved
-        reg_types = tuple(_reg_type_to_cpp_type(reg_type) for reg_type in _split_reg_types(type_in_registration))
+        reg_types = tuple([_reg_type_to_cpp_type(reg_type) for reg_type in _split_reg_types(type_in_registration)])
         if globally_allowed_types is not None:
             return all(reg_type in globally_allowed_types for reg_type in reg_types)
         else:
