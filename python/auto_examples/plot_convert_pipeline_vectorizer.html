@@ -5,24 +5,24 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.6.0 documentation</title>
-    <link rel="stylesheet" href="../static/pygments.css" type="text/css" />
-    <link rel="stylesheet" href="../static/alabaster.css" type="text/css" />
-    <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery-binder.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery-dataframe.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery-rendered-html.css" />
-    <script id="documentation_options" data-url_root="../" src="../static/documentation_options.js"></script>
-    <script src="../static/jquery.js"></script>
-    <script src="../static/underscore.js"></script>
-    <script src="../static/doctools.js"></script>
+    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.7.0 documentation</title>
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery-rendered-html.css" />
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Common errors with onnxruntime" href="plot_common_errors.html" />
     <link rel="prev" title="Profile the execution of a simple model" href="plot_profiling.html" />
    
-  <link rel="stylesheet" href="../static/custom.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
   
   
   <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
@@ -39,7 +39,8 @@
             
   <div class="sphx-glr-download-link-note admonition note">
 <p class="admonition-title">Note</p>
-<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-convert-pipeline-vectorizer-py"><span class="std std-ref">here</span></a>     to download the full example code</p>
+<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-convert-pipeline-vectorizer-py"><span class="std std-ref">here</span></a>
+to download the full example code</p>
 </div>
 <div class="sphx-glr-example-title section" id="train-convert-and-predict-with-onnx-runtime">
 <span id="sphx-glr-auto-examples-plot-convert-pipeline-vectorizer-py"></span><h1>Train, convert and predict with ONNX Runtime<a class="headerlink" href="#train-convert-and-predict-with-onnx-runtime" title="Permalink to this headline">¶</a></h1>
@@ -93,7 +94,7 @@ and we show the confusion matrix.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.910393699497388
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.8782201766832461
 </pre></div>
 </div>
 </div>
@@ -139,7 +140,7 @@ We could do that in one call:</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Unexpected input data type. Actual: (class onnxruntime::SequenceType&lt;class std::vector&lt;class std::map&lt;__int64,float,struct std::less&lt;__int64&gt;,class std::allocator&lt;struct std::pair&lt;__int64 const ,float&gt; &gt; &gt;,class std::allocator&lt;class std::map&lt;__int64,float,struct std::less&lt;__int64&gt;,class std::allocator&lt;struct std::pair&lt;__int64 const ,float&gt; &gt; &gt; &gt; &gt; &gt;) , expected: (class onnxruntime::MapType&lt;class std::map&lt;__int64,float,struct std::less&lt;__int64&gt;,class std::allocator&lt;struct std::pair&lt;__int64 const ,float&gt; &gt; &gt; &gt;)
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Unexpected input data type. Actual: ((seq(map(int64,tensor(float))))) , expected: ((map(int64,tensor(float))))
 </pre></div>
 </div>
 <p>But it fails because, in case of a DictVectorizer,
@@ -152,18 +153,18 @@ ONNX Runtime expects one observation at a time.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.9999999999999488
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.9999999999999648
 </pre></div>
 </div>
 <p>Very similar. <em>ONNX Runtime</em> uses floats instead of doubles,
 that explains the small discrepencies.</p>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  2.272 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  1.743 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-convert-pipeline-vectorizer-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
-<p><a class="reference download internal" download="" href="../downloads/500c588edb4417e84924953b39d33cc6/plot_convert_pipeline_vectorizer.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_convert_pipeline_vectorizer.py</span></code></a></p>
+<p><a class="reference download internal" download="" href="../_downloads/982a1f7abbb8ffc5d5e98b671c35e5aa/plot_convert_pipeline_vectorizer.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_convert_pipeline_vectorizer.py</span></code></a></p>
 </div>
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
-<p><a class="reference download internal" download="" href="../downloads/be7aeaf8b9b95af92780b5d952019035/plot_convert_pipeline_vectorizer.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_convert_pipeline_vectorizer.ipynb</span></code></a></p>
+<p><a class="reference download internal" download="" href="../_downloads/3aca744422de94d33f9aaa3ce99633a9/plot_convert_pipeline_vectorizer.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_convert_pipeline_vectorizer.ipynb</span></code></a></p>
 </div>
 </div>
 <p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
@@ -178,7 +179,7 @@ that explains the small discrepencies.</p>
       <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
         <div class="sphinxsidebarwrapper">
             <p class="logo"><a href="../index.html">
-              <img class="logo" src="../static/ONNX_Runtime_icon.png" alt="Logo"/>
+              <img class="logo" src="../_static/ONNX_Runtime_icon.png" alt="Logo"/>
             </a></p>
 <h1 class="logo"><a href="../index.html">ONNX Runtime</a></h1>
 
@@ -190,10 +191,10 @@ that explains the small discrepencies.</p>
 
 
 <h3>Navigation</h3>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_summary.html">API Summary</a></li>
-<li class="toctree-l1 current"><a class="reference internal" href="index.html">Gallery of examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="index.html">Gallery of examples</a></li>
 </ul>
 
 <div class="relations">
@@ -233,11 +234,11 @@ that explains the small discrepencies.</p>
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.4.2</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.1</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |
-      <a href="../sources/auto_examples/plot_convert_pipeline_vectorizer.rst.txt"
+      <a href="../_sources/auto_examples/plot_convert_pipeline_vectorizer.rst.txt"
           rel="nofollow">Page source</a>
     </div>
 

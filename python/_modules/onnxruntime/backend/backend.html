@@ -1,0 +1,262 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>onnxruntime.backend.backend &#8212; ONNX Runtime 1.7.0 documentation</title>
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/gallery-rendered-html.css" />
+    <script id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script src="../../../_static/jquery.js"></script>
+    <script src="../../../_static/underscore.js"></script>
+    <script src="../../../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for onnxruntime.backend.backend</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -------------------------------------------------------------------------</span>
+<span class="c1"># Copyright (c) Microsoft Corporation. All rights reserved.</span>
+<span class="c1"># Licensed under the MIT License.</span>
+<span class="c1"># --------------------------------------------------------------------------</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Implements ONNX&#39;s backend API.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">onnx</span> <span class="kn">import</span> <span class="n">ModelProto</span>
+<span class="kn">from</span> <span class="nn">onnx</span> <span class="kn">import</span> <span class="n">helper</span>
+<span class="kn">from</span> <span class="nn">onnx.checker</span> <span class="kn">import</span> <span class="n">check_model</span>
+<span class="kn">from</span> <span class="nn">onnx.backend.base</span> <span class="kn">import</span> <span class="n">Backend</span>
+<span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="kn">import</span> <span class="n">InferenceSession</span><span class="p">,</span> <span class="n">SessionOptions</span><span class="p">,</span> <span class="n">get_device</span>
+<span class="kn">from</span> <span class="nn">onnxruntime.backend.backend_rep</span> <span class="kn">import</span> <span class="n">OnnxRuntimeBackendRep</span>
+<span class="kn">import</span> <span class="nn">unittest</span>
+<span class="kn">import</span> <span class="nn">os</span>
+
+
+<span class="k">class</span> <span class="nc">OnnxRuntimeBackend</span><span class="p">(</span><span class="n">Backend</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Implements</span>
+<span class="sd">    `ONNX&#39;s backend API &lt;https://github.com/onnx/onnx/blob/master/docs/ImplementingAnOnnxBackend.md&gt;`_</span>
+<span class="sd">    with *ONNX Runtime*.</span>
+<span class="sd">    The backend is mostly used when you need to switch between</span>
+<span class="sd">    multiple runtimes with the same API.</span>
+<span class="sd">    `Importing models from ONNX to Caffe2 &lt;https://github.com/onnx/tutorials/blob/master/tutorials/OnnxCaffe2Import.ipynb&gt;`_</span>
+<span class="sd">    shows how to use *caffe2* as a backend for a converted model.</span>
+<span class="sd">    Note: This is not the official Python API.</span>
+<span class="sd">    &quot;&quot;&quot;</span>  <span class="c1"># noqa: E501</span>
+
+    <span class="n">allowReleasedOpsetsOnly</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s1">&#39;ALLOW_RELEASED_ONNX_OPSET_ONLY&#39;</span><span class="p">,</span> <span class="s1">&#39;1&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;1&#39;</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">is_compatible</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return whether the model is compatible with the backend.</span>
+
+<span class="sd">        :param model: unused</span>
+<span class="sd">        :param device: None to use the default device or a string (ex: `&#39;CPU&#39;`)</span>
+<span class="sd">        :return: boolean</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">device</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">device</span> <span class="o">=</span> <span class="n">get_device</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">supports_device</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">is_opset_supported</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return whether the opset for the model is supported by the backend.</span>
+<span class="sd">        When By default only released onnx opsets are allowed by the backend</span>
+<span class="sd">        To test new opsets env variable ALLOW_RELEASED_ONNX_OPSET_ONLY should be set to 0</span>
+
+<span class="sd">        :param model: Model whose opsets needed to be verified.</span>
+<span class="sd">        :return: boolean and error message if opset is not supported.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">cls</span><span class="o">.</span><span class="n">allowReleasedOpsetsOnly</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">opset</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">opset_import</span><span class="p">:</span>
+                <span class="n">domain</span> <span class="o">=</span> <span class="n">opset</span><span class="o">.</span><span class="n">domain</span> <span class="k">if</span> <span class="n">opset</span><span class="o">.</span><span class="n">domain</span> <span class="k">else</span> <span class="s1">&#39;ai.onnx&#39;</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">opset</span><span class="o">.</span><span class="n">version</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">key</span> <span class="ow">in</span> <span class="n">helper</span><span class="o">.</span><span class="n">OP_SET_ID_VERSION_MAP</span><span class="p">):</span>
+                        <span class="n">error_message</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;Skipping this test as only released onnx opsets are supported.&quot;</span>
+                                         <span class="s2">&quot;To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0.&quot;</span>
+                                         <span class="s2">&quot; Got Domain &#39;</span><span class="si">{0}</span><span class="s2">&#39; version &#39;</span><span class="si">{1}</span><span class="s2">&#39;.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">opset</span><span class="o">.</span><span class="n">version</span><span class="p">))</span>
+                        <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error_message</span>
+                <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                    <span class="c1"># for some CI pipelines accessing helper.OP_SET_ID_VERSION_MAP</span>
+                    <span class="c1"># is generating attribute error. TODO investigate the pipelines to</span>
+                    <span class="c1"># fix this error. Falling back to a simple version check when this error is encountered</span>
+                    <span class="k">if</span> <span class="p">(</span><span class="n">domain</span> <span class="o">==</span> <span class="s1">&#39;ai.onnx&#39;</span> <span class="ow">and</span> <span class="n">opset</span><span class="o">.</span><span class="n">version</span> <span class="o">&gt;</span> <span class="mi">12</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">domain</span> <span class="o">==</span> <span class="s1">&#39;ai.ommx.ml&#39;</span> <span class="ow">and</span> <span class="n">opset</span><span class="o">.</span><span class="n">version</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">):</span>
+                        <span class="n">error_message</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;Skipping this test as only released onnx opsets are supported.&quot;</span>
+                                         <span class="s2">&quot;To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0.&quot;</span>
+                                         <span class="s2">&quot; Got Domain &#39;</span><span class="si">{0}</span><span class="s2">&#39; version &#39;</span><span class="si">{1}</span><span class="s2">&#39;.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">opset</span><span class="o">.</span><span class="n">version</span><span class="p">))</span>
+                        <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error_message</span>
+        <span class="k">return</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">supports_device</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check whether the backend is compiled with particular device support.</span>
+<span class="sd">        In particular it&#39;s used in the testing suite.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">device</span> <span class="ow">in</span> <span class="n">get_device</span><span class="p">()</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">prepare</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Load the model and creates a :class:`onnxruntime.InferenceSession`</span>
+<span class="sd">        ready to be used as a backend.</span>
+
+<span class="sd">        :param model: ModelProto (returned by `onnx.load`),</span>
+<span class="sd">            string for a filename or bytes for a serialized model</span>
+<span class="sd">        :param device: requested device for the computation,</span>
+<span class="sd">            None means the default one which depends on</span>
+<span class="sd">            the compilation settings</span>
+<span class="sd">        :param kwargs: see :class:`onnxruntime.SessionOptions`</span>
+<span class="sd">        :return: :class:`onnxruntime.InferenceSession`</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">OnnxRuntimeBackendRep</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">model</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">InferenceSession</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">OnnxRuntimeBackendRep</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)):</span>
+            <span class="n">options</span> <span class="o">=</span> <span class="n">SessionOptions</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">k</span><span class="p">):</span>
+                    <span class="nb">setattr</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
+            <span class="n">inf</span> <span class="o">=</span> <span class="n">InferenceSession</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">options</span><span class="p">)</span>
+            <span class="c1"># backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback</span>
+            <span class="c1"># which may hide test failures.</span>
+            <span class="n">inf</span><span class="o">.</span><span class="n">disable_fallback</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">device</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">cls</span><span class="o">.</span><span class="n">supports_device</span><span class="p">(</span><span class="n">device</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Incompatible device expected &#39;</span><span class="si">{0}</span><span class="s2">&#39;, got &#39;</span><span class="si">{1}</span><span class="s2">&#39;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">get_device</span><span class="p">()))</span>
+            <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">inf</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># type: ModelProto</span>
+            <span class="n">check_model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+            <span class="n">opset_supported</span><span class="p">,</span> <span class="n">error_message</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">is_opset_supported</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">opset_supported</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">unittest</span><span class="o">.</span><span class="n">SkipTest</span><span class="p">(</span><span class="n">error_message</span><span class="p">)</span>
+            <span class="nb">bin</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">SerializeToString</span><span class="p">()</span>
+            <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="nb">bin</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">run_model</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute the prediction.</span>
+
+<span class="sd">        :param model: :class:`onnxruntime.InferenceSession` returned</span>
+<span class="sd">            by function *prepare*</span>
+<span class="sd">        :param inputs: inputs</span>
+<span class="sd">        :param device: requested device for the computation,</span>
+<span class="sd">            None means the default one which depends on</span>
+<span class="sd">            the compilation settings</span>
+<span class="sd">        :param kwargs: see :class:`onnxruntime.RunOptions`</span>
+<span class="sd">        :return: predictions</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">rep</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">rep</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">run_node</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">outputs_info</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        This method is not implemented as it is much more efficient</span>
+<span class="sd">        to run a whole model than every node independently.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;It is much more efficient to run a whole model than every node independently.&quot;</span><span class="p">)</span>
+
+
+<span class="n">is_compatible</span> <span class="o">=</span> <span class="n">OnnxRuntimeBackend</span><span class="o">.</span><span class="n">is_compatible</span>
+<span class="n">prepare</span> <span class="o">=</span> <span class="n">OnnxRuntimeBackend</span><span class="o">.</span><span class="n">prepare</span>
+<span class="n">run</span> <span class="o">=</span> <span class="n">OnnxRuntimeBackend</span><span class="o">.</span><span class="n">run_model</span>
+<span class="n">supports_device</span> <span class="o">=</span> <span class="n">OnnxRuntimeBackend</span><span class="o">.</span><span class="n">supports_device</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../../index.html">
+              <img class="logo" src="../../../_static/ONNX_Runtime_icon.png" alt="Logo"/>
+            </a></p>
+<h1 class="logo"><a href="../../../index.html">ONNX Runtime</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorial.html">Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_summary.html">API Summary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../auto_examples/index.html">Gallery of examples</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2018-2021, Microsoft.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
