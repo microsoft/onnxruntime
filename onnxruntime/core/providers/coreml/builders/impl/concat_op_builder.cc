@@ -49,7 +49,7 @@ bool ConcatOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 2) {
-    LOGS(logger, VERBOSE) << "Concat only support 2+ inputs, actual number of input" << input_defs.size();
+    LOGS(logger, VERBOSE) << "Concat only support 2+ inputs, actual number of inputs: " << input_defs.size();
     return false;
   }
 
