@@ -626,10 +626,23 @@ struct CustomOpBase : OrtCustomOp {
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<TKernel*>(op_kernel)->Compute(context); };
     OrtCustomOp::KernelDestroy = [](void* op_kernel) { delete static_cast<TKernel*>(op_kernel); };
+
+    OrtCustomOp::GetInputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputCharacteristic(index); };
+    OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputCharacteristic(index); };
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
   const char* GetExecutionProviderType() const { return nullptr; }
+
+  // Default implementations of GetInputCharacteristic() and GetOutputCharacteristic() below
+  // (inputs and outputs are required by default)
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /*index*/) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+  }
+
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+  }
 };
 
 }  // namespace Ort
