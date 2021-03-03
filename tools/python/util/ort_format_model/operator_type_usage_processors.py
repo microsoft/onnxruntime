@@ -108,14 +108,23 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
     Operator processor which tracks the types used for selected input/s and/or output/s.
     '''
 
-    def __init__(self, domain: str, optype: str, inputs: [int] = [0], outputs: [int] = []):
+    def __init__(self, domain: str, optype: str, inputs: [int] = [0], outputs: [int] = [],
+                 required_input_types: typing.Dict[int, typing.Set[str]] = {},
+                 required_output_types: typing.Dict[int, typing.Set[str]] = {}):
         '''
         Create DefaultTypeUsageProcessor. Types for one or more inputs and/or outputs can be tracked by the processor.
         The default is to track the types required for input 0, as this is the most common use case in ONNX.
+
+        Required input and output types may be specified. These are only applicable to is_typed_registration_needed().
+        If a registration type matches a required type, the typed registration is needed.
+        There is a separate mechanism for specifying required types from C++ for kernels with untyped registration.
+
         :param domain: Operator domain.
         :param optype: Operator name.
         :param inputs: Inputs to track. Zero based index. May be empty.
         :param outputs: Outputs to track. Zero based index. May be empty.
+        :param required_input_types: Required input types. May be empty.
+        :param required_output_types: Required output types. May be empty.
         '''
         super().__init__(domain, optype)
         self._input_types = {}
@@ -129,6 +138,25 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
 
         if not inputs and not outputs:
             raise ValueError('At least one input or output must be tracked')
+
+        self._required_input_types = required_input_types
+        self._required_output_types = required_output_types
+
+    def _is_type_enabled(self, reg_type, index, required_types, allowed_type_set):
+        cpp_type = _reg_type_to_cpp_type(reg_type)
+        return cpp_type in required_types.get(index, set()) or cpp_type in allowed_type_set
+
+    def is_input_type_enabled(self, reg_type, index, allowed_type_set=None):
+        '''Whether input type is enabled based on required and allowed types.'''
+        if allowed_type_set is None:
+            allowed_type_set = self._input_types[index]
+        return self._is_type_enabled(reg_type, index, self._required_input_types, allowed_type_set)
+
+    def is_output_type_enabled(self, reg_type, index, allowed_type_set=None):
+        '''Whether output type is enabled based on required and allowed types.'''
+        if allowed_type_set is None:
+            allowed_type_set = self._output_types[index]
+        return self._is_type_enabled(reg_type, index, self._required_output_types, allowed_type_set)
 
     def process_node(self, node: fbs.Node, value_name_to_typeinfo: dict):
         for i in self._input_types.keys():
@@ -159,8 +187,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
             # custom registrations can be handled by operator specific processors (e.g. OneHotProcessor below).
             raise RuntimeError('Expected typed registration to use type from input 0. Node:{}'.format(self.name))
 
-        allowed_types = globally_allowed_types if globally_allowed_types is not None else self._input_types[0]
-        return _reg_type_to_cpp_type(type_in_registration) in allowed_types
+        return self.is_input_type_enabled(type_in_registration, 0, globally_allowed_types)
 
     def get_cpp_entry(self):
         entries = []
@@ -223,8 +250,7 @@ class Output0TypedRegistrationProcessor(DefaultTypeUsageProcessor):
 
     def is_typed_registration_needed(self, type_in_registration: str,
                                      globally_allowed_types: typing.Optional[typing.Set[str]]):
-        allowed_types = globally_allowed_types if globally_allowed_types is not None else self._output_types[0]
-        return _reg_type_to_cpp_type(type_in_registration) in allowed_types
+        return self.is_output_type_enabled(type_in_registration, 0, globally_allowed_types)
 
 
 class OneHotProcessor(TypeUsageProcessor):
@@ -299,24 +325,32 @@ def _create_operator_type_usage_processors():
     # - Implementation does not have any significant type specific code:
     #    ai.onnx: Concat, Flatten, Not, QLinearConv, Reshape, Shape, Squeeze, Unsqueeze
     #
-    default_processor_onnx_ops = ['Abs', 'Add', 'ArgMax', 'ArgMin', 'AveragePool',
+    default_processor_onnx_ops = ['Abs', 'ArgMax', 'ArgMin', 'AveragePool',
                                   'BatchNormalization', 'BitShift',
                                   'Ceil', 'Clip', 'Conv', 'CumSum',
-                                  'DequantizeLinear', 'Div',
-                                  'Equal', 'Exp', 'Expand',
+                                  'DequantizeLinear',
+                                  'Exp', 'Expand',
                                   'Floor',
-                                  'Gemm', 'Greater',
-                                  'IsNaN'
-                                  'Less', 'Log', 'LogSoftmax', 'LpNormalization',
-                                  'MatMul', 'Max', 'Min', 'Mul',
+                                  'Gemm',
+                                  'IsNaN',
+                                  'Log', 'LogSoftmax', 'LpNormalization',
+                                  'MatMul', 'Max', 'Min',
                                   'Neg', 'NonMaxSuppression', 'NonZero',
                                   'Pad',
                                   'Range', 'Reciprocal', 'ReduceL1', 'ReduceL2', 'ReduceLogSum', 'ReduceLogSumExp',
                                   'ReduceMax', 'ReduceMean', 'ReduceMin', 'ReduceProd', 'ReduceSum', 'ReduceSumSquare',
                                   'Relu', 'Resize', 'RoiAlign', 'Round',
-                                  'Sigmoid', 'Sin', 'Softmax', 'Split', 'Sqrt', 'Sub',
+                                  'Sigmoid', 'Sin', 'Softmax', 'Split', 'Sqrt',
                                   'Tanh', 'Tile', 'TopK', 'Transpose',
                                   'Where']
+
+    default_processor_onnx_ops_requiring_int64_for_input_0 = ['Add',
+                                                              'Div',
+                                                              'Equal',
+                                                              'Greater',
+                                                              'Less',
+                                                              'Mul',
+                                                              'Sub']
 
     internal_ops = ['QLinearAdd', 'QLinearMul']
 
@@ -332,6 +366,8 @@ def _create_operator_type_usage_processors():
     default_processor_onnxml_ops = []
 
     [add(DefaultTypeUsageProcessor('ai.onnx', op)) for op in default_processor_onnx_ops]
+    [add(DefaultTypeUsageProcessor('ai.onnx', op, required_input_types={0: {"int64_t"}})) \
+        for op in default_processor_onnx_ops_requiring_int64_for_input_0]
     [add(DefaultTypeUsageProcessor('ai.onnx.ml', op)) for op in default_processor_onnxml_ops]
     [add(DefaultTypeUsageProcessor('com.microsoft', op)) for op in internal_ops]
 
