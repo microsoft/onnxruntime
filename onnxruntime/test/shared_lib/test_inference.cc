@@ -165,6 +165,8 @@ static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_sy
 static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/VariedInputCustomOp.onnx");
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_3.onnx");
+static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
+static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
@@ -347,7 +349,7 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
       default:
         ORT_THROW("Invalid output index: ", index);
     }
-  };
+  }
 
  private:
   const char* provider_;
@@ -440,6 +442,91 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
   float* f = ort_outputs[0].GetTensorMutableData<float>();
   for (size_t i = 0; i != total_len; ++i) {
     ASSERT_EQ(values_y[i], f[i]);
+  }
+}
+
+TEST(CApiTest, optional_input_output_custom_op_handler) {
+  MyCustomOpWithOptionalInput custom_op{onnxruntime::kCpuExecutionProvider};
+
+  // `MyCustomOpFooBar` defines a custom op with atmost 3 inputs and the second input is optional.
+  // In this test, we are going to try and run 2 models - one with the optional input and one without
+  // the optional input.
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  std::vector<Ort::Value> ort_inputs;
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  // input 0
+  std::vector<float> input_0_data = {1.f};
+  std::vector<int64_t> input_0_dims = {1};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
+                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+
+  // input 1
+  std::vector<float> input_1_data = {1.f};
+  std::vector<int64_t> input_1_dims = {1};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_1_data.data()),
+                                      input_1_data.size(), input_1_dims.data(), input_1_dims.size()));
+
+  // input 2
+  std::vector<float> input_2_data = {1.f};
+  std::vector<int64_t> input_2_dims = {1};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_2_data.data()),
+                                      input_2_data.size(), input_2_dims.data(), input_2_dims.size()));
+
+  const char* output_name = "Y";
+
+  // Part 1: Model with optional input present
+  {
+    std::vector<const char*> input_names = {"X1", "X2", "X3"};
+    Ort::Session session(*ort_env, OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                   &output_name, 1);
+    ASSERT_EQ(ort_outputs.size(), 1u);
+
+    // Validate results
+    std::vector<int64_t> y_dims = {1};
+    std::vector<float> values_y = {3.f};
+    auto type_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), y_dims);
+    size_t total_len = type_info.GetElementCount();
+    ASSERT_EQ(values_y.size(), total_len);
+
+    float* f = ort_outputs[0].GetTensorMutableData<float>();
+    for (size_t i = 0; i != total_len; ++i) {
+      ASSERT_EQ(values_y[i], f[i]);
+    }
+  }
+
+  // Part 2: Model with optional input absent
+  {
+    std::vector<const char*> input_names = {"X1", "X2"};
+    ort_inputs.erase(ort_inputs.begin() + 2);  // remove the last input in the container
+    Ort::Session session(*ort_env, OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2, session_options);
+    auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                   &output_name, 1);
+    ASSERT_EQ(ort_outputs.size(), 1u);
+
+    // Validate results
+    std::vector<int64_t> y_dims = {1};
+    std::vector<float> values_y = {2.f};
+    auto type_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(type_info.GetShape(), y_dims);
+    size_t total_len = type_info.GetElementCount();
+    ASSERT_EQ(values_y.size(), total_len);
+
+    float* f = ort_outputs[0].GetTensorMutableData<float>();
+    for (size_t i = 0; i != total_len; ++i) {
+      ASSERT_EQ(values_y[i], f[i]);
+    }
   }
 }
 

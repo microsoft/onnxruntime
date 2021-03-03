@@ -42,9 +42,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Pool
-     // TODO support AveragePool and MaxPool
     CreatePoolOpBuilder("GlobalAveragePool", op_registrations);
     CreatePoolOpBuilder("GlobalMaxPool", op_registrations);
+    CreatePoolOpBuilder("AveragePool", op_registrations);
+    CreatePoolOpBuilder("MaxPool", op_registrations);
   }
 
   {  // Concat
