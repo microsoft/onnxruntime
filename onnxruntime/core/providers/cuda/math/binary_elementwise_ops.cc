@@ -142,7 +142,13 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
+    cudaDeviceSynchronize();                                                                                     \
+    cudaError_t _cudaerr = cudaGetLastError();                                                                    \
+    std::cout << "line 147" << cudaGetErrorString(_cudaerr) << std::endl;                                         \
     BinaryElementwisePreparation prepare;                                                                        \
+    cudaDeviceSynchronize();                                                                                     \
+    cudaError_t cudaerr = cudaGetLastError();                                                                    \
+    std::cout << "line 151" << cudaGetErrorString(cudaerr) << std::endl;                                         \
     ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
         Stream(),                                                                                                \
@@ -156,6 +162,8 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
         prepare.fdm_C,                                                                                           \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
         prepare.output_tensor->Shape().Size());                                                                  \
+    cudaError_t cudaerr_ = cudaGetLastError();                                                                   \
+    std::cout << "line 166" << cudaGetErrorString(cudaerr_) << std::endl;                                        \
     return Status::OK();                                                                                         \
   }
 

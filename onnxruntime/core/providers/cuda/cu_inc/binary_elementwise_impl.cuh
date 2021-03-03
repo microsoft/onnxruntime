@@ -215,8 +215,17 @@ void BinaryElementWiseImpl(
     size_t count) {
   if (count == 0)  // special case where there's a dim value of 0 in the output shape
     return;
+  cudaDeviceSynchronize();
+  cudaError_t cudaerr_0 = cudaGetLastError();
+  std::cout << "line 220" << cudaGetErrorString(cudaerr_0) << std::endl;
+  //*output_data = (T)(0);
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+
+  //cudaDeviceSynchronize();
+  //cudaError_t cudaerr_1 = cudaGetLastError();
+  //std::cout << cudaGetErrorString(cudaerr_1) << std::endl;
+
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::NoBroadcast)) {
     _BinaryElementWiseSimple<true, true, T, T1, T2, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
@@ -280,7 +289,13 @@ void BinaryElementWiseImpl(
           output_data,
           func,
           N);
-    else if (rhs_padded_strides && rhs_padded_strides->Size())
+    else if (rhs_padded_strides && rhs_padded_strides->Size()) {
+      std::cout << blocksPerGrid << std::endl;
+      std::cout << GridDim::maxThreadsPerBlock << std::endl;
+      cudaDeviceSynchronize();
+      cudaError_t cudaerr = cudaGetLastError();
+      std::cout << "line 220" << cudaGetErrorString(cudaerr) << std::endl;
+      std::cout << "cudaDeviceSynchronize" << std::endl;
       _BinaryElementWise<T, T1, T2, FuncT, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank_or_simple_broadcast,
           TArray<int64_t>(), // lhs is not computed, so no need to deference lhs_padded_strides
@@ -291,6 +306,10 @@ void BinaryElementWiseImpl(
           output_data,
           func,
           N);
+      cudaDeviceSynchronize();
+      cudaError_t cudaerr_2 = cudaGetLastError();
+      std::cout << "line 220" << cudaGetErrorString(cudaerr_2) << std::endl;
+    }
   }
 }
 

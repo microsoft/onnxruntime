@@ -20,11 +20,18 @@ ONNX_OPERATOR_KERNEL_EX(
     Einsum);
 
 Status Einsum::Compute(OpKernelContext* context) const {
+  //cudaDeviceSynchronize();
+  //cudaError_t cudaerr = cudaGetLastError();
+  //std::cout << "einsum.cc line 25" << cudaGetErrorString(cudaerr) << std::endl;
   return onnxruntime::Einsum::Compute(context);
 }
 
 Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
                              AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
+  cudaDeviceSynchronize();
+  cudaError_t cudaerr_ = cudaGetLastError();
+  std::cout << "einsum.cc line 33" << cudaGetErrorString(cudaerr_) << std::endl;
+
   cublasHandle_t cublas_handle = cuda_ep_->PerThreadCublasHandle();
 
   EinsumOp::EinsumCudaAssets einsum_cuda_assets(cublas_handle, cuda_ep_);
@@ -48,6 +55,9 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<float>,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
+    cudaDeviceSynchronize();
+    cudaError_t cudaerr = cudaGetLastError();
+    std::cout << "einsum.cc line 60" << cudaGetErrorString(cudaerr) << std::endl;
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<double>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<double>(context, allocator, tp,
