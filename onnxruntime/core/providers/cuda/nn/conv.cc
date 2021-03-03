@@ -579,7 +579,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
     // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
     // This may have lead to extra results that are unnecessary and hence we slice that off here
     if (s_.post_slicing_required) {
-      SliceOutUnwantedOutputSection(y_data, s_.y_dims_with_adjusted_pads, Y->MutableDataRaw(),
+      SliceOutUnwantedOutputSection(Stream(), y_data, s_.y_dims_with_adjusted_pads, Y->MutableDataRaw(),
                                     s_.y_dims, s_.slice_starts, s_.slice_ends, s_.slice_axes, element_size);
     }
   }
