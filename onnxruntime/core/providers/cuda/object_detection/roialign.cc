@@ -1,5 +1,6 @@
+#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved. 
-// Licensed under the MIT License. 
+// Licensed under the MIT License.
 
 #include "roialign.h"
 #include "roialign_impl.h"
@@ -15,7 +16,7 @@ namespace cuda {
       T,                                                                 \
       kCudaExecutionProvider,                                            \
       KernelDefBuilder()                                                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
       RoiAlign<T>);
 
@@ -75,3 +76,4 @@ SPECIALIZED_COMPUTE(double)
 
 }  // namespace cuda
 };  // namespace onnxruntime
+#endif

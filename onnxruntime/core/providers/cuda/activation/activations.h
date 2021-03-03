@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/math/unary_elementwise_ops.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"

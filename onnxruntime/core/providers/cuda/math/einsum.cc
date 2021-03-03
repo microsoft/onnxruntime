@@ -1,3 +1,4 @@
+#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -69,3 +70,4 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
 }  // namespace cuda
 
 }  // namespace onnxruntime
+#endif

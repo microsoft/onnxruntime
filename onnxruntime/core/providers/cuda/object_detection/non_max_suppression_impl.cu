@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 /* Modifications Copyright (c) Microsoft. */
 
+
 #include "non_max_suppression_impl.h"
 #include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-#include "core/framework/tensor.h"
+//#include "core/framework/tensor.h"
 
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>

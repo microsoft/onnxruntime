@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#undef USE_CUDA
+
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 

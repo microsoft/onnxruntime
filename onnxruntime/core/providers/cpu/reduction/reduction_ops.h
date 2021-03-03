@@ -4,11 +4,14 @@
 #ifndef CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 #define CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 
+#ifndef PROVIDER_BRIDGE_PROVIDER
 #include "core/common/common.h"
-#include "core/common/optional.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/containers.h"
 #include "core/util/math_cpuonly.h"
+#endif
+
+#include "core/common/optional.h"
 #include "core/platform/threadpool.h"
 #include <cmath>
 

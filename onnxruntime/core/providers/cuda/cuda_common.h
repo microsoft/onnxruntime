@@ -3,13 +3,21 @@
 
 #pragma once
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
+#include "core/framework/float16.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
-#include "core/util/math.h"
+#include "gsl/gsl"
+//#include "core/util/math.h"
 
+// Can't include "core/util/math.h" in a provider, so this is the part we need for cuda:
 namespace onnxruntime {
+namespace math {
+uint16_t floatToHalf(float f);
+}
+
 namespace cuda {
 
 #define CUDA_RETURN_IF_ERROR(expr)               \

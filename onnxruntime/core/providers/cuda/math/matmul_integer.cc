@@ -1,3 +1,4 @@
+#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -111,3 +112,4 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
 
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif

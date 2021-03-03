@@ -5,8 +5,8 @@
 
 #include <cfloat>
 
-#include "core/common/logging/logging.h"
-#include "core/framework/tensor.h"
+//#include "core/common/logging/logging.h"
+//#include "core/framework/tensor.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {

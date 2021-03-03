@@ -10,6 +10,7 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/op_kernel_base.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
@@ -17,6 +18,20 @@
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
+#include "core/util/math.h"
+
+#include "core/providers/cpu/tensor/gatherbase.h"
+#include "core/providers/cpu/tensor/gather_elements.h"
+#include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/slice.h"
+#include "core/framework/fallback_cpu_capability.h"
+#include "core/providers/cpu/tensor/split.h"
+#include "core/providers/cpu/tensor/size.h"
+#include "core/providers/cpu/tensor/scatter_nd.h"
+#include "core/providers/cpu/tensor/padbase.h"
+#include "core/providers/cpu/tensor/concatbase.h"
+#include "core/providers/cpu/tensor/gatherbase.h"
+#include "core/providers/cpu/tensor/onehot.h"
 
 #ifdef USE_TENSORRT
 #include "core/providers/cuda/cuda_allocator.h"
@@ -52,6 +67,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/common/logging/logging.h"
 #include "core/providers/shared_library/provider_interfaces.h"
 
+#include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
@@ -93,8 +109,9 @@ struct NodeAttributes_Iterator_Impl : NodeAttributes_Iterator {
   bool operator!=(const NodeAttributes_Iterator& p) const override { return v_ != static_cast<const NodeAttributes_Iterator_Impl*>(&p)->v_; }
 
   void operator++() override { v_.operator++(); }
-  const std::string& first() const override { return v_->first; }
-  const Provider_AttributeProto& second() override { return v_->second; }
+  const std::pair<const std::string, Provider_AttributeProto>& operator*() const override { return v_.operator*(); }
+  //  const std::string& first() const override { return v_->first; }
+  //  const Provider_AttributeProto& second() const override { return v_->second; }
 
   NodeAttributes::const_iterator v_;
 };
@@ -123,6 +140,7 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
   Node::EdgeConstIterator v_;
 };
 
+#if 0
 struct OpKernel_Translator : OpKernel {
   OpKernel_Translator(const OpKernelInfo& info, Provider_OpKernel* p) : OpKernel{info}, p_{p} {
   }
@@ -135,12 +153,24 @@ struct OpKernel_Translator : OpKernel {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernel_Translator);
 };
+#endif
 
 struct ProviderHostImpl : ProviderHost {
   ProviderHostImpl() {
-    DataTypeImpl_GetType_Tensor = &DataTypeImpl::GetType<Tensor>;
-    DataTypeImpl_GetType_float = &DataTypeImpl::GetType<float>;
-    DataTypeImpl_GetTensorType_float = &DataTypeImpl::GetTensorType<float>;
+    DataTypeImpl__GetType_Tensor = &DataTypeImpl::GetType<Tensor>;
+    DataTypeImpl__GetType_float = &DataTypeImpl::GetType<float>;
+    DataTypeImpl__GetTensorType_bool = &DataTypeImpl::GetTensorType<bool>;
+    DataTypeImpl__GetTensorType_int8 = &DataTypeImpl::GetTensorType<int8_t>;
+    DataTypeImpl__GetTensorType_uint8 = &DataTypeImpl::GetTensorType<uint8_t>;
+    DataTypeImpl__GetTensorType_int16 = &DataTypeImpl::GetTensorType<int16_t>;
+    DataTypeImpl__GetTensorType_uint16 = &DataTypeImpl::GetTensorType<uint16_t>;
+    DataTypeImpl__GetTensorType_int32 = &DataTypeImpl::GetTensorType<int32_t>;
+    DataTypeImpl__GetTensorType_uint32 = &DataTypeImpl::GetTensorType<uint32_t>;
+    DataTypeImpl__GetTensorType_int64 = &DataTypeImpl::GetTensorType<int64_t>;
+    DataTypeImpl__GetTensorType_uint64 = &DataTypeImpl::GetTensorType<uint64_t>;
+    DataTypeImpl__GetTensorType_float = &DataTypeImpl::GetTensorType<float>;
+    DataTypeImpl__GetTensorType_double = &DataTypeImpl::GetTensorType<double>;
+    DataTypeImpl__GetTensorType_MLFloat16 = &DataTypeImpl::GetTensorType<MLFloat16>;
   }
 
   AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) override {
@@ -178,20 +208,32 @@ struct ProviderHostImpl : ProviderHost {
     return Env::Default().GetEnvironmentVar(var_name);
   }
 
-  logging::Logger* LoggingManager_GetDefaultLogger() override {
-    return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
+  std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                     const std::string& provider_type,
+                                                     const std::vector<const KernelRegistry*>& kernel_registries,
+                                                     const std::vector<NodeIndex>& tentative_nodes) override {
+    return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
   }
 
-  const std::vector<MLDataType>& DataTypeImpl_AllFixedSizeTensorTypes() override {
-    return DataTypeImpl::AllFixedSizeTensorTypes();
-  }
+  int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) override { return p->GetDataType(); }
+  logging::Logger* LoggingManager_GetDefaultLogger() override { return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger()); }
+
+  const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
+  size_t DataTypeImpl__Size(const DataTypeImpl* p) override { return p->Size(); }
+  const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) override { return p->AsPrimitiveDataType(); }
 
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
+  std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) { return onnxruntime::CopyOpKernelInfo(info); }
   std::vector<std::string> GetStackTrace() override { return onnxruntime::GetStackTrace(); }
+  uint16_t math__floatToHalf(float f) override { return math::floatToHalf(f); }
 
   AutoPadType StringToAutoPadType(const std::string& str) override { return onnxruntime::StringToAutoPadType(str); }
+
+  int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) override { return onnxruntime::HandleNegativeAxis(axis, tensor_rank); }
 
   void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) override {
     return ::onnxruntime::LogRuntimeError(session_id, status, file, function, line);
@@ -227,6 +269,9 @@ struct ProviderHostImpl : ProviderHost {
   // TensorShape
   int64_t TensorShape__SizeHelper(const TensorShape* p, size_t start, size_t end) override { return p->SizeHelper(start, end); }
   std::string TensorShape__ToString(const TensorShape* p) override { return p->ToString(); }
+  int64_t TensorShape__SizeToDimension(const TensorShape* p, size_t dimension) override { return p->SizeToDimension(dimension); }
+  int64_t TensorShape__SizeFromDimension(const TensorShape* p, size_t dimension) override { return p->SizeFromDimension(dimension); }
+  std::ostream& operator_left_shift(std::ostream& out, const TensorShape& shape) override { return out << shape; }
 
   // CPUIDInfo
   const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() override { return CPUIDInfo::GetCPUIDInfo(); }
@@ -270,8 +315,10 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::AttributeProto_AttributeType Provider_AttributeProto__type(const Provider_AttributeProto* p) override { return p->type(); }
   int Provider_AttributeProto__ints_size(const Provider_AttributeProto* p) override { return p->ints_size(); }
   int Provider_AttributeProto__floats_size(const Provider_AttributeProto* p) override { return p->floats_size(); }
+  int Provider_AttributeProto__strings_size(const Provider_AttributeProto* p) override { return p->strings_size(); }
   int64_t Provider_AttributeProto__ints(const Provider_AttributeProto* p, int i) override { return p->ints(i); }
   float Provider_AttributeProto__floats(const Provider_AttributeProto* p, int i) override { return p->floats(i); }
+  const std::string& Provider_AttributeProto__strings(const Provider_AttributeProto* p, int i) override { return p->strings(i); }
   const Provider_int64s& Provider_AttributeProto__ints(const Provider_AttributeProto* p) override { return p->ints(); }
   int64_t Provider_AttributeProto__i(const Provider_AttributeProto* p) override { return p->i(); }
   float Provider_AttributeProto__f(const Provider_AttributeProto* p) override { return p->f(); }
@@ -363,9 +410,13 @@ struct ProviderHostImpl : ProviderHost {
 
   // DataTransferManager
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) override { return p->CopyTensor(src, dst, exec_queue_id); }
+  Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) override { return p->CopyTensor(src, dst); }
+  const IDataTransfer* DataTransferManager__GetDataTransfer(const DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) override { return p->GetDataTransfer(src_device, dst_device); }
 
   // IDataTransfer
-  void IDataTransfer__operator_delete(IDataTransfer* p) override { delete p; }
+  Status IDataTransfer__CopyTensor(const IDataTransfer* p, const Tensor& src, Tensor& dst) override { return p->IDataTransfer::CopyTensor(src, dst); }
+  Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) override { return p->IDataTransfer::CopyTensors(src_dst_pairs); }
+  //  void IDataTransfer__operator_delete(IDataTransfer* p) override { delete p; }
 
   // IndexedSubGraph_MetaDef
   std::unique_ptr<IndexedSubGraph_MetaDef> IndexedSubGraph_MetaDef__construct() override { return onnxruntime::make_unique<IndexedSubGraph::MetaDef>(); }
@@ -391,6 +442,9 @@ struct ProviderHostImpl : ProviderHost {
 
   // KernelDef
   void KernelDef__operator_delete(KernelDef* p) override { delete p; }
+  void KernelDef__SinceVersion(const KernelDef* p, int* start, int* end) override { return p->SinceVersion(start, end); }
+  const std::string& KernelDef__Domain(const KernelDef* p) override { return p->Domain(); }
+  const std::string& KernelDef__OpName(const KernelDef* p) override { return p->OpName(); }
 
   // KernelDefBuilder
   std::unique_ptr<KernelDefBuilder> KernelDefBuilder__construct() override { return onnxruntime::make_unique<KernelDefBuilder>(); }
@@ -399,24 +453,34 @@ struct ProviderHostImpl : ProviderHost {
   void KernelDefBuilder__SetName(KernelDefBuilder* p, const char* op_name) override { p->SetName(op_name); }
   void KernelDefBuilder__SetDomain(KernelDefBuilder* p, const char* domain) override { p->SetDomain(domain); }
   void KernelDefBuilder__SinceVersion(KernelDefBuilder* p, int since_version) override { p->SinceVersion(since_version); }
+  void KernelDefBuilder__SinceVersion(KernelDefBuilder* p, int since_version_start, int since_version_end) override { p->SinceVersion(since_version_start, since_version_end); }
   void KernelDefBuilder__Provider(KernelDefBuilder* p, const char* provider_type) override { p->Provider(provider_type); }
   void KernelDefBuilder__TypeConstraint(KernelDefBuilder* p, const char* arg_name, MLDataType supported_type) override { p->TypeConstraint(arg_name, supported_type); }
   void KernelDefBuilder__TypeConstraint(KernelDefBuilder* p, const char* arg_name, const std::vector<MLDataType>& supported_types) override { p->TypeConstraint(arg_name, supported_types); }
   void KernelDefBuilder__InputMemoryType(KernelDefBuilder* p, OrtMemType type, int input_index) override { p->InputMemoryType(type, input_index); }
   void KernelDefBuilder__OutputMemoryType(KernelDefBuilder* p, OrtMemType type, int input_index) override { p->OutputMemoryType(type, input_index); }
   void KernelDefBuilder__ExecQueueId(KernelDefBuilder* p, int queue_id) override { p->ExecQueueId(queue_id); }
+  void KernelDefBuilder__MayInplace(KernelDefBuilder* p, int input_index, int output_index) override { p->MayInplace(input_index, output_index); }
+  void KernelDefBuilder__Alias(KernelDefBuilder* p, int input_index, int output_index) override { p->Alias(input_index, output_index); }
 
   std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) override { return p->Build(); }
 
   // KernelRegistry
   std::shared_ptr<KernelRegistry> KernelRegistry__construct() override { return std::make_shared<KernelRegistry>(); }
   void KernelRegistry__operator_delete(KernelRegistry* p) override { delete p; }
-  Status KernelRegistry__Register(KernelRegistry* p, Provider_KernelCreateInfo&& create_info) override {
+  Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) override {
+    return p->Register(std::move(create_info));
+#if 0
     KernelCreateInfo info_real(std::move(create_info.kernel_def),
                                [kernel_create_func = create_info.kernel_create_func](const OpKernelInfo& info) -> OpKernel* {
                                  return new OpKernel_Translator(info, kernel_create_func(info));
                                });
     return p->Register(std::move(info_real));
+#endif
+  }
+
+  Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) {
+    return p->TryFindKernel(node, exec_provider, out);
   }
 
   // Function
@@ -427,13 +491,15 @@ struct ProviderHostImpl : ProviderHost {
   const std::string& Node__Description(const Node* p) noexcept override { return p->Description(); }
   const std::string& Node__Domain(const Node* p) noexcept override { return p->Domain(); }
   const std::string& Node__OpType(const Node* p) noexcept override { return p->OpType(); }
+  int Node__SinceVersion(const Node* p) override { return p->SinceVersion(); }
 
   const Function* Node__GetFunctionBody(const Node* p) noexcept override { return p->GetFunctionBody(); }
+  ProviderType Node__GetExecutionProviderType(const Node* p) const noexcept override { return p->GetExecutionProviderType(); }
 
+  const std::vector<int>& Node__InputArgCount(const Node* p) override { return p->InputArgCount(); }
   ConstPointerContainer<std::vector<NodeArg*>> Node__ImplicitInputDefs(const Node* p) noexcept override { return p->ImplicitInputDefs(); }
   ConstPointerContainer<std::vector<NodeArg*>> Node__InputDefs(const Node* p) noexcept override { return p->InputDefs(); }
   ConstPointerContainer<std::vector<NodeArg*>> Node__OutputDefs(const Node* p) noexcept override { return p->OutputDefs(); }
-
   NodeIndex Node__Index(const Node* p) noexcept override { return p->Index(); }
 
   void Node__ToProto(const Node* p, Provider_NodeProto& proto, bool update_subgraphs = false) override { p->ToProto(proto, update_subgraphs); }
@@ -536,29 +602,144 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept override { return p->GetInputsIncludingInitializers(); }
 
   // Provider_OpKernel_Base
-  const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) override { return reinterpret_cast<const OpKernel*>(p)->Info(); }
+  //  const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) override { return reinterpret_cast<const OpKernel*>(p)->Info(); }
+
+  // OpKernel
+  const Node& OpKernel__Node(const OpKernel* p) override { return p->Node(); }
 
   // OpKernelContext
   const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) override { return p->Input<Tensor>(index); }
   Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) override { return p->Output(index, shape); }
+  int OpKernelContext__InputCount(const OpKernelContext* p) override { return p->InputCount(); }
+  int OpKernelContext__OutputCount(const OpKernelContext* p) override { return p->OutputCount(); }
 
   // OpKernelInfo
+  void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }
+  const IExecutionProvider* OpKernelInfo__GetExecutionProvider(const OpKernelInfo* p) override { return p->GetExecutionProvider(); }
   Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) override { return p->GetAttr(name, value); }
   Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) override { return p->GetAttr(name, value); }
+  Status OpKernelInfo__GetAttr_string(const OpKernelInfo* p, const std::string& name, std::string* value) override { return p->GetAttr(name, value); }
+  Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<int64_t>& values) override { return p->GetAttrs(name, values); }
+  Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<float>& values) override { return p->GetAttrs(name, values); }
+  Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<std::string>& values) override { return p->GetAttrs(name, values); }
 
   const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
   int OpKernelInfo__GetKernelDef_ExecQueueId(const OpKernelInfo* p) noexcept override { return p->GetKernelDef().ExecQueueId(); }
 
+  const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) override { return p->GetKernelDef(); }
+  bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) override { return p->TryGetConstantInput(input_index, constant_input_value); }
+
+  uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) override { return p->GetInputCount(); }
+  const Node& OpKernelInfo__node(const OpKernelInfo* p) override { return p->node(); }
+
+  // SessionState
+  const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
+
   // Tensor
+  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override { return onnxruntime::make_unique<Tensor>(p_type, shape, allocator); }
+  void Tensor__operator_delete(Tensor* p) override { delete p; }
+
+  bool* Tensor__MutableData_bool(Tensor* p) override { return p->MutableData<bool>(); }
+  int8_t* Tensor__MutableData_int8(Tensor* p) override { return p->MutableData<int8_t>(); }
+  uint8_t* Tensor__MutableData_uint8(Tensor* p) override { return p->MutableData<uint8_t>(); }
+  int16_t* Tensor__MutableData_int16(Tensor* p) override { return p->MutableData<int16_t>(); }
+  uint16_t* Tensor__MutableData_uint16(Tensor* p) override { return p->MutableData<uint16_t>(); }
+  int32_t* Tensor__MutableData_int32(Tensor* p) override { return p->MutableData<int32_t>(); }
+  uint32_t* Tensor__MutableData_uint32(Tensor* p) override { return p->MutableData<uint32_t>(); }
+  int64_t* Tensor__MutableData_int64(Tensor* p) override { return p->MutableData<int64_t>(); }
+  uint64_t* Tensor__MutableData_uint64(Tensor* p) override { return p->MutableData<uint64_t>(); }
   float* Tensor__MutableData_float(Tensor* p) override { return p->MutableData<float>(); }
+  double* Tensor__MutableData_double(Tensor* p) override { return p->MutableData<double>(); }
+  MLFloat16* Tensor__MutableData_MLFloat16(Tensor* p) override { return p->MutableData<MLFloat16>(); }
+
+  const bool* Tensor__Data_bool(const Tensor* p) override { return p->Data<bool>(); }
+  const int8_t* Tensor__Data_int8(const Tensor* p) override { return p->Data<int8_t>(); }
+  const uint8_t* Tensor__Data_uint8(const Tensor* p) override { return p->Data<uint8_t>(); }
+  const int16_t* Tensor__Data_int16(const Tensor* p) override { return p->Data<int16_t>(); }
+  const uint16_t* Tensor__Data_uint16(const Tensor* p) override { return p->Data<uint16_t>(); }
+  const int32_t* Tensor__Data_int32(const Tensor* p) override { return p->Data<int32_t>(); }
+  const uint32_t* Tensor__Data_uint32(const Tensor* p) override { return p->Data<uint32_t>(); }
+  const int64_t* Tensor__Data_int64(const Tensor* p) override { return p->Data<int64_t>(); }
+  const uint64_t* Tensor__Data_uint64(const Tensor* p) override { return p->Data<uint64_t>(); }
   const float* Tensor__Data_float(const Tensor* p) override { return p->Data<float>(); }
+  const double* Tensor__Data_double(const Tensor* p) override { return p->Data<double>(); }
+  const MLFloat16* Tensor__Data_MLFloat16(const Tensor* p) override { return p->Data<MLFloat16>(); }
+
+  void* Tensor__MutableDataRaw(Tensor* p, MLDataType type) override { return p->MutableDataRaw(type); }
+  const void* Tensor__DataRaw(const Tensor* p, MLDataType type) override { return p->DataRaw(type); }
 
   void* Tensor__MutableDataRaw(Tensor* p) noexcept override { return p->MutableDataRaw(); }
-  const void* Tensor__DataRaw(const Tensor* p) const noexcept override { return p->DataRaw(); }
+  const void* Tensor__DataRaw(const Tensor* p) noexcept override { return p->DataRaw(); }
 
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
   size_t Tensor__SizeInBytes(const Tensor* p) override { return p->SizeInBytes(); }
   const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
+
+  int32_t Tensor__GetElementType(const Tensor* p) override { return p->GetElementType(); }
+  MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
+
+  bool Tensor__IsDataType_bool(const Tensor* p) noexcept override { return p->IsDataType<bool>(); }
+  bool Tensor__IsDataType_int8(const Tensor* p) noexcept override { return p->IsDataType<int8_t>(); }
+  bool Tensor__IsDataType_uint8(const Tensor* p) noexcept override { return p->IsDataType<uint8_t>(); }
+  bool Tensor__IsDataType_int16(const Tensor* p) noexcept override { return p->IsDataType<int16_t>(); }
+  bool Tensor__IsDataType_uint16(const Tensor* p) noexcept override { return p->IsDataType<uint16_t>(); }
+  bool Tensor__IsDataType_int32(const Tensor* p) noexcept override { return p->IsDataType<int32_t>(); }
+  bool Tensor__IsDataType_uint32(const Tensor* p) noexcept override { return p->IsDataType<uint32_t>(); }
+  bool Tensor__IsDataType_int64(const Tensor* p) noexcept override { return p->IsDataType<int64_t>(); }
+  bool Tensor__IsDataType_uint64(const Tensor* p) noexcept override { return p->IsDataType<uint64_t>(); }
+  bool Tensor__IsDataType_float(const Tensor* p) noexcept override { return p->IsDataType<float>(); }
+  bool Tensor__IsDataType_double(const Tensor* p) noexcept override { return p->IsDataType<double>(); }
+  bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept override { return p->IsDataType<MLFloat16>(); }
+  bool Tensor__IsDataTypeString(const Tensor* p) noexcept override { return p->IsDataTypeString(); }
+
+  // GatherElements
+  Status GatherElements__ValidateInputShapes(const TensorShape& input_data_shape, const TensorShape& indices_shape, int64_t axis) override { return GatherElements::ValidateInputShapes(input_data_shape, indices_shape, axis); }
+
+  // From onehot.h
+  Status ValidateInputs(const Tensor* depth, const Tensor* values) override { return onnxruntime::ValidateInputs(depth, values); }
+  Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, std::vector<int64_t>& output_shape) override { return onnxruntime::PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
+
+  // From Providers/Common.h
+  bool IsScalarOr1ElementVector(const Tensor* input) override { return onnxruntime::IsScalarOr1ElementVector(input); }
+
+  // From cpu/tensor/unsqueeze.h
+  Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, UnsqueezeBase__Prepare& prepare) override { return p->PrepareCompute(ctx, reinterpret_cast<UnsqueezeBase::Prepare&>(prepare)); }
+  // From cpu/tensor/slice.h
+  Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
+                                      const std::vector<int64_t>& raw_ends,
+                                      const std::vector<int64_t>& raw_axes,
+                                      SliceOp__PrepareForComputeMetadata& compute_metadata) override { return SliceBase::PrepareForCompute(raw_starts, raw_ends, raw_axes, reinterpret_cast<SliceOp::PrepareForComputeMetadata&>(compute_metadata)); }
+
+  Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
+                                      const std::vector<int64_t>& raw_ends,
+                                      const std::vector<int64_t>& raw_axes,
+                                      const std::vector<int64_t>& raw_steps,
+                                      SliceOp__PrepareForComputeMetadata& compute_metadata) override { return SliceBase::PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, reinterpret_cast<SliceOp::PrepareForComputeMetadata&>(compute_metadata)); }
+
+  void SliceBase__FillVectorsFromInput(const Tensor& start_tensor,
+                                       const Tensor& ends_tensor,
+                                       const Tensor* axes_tensor,
+                                       const Tensor* steps_tensor,
+                                       std::vector<int64_t>& input_starts,
+                                       std::vector<int64_t>& input_ends,
+                                       std::vector<int64_t>& input_axes,
+                                       std::vector<int64_t>& input_steps) override { SliceBase::FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
+  // From cpu/tensor/size.h
+  Status Size__Compute(const Size* p, OpKernelContext* context) override { return p->Compute(context); }
+  // From cpu/tensor/scatter_nd.h
+  Status ScatterNDBase__ValidateShapes(const TensorShape& input_shape,
+                                       const TensorShape& indice_shape,
+                                       const TensorShape& update_shape) override { return ScatterNDBase::ValidateShapes(input_shape, indice_shape, update_shape); }
+  // From cpu/tensor/padbase.h
+  Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
+  // From cpu/tensor/split.h
+  Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
+                                      int& after_dims_including_split_axis, int& after_dims_excluding_split,
+                                      std::vector<int64_t>& split_sizes) override { return p->PrepareForCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
+  // From cpu/tensor/concatbase.h
+  Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors, Prepare& prepare) override { return p->PrepareForCompute(ctx, input_tensors, prepare); }
+  // From cpu/tensor/gatherbase.h
+  Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) override { return p->PrepareForCompute(context, reinterpret_cast<GatherBase::Prepare&>(prepare)); }
 
 } provider_host_;
 
@@ -645,15 +826,24 @@ struct ProviderLibrary {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary);
 };
 
+static ProviderLibrary s_library_cuda(LIBRARY_PREFIX "onnxruntime_providers_cuda" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_openvino(LIBRARY_PREFIX "onnxruntime_providers_openvino" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
+  s_library_cuda.Unload();
   s_library_dnnl.Unload();
   s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_shared.Unload();
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options) {
+  if (auto provider = s_library_cuda.Get())
+    return provider->CreateExecutionProviderFactory(provider_options);
+
+  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena) {
@@ -718,9 +908,20 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const char* device_type) {
   OrtOpenVINOProviderOptions provider_options;
   provider_options.device_type = device_type;
-  auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&provider_options);
+  return OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO(options, &provider_options);
+}
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id) {
+  OrtCUDAProviderOptions provider_options{};
+  provider_options.device_id = device_id;
+
+  return OrtApis::SessionOptionsAppendExecutionProvider_CUDA(options, &provider_options);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options) {
+  auto factory = onnxruntime::CreateExecutionProviderFactory_Cuda(cuda_options);
   if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Cuda: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);

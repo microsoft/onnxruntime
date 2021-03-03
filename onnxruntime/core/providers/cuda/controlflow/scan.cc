@@ -1,3 +1,4 @@
+#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -93,3 +94,4 @@ ONNX_OPERATOR_KERNEL_EX(Scan,
 
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif

@@ -24,12 +24,13 @@ using DataType = const std::string*;
 namespace onnxruntime {
 
 // These types don't directly map to internal types
-struct Provider_KernelCreateInfo;
-struct Provider_OpKernel_Base;
+//struct Provider_OpKernel_Base;
 struct ProviderHost;
 
-class TensorShape;
-
+class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
+class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareForComputeMetadata
+struct Prepare;                            // ConcatBase, TODO: Scope to ConcatBase
+class GatherBase__Prepare;
 template <typename T, typename TResult>
 struct IteratorHolder {
   IteratorHolder(std::unique_ptr<T>&& p) : p_{std::move(p)} {}
@@ -37,7 +38,7 @@ struct IteratorHolder {
   bool operator!=(const IteratorHolder& p) const { return p_->operator!=(*p.p_); }
 
   void operator++() { p_->operator++(); }
-  TResult& operator*() { return p_->operator*(); }
+  const TResult& operator*() { return p_->operator*(); }
   T* operator->() { return p_.get(); }
 
  private:
@@ -50,8 +51,10 @@ struct NodeAttributes_Iterator {
   virtual bool operator!=(const NodeAttributes_Iterator& p) const = 0;
 
   virtual void operator++() = 0;
-  virtual const std::string& first() const = 0;
-  virtual const Provider_AttributeProto& second() = 0;
+  virtual const std::pair<const std::string, Provider_AttributeProto>& operator*() const = 0;
+
+  //  virtual const std::string& first() const = 0;
+  //  virtual const Provider_AttributeProto& second() const = 0;
 };
 
 struct Provider_TensorShapeProto_Dimension_Iterator {
@@ -66,6 +69,7 @@ struct Provider_TensorShapeProto_Dimension_Iterator {
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
 
+#if 0
 struct Provider_OpKernel {
   Provider_OpKernel() {}
   virtual ~Provider_OpKernel() = default;
@@ -75,6 +79,7 @@ struct Provider_OpKernel {
   Provider_OpKernel(const Provider_OpKernel&) = delete;
   void operator=(const Provider_OpKernel&) = delete;
 };
+#endif
 
 using NodeIndex = size_t;
 using Provider_NodeArgInfo = Provider_ValueInfoProto;
@@ -139,20 +144,49 @@ struct ProviderHost {
 
   virtual std::string GetEnvironmentVar(const std::string& var_name) = 0;
 
-  MLDataType (*DataTypeImpl_GetType_Tensor)();
-  MLDataType (*DataTypeImpl_GetType_float)();
-  MLDataType (*DataTypeImpl_GetTensorType_float)();
-  virtual const std::vector<MLDataType>& DataTypeImpl_AllFixedSizeTensorTypes() = 0;
+  virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                             const std::string& provider_type,
+                                                             const std::vector<const KernelRegistry*>& kernel_registries,
+                                                             const std::vector<NodeIndex>& tentative_nodes) = 0;
+
+  // PrimitiveDataTypeBase
+  virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;
+
+  // DataTypeImpl
+  MLDataType (*DataTypeImpl__GetType_Tensor)();
+  MLDataType (*DataTypeImpl__GetType_float)();
+  MLDataType (*DataTypeImpl__GetTensorType_bool)();
+  MLDataType (*DataTypeImpl__GetTensorType_int8)();
+  MLDataType (*DataTypeImpl__GetTensorType_uint8)();
+  MLDataType (*DataTypeImpl__GetTensorType_int16)();
+  MLDataType (*DataTypeImpl__GetTensorType_uint16)();
+  MLDataType (*DataTypeImpl__GetTensorType_int32)();
+  MLDataType (*DataTypeImpl__GetTensorType_uint32)();
+  MLDataType (*DataTypeImpl__GetTensorType_int64)();
+  MLDataType (*DataTypeImpl__GetTensorType_uint64)();
+  MLDataType (*DataTypeImpl__GetTensorType_float)();
+  MLDataType (*DataTypeImpl__GetTensorType_double)();
+  MLDataType (*DataTypeImpl__GetTensorType_MLFloat16)();
+
+  virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
+  virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
+  virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
 
   virtual AutoPadType StringToAutoPadType(const std::string& str) = 0;
+  virtual int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) = 0;
 
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
                                const char* file, const char* function, uint32_t line) = 0;
 
+  virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;
   virtual std::vector<std::string> GetStackTrace() = 0;
+
+  virtual uint16_t math__floatToHalf(float f) = 0;
 
   // IAllocator
   virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
@@ -174,6 +208,9 @@ struct ProviderHost {
   // TensorShape
   virtual int64_t TensorShape__SizeHelper(const TensorShape* p, size_t start, size_t end) = 0;
   virtual std::string TensorShape__ToString(const TensorShape* p) = 0;
+  virtual int64_t TensorShape__SizeToDimension(const TensorShape* p, size_t dimension) = 0;
+  virtual int64_t TensorShape__SizeFromDimension(const TensorShape* p, size_t dimension) = 0;
+  virtual std::ostream& operator_left_shift(std::ostream& out, const TensorShape& shape) = 0;
 
   // CPUIDInfo
   virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;
@@ -215,8 +252,10 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::AttributeProto_AttributeType Provider_AttributeProto__type(const Provider_AttributeProto* p) = 0;
   virtual int Provider_AttributeProto__ints_size(const Provider_AttributeProto* p) = 0;
   virtual int Provider_AttributeProto__floats_size(const Provider_AttributeProto* p) = 0;
+  virtual int Provider_AttributeProto__strings_size(const Provider_AttributeProto* p) = 0;
   virtual int64_t Provider_AttributeProto__ints(const Provider_AttributeProto* p, int i) = 0;
   virtual float Provider_AttributeProto__floats(const Provider_AttributeProto* p, int i) = 0;
+  virtual const ::std::string& Provider_AttributeProto__strings(const Provider_AttributeProto* p, int i) = 0;
   virtual const Provider_int64s& Provider_AttributeProto__ints(const Provider_AttributeProto* p) = 0;
   virtual int64_t Provider_AttributeProto__i(const Provider_AttributeProto* p) = 0;
   virtual float Provider_AttributeProto__f(const Provider_AttributeProto* p) = 0;
@@ -302,9 +341,13 @@ struct ProviderHost {
 
   // DataTransferManager
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) = 0;
+  virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) = 0;
+  virtual const IDataTransfer* DataTransferManager__GetDataTransfer(const DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) = 0;
 
   // IDataTransfer
-  virtual void IDataTransfer__operator_delete(IDataTransfer* p) = 0;
+  virtual Status IDataTransfer__CopyTensor(const IDataTransfer* p, const Tensor& src, Tensor& dst) = 0;
+  virtual Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) = 0;
+  //  virtual void IDataTransfer__operator_delete(IDataTransfer* p) = 0;
 
   // IndexedSubGraph_MetaDef
   virtual std::unique_ptr<IndexedSubGraph_MetaDef> IndexedSubGraph_MetaDef__construct() = 0;
@@ -330,6 +373,9 @@ struct ProviderHost {
 
   // KernelDef
   virtual void KernelDef__operator_delete(KernelDef* p) = 0;
+  virtual void KernelDef__SinceVersion(const KernelDef* p, int* start, int* end) = 0;
+  virtual const std::string& KernelDef__Domain(const KernelDef* p) = 0;
+  virtual const std::string& KernelDef__OpName(const KernelDef* p) = 0;
 
   // KernelDefBuilder
   virtual std::unique_ptr<KernelDefBuilder> KernelDefBuilder__construct() = 0;
@@ -338,19 +384,23 @@ struct ProviderHost {
   virtual void KernelDefBuilder__SetName(KernelDefBuilder* p, const char* op_name) = 0;
   virtual void KernelDefBuilder__SetDomain(KernelDefBuilder* p, const char* domain) = 0;
   virtual void KernelDefBuilder__SinceVersion(KernelDefBuilder* p, int since_version) = 0;
+  virtual void KernelDefBuilder__SinceVersion(KernelDefBuilder* p, int since_version_start, int since_version_end) = 0;
   virtual void KernelDefBuilder__Provider(KernelDefBuilder* p, const char* provider_type) = 0;
   virtual void KernelDefBuilder__TypeConstraint(KernelDefBuilder* p, const char* arg_name, MLDataType supported_type) = 0;
   virtual void KernelDefBuilder__TypeConstraint(KernelDefBuilder* p, const char* arg_name, const std::vector<MLDataType>& supported_types) = 0;
   virtual void KernelDefBuilder__InputMemoryType(KernelDefBuilder* p, OrtMemType type, int input_index) = 0;
   virtual void KernelDefBuilder__OutputMemoryType(KernelDefBuilder* p, OrtMemType type, int input_index) = 0;
   virtual void KernelDefBuilder__ExecQueueId(KernelDefBuilder* p, int queue_id) = 0;
+  virtual void KernelDefBuilder__MayInplace(KernelDefBuilder* p, int input_index, int output_index) = 0;
+  virtual void KernelDefBuilder__Alias(KernelDefBuilder* p, int input_index, int output_index) = 0;
 
   virtual std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) = 0;
 
   // KernelRegistry
   virtual std::shared_ptr<KernelRegistry> KernelRegistry__construct() = 0;
   virtual void KernelRegistry__operator_delete(KernelRegistry* p) = 0;
-  virtual Status KernelRegistry__Register(KernelRegistry* p, Provider_KernelCreateInfo&& create_info) = 0;
+  virtual Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) = 0;
+  virtual Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) = 0;
 
   // Function
   virtual const Graph& Function__Body(const Function* p) = 0;
@@ -360,11 +410,13 @@ struct ProviderHost {
   virtual const std::string& Node__Description(const Node* p) noexcept = 0;
   virtual const std::string& Node__Domain(const Node* p) noexcept = 0;
   virtual const std::string& Node__OpType(const Node* p) noexcept = 0;
+  virtual int Node__SinceVersion(const Node* p) = 0;
 
   virtual const Function* Node__GetFunctionBody(const Node* p) noexcept = 0;
+  virtual ProviderType Node__GetExecutionProviderType(const Node* p) const noexcept = 0;
 
+  virtual const std::vector<int>& Node__InputArgCount(const Node* p) = 0;
   virtual ConstPointerContainer<std::vector<NodeArg*>> Node__ImplicitInputDefs(const Node* p) noexcept = 0;
-
   virtual ConstPointerContainer<std::vector<NodeArg*>> Node__InputDefs(const Node* p) noexcept = 0;
   virtual ConstPointerContainer<std::vector<NodeArg*>> Node__OutputDefs(const Node* p) noexcept = 0;
   virtual NodeIndex Node__Index(const Node* p) noexcept = 0;
@@ -457,29 +509,141 @@ struct ProviderHost {
   virtual const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept = 0;
 
   // Provider_OpKernel_Base
-  virtual const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) = 0;
+  //  virtual const OpKernelInfo& Provider_OpKernel_Base__GetInfo(const Provider_OpKernel_Base* p) = 0;
+
+  // OpKernel
+  virtual const Node& OpKernel__Node(const OpKernel* p) = 0;
 
   // OpKernelContext
   virtual const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
+  virtual int OpKernelContext__InputCount(const OpKernelContext* p) = 0;
+  virtual int OpKernelContext__OutputCount(const OpKernelContext* p) = 0;
 
   // OpKernelInfo
+  virtual void OpKernelInfo__operator_delete(OpKernelInfo* p) = 0;
+  virtual const IExecutionProvider* OpKernelInfo__GetExecutionProvider(const OpKernelInfo* p) = 0;
   virtual Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) = 0;
   virtual Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) = 0;
+  virtual Status OpKernelInfo__GetAttr_string(const OpKernelInfo* p, const std::string& name, std::string* value) = 0;
+  virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<int64_t>& values) = 0;
+  virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<float>& values) = 0;
+  virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<std::string>& values) = 0;
 
   virtual const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept = 0;
   virtual int OpKernelInfo__GetKernelDef_ExecQueueId(const OpKernelInfo* p) noexcept = 0;
 
-  // Tensor
-  virtual float* Tensor__MutableData_float(Tensor* p) = 0;
-  virtual const float* Tensor__Data_float(const Tensor* p) = 0;
+  virtual const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) = 0;
+  virtual bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) = 0;
 
+  virtual uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) = 0;
+  virtual const Node& OpKernelInfo__node(const OpKernelInfo* p) = 0;
+
+  // SessionState
+  virtual const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) = 0;
+
+  // Tensor
+  virtual std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) = 0;
+  virtual void Tensor__operator_delete(Tensor* p) = 0;
+
+  virtual bool* Tensor__MutableData_bool(Tensor* p) = 0;
+  virtual int8_t* Tensor__MutableData_int8(Tensor* p) = 0;
+  virtual uint8_t* Tensor__MutableData_uint8(Tensor* p) = 0;
+  virtual int16_t* Tensor__MutableData_int16(Tensor* p) = 0;
+  virtual uint16_t* Tensor__MutableData_uint16(Tensor* p) = 0;
+  virtual int32_t* Tensor__MutableData_int32(Tensor* p) = 0;
+  virtual uint32_t* Tensor__MutableData_uint32(Tensor* p) = 0;
+  virtual int64_t* Tensor__MutableData_int64(Tensor* p) = 0;
+  virtual uint64_t* Tensor__MutableData_uint64(Tensor* p) = 0;
+  virtual float* Tensor__MutableData_float(Tensor* p) = 0;
+  virtual double* Tensor__MutableData_double(Tensor* p) = 0;
+  virtual MLFloat16* Tensor__MutableData_MLFloat16(Tensor* p) = 0;
+
+  virtual const bool* Tensor__Data_bool(const Tensor* p) = 0;
+  virtual const int8_t* Tensor__Data_int8(const Tensor* p) = 0;
+  virtual const uint8_t* Tensor__Data_uint8(const Tensor* p) = 0;
+  virtual const int16_t* Tensor__Data_int16(const Tensor* p) = 0;
+  virtual const uint16_t* Tensor__Data_uint16(const Tensor* p) = 0;
+  virtual const int32_t* Tensor__Data_int32(const Tensor* p) = 0;
+  virtual const uint32_t* Tensor__Data_uint32(const Tensor* p) = 0;
+  virtual const int64_t* Tensor__Data_int64(const Tensor* p) = 0;
+  virtual const uint64_t* Tensor__Data_uint64(const Tensor* p) = 0;
+  virtual const float* Tensor__Data_float(const Tensor* p) = 0;
+  virtual const double* Tensor__Data_double(const Tensor* p) = 0;
+  virtual const MLFloat16* Tensor__Data_MLFloat16(const Tensor* p) = 0;
+
+  virtual void* Tensor__MutableDataRaw(Tensor* p, MLDataType type) = 0;
+  virtual const void* Tensor__DataRaw(const Tensor* p, MLDataType type) = 0;
   virtual void* Tensor__MutableDataRaw(Tensor* p) noexcept = 0;
-  virtual const void* Tensor__DataRaw(const Tensor* p) const noexcept = 0;
+  virtual const void* Tensor__DataRaw(const Tensor* p) noexcept = 0;
+
+  virtual bool Tensor__IsDataType_bool(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_int8(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_uint8(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_int16(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_uint16(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_int32(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_uint32(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_int64(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_uint64(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_float(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_double(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataTypeString(const Tensor* p) noexcept = 0;
 
   virtual const TensorShape& Tensor__Shape(const Tensor* p) = 0;
   virtual size_t Tensor__SizeInBytes(const Tensor* p) = 0;
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
+  virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
+  virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
+
+  // GatherElements
+  virtual Status GatherElements__ValidateInputShapes(const TensorShape& input_data_shape, const TensorShape& indices_shape, int64_t axis) = 0;
+
+  // From onehot.h
+  virtual Status ValidateInputs(const Tensor* depth, const Tensor* values) = 0;
+  virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, std::vector<int64_t>& output_shape) = 0;
+
+  // From Providers/Common.h
+  virtual bool IsScalarOr1ElementVector(const Tensor* input) = 0;
+
+  // From cpu/tensor/unsqueeze.h
+  virtual Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, UnsqueezeBase__Prepare& prepare) = 0;
+  // From cpu/tensor/slice.h
+  virtual Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
+                                              const std::vector<int64_t>& raw_ends,
+                                              const std::vector<int64_t>& raw_axes,
+                                              SliceOp__PrepareForComputeMetadata& compute_metadata) = 0;
+
+  virtual Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
+                                              const std::vector<int64_t>& raw_ends,
+                                              const std::vector<int64_t>& raw_axes,
+                                              const std::vector<int64_t>& raw_steps,
+                                              SliceOp__PrepareForComputeMetadata& compute_metadata) = 0;
+  virtual void SliceBase__FillVectorsFromInput(const Tensor& start_tensor,
+                                               const Tensor& ends_tensor,
+                                               const Tensor* axes_tensor,
+                                               const Tensor* steps_tensor,
+                                               std::vector<int64_t>& input_starts,
+                                               std::vector<int64_t>& input_ends,
+                                               std::vector<int64_t>& input_axes,
+                                               std::vector<int64_t>& input_steps) = 0;
+  // From cpu/tensor/size.h
+  virtual Status Size__Compute(const Size* p, OpKernelContext* context) = 0;
+  // From cpu/tensor/scatter_nd.h
+  virtual Status ScatterNDBase__ValidateShapes(const TensorShape& input_shape,
+                                               const TensorShape& indice_shape,
+                                               const TensorShape& update_shape) = 0;
+  // From cpu/tensor/padbase.h
+  virtual Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) = 0;
+  // From cpu/tensor/split.h
+  virtual Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
+                                              int& after_dims_including_split_axis, int& after_dims_excluding_split,
+                                              std::vector<int64_t>& split_sizes) = 0;
+  // From cpu/tensor/concatbase.h
+  virtual Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors, Prepare& prepare) = 0;
+  // From cpu/tensor/gatherbase.h
+  virtual Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) = 0;
 };
 
 extern ProviderHost* g_host;
@@ -562,8 +726,10 @@ struct Provider_AttributeProto {
   ONNX_NAMESPACE::AttributeProto_AttributeType type() const { return g_host->Provider_AttributeProto__type(this); }
   int ints_size() const { return g_host->Provider_AttributeProto__ints_size(this); }
   int floats_size() const { return g_host->Provider_AttributeProto__floats_size(this); }
+  int strings_size() const { return g_host->Provider_AttributeProto__strings_size(this); }
   int64_t ints(int i) const { return g_host->Provider_AttributeProto__ints(this, i); }
   float floats(int i) const { return g_host->Provider_AttributeProto__floats(this, i); }
+  const std::string& strings(int i) const { return g_host->Provider_AttributeProto__strings(this, i); }
   const Provider_int64s& ints() const { return g_host->Provider_AttributeProto__ints(this); }
   int64_t i() const { return g_host->Provider_AttributeProto__i(this); }
   float f() const { return g_host->Provider_AttributeProto__f(this); }
@@ -699,10 +865,14 @@ struct ComputeCapability {
 
 struct DataTransferManager {
   Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
+  Status CopyTensor(const Tensor& src, Tensor& dst) const { return g_host->DataTransferManager__CopyTensor(this, src, dst); }
+
+  const IDataTransfer* GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const { return g_host->DataTransferManager__GetDataTransfer(this, src_device, dst_device); }
 
   PROVIDER_DISALLOW_ALL(DataTransferManager)
 };
 
+#if 0
 struct IDataTransfer {
   static void operator delete(void* p) { g_host->IDataTransfer__operator_delete(reinterpret_cast<IDataTransfer*>(p)); }
 
@@ -710,6 +880,7 @@ struct IDataTransfer {
   IDataTransfer(const IDataTransfer&) = delete;
   void operator=(const IDataTransfer&) = delete;
 };
+#endif
 
 struct IndexedSubGraph_MetaDef {
   static std::unique_ptr<IndexedSubGraph_MetaDef> Create() { return g_host->IndexedSubGraph_MetaDef__construct(); }
@@ -754,30 +925,47 @@ struct IndexedSubGraph {
 struct KernelDef {
   static void operator delete(void* p) { g_host->KernelDef__operator_delete(reinterpret_cast<KernelDef*>(p)); }
 
+  void SinceVersion(/*out*/ int* start, /*out*/ int* end) const { g_host->KernelDef__SinceVersion(this, start, end); }
+  const std::string& Domain() const { return g_host->KernelDef__Domain(this); }
+  const std::string& OpName() const { return g_host->KernelDef__OpName(this); }
+
   KernelDef() = delete;
   KernelDef(const KernelDef*) = delete;
   void operator=(const KernelDef&) = delete;
 };
-#endif
 
-using Provider_KernelCreateFn = std::function<Provider_OpKernel*(const OpKernelInfo& info)>;
-using Provider_KernelCreatePtrFn = std::add_pointer<Provider_OpKernel*(const OpKernelInfo& info)>::type;
+using KernelCreateFn = std::function<OpKernel*(const OpKernelInfo& info)>;
+using KernelCreatePtrFn = std::add_pointer<OpKernel*(const OpKernelInfo& info)>::type;
 
-struct Provider_KernelCreateInfo {
+struct KernelCreateInfo {
   std::unique_ptr<KernelDef> kernel_def;  // Owned and stored in the global kernel registry.
-  Provider_KernelCreateFn kernel_create_func;
+  KernelCreateFn kernel_create_func;
 
-  Provider_KernelCreateInfo(std::unique_ptr<KernelDef> definition,
-                            Provider_KernelCreateFn create_func)
+  KernelCreateInfo(std::unique_ptr<KernelDef> definition,
+                   KernelCreateFn create_func)
       : kernel_def(std::move(definition)),
         kernel_create_func(create_func) {}
 
-  Provider_KernelCreateInfo(Provider_KernelCreateInfo&& other) noexcept
+  KernelCreateInfo(KernelCreateInfo&& other) noexcept
       : kernel_def(std::move(other.kernel_def)),
         kernel_create_func(std::move(other.kernel_create_func)) {}
+
+  KernelCreateInfo() = default;
 };
 
-using Provider_BuildKernelCreateInfoFn = Provider_KernelCreateInfo (*)();
+using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
+
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+
+namespace contrib {
+namespace cuda {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace cuda
+}  // namespace contrib
+
+#endif
 
 #ifndef PROVIDER_BRIDGE_ORT
 struct KernelDefBuilder {
@@ -794,6 +982,10 @@ struct KernelDefBuilder {
   }
   KernelDefBuilder& SinceVersion(int since_version) {
     g_host->KernelDefBuilder__SinceVersion(this, since_version);
+    return *this;
+  }
+  KernelDefBuilder& SinceVersion(int since_version_start, int since_version_end) {
+    g_host->KernelDefBuilder__SinceVersion(this, since_version_start, since_version_end);
     return *this;
   }
   KernelDefBuilder& Provider(const char* provider_type) {
@@ -820,8 +1012,18 @@ struct KernelDefBuilder {
     g_host->KernelDefBuilder__ExecQueueId(this, queue_id);
     return *this;
   }
+  KernelDefBuilder& MayInplace(int input_index, int output_index) {
+    g_host->KernelDefBuilder__MayInplace(this, input_index, output_index);
+    return *this;
+  }
+  KernelDefBuilder& Alias(int input_index, int output_index) {
+    g_host->KernelDefBuilder__Alias(this, input_index, output_index);
+    return *this;
+  }
 
-  std::unique_ptr<KernelDef> Build() { return g_host->KernelDefBuilder__Build(this); }
+  std::unique_ptr<KernelDef> Build() {
+    return g_host->KernelDefBuilder__Build(this);
+  }
 
   KernelDefBuilder() = delete;
   KernelDefBuilder(const KernelDefBuilder&) = delete;
@@ -832,11 +1034,38 @@ struct KernelRegistry {
   static std::shared_ptr<KernelRegistry> Create() { return g_host->KernelRegistry__construct(); }
   static void operator delete(void* p) { g_host->KernelRegistry__operator_delete(reinterpret_cast<KernelRegistry*>(p)); }
 
-  Status Register(Provider_KernelCreateInfo&& create_info) { return g_host->KernelRegistry__Register(this, std::move(create_info)); }
+  Status Register(KernelCreateInfo&& create_info) { return g_host->KernelRegistry__Register(this, std::move(create_info)); }
+
+  Status TryFindKernel(const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) const { return g_host->KernelRegistry__TryFindKernel(this, node, exec_provider, out); }
 
   KernelRegistry() = delete;
   KernelRegistry(const KernelRegistry&) = delete;
   void operator=(const KernelRegistry&) = delete;
+};
+
+struct PrimitiveDataTypeBase {
+  int32_t GetDataType() const { return g_host->PrimitiveDataTypeBase__GetDataType(this); }
+
+  PROVIDER_DISALLOW_ALL(PrimitiveDataTypeBase)
+};
+
+class DataTypeImpl {
+ public:
+  size_t Size() const { return g_host->DataTypeImpl__Size(this); }
+
+  template <typename T>
+  static MLDataType GetType();
+  template <typename elemT>
+  static MLDataType GetTensorType();
+
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorTypes(); }
+  static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
+
+  const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
+
+  static const char* ToString(MLDataType type) { return g_host->DataTypeImpl__ToString(type); }
+
+  PROVIDER_DISALLOW_ALL(DataTypeImpl)
 };
 
 struct Function {
@@ -851,9 +1080,14 @@ struct Node {
   const std::string& Domain() const noexcept { return g_host->Node__Domain(this); }
   const std::string& OpType() const noexcept { return g_host->Node__OpType(this); }
 
+  int SinceVersion() const noexcept { return g_host->Node__SinceVersion(this); }
+
   const Function* GetFunctionBody() const noexcept { return g_host->Node__GetFunctionBody(this); }
+  ProviderType GetExecutionProviderType() const noexcept { return g_host->Node__GetExecutionProviderType(this); }
 
   ConstPointerContainer<std::vector<NodeArg*>> ImplicitInputDefs() const noexcept { return g_host->Node__ImplicitInputDefs(this); }
+
+  const std::vector<int>& InputArgCount() const noexcept { return g_host->Node__InputArgCount(this); }
 
   ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept { return g_host->Node__InputDefs(this); }
   ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept { return g_host->Node__OutputDefs(this); }
@@ -927,9 +1161,9 @@ struct NodeAttributes {
   Provider_AttributeProto& operator[](const std::string& string) { return g_host->NodeAttributes__operator_array(this, string); }
   const Provider_AttributeProto& at(const std::string& string) const { return g_host->NodeAttributes__at(this, string); }
 
-  IteratorHolder<NodeAttributes_Iterator, std::pair<std::string&, Provider_AttributeProto&>> begin() const { return g_host->NodeAttributes__begin(this); }
-  IteratorHolder<NodeAttributes_Iterator, std::pair<std::string&, Provider_AttributeProto&>> end() const { return g_host->NodeAttributes__end(this); }
-  IteratorHolder<NodeAttributes_Iterator, std::pair<std::string&, Provider_AttributeProto&>> find(const std::string& key) const { return g_host->NodeAttributes__find(this, key); }
+  IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, Provider_AttributeProto>> begin() const { return g_host->NodeAttributes__begin(this); }
+  IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, Provider_AttributeProto>> end() const { return g_host->NodeAttributes__end(this); }
+  IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, Provider_AttributeProto>> find(const std::string& key) const { return g_host->NodeAttributes__find(this, key); }
   void insert(const NodeAttributes& v) { return g_host->NodeAttributes__insert(this, v); }
 
   NodeAttributes() = delete;
@@ -1002,11 +1236,13 @@ struct GraphViewer {
 };
 #endif
 
+#if 0
 struct Provider_OpKernel_Base {
   const OpKernelInfo& GetInfo() const { return g_host->Provider_OpKernel_Base__GetInfo(this); }
 
   PROVIDER_DISALLOW_ALL(Provider_OpKernel_Base)
 };
+#endif
 
 #ifndef PROVIDER_BRIDGE_ORT
 struct OpKernelContext {
@@ -1014,8 +1250,10 @@ struct OpKernelContext {
 
   template <typename T>
   const T* Input(int index) const;
+  int InputCount() const { return g_host->OpKernelContext__InputCount(this); }
 
   Tensor* Output(int index, const TensorShape& shape) { return g_host->OpKernelContext__Output(this, index, shape); }
+  int OutputCount() const { return g_host->OpKernelContext__OutputCount(this); }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };
@@ -1026,37 +1264,81 @@ inline const Tensor* OpKernelContext::Input<Tensor>(int index) const {
 }
 
 struct OpKernelInfo {
+  static void operator delete(void* p) { g_host->OpKernelInfo__operator_delete(reinterpret_cast<OpKernelInfo*>(p)); }
+
+  const IExecutionProvider* GetExecutionProvider() const noexcept { return g_host->OpKernelInfo__GetExecutionProvider(this); }
+
   template <typename T>
   Status GetAttr(const std::string& name, T* value) const;
 
-  Status GetAttr(const std::string& name, int64_t* value) const { return g_host->OpKernelInfo__GetAttr_int64(this, name, value); }
-  Status GetAttr(const std::string& name, float* value) const { return g_host->OpKernelInfo__GetAttr_float(this, name, value); }
+  template <typename T>
+  Status GetAttrs(const std::string& name, std::vector<T>& values) const;
+
+  template <typename T>
+  T GetAttrOrDefault(const std::string& name, const T& default_value) const {
+    T tmp;
+    return GetAttr<T>(name, &tmp).IsOK() ? tmp : default_value;
+  }
+
+  template <typename T>
+  void GetAttrOrDefault(const std::string& name, T* value, const T& default_value) const {
+    if (!GetAttr<T>(name, value).IsOK())
+      *value = default_value;
+  }
+
+  template <typename T>
+  std::vector<T> GetAttrsOrDefault(const std::string& name, const std::vector<T>& default_value = std::vector<T>{}) const {
+    std::vector<T> tmp;
+    return GetAttrs<T>(name, tmp).IsOK() ? tmp : default_value;
+  }
+
+  bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const { return g_host->OpKernelInfo__TryGetConstantInput(this, input_index, constant_input_value); }
 
   const DataTransferManager& GetDataTransferManager() const noexcept { return g_host->OpKernelInfo__GetDataTransferManager(this); }
   int GetKernelDef_ExecQueueId() const noexcept { return g_host->OpKernelInfo__GetKernelDef_ExecQueueId(this); }
+  const KernelDef& GetKernelDef() const { return g_host->OpKernelInfo__GetKernelDef(this); }
 
-  PROVIDER_DISALLOW_ALL(OpKernelInfo)
+  uint32_t GetInputCount() const { return g_host->OpKernelInfo__GetInputCount(this); }
+
+  const Node& node() const noexcept { return g_host->OpKernelInfo__node(this); }
+
+  OpKernelInfo() = delete;
+  OpKernelInfo(const OpKernelInfo&) = delete;
+  void operator=(const OpKernelInfo&) = delete;
 };
 
 template <>
-inline Status OpKernelInfo::GetAttr<int64_t>(const std::string& name, int64_t* value) const {
-  return GetAttr(name, value);
-}
-
+inline Status OpKernelInfo::GetAttr<int64_t>(const std::string& name, int64_t* value) const { return g_host->OpKernelInfo__GetAttr_int64(this, name, value); }
 template <>
-inline Status OpKernelInfo::GetAttr<float>(const std::string& name, float* value) const {
-  return GetAttr(name, value);
-}
+inline Status OpKernelInfo::GetAttr<float>(const std::string& name, float* value) const { return g_host->OpKernelInfo__GetAttr_float(this, name, value); }
+template <>
+inline Status OpKernelInfo::GetAttr<std::string>(const std::string& name, std::string* value) const { return g_host->OpKernelInfo__GetAttr_string(this, name, value); }
+template <>
+inline Status OpKernelInfo::GetAttrs<int64_t>(const std::string& name, std::vector<int64_t>& values) const { return g_host->OpKernelInfo__GetAttrs(this, name, values); }
+template <>
+inline Status OpKernelInfo::GetAttrs<float>(const std::string& name, std::vector<float>& values) const { return g_host->OpKernelInfo__GetAttrs(this, name, values); }
+template <>
+inline Status OpKernelInfo::GetAttrs<std::string>(const std::string& name, std::vector<std::string>& values) const { return g_host->OpKernelInfo__GetAttrs(this, name, values); }
+
+class SessionState {
+ public:
+  const DataTransferManager& GetDataTransferMgr() const noexcept { return g_host->SessionState__GetDataTransferMgr(this); }
+
+  PROVIDER_DISALLOW_ALL(SessionState)
+};
 
 struct Tensor {
-  float* MutableData_float() { return g_host->Tensor__MutableData_float(this); }
-  const float* Data_float() const { return g_host->Tensor__Data_float(this); }
+  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) { return g_host->Tensor__construct(p_type, shape, allocator); }
+  static void operator delete(void* p) { g_host->Tensor__operator_delete(reinterpret_cast<Tensor*>(p)); }
 
   template <typename T>
   T* MutableData();
 
   template <typename T>
   const T* Data() const;
+
+  void* MutableDataRaw(MLDataType type) { return g_host->Tensor__MutableDataRaw(this, type); }
+  const void* DataRaw(MLDataType type) const { return g_host->Tensor__DataRaw(this, type); }
 
   void* MutableDataRaw() noexcept { return g_host->Tensor__MutableDataRaw(this); }
   const void* DataRaw() const noexcept { return g_host->Tensor__DataRaw(this); }
@@ -1065,14 +1347,92 @@ struct Tensor {
   size_t SizeInBytes() const { return g_host->Tensor__SizeInBytes(this); }
   const OrtMemoryInfo& Location() const { return g_host->Tensor__Location(this); }
 
-  PROVIDER_DISALLOW_ALL(Tensor)
+  int32_t GetElementType() const { return g_host->Tensor__GetElementType(this); }
+  MLDataType DataType() const { return g_host->Tensor__DataType(this); }
+  bool IsDataTypeString() const { return g_host->Tensor__IsDataTypeString(this); }
+
+  template <class T>
+  bool IsDataType() const;
+
+  Tensor() = delete;
+  Tensor(const Tensor&) = delete;
+  void operator=(const Tensor&) = delete;
 };
 
 template <>
-inline float* Tensor::MutableData<float>() { return MutableData_float(); }
+inline bool Tensor::IsDataType<bool>() const { return g_host->Tensor__IsDataType_bool(this); }
+template <>
+inline bool Tensor::IsDataType<int8_t>() const { return g_host->Tensor__IsDataType_int8(this); }
+template <>
+inline bool Tensor::IsDataType<uint8_t>() const { return g_host->Tensor__IsDataType_uint8(this); }
+template <>
+inline bool Tensor::IsDataType<int16_t>() const { return g_host->Tensor__IsDataType_int16(this); }
+template <>
+inline bool Tensor::IsDataType<uint16_t>() const { return g_host->Tensor__IsDataType_uint16(this); }
+template <>
+inline bool Tensor::IsDataType<int32_t>() const { return g_host->Tensor__IsDataType_int32(this); }
+template <>
+inline bool Tensor::IsDataType<uint32_t>() const { return g_host->Tensor__IsDataType_uint32(this); }
+template <>
+inline bool Tensor::IsDataType<int64_t>() const { return g_host->Tensor__IsDataType_int64(this); }
+template <>
+inline bool Tensor::IsDataType<uint64_t>() const { return g_host->Tensor__IsDataType_uint64(this); }
+template <>
+inline bool Tensor::IsDataType<float>() const { return g_host->Tensor__IsDataType_float(this); }
+template <>
+inline bool Tensor::IsDataType<double>() const { return g_host->Tensor__IsDataType_double(this); }
+template <>
+inline bool Tensor::IsDataType<MLFloat16>() const { return g_host->Tensor__IsDataType_MLFloat16(this); }
 
 template <>
-inline const float* Tensor::Data<float>() const { return Data_float(); }
+inline bool* Tensor::MutableData<bool>() { return g_host->Tensor__MutableData_bool(this); }
+template <>
+inline int8_t* Tensor::MutableData<int8_t>() { return g_host->Tensor__MutableData_int8(this); }
+template <>
+inline uint8_t* Tensor::MutableData<uint8_t>() { return g_host->Tensor__MutableData_uint8(this); }
+template <>
+inline int16_t* Tensor::MutableData<int16_t>() { return g_host->Tensor__MutableData_int16(this); }
+template <>
+inline uint16_t* Tensor::MutableData<uint16_t>() { return g_host->Tensor__MutableData_uint16(this); }
+template <>
+inline int32_t* Tensor::MutableData<int32_t>() { return g_host->Tensor__MutableData_int32(this); }
+template <>
+inline uint32_t* Tensor::MutableData<uint32_t>() { return g_host->Tensor__MutableData_uint32(this); }
+template <>
+inline int64_t* Tensor::MutableData<int64_t>() { return g_host->Tensor__MutableData_int64(this); }
+template <>
+inline uint64_t* Tensor::MutableData<uint64_t>() { return g_host->Tensor__MutableData_uint64(this); }
+template <>
+inline float* Tensor::MutableData<float>() { return g_host->Tensor__MutableData_float(this); }
+template <>
+inline double* Tensor::MutableData<double>() { return g_host->Tensor__MutableData_double(this); }
+template <>
+inline MLFloat16* Tensor::MutableData<MLFloat16>() { return g_host->Tensor__MutableData_MLFloat16(this); }
+
+template <>
+inline const bool* Tensor::Data<bool>() const { return g_host->Tensor__Data_bool(this); }
+template <>
+inline const int8_t* Tensor::Data<int8_t>() const { return g_host->Tensor__Data_int8(this); }
+template <>
+inline const uint8_t* Tensor::Data<uint8_t>() const { return g_host->Tensor__Data_uint8(this); }
+template <>
+inline const int16_t* Tensor::Data<int16_t>() const { return g_host->Tensor__Data_int16(this); }
+template <>
+inline const uint16_t* Tensor::Data<uint16_t>() const { return g_host->Tensor__Data_uint16(this); }
+template <>
+inline const int32_t* Tensor::Data<int32_t>() const { return g_host->Tensor__Data_int32(this); }
+template <>
+inline const uint32_t* Tensor::Data<uint32_t>() const { return g_host->Tensor__Data_uint32(this); }
+template <>
+inline const int64_t* Tensor::Data<int64_t>() const { return g_host->Tensor__Data_int64(this); }
+template <>
+inline const uint64_t* Tensor::Data<uint64_t>() const { return g_host->Tensor__Data_uint64(this); }
+template <>
+inline const float* Tensor::Data<float>() const { return g_host->Tensor__Data_float(this); }
+template <>
+inline const double* Tensor::Data<double>() const { return g_host->Tensor__Data_double(this); }
+template <>
+inline const MLFloat16* Tensor::Data<MLFloat16>() const { return g_host->Tensor__Data_MLFloat16(this); }
 
 namespace utils {
 
@@ -1080,7 +1440,21 @@ inline bool HasDimValue(const Provider_TensorShapeProto_Dimension& dim) {
   return dim.value_case() == Provider_TensorShapeProto_Dimension::kDimValue;
 }
 
+bool IsDataTypeString(MLDataType dt_type);
+
 }  // namespace utils
+
+namespace GatherElements {
+inline Status ValidateInputShapes(const TensorShape& input_data_shape,
+                                  const TensorShape& indices_shape,
+                                  int64_t axis) { return g_host->GatherElements__ValidateInputShapes(input_data_shape, indices_shape, axis); }
+}  // namespace GatherElements
+
+// From onehot.h
+inline Status ValidateInputs(const Tensor* depth, const Tensor* values) { return g_host->ValidateInputs(depth, values); }
+inline Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
+                                 int64_t& prefix_dim_size, int64_t& suffix_dim_size,
+                                 std::vector<int64_t>& output_shape) { return g_host->PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
 #endif
 

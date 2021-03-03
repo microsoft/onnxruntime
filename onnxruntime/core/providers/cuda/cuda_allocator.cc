@@ -4,7 +4,7 @@
 #include "cuda_allocator.h"
 #include "cuda_common.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/session_state.h"
+//#include "core/framework/session_state.h"
 #include "cuda_fence.h"
 #include "gpu_data_transfer.h"
 

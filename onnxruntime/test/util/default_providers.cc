@@ -17,6 +17,7 @@ namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
     const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads);
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
@@ -64,7 +65,8 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-  return CreateExecutionProviderFactory_CUDA(CUDAExecutionProviderInfo{})->CreateProvider();
+  OrtCUDAProviderOptions provider_options{};
+  return CreateExecutionProviderFactory_Cuda(&provider_options)->CreateProvider();
 #else
   return nullptr;
 #endif

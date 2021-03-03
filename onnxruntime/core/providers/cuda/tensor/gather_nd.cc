@@ -98,7 +98,7 @@ Status GatherNDBase::PrepareCompute(
       endver,                                                               \
       TIndex,                                                               \
       kCudaExecutionProvider,                                               \
-      KernelDefBuilder()                                                    \
+      (*KernelDefBuilder::Create())                                         \
           .TypeConstraint("T",                                              \
                           std::vector<MLDataType>{                          \
                               DataTypeImpl::GetTensorType<float>(),         \
@@ -116,7 +116,7 @@ Status GatherNDBase::PrepareCompute(
       ver,                                                                \
       TIndex,                                                             \
       kCudaExecutionProvider,                                             \
-      KernelDefBuilder()                                                  \
+      (*KernelDefBuilder::Create())                                       \
           .TypeConstraint("T",                                            \
                           std::vector<MLDataType>{                        \
                               DataTypeImpl::GetTensorType<float>(),       \

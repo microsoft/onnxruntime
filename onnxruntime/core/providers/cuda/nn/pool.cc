@@ -1,3 +1,4 @@
+#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -257,3 +258,4 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
 
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif

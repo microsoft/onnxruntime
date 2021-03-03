@@ -4,7 +4,9 @@
 #pragma once
 
 #include "core/common/status.h"
+#ifndef PROVIDER_BRIDGE_PROVIDER
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
 

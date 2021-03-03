@@ -4,8 +4,8 @@
 #pragma once
 #include <stdint.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "core/framework/data_types.h"
-#include "core/common/common.h"
+//#include "core/framework/data_types.h"
+//#include "core/common/common.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -19,7 +19,6 @@ Status ExpandImpl(
     void* output_data,
     const TArray<fast_divmod>& output_strides,
     const TArray<int64_t>& input_strides);
-
 
 }  // namespace cuda
 }  // namespace onnxruntime

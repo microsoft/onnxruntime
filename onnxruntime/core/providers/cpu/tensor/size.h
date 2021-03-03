@@ -3,8 +3,10 @@
 
 #pragma once
 
+#ifndef PROVIDER_BRIDGE_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#endif
 
 namespace onnxruntime {
 

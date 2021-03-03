@@ -7,12 +7,13 @@
 #include <string>
 #include <vector>
 
-#include "core/common/common.h"
+//#include "core/common/common.h"
 #include "core/framework/feeds_fetches_manager.h"
+#ifndef PROVIDER_BRIDGE_PROVIDER
 #include "core/framework/op_kernel.h"
+#endif
 
 namespace onnxruntime {
-class Graph;
 
 // Creates a scalar MLValue based on given value and allocator.
 template <typename T>

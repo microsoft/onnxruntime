@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
+//#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }
-}
+}  // namespace onnxruntime

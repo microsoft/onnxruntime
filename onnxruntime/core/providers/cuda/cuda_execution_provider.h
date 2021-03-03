@@ -6,14 +6,14 @@
 #include <set>
 #include <vector>
 
-#include "core/graph/constants.h"
+//#include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_pch.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
+//#include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {

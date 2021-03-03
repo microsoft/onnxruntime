@@ -3,7 +3,11 @@
 
 #pragma once
 #include "gsl/gsl"
+
+#ifndef PROVIDER_BRIDGE_PROVIDER
 #include "core/framework/utils.h"
+#endif
+
 namespace onnxruntime {
 
 struct TensorPitches : std::vector<int64_t> {

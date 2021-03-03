@@ -8,14 +8,22 @@
 #include <mutex>
 #include "core/providers/shared/common.h"
 
+namespace onnxruntime {
+
+ProviderHost* g_host = Provider_GetHost();
+}
+
 // Override default new/delete so that we match the host's allocator
-void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
+void* operator new(size_t n) {
+  onnxruntime::g_host = Provider_GetHost();
+  return Provider_GetHost()->HeapAllocate(n);
+}
 void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }
 void operator delete(void* p, size_t /*size*/) { return Provider_GetHost()->HeapFree(p); }
 
 namespace onnxruntime {
 
-ProviderHost* g_host = Provider_GetHost();
+//ProviderHost* g_host = Provider_GetHost();
 
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
@@ -47,17 +55,78 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
 
 template <>
 MLDataType DataTypeImpl::GetType<float>() {
-  return g_host->DataTypeImpl_GetType_float();
+  return g_host->DataTypeImpl__GetType_float();
+}
+
+template <>
+MLDataType DataTypeImpl::GetTensorType<bool>() {
+  return g_host->DataTypeImpl__GetTensorType_bool();
+}
+
+template <>
+MLDataType DataTypeImpl::GetTensorType<int8_t>() {
+  return g_host->DataTypeImpl__GetTensorType_int8();
+}
+
+template <>
+MLDataType DataTypeImpl::GetTensorType<uint8_t>() {
+  return g_host->DataTypeImpl__GetTensorType_uint8();
+}
+
+template <>
+MLDataType DataTypeImpl::GetTensorType<int16_t>() {
+  return g_host->DataTypeImpl__GetTensorType_int16();
+}
+
+template <>
+MLDataType DataTypeImpl::GetTensorType<uint16_t>() {
+  return g_host->DataTypeImpl__GetTensorType_uint16();
+}
+
+template <>
+MLDataType DataTypeImpl::GetTensorType<int32_t>() {
+  return g_host->DataTypeImpl__GetTensorType_int32();
+}
+
+template <>
+MLDataType DataTypeImpl::GetTensorType<uint32_t>() {
+  return g_host->DataTypeImpl__GetTensorType_uint32();
+}
+
+template <>
+MLDataType DataTypeImpl::GetTensorType<int64_t>() {
+  return g_host->DataTypeImpl__GetTensorType_int64();
+}
+
+template <>
+MLDataType DataTypeImpl::GetTensorType<uint64_t>() {
+  return g_host->DataTypeImpl__GetTensorType_uint64();
 }
 
 template <>
 MLDataType DataTypeImpl::GetTensorType<float>() {
-  return g_host->DataTypeImpl_GetTensorType_float();
+  return g_host->DataTypeImpl__GetTensorType_float();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
-  return g_host->DataTypeImpl_AllFixedSizeTensorTypes();
+template <>
+MLDataType DataTypeImpl::GetTensorType<double>() {
+  return g_host->DataTypeImpl__GetTensorType_double();
 }
+
+template <>
+MLDataType DataTypeImpl::GetTensorType<MLFloat16>() {
+  return Provider_GetHost()->DataTypeImpl__GetTensorType_MLFloat16();
+}
+
+Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
+  return g_host->IDataTransfer__CopyTensor(this, src, dst);
+}
+
+Status IDataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const {
+  return g_host->IDataTransfer__CopyTensors(this, src_dst_pairs);
+}
+
+const Node& OpKernel::Node() const { return g_host->OpKernel__Node(this); }
 
 TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
     : std::vector<int64_t>(dimension_count) {
@@ -93,6 +162,11 @@ TensorShape TensorShape::Slice(size_t dimstart) const {
 std::string TensorShape::ToString() const {
   return g_host->TensorShape__ToString(this);
 }
+
+int64_t TensorShape::SizeToDimension(size_t dimension) const { return g_host->TensorShape__SizeToDimension(this, dimension); }
+int64_t TensorShape::SizeFromDimension(size_t dimension) const { return g_host->TensorShape__SizeFromDimension(this, dimension); }
+
+std::ostream& operator<<(std::ostream& out, const TensorShape& shape) { return g_host->operator_left_shift(out, shape); }
 
 AllocatorPtr CreateAllocator(AllocatorCreationInfo info) {
   return g_host->CreateAllocator(info);
@@ -156,6 +230,13 @@ std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
 }
 
+std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                   const std::string& provider_type,
+                                                   const std::vector<const KernelRegistry*>& kernel_registries,
+                                                   const std::vector<NodeIndex>& tentative_nodes) {
+  return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
+}
+
 namespace logging {
 
 const char* Category::onnxruntime = "onnxruntime";
@@ -198,11 +279,73 @@ const std::string& Status::EmptyString() noexcept {
 
 }  // namespace common
 
+namespace math {
+uint16_t floatToHalf(float f) { return g_host->math__floatToHalf(f); }
+
+}  // namespace math
+
+bool IsScalarOr1ElementVector(const Tensor* input) { return g_host->IsScalarOr1ElementVector(input); }
+
 std::vector<std::string> GetStackTrace() { return g_host->GetStackTrace(); }
 
 void LogRuntimeError(uint32_t session_id, const common::Status& status,
                      const char* file, const char* function, uint32_t line) {
   return g_host->LogRuntimeError(session_id, status, file, function, line);
 }
+
+std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
+  return g_host->CopyOpKernelInfo(info);
+}
+
+}  // namespace onnxruntime
+
+#include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/slice.h"
+#include "core/providers/cpu/tensor/split.h"
+#include "core/providers/cpu/tensor/size.h"
+#include "core/providers/cpu/tensor/scatter_nd.h"
+#include "core/providers/cpu/tensor/padbase.h"
+#include "core/providers/cpu/tensor/concatbase.h"
+#include "core/providers/cpu/tensor/gatherbase.h"
+
+namespace onnxruntime {
+Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host->UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
+
+Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
+                                    const std::vector<int64_t>& raw_ends,
+                                    const std::vector<int64_t>& raw_axes,
+                                    SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host->SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
+
+Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
+                                    const std::vector<int64_t>& raw_ends,
+                                    const std::vector<int64_t>& raw_axes,
+                                    const std::vector<int64_t>& raw_steps,
+                                    SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host->SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
+
+void SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
+                                     const Tensor& ends_tensor,
+                                     const Tensor* axes_tensor,
+                                     const Tensor* steps_tensor,
+                                     std::vector<int64_t>& input_starts,
+                                     std::vector<int64_t>& input_ends,
+                                     std::vector<int64_t>& input_axes,
+                                     std::vector<int64_t>& input_steps) { return g_host->SliceBase__FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
+
+Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
+                                    int& after_dims_including_split_axis, int& after_dims_excluding_split,
+                                    std::vector<int64_t>& split_sizes) const { return g_host->SplitBase__PrepareForCompute(this, input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
+
+Status Size::Compute(OpKernelContext* context) const { return g_host->Size__Compute(this, context); }
+
+Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
+                                     const TensorShape& indice_shape,
+                                     const TensorShape& update_shape) { return g_host->ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
+
+Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) { return g_host->PadBase__HandleDimValueZero(mode, input_shape, output_shape); }
+
+Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors,
+                                     Prepare& p) const { return g_host->ConcatBase__PrepareForCompute(this, ctx, input_tensors, p); }
+
+Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host->GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
 
 }  // namespace onnxruntime

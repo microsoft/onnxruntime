@@ -1,3 +1,4 @@
+#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -220,3 +221,4 @@ SPECIALIZED_COMPUTE(MLFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
 
@@ -10,10 +11,9 @@
 
 #include "core/common/make_unique.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
-#include "core/providers/cuda/cuda_execution_provider_info.h"
-#include "core/session/abi_session_options_impl.h"
-#include "core/session/onnxruntime_c_api.h"
-#include "core/session/ort_apis.h"
+//#include "core/session/abi_session_options_impl.h"
+//#include "core/session/onnxruntime_c_api.h"
+//#include "core/session/ort_apis.h"
 
 using namespace onnxruntime;
 
@@ -40,6 +40,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(c
 
 }  // namespace onnxruntime
 
+#if 0
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id) {
   CUDAExecutionProviderInfo info{};
   info.device_id = gsl::narrow<OrtDevice::DeviceId>(device_id);
@@ -61,4 +62,46 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(info));
 
   return nullptr;
+}
+#endif
+
+namespace onnxruntime {
+#if 0
+struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
+  std::vector<std::string> GetAvailableDevices() const override {
+    InferenceEngine::Core ie_core;
+    return ie_core.GetAvailableDevices();
+  }
+} g_info;
+#endif
+
+struct CUDA_Provider : Provider {
+  //  const void* GetInfo() override { return &g_info; }
+
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
+    auto params = reinterpret_cast<const OrtCUDAProviderOptions*>(void_params);
+
+    CUDAExecutionProviderInfo info{};
+    info.device_id = gsl::narrow<OrtDevice::DeviceId>(params->device_id);
+    info.cuda_mem_limit = params->cuda_mem_limit;
+    info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(params->arena_extend_strategy);
+    info.cudnn_conv_algo_search = params->cudnn_conv_algo_search;
+    info.do_copy_in_default_stream = params->do_copy_in_default_stream;
+
+    return std::make_shared<CUDAProviderFactory>(info);
+  }
+
+  void Shutdown() override {
+    //    openvino_ep::BackendManager::ReleaseGlobalContext();
+  }
+
+} g_provider;
+
+}  // namespace onnxruntime
+
+extern "C" {
+
+ORT_API(onnxruntime::Provider*, GetProvider) {
+  return &onnxruntime::g_provider;
+}
 }

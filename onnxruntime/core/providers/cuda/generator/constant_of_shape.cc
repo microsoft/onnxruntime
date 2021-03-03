@@ -1,3 +1,4 @@
+#if 0
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -29,11 +30,11 @@ Status ConstantOfShape::ComputeInternal(OpKernelContext* ctx) const {
   const void* value_ptr = GetValuePtr();
   const auto element_size = output_tensor->DataType()->Size();
 
-#define CASE(TYPE)                                                                                          \
-  case sizeof(TYPE):                                                                                        \
-    if (size > 0) {                                                                                         \
-      cuda::Fill(reinterpret_cast<TYPE*>(output_data), *(reinterpret_cast<const TYPE*>(value_ptr)), size);  \
-    }                                                                                                       \
+#define CASE(TYPE)                                                                                         \
+  case sizeof(TYPE):                                                                                       \
+    if (size > 0) {                                                                                        \
+      cuda::Fill(reinterpret_cast<TYPE*>(output_data), *(reinterpret_cast<const TYPE*>(value_ptr)), size); \
+    }                                                                                                      \
     break;
 
   switch (element_size) {
@@ -51,3 +52,4 @@ Status ConstantOfShape::ComputeInternal(OpKernelContext* ctx) const {
 
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif

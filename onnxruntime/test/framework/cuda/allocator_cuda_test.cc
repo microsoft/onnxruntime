@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if 0
+
 #include "core/framework/allocatormgr.h"
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
@@ -112,3 +114,5 @@ TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
 }
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif
