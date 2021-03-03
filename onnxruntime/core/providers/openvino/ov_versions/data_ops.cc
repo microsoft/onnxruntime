@@ -693,15 +693,16 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_1}, 
+    UnsupportedOpMode obj = {{V_2021_1,V_2021_2},
       [this](const Node* node, const Provider_InitializedTensorSet& ) {
       //check for attributes
       auto& upsample_attr = node->GetAttributes();
       if (upsample_attr.count("scales") > 0) {
         auto& upsample_arg = upsample_attr.at("scales");
         auto float_size = upsample_arg.floats_size();
-        if (float_size > 2 && (upsample_arg.floats(0) != 1.f || upsample_arg.floats(1) != 1.f))
+        if (float_size > 2 && (upsample_arg.floats(0) != 1.f || upsample_arg.floats(1) != 1.f)) {
           return true;
+        }
       }
 
       //check for input dimensions
