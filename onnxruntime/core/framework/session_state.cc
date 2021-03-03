@@ -1004,10 +1004,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   MemoryInfo::GenerateTensorMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
 
-  std::unique_ptr<ITensorAllocator> tensor_allocator(
-      ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
-
   const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
+  std::unique_ptr<ITensorAllocator> tensor_allocator(
+      ITensorAllocator::Create(enable_mem_pattern_ && !initializer_allocation_order.empty(), *p_seq_exec_plan_, *this, weights_buffers_));
+
 
   // move initializers from TensorProto instances in Graph to OrtValue instances in SessionState
   ORT_RETURN_IF_ERROR(
