@@ -266,7 +266,8 @@ class OneHotProcessor(TypeUsageProcessor):
         type0 = value_name_to_typestr(node.Inputs(0), value_name_to_typeinfo)
         type1 = value_name_to_typestr(node.Inputs(1), value_name_to_typeinfo)
         type2 = value_name_to_typestr(node.Inputs(2), value_name_to_typeinfo)
-        key = (type0, type2, type1)  # types in kernel registration are ordered this way: input (T1), output (T3), depth (T2)
+        # types in kernel registration are ordered this way: input (T1), output (T3), depth (T2)
+        key = (type0, type2, type1)
         self._triples.add(key)
 
     def is_typed_registration_needed(self, type_in_registration: str,
