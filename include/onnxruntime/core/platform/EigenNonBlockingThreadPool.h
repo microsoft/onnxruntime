@@ -10,6 +10,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include <type_traits>
+#include <shared_mutex>
 
 #pragma once
 #include "onnxruntime_config.h"
@@ -136,10 +137,11 @@ class ThreadPoolLoop;
 /* Usage:
 1. In executor, call Start() before profiling and Stop() to get profiled numbers;
 2. Inside thread pool, call LogStart() before interested section and LogEnd... after to log elapsed time;
-3. To extend, just add more events in enum Event before "All", and update GetEventName(...) accordingly.
-4. Note LogStart must pair with either LogEnd or LogEndAndStart, otherwise ORT_ENFORCE will fail.
-5. ThreadPoolProfiler is not designed to be thread-safe, please avoid using it under concurrent inference.
+3. To extend, just add more events in enum Event before "All", and update GetEventName(...) accordingly;
+4. Note LogStart must pair with either LogEnd or LogEndAndStart, otherwise ORT_ENFORCE will fail;
+5. ThreadPoolProfiler is thread-safe.
 */
+
 class ThreadPoolProfiler {
  public:
   enum ThreadPoolEvent {
@@ -154,7 +156,6 @@ class ThreadPoolProfiler {
   ~ThreadPoolProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
   using Clock = std::chrono::high_resolution_clock;
-  inline bool Enabled() const;
   void Start();                          //start profiling
   std::string Stop();                    //stop profiling and return collected numbers
   void LogStart();                       //record the starting time point
@@ -163,10 +164,16 @@ class ThreadPoolProfiler {
 
  private:
   static const char* GetEventName(ThreadPoolEvent);
-  bool enabled_ = false;
-  std::thread::id main_thread_id_;
-  uint64_t events_[MAX_EVENT] = {};
-  std::vector<onnxruntime::TimePoint> points_;
+  struct PerThreadNumber {
+    uint64_t events_[MAX_EVENT] = {};
+    std::vector<onnxruntime::TimePoint> points_;
+    void LogStart();
+    void LogEnd(ThreadPoolEvent);
+    void LogEndAndStart(ThreadPoolEvent);
+    std::string Reset();
+  };
+  std::unordered_map<::std::thread::id, PerThreadNumber> per_thread_numbers_;
+  std::shared_timed_mutex shared_mutex_;
 };
 
 // Align to avoid false sharing with prior fields.  If required,

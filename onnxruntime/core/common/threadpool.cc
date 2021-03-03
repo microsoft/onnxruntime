@@ -26,52 +26,82 @@ namespace onnxruntime {
 
 namespace concurrency {
 
-bool ThreadPoolProfiler::Enabled() const {
-  return enabled_ && std::this_thread::get_id() == main_thread_id_;
-}
-
 void ThreadPoolProfiler::Start() {
-  enabled_ = true; //not thread-safe
-  main_thread_id_ = std::this_thread::get_id();
+  std::lock_guard<std::shared_timed_mutex> writer_lock(shared_mutex_);
+  auto per_thread_number = per_thread_numbers_.find(std::this_thread::get_id());
+  if (per_thread_number == per_thread_numbers_.end()) {
+    per_thread_numbers_.insert({std::this_thread::get_id(), {}});
+  }
 }
 
 std::string ThreadPoolProfiler::Stop() {
-  if (Enabled()) {
-    enabled_ = false;
-    ORT_ENFORCE(points_.empty(), "LogStart must pair with LogEnd");
-    main_thread_id_ = std::thread::id{};
-    std::stringstream ss;
-    for (int i = 0; i < MAX_EVENT; ++i) {
-      ss << GetEventName(static_cast<ThreadPoolEvent>(i))
-         << ": " << events_[i] << ((i == MAX_EVENT - 1) ? std::string{} : ", ");
-    }
-    memset(events_, 0, sizeof(uint64_t) * MAX_EVENT);
-    return ss.str();
-  } else {
+  std::shared_lock<std::shared_timed_mutex> reader_lock(shared_mutex_);
+  auto per_thread_number = per_thread_numbers_.find(std::this_thread::get_id());
+  if (per_thread_number == per_thread_numbers_.end()) {
     return {};
+  } else {
+    return per_thread_number->second.Reset();
   }
 }
 
 void ThreadPoolProfiler::LogStart() {
-  if (Enabled()) {
-    points_.emplace_back(Clock::now());
+  if (per_thread_numbers_.empty()) {
+    return;
+  }
+  std::shared_lock<std::shared_timed_mutex> reader_lock(shared_mutex_);
+  auto per_thread_number = per_thread_numbers_.find(std::this_thread::get_id());
+  if (per_thread_number != per_thread_numbers_.end()) {
+    per_thread_number->second.LogStart();
   }
 }
 
 void ThreadPoolProfiler::LogEnd(ThreadPoolEvent evt) {
-  if (Enabled()) {
-    ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
-    events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
-    points_.pop_back();
+  if (per_thread_numbers_.empty()) {
+    return;
+  }
+  std::shared_lock<std::shared_timed_mutex> reader_lock(shared_mutex_);
+  auto per_thread_number = per_thread_numbers_.find(std::this_thread::get_id());
+  if (per_thread_number != per_thread_numbers_.end()) {
+    per_thread_number->second.LogEnd(evt);
   }
 }
 
 void ThreadPoolProfiler::LogEndAndStart(ThreadPoolEvent evt) {
-  if (Enabled()) {
-    ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
-    events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
-    points_.back() = Clock::now();
+  if (per_thread_numbers_.empty()) {
+    return;
   }
+  std::shared_lock<std::shared_timed_mutex> reader_lock(shared_mutex_);
+  auto per_thread_number = per_thread_numbers_.find(std::this_thread::get_id());
+  if (per_thread_number != per_thread_numbers_.end()) {
+    per_thread_number->second.LogEndAndStart(evt);
+  }
+}
+
+void ThreadPoolProfiler::PerThreadNumber::LogStart() {
+  points_.emplace_back(Clock::now());
+}
+
+void ThreadPoolProfiler::PerThreadNumber::LogEnd(ThreadPoolEvent evt) {
+  ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
+  events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
+  points_.pop_back();
+}
+
+void ThreadPoolProfiler::PerThreadNumber::LogEndAndStart(ThreadPoolEvent evt) {
+  ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
+  events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
+  points_.back() = Clock::now();
+}
+
+std::string ThreadPoolProfiler::PerThreadNumber::Reset() {
+  ORT_ENFORCE(points_.empty(), "LogStart must pair with LogEnd");
+  std::stringstream ss;
+  for (int i = 0; i < MAX_EVENT; ++i) {
+    ss << ThreadPoolProfiler::GetEventName(static_cast<ThreadPoolEvent>(i))
+       << ": " << events_[i] << ((i == MAX_EVENT - 1) ? std::string{} : ", ");
+  }
+  memset(events_, 0, sizeof(uint64_t) * MAX_EVENT);
+  return ss.str();
 }
 
 const char* ThreadPoolProfiler::GetEventName(ThreadPoolEvent event) {
