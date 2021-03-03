@@ -15,7 +15,6 @@ import re
 from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config
-from gpt2_beamsearch_helper import GPT2LMHeadModel_BeamSearchStep 
 from benchmark_helper import Precision
 
 logger = logging.getLogger(__name__)
@@ -78,7 +77,6 @@ MODEL_CLASSES = {
     'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits', True),
     'GPT2LMHeadModel_NoPadding': (MyGPT2LMHeadModel_NoPadding, 'logits', False),
     'GPT2Model': (MyGPT2Model, 'last_state', True),
-    "GPT2LMHeadModel_BeamSearchStep": (GPT2LMHeadModel_BeamSearchStep, "last_state", True), # defined in gpt2_beamsearch_helper.py
 }
 
 

@@ -16,9 +16,19 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2LMHeadModel, GPT2Config
 from benchmark_helper import Precision
+from gpt2_helper import Gpt2Helper, Gpt2Inputs, GPT2ModelNoPastState, MyGPT2Model, MyGPT2LMHeadModel, MyGPT2LMHeadModel_NoPadding
 
 logger = logging.getLogger(__name__)
 
+class Gpt2HelperFactory:
+    @staticmethod
+    def create_helper(helper_type="default"):
+        helpers = {
+            "default": Gpt2Helper,
+            "beam_search_step": Gpt2BeamSearchHelper,
+        }
+        w = helpers[helper_type]
+        return w
 
 class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
     """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state."""
@@ -120,29 +130,29 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
 
 # Maps model class name to a tuple of model class, name of first output and use padding or not
 MODEL_CLASSES = {
+    'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits', True),
+    'GPT2LMHeadModel_NoPadding': (MyGPT2LMHeadModel_NoPadding, 'logits', False),
+    'GPT2Model': (MyGPT2Model, 'last_state', True),
     "GPT2LMHeadModel_BeamSearchStep": (GPT2LMHeadModel_BeamSearchStep, "last_state", True), # defined in gpt2_beamsearch_helper.py
 }
 
 
-class Gpt2BeamSearchInputs:
+class Gpt2BeamSearchInputs(Gpt2Inputs):
     def __init__(
         self,
         input_ids,
         position_ids,
         attention_mask,
+        past,
         beam_select_idx=None,
         input_log_probs=None,
         input_unfinished_sents=None,
         prev_step_results=None,
         prev_step_scores=None,
-        past=None,
     ):
+        super().__init__(input_ids, position_ids, attention_mask, past)
         self.prev_step_results: torch.LongTensor = prev_step_results
         self.prev_step_scores: torch.FloatTensor = prev_step_scores
-        self.input_ids: torch.LongTensor = input_ids
-        self.position_ids: torch.LongTensor = position_ids
-        self.attention_mask: Union[torch.FloatTensor, torch.HalfTensor] = attention_mask
-        self.past: Union[List[torch.FloatTensor], List[torch.HalfTensor]] = past
         if beam_select_idx is None:
             self.beam_select_idx: torch.LongTensor = torch.zeros(
                 [1, len(input_ids)]
@@ -154,38 +164,22 @@ class Gpt2BeamSearchInputs:
 
     def to_list(self) -> List:
         input_list = [
-            v
-            for v in (
-                [
-                    self.input_ids,
-                    self.position_ids,
-                    self.attention_mask,
-                    self.beam_select_idx,
-                    self.input_log_probs,
-                    self.input_unfinished_sents,
-                    self.prev_step_results,
-                    self.prev_step_scores,
-                ]
-            )
+            v 
+            for v in [
+                self.input_ids,
+                self.position_ids,
+                self.attention_mask,
+                self.beam_select_idx, 
+                self.input_log_probs, 
+                self.input_unfinished_sents, 
+                self.prev_step_results, 
+                self.prev_step_scores
+            ]
             if v is not None
         ]
         if self.past:
             input_list.extend(self.past)
-
         return input_list
-
-    def to_kwargs(self):
-        return (
-            self.input_ids,
-            self.position_ids,
-            self.attention_mask,
-            self.beam_select_idx,
-            self.input_log_probs,
-            self.input_unfinished_sents,
-            self.prev_step_results,
-            self.prev_step_scores,
-            self.past,
-        )
 
     def to_tuple(self) -> Tuple:
         return tuple(
@@ -194,89 +188,65 @@ class Gpt2BeamSearchInputs:
                 self.input_ids,
                 self.position_ids,
                 self.attention_mask,
+                self.past,
                 self.beam_select_idx,
                 self.input_log_probs,
                 self.input_unfinished_sents,
                 self.prev_step_results,
                 self.prev_step_scores,
-                self.past,
             ]
             if v is not None
         )
 
     def to_fp32(self):
-        attention_mask = (
-            self.attention_mask.to(dtype=torch.float32)
-            if self.attention_mask is not None
-            else None
-        )
-        past = [p.to(dtype=torch.float32) for p in self.past]
+        gpt2_inputs = super().to_fp32()
         return Gpt2BeamSearchInputs(
-            self.input_ids,
-            self.position_ids,
-            attention_mask,
+            gpt2_inputs.input_ids,
+            gpt2_inputs.position_ids,
+            gpt2_inputs.attention_mask,
+            gpt2_inputs.past,
             self.beam_select_idx,
             self.input_log_probs,
             self.input_unfinished_sents,
             self.prev_step_results,
             self.prev_step_scores,
-            past,
         )
 
 
-class Gpt2BeamSearchHelper:
+class Gpt2BeamSearchHelper(Gpt2Helper):
     """A helper class for Gpt2 model conversion, inference and verification."""
 
     @staticmethod
-    def get_dummy_inputs(
-        batch_size: int,
-        past_sequence_length: int,
-        sequence_length: int,
-        num_attention_heads: int,
-        hidden_size: int,
-        num_layer: int,
-        vocab_size: int,
-        device: torch.device,
-        beam_size: int = 4,
-        float16: bool = False,
-    ) -> Gpt2BeamSearchInputs:
+    def get_dummy_inputs(batch_size: int,
+                         past_sequence_length: int,
+                         sequence_length: int,
+                         num_attention_heads: int,
+                         hidden_size: int,
+                         num_layer: int,
+                         vocab_size: int,
+                         device: torch.device,
+                         float16: bool = False,
+                         has_position_ids: bool = True,
+                         has_attention_mask: bool = True) -> Gpt2BeamSearchInputs:
         """Create random inputs for GPT2 model.
         Returns torch tensors of input_ids, position_ids, attention_mask and a list of past state tensors.
         """
-        beam_size = 1
-
-        float_type = torch.float16 if float16 else torch.float32
-        past_shape = [
-            2,
-            batch_size,
+        gpt2_dummy_inputs = Gpt2Helper.get_dummy_inputs(
+            batch_size, 
+            past_sequence_length, 
+            sequence_length, 
             num_attention_heads,
-            past_sequence_length,
-            int(hidden_size / num_attention_heads),
-        ]
-
-        past = [
-            torch.rand(past_shape, dtype=float_type, device=device)
-            for _ in range(num_layer)
-        ]
-        input_ids = torch.randint(
-            low=0,
-            high=vocab_size - 1,
-            size=(batch_size, sequence_length),
-            dtype=torch.int64,
-            device=device,
+            hidden_size,
+            num_layer,
+            vocab_size,
+            device,
+            float16,
+            has_position_ids,
+            has_attention_mask
         )
-        total_sequence_length = past_sequence_length + sequence_length
-        attention_mask = torch.ones(
-            [batch_size, total_sequence_length], dtype=float_type, device=device
-        )
-        if total_sequence_length >= 2:
-            padding_position = random.randint(
-                0, total_sequence_length - 1
-            )  # test input with padding.
-            attention_mask[:, padding_position] = 0
+        float_type = torch.float16 if float16 else torch.float32
 
         beam_select_idx = torch.zeros([1, batch_size]).long()
-
         input_log_probs = torch.zeros([batch_size, 1], dtype=float_type, device=device)
         input_unfinished_sents = torch.ones(
             [batch_size, 1], dtype=torch.bool, device=device
@@ -290,41 +260,35 @@ class Gpt2BeamSearchHelper:
         )
         prev_step_scores = torch.zeros([batch_size, 1], dtype=float_type, device=device)
 
-        # Deduce position_ids from attention mask
-        position_ids = attention_mask.long().cumsum(-1) - 1
-        position_ids.masked_fill_(position_ids < 0, 0)
-        position_ids = position_ids[:, past_sequence_length:]
-
         return Gpt2BeamSearchInputs(
-            input_ids,
-            position_ids,
-            attention_mask,
+            gpt2_dummy_inputs.input_ids,
+            gpt2_dummy_inputs.position_ids,
+            gpt2_dummy_inputs.attention_mask,
+            gpt2_dummy_inputs.past,
             beam_select_idx,
             input_log_probs,
             input_unfinished_sents,
             prev_step_results,
             prev_step_scores,
-            past,
         )
 
     @staticmethod
-    def get_output_shapes(
-        batch_size: int,
-        context_len: int,
-        past_sequence_length: int,
-        sequence_length: int,
-        beam_size: int,
-        step: int,
-        config: GPT2Config,
-        model_class: str = "GPT2LMHeadModel",
-    ) -> Dict[str, List[int]]:
+    def get_output_shapes(batch_size: int,
+                          context_len: int,
+                          past_sequence_length: int,
+                          sequence_length: int,
+                          beam_size: int,
+                          step: int,
+                          config: GPT2Config,
+                          model_class: str = "GPT2LMHeadModel") -> Dict[str, List[int]]:
         """Returns a dictionary with output name as key, and shape as value."""
         num_attention_heads = config.num_attention_heads
         hidden_size = config.hidden_size
         num_layer = config.num_hidden_layers
-        vocab_size = config.vocab_size
+        vocab_size = config.vocab_size       
 
         output_name = MODEL_CLASSES[model_class][1]
+
         last_state_shape = [batch_size, beam_size]
         if step == 0:
             present_state_shape = [
@@ -355,18 +319,6 @@ class Gpt2BeamSearchHelper:
         return output_shapes
 
     @staticmethod
-    def auto_increase_buffer_size(output_buffers, output_shapes):
-        for key in output_shapes:
-            assert key in output_buffers
-            buffer = output_buffers[key]
-            if numpy.prod(output_shapes[key]) > buffer.nelement():
-                output_buffers[key] = torch.empty(
-                    numpy.prod(output_shapes[key]),
-                    dtype=buffer.dtype,
-                    device=buffer.device,
-                )
-
-    @staticmethod
     def get_output_buffers(
         output_shapes, device, is_float16=False
     ):
@@ -392,16 +344,6 @@ class Gpt2BeamSearchHelper:
                     numpy.prod(shape), dtype=data_type, device=device
                 )
         return output_buffers
-
-    @staticmethod
-    def diff_outputs(torch_outputs, ort_outputs, relative=False):
-        """Returns the maximum difference between PyTorch and OnnxRuntime outputs."""
-        expected_outputs = torch_outputs[-4].cpu().numpy()
-        diff = numpy.abs(expected_outputs - ort_outputs[-4])
-        if relative:
-            return numpy.amax(diff / (numpy.abs(expected_outputs) + 1e-6))
-        else:
-            return numpy.amax(diff)
 
     @staticmethod
     def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03):
@@ -436,29 +378,28 @@ class Gpt2BeamSearchHelper:
         return is_all_close
 
     @staticmethod
-    def export_onnx(
-        model,
-        device,
-        onnx_model_path: str,
-        verbose: bool = False,
-        use_external_data_format: bool = False,
-    ):
+    def export_onnx(model,
+                    device,
+                    onnx_model_path: str,
+                    verbose: bool = False,
+                    use_external_data_format: bool = False,
+                    has_position_ids: bool = True,
+                    has_attention_mask: bool = True):
         """Export GPT-2 model with past state to ONNX model."""
         config: GPT2Config = model.config
         num_layer = config.n_layer
-        dummy_inputs = Gpt2BeamSearchHelper.get_dummy_inputs(
-            batch_size=1,
-            past_sequence_length=1,
-            sequence_length=1,
-            num_attention_heads=config.num_attention_heads,
-            hidden_size=config.hidden_size,
-            num_layer=num_layer,
-            vocab_size=config.vocab_size,
-            device=device,
-            float16=False,
-        )
+        dummy_inputs = Gpt2BeamSearchHelper.get_dummy_inputs(batch_size=1,
+                                                             past_sequence_length=1,
+                                                             sequence_length=1,
+                                                             num_attention_heads=config.num_attention_heads,
+                                                             hidden_size=config.hidden_size,
+                                                             num_layer=num_layer,
+                                                             vocab_size=config.vocab_size,
+                                                             device=device,
+                                                             float16=False,
+                                                             has_position_ids=has_position_ids,
+                                                             has_attention_mask=has_attention_mask)
         input_list = dummy_inputs.to_list()
-        # input_ids, position_id, attention_mask, beam_select_idx, past = dummy_inputs.to_kwargs()
 
         with torch.no_grad():
             # outputs = model(input_ids, position_id, attention_mask, beam_select_idx, past)
@@ -532,60 +473,6 @@ class Gpt2BeamSearchHelper:
         )
 
     @staticmethod
-    def optimize_onnx(
-        onnx_model_path,
-        optimized_model_path,
-        is_float16,
-        num_attention_heads,
-        hidden_size,
-        use_external_data_format=False,
-    ):
-        """Optimize ONNX model with an option to convert it to use mixed precision."""
-        from optimizer import optimize_model
-
-        m = optimize_model(
-            onnx_model_path,
-            model_type="gpt2",
-            num_heads=num_attention_heads,
-            hidden_size=hidden_size,
-            opt_level=0,
-            optimization_options=None,
-            use_gpu=False,
-        )
-        if is_float16:
-            m.convert_model_float32_to_float16(cast_input_output=False)
-
-        m.save_model_to_file(optimized_model_path, use_external_data_format)
-
-    @staticmethod
-    def pytorch_inference(model, inputs: Gpt2BeamSearchInputs, total_runs: int = 0):
-        """Run inference of PyTorch model, and returns average latency in ms when total_runs > 0 besides outputs."""
-        logger.debug("start pytorch_inference")
-
-        # Convert it to fp32 as the PyTroch model cannot deal with half input.
-        input_list = inputs.to_fp32().to_list()
-
-        with torch.no_grad():
-            outputs = model(*input_list)
-
-        if total_runs == 0:
-            return outputs
-
-        latency = []
-        with torch.no_grad():
-            for _ in range(total_runs):
-                start = time.time()
-                outputs = model(*input_list)
-                latency.append(time.time() - start)
-
-        average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug(
-            "PyTorch inference time = {} ms".format(format(average_latency, ".2f"))
-        )
-
-        return outputs, average_latency
-
-    @staticmethod
     def onnxruntime_inference(ort_session, inputs: Gpt2BeamSearchInputs, total_runs: int = 0):
         """Run inference of ONNX model, and returns average latency in ms when total_runs > 0 besides outputs."""
         logger.debug(f"start onnxruntime_inference")
@@ -644,36 +531,24 @@ class Gpt2BeamSearchHelper:
         return ort_outputs, average_latency
 
     @staticmethod
-    def prepare_io_binding(
-        ort_session,
-        input_ids,
-        position_ids,
-        attention_mask,
-        past,
-        beam_select_idx,
-        input_log_probs,
-        input_unfinished_sents,
-        prev_step_results,
-        prev_step_scores,
-        output_buffers,
-        output_shapes,
-    ):
+    def prepare_io_binding(ort_session,
+                           input_ids,
+                           position_ids,
+                           attention_mask,
+                           past,
+                           output_buffers,
+                           output_shapes,
+                           beam_select_idx=None,
+                           input_log_probs=None,
+                           input_unfinished_sents=None,
+                           prev_step_results=None,
+                           prev_step_scores=None):
         """Returnas IO binding object for a session."""
 
         # Bind inputs and outputs to onnxruntime session
-        io_binding = ort_session.io_binding()
+        io_binding = Gpt2Helper.prepare_io_binding(ort_session, input_ids, position_ids, attention_mask, past, output_buffers, output_shapes)
 
         # Bind inputs
-        assert input_ids.is_contiguous()
-        io_binding.bind_input(
-            "input_ids",
-            input_ids.device.type,
-            0,
-            numpy.longlong,
-            list(input_ids.size()),
-            input_ids.data_ptr(),
-        )
-
         data_type = output_buffers[ort_session.get_outputs()[0].name].dtype
         float_type = numpy.float16 if data_type == torch.float16 else numpy.float32
 
@@ -708,47 +583,6 @@ class Gpt2BeamSearchHelper:
                 numpy.bool,
                 list(input_unfinished_sents.size()),
                 input_unfinished_sents.data_ptr(),
-            )
-
-        if past is not None:
-            for i, past_i in enumerate(past):
-                assert past_i.is_contiguous()
-
-                data_ptr = past_i.data_ptr()
-                if data_ptr == 0:
-                    # When past_sequence_length is 0, its data_ptr will be zero. IO Binding asserts that data_ptr shall not be zero.
-                    # Here we workaround and pass data pointer of input_ids. Actual data is not used for past so it does not matter.
-                    data_ptr = input_ids.data_ptr()
-
-                io_binding.bind_input(
-                    f"past_{i}",
-                    past_i.device.type,
-                    0,
-                    float_type,
-                    list(past_i.size()),
-                    data_ptr,
-                )
-
-        if attention_mask is not None:
-            assert attention_mask.is_contiguous()
-            io_binding.bind_input(
-                "attention_mask",
-                attention_mask.device.type,
-                0,
-                float_type,
-                list(attention_mask.size()),
-                attention_mask.data_ptr(),
-            )
-
-        if position_ids is not None:
-            assert position_ids.is_contiguous()
-            io_binding.bind_input(
-                "position_ids",
-                position_ids.device.type,
-                0,
-                numpy.longlong,
-                list(position_ids.size()),
-                position_ids.data_ptr(),
             )
 
         if prev_step_results is not None:
@@ -815,33 +649,15 @@ class Gpt2BeamSearchHelper:
         return io_binding
 
     @staticmethod
-    def get_outputs_from_io_binding_buffer(
-        ort_session, output_buffers, output_shapes, return_numpy=True
-    ):
-        """Copy results to cpu. Returns a list of numpy array."""
-        ort_outputs = []
-        for output in ort_session.get_outputs():
-            output_name = output.name
-            buffer = output_buffers[output_name]
-            shape = output_shapes[output_name]
-            copy_tensor = buffer[0 : numpy.prod(shape)].reshape(shape).clone().detach()
-            if return_numpy:
-                ort_outputs.append(copy_tensor.cpu().numpy())
-            else:
-                ort_outputs.append(copy_tensor)
-        return ort_outputs
-
-    @staticmethod
-    def onnxruntime_inference_with_binded_io(
-        ort_session,
-        inputs: Gpt2BeamSearchInputs,
-        output_buffers: Dict[str, torch.Tensor],
-        output_shapes: Dict[str, List[int]],
-        total_runs: int = 0,
-        return_numpy: bool = True,
-        include_copy_output_latency: bool = False,
-    ):
-        """Inference with IO binding. Returns outputs, and optional latency when total_runs > 0."""
+    def onnxruntime_inference_with_binded_io(ort_session,
+                                             inputs: Gpt2BeamSearchInputs,
+                                             output_buffers: Dict[str, torch.Tensor],
+                                             output_shapes: Dict[str, List[int]],
+                                             total_runs: int = 0,
+                                             return_numpy: bool = True,
+                                             include_copy_output_latency: bool = False):
+        """Inference with IO binding. Returns outputs, and optional latency when total_runs > 0.
+        """
         logger.debug(f"start onnxruntime_inference_with_binded_io")
 
         # Bind inputs and outputs to onnxruntime session
@@ -851,13 +667,13 @@ class Gpt2BeamSearchHelper:
             inputs.position_ids,
             inputs.attention_mask,
             inputs.past,
+            output_buffers,
+            output_shapes,
             inputs.beam_select_idx,
             inputs.input_log_probs,
             inputs.input_unfinished_sents,
             inputs.prev_step_results,
             inputs.prev_step_scores,
-            output_buffers,
-            output_shapes,
         )
 
         # Run onnxruntime with io binding
@@ -892,17 +708,17 @@ class Gpt2BeamSearchHelper:
         return ort_outputs, average_latency
 
     @staticmethod
-    def test_parity(
-        ort_session,
-        model,
-        device,
-        is_float16=False,
-        rtol=5e-4,
-        atol=5e-4,
-        total_test_cases=100,
-        use_io_binding=True,
-        model_class="GPT2LMHeadModel",
-    ):
+    def test_parity(ort_session,
+                    model,
+                    device,
+                    is_float16=False,
+                    rtol=5e-4,
+                    atol=5e-4,
+                    total_test_cases=100,
+                    use_io_binding=True,
+                    model_class="GPT2LMHeadModel_BeamSearchStep",
+                    has_position_ids=True,
+                    has_attention_mask=True):
         """Generate random inputs and compare the results of PyTorch and Onnx Runtime."""
 
         config: GPT2Config = model.config
@@ -950,8 +766,9 @@ class Gpt2BeamSearchHelper:
                 config.n_layer,
                 config.vocab_size,
                 device,
-                beam_size,
-                is_float16,
+                is_float16, 
+                has_position_ids,
+                has_attention_mask
             )
 
             outputs = Gpt2BeamSearchHelper.pytorch_inference(model, dummy_inputs)
@@ -987,9 +804,7 @@ class Gpt2BeamSearchHelper:
         return passed_test_cases == total_test_cases
 
     @staticmethod
-    def torchscript(
-        model, config, device, has_position_ids=True, has_attention_mask=True
-    ):
+    def torchscript(model, config, device, has_position_ids=True, has_attention_mask=True):
         """JIT trace for TorchScript."""
         input_list = Gpt2BeamSearchHelper.get_dummy_inputs(
             batch_size=1,
@@ -1005,52 +820,3 @@ class Gpt2BeamSearchHelper:
             has_attention_mask=has_attention_mask,
         ).to_list()
         return torch.jit.trace(model, input_list)
-
-    @staticmethod
-    def get_onnx_paths(
-        output_dir,
-        model_name_or_path,
-        model_class: str = "GPT2LMHeadModel",
-        has_past=True,
-        new_folder=False,
-    ):
-        """Build a  path name for given model based on given attributes."""
-        model_name = model_name_or_path
-        if not re.match(
-            "^[\w_-]+$", model_name_or_path
-        ):  # It is not a name, shall be a path
-            assert os.path.isdir(model_name_or_path)
-            model_name = Path(model_name_or_path).parts[-1]
-
-        if model_class != "GPT2LMHeadModel":
-            model_name += "_" + model_class
-
-        if has_past:
-            model_name += "_past"
-
-        if new_folder:
-            # store each model to its own directory (for external data format).
-            return {
-                "raw": os.path.join(
-                    os.path.join(output_dir, model_name), model_name + ".onnx"
-                ),
-                "fp32": os.path.join(
-                    os.path.join(output_dir, model_name + "_fp32"),
-                    model_name + "_fp32.onnx",
-                ),
-                "fp16": os.path.join(
-                    os.path.join(output_dir, model_name + "_fp16"),
-                    model_name + "_fp16.onnx",
-                ),
-                "int8": os.path.join(
-                    os.path.join(output_dir, model_name + "_int8"),
-                    model_name + "_int8.onnx",
-                ),
-            }
-
-        return {
-            "raw": os.path.join(output_dir, model_name + ".onnx"),
-            "fp32": os.path.join(output_dir, model_name + "_fp32.onnx"),
-            "fp16": os.path.join(output_dir, model_name + "_fp16.onnx"),
-            "int8": os.path.join(output_dir, model_name + "_int8.onnx"),
-        }
