@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-# It is a tool to generate test data for a bert model. 
+# It is a tool to generate test data for a bert model.
 # The test data can be used by onnxruntime_perf_test tool to evaluate the inference latency.
 
 import sys
@@ -17,7 +17,8 @@ from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model import OnnxModel
 
 
-def fake_input_ids_data(input_ids:TensorProto, batch_size:int, sequence_length:int, dictionary_size:int) -> np.ndarray:
+def fake_input_ids_data(input_ids: TensorProto, batch_size: int, sequence_length: int,
+                        dictionary_size: int) -> np.ndarray:
     """Create input tensor based on the graph input of input_ids
 
     Args:
@@ -41,7 +42,7 @@ def fake_input_ids_data(input_ids:TensorProto, batch_size:int, sequence_length:i
     return data
 
 
-def fake_segment_ids_data(segment_ids:TensorProto, batch_size:int, sequence_length:int) -> np.ndarray:
+def fake_segment_ids_data(segment_ids: TensorProto, batch_size: int, sequence_length: int) -> np.ndarray:
     """Create input tensor based on the graph input of segment_ids 
 
     Args:
@@ -64,7 +65,8 @@ def fake_segment_ids_data(segment_ids:TensorProto, batch_size:int, sequence_leng
     return data
 
 
-def fake_input_mask_data(input_mask:TensorProto, batch_size:int, sequence_length:int, random_mask_length:bool) -> np.ndarray:
+def fake_input_mask_data(input_mask: TensorProto, batch_size: int, sequence_length: int,
+                         random_mask_length: bool) -> np.ndarray:
     """Create input tensor based on the graph input of segment_ids.
 
     Args:
@@ -95,7 +97,7 @@ def fake_input_mask_data(input_mask:TensorProto, batch_size:int, sequence_length
     return data
 
 
-def output_test_data(dir:str, inputs:np.ndarray):
+def output_test_data(dir: str, inputs: np.ndarray):
     """Output input tensors of test data to a directory
 
     Args:
@@ -120,17 +122,10 @@ def output_test_data(dir:str, inputs:np.ndarray):
         index += 1
 
 
-def fake_test_data(batch_size:int,
-                   sequence_length:int,
-                   test_cases:int,
-                   dictionary_size:int,
-                   verbose:bool,
-                   random_seed:int, 
-                   input_ids:TensorProto,
-                   segment_ids:TensorProto,
-                   input_mask:TensorProto,
-                   random_mask_length:bool):
-    """Create given number of minput data for testing
+def fake_test_data(batch_size: int, sequence_length: int, test_cases: int, dictionary_size: int, verbose: bool,
+                   random_seed: int, input_ids: TensorProto, segment_ids: TensorProto, input_mask: TensorProto,
+                   random_mask_length: bool):
+    """Create given number of input data for testing
 
     Args:
         batch_size (int): batch size
@@ -169,15 +164,9 @@ def fake_test_data(batch_size:int,
     return all_inputs
 
 
-def generate_test_data(batch_size:int,
-                       sequence_length:int,
-                       test_cases:int,
-                       seed:int,
-                       verbose:bool,
-                       input_ids:TensorProto,
-                       segment_ids:TensorProto,
-                       input_mask:TensorProto,
-                       random_mask_length:bool):
+def generate_test_data(batch_size: int, sequence_length: int, test_cases: int, seed: int, verbose: bool,
+                       input_ids: TensorProto, segment_ids: TensorProto, input_mask: TensorProto,
+                       random_mask_length: bool):
     """Create given number of minput data for testing
 
     Args:
@@ -215,12 +204,13 @@ def get_graph_input_from_embed_node(onnx_model, embed_node, input_index):
     return graph_input
 
 
-def find_bert_inputs(onnx_model:OnnxModel,
-                     input_ids_name:str=None,
-                     segment_ids_name:str=None,
-                     input_mask_name:str=None) -> Tuple[Union[None, np.ndarray], Union[None, np.ndarray], Union[None, np.ndarray]]:
+def find_bert_inputs(onnx_model: OnnxModel,
+                     input_ids_name: str = None,
+                     segment_ids_name: str = None,
+                     input_mask_name: str = None
+                     ) -> Tuple[Union[None, np.ndarray], Union[None, np.ndarray], Union[None, np.ndarray]]:
     """Find graph inputs for BERT model.
-    First, we will deduce from EmbedLayerNormalization node. If not found, we will guess based on naming.
+    First, we will deduce inputs from EmbedLayerNormalization node. If not found, we will guess the meaning of graph inputs based on naming.
 
     Args:
         onnx_model (OnnxModel): onnx model object
@@ -278,7 +268,7 @@ def find_bert_inputs(onnx_model:OnnxModel,
                     input_mask = input
         if input_mask is None:
             raise ValueError(f"Failed to find attention mask input")
-            
+
         return input_ids, segment_ids, input_mask
 
     # Try guess the inputs based on naming.
@@ -300,9 +290,12 @@ def find_bert_inputs(onnx_model:OnnxModel,
     raise ValueError("Fail to assign 3 inputs. You might try rename the graph inputs.")
 
 
-def get_bert_inputs(onnx_file:str, input_ids_name:str=None, segment_ids_name:str=None, input_mask_name:str=None):
+def get_bert_inputs(onnx_file: str,
+                    input_ids_name: str = None,
+                    segment_ids_name: str = None,
+                    input_mask_name: str = None):
     """Find graph inputs for BERT model.
-    First, we will deduce from EmbedLayerNormalization node. If not found, we will guess based on naming.
+    First, we will deduce inputs from EmbedLayerNormalization node. If not found, we will guess the meaning of graph inputs based on naming.
 
     Args:
         onnx_file (str): onnx model path
@@ -355,28 +348,23 @@ def parse_arguments():
     parser.add_argument('--verbose', required=False, action='store_true', help="print verbose information")
     parser.set_defaults(verbose=False)
 
-    parser.add_argument('--only_input_tensors', required=False, action='store_true', help="only save input tensors and no output tensors")
+    parser.add_argument('--only_input_tensors',
+                        required=False,
+                        action='store_true',
+                        help="only save input tensors and no output tensors")
     parser.set_defaults(only_input_tensors=False)
 
     args = parser.parse_args()
     return args
 
 
-def create_test_data(model:str,
-                     output_dir:str,
-                     batch_size:int,
-                     sequence_length:int,
-                     test_cases:int,
-                     seed:int,
-                     verbose:bool,
-                     input_ids_name:str,
-                     segment_ids_name:str,
-                     input_mask_name:str,
-                     only_input_tensors:bool):
-    """Create test data for a model path, and save test data to a directory.
+def create_and_save_test_data(model: str, output_dir: str, batch_size: int, sequence_length: int, test_cases: int,
+                              seed: int, verbose: bool, input_ids_name: str, segment_ids_name: str,
+                              input_mask_name: str, only_input_tensors: bool):
+    """Create test data for a model, and save test data to a directory.
 
     Args:
-        model (str): ONNX bert model path
+        model (str): path of ONNX bert model 
         output_dir (str): output directory
         batch_size (int): batch size
         sequence_length (int): sequence length
@@ -403,7 +391,7 @@ def create_test_data(model:str,
     for i, inputs in enumerate(all_inputs):
         dir = os.path.join(output_dir, 'test_data_set_' + str(i))
         output_test_data(dir, inputs)
-    
+
     if only_input_tensors:
         return
 
@@ -415,9 +403,10 @@ def create_test_data(model:str,
         dir = os.path.join(output_dir, 'test_data_set_' + str(i))
         result = sess.run(output_names, inputs)
         for i, output_name in enumerate(output_names):
-           tensor_result = numpy_helper.from_array(np.asarray(result[i]), output_names[i])
-           with open(os.path.join(dir, 'output_{}.pb'.format(i)), 'wb') as f:
-               f.write(tensor_result.SerializeToString())
+            tensor_result = numpy_helper.from_array(np.asarray(result[i]), output_names[i])
+            with open(os.path.join(dir, 'output_{}.pb'.format(i)), 'wb') as f:
+                f.write(tensor_result.SerializeToString())
+
 
 def main():
     args = parse_arguments()
@@ -435,8 +424,9 @@ def main():
     else:
         print("Directory existed. test data files will be overwritten.")
 
-    create_test_data(args.model, output_dir, args.batch_size, args.sequence_length, args.samples, args.seed,
-                     args.verbose, args.input_ids_name, args.segment_ids_name, args.input_mask_name, args.only_input_tensors)
+    create_and_save_test_data(args.model, output_dir, args.batch_size, args.sequence_length, args.samples, args.seed,
+                              args.verbose, args.input_ids_name, args.segment_ids_name, args.input_mask_name,
+                              args.only_input_tensors)
 
     print("Test data is saved to directory:", output_dir)
 
