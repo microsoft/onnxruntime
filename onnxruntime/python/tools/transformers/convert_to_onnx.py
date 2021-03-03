@@ -225,7 +225,7 @@ def main():
 
                     if "position_ids" in data:
                         position_ids = torch.from_numpy(numpy.asarray(data["position_ids"],
-                                                                    dtype=numpy.int64)).to(device)
+                                                                      dtype=numpy.int64)).to(device)
                     else:
                         position_ids = (attention_mask.long().cumsum(-1) - 1)
                         position_ids.masked_fill_(position_ids < 0, 0)
@@ -249,7 +249,7 @@ def main():
                         }
                     )
 
-            test_inputs.append(inputs)
+                test_inputs.append(inputs)
 
         gpt2tester.test_generation(session,
                                    model,
