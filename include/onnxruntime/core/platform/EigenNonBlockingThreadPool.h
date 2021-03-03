@@ -173,7 +173,7 @@ class ThreadPoolProfiler {
     std::string Reset();
   };
   std::unordered_map<::std::thread::id, PerThreadNumber> per_thread_numbers_;
-  std::shared_timed_mutex shared_mutex_;
+  std::shared_mutex shared_mutex_;
 };
 
 // Align to avoid false sharing with prior fields.  If required,
