@@ -165,6 +165,7 @@ static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_sy
 static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/VariedInputCustomOp.onnx");
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_3.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
@@ -432,6 +433,50 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
   // Validate results
   std::vector<int64_t> y_dims = {3, 2};
   std::vector<float> values_y = {3.f, 5.f, 7.f, 9.f, 11.f, 13.f};
+  auto type_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_info.GetShape(), y_dims);
+  size_t total_len = type_info.GetElementCount();
+  ASSERT_EQ(values_y.size(), total_len);
+
+  float* f = ort_outputs[0].GetTensorMutableData<float>();
+  for (size_t i = 0; i != total_len; ++i) {
+    ASSERT_EQ(values_y[i], f[i]);
+  }
+}
+
+TEST(CApiTest, custom_op_with_attributes_handler) {
+  MyCustomOpWithAttributes custom_op{onnxruntime::kCpuExecutionProvider};
+
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&custom_op);
+
+  Ort::SessionOptions session_options;
+  session_options.Add(custom_op_domain);
+
+  Ort::Session session(*ort_env, CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI, session_options);
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names;
+
+  // input 0 (float type)
+  input_names.emplace_back("X");
+  std::vector<float> input_0_data = {2.f, 2.f};
+  std::vector<int64_t> input_0_dims = {2};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
+                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+
+  // Run
+  const char* output_name = "Y";
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                 &output_name, 1);
+  ASSERT_EQ(ort_outputs.size(), 1u);
+
+  // Validate results
+  std::vector<int64_t> y_dims = {2};
+  std::vector<float> values_y = {6.f, 6.f};
   auto type_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
   ASSERT_EQ(type_info.GetShape(), y_dims);
   size_t total_len = type_info.GetElementCount();

@@ -65,3 +65,23 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   }
 #endif
 }
+
+void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
+  // Setup inputs
+  const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+  const float* X = ort_.GetTensorData<float>(input_X);
+
+  // Setup output
+  OrtTensorDimensions dimensions(ort_, input_X);
+  OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
+  float* out = ort_.GetTensorMutableData<float>(output);
+
+  OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
+  int64_t size = ort_.GetTensorShapeElementCount(output_info);
+  ort_.ReleaseTensorTypeAndShapeInfo(output_info);
+
+  // This kernel only supports CPU EP
+  for (int64_t i = 0; i < size; i++) {
+    out[i] = X[i] + float_attr_ + static_cast<float>(int_attr_);
+  }
+}
