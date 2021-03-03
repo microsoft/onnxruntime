@@ -14,6 +14,14 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.cc"
   )
 
+  # custom ops support must be explicitly enabled in a minimal build. exclude if not.
+  if (NOT onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
+    list(APPEND onnxruntime_framework_src_exclude
+      "${ONNXRUNTIME_INCLUDE_DIR}/core/framework/customregistry.h"
+      "${ONNXRUNTIME_ROOT}/core/framework/customregistry.cc"
+    )
+  endif()
+
   list(REMOVE_ITEM onnxruntime_framework_srcs ${onnxruntime_framework_src_exclude})
 endif()
 

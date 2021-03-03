@@ -307,20 +307,20 @@ bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const 
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
 
-class Memcpy final : public Provider_OpKernel {
+class Memcpy final : public OpKernel {
  public:
-  Memcpy(const OpKernelInfo&) {}
+  Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
 
-  Status Compute(OpKernelContext* ctx, const Provider_OpKernel_Base& base) const override {
+  Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    Status retval = base.GetInfo().GetDataTransferManager().CopyTensor(*X, *Y, base.GetInfo().GetKernelDef_ExecQueueId());
+    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
     return retval;
   }
 };
 
 template <typename T>
-Provider_KernelCreateInfo BuildKernelCreateInfo();
+KernelCreateInfo BuildKernelCreateInfo();
 
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
@@ -348,7 +348,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
 static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
-  static const Provider_BuildKernelCreateInfoFn function_table[] = {
+  static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
   };
@@ -463,12 +463,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   if (engine_decryption_enable_) {
     std::string engine_decryption_lib_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionLibPath);
-	LIBTYPE handle = OPENLIB(engine_decryption_lib_path.c_str());
-	if (handle == nullptr) {
-	  ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-							 "TensorRT EP could not open shared library from " + engine_decryption_lib_path);
-	}
-	engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
+    LIBTYPE handle = OPENLIB(engine_decryption_lib_path.c_str());
+    if (handle == nullptr) {
+      ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                      "TensorRT EP could not open shared library from " + engine_decryption_lib_path);
+    }
+    engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
   }
 }
 
@@ -1289,7 +1289,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
           }
           trt_context = trt_state->context->get();
-        } else if (trt_state->engine_decryption_enable && !engine_file && profile_file) { 
+        } else if (trt_state->engine_decryption_enable && !engine_file && profile_file) {
           shape_ranges = DeserializeProfile(profile_file);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
           // Decrypt engine

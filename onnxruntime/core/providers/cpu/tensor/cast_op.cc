@@ -33,6 +33,9 @@ namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
     ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
+    int64_t);
 
 ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
@@ -308,10 +311,10 @@ Status Cast::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-const auto supported_src_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<SupportedSrcTypes>{}();
-const auto supported_dst_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<SupportedDstTypes>{}();
-const auto enabled_src_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledSrcTypes>{}();
-const auto enabled_dst_type_constraints = BuildKernelDefConstraintsFunctorFromTypeList<EnabledDstTypes>{}();
+const auto supported_src_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedSrcTypes>();
+const auto supported_dst_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedDstTypes>();
+const auto enabled_src_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>();
+const auto enabled_dst_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>();
 
 }  // namespace
 

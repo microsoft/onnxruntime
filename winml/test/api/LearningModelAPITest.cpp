@@ -245,7 +245,7 @@ static void CloseModelCheckMetadata() {
 static void CheckLearningModelPixelRange() {
   std::vector<std::wstring> modelPaths = {
       // NominalRange_0_255 and image output
-      L"fns-candy_Bgr8.onnx",
+      L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx",
       // Normalized_0_1 and image output
       L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
       // Normalized_1_1 and image output

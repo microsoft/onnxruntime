@@ -72,8 +72,8 @@ class ModeImputerTransformer final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<ModeImputerTransformerImpl, float, double, std::string> t_disp(ctx->Input<Tensor>(1)->GetElementType());
-    t_disp.Invoke(ctx);
+    utils::MLTypeCallDispatcher<float, double, std::string> t_disp(ctx->Input<Tensor>(1)->GetElementType());
+    t_disp.Invoke<ModeImputerTransformerImpl>(ctx);
     return Status::OK();
   }
 };
