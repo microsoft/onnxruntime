@@ -4,6 +4,8 @@ import logging
 import onnx
 import onnxruntime
 import torch
+import warnings
+import inspect
 from inspect import signature
 
 from torch.utils.dlpack import from_dlpack
@@ -89,10 +91,10 @@ class ORTModule(torch.nn.Module):
             '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
 
             ONNX model is exported the first time this method is executed.
-            Next, we build a full training graph with module_gradient_graph_builder. 
+            Next, we build a full training graph with module_gradient_graph_builder.
             Finally, we instantiate the ONNX Runtime InferenceSession.
             '''
-            # TODO: using pytorch for evaluation for now. We will use ORT for evaluation latter. 
+            # TODO: using pytorch for evaluation for now. We will use ORT for evaluation later.
             if not self._is_training:
                 return self._original_module(*inputs, **kwargs)
 
@@ -107,7 +109,7 @@ class ORTModule(torch.nn.Module):
 
             _, _, input_names_require_grad, new_input_shape = \
                 _ortmodule_output_transformation.parse_inputs_for_onnx_export(
-                    self._original_module_input_names, self._onnx_inference, *inputs, **kwargs)
+                    self._original_module_parameters, self._onnx_inference, *inputs, **kwargs)
             # If inputs requiring gradient change from one call to forward to the next, the module_gradient_graph_builder
             # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
             if input_names_require_grad != self._input_names_require_grad:
@@ -236,8 +238,11 @@ class ORTModule(torch.nn.Module):
         # Get the module that flattens the output from the original module into a tuple
         self._flattened_output_module = \
             _ortmodule_output_transformation.get_flattened_output_module(self._original_module)
-        sig = signature(self._original_module.forward)
-        self._original_module_input_names = sig.parameters.keys()
+        self._original_module_parameters = signature(self._original_module.forward).parameters.values()
+        for input_parameter in self._original_module_parameters:
+            if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                warnings.warn("The model's forward method has **kwargs parameter which is not supported.")
+
         self._onnx_inference = None
         self._is_training = True
 
@@ -347,20 +352,24 @@ class ORTModule(torch.nn.Module):
 
         TODO: How IO binding model inputs and outputs affects initializer copies?
 
-        ONNX Runtime forward requires an order list of:
+        ONNX Runtime forward requires an ordered list of:
             * User input: computed from forward InferenceSession
             * Initializers: computed from original PyTorch model parameters
         '''
         # User inputs
+        non_none_inputs = [inp for inp in inputs if inp is not None]
         result = []
-        for input_idx, name in enumerate(self._original_module_input_names):
+        for input_idx, name in enumerate(self._onnx_graphs_info.user_input_names):
             inp = None
-            if input_idx < len(inputs) and inputs[input_idx] is not None:
-                inp = inputs[input_idx]
+            if input_idx < len(non_none_inputs):
+                inp = non_none_inputs[input_idx]
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
-            if inp is not None and name in self._onnx_graphs_info.user_input_names:
+            if inp is not None:
                 result.append(inp)
+            else:
+                # TODO: Re-export ONNX if any input from _onnx_graphs_info.user_input_names is None.
+                raise RuntimeError(f'Input is present in ONNX graph but not provided: {name}.')
 
         # Initializers
         for param in self._flattened_output_module.named_parameters():
@@ -378,7 +387,7 @@ class ORTModule(torch.nn.Module):
         # Setup dynamic axes for onnx model
         input_names, dynamic_axes, self._input_names_require_grad, _ = \
             _ortmodule_output_transformation.parse_inputs_for_onnx_export(
-                self._original_module_input_names, None, *inputs, **kwargs)
+                self._original_module_parameters, None, *inputs, **kwargs)
         output_names, output_dynamic_axes, self._original_module_output_schema = \
             _ortmodule_output_transformation.parse_outputs_for_onnx_export_and_extract_output_schema(
                 self._original_module, inputs, kwargs)

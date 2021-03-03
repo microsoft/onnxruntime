@@ -1,6 +1,7 @@
 from collections import abc
 import copy
 import functools
+import inspect
 import torch
 import warnings
 
@@ -159,7 +160,7 @@ def get_flattened_output_module(original_module):
 
     return FlattenedOutputModule(original_module)
 
-def parse_inputs_for_onnx_export(all_input_names, onnx_graph, *inputs, **kwargs):
+def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, *inputs, **kwargs):
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs
     onnx_graph_input_names = []
@@ -171,23 +172,44 @@ def parse_inputs_for_onnx_export(all_input_names, onnx_graph, *inputs, **kwargs)
     input_names_require_grad = []
     input_shape = []
 
-    for input_idx, name in enumerate(all_input_names):
-        inp = None
-        if input_idx < len(inputs) and inputs[input_idx] is not None:
-            inp = inputs[input_idx]
-        elif name in kwargs and kwargs[name] is not None:
-            inp = kwargs[name]
-        if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
-            if inp.requires_grad:
-                # input_names_require_grad holds all input tensors that have requires_grad
-                input_names_require_grad.append(name)
+    for input_idx, input_parameter in enumerate(all_input_parameters):
+        if input_parameter.kind == inspect.Parameter.VAR_POSITIONAL:
+            # Looking at VAR_POSITIONAL parameter (*args) in the original forward method.
+            # All the rest positional inputs go into this parameter.
+            var_positional_idx = 0
+            for i in range(input_idx, len(inputs)):
+                name = f'var_positional_{input_parameter.name}{var_positional_idx}'
+                var_positional_idx += 1
+                inp = inputs[i]
+                if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
+                    if inp.requires_grad:
+                        # input_names_require_grad holds all input tensors that have requires_grad
+                        input_names_require_grad.append(name)
 
-            input_names.append(name)
-            dynamic_axes[name] = {}
-            for dim_idx in range(len(inp.shape)):
-                dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
+                    input_names.append(name)
+                    dynamic_axes[name] = {}
+                    for dim_idx in range(len(inp.shape)):
+                        dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
 
-            input_shape.append(list(inp.size()))
+                    input_shape.append(list(inp.size()))
+        else:
+            name = input_parameter.name
+            inp = None
+            if input_idx < len(inputs) and inputs[input_idx] is not None:
+                inp = inputs[input_idx]
+            elif name in kwargs and kwargs[name] is not None:
+                inp = kwargs[name]
+            if inp is not None and (onnx_graph is None or name in onnx_graph_input_names):
+                if inp.requires_grad:
+                    # input_names_require_grad holds all input tensors that have requires_grad
+                    input_names_require_grad.append(name)
+
+                input_names.append(name)
+                dynamic_axes[name] = {}
+                for dim_idx in range(len(inp.shape)):
+                    dynamic_axes[name].update({dim_idx : f'input{input_idx}_dim{dim_idx}'})
+
+                input_shape.append(list(inp.size()))
     return input_names, dynamic_axes, input_names_require_grad, input_shape
 
 def parse_outputs_for_onnx_export_and_extract_output_schema(module, inputs, kwargs):
