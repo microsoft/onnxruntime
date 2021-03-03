@@ -43,8 +43,8 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     }
     bool has_z = nullptr != Base::s_.z_data;
     bool has_b = nullptr != Base::s_.b_data;
-    const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
-    const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
+    const auto alpha = onnxruntime::cuda::Consts<Base::CudaT>::One;
+    const auto beta = onnxruntime::cuda::Consts<Base::CudaT>::Zero;
     IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
     auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
                                                               &alpha,
