@@ -164,8 +164,8 @@ struct RequestExecutionFrame {
 struct PipelineSession {
   OrtStatus* Run(const std::vector<OrtReq>& req_vec, std::vector<OrtResp>& resp_vec, int max_steps);
   void ParseEnsembleJsonFile(const std::string& ensemble_json_file, PipelineConfig& ens);
-  PipelineSession(const std::string& ensemble_json_file, int thread_pool_size, Ort::Env& env);
-  PipelineSession(const PipelineConfig& ens, int thread_pool_size, Ort::Env& env);
+  PipelineSession(const std::string& ensemble_json_file, Ort::Env& env);
+  PipelineSession(const PipelineConfig& ens, Ort::Env& env);
   void Init(PipelineConfig& ens0, Ort::Env& env);
   bool Validate(const PipelineConfig& ens);
 
@@ -180,9 +180,23 @@ struct PipelineSession {
     bool use_global;
   };
 
-  // TODO later we might store this keyed by device id if we allow the same model to have sessions on multiple GPUs for
-  // better load balancing
-  std::vector<SessionState> model_session_state_vec;
+  struct PipelineStage {
+    PipelineStage(int device_id0, int tp_size0 = 1)
+        : device_id(device_id0),
+          tp_size(tp_size0),
+          tp(tp_size0) {
+    }
+
+    void ScheduleTask(std::function<void()>&& task) {
+      tp.RunTask(std::move(task));
+    }
+
+    int device_id;
+    int tp_size;
+    TaskThreadPool tp;
+  };
+
   PipelineConfig pcfg;
-  TaskThreadPool tp;
+  std::vector<SessionState> model_session_state_vec;            // indices correspond to pcfg.model_config_vec
+  std::vector<std::unique_ptr<PipelineStage>> pipeline_stages;  // indices correspond to pcfg.model_config_vec
 };

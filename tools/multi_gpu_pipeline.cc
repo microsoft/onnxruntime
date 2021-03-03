@@ -245,8 +245,8 @@ struct RequestProcessor {
     int past_seq_len = run_state.output_val_map.at(mcfg.present_output_names[0])
                            .GetTensorTypeAndShapeInfo()
                            .GetShape()[mcfg.seq_len_dim_index_in_state];
-    std::cout << "input_seq_len: " << input_seq_len << "\n";
-    std::cout << "past_seq_len: " << past_seq_len << "\n";
+    // std::cout << "input_seq_len: " << input_seq_len << "\n";
+    // std::cout << "past_seq_len: " << past_seq_len << "\n";
     // new seq len for state output = seq len of input_ids + past_seq_len
     int new_seq_len = input_seq_len + past_seq_len;
 
@@ -414,7 +414,7 @@ static void GetNewInputIdsFromLogits(int batch_size,
         max_idx = j;
       }
     }
-    std::cout << "max: " << max << " next token: " << max_idx << "\n";
+    // std::cout << "max: " << max << " next token: " << max_idx << "\n";
     input_ids.push_back(max_idx);
   }
 }
@@ -501,7 +501,9 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
       lambda_helper(resp_queue, rp, *in_token_ptr, model_config, session_state, exec_frame);
     };
     std::function<void()> task(lambda);
-    tp.RunTask(std::move(task));
+
+    // enqueue the request to the first stage
+    pipeline_stages[0]->ScheduleTask(std::move(task));
   }
 
   // get logits index
@@ -543,7 +545,6 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
           }
           ++resp_index;
         }
-        // free the GPU memory
         req_frame_map.erase(req_id);
         ++req_processed;
         continue;
@@ -598,7 +599,9 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
       lambda_helper(resp_queue, rp, *token_ptr, model_config, session_state, exec_frame);
     };
     std::function<void()> task(lambda);
-    tp.RunTask(std::move(task));
+
+    // enqueue the request to the correct stage
+    pipeline_stages[exec_frame.stage_id]->ScheduleTask(std::move(task));
   }
 
   return nullptr;
@@ -668,16 +671,14 @@ bool PipelineSession::Validate(const PipelineConfig& pcfg) {
   return true;
 }
 
-PipelineSession::PipelineSession(const std::string& ensemble_json_file, int thread_pool_size, Ort::Env& env)
-    : tp(thread_pool_size) {
+PipelineSession::PipelineSession(const std::string& ensemble_json_file, Ort::Env& env) {
   ParseEnsembleJsonFile(ensemble_json_file, pcfg);
   auto rc = Validate(pcfg);
   assert(rc);
   Init(pcfg, env);
 }
 
-PipelineSession::PipelineSession(const PipelineConfig& ens0, int thread_pool_size, Ort::Env& env)
-    : pcfg(ens0), tp(thread_pool_size) {
+PipelineSession::PipelineSession(const PipelineConfig& ens0, Ort::Env& env) : pcfg(ens0) {
   auto rc = Validate(pcfg);
   assert(rc);
   Init(pcfg, env);
@@ -685,6 +686,8 @@ PipelineSession::PipelineSession(const PipelineConfig& ens0, int thread_pool_siz
 
 void PipelineSession::Init(PipelineConfig& pcfg, Ort::Env& env) {
   Ort::AllocatorWithDefaultOptions ort_allocator;
+  pipeline_stages.reserve(pcfg.model_config_vec.size());
+
   for (auto& mcfg : pcfg.model_config_vec) {
     Ort::SessionOptions session_options;
     session_options.DisablePerSessionThreads();
@@ -714,9 +717,13 @@ void PipelineSession::Init(PipelineConfig& pcfg, Ort::Env& env) {
       mcfg.input_names.push_back(std::string(name_ptr.get()));
     }
 
+    // create session state
     Ort::MemoryInfo cuda_mem_info("Cuda", OrtDeviceAllocator, mcfg.device_id, OrtMemTypeDefault);
     SessionState sess_state{std::move(session), std::move(cuda_mem_info)};
     model_session_state_vec.push_back(std::move(sess_state));
+
+    // create stages
+    pipeline_stages.push_back(std::make_unique<PipelineStage>(mcfg.device_id, 1 /*thread pool size per stage*/));
   }
 }
 
@@ -803,7 +810,7 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<PipelineSession> pipeline_session_ptr = nullptr;
   {
     Timer t("Creating PipelineSession");
-    pipeline_session_ptr = std::make_unique<PipelineSession>(ensemble_file_name, 10, env);
+    pipeline_session_ptr = std::make_unique<PipelineSession>(ensemble_file_name, env);
   }
   PipelineSession& pipeline_session = *pipeline_session_ptr;
 
@@ -819,7 +826,7 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  std::vector<Ort::Float16_t> valid_results{16464, 15168, 48600, 46534, 48945, 49080};
+  std::vector<Ort::Float16_t> valid_results{16464, 15168, 48600, 46534, 48945, 49080};  // for num_steps = 10
   // valid new input ids generated after call to GetNewInputIds
   // tensor([[35528, 35528, 20174, 14430, 42092, 36466,  1825,  1825, 35528, 42760]]
   for (int idx = 0; idx < resp_list.size(); ++idx) {
@@ -831,13 +838,14 @@ int main(int argc, char* argv[]) {
     // print output
     auto* data_ptr = retval.GetTensorData<Ort::Float16_t>();
     auto num_elems = retval.GetTensorTypeAndShapeInfo().GetElementCount();
-    std::cout << "validating output\n";
     std::vector<Ort::Float16_t> v;
+    // std::cout << "num_elems: " << num_elems << "\n";
     for (int i = 0; i < num_elems; i += 10000) {
-      std::cout << "result: " << data_ptr[i] << "\n";
+      // std::cout << "result: " << data_ptr[i] << "\n";
       v.push_back(data_ptr[i]);
     }
     if (num_steps == 10) {
+      std::cout << "validating output\n";
       assert(v == valid_results);
     }
   }
