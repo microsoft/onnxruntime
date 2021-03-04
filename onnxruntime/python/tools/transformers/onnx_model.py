@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
+from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class OnnxModel:
     def __init__(self, model):
         self.model = model
         self.node_name_counter = {}
+        self.shape_infer_helper = SymbolicShapeInferenceHelper(model)
 
     def input_name_to_nodes(self):
         input_name_to_nodes = {}

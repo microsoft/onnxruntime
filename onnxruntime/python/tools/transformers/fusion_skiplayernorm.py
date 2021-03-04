@@ -35,6 +35,9 @@ class FusionSkipLayerNormalization(Fusion):
         if len(self.model.get_parents(add)) != 2:
             return
 
+        if not self.model.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
+            return
+
         gather_path = self.model.match_parent_path(add, ['Gather'], [None])
         if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:
             if self.model.match_parent_path(gather_path[0], ['ConstantOfShape'], [1]) is None:
