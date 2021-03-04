@@ -15,17 +15,12 @@ class ExecutionProviders;
 class SimpleTensorAllocator : public ITensorAllocator {
  private:
   MemoryPatternGroup mem_patterns_;
-  std::vector<BufferUniquePtr>& weights_buffers_;
   const ExecutionPlanBase& seq_plan_;
-
- private:
-  std::unordered_map<int, const ONNX_NAMESPACE::TensorProto*> values_;
 
  public:
   SimpleTensorAllocator(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
-                        std::vector<BufferUniquePtr>& weights_buffers)
+                        std::vector<BufferUniquePtr>& /*weights_buffers*/)
       : ITensorAllocator(session_state),
-        weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
 
   common::Status FinalizePlan(std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) override {
