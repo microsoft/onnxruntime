@@ -46,3 +46,8 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // "1": enable. ORT does fusion logic for QDQ format.
 // Its default value is "1"
 static const char* const kOrtSessionOptionsEnableQuantQDQ = "session.enable_quant_qdq";
+
+// It controls whether allow the thread to spin a few times before blocking
+// "0": default value, thread will block if no job to run
+// "1": thread will spin a number of times before blocking
+static const char* const kOrtSessionOptionsConfigAllowSpinning = "session.allow_spinning";
