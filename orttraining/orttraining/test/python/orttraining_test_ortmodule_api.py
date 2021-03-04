@@ -3,6 +3,7 @@
 # orttraining_test_ortmodule_api.py
 
 import math
+import random
 import copy
 import torch
 from transformers import AutoConfig, BertForSequenceClassification
@@ -171,6 +172,17 @@ def _get_bert_for_sequence_classification_sample_data(device):
     input_ids = torch.randint(0, 100, (32, 64), dtype=torch.long, device=device)
     input_mask = torch.randint(0, 100, (32, 64), dtype=torch.long, device=device)
     labels = torch.randint(0, 1, (32,), dtype=torch.long, device=device)
+
+    return input_ids, input_mask, labels
+
+def _get_bert_for_sequence_classification_sample_data_with_random_shapes(device):
+    """Returns sample data with random shape to be used with BertForSequenceClassification model"""
+
+    x = random.randint(1,100)
+    y = random.randint(1,100)
+    input_ids = torch.randint(0, 100, (x, y), dtype=torch.long, device=device)
+    input_mask = torch.randint(0, 100, (x, y), dtype=torch.long, device=device)
+    labels = torch.randint(0, 1, (x,), dtype=torch.long, device=device)
 
     return input_ids, input_mask, labels
 
@@ -575,6 +587,42 @@ def test_mixed_nnmodule_ortmodules_training():
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model3, pt_model3)
+
+def test_ortmodule_inputs_with_dynamic_shape():
+    D_in, H, D_out = 784, 500, 10
+
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    model = ORTModule(model)
+
+    for step in range(10):
+        N = random.randint(1,100)
+        x = torch.randn(N, D_in, device='cuda', requires_grad=True)
+        assert x.grad is None
+
+        prediction = model(x)
+        s = prediction.sum()
+        s.backward()
+
+        assert x.grad is not None 
+        for param in model.parameters():
+            assert param.grad is not None
+            param.grad = None
+
+
+def test_bert_inputs_with_dynamic_shape():
+    model = _get_bert_for_sequence_classification_model('cuda')
+    model = ORTModule(model)
+
+    for step in range(10):
+        x, y, z = _get_bert_for_sequence_classification_sample_data_with_random_shapes('cuda')
+
+        outputs = model(x, y, None, None, None, None, z)
+        s = outputs[0]
+        s.backward()
+
+        for param in model.parameters():
+            assert param.grad is not None
+            param.grad = None
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder(device):

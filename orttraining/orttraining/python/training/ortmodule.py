@@ -155,11 +155,15 @@ class ORTModule(torch.nn.Module):
 
                     # backward_output_grad_names_map only contains the subset of module outputs that need a gradient,
                     # we filter out the invalid entries in grad_outputs, accessing using the mapped index.
-
-                    for _, i in self._onnx_graphs_info.backward_output_grad_names_map.items():
-                        grad_output = grad_outputs[i]
-                        if not grad_output.is_contiguous():
-                            grad_output = grad_output.contiguous()
+                    contiguous_grad_outputs = []
+                    for i in range(len(grad_outputs)):
+                        if i in self._onnx_graphs_info.backward_output_grad_names_map.values():
+                            grad_output = grad_outputs[i]
+                            if not grad_output.is_contiguous():
+                                grad_output = grad_output.contiguous()
+                            contiguous_grad_outputs.append(grad_output)
+                    # using contiguous_grad_outputs[] for holding grad_output to avoid data corruption issue in YieldOp
+                    for grad_output in contiguous_grad_outputs:
                         backward_grad_output_ortvalue.append(onnxruntime.OrtValue.ortvalue_from_data_ptr(list(grad_output.size()), _utils.dtype_torch_to_numpy(
                             grad_output.dtype), grad_output.device.type, _utils.get_device_index(grad_output.device), grad_output.data_ptr()))
 
@@ -220,6 +224,9 @@ class ORTModule(torch.nn.Module):
 
         # Related to training graph shape inference
         self._current_input_shape = None
+        # default execution order is priority-based for both dynamic/static shape input for now
+        # if we observe benefit of static shape, we can expose this flag to user       
+        self._use_static_shape = False 
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
         self._original_module_output_schema = None
@@ -282,6 +289,8 @@ class ORTModule(torch.nn.Module):
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False
         session_options.use_deterministic_compute = False
+        # default to PRIORITY_BASED execution order
+        session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = 2
 
@@ -296,7 +305,10 @@ class ORTModule(torch.nn.Module):
         self._training_io_binding = self._training_session.io_binding()
 
     def _build_training_graph(self, *inputs, **kwargs):
-        self._module_gradient_graph_builder.build(self._current_input_shape)
+        if self._use_static_shape:
+            self._module_gradient_graph_builder.build(self._current_input_shape)
+        else:
+            self._module_gradient_graph_builder.build()
         self._onnx_training = onnx.load_model_from_string(self._module_gradient_graph_builder.get_training_model())
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_training_graph_info()
 
