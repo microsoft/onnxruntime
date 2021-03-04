@@ -13,6 +13,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include <type_traits>
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
@@ -68,6 +69,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
 
 template <typename T>
 static Status CopyNonStringDataFromVectorToMemory(const std::vector<T>& values, T* out, size_t* size) {
+  if (!std::is_fundamental<T>::value)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Do not use this method for copying non-primitive types");
+
   if (*size >= values.size()) {
     std::memcpy(out, values.data(), values.size() * sizeof(T));
     *size = values.size();
