@@ -136,9 +136,11 @@ class ThreadPoolLoop;
 /* Usage:
 1. In executor, call Start() before profiling and Stop() to get profiled numbers;
 2. Inside thread pool, call LogStart() before interested section and LogEnd... after to log elapsed time;
-3. To extend, just add more events in enum Event before "All", and update GetEventName(...) accordingly.
-4. Note LogStart must pair with either LogEnd or LogEndAndStart, otherwise ORT_ENFORCE will fail.
+3. To extend, just add more events in enum Event before "All", and update GetEventName(...) accordingly;
+4. Note LogStart must pair with either LogEnd or LogEndAndStart, otherwise ORT_ENFORCE will fail;
+5. ThreadPoolProfiler is thread-safe.
 */
+
 class ThreadPoolProfiler {
  public:
   enum ThreadPoolEvent {
@@ -149,23 +151,28 @@ class ThreadPoolProfiler {
     WAIT_REVOKE,
     MAX_EVENT
   };
-  ThreadPoolProfiler();
+  ThreadPoolProfiler() = default;
   ~ThreadPoolProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
   using Clock = std::chrono::high_resolution_clock;
-  inline bool Enabled() const;
   void Start();                          //start profiling
   std::string Stop();                    //stop profiling and return collected numbers
   void LogStart();                       //record the starting time point
-  void LogEnd(ThreadPoolEvent);          //calculate and save the time elpased from last start point
+  void LogEnd(ThreadPoolEvent);          //calculate and save the time elapsed from last start point
   void LogEndAndStart(ThreadPoolEvent);  //same as LogEnd but add a starting point before return
 
  private:
-  inline const char* GetEventName(ThreadPoolEvent) const;
-  bool enabled_ = false;
-  std::thread::id main_thread_id_;
-  uint64_t events_[MAX_EVENT];
-  std::vector<onnxruntime::TimePoint> points_;
+  static const char* GetEventName(ThreadPoolEvent);
+  struct PerThreadNumber {
+    uint64_t events_[MAX_EVENT] = {};
+    std::vector<onnxruntime::TimePoint> points_;
+    void LogStart();
+    void LogEnd(ThreadPoolEvent);
+    void LogEndAndStart(ThreadPoolEvent);
+    std::string Reset();
+  };
+  std::unordered_map<::std::thread::id, PerThreadNumber> per_thread_numbers_;
+  OrtMutex mutex_;
 };
 
 // Align to avoid false sharing with prior fields.  If required,

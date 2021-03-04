@@ -380,8 +380,8 @@ class ThreadPool {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
+  // StartProfiling and StopProfiling are not to be consumed as public-facing API
   static void StartProfiling(concurrency::ThreadPool* tp);
-
   static std::string StopProfiling(concurrency::ThreadPool* tp);
 
  private:
