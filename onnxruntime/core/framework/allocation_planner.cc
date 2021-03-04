@@ -427,6 +427,15 @@ class PlannerImpl {
     plan_.allocation_plan.resize(num_ml_values);
   }
 
+  bool ExternalOutputs(const Node& node) const {
+    const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
+    if (ci.kernel_def == nullptr) {
+      return false;
+    }
+
+    return ci.kernel_def->ExternalOutputs();
+  }
+
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     std::unordered_set<std::string> graph_inputs;
@@ -511,12 +520,17 @@ class PlannerImpl {
 
       auto outputs = pnode->OutputDefs();
       auto num_outputs = outputs.size();
+      bool external_outputs = ExternalOutputs(*pnode);
       for (size_t i = 0; i < num_outputs; ++i) {
         auto* node_output = outputs[i];
         if (!node_output->Exists()) continue;
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
         ++UseCount(index);
+        if (external_outputs) {
+          // Ensures external outputs will not be reused.
+          ++UseCount(index);
+        }
         auto allocator = exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i));
         ORT_ENFORCE(allocator);
         plan_.SetLocation(static_cast<size_t>(index),
@@ -598,15 +612,6 @@ class PlannerImpl {
       }
     }
     return Status::OK();
-  }
-
-  bool ExternalOutputs(const Node& node) const {
-    const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
-    if (ci.kernel_def == nullptr) {
-      return false;
-    }
-
-    return ci.kernel_def->ExternalOutputs();
   }
 
   // Should only be used after ProcessDef()
