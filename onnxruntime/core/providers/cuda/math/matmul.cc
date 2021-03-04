@@ -353,7 +353,7 @@ static Status ConvertToBlockedEll(const CudaKernel* kernel,
 
   ell_indicies_buffer = std::move(ell_indicies_buffer_local);
   ell_values_buffer = std::move(ell_values_buffer_local);
-  ell_cols = nnz_blocks;
+  ell_cols = max_cols * ell_block_size;
 
   return Status::OK();
 }
