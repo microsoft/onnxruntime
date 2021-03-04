@@ -43,7 +43,7 @@ struct TrainingGraphInfo {
   std::vector<std::string> user_output_names{};
   // Indices of output grads that need to be materialized to full size all-0 tensor.
   // Otherwise, we can use scalar-0 tensor.
-  std::vector<size_t> output_grad_indices_require_materialized{};
+  std::vector<size_t> output_grad_indices_require_full_shape{};
 };
 
 class ModuleGradientGraphBuilder {

@@ -134,9 +134,6 @@ class ORTModule(torch.nn.Module):
                     Module outputs are returned to the user
                     '''
 
-                    # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
-                    ctx.set_materialize_grads(False)
-
                     # Use IO binding
                     _create_iobinding(self._training_io_binding, inputs, self._onnx_training, self._device)
 
@@ -144,7 +141,10 @@ class ORTModule(torch.nn.Module):
                     forward_outputs, run_id = self._training_session.run_forward(self._training_io_binding, self._run_options)
                     user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) for forward_output in forward_outputs)
                     ctx.run_id = run_id
-                    # Save shape, device and type info for materializing tensor in backward if output grad is None.
+
+                    # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
+                    # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
+                    ctx.set_materialize_grads(False)
                     ctx.output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
 
                     return user_outputs
@@ -160,10 +160,11 @@ class ORTModule(torch.nn.Module):
                     contiguous_grad_outputs = []
                     for idx, grad_output in enumerate(grad_outputs):
                         if grad_output is None:
-                            if idx in self._onnx_graphs_info.output_grad_indices_require_materialized:
-                                grad_output = torch.zeros(ctx.output_info[idx][0], device=ctx.output_info[idx][1], dtype=ctx.output_info[idx][2])
+                            shape, device, dtype = ctx.output_info[idx]
+                            if idx in self._onnx_graphs_info.output_grad_indices_require_full_shape:
+                                grad_output = torch.zeros(shape, device=device, dtype=dtype)
                             else:
-                                grad_output = torch.tensor(0., device=ctx.output_info[idx][1], dtype=ctx.output_info[idx][2])
+                                grad_output = torch.tensor(0., device=device, dtype=dtype)
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
                         contiguous_grad_outputs.append(grad_output)
