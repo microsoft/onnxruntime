@@ -10,7 +10,6 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include <type_traits>
-#include <shared_mutex>
 
 #pragma once
 #include "onnxruntime_config.h"
@@ -173,7 +172,7 @@ class ThreadPoolProfiler {
     std::string Reset();
   };
   std::unordered_map<::std::thread::id, PerThreadNumber> per_thread_numbers_;
-  std::shared_timed_mutex shared_mutex_;
+  OrtMutex mutex_;
 };
 
 // Align to avoid false sharing with prior fields.  If required,

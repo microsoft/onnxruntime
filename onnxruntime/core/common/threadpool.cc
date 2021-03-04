@@ -27,7 +27,7 @@ namespace onnxruntime {
 namespace concurrency {
 
 void ThreadPoolProfiler::Start() {
-  std::lock_guard<std::shared_timed_mutex> writer_lock(shared_mutex_);
+  std::lock_guard<OrtMutex> lock(mutex_);
   auto per_thread_number = per_thread_numbers_.find(std::this_thread::get_id());
   if (per_thread_number == per_thread_numbers_.end()) {
     per_thread_numbers_.insert({std::this_thread::get_id(), {}});
@@ -35,7 +35,7 @@ void ThreadPoolProfiler::Start() {
 }
 
 std::string ThreadPoolProfiler::Stop() {
-  std::shared_lock<std::shared_timed_mutex> reader_lock(shared_mutex_);
+  std::lock_guard<OrtMutex> lock(mutex_);
   auto per_thread_number = per_thread_numbers_.find(std::this_thread::get_id());
   if (per_thread_number == per_thread_numbers_.end()) {
     return {};
@@ -48,7 +48,7 @@ void ThreadPoolProfiler::LogStart() {
   if (per_thread_numbers_.empty()) {
     return;
   }
-  std::shared_lock<std::shared_timed_mutex> reader_lock(shared_mutex_);
+  std::lock_guard<OrtMutex> lock(mutex_);
   auto per_thread_number = per_thread_numbers_.find(std::this_thread::get_id());
   if (per_thread_number != per_thread_numbers_.end()) {
     per_thread_number->second.LogStart();
@@ -59,7 +59,7 @@ void ThreadPoolProfiler::LogEnd(ThreadPoolEvent evt) {
   if (per_thread_numbers_.empty()) {
     return;
   }
-  std::shared_lock<std::shared_timed_mutex> reader_lock(shared_mutex_);
+  std::lock_guard<OrtMutex> lock(mutex_);
   auto per_thread_number = per_thread_numbers_.find(std::this_thread::get_id());
   if (per_thread_number != per_thread_numbers_.end()) {
     per_thread_number->second.LogEnd(evt);
@@ -70,7 +70,7 @@ void ThreadPoolProfiler::LogEndAndStart(ThreadPoolEvent evt) {
   if (per_thread_numbers_.empty()) {
     return;
   }
-  std::shared_lock<std::shared_timed_mutex> reader_lock(shared_mutex_);
+  std::lock_guard<OrtMutex> lock(mutex_);
   auto per_thread_number = per_thread_numbers_.find(std::this_thread::get_id());
   if (per_thread_number != per_thread_numbers_.end()) {
     per_thread_number->second.LogEndAndStart(evt);
