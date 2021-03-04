@@ -740,7 +740,7 @@ def test_gpu_reserved_memory_with_torch_no_grad():
         model_without_no_grad(x, attention_mask=y, labels=z)
         mem_reserved_after_export_without_torch_no_grad = torch.cuda.memory_reserved(device)
 
-    assert mem_reserved_after_export_with_torch_no_grad < mem_reserved_after_export_without_torch_no_grad
+    assert mem_reserved_after_export_with_torch_no_grad <= mem_reserved_after_export_without_torch_no_grad
 
 @pytest.mark.parametrize("return_type, device", [
     (dict, 'cpu'),
