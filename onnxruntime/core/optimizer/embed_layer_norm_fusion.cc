@@ -112,10 +112,10 @@ static bool MatchInputToConcatSubgraph(
     const logging::Logger& logger,
     const NodeIndex expected_gather_node_1_index) {
   std::vector<graph_utils::EdgeEndToMatch> expand_parent_path1{
-      {0, index, "Concat", {4, 11}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Gather", {1, 11}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain},
+      {0, index, "Concat", {4, 11, 13}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain},
   };
 
   std::vector<const Node::EdgeEnd*> edges;
@@ -145,9 +145,9 @@ static bool MatchInputToConcatSubgraph(
   }
 
   std::vector<graph_utils::EdgeEndToMatch> concat_parent_path{
-      {0, 1, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Gather", {1, 11}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain}};
+      {0, 1, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(concat_node, true, concat_parent_path, edges, logger)) {
     DEBUG_LOG("Failed to find path 2 of position shape.");
@@ -316,7 +316,7 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
 
     // Match Shape --> Expand path.
     std::vector<const Node::EdgeEnd*> pg_edges_2;
-    if (!graph_utils::FindPath(expand_node, true, {{0, 1, "Shape", {1}, kOnnxDomain}}, pg_edges_2, logger)) {
+    if (!graph_utils::FindPath(expand_node, true, {{0, 1, "Shape", {1, 13}, kOnnxDomain}}, pg_edges_2, logger)) {
       DEBUG_LOG("Failed to match Shape node. ");
       return false;
     }
