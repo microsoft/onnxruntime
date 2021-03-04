@@ -286,8 +286,6 @@ static Status ConvertToBlockedEll(const CudaKernel* kernel,
   const int64_t values_bytes = block_bytes * nnz_blocks;
   std::unique_ptr<uint8_t[]> values(new uint8_t[values_bytes]);
 
-  const int64_t dst_block_row_bytes = block_bytes * static_cast<int64_t>(max_cols);
-
   // Lets build the col In and copy value blocks in a transposed manner
   const uint8_t* input = reinterpret_cast<const uint8_t*>(input_data);
   int* col_ind_out = col_ind.get();
@@ -634,7 +632,6 @@ class CuSparseHelper {
     // XXX: Currently support only 2-D Matrices for experimental purposes
     const auto& right_shape = tensor.Shape();
     const auto element_size = tensor.DataType()->Size();
-    const auto num_elements = right_shape.Size();
     const auto right_num_dims = right_shape.NumDimensions();
     if (right_num_dims > 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently do not support dims higher than 2");
