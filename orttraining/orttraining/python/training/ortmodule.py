@@ -162,7 +162,10 @@ class ORTModule(torch.nn.Module):
                             if not grad_output.is_contiguous():
                                 grad_output = grad_output.contiguous()
                             contiguous_grad_outputs.append(grad_output)
-                    # using contiguous_grad_outputs[] for holding grad_output to avoid data corruption issue in YieldOp
+                    # in the original logic, the first grad_output above would be out of scope in next loop, thus memory for 
+                    # grad_output.data_ptr() in the first call would be corrupted in YieldOp since Torch may reclaim the memory
+                    # the solution is to store grad_output in another object, thus memory allocated for the grad_output in the second loop 
+                    # would be new and will not impact the memory of the first grad_output
                     for grad_output in contiguous_grad_outputs:
                         backward_grad_output_ortvalue.append(onnxruntime.OrtValue.ortvalue_from_data_ptr(list(grad_output.size()), _utils.dtype_torch_to_numpy(
                             grad_output.dtype), grad_output.device.type, _utils.get_device_index(grad_output.device), grad_output.data_ptr()))
