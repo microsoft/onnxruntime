@@ -187,8 +187,7 @@ Status ProcessNode(
   }
 
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedMatMul", {1}, kMSDomain) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) {
+      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedMatMul", {1}, kMSDomain)) {
     return Status::OK();
   }
 
@@ -206,7 +205,7 @@ Status ProcessNode(
   }
 
   NodeAttributes fused_node_attrs =
-      (node.OpType() == "TransposeMatMul") || (node.OpType() == "FusedMatMul") ? node.GetAttributes() : NodeAttributes{};
+      node.OpType() == "FusedMatMul" ? node.GetAttributes() : NodeAttributes{};
 
   {
     ONNX_NAMESPACE::AttributeProto& alpha_attr = fused_node_attrs["alpha"];
