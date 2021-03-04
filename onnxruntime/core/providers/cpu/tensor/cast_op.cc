@@ -30,23 +30,23 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
     ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
     int64_t);
 
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
     ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
 }  // namespace op_kernel_type_control
 
 namespace {
-using SupportedSrcTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                           Cast, Input, 0);
-using SupportedDstTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                           Cast, Output, 0);
+using SrcTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                Cast, Input, 0);
+using DstTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                Cast, Output, 0);
 using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                        Cast, Input, 0);
 using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
@@ -311,8 +311,8 @@ Status Cast::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-const auto supported_src_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedSrcTypes>();
-const auto supported_dst_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedDstTypes>();
+const auto src_type_constraints = BuildKernelDefConstraintsFromTypeList<SrcTypes>();
+const auto dst_type_constraints = BuildKernelDefConstraintsFromTypeList<DstTypes>();
 const auto enabled_src_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>();
 const auto enabled_dst_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>();
 
@@ -323,8 +323,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     6,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T1", supported_src_type_constraints, enabled_src_type_constraints)
-        .TypeConstraint("T2", supported_dst_type_constraints, enabled_dst_type_constraints)
+        .TypeConstraint("T1", src_type_constraints, enabled_src_type_constraints)
+        .TypeConstraint("T2", dst_type_constraints, enabled_dst_type_constraints)
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
@@ -332,8 +332,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     Cast,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T1", supported_src_type_constraints, enabled_src_type_constraints)
-        .TypeConstraint("T2", supported_dst_type_constraints, enabled_dst_type_constraints)
+        .TypeConstraint("T1", src_type_constraints, enabled_src_type_constraints)
+        .TypeConstraint("T2", dst_type_constraints, enabled_dst_type_constraints)
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
