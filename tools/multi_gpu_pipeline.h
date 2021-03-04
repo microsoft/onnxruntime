@@ -8,6 +8,7 @@
 #include "json.hpp"
 #include "task_thread_pool.h"
 
+namespace onnxruntime {
 using ReqId = int64_t;
 
 struct OrtValueHandle {
@@ -162,7 +163,7 @@ struct RequestExecutionFrame {
 };
 
 struct PipelineSession {
-  OrtStatus* Run(const std::vector<OrtReq>& req_vec, std::vector<OrtResp>& resp_vec, int max_steps);
+  OrtStatus* Run(const std::vector<OrtReq>& req_vec, std::vector<OrtResp>& resp_vec, int num_steps);
   void ParseEnsembleJsonFile(const std::string& ensemble_json_file, PipelineConfig& ens);
   PipelineSession(const std::string& ensemble_json_file, Ort::Env& env);
   PipelineSession(const PipelineConfig& ens, Ort::Env& env);
@@ -200,3 +201,4 @@ struct PipelineSession {
   std::vector<SessionState> model_session_state_vec;            // indices correspond to pcfg.model_config_vec
   std::vector<std::unique_ptr<PipelineStage>> pipeline_stages;  // indices correspond to pcfg.model_config_vec
 };
+}  // namespace onnxruntime

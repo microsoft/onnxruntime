@@ -18,10 +18,12 @@
 #include <cuda_runtime_api.h>
 #include <cuda.h>
 #include "task_thread_pool.h"
-#include "response_queue.h"
+#include "queue.h"
 #include "Eigen/Core"
 #include "Eigen/src/Core/arch/Default/Half.h"
+#include "cxxopts.hpp"
 
+namespace onnxruntime {
 using json = nlohmann::json;
 
 /*
@@ -147,7 +149,7 @@ RequestExecutionFrame::RequestExecutionFrame(PipelineSession& psess,  // passing
         // get the total number of bytes to allocate
         auto num_elements = std::accumulate(std::begin(output_shape), std::end(output_shape), 1, std::multiplies<int>());
         int size_to_allocate = sizeof(Ort::Float16_t) * num_elements;  // TODO don't hardcode type
-
+        // std::cout << "inter stage output num_elements " << num_elements << "\n";
         // allocate and store in map
         auto rcx = rs.inter_stage_output_prealloc_buffer_map.emplace(oname, cuda_allocator->GetAllocation(size_to_allocate));
         assert(rcx.second);
@@ -178,10 +180,10 @@ struct RequestProcessor {
                         const PipelineConfig::ModelConfig& mcfg,
                         PipelineSession::SessionState& session_state,
                         RequestExecutionFrame& exec_frame /* pass by non-const exec_frame intentional as we'll update the state */) {
-    std::ostringstream ostr;
-    ostr << "Executing req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ")";
-    const std::string& str = ostr.str();
-    std::cout << str << "\n";
+    // std::ostringstream ostr;
+    // ostr << "Executing req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ")";
+    // const std::string& str = ostr.str();
+    // std::cout << str << "\n";
     // Timer t(str.c_str());
 
     int model_idx = exec_frame.stage_id;
@@ -200,6 +202,13 @@ struct RequestProcessor {
     }
     token.ort_value_names.clear();
     token.ort_values.clear();
+
+    // if (token.step_id > 0 && exec_frame.stage_id == 0) {
+    //   auto* posn_ids_data = in_token_ort_values[1].GetTensorData<int64_t>();
+    //   for (int i = 0; i < exec_frame.batch_size; ++i) {
+    //     std::cout << "step_id: " << token.step_id << " posn: " << posn_ids_data[i] << "\n";
+    //   }
+    // }
 
     auto& io_binding_obj = *run_state.io_binding;
     auto* io_binding = static_cast<OrtIoBinding*>(io_binding_obj);
@@ -240,8 +249,6 @@ struct RequestProcessor {
 
     // get past seq len
     // assume past_seq_len is same for all states
-    auto sh = run_state.output_val_map.at(mcfg.present_output_names[0]).GetTensorTypeAndShapeInfo().GetShape();
-
     int past_seq_len = run_state.output_val_map.at(mcfg.present_output_names[0])
                            .GetTensorTypeAndShapeInfo()
                            .GetShape()[mcfg.seq_len_dim_index_in_state];
@@ -270,7 +277,7 @@ struct RequestProcessor {
         auto& mem_allocation = token.step_id % 2 == 0  // even: use buffer1 for input and buffer2 for output
                                    ? run_state.present_past_prealloc_buffer_2_vec[rc.second]
                                    : run_state.present_past_prealloc_buffer_1_vec[rc.second];
-        // cout << "mem allocation size: " << mem_allocation.size() << "\n";
+        // std::cout << "mem allocation size: " << mem_allocation.size() << "\n";
         auto output_ort_val = Ort::Value::CreateTensor(
             session_state.cuda_mem_info, mem_allocation.get(), mem_allocation.size(),
             past_present_state_shape.data(), past_present_state_shape.size(), past_present_type);
@@ -315,8 +322,8 @@ struct RequestProcessor {
     // std::cout << "step(" << token.step_id << ") / stage(" << exec_frame.stage_id << ")"
     //           << " just before run\n";
     {
-      std::string run_timer_str = "Run: " + str;
-      Timer t2(run_timer_str.c_str());
+      // std::string run_timer_str = "Run: " + str;
+      // Timer t2(run_timer_str.c_str());
       ort_sess.Run({}, io_binding_obj);
     }
     // std::cout << "step(" << token.step_id << ") / stage(" << exec_frame.stage_id << ")"
@@ -350,18 +357,24 @@ struct RequestProcessor {
         assert(vec_out_vals[i].GetTensorData<Ort::Float16_t>());
         // if (oname == "hidden_states") {
         //   auto* data = vec_out_vals[i].GetTensorData<Ort::Float16_t>();
-        //   std::vector<Ort::Float16_t> v(94 * 4096);
-        //   cudaMemcpy(v.data(), data, sizeof(Ort::Float16_t) * 94 * 4096, cudaMemcpyDefault);
-        //   for (int k = 0; k < 10; ++k) {
-        //     printf("output hidden state %f\n", HalfToFloat(v[k]));
+        //   auto typeshape = vec_out_vals[i].GetTensorTypeAndShapeInfo();
+        //   auto slen = typeshape.GetShape()[1];
+        //   // std::cout << "slen: " << slen << " bsize: " << typeshape.GetShape()[0] << "\n";
+        //   std::vector<Ort::Float16_t> v(exec_frame.batch_size * slen * 4096);
+        //   cudaMemcpy(v.data(), data, sizeof(Ort::Float16_t) * exec_frame.batch_size * slen * 4096, cudaMemcpyDefault);
+        //   for (int b = 0; b < exec_frame.batch_size * 94 * 4096; b += 94 * 4096) {
+        //     std::cout << "b = " << b << "\n";
+        //     for (int k = 0; k < 10; ++k) {
+        //       printf("output hidden state %f\n", HalfToFloat(v[b + k]));
+        //     }
         //   }
         // }
         out_token_ptr->ort_values.push_back(OrtValueHandle(vec_out_vals[i].release()));
       }
     }
 
-    std::cout << "Done executing req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ")"
-              << "\n";
+    // std::cout << "Done executing req_id(" << token.req_id << ")/step(" << token.step_id << ")/stage(" << exec_frame.stage_id << ")"
+    //           << "\n";
     return out_token_ptr;
   };
 };
@@ -372,7 +385,7 @@ static void GetNewInputIdsFromLogits(int batch_size,
                                      const std::vector<int64_t>& logits_shape,
                                      std::vector<int64_t>& input_ids,
                                      std::vector<int64_t>& input_ids_shape) {
-  Timer t("GetNewInputIdsFromLogits");
+  // Timer t("GetNewInputIdsFromLogits");
   input_ids.clear();
   input_ids_shape.clear();
 
@@ -384,39 +397,28 @@ static void GetNewInputIdsFromLogits(int batch_size,
   //   printf("logits uint %hu, float val: %f\n", logits_data[x].value, HalfToFloat(logits_data[x]));
   // }
 
-  // first we need to skip the second (seq len) dimension
-  std::vector<Ort::Float16_t> tmp;
-  int new_size = logits_shape[0] * logits_shape[2];
-  tmp.reserve(new_size);
   int num_elems = logits_shape[0] * logits_shape[1] * logits_shape[2];
   int ltwo = logits_shape[1] * logits_shape[2];
   int skip = (logits_shape[1] - 1) * logits_shape[2];
-  for (int batch_id = 0; batch_id < num_elems; batch_id += ltwo) {  // TODO parallelize on batches
-    for (int k = 0; k < logits_shape[2]; ++k) {
-      tmp.push_back(logits_data[batch_id + skip + k]);
-    }
-  }
-
-  // for (int x = 0; x < 10; ++x) {
-  //   printf("logits_tmp uint %hu, float val: %f\n", tmp[x].value, HalfToFloat(tmp[x].value));
-  // }
 
   // now find the max per onnx batch
-  for (int batch_id = 0; batch_id < new_size; batch_id += logits_shape[2]) {  // TODO parallelize on batches
-    auto max = HalfToFloat(tmp[batch_id].value);
-    // auto max = tmp[batch_id];
-    int64_t max_idx = 0;
-    for (int j = 1; j < logits_shape[2]; ++j) {
-      auto elem = HalfToFloat(tmp[batch_id + j].value);
-      // auto elem = tmp[batch_id + j];
-      if (elem > max) {
-        max = elem;
-        max_idx = j;
-      }
-    }
-    // std::cout << "max: " << max << " next token: " << max_idx << "\n";
+  for (int batch_id = 0; batch_id < num_elems; batch_id += ltwo) {  // TODO parallelize on batches
+                                                                    // if (batch_id == 0)
+    // std::cout << "batch_id " << batch_id << " first: " << logits_data[batch_id + skip] << "\n";
+    auto tmp = std::max_element(logits_data + batch_id + skip,
+                                logits_data + batch_id + skip + logits_shape[2],
+                                [](const Ort::Float16_t& a, const Ort::Float16_t& b) { return HalfToFloat(a) < HalfToFloat(b); });
+    int64_t max_idx = std::distance(logits_data + batch_id + skip, tmp);
+    // if (batch_id == 0)
+    // std::cout << "batch_id: " << batch_id << " next token: " << max_idx << "\n";
     input_ids.push_back(max_idx);
   }
+}
+
+void GetNewPosnIds(int batch_size, int orig_input_seq_len, int step_id, std::vector<int64_t>& posn_ids) {
+  int new_posn_id = orig_input_seq_len + step_id - 1;
+  // std::cout << "new posn id: " << new_posn_id << "\n";
+  posn_ids.assign(batch_size, new_posn_id);
 }
 
 // TODO proper error handling
@@ -461,7 +463,7 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
 
   for (int req_idx = 0; req_idx < num_reqs; ++req_idx) {
     ReqId req_id = CreateRequestId();
-    std::cout << "creating req_id: " << req_id << "\n";
+    // std::cout << "creating req_id: " << req_id << "\n";
     auto& one_req = req_list[req_idx];
     auto& one_resp = resp_list[req_idx];
 
@@ -569,10 +571,8 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
 
         // update position ids
         // assume shape of position ids is same as input_ids
-        int new_posn_id = exec_frame.orig_input_seq_len + step_id - 1;
-        std::cout << "new posn id: " << new_posn_id << "\n";
         auto& posn_ids = exec_frame.next_step_input_buffer_map[pcfg.logits_name].data;
-        posn_ids.assign(batch_size, new_posn_id);
+        GetNewPosnIds(batch_size, exec_frame.orig_input_seq_len, step_id, posn_ids);
 
         auto posn_ids_tensor = Ort::Value::CreateTensor<int64_t>(cpu_memory_info, posn_ids.data(), posn_ids.size(),
                                                                  input_ids_shape.data(), input_ids_shape.size());  // TODO don't hardcode type
@@ -613,7 +613,7 @@ void PipelineSession::ParseEnsembleJsonFile(const std::string& ensemble_json_fil
     throw std::runtime_error(std::string("Error reading file ") + ensemble_json_file);
   }
 
-  auto j = json::parse(ifs, nullptr, true, true);
+  auto j = json::parse(ifs, nullptr, true);
 
   pcfg.input_ids_name = j["input_ids_name"];
   pcfg.position_ids_name = j["position_ids_name"];
@@ -726,50 +726,75 @@ void PipelineSession::Init(PipelineConfig& pcfg, Ort::Env& env) {
     pipeline_stages.push_back(std::make_unique<PipelineStage>(mcfg.device_id, 1 /*thread pool size per stage*/));
   }
 }
+}  // namespace onnxruntime
 
 int main(int argc, char* argv[]) {
+  using namespace onnxruntime;
   OrtThreadingOptions* t_options = nullptr;
   CheckStatus(g_ort->CreateThreadingOptions(&t_options));
   Ort::Env env(t_options, ORT_LOGGING_LEVEL_WARNING, "test");
 
-  // read ensemble file name
-  std::string ensemble_file_name = "/bert_ort/pranav/onnxruntime/tools/turing_model_ensemble.json";
-  if (argc > 1) {
-    ensemble_file_name = argv[1];
+  cxxopts::Options options("test", "A brief description");
+  // clang-format off
+  options.add_options()
+  ("f,config_file", "config file", cxxopts::value<std::string>()->default_value("/bert_ort/pranav/turing_model_ensemble.json"))
+  ("b,batch_size", "batch_size", cxxopts::value<int>()->default_value("1"))
+  ("s,num_steps", "num_steps", cxxopts::value<int>()->default_value("1"))
+  ("n,num_reqs", "num_requests", cxxopts::value<int>()->default_value("1"))
+  ("r,num_iters", "num_iters", cxxopts::value<int>()->default_value("1"))
+  ("h,help", "Print usage");
+  // clang-format on
+
+  auto result = options.parse(argc, argv);
+
+  if (result.count("help")) {
+    std::cout << options.help() << std::endl;
+    exit(0);
   }
+
+  // read ensemble file name
+  std::string ensemble_file_name = result["config_file"].as<std::string>();
   std::cout << "Using ensemble file: " << ensemble_file_name << "\n";
 
-  int num_steps = 1;
-  if (argc > 2) {
-    num_steps = atoi(argv[2]);
-  }
+  int num_steps = result["num_steps"].as<int>();
   std::cout << "Using num_steps = " << num_steps << "\n";
 
-  int max_num_reqs = 1;
-  if (argc > 3) {
-    max_num_reqs = atoi(argv[3]);
-  }
+  int max_num_reqs = result["num_reqs"].as<int>();
   std::cout << "Using max_num_reqs = " << max_num_reqs << "\n";
 
+  int num_iters = result["num_iters"].as<int>();
+  std::cout << "Using num_iters = " << num_iters << "\n";
+
+  int batch_size = result["batch_size"].as<int>();
+  std::cout << "Using batch_size = " << batch_size << "\n";
+
   // prepare inputs
-  int batch_size = 1;
-  int seq_len = 94;
+  const int seq_len = 94;
   size_t input_tensor_size = batch_size * seq_len;
   std::vector<int64_t> input_node_dims{batch_size, seq_len};
   std::vector<std::string> input_node_names{"input_ids",
                                             "position_ids"};
-  std::vector<int64_t> input_ids{50264, 5211, 345, 760, 546, 326, 30, 5211, 345, 760,
-                                 546, 326, 30, 5211, 345, 760, 546, 326, 30, 5211,
-                                 345, 760, 546, 326, 30, 5211, 345, 760, 546, 326,
-                                 30, 5211, 345, 760, 546, 326, 30, 50265, 19693, 19693,
-                                 19693, 19693, 19693, 19693, 50264, 5211, 345, 760, 546, 39849,
-                                 312, 12, 1129, 5211, 345, 760, 546, 39849, 312, 12,
-                                 1129, 5211, 345, 760, 546, 39849, 312, 12, 1129, 5211,
-                                 345, 760, 546, 39849, 312, 12, 1129, 5211, 345, 760,
-                                 546, 39849, 312, 12, 1129, 5211, 345, 760, 546, 39849,
-                                 312, 12, 1129, 50258};
-  std::vector<int64_t> posn_ids(input_tensor_size);
-  std::iota(std::begin(posn_ids), std::end(posn_ids), 0);
+  std::vector<int64_t> input_ids;
+  input_ids.reserve(input_tensor_size);
+  std::vector<int64_t> input_ids_tmp{50264, 5211, 345, 760, 546, 326, 30, 5211, 345, 760,
+                                     546, 326, 30, 5211, 345, 760, 546, 326, 30, 5211,
+                                     345, 760, 546, 326, 30, 5211, 345, 760, 546, 326,
+                                     30, 5211, 345, 760, 546, 326, 30, 50265, 19693, 19693,
+                                     19693, 19693, 19693, 19693, 50264, 5211, 345, 760, 546, 39849,
+                                     312, 12, 1129, 5211, 345, 760, 546, 39849, 312, 12,
+                                     1129, 5211, 345, 760, 546, 39849, 312, 12, 1129, 5211,
+                                     345, 760, 546, 39849, 312, 12, 1129, 5211, 345, 760,
+                                     546, 39849, 312, 12, 1129, 5211, 345, 760, 546, 39849,
+                                     312, 12, 1129, 50258};
+  for (int i = 0; i < batch_size; ++i) {
+    input_ids.insert(input_ids.end(), input_ids_tmp.begin(), input_ids_tmp.end());
+  }
+  std::vector<int64_t> posn_ids_tmp(seq_len);
+  std::iota(std::begin(posn_ids_tmp), std::end(posn_ids_tmp), 0);
+  std::vector<int64_t> posn_ids;
+  for (int i = 0; i < batch_size; ++i) {
+    posn_ids.insert(posn_ids.end(), posn_ids_tmp.begin(), posn_ids_tmp.end());
+  }
 
   std::vector<std::string> output_node_names = {"logits"};
   auto cpu_mem_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
@@ -817,16 +842,32 @@ int main(int argc, char* argv[]) {
   // Run the pipeline
   OrtStatus* status;
   {
-    Timer t("PipelineSession::Run");
+    Timer t("PipelineSession::Run Warmup");
     status = pipeline_session.Run(req_list, resp_list, num_steps);
-  }
-  std::unique_ptr<OrtStatus, decltype(g_ort->ReleaseStatus)> status_deleter(status, g_ort->ReleaseStatus);
-  if (status) {
-    std::cout << "Execution failed with error " << g_ort->GetErrorMessage(status) << "\n";
-    return -1;
+    std::unique_ptr<OrtStatus, decltype(g_ort->ReleaseStatus)> status_deleter(status, g_ort->ReleaseStatus);
+    if (status) {
+      std::cout << "Execution failed with error " << g_ort->GetErrorMessage(status) << "\n";
+      return -1;
+    }
   }
 
-  std::vector<Ort::Float16_t> valid_results{16464, 15168, 48600, 46534, 48945, 49080};  // for num_steps = 10
+  int64_t total_time_us = 0;
+  for (int i = 0; i < num_iters; ++i) {
+    // Timer t("PipelineSession::Run");
+    auto start = std::chrono::high_resolution_clock::now();
+    status = pipeline_session.Run(req_list, resp_list, num_steps);
+    std::unique_ptr<OrtStatus, decltype(g_ort->ReleaseStatus)> status_deleter(status, g_ort->ReleaseStatus);
+    if (status) {
+      std::cout << "Execution failed with error " << g_ort->GetErrorMessage(status) << "\n";
+      return -1;
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    total_time_us += (std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+  }
+  std::cout << "Average time taken for " << num_iters << " iterations: " << (float)total_time_us / num_iters << " microseconds\n";
+
+  // for num_steps = 10 and batch_size = 1
+  std::vector<Ort::Float16_t> valid_results{16464, 15168, 48600, 46534, 48945, 49080};
   // valid new input ids generated after call to GetNewInputIds
   // tensor([[35528, 35528, 20174, 14430, 42092, 36466,  1825,  1825, 35528, 42760]]
   for (int idx = 0; idx < resp_list.size(); ++idx) {
@@ -837,16 +878,20 @@ int main(int argc, char* argv[]) {
 
     // print output
     auto* data_ptr = retval.GetTensorData<Ort::Float16_t>();
-    auto num_elems = retval.GetTensorTypeAndShapeInfo().GetElementCount();
-    std::vector<Ort::Float16_t> v;
+    auto type_shape = retval.GetTensorTypeAndShapeInfo();
+    auto o_shape = type_shape.GetShape();
+    auto num_elems = type_shape.GetElementCount();
     // std::cout << "num_elems: " << num_elems << "\n";
-    for (int i = 0; i < num_elems; i += 10000) {
-      // std::cout << "result: " << data_ptr[i] << "\n";
-      v.push_back(data_ptr[i]);
-    }
-    if (num_steps == 10) {
-      std::cout << "validating output\n";
-      assert(v == valid_results);
+    for (int bsz = 0; bsz < num_elems; bsz += (o_shape[1] * o_shape[2])) {
+      std::vector<Ort::Float16_t> v;
+      for (int j = 0; j < o_shape[2]; j += 10000) {
+        // std::cout << "bsz: " << bsz << " result: " << data_ptr[bsz + j] << "\n";
+        v.push_back(data_ptr[bsz + j]);
+      }
+      if (num_steps == 10 && batch_size == 1) {
+        std::cout << "validating output for batch " << bsz << "\n";
+        assert(v == valid_results);
+      }
     }
   }
 
