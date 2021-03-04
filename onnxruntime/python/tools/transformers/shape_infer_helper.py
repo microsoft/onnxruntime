@@ -17,7 +17,9 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
                  auto_merge=False,
                  guess_output_rank=False):
         super().__init__(int_max, auto_merge, guess_output_rank, verbose)
+        self.__infer(model, dynamic_axis_mapping)
 
+    def __infer(self, model, dynamic_axis_mapping):
         self.dynamic_axis_mapping_ = dynamic_axis_mapping  # e.g {"batch_size" : 4, "seq_len" : 16}
 
         all_shapes_inferred = False
