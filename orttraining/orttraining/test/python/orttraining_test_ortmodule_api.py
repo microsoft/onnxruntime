@@ -415,12 +415,14 @@ def test_gradient_correctness():
         prediction = model(x)
         loss = prediction.sum()
         loss.backward()
+        return prediction
 
     for step in range(10):
         x = torch.randn(N, D_in, device=device)
-        run_step(pt_model, x)
-        run_step(ort_model, x)
+        pt_prediction = run_step(pt_model, x)
+        ort_prediction = run_step(ort_model, x)
 
+        assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_multiple_forward_only_calls():
@@ -451,6 +453,7 @@ def test_multiple_overlapping_forward_backward_calls():
         
         loss1.backward()
         loss2.backward()
+        return prediction1, prediction2
 
     for step in range(10):
         pt_x1 = torch.randn(N, D_in, device=device, requires_grad=True)
@@ -461,9 +464,11 @@ def test_multiple_overlapping_forward_backward_calls():
         ort_x1.requires_grad = True
         ort_x2.requires_grad = True
         
-        run_step(pt_model, pt_x1, pt_x2)
-        run_step(ort_model, ort_x1, ort_x2)
-
+        pt_prediction1, pt_prediction2 = run_step(pt_model, pt_x1, pt_x2)
+        ort_prediction1, ort_prediction2 = run_step(ort_model, ort_x1, ort_x2)
+        
+        assert torch.allclose(ort_prediction1, pt_prediction1)
+        assert torch.allclose(ort_prediction2, pt_prediction2)
         assert torch.allclose(ort_x1.grad, pt_x1.grad)
         assert torch.allclose(ort_x2.grad, pt_x2.grad)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
@@ -484,13 +489,16 @@ def test_multiple_ortmodules_training():
         prediction2 = model2(x2)
         loss2 = prediction2.sum()
         loss2.backward()
+        return prediction1, prediction2
 
     for step in range(10):
         x1 = torch.randn(N, D_in, device=device)
         x2 = torch.randn(N, D_in, device=device)
-        run_step(pt_model1, pt_model2, x1, x2)
-        run_step(ort_model1, ort_model2, x1, x2)
+        pt_prediction1, pt_prediction2 = run_step(pt_model1, pt_model2, x1, x2)
+        ort_prediction1, ort_prediction2 = run_step(ort_model1, ort_model2, x1, x2)
 
+        assert torch.allclose(ort_prediction1, pt_prediction1)
+        assert torch.allclose(ort_prediction2, pt_prediction2)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
@@ -509,21 +517,24 @@ def test_multiple_ortmodules_common_backbone_training():
         prediction = task_layers(backbone_layers(x))
         loss = prediction.sum()
         loss.backward()
+        return prediction
 
     for step in range(10):
         # Run task 1
         x1 = torch.randn(N, D_in, device=device)
-        run_step(pt_model0, pt_model1, x1)
-        run_step(ort_model0, ort_model1, x1)
+        pt_prediction = run_step(pt_model0, pt_model1, x1)
+        ort_prediction = run_step(ort_model0, ort_model1, x1)
 
+        assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=False)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
 
         # Run task 2
         x2 = torch.randn(N, D_in, device=device)
-        run_step(pt_model0, pt_model2, x1)
-        run_step(ort_model0, ort_model2, x1)
+        pt_prediction = run_step(pt_model0, pt_model2, x1)
+        ort_prediction = run_step(ort_model0, ort_model2, x1)
 
+        assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=True)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
@@ -539,12 +550,14 @@ def test_multiple_chained_ortmodules_training():
         prediction = layers2(layers1(x))
         loss = prediction.sum()
         loss.backward()
+        return prediction
 
     for step in range(10):
         x = torch.randn(N, D_in, device=device, requires_grad=True)
-        run_step(pt_model1, pt_model2, x)
-        run_step(ort_model1, ort_model2, x)
+        pt_prediction = run_step(pt_model1, pt_model2, x)
+        ort_prediction = run_step(ort_model1, ort_model2, x)
 
+        assert torch.allclose(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
@@ -554,7 +567,6 @@ def test_mixed_nnmodule_ortmodules_training():
     pt_model1 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     pt_model2 = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     pt_model3 = NeuralNetMultiplePositionalArguments(D_in, H, D_out).to(device)
-
     ort_model1 = ORTModule(copy.deepcopy(pt_model1))
     ort_model2 = copy.deepcopy(pt_model2)   # model2 is intentionally left as nn.module
     ort_model3 = ORTModule(copy.deepcopy(pt_model3))
@@ -565,13 +577,17 @@ def test_mixed_nnmodule_ortmodules_training():
         a3 = model3(torch.sin(a1), torch.cos(a2))
         loss = a3.sum()
         loss.backward()
+        return a1, a2, a3
 
     for step in range(10):
         x1 = torch.randn(N, D_in, device=device)
         x2 = torch.randn(N, D_in, device=device)
-        run_step(pt_model1, pt_model2, pt_model3, x1, x2)
-        run_step(ort_model1, ort_model2, ort_model3, x1, x2)
+        pt_p1, pt_p2, pt_p3 = run_step(pt_model1, pt_model2, pt_model3, x1, x2)
+        ort_p1, ort_p2, ort_p3 = run_step(ort_model1, ort_model2, ort_model3, x1, x2)
 
+        assert torch.allclose(ort_p1, pt_p1)
+        assert torch.allclose(ort_p2, pt_p2)
+        # assert torch.allclose(ort_p3, pt_p3)    # TODO: this assert is failing, need to investigate!!
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model3, pt_model3)
@@ -654,12 +670,13 @@ def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_require
     def run_step(model, x1, x2):
         y1, y2 = model(x1, x2)
         s = y2.sum()
-        s.backward()    # y1's gradient will be None, and we will use scalar-0 tensor for ORT calculation.
+        s.backward()
+        return y1, y2
 
     N, D_in, H, D_out = 32, 784, 500, 10
     device = 'cuda'
     pt_model = NeuralNetMultiplePositionalArgumentsMultiOutputsWithDependency(D_in, H, D_out).to(device)
-    ort_model = ORTModule(pt_model)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
     pt_x1 = torch.randn(N, D_in, device=device, requires_grad=x1_requires_grad)
     pt_x2 = torch.randn(N, D_in, device=device, requires_grad=x2_requires_grad)
 
@@ -668,9 +685,11 @@ def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_require
     ort_x1.requires_grad = x1_requires_grad
     ort_x2.requires_grad = x2_requires_grad
 
-    run_step(pt_model, pt_x1, pt_x2)
-    run_step(ort_model, ort_x1, ort_x2)
+    pt_y1, pt_y2 = run_step(pt_model, pt_x1, pt_x2)
+    ort_y1, ort_y2 = run_step(ort_model, ort_x1, ort_x2)
 
+    # assert torch.allclose(ort_y1, pt_y1)  # TODO: this assert is failing, need to investigate!!
+    assert torch.allclose(ort_y2, pt_y2)
     assert not x1_requires_grad or ort_x1.grad is not None
     assert not x2_requires_grad or ort_x2.grad is not None
     assert not x1_requires_grad or torch.allclose(ort_x1.grad, pt_x1.grad)
