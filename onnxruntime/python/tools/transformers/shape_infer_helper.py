@@ -14,7 +14,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
                  },
                  verbose=0,
                  int_max=2**31 - 1,
-                 auto_merge=False,
+                 auto_merge=True,
                  guess_output_rank=False):
         super().__init__(int_max, auto_merge, guess_output_rank, verbose)
         self.__infer(model, dynamic_axis_mapping)
@@ -53,7 +53,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         shape = get_shape_from_type_proto(type_proto)
         for i in range(len(shape)):
             d = shape[i]
-            if type(d) == str:
+            if type(d) == str and d in self.dynamic_axis_mapping_.keys():
                 shape[i] = self.dynamic_axis_mapping_[d]
         return shape
 
