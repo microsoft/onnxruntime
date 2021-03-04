@@ -282,8 +282,9 @@ template <typename TSrc>
 struct SrcDispatcher {
   void operator()(
       int32_t to, const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
-    using DstTypes = boost::mp11::mp_remove_if_q<EnabledDstTypes, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
-    utils::MLTypeCallDispatcherFromTypeList<DstTypes> dispatcher{to};
+    using EnabledDstTypesWithoutSrcType =
+        boost::mp11::mp_remove_if_q<EnabledDstTypes, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
+    utils::MLTypeCallDispatcherFromTypeList<EnabledDstTypesWithoutSrcType> dispatcher{to};
     dispatcher.template InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(context, shape, src, dst);
   }
 };
