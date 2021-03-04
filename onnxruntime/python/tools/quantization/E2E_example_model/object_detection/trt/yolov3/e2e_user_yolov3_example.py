@@ -59,7 +59,6 @@ def get_prediction_evaluation(model_path, validation_dataset, providers):
     result = evaluator.get_result()
 
     annotations = './annotations/instances_val2017.json'
-    print(result)
     evaluator.evaluate(result, annotations)
 
 
@@ -79,8 +78,6 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
     DataReader will use serial processing when batch_size is 1.
     '''
 
-    width = 512
-    height = 288 
     width = 608
     height = 608
 
@@ -122,19 +119,24 @@ def get_calibration_table_yolov3_variant(model_path, augmented_model_path, calib
 
 
 def get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, providers):
-    # width = 512 
-    # height = 288 
     width = 608 
     height = 608 
-
-
     evaluator = YoloV3VariantEvaluator(model_path, None, width=width, height=height, providers=providers)
 
     total_data_size = len(os.listdir(validation_dataset)) 
     start_index = 0
     stride=1000
+    batch_size = 1
     for i in range(0, total_data_size, stride):
-        data_reader = YoloV3VariantDataReader(validation_dataset, width=width, height=height ,start_index=start_index, end_index=start_index+stride, stride=stride, batch_size=1, model_path=model_path, is_evaluation=True)
+        data_reader = YoloV3VariantDataReader(validation_dataset,
+                                              width=width,
+                                              height=height,
+                                              start_index=start_index,
+                                              end_index=start_index+stride,
+                                              stride=stride,
+                                              batch_size=batch_size,
+                                              model_path=model_path,
+                                              is_evaluation=True)
 
         evaluator.set_data_reader(data_reader)
         evaluator.predict()
@@ -142,10 +144,7 @@ def get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, pro
 
 
     result = evaluator.get_result()
-    annotations = './annotations/instances_val2017_eval_all.json'
-    # annotations = './annotations/instances_val2017.json'
-    annotations = './instances_val2017_random_eval.json'
-    # print(result)
+    annotations = './annotations/instances_val2017.json'
     evaluator.evaluate(result, annotations)
 
 
@@ -153,29 +152,27 @@ if __name__ == '__main__':
     '''
     TensorRT EP INT8 Inference on Yolov3 model.
 
-    The script is using COCO 2017 Val images for calibration and evaluation.
-    1. Please create workspace folders 'val2017/calib' and 'val2017/eval'.
-    2. 2017 val dataset annotations is already in 'annotations/instances_val2017.json', or 
-       download it from http://images.cocodataset.org/annotations/annotations_trainval2017.zip
-    3. Run following script to split dataset into two subsets for calibration and evaluation respectively:
-        python3 coco_filter.py -i annotations/instances_val2017.json -o annotations/instances_val2017_eval_all.json -f val2017 -c all 
+    The script is using subset of COCO 2017 Train images as calibration and COCO 2017 Val images as evaluation.
+    1. Please create workspace folders 'train2017/calib' and 'val2017'.
+    2. Download 2017 Val dataset: http://images.cocodataset.org/zips/val2017.zip
+    3. Download 2017 Val and Train annotations from http://images.cocodataset.org/annotations/annotations_trainval2017.zip
+    4. Run following script to download subset of COCO 2017 Train images and save them to 'train2017/calib':
+        python3 coco_filter.py -i annotations/instances_train2017.json -f train2017 -c all 
 
         (Reference and modify from https://github.com/immersive-limit/coco-manager)
-    4. Download Yolov3 model:
+    5. Download Yolov3 model:
         (i) ONNX model zoo yolov3: https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/yolov3/model/yolov3-10.onnx 
         (ii) yolov3 variants: https://github.com/jkjung-avt/tensorrt_demos.git
     '''
 
     augmented_model_path = 'augmented_model.onnx'
-    calibration_dataset = './val2017/calib'
-    validation_dataset = './val2017/eval'
-    # validation_dataset = './val2017_person_subset_random_eval'
-    # validation_dataset = './val2017'
+    calibration_dataset = './train2017/calib'
+    validation_dataset = './val2017'
     is_onnx_model_zoo_yolov3 = False 
 
     # TensorRT EP INT8 settings
     os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"  # Enable FP16 precision
-    os.environ["ORT_TENSORRT_INT8_ENABLE"] = "0"  # Enable INT8 precision
+    os.environ["ORT_TENSORRT_INT8_ENABLE"] = "1"  # Enable INT8 precision
     os.environ["ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME"] = "calibration.flatbuffers"  # Calibration table name
     os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"  # Enable engine caching
     execution_provider = ["TensorrtExecutionProvider"]
@@ -188,5 +185,5 @@ if __name__ == '__main__':
         # Yolov3 variants from here
         # https://github.com/jkjung-avt/tensorrt_demos.git
         model_path = 'yolov3-608.onnx'
-        get_calibration_table_yolov3_variant(model_path, augmented_model_path, calibration_dataset)
+        # get_calibration_table_yolov3_variant(model_path, augmented_model_path, calibration_dataset)
         get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, execution_provider)
