@@ -185,5 +185,5 @@ if __name__ == '__main__':
         # Yolov3 variants from here
         # https://github.com/jkjung-avt/tensorrt_demos.git
         model_path = 'yolov3-608.onnx'
-        # get_calibration_table_yolov3_variant(model_path, augmented_model_path, calibration_dataset)
+        get_calibration_table_yolov3_variant(model_path, augmented_model_path, calibration_dataset)
         get_prediction_evaluation_yolov3_variant(model_path, validation_dataset, execution_provider)
