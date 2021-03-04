@@ -7,7 +7,7 @@
 #include <string.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 7
+#define ORT_API_VERSION 8
 
 #ifdef __cplusplus
 extern "C" {
@@ -1189,6 +1189,16 @@ struct OrtApi {
 */
 #define OrtCustomOpApi OrtApi
 
+// Specifies some characteristics of inputs/outputs of custom ops:
+// Specify if the inputs/outputs are one of:
+// 1) Non-optional (input/output must be present in the node)
+// 2) Optional (input/output may be absent in the node)
+typedef enum OrtCustomOpInputOutputCharacteristic {
+  // TODO: Support 'Variadic' inputs/outputs
+  INPUT_OUTPUT_REQUIRED = 0,
+  INPUT_OUTPUT_OPTIONAL,
+} OrtCustomOpInputOutputCharacteristic;
+
 /*
  * The OrtCustomOp structure defines a custom op's schema and its kernel callbacks. The callbacks are filled in by
  * the implementor of the custom op.
@@ -1215,11 +1225,11 @@ struct OrtCustomOp {
   // Op kernel callbacks
   void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
   void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
-};
 
-/*
- * END EXPERIMENTAL
-*/
+  // Returns the characteristics of the input & output tensors
+  OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetInputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+  OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+};
 
 #ifdef __cplusplus
 }
