@@ -43,7 +43,7 @@ class ITensorAllocator {
    * When it succeeded, p could be NULL if the tensor with 'ort_value_index' will not have any element
    */
   virtual common::Status GetPreallocatedBuffer(int ort_value_index, const char* name,
-                                               std::unique_ptr<MemBuffer>& out) = 0;
+                                               std::unique_ptr<MemBuffer>& out, AllocatorPtr& alloc_out) = 0;
 
   virtual const MemoryPatternGroup& GetMemPatterns() = 0;
   /**

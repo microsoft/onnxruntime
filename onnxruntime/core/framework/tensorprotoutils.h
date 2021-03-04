@@ -39,8 +39,18 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
  *                        relative path or an absolute path.
  */
 common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
-                                    const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value,
-                                    OrtCallback& deleter);
+                                    const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value);
+/**
+ * @brief Deserialize a TensorProto into a preallocated empty Tensor
+ * @param env 
+ * @param model_path 
+ * @param tensor_proto  source data
+ * @param tensorp       destination empty tensor
+ * @return 
+*/
+common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
+                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                           Tensor& tensorp);
 
 /** Creates a TensorProto from a Tensor.
     @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.

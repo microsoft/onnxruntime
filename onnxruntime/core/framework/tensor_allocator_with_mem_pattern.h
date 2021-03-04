@@ -73,7 +73,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   }
 
   common::Status GetPreallocatedBuffer(int ort_value_index, const char* name,
-                                       std::unique_ptr<MemBuffer>& out) override {
+                                       std::unique_ptr<MemBuffer>& out, AllocatorPtr& alloc_out) override {
     if (!is_sealed_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error.");
     }
@@ -86,6 +86,11 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     // fall back to allocate separate buffer.
     // if it->second.get() is null, then fall back to the block not found case
     auto block = pattern->GetBlock(ort_value_index);
+    if (nullptr == block) {
+      // not traced, only return allocator
+      alloc_out = GetAllocator(location);
+      return Status::OK();
+    }
     auto it = buffers_.find(location);
     if (it == buffers_.end()) {
       if (block != nullptr && block->size_ == 0) {
