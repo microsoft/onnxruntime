@@ -228,7 +228,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   }
 
   use_per_session_threads_ = session_options.use_per_session_threads;
-  bool allow_spinning = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowSpinning, "0") == "1";
+  bool allow_spinning = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigAllowSpinning, "1") == "1";
 
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";

@@ -48,6 +48,6 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 static const char* const kOrtSessionOptionsEnableQuantQDQ = "session.enable_quant_qdq";
 
 // It controls whether allow the thread to spin a few times before blocking
-// "0": default value, thread will block if no job to run
-// "1": thread will spin a number of times before blocking
+// "0": thread will block if found no job to run
+// "1": default, thread will spin a number of times before blocking
 static const char* const kOrtSessionOptionsConfigAllowSpinning = "session.allow_spinning";
