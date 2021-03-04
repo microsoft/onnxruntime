@@ -44,19 +44,22 @@ struct PySessionOptions : public SessionOptions {
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
   PyInferenceSession(Environment& env, const PySessionOptions& so) {
-    sess_ = onnxruntime::make_unique<InferenceSession>(so, env);
+    sess_ = std::make_shared<InferenceSession>(so, env);
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
   PyInferenceSession(Environment& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
+    std::cout << " 1 PyInferenceSession ctor " << std::endl;
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
-      sess_ = onnxruntime::make_unique<InferenceSession>(so, env, arg);
+      sess_ = std::make_shared<InferenceSession>(so, env, arg);
     } else {
+      std::cout << " 2 PyInferenceSession ctor " << std::endl;
       // Given arg is the model content as bytes. Invoke the corresponding ctor().
       std::istringstream buffer(arg);
-      sess_ = onnxruntime::make_unique<InferenceSession>(so, env, buffer);
+      sess_ = std::make_shared<InferenceSession>(so, env, buffer);
     }
+    std::cout << " 3 PyInferenceSession ctor " << std::endl;
   }
 #endif
 
@@ -76,7 +79,7 @@ struct PyInferenceSession {
   virtual ~PyInferenceSession() {}
 
  protected:
-  PyInferenceSession(std::unique_ptr<InferenceSession> sess) {
+  PyInferenceSession(std::shared_ptr<InferenceSession> sess) {
     sess_ = std::move(sess);
   }
 
@@ -89,8 +92,13 @@ struct PyInferenceSession {
   std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
 #endif
 
-  std::unique_ptr<InferenceSession> sess_;
+  std::shared_ptr<InferenceSession> sess_;
 };
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+// TODO: Originally it was static. Should it continue to be so?
+void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessionOptions& so);
+#endif
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {
   static PySessionOptions so;

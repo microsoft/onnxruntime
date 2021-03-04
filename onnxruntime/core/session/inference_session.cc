@@ -295,6 +295,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
       environment_(session_env) {
   // Initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
+  std::cout << "1 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env) ***************************************************************************************************" << std::endl;
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -311,6 +312,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
+  std::cout << "2 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env, const std::string& model_uri) ***************************************************************************************************" << std::endl;
 }
 
 #ifdef _WIN32
@@ -342,6 +344,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
+  std::cout << "3 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env, std::istream& model_istream) ***************************************************************************************************" << std::endl;
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
@@ -355,6 +358,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
+  std::cout << "4 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env, const void* model_data, int model_data_len) ***************************************************************************************************" << std::endl;
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -567,6 +571,8 @@ common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR
 
 common::Status InferenceSession::Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
                                       const std::string& event_name) {
+
+  std::cout <<" 1 InferenceSession::Load ************************************************************************" << std::endl;
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
@@ -612,6 +618,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
 
 template <typename T>
 common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
+  std::cout <<" 2 InferenceSession::Load ************************************************************************" << std::endl;
   model_location_ = ToWideString(model_uri);
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
@@ -636,6 +643,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::Load(const std::string& model_uri) {
+  std::cout <<" 3 InferenceSession::Load ************************************************************************" << std::endl;
   std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
@@ -690,6 +698,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+  std::cout <<" 4 InferenceSession::Load ************************************************************************" << std::endl;
   std::string model_type = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
@@ -738,6 +747,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 #if !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
+  std::cout <<" 5 InferenceSession::Load ************************************************************************" << std::endl;
   if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
@@ -760,6 +770,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 }
 
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
+  std::cout <<" 6 InferenceSession::Load ************************************************************************" << std::endl;
   if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
@@ -781,6 +792,7 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
 }
 
 common::Status InferenceSession::Load(std::istream& model_istream) {
+  std::cout <<" 7 InferenceSession::Load ************************************************************************" << std::endl;
   if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
@@ -807,6 +819,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
 }
 
 common::Status InferenceSession::Load() {
+  std::cout <<" 8 InferenceSession::Load ************************************************************************" << std::endl;
   if (!is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has not been parsed yet. "

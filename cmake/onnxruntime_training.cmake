@@ -13,6 +13,8 @@ file(GLOB_RECURSE onnxruntime_training_srcs
     "${ORTTRAINING_SOURCE_DIR}/core/framework/communication/*"
     "${ORTTRAINING_SOURCE_DIR}/core/session/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/session/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/agent/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/agent/*.cc"
 )
 
 add_library(onnxruntime_training ${onnxruntime_training_srcs})

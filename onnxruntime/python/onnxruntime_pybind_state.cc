@@ -660,35 +660,24 @@ static void GenerateProviderOptionsMap(const std::vector<std::string>& providers
   }
 }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-static void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessionOptions& so) {
-  if (!so.custom_op_domains_.empty()) {
-    // Register all custom op domains that will be needed for the session
-    std::vector<OrtCustomOpDomain*> custom_op_domains;
-    custom_op_domains.reserve(so.custom_op_domains_.size());
-    for (size_t i = 0; i < so.custom_op_domains_.size(); ++i) {
-      custom_op_domains.emplace_back(so.custom_op_domains_[i]);
-    }
-    OrtPybindThrowIfError(sess->GetSessionHandle()->AddCustomOpDomains(custom_op_domains));
-
-    // Register all custom op libraries that will be needed for the session
-    sess->AddCustomOpLibraries(so.custom_op_libraries_);
-  }
-}
-#endif
-
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types,
                        const ProviderOptionsVector& provider_options) {
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
 
+  std::cout << "1 InitializeSession ***********************************@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
+
   if (provider_types.empty()) {
+    std::cout << "2.1 InitializeSession ***********************************@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
     // use default registration priority.
     RegisterExecutionProviders(sess, GetAllExecutionProviderNames(), provider_options_map);
   } else {
+    std::cout << "2.2 InitializeSession ***********************************@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
     RegisterExecutionProviders(sess, provider_types, provider_options_map);
   }
+  std::cout << "3 InitializeSession ***********************************@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
   OrtPybindThrowIfError(sess->Initialize());
+  std::cout << "4 InitializeSession ***********************************@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
 }
 
 static bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
@@ -1728,18 +1717,23 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
 #endif
         } else {
+          std::cout << " 1 py::class_<PyInferenceSession>::init " << std::endl;
           sess = onnxruntime::make_unique<PyInferenceSession>(env, so);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
           RegisterCustomOpDomainsAndLibraries(sess.get(), so);
+          std::cout << " 2 py::class_<PyInferenceSession>::init " << std::endl;
 #endif
 
           if (is_arg_file_name) {
+            std::cout << " 3.1 py::class_<PyInferenceSession>::init " << std::endl;
             OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg));
           } else {
+            std::cout << " 3.2 py::class_<PyInferenceSession>::init " << std::endl;
             OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg.data(), arg.size()));
           }
         }
 
+        std::cout << " 4 py::class_<PyInferenceSession>::init " << std::endl;
         return sess;
       }))
       .def(
