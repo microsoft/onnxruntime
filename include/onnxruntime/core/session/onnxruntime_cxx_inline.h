@@ -879,8 +879,11 @@ inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const O
   std::string out;
   OrtStatus* status = api_.KernelInfoGetAttribute_string(info, name, nullptr, &size);
 
-  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the string
-  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT) {
+  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the attribute array
+  // As an additional safety check, ensure that the error message holds a hint that the buffer is not large enough
+  // to hold the attribute's contents
+  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT &&
+      std::strcmp(api_.GetErrorMessage(status), "Result buffer is not large enough") == 0) {
     api_.ReleaseStatus(status);
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
@@ -898,7 +901,10 @@ inline std::vector<float> CustomOpApi::KernelInfoGetAttributeArray(_In_ const Or
   OrtStatus* status = api_.KernelInfoGetAttributeArray_float(info, name, nullptr, &size);
 
   // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the attribute array
-  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT) {
+  // As an additional safety check, ensure that the error message holds a hint that the buffer is not large enough
+  // to hold the attribute's contents
+  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT &&
+      std::strcmp(api_.GetErrorMessage(status), "Result buffer is not large enough") == 0) {
     api_.ReleaseStatus(status);
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttributeArray_float(info, name, out.data(), &size));
@@ -915,7 +921,10 @@ inline std::vector<int64_t> CustomOpApi::KernelInfoGetAttributeArray(_In_ const 
   OrtStatus* status = api_.KernelInfoGetAttributeArray_int64(info, name, nullptr, &size);
 
   // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the attribute array
-  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT) {
+  // As an additional safety check, ensure that the error message holds a hint that the buffer is not large enough
+  // to hold the attribute's contents
+  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT &&
+      std::strcmp(api_.GetErrorMessage(status), "Result buffer is not large enough") == 0) {
     api_.ReleaseStatus(status);
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttributeArray_int64(info, name, out.data(), &size));
