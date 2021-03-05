@@ -96,6 +96,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
+#if USE_ROCM
+                opt.AppendExecutionProvider_ROCM(0);
+#endif
 #if USE_DML
                 // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll
                 // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
@@ -185,6 +188,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 # if USE_CUDA
             Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"););
 #endif
+# if USE_ROCM
+            Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"););
+#endif
+
         }
 
         [Fact]
@@ -301,7 +308,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Run inference with outputs pinned from buffers
                 using (var pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
-                using(var pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
+                using (var pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
 
@@ -326,7 +333,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, d => d);
                     byteSize = longShape.Aggregate(1L, (a, b) => a * b) * sizeof(float);
                     float[] outputBuffer = new float[expectedOutput.Length];
-                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer, 
+                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer,
                         TensorElementType.Float, longShape, byteSize));
 
                     session.Run(inputNames, pinnedInputs, outputNames, pinnedOutputs);
@@ -386,6 +393,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+
+        /*
+        [Fact]
+        public void LargeModelGpuInferencing()
+        {
+            RequestBatch requestBatch;
+            ResponseBatch responseBatch;
+            PipelineSession pipelineSession;
+        }
+        */
 
         [Fact]
         public void InferenceSessionManualDisposeAfterUse()
@@ -451,6 +468,58 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             // Check the profiling's start time has been updated
             Assert.True(ProfilingStartTime != 0);
+        }
+
+        [Fact]
+        public void TestLargeModelGpuInferencing()
+        {
+            int numRequests = 2;
+            int numSteps = 1;
+
+            var ortCpuMemInfo = OrtMemoryInfo.DefaultInstance;
+            var dims = new long[] { 1, 1, 1 };
+            var dataBuffer = new Int64[] { 50264 };
+            var dataHandle = GCHandle.Alloc(dataBuffer, GCHandleType.Pinned);
+            unsafe
+            {
+                Int64* p = (Int64*)dataHandle.AddrOfPinnedObject();
+                for (int i = 0; i < dataBuffer.Length; ++i)
+                {
+                    *p++ = dataBuffer[i];
+                }
+            }
+            var dataBufferNumBytes = (uint)dataBuffer.Length * sizeof(Int64);
+            var ortValue = OrtValue.CreateTensorValueWithData(ortCpuMemInfo, Tensors.TensorElementType.Int64,
+                                    dims, dataHandle.AddrOfPinnedObject(), dataBufferNumBytes);
+            var nullOrtValue = OrtValue.CreateNullOrtValue();
+
+            RequestBatch requestBatch = new RequestBatch();
+
+            for (int i = 0; i < numRequests; ++i)
+            {
+                requestBatch.AddToBatch(new string[] { "input1" }, new OrtValue[] { ortValue });
+            }
+
+            ResponseBatch responseBatch = new ResponseBatch();
+            for (int i = 0; i < numRequests; ++i)
+            {
+                responseBatch.AddToBatch(new string[] { "output1" }, new OrtValue[] { nullOrtValue }, new OrtMemoryInfo[] { ortCpuMemInfo });
+            }
+
+            PipelineSession pipelineSession = new PipelineSession("D:\\gistfile1.json");
+            pipelineSession.Run(requestBatch, responseBatch, numSteps);
+            for (int i = 0; i < numRequests; ++i)
+            {
+                var outputs = responseBatch.GetOutputValues((UIntPtr)i, OrtAllocator.DefaultInstance);
+
+                outputs.Dispose();
+            }
+
+            pipelineSession.Dispose();
+
+            requestBatch.Dispose();
+            responseBatch.Dispose();
+            ortValue.Dispose();
         }
 
         [Fact]
@@ -1074,7 +1143,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    if(!FreeLibrary(libraryHandle))
+                    if (!FreeLibrary(libraryHandle))
                     {
                         throw new Exception("Could not unload the provided shared library using its handle");
                     }
@@ -2019,6 +2088,34 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 #endif
 
+#if USE_ROCM
+        void TestROCMAllocatorInternal(InferenceSession session)
+        {
+            int device_id = 0;
+            using (var info_rocm = new OrtMemoryInfo(OrtMemoryInfo.allocatorROCM, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
+            {
+                Assert.Equal("Rocm", info_rocm.Name);
+                Assert.Equal(device_id, info_rocm.Id);
+                Assert.Equal(OrtAllocatorType.ArenaAllocator, info_rocm.GetAllocatorType());
+                Assert.Equal(OrtMemType.Default, info_rocm.GetMemoryType());
+
+                using (var allocator = new OrtAllocator(session, info_rocm))
+                {
+                    var alloc_info = allocator.Info;
+                    Assert.True(info_rocm.Equals(alloc_info));
+
+                    uint size = 1024;
+                    OrtMemoryAllocation chunk = allocator.Allocate(size);
+                    Assert.Equal(chunk.Size, size);
+                    Assert.True(chunk.Info.Equals(alloc_info));
+                    chunk.Dispose();
+                    alloc_info.Dispose();
+                }
+            }
+        }
+#endif
+
+
         [Fact]
         private void TestAllocator()
         {
@@ -2029,12 +2126,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                 options.AppendExecutionProvider_CUDA(0);
 #endif
+
+#if USE_ROCM
+                options.AppendExecutionProvider_ROCM(0);
+#endif
+
                 using (var session = new InferenceSession(modelPath, options))
                 {
                     TestCPUAllocatorInternal(session);
 #if USE_CUDA
                     TestCUDAAllocatorInternal(session);
 #endif
+#if USE_ROCM
+                    TestROCMAllocatorInternal(session);
+#endif
+
                 }
             }
         }
@@ -2294,6 +2400,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
 #endif
+#if USE_ROCM
+            ,"OrtSessionOptionsAppendExecutionProvider_ROCM"
+#endif
 #if USE_DML
             ,"OrtSessionOptionsAppendExecutionProvider_DML"
 #endif
@@ -2513,7 +2622,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             T[] typedArr = new T[rawData.Length / elemWidth];
             var typeOf = typeof(T);
-            if(typeOf == typeof(Float16) || typeOf == typeof(BFloat16))
+            if (typeOf == typeof(Float16) || typeOf == typeof(BFloat16))
             {
                 using (var memSrcHandle = new Memory<byte>(rawData).Pin())
                 using (var memDstHandle = new Memory<T>(typedArr).Pin())
@@ -2560,6 +2669,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #elif USE_CUDA
             using (var option = (deviceId.HasValue) ?
                 SessionOptions.MakeSessionOptionWithCudaProvider(deviceId.Value) :
+                new SessionOptions())
+            {
+                if(!deviceId.HasValue)
+                {
+                    option.AppendExecutionProvider_CPU(1);
+                }
+#elif USE_ROCM
+            using (var option = (deviceId.HasValue) ?
+                SessionOptions.MakeSessionOptionWithRocmProvider(deviceId.Value) :
                 new SessionOptions())
             {
                 if(!deviceId.HasValue)

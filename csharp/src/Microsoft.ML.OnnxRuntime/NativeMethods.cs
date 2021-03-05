@@ -11,10 +11,11 @@ namespace Microsoft.ML.OnnxRuntime
     {
         public IntPtr GetApi;
         public IntPtr GetVersionString;
+        public IntPtr GetExperimentalApi;
     };
 
     // NOTE: The order of the APIs in this struct should match exactly that in
-    // OrtApi ort_api_1_to_4 (onnxruntime_c_api.cc)
+    // OrtApi ort_api_1_to_8 (onnxruntime_c_api.cc)
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
@@ -184,11 +185,31 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr AddInitializer;
         public IntPtr CreateEnvWithCustomLoggerAndGlobalThreadPools;
         public IntPtr SessionOptionsAppendExecutionProvider_CUDA;
+        public IntPtr SessionOptionsAppendExecutionProvider_ROCM;
         public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO;
         public IntPtr SetGlobalDenormalAsZero;
         public IntPtr CreateArenaCfg;
         public IntPtr ReleaseArenaCfg;
         public IntPtr ModelMetadataGetGraphDescription;
+    }
+
+    // NOTE: The order of the APIs in this struct should match exactly that in
+    // OrtApi ort_experimental_apis (onnxruntime_c_api.cc)
+    [StructLayout(LayoutKind.Sequential)]
+    public struct OrtExperimentalApi
+    {
+        public IntPtr CreatePipelineSession;
+        public IntPtr ReleasePipelineSession;
+        public IntPtr PipelineSessionRun;
+        public IntPtr CreateOrtRequestBatch;
+        public IntPtr ReleaseRequestBatch;
+        public IntPtr CreateOrtResponseBatch;
+        public IntPtr ReleaseResponseBatch;
+        public IntPtr AddRequestToBatch;
+        public IntPtr AddResponseToBatch;
+        public IntPtr GetOutputValues;
+        public IntPtr ClearRequestBatch;
+        public IntPtr ClearResponseBatch;
     }
 
     internal static class NativeMethods
@@ -197,15 +218,20 @@ namespace Microsoft.ML.OnnxRuntime
         internal const CharSet charSet = CharSet.Ansi;
 
         static OrtApi api_;
+        static OrtExperimentalApi experimental_api_;
 
         public delegate ref OrtApi DOrtGetApi(UInt32 version);
+        public delegate ref OrtExperimentalApi DOrtGetExperimentalApi();
 
         static NativeMethods()
         {
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
-
             // TODO: Make this save the pointer, and not copy the whole structure across
-            api_ = (OrtApi)OrtGetApi(4 /*ORT_API_VERSION*/);
+            api_ = (OrtApi)OrtGetApi(8 /*ORT_API_VERSION*/);
+
+            DOrtGetExperimentalApi OrtGetExperimentalApi = (DOrtGetExperimentalApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetExperimentalApi, typeof(DOrtGetExperimentalApi));
+            // TODO: Make this save the pointer, and not copy the whole structure across
+            experimental_api_ = (OrtExperimentalApi)OrtGetExperimentalApi();
 
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
             OrtReleaseEnv = (DOrtReleaseEnv)Marshal.GetDelegateForFunctionPointer(api_.ReleaseEnv, typeof(DOrtReleaseEnv));
@@ -334,6 +360,20 @@ namespace Microsoft.ML.OnnxRuntime
 
             OrtGetAvailableProviders = (DOrtGetAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.GetAvailableProviders, typeof(DOrtGetAvailableProviders));
             OrtReleaseAvailableProviders = (DOrtReleaseAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAvailableProviders, typeof(DOrtReleaseAvailableProviders));
+
+            // Experimental section
+            OrtCreatePipelineSession = (DOrtCreatePipelineSession)Marshal.GetDelegateForFunctionPointer(experimental_api_.CreatePipelineSession, typeof(DOrtCreatePipelineSession));
+            OrtReleasePipelineSession = (DOrtReleasePipelineSession)Marshal.GetDelegateForFunctionPointer(experimental_api_.ReleasePipelineSession, typeof(DOrtReleasePipelineSession));
+            OrtPipelineSessionRun = (DOrtPipelineSessionRun)Marshal.GetDelegateForFunctionPointer(experimental_api_.PipelineSessionRun, typeof(DOrtPipelineSessionRun));
+            OrtCreateRequestBatch = (DOrtCreateRequestBatch)Marshal.GetDelegateForFunctionPointer(experimental_api_.CreateOrtRequestBatch, typeof(DOrtCreateRequestBatch));
+            OrtReleaseRequestBatch = (DOrtReleaseRequestBatch)Marshal.GetDelegateForFunctionPointer(experimental_api_.ReleaseRequestBatch, typeof(DOrtReleaseRequestBatch));
+            OrtCreateResponseBatch = (DOrtCreateResponseBatch)Marshal.GetDelegateForFunctionPointer(experimental_api_.CreateOrtResponseBatch, typeof(DOrtCreateResponseBatch));
+            OrtReleaseResponseBatch = (DOrtReleaseResponseBatch)Marshal.GetDelegateForFunctionPointer(experimental_api_.ReleaseResponseBatch, typeof(DOrtReleaseResponseBatch));
+            OrtAddRequestToBatch = (DOrtAddRequestToBatch)Marshal.GetDelegateForFunctionPointer(experimental_api_.AddRequestToBatch, typeof(DOrtAddRequestToBatch));
+            OrtAddResponseToBatch = (DOrtAddResponseToBatch)Marshal.GetDelegateForFunctionPointer(experimental_api_.AddResponseToBatch, typeof(DOrtAddResponseToBatch));
+            OrtGetOutputValues = (DOrtGetOutputValues)Marshal.GetDelegateForFunctionPointer(experimental_api_.GetOutputValues, typeof(DOrtGetOutputValues));
+            OrtClearRequestBatch = (DOrtClearRequestBatch)Marshal.GetDelegateForFunctionPointer(experimental_api_.ClearRequestBatch, typeof(DOrtClearRequestBatch));
+            OrtClearResponseBatch = (DOrtClearResponseBatch)Marshal.GetDelegateForFunctionPointer(experimental_api_.ClearResponseBatch, typeof(DOrtClearResponseBatch));
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -559,6 +599,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CUDA(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_ROCM(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_DML(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
@@ -1157,6 +1200,62 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /* (OrtStatus*) */ DOrtReleaseAvailableProviders(IntPtr /* (char**) */ providers, int /* (int) */ numProviders);
         public static DOrtReleaseAvailableProviders OrtReleaseAvailableProviders;
+        #endregion
+
+        #region Experimental API
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreatePipelineSession(IntPtr /*(const OrtEnv*)*/ ortEnv, IntPtr /*(const char*)*/ ensembleConfigFilePath,
+            out IntPtr /*(OrtPipelineSession**)*/ pipelineSession);
+        public static DOrtCreatePipelineSession OrtCreatePipelineSession;
+
+        public delegate void DOrtReleasePipelineSession(IntPtr /*(OrtPipelineSession*)*/ pipelineSession);
+        public static DOrtReleasePipelineSession OrtReleasePipelineSession;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtPipelineSessionRun(IntPtr /*(OrtPipelineSession*)*/ pipelineSession,
+                                                                       IntPtr /*(const OrtRequestBatch*)*/ requestBatch,
+                                                                       IntPtr /*(OrtResponseBatch*)*/ responseBatch,
+                                                                       int numSteps);
+        public static DOrtPipelineSessionRun OrtPipelineSessionRun;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateRequestBatch(out IntPtr /*(OrtRequestbatch**)*/ requestBatch);
+        public static DOrtCreateRequestBatch OrtCreateRequestBatch;
+
+        public delegate void DOrtReleaseRequestBatch(IntPtr /*(OrtRequestBatch*)*/ requestBatch);
+        public static DOrtReleaseRequestBatch OrtReleaseRequestBatch;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateResponseBatch(out IntPtr /*(OrtResponsebatch**)*/ responseBatch);
+        public static DOrtCreateResponseBatch OrtCreateResponseBatch;
+
+        public delegate void DOrtReleaseResponseBatch(IntPtr /*(OrtResponseBatch*)*/ responseBatch);
+        public static DOrtReleaseResponseBatch OrtReleaseResponseBatch;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddRequestToBatch(IntPtr /*(OrtRequestBatch*)*/ requestBatch,
+                                                                      UIntPtr /*(size_t)*/ inputLength,
+                                                                      IntPtr[] /*(const char* const*)*/ inputNames,
+                                                                      IntPtr[] /*(const OrtValue* const *)*/input);
+        public static DOrtAddRequestToBatch OrtAddRequestToBatch;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddResponseToBatch(IntPtr /*(OrtResponseBatch*)*/ responseBatch,
+                                                                      UIntPtr /*(size_t)*/ outputLength,
+                                                                      IntPtr[] /*(const char* const*)*/ outputNames,
+                                                                      IntPtr[] /*(OrtValue**)*/output,
+                                                                      IntPtr[] /*(const OrtmemoryInfo**)*/ memoryInfo);
+        public static DOrtAddResponseToBatch OrtAddResponseToBatch;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetOutputValues(IntPtr /*(const OrtResponseBatch*)*/ responseBatch,
+                                                                  UIntPtr /*(size_t)*/ batchIdx,
+                                                                  IntPtr /*(OrtAllocator*)*/ allocator,
+                                                                  out IntPtr /*(OrtValue***)*/ output,
+                                                                  out UIntPtr /*(size_t*)*/ outputCount);
+        public static DOrtGetOutputValues OrtGetOutputValues;
+
+        public delegate void DOrtClearRequestBatch(IntPtr /*(OrtRequestBatch*)*/ requestBatch);
+        public static DOrtClearRequestBatch OrtClearRequestBatch;
+
+        public delegate void DOrtClearResponseBatch(IntPtr /*(OrtResponseBatch*)*/ responseBatch);
+        public static DOrtClearResponseBatch OrtClearResponseBatch;
+
+
         #endregion
 
         public static byte[] GetPlatformSerializedString(string str)

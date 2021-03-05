@@ -72,6 +72,11 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
 
+        public static OrtValue CreateNullOrtValue()
+        {
+            return new OrtValue(IntPtr.Zero);
+        }
+
         /// <summary>
         /// Factory method to construct an OrtValue of Tensor type on top of pre-allocated memory.
         /// This can be a piece of native memory allocated by OrtAllocator (possibly on a device)
@@ -95,13 +100,13 @@ namespace Microsoft.ML.OnnxRuntime
             Type type;
             int width;
             TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width);
-            if(width < 1)
+            if (width < 1)
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Unsupported data type (such as string)");
             }
 
             var shapeSize = ArrayUtilities.GetSizeForShape(shape);
-            if((shapeSize * width) > bufferLength)
+            if ((shapeSize * width) > bufferLength)
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Can not bind the shape to smaller buffer");
             }
@@ -370,7 +375,10 @@ namespace Microsoft.ML.OnnxRuntime
             // Or we never had that ownership to begin with
             if (IsOwned)
             {
-                NativeMethods.OrtReleaseValue(handle);
+                if (handle != IntPtr.Zero)
+                {
+                    NativeMethods.OrtReleaseValue(handle);
+                }
             }
             // Prevent use after disposal
             handle = IntPtr.Zero;

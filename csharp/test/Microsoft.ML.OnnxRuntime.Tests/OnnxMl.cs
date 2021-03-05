@@ -151,7 +151,7 @@ namespace Onnx {
     /// <summary>
     /// The version field is always serialized and we will use it to store the
     /// version that the  graph is generated from. This helps us set up version
-    /// control. 
+    /// control.
     /// For the IR, we are using simple numbers starting with 0x00000001,
     /// which was the version we published on Oct 10, 2017.
     /// </summary>
@@ -1028,7 +1028,7 @@ namespace Onnx {
   /// Computation graphs are made up of a DAG of nodes, which represent what is
   /// commonly called a "layer" or "pipeline stage" in machine learning frameworks.
   ///
-  /// For example, it can be a node of type "Conv" that takes in an image, a filter 
+  /// For example, it can be a node of type "Conv" that takes in an image, a filter
   /// tensor and a bias tensor, and produces the convolved output.
   /// </summary>
   public sealed partial class NodeProto : pb::IMessage<NodeProto> {
@@ -1437,7 +1437,7 @@ namespace Onnx {
     ///
     /// Notice that an input of a node in the "algorithm" graph may reference the
     /// output of a node in the inference graph (but not the other way round). Also, inference
-    /// node cannot reference inputs of "algorithm". With these restrictions, inference graph 
+    /// node cannot reference inputs of "algorithm". With these restrictions, inference graph
     /// can always be run independently without training information.
     ///
     /// By default, this field is an empty graph and its evaluation does not
@@ -1459,7 +1459,7 @@ namespace Onnx {
     private readonly pbc::RepeatedField<global::Onnx.StringStringEntryProto> initializationBinding_ = new pbc::RepeatedField<global::Onnx.StringStringEntryProto>();
     /// <summary>
     /// This field specifies the bindings from the outputs of "initialization" to
-    /// some initializers in "ModelProto.graph.initializer" and 
+    /// some initializers in "ModelProto.graph.initializer" and
     /// the "algorithm.initializer" in the same TrainingInfoProto.
     /// See "update_binding" below for details.
     ///
@@ -2398,7 +2398,7 @@ namespace Onnx {
   /// <summary>
   /// Graphs
   ///
-  /// A graph defines the computational logic of a model and is comprised of a parameterized 
+  /// A graph defines the computational logic of a model and is comprised of a parameterized
   /// list of nodes that form a directed acyclic graph based on their inputs and outputs.
   /// This is the equivalent of the "network" or "graph" in many deep learning
   /// frameworks.
@@ -4201,8 +4201,8 @@ namespace Onnx {
     public const int DenotationFieldNumber = 6;
     private string denotation_ = "";
     /// <summary>
-    /// An optional denotation can be used to denote the whole 
-    /// type with a standard semantic description as to what is 
+    /// An optional denotation can be used to denote the whole
+    /// type with a standard semantic description as to what is
     /// stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
     /// for pre-defined type denotations.
     /// </summary>
@@ -4970,9 +4970,9 @@ namespace Onnx {
         public const int ElemTypeFieldNumber = 1;
         private int elemType_;
         /// <summary>
-        /// This field MUST NOT have the value of UNDEFINED 
+        /// This field MUST NOT have the value of UNDEFINED
         /// This field MUST have a valid TensorProto.DataType value
-        /// This field MUST be present for this version of the IR. 
+        /// This field MUST be present for this version of the IR.
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public int ElemType {
