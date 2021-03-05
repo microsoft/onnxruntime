@@ -86,6 +86,59 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
   }
 }
 
+static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
+  /* Interchange Cast and Transpose nodes in the graph and return Transpose node if possible
+  *  Requirements to interchange Cast and Transpose nodes changing the order of the operations.
+  *  1. Both Cast and Transpose are one-output nodes (assuming both have one-input only)
+  *  2. Transpose only feeds the Cast node (and no other node)
+  *  3. Cast only feeds the MalMul node (and no other node)
+  */
+
+  ORT_ENFORCE(cast != nullptr);
+
+  auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0]);
+  if (transpose == nullptr || cast->GetOutputEdgesCount() !=1 || transpose->GetOutputEdgesCount() !=1) {
+    return nullptr;
+  }
+  ORT_ENFORCE(cast->GetOutputEdgesCount() ==1 && transpose->GetOutputEdgesCount() <= 1);
+  NodeArg* cast_input = cast->MutableInputDefs()[0];
+  NodeArg* cast_output = cast->MutableOutputDefs()[0];
+  NodeArg* transpose_input = transpose->MutableInputDefs()[0];
+  NodeArg* transpose_output = transpose->MutableOutputDefs()[0];
+  ORT_ENFORCE(cast_input == transpose_output);
+  auto* shape = transpose_output->Shape();
+  transpose_output->SetShape(*transpose_input->Shape());
+  cast_output->SetShape(*shape);
+  const std::vector<NodeArg*> new_cast_input_defs {transpose_input};
+  const std::vector<NodeArg*> new_cast_output_defs {cast_input};
+  const std::vector<NodeArg*> new_transpose_input_defs = {transpose_output};
+  const std::vector<NodeArg*> new_transpose_output_defs = {cast_output};
+
+  Node& new_cast = graph.AddNode(graph.GenerateNodeName("New_Cast"),
+                                      cast->OpType(),
+                                      "Created a new Cast node interchange Cast and Transpose nodes",
+                                      new_cast_input_defs,
+                                      new_cast_output_defs,
+                                      &cast->GetAttributes(),
+                                      cast->Domain());
+
+  Node& new_transpose = graph.AddNode(graph.GenerateNodeName("New_Transpose"),
+                                          transpose->OpType(),
+                                          "Created a new Transpose node to interchange Cast and Transpose nodes",
+                                          new_transpose_input_defs,
+                                          new_transpose_output_defs,
+                                          &transpose->GetAttributes(),
+                                          transpose->Domain());
+  (void) new_cast;
+  // graph_utils::FinalizeNodeFusion(graph, new_cast, *cast);
+  // graph_utils::FinalizeNodeFusion(graph, new_transpose, *transpose);
+  graph_utils::RemoveNodeOutputEdges(graph, *cast);
+  graph_utils::RemoveNodeOutputEdges(graph, *transpose);
+  graph.RemoveNode(cast->Index());
+  graph.RemoveNode(transpose->Index());
+  return &new_transpose;
+}
+
 Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -109,6 +162,19 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
 
     NodeArg* right_input = node.MutableInputDefs()[1];
     auto right = GetTransposeNodeFromOutput(graph, *right_input);
+
+    if (!left && !right) {
+      Node* n = graph.GetMutableProducerNode(left_input->Name());
+      if (n->OpType() == "Cast") {
+          left = GetTransposeNodeFromCast(graph, n);
+      }
+      if (!left) {
+        Node* n = graph.GetMutableProducerNode(right_input->Name());
+        if (n->OpType() == "Cast") {
+          right = GetTransposeNodeFromCast(graph, n);
+        }
+      }
+    }
 
     if (!left && !right) {
       continue;
