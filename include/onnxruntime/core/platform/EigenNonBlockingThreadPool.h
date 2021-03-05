@@ -10,6 +10,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include <type_traits>
+#include "nsync.h"
 
 #pragma once
 #include "onnxruntime_config.h"
@@ -163,7 +164,7 @@ class ThreadPoolProfiler {
 
  private:
   static const char* GetEventName(ThreadPoolEvent);
-  struct PerThreadNumber {
+  struct PerThreadStat {
     uint64_t events_[MAX_EVENT] = {};
     std::vector<onnxruntime::TimePoint> points_;
     void LogStart();
@@ -171,8 +172,35 @@ class ThreadPoolProfiler {
     void LogEndAndStart(ThreadPoolEvent);
     std::string Reset();
   };
-  std::unordered_map<::std::thread::id, PerThreadNumber> per_thread_numbers_;
-  OrtMutex mutex_;
+  nsync::nsync_mu shared_lock_ = NSYNC_MU_INIT;
+  struct LockRead {
+    nsync::nsync_mu* lock_ = nullptr;
+    LockRead(nsync::nsync_mu* lock) : lock_(lock) {
+      nsync_mu_rlock(lock_);
+    }
+    ~LockRead() {
+      nsync_mu_runlock(lock_);
+    }
+  };
+  struct LockWrite {
+    nsync::nsync_mu* lock_ = nullptr;
+    LockWrite(nsync::nsync_mu* lock) : lock_(lock) {
+      nsync_mu_lock(lock_);
+    }
+    ~LockWrite() {
+      nsync_mu_unlock(lock_);
+    }
+  };
+  using PerThreadStatMap = std::unordered_map<::std::thread::id, PerThreadStat>;
+  PerThreadStatMap per_thread_stat_map_;
+  inline PerThreadStatMap::iterator GetPerThreadStat() {
+    LockRead lock_read(&shared_lock_);
+    return per_thread_stat_map_.find(std::this_thread::get_id());
+  }
+  inline void SetPerThreadStat() {
+    LockWrite lock_write(&shared_lock_);
+    per_thread_stat_map_.insert({std::this_thread::get_id(), {}});
+  }
 };
 
 // Align to avoid false sharing with prior fields.  If required,

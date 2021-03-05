@@ -107,9 +107,8 @@ target_include_directories(onnxruntime_common
 
 target_link_libraries(onnxruntime_common Boost::mp11)
 
-if(NOT WIN32)
-  target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
-endif()
+target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+target_link_libraries(onnxruntime_common nsync_cpp)
 
 if(NOT onnxruntime_USE_OPENMP)
   target_compile_definitions(onnxruntime_common PUBLIC EIGEN_USE_THREADS)
