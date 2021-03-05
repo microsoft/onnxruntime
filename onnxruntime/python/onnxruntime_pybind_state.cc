@@ -665,19 +665,13 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
 
-  std::cout << "1 InitializeSession ***********************************@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
-
   if (provider_types.empty()) {
-    std::cout << "2.1 InitializeSession ***********************************@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
     // use default registration priority.
     RegisterExecutionProviders(sess, GetAllExecutionProviderNames(), provider_options_map);
   } else {
-    std::cout << "2.2 InitializeSession ***********************************@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
     RegisterExecutionProviders(sess, provider_types, provider_options_map);
   }
-  std::cout << "3 InitializeSession ***********************************@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
   OrtPybindThrowIfError(sess->Initialize());
-  std::cout << "4 InitializeSession ***********************************@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" << std::endl;
 }
 
 static bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
@@ -1717,23 +1711,18 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
 #endif
         } else {
-          std::cout << " 1 py::class_<PyInferenceSession>::init " << std::endl;
           sess = onnxruntime::make_unique<PyInferenceSession>(env, so);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
           RegisterCustomOpDomainsAndLibraries(sess.get(), so);
-          std::cout << " 2 py::class_<PyInferenceSession>::init " << std::endl;
 #endif
 
           if (is_arg_file_name) {
-            std::cout << " 3.1 py::class_<PyInferenceSession>::init " << std::endl;
             OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg));
           } else {
-            std::cout << " 3.2 py::class_<PyInferenceSession>::init " << std::endl;
             OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg.data(), arg.size()));
           }
         }
 
-        std::cout << " 4 py::class_<PyInferenceSession>::init " << std::endl;
         return sess;
       }))
       .def(
@@ -1829,22 +1818,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })
-#ifdef ENABLE_TRAINING
-      .def("run_forward", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions& run_options) -> py::tuple {
-        std::vector<OrtValue> module_outputs;
-        int64_t run_id;
-        Status status = sess->GetSessionHandle()->RunInBackgroundAndWaitForYield(run_options, *io_binding.Get(), module_outputs, run_id);
-        if (!status.IsOK()) {
-          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-        }
-        return py::make_tuple(module_outputs, run_id);
-      })
-      .def("run_backward", [](PyInferenceSession* sess, const std::vector<OrtValue>& backward_output_grads, int64_t run_id) -> void {
-        Status status = sess->GetSessionHandle()->ContinueRunInBackground(run_id, backward_output_grads);
-        if (!status.IsOK())
-          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-      })
-#endif
       ;
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())

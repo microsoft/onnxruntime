@@ -369,7 +369,7 @@ void addObjectMethodsForTraining(py::module& m) {
   // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
   struct PyTrainingSession : public PyInferenceSession {
     PyTrainingSession(Environment& env, const PySessionOptions& so)
-        : PyInferenceSession(std::make_shared<PipelineTrainingSession>(so, env)) {
+        : PyInferenceSession(onnxruntime::make_unique<PipelineTrainingSession>(so, env)) {
     }
   };
 
@@ -477,61 +477,23 @@ void addObjectMethodsForTraining(py::module& m) {
 
 
 struct PyTrainingAgent {
-  PyTrainingAgent(Environment& env, const PySessionOptions& so, const std::string& arg) {
-    py_sess_ = std::make_shared<PyInferenceSession>(env, so);
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-    RegisterCustomOpDomainsAndLibraries(py_sess_.get(), so);
-    std::cout << " 1 PyTrainingAgent ctor " << std::endl;
-#endif
-
-    std::cout << " 2 PyTrainingAgent ctor " << std::endl;
-    OrtPybindThrowIfError(py_sess_->GetSessionHandle()->Load(arg.data(), arg.size()));
-    std::cout << " 3 PyTrainingAgent ctor " << std::endl;
-
-    agent_ = onnxruntime::make_unique<TrainingAgent>(py_sess_->GetSessionHandle());
-    std::cout << " 4 PyTrainingAgent ctor " << std::endl;
+  PyTrainingAgent(PyInferenceSession* session) {
+    agent_ = onnxruntime::make_unique<TrainingAgent>(session->GetSessionHandle());
   }
 
-  InferenceSession* GetSessionHandle() const { return py_sess_->GetSessionHandle(); }
   TrainingAgent* GetAgentHandle() const { return agent_.get(); }
-
   virtual ~PyTrainingAgent() {}
 
  private:
-
-  std::shared_ptr<PyInferenceSession> py_sess_;
   std::unique_ptr<TrainingAgent> agent_;
 };
 
 py::class_<PyTrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
-      .def(py::init([](const PySessionOptions& so, const std::string arg) {
-        return onnxruntime::make_unique<PyTrainingAgent>(GetEnv(), so, arg);
+      .def(py::init([](PyInferenceSession * session) {
+        return onnxruntime::make_unique<PyTrainingAgent>(session);
       }))
-      .def(
-          "initialize_session",
-          [](PyTrainingAgent* agent,
-             const std::vector<std::string>& provider_types = {},
-             const ProviderOptionsVector& provider_options = {}) {
-            InitializeSession(agent->GetSessionHandle(), provider_types, provider_options);
-          },
-          R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
-      .def("get_session", [](PyTrainingAgent* agent) {
-        return agent->GetSessionHandle();
-      })
-      .def("get_providers", [](PyTrainingAgent* agent) -> const std::vector<std::string>& {
-        return agent->GetSessionHandle()->GetRegisteredProviderTypes();
-      })
-      .def("get_provider_options", [](PyTrainingAgent* agent) -> const ProviderOptionsMap& {
-        return agent->GetSessionHandle()->GetAllProviderOptions();
-      })
-      .def("get_session_options", [](PyTrainingAgent* agent) -> const PySessionOptions& {
-        const auto& session_options = agent->GetSessionHandle()->GetSessionOptions();
-
-        return static_cast<const PySessionOptions&>(session_options);
-      })
       .def("run_forward", [](PyTrainingAgent* agent, SessionIOBinding& io_binding, RunOptions& run_options) -> py::tuple {
         std::vector<OrtValue> module_outputs;
         int64_t run_id;

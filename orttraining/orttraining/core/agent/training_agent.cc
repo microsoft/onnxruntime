@@ -134,7 +134,7 @@ void TrainingAgent::CancelBackgroundTask(int64_t run_id) {
 }
 
 InferenceSession* TrainingAgent::GetSessionHandle() {
-  return inference_session_.get();
+  return inference_session_;
 }
 
 }  // namespace training

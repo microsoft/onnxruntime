@@ -238,7 +238,7 @@ class ORTModule(torch.nn.Module):
         self._save_onnx_prefix = ''
 
         # CPP extension to get torch CUDA allocator's alloc and free function addresses
-        self._use_external_cuda_allocator = False
+        self._use_external_cuda_allocator = True
         if self._use_external_cuda_allocator:
             self._torch_cuda_allocator = _load_torch_allocator_cpp_extension()
             self._torch_alloc = self._torch_cuda_allocator.cuda_caching_allocator_raw_alloc_address()
@@ -285,8 +285,8 @@ class ORTModule(torch.nn.Module):
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = 2
 
-        # import pdb; pdb.set_trace()
-        self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(), session_options, providers, provider_options)
+        self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(),
+                                                                    session_options, providers, provider_options)
 
         # Use this global run_options for now
         self._run_options = C.RunOptions()
