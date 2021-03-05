@@ -55,9 +55,8 @@ set_target_properties(onnxruntime_wasm PROPERTIES LINK_FLAGS "                  
                       -s VERBOSE=0                                                                               \
                       -s ASSERTIONS=1                                                                            \
                       -s NO_FILESYSTEM=1                                                                         \
-                      -s DISABLE_EXCEPTION_CATCHING=0                                                            \
                       --no-entry")
-  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR onnxruntime_ENABLE_WEBASSEMBLY_TEST)
   set_property(TARGET onnxruntime_wasm APPEND_STRING PROPERTY LINK_FLAGS " -s DEMANGLE_SUPPORT=1 -s DISABLE_EXCEPTION_CATCHING=0")
 else()
   set_property(TARGET onnxruntime_wasm APPEND_STRING PROPERTY LINK_FLAGS " -s DEMANGLE_SUPPORT=0 -s DISABLE_EXCEPTION_CATCHING=1")

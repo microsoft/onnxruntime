@@ -5,6 +5,7 @@
 import argparse
 import contextlib
 import glob
+import json
 import os
 import re
 import shutil
@@ -310,9 +311,10 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--wasm", action='store_true', help="build for WebAssembly")
     parser.add_argument(
-        "--skip_emsdk_install",
+        "--enable_wasm_test",
         action='store_true',
-        help="Skip emsdk installation to reduce build time")
+        help="Run unit tests for WebAssembly. "
+        "Don't set this flag for distribution purpose or with minimal build")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -724,8 +726,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
-        "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.wasm else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
+        "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.wasm else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_TEST=" + (
+            "ON" if args.enable_wasm_test and args.minimal_build == 'off' else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -897,22 +901,43 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             ]
 
     if args.wasm:
-        # install emscripten if not exist
+        # install emscripten if not exist.
+        # since emscripten doesn't support file packaging required for unit tests,
+        # need to apply patch with the specific version of emscripten.
+        # once patch is committed to emsdk repository, this must be replaced with 'latest'.
+        emsdk_version = "2.0.13"
+
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
         emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
+        emsdk_version_file = os.path.join(emsdk_dir, "upstream", "emscripten", "emscripten-version.txt")
         emscripten_cmake_toolchain_file = os.path.join(emsdk_dir, "upstream", "emscripten", "cmake", "Modules",
                                                        "Platform", "Emscripten.cmake")
 
-        if not (os.path.exists(emscripten_cmake_toolchain_file) and args.skip_emsdk_install):
+        if os.path.exists(emsdk_version_file):
+            with open(emsdk_version_file) as f:
+                emsdk_version_data = json.load(f)
+            emsdk_version_match = isinstance(emsdk_version_data, str) and emsdk_version_data == emsdk_version
+        if not os.path.exists(emscripten_cmake_toolchain_file) or not emsdk_version_match:
             print("Installing emsdk...")
-            run_subprocess([emsdk_file, "install", "latest"], cwd=emsdk_dir)
+            run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
         print("Activating emsdk...")
-        run_subprocess([emsdk_file, "activate", "latest"], cwd=emsdk_dir)
+        run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
         cmake_args += [
-            "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             "-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file
         ]
+
+        # by default, disable running unit tests due to wasm size and speed.
+        if not args.enable_wasm_test or args.minimal_build != 'off':
+            cmake_args += [
+                "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
+            ]
+            args.test = False
+        else:
+            # if wasm test is enabled, apply emsdk file_packager.py patch to enable file I/O from node.js
+            shutil.copy(
+                os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
+                os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
 
     if path_to_protoc_exe:
         cmake_args += [

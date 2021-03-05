@@ -21,13 +21,14 @@
     
     - Add '--wasm'.
     - Don't build as a shared lib to compile onnx protobuf properly.
-    - Skip unit test.
 
     In example,
 
     ```cmd
-    build.bat --config=Release --wasm --skip_tests
+    build.bat --config=Release --wasm
     ```
+
+    WebAssembly build disables running unit tests by default because it requires catching exceptions and impacts both size and speed. To run unit tests, add '--enable_wasm_test'.
 
 2. Reduce WebAssembly binary size and run with ort model format
 
@@ -36,7 +37,7 @@
     Keep the same restrictions listed at #1 above. In example,
 
     ```cmd
-    build.bat --config=MinSizeRel --wasm --skip_tests --include_ops_by_config required_operators.config --enable_reduced_operator_type_support --minimal_build --disable_exceptions --disable_ml_ops
+    build.bat --config=MinSizeRel --wasm --include_ops_by_config required_operators.config --enable_reduced_operator_type_support --minimal_build --disable_exceptions --disable_ml_ops
     ```
 
 ### Output
