@@ -3,8 +3,6 @@
 
 #include "core/providers/cpu/tensor/pad.h"
 
-#include "boost/mp11.hpp"
-
 #include "core/common/optional.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
@@ -68,7 +66,7 @@ using EnabledPad11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0);
 
 using AllEnabledPadTypes =
-    boost::mp11::mp_set_union<
+    utils::TypeSetUnion<
         EnabledPad2Types,
         EnabledPad11Types>;
 

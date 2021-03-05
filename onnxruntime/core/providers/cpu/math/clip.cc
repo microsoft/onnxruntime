@@ -3,10 +3,9 @@
 
 #include "core/providers/cpu/math/clip.h"
 
-#include "boost/mp11.hpp"
-
 #include "core/framework/data_types_internal.h"
 #include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
@@ -33,7 +32,7 @@ using Clip12Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider,
 using EnabledClip12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
 
 using AllEnabledClipTypes =
-    boost::mp11::mp_set_union<
+    utils::TypeSetUnion<
         EnabledClip11Types,
         EnabledClip12Types>;
 
