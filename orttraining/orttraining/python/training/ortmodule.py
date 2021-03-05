@@ -80,7 +80,7 @@ class ORTModule(torch.nn.Module):
         # Create forward dynamically, so each ORTModule instance will have its own copy.
         # This is needed to be able to copy the forward signatures from the original PyTorch models
         # and possibly have different signatures for different instances.
-        def _forward(self, *inputs, **kwargs):
+        def _forward(*inputs, **kwargs):
             '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
 
             ONNX model is exported the first time this method is executed.
@@ -196,9 +196,9 @@ class ORTModule(torch.nn.Module):
                 _ORTModuleFunction.apply(*self._convert_training_graph_input_to_list(*inputs, **kwargs)))
 
         # Bind the forward method.
-        self.forward = _forward.__get__(self)
+        self.forward = _forward
         # Copy the forward signature from the PyTorch module.
-        functools.update_wrapper(self.forward.__func__, module.forward.__func__)
+        functools.update_wrapper(self.forward, module.forward)
 
         super(ORTModule, self).__init__()
 
