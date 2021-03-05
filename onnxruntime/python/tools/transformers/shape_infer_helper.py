@@ -6,21 +6,22 @@ from symbolic_shape_infer import *
 
 
 class SymbolicShapeInferenceHelper(SymbolicShapeInference):
-    def __init__(self,
-                 model,
-                 dynamic_axis_mapping={
-                     "batch_size": 4,
-                     "seq_len": 16
-                 },
-                 verbose=0,
-                 int_max=2**31 - 1,
-                 auto_merge=True,
-                 guess_output_rank=False):
+    def __init__(
+            self,
+            model,
+            dynamic_axis_mapping={
+                "batch_size": 4,
+                "seq_len": 7
+            },  # use pytorch inputs seq_len as hints
+            verbose=0,
+            int_max=2**31 - 1,
+            auto_merge=True,
+            guess_output_rank=False):
         super().__init__(int_max, auto_merge, guess_output_rank, verbose)
         self.__infer(model, dynamic_axis_mapping)
 
     def __infer(self, model, dynamic_axis_mapping):
-        self.dynamic_axis_mapping_ = dynamic_axis_mapping  # e.g {"batch_size" : 4, "seq_len" : 16}
+        self.dynamic_axis_mapping_ = dynamic_axis_mapping  # e.g {"batch_size" : 4, "seq_len" :7}
 
         all_shapes_inferred = False
         self._preprocess(model)
@@ -59,4 +60,3 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
 
     def compare_shape(self, edge, edge_other):
         return self.get_edge_shape(edge) == self.get_edge_shape(edge_other)
-
