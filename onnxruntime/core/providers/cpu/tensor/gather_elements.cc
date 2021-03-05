@@ -1,17 +1,33 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gather_elements.h"
-#include "onnxruntime_config.h"
+#include "core/providers/cpu/tensor/gather_elements.h"
+
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, GatherElements, Input, 0,
+    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+}
+
+using DataTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, GatherElements, Input, 0);
+using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, GatherElements, Input, 0);
+
+const auto data_type_constraints = BuildKernelDefConstraintsFromTypeList<DataTypes>();
+const auto enabled_data_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>();
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     GatherElements,
     11,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
         .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
                                                         DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
@@ -20,7 +36,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     GatherElements,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
         .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
                                                         DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
@@ -299,7 +315,7 @@ Status GatherElements::Compute(OpKernelContext* context) const {
     return Status::OK();
 
   auto* ttp = context->GetOperatorThreadPool();
-  if (input_tensor->IsDataTypeString()) {
+  if (utils::HasType<EnabledDataTypes, std::string>() && input_tensor->IsDataTypeString()) {
     if (indices_tensor->IsDataType<int32_t>())
       core_impl<true, std::string, int32_t>(input_tensor, indices_tensor, output_tensor, axis, ttp);
     else
