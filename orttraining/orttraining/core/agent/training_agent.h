@@ -3,8 +3,6 @@
 
 #pragma once
 
-#if defined(ENABLE_TRAINING) && !defined(ORT_MINIMAL_BUILD)
-
 #include <thread>
 #include <future>
 
@@ -44,5 +42,3 @@ class TrainingAgent {
 
 }  // namespace training
 }  // namespace onnxruntime
-
-#endif

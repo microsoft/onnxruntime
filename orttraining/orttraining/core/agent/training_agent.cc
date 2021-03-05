@@ -1,8 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(ENABLE_TRAINING) && !defined(ORT_MINIMAL_BUILD)
-
 #include "orttraining/core/agent/training_agent.h"
 #include "core/session/IOBinding.h"
 #include "orttraining/training_ops/cpu/controlflow/ort_tasks.h"
@@ -136,5 +134,3 @@ void TrainingAgent::CancelPendingBackwardRun(int64_t run_id) {
 
 }  // namespace training
 }  // namespace onnxruntime
-
-#endif
