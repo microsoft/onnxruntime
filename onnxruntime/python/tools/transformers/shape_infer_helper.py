@@ -22,6 +22,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
             auto_merge=True,
             guess_output_rank=False):
         super().__init__(int_max, auto_merge, guess_output_rank, verbose)
+        self.dispatcher_['LongformerAttention'] = self._infer_LongformerAttention
         self.__infer(model, dynamic_axis_mapping)
 
     def __infer(self, model, dynamic_axis_mapping):
@@ -34,6 +35,12 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
 
         if not all_shapes_inferred:
             raise Exception("Incomplete symbolic shape inference")
+
+    def _infer_LongformerAttention(self, node):
+        shape = self._get_shape(node, 0)
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
 
     # Override a function in symbolic_shape_infer.py to ensure shape inference by giving the actual value of dynamic axis
     def _get_sympy_shape(self, node, idx):
