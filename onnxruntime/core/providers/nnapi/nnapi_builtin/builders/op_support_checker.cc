@@ -160,7 +160,8 @@ bool BaseOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 bool BaseOpSupportChecker::HasSupportedOpSet(const Node& node) const {
   auto since_version = node.SinceVersion();
   if (since_version < GetMinSupportedOpSet(node) || since_version > GetMaxSupportedOpSet(node)) {
-    LOGS_DEFAULT(VERBOSE) << node.OpType() << "is only supported for opset ["
+    LOGS_DEFAULT(VERBOSE) << node.OpType() << " opset [" << since_version
+                          << "] is only supported for opset ["
                           << GetMinSupportedOpSet(node) << ", "
                           << GetMaxSupportedOpSet(node) << "]";
     return false;
@@ -496,21 +497,23 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
           "GlobalMaxPool",
           "AveragePool",
           "MaxPool",
+          "QLinearAveragePool",
       });
 }
 
-bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                             const OpSupportCheckParams& /* params */) const {
+bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                                             const OpSupportCheckParams& params) const {
   const auto& op_type = node.OpType();
+  const auto& input_defs = node.InputDefs();
   Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
+  if (!GetShape(*input_defs[0], input_shape))
     return false;
 
   const auto input_size = input_shape.size();
   if (input_size != 4) {
     LOGS_DEFAULT(VERBOSE)
         << op_type << " only supports rank-4 tensor, input ["
-        << node.InputDefs()[0]->Name() << "] has actual dim count " << input_size;
+        << input_defs[0]->Name() << "] has actual dim count " << input_size;
     return false;
   }
 
@@ -549,18 +552,45 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* init
       LOGS_DEFAULT(VERBOSE) << "Argmax in maxpooling is not supported";
       return false;
     }
-  } else if (op_type != "GlobalAveragePool" && op_type != "GlobalMaxPool") {
+  } else if (op_type != "GlobalAveragePool" && op_type != "GlobalMaxPool" && op_type != "QLinearAveragePool") {
     LOGS_DEFAULT(VERBOSE) << "PoolOpBuilder, unknown op: " << op_type;
     return false;
+  }
+
+  // We need to check if we have valid scales and zero points for QLinearAveragePool
+  if (op_type == "QLinearAveragePool") {
+    if (input_defs.size() < 4)
+      return false;
+
+    // the output zero point can be optional
+    bool has_output_zp = input_defs.size() == 5;
+
+    if (!HasValidQuantizationScales(initializers, node, {1, 3}, params))
+      return false;
+
+    if (!HasValidQuantizationZeroPoints(initializers, node,
+                                        has_output_zp
+                                            ? std::vector<size_t>{2}
+                                            : std::vector<size_t>{2, 4})) {
+      return false;
+    }
   }
 
   return true;
 }
 
 bool PoolOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
-  if (node.OpType() != "MaxPool")
+  bool is_max_pool = node.OpType() == "MaxPool";
+  bool is_qlinear_average_pool = node.OpType() == "QLinearAveragePool";
+  if (!is_max_pool && !is_qlinear_average_pool)
     return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
+  if (is_qlinear_average_pool) {
+    return HasValidUnaryOpQuantizedInputs(node);
+  }
+
+  // is_max_pool
+  // For max pool, we can support both float and uint8 input
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type))
     return false;
@@ -1015,18 +1045,7 @@ bool UnaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   if (node.OpType() != "QLinearSigmoid")
     return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
-  int32_t input_type;
-  if (!GetType(*node.InputDefs()[0], input_type))
-    return false;
-
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
+  return HasValidUnaryOpQuantizedInputs(node);
 }
 
 // All ops except "Sin" opset 5- uses consumed_inputs attribute which is not supported for now
@@ -1591,6 +1610,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("GlobalMaxPool", PoolOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("AveragePool", PoolOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("MaxPool", PoolOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearAveragePool", PoolOpSupportChecker);
   }
 
   {
