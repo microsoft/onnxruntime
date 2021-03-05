@@ -229,6 +229,9 @@ class ORTModule(torch.nn.Module):
 
         # Related to training graph shape inference
         self._current_input_shape = None
+        # default execution order is priority-based for both dynamic/static shape input for now
+        # if we observe benefit of static shape, we can expose this flag to user       
+        self._use_static_shape = False 
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
         self._original_module_output_schema = None
@@ -291,6 +294,8 @@ class ORTModule(torch.nn.Module):
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False
         session_options.use_deterministic_compute = False
+        # default to PRIORITY_BASED execution order
+        session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = 2
 
@@ -305,7 +310,10 @@ class ORTModule(torch.nn.Module):
         self._training_io_binding = self._training_session.io_binding()
 
     def _build_training_graph(self, *inputs, **kwargs):
-        self._module_gradient_graph_builder.build(self._current_input_shape)
+        if self._use_static_shape:
+            self._module_gradient_graph_builder.build(self._current_input_shape)
+        else:
+            self._module_gradient_graph_builder.build()
         self._onnx_training = onnx.load_model_from_string(self._module_gradient_graph_builder.get_training_model())
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_training_graph_info()
 
