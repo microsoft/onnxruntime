@@ -1,7 +1,11 @@
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+# In ORT Package the symbolic_shape_infer.py is in ../tools
+if os.path.exists("../tools/symbolic_shape_infer.py"):
+    sys.path.append(os.path.join(os.path.dirname(__file__), '../tools'))
+else:
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from symbolic_shape_infer import *
 
 
