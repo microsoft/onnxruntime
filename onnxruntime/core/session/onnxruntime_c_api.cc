@@ -30,6 +30,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include "core/session/ort_experimental_apis.h"
 #include "core/session/ort_env.h"
 #include "core/framework/data_types.h"
 #include "abi_session_options_impl.h"
@@ -1875,6 +1876,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
+    &OrtExperimentalApis::GetExperimentalApi,
 };
 
 /* Rules on how to add a new Ort API version
@@ -2113,6 +2115,21 @@ static constexpr OrtApi ort_api_1_to_8 = {
     // Version 8 - In development, feel free to add/remove/rearrange here
 };
 
+static constexpr OrtExperimentalApi ort_experimental_apis = {
+    &OrtExperimentalApis::CreatePipelineSession,
+    &OrtExperimentalApis::ReleasePipelineSession,
+    &OrtExperimentalApis::Run,
+    &OrtExperimentalApis::CreateOrtRequestBatch,
+    &OrtExperimentalApis::ReleaseRequestBatch,
+    &OrtExperimentalApis::CreateOrtResponseBatch,
+    &OrtExperimentalApis::ReleaseResponseBatch,
+    &OrtExperimentalApis::AddRequestToBatch,
+    &OrtExperimentalApis::AddResponseToBatch,
+    &OrtExperimentalApis::GetOutputValues,
+    &OrtExperimentalApis::ClearRequestBatch,
+    &OrtExperimentalApis::ClearResponseBatch,
+};
+
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
@@ -2125,6 +2142,10 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
           version, ORT_API_VERSION);
 
   return nullptr;  // Unsupported version
+}
+
+ORT_API(const OrtExperimentalApi*, OrtExperimentalApis::GetExperimentalApi) {
+  return &ort_experimental_apis;
 }
 
 ORT_API(const char*, OrtApis::GetVersionString) {
