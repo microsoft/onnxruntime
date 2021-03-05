@@ -31,7 +31,6 @@ class TrainingAgent {
     // For ORTModule.backward()
     common::Status ContinueRunInBackground(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
     void CancelBackgroundTask(int64_t run_id);
-    InferenceSession* GetSessionHandle();
 
   protected:
     // mutex for accessing bg_threads_

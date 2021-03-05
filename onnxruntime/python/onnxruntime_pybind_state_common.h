@@ -92,11 +92,6 @@ struct PyInferenceSession {
   std::unique_ptr<InferenceSession> sess_;
 };
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-// TODO: Originally it was static. Should it continue to be so?
-void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const PySessionOptions& so);
-#endif
-
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {
   static PySessionOptions so;
   return so;

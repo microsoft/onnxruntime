@@ -133,9 +133,5 @@ void TrainingAgent::CancelBackgroundTask(int64_t run_id) {
   onnxruntime::contrib::OrtTasks::GetInstance().RemoveTask(run_id);
 }
 
-InferenceSession* TrainingAgent::GetSessionHandle() {
-  return inference_session_;
-}
-
 }  // namespace training
 }  // namespace onnxruntime
