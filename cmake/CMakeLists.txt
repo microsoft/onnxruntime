@@ -148,6 +148,8 @@ option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
+# Enable bitcode for iOS
+option(onnxruntime_ENABLE_BITCODE "Enable bitcode on iOS only" OFF)
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
 # using the MSVC compiler and on windows OS.
@@ -167,6 +169,14 @@ endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
+endif()
+
+if (onnxruntime_ENABLE_BITCODE)
+  if (NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS"))
+    message(FATAL_ERROR "iOS platform required for onnxruntime_ENABLE_BITCODE")
+  endif()
+  set(CMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE YES)
+  set(CMAKE_XCODE_ATTRIBUTE_BITCODE_GENERATION_MODE "bitcode")
 endif()
 
 if (onnxruntime_ENABLE_MEMORY_PROFILE)
@@ -261,7 +271,10 @@ if (onnxruntime_MINIMAL_BUILD)
       string(APPEND CMAKE_SHARED_LINKER_FLAGS " /debug")
     endif()
   else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
+    if (NOT onnxruntime_ENABLE_BITCODE)
+      # Cannot use -ffunction-sections -fdata-sections if we enable bitcode
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
+    endif()
     if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
       add_link_options(-Wl, -dead_strip)
     else()
@@ -331,7 +344,8 @@ endif()
 # don't have built-in support for 8 byte atomics
 # Derived from https://github.com/protocolbuffers/protobuf/blob/master/cmake/CMakeLists.txt
 set(onnxruntime_LINK_LIBATOMIC false)
-if (NOT MSVC)
+# We don't need to link libatomic on iOS
+if (NOT MSVC AND NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS"))
   include(CheckCXXSourceCompiles)
   set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
   set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} -std=c++11)
@@ -1028,9 +1042,12 @@ if (WIN32)
     endforeach()
 else()
   add_definitions(-DPLATFORM_POSIX)
-  # Enable warning and enable space optimization in Linux
-  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
-  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+    # Enable warning and enable space optimization in Linux
+    if (NOT onnxruntime_ENABLE_BITCODE)
+    # Cannot use -ffunction-sections -fdata-sections if we enable bitcode
+    string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+    string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+  endif()
 
   if(onnxruntime_DEV_MODE)
     string(APPEND CMAKE_CXX_FLAGS " -Werror")
