@@ -289,12 +289,13 @@ typedef struct OrtTensorRTProviderOptions {
 /// </summary>
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{} {}
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{} {}
 #endif
   const char* device_type;                // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
   unsigned char enable_vpu_fast_compile;  // 0 = false, nonzero = true
   const char* device_id;
   size_t num_of_threads;  // 0 uses default number of threads
+  unsigned char use_compiled_network; // 0 = false, nonzero = true
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;

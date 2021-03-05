@@ -18,6 +18,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
+  openvino_ep::BackendManager::GetGlobalContext().use_compiled_network = info.use_compiled_network_;
+
   if ((int)info.num_of_threads_ <= 0) {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
   } else {
@@ -55,6 +57,9 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
+  openvino_ep::BackendManager::GetGlobalContext().onnx_model_name = graph_viewer.Name();
+  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = graph_viewer.ModelPath().ToPathString();
+  openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
 #if defined OPENVINO_2020_3
   result = openvino_ep::GetCapability_2020_3(graph_viewer,

@@ -19,6 +19,8 @@ const std::string log_tag = "[OpenVINO-EP] ";
 bool IsDebugEnabled();
 #endif
 
+bool UseCompiledNetwork();
+
 void SetIODefs(const ONNX_NAMESPACE::Provider_ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
                std::unordered_map<std::string, int> output_names,

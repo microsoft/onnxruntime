@@ -72,6 +72,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool enable_vpu_fast_compile = false; // [device_id]: Selects a particular hardware device for inference.
     std::string device_id = ""; // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
     size_t num_of_threads = 8; // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
+    bool use_compiled_network = false;
 
     #ifdef _MSC_VER
     std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
@@ -110,6 +111,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "use_compiled_network") {
+        if(value == "true" || value == "True"){
+          use_compiled_network = true;
+        } else if (value == "false" || value == "False") {
+          use_compiled_network = false;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'use_compiled_network' should be a boolean i.e. true or false. Default value is false.\n");
+        }
       } else if (key == "num_of_threads") {
         std::stringstream sstream(value);
         sstream >> num_of_threads;
@@ -125,6 +134,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     options.device_id = device_id.c_str(); // To set the device_id
     options.enable_vpu_fast_compile = enable_vpu_fast_compile; // To enable_vpu_fast_compile, default is false
     options.num_of_threads = num_of_threads; // To set number of free InferRequests, default is 8
+    options.use_compiled_network = use_compiled_network; // To use_compiled_network, default is false
     session_options.AppendExecutionProvider_OpenVINO(options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");

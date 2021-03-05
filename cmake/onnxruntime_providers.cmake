@@ -605,6 +605,10 @@ if (onnxruntime_USE_OPENVINO)
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+  if(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/ov_compiled_blobs")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ov_compiled_blobs")
+  endif()
 endif()
 
 if (onnxruntime_USE_COREML)

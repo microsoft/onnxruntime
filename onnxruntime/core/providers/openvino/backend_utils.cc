@@ -38,6 +38,18 @@ void DumpOnnxModelProto(const Provider_ModelProto& model_proto, std::string file
   model_proto.SerializeToOstream(outfile);
 }
 
+bool UseCompiledNetwork() {
+#ifdef _WIN32
+  size_t env_name_len = 0;
+  char* env_name = nullptr;
+  bool res = (_dupenv_s(&env_name, &env_name_len, "OV_USE_COMPILED_NETWORK") == 0 && env_name != nullptr);
+  free(env_name);
+  return res;
+#else
+  return (std::getenv("OV_USE_COMPILED_NETWORK") != nullptr);;
+#endif
+}
+
 #endif
 
 struct static_cast_int64 {
