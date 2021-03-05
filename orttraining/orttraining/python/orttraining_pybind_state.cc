@@ -9,9 +9,7 @@
 
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
-#if !defined(ORT_MINIMAL_BUILD)
 #include "orttraining/core/agent/training_agent.h"
-#endif
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/module_gradient_graph_builder.h"
@@ -477,8 +475,6 @@ void addObjectMethodsForTraining(py::module& m) {
         return static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->IsGraphOutputFp32Node(output_name);
       });
 
-#if !defined(ORT_MINIMAL_BUILD)
-
 py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class used to run a ORTModule model.)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
@@ -545,7 +541,6 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
         return module_gradient_graph_builder->GetTrainingGraphInfo();
       });
 }
-#endif
 
 }  // namespace python
 }  // namespace onnxruntime
