@@ -2,13 +2,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-import collections
-import collections.abc
-import os
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
-# TODO: This create a circular dependency
 from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
 
@@ -48,10 +44,6 @@ class TrainingAgent(object):
         self._training_agent = None
         self._inference_session = None
 
-        self._session_options = session_options
-        self._providers = providers
-        self._provider_options = provider_options
-
         self.create_training_agent(path_or_bytes, session_options, providers, provider_options)
 
 
@@ -59,10 +51,6 @@ class TrainingAgent(object):
         self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
                                                                providers, provider_options)
         self._training_agent = C_TrainingAgent(self._inference_session._sess)
-
-        self._sess_options = self._inference_session.get_session_options()
-        self._providers = self._inference_session.get_providers()
-        self._provider_options = self._inference_session.get_provider_options()
 
     def io_binding(self):
         "Return an onnxruntime.IOBinding object`."

@@ -545,7 +545,6 @@ common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR
 
 common::Status InferenceSession::Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
                                       const std::string& event_name) {
-
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {

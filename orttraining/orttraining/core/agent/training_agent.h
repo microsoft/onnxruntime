@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if defined(ENABLE_TRAINING) && !defined(ORT_MINIMAL_BUILD)
+
 #include <thread>
 #include <future>
 
@@ -18,21 +20,20 @@ namespace onnxruntime {
 namespace training {
 class IOBinding;
 
-// TODO: Define how minimal builds will play out here!
 class TrainingAgent {
 
   public:
     explicit TrainingAgent(InferenceSession* session);
     virtual ~TrainingAgent();
     // For ORTModule.forward()
-    virtual common::Status RunInBackgroundAndWaitForYield(const RunOptions& run_options, onnxruntime::IOBinding& io_binding,
-                                                          std::vector<OrtValue>& user_outputs,
-                                                          int64_t& run_id) ORT_MUST_USE_RESULT;
+    virtual common::Status RunForward(const RunOptions& run_options, onnxruntime::IOBinding& io_binding,
+                                               std::vector<OrtValue>& user_outputs,
+                                               int64_t& run_id) ORT_MUST_USE_RESULT;
     // For ORTModule.backward()
-    common::Status ContinueRunInBackground(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
-    void CancelBackgroundTask(int64_t run_id);
+    common::Status RunBackward(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
+    void CancelPendingBackwardRun(int64_t run_id);
 
-  protected:
+  private:
     // mutex for accessing bg_threads_
     std::mutex bg_threads_mutex_;
     // background threads for RunInBackgroundAndWaitForYield and ContinueRunInBackground
@@ -43,3 +44,5 @@ class TrainingAgent {
 
 }  // namespace training
 }  // namespace onnxruntime
+
+#endif

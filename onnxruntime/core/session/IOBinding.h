@@ -14,13 +14,6 @@
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
-
-#ifdef ENABLE_TRAINING
-namespace training {
-class TrainingAgent;
-}
-#endif
-
 class SessionState;
 /**
  * Input/Output binding.
@@ -102,9 +95,6 @@ class IOBinding {
 
  private:
   friend InferenceSession;
-#ifdef ENABLE_TRAINING
-  friend training::TrainingAgent;
-#endif
 
   IOBinding(const SessionState& session_state);
   const SessionState& session_state_;

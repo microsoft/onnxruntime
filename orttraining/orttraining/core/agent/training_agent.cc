@@ -1,6 +1,8 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if defined(ENABLE_TRAINING) && !defined(ORT_MINIMAL_BUILD)
+
 #include "orttraining/core/agent/training_agent.h"
 #include "core/session/IOBinding.h"
 #include "orttraining/training_ops/cpu/controlflow/ort_tasks.h"
@@ -23,13 +25,13 @@ TrainingAgent::~TrainingAgent() {
   }
   for (int64_t run_id : run_ids) {
     if (!onnxruntime::contrib::OrtTasks::GetInstance().TaskIsCompleted(run_id)) {
-      CancelBackgroundTask(run_id);
+      CancelPendingBackwardRun(run_id);
     }
   }
 };
 
-common::Status TrainingAgent::RunInBackgroundAndWaitForYield(const RunOptions& run_options, onnxruntime::IOBinding& io_binding,
-                                                             std::vector<OrtValue>& user_outputs, int64_t& run_id) {
+common::Status TrainingAgent::RunForward(const RunOptions& run_options, onnxruntime::IOBinding& io_binding,
+                                         std::vector<OrtValue>& user_outputs, int64_t& run_id) {
   std::promise<void> setup_promise;
   std::future<void> setup_future = setup_promise.get_future();
 
@@ -39,8 +41,7 @@ common::Status TrainingAgent::RunInBackgroundAndWaitForYield(const RunOptions& r
     // wait until task is properly setup
     setup_future.get();
 
-    common::Status status = inference_session_->Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
-                                                    &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
+    common::Status status = inference_session_->Run(run_options, io_binding);
 
     onnxruntime::contrib::OrtTasks::GetInstance().SetStatus(status);
 
@@ -92,7 +93,7 @@ common::Status TrainingAgent::RunInBackgroundAndWaitForYield(const RunOptions& r
   return Status::OK();
 }
 
-common::Status TrainingAgent::ContinueRunInBackground(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) {
+common::Status TrainingAgent::RunBackward(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) {
   LOGS(*inference_session_->GetLogger(), VERBOSE) << "Running TrainingAgent::Backward() with run_id " << run_id;
 
   // resume background thread
@@ -115,7 +116,7 @@ common::Status TrainingAgent::ContinueRunInBackground(int64_t run_id, const std:
   return bg_thread_status;
 }
 
-void TrainingAgent::CancelBackgroundTask(int64_t run_id) {
+void TrainingAgent::CancelPendingBackwardRun(int64_t run_id) {
   LOGS(*inference_session_->GetLogger(), WARNING) << "Canceling background task with run_id " << run_id;
 
   // resume background thread with terminate = true
@@ -135,3 +136,5 @@ void TrainingAgent::CancelBackgroundTask(int64_t run_id) {
 
 }  // namespace training
 }  // namespace onnxruntime
+
+#endif
