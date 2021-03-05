@@ -31,14 +31,11 @@ using Clip11Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider,
 using EnabledClip11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0);
 using Clip12Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
 using EnabledClip12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
-using Clip13Types = Clip12Types;
-using EnabledClip13Types = EnabledClip12Types;
 
 using AllEnabledClipTypes =
     boost::mp11::mp_set_union<
         EnabledClip11Types,
-        EnabledClip12Types,
-        EnabledClip13Types>;
+        EnabledClip12Types>;
 
 #define REG_KERNEL_VERSIONED_NONTEMPL(                                                 \
     OP_TYPE, START_VER, END_VER, KERNEL_CLASS, DEFAULT_TYPE_LIST, ENABLED_TYPE_LIST)   \
@@ -67,7 +64,7 @@ using AllEnabledClipTypes =
 
 REG_KERNEL_VERSIONED_NONTEMPL(Clip, 11, 11, Clip, Clip11Types, EnabledClip11Types);
 REG_KERNEL_VERSIONED_NONTEMPL(Clip, 12, 12, Clip, Clip12Types, EnabledClip12Types);
-REG_KERNEL_NONTEMPL(Clip, 13, Clip, Clip13Types, EnabledClip13Types);
+REG_KERNEL_NONTEMPL(Clip, 13, Clip, Clip12Types, EnabledClip12Types);
 
 #undef REG_KERNEL_VERSIONED_NONTEMPL
 #undef REG_KERNEL_NONTEMPL
