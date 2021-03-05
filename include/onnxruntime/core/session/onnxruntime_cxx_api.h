@@ -345,6 +345,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
 
 struct Session : Base<OrtSession> {
   explicit Session(std::nullptr_t) {}
+  explicit Session(OrtSession* p) : Base<OrtSession>{p} {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);
 
