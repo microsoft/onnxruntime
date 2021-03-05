@@ -100,6 +100,13 @@ stages:
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
           workingDirectory: $(Build.SourcesDirectory)
 
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)'
+          Contents: 'Release/dist/*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
         inputs:
@@ -116,13 +123,6 @@ stages:
               onnxruntimecpubuild \
                 bash /onnxruntime/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ $(Build.SourcesDirectory) $(Build.BinariesDirectory)
           workingDirectory: $(Build.SourcesDirectory)
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)'
-          Contents: 'Release/dist/*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
