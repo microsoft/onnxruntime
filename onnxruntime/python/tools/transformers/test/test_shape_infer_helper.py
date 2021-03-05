@@ -9,7 +9,7 @@ from benchmark_helper import Precision
 from shape_infer_helper import *
 
 
-class TestBertOptimization(unittest.TestCase):
+class SymbolicShapeInferenceHelper(unittest.TestCase):
     def _load_onnx(self, model_name):
         input_names = MODELS[model_name][0]
         base_path = "../onnx_models/"
