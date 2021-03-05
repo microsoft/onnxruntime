@@ -71,7 +71,7 @@ class OrtCondVar {
 
  private:
   void timed_wait_impl(std::unique_lock<OrtMutex>& __lk,
-                       std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>);
+                       std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds>);
 };
 
 template <class _Predicate>
@@ -86,16 +86,16 @@ std::cv_status OrtCondVar::wait_for(std::unique_lock<OrtMutex>& cond_mutex,
   using namespace std::chrono;
   if (rel_time <= duration<Rep, Period>::zero())
     return std::cv_status::timeout;
-  using SystemTimePointFloat = time_point<system_clock, duration<long double, std::nano> >;
-  using SystemTimePoint = time_point<system_clock, nanoseconds>;
-  SystemTimePointFloat max_time = SystemTimePoint::max();
+  using SystemTimePoint = time_point<system_clock, milliseconds>;
+  auto max_time = SystemTimePoint::max();
   steady_clock::time_point steady_now = steady_clock::now();
   system_clock::time_point system_now = system_clock::now();
   if (max_time - rel_time > system_now) {
-    nanoseconds remain = duration_cast<nanoseconds>(rel_time);
+    milliseconds remain = duration_cast<milliseconds>(rel_time);
     if (remain < rel_time)
       ++remain;
-    timed_wait_impl(cond_mutex, system_now + remain);
+    auto tmp = time_point_cast<milliseconds>(system_now);
+    timed_wait_impl(cond_mutex, tmp + remain);
   } else
     timed_wait_impl(cond_mutex, SystemTimePoint::max());
   return steady_clock::now() - steady_now < rel_time ? std::cv_status::no_timeout : std::cv_status::timeout;
