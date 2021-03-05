@@ -1042,12 +1042,12 @@ if (WIN32)
     endforeach()
 else()
   add_definitions(-DPLATFORM_POSIX)
-    # Enable warning and enable space optimization in Linux
-    if (NOT onnxruntime_ENABLE_BITCODE)
-      # Cannot use -ffunction-sections -fdata-sections if we enable bitcode
-      string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
-      string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
-    endif()
+  # Enable warning and enable space optimization in Linux
+  if (NOT onnxruntime_ENABLE_BITCODE)
+    # Cannot use -ffunction-sections -fdata-sections if we enable bitcode
+    string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+    string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+  endif()
 
   if(onnxruntime_DEV_MODE)
     string(APPEND CMAKE_CXX_FLAGS " -Werror")
