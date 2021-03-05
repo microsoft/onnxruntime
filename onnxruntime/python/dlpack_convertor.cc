@@ -120,6 +120,83 @@ DLManagedTensor* ort_value_to_dlpack(const OrtValue& ort_value) {
   return &(ort_dlmanaged_tensor->tensor);
 }
 
+OrtDevice get_ort_device(const DLContext& ctx) {
+  switch (ctx.device_type) {
+    case DLDeviceType::kDLCPU:
+      return OrtDevice();
+    case DLDeviceType::kDLGPU:
+      return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(ctx.device_id));
+    default:
+      ORT_THROW("Unsupported device type");
+  }
+}
+
+MLDataType get_ort_value_data_type(const DLDataType& dtype) {
+  if (dtype.lanes != 1) ORT_THROW("ORT does not support lanes != 1");
+  switch (dtype.code) {
+    case DLDataTypeCode::kDLUInt:
+      switch (dtype.bits) {
+        case 8:
+          return DataTypeImpl::GetType<bool>();
+        default:
+          ORT_THROW("Unsupported kUInt bits " + std::to_string(dtype.bits));
+      }
+    case DLDataTypeCode::kDLInt:
+      switch (dtype.bits) {
+        case 8:
+          return DataTypeImpl::GetType<int8_t>();
+        case 16:
+          return DataTypeImpl::GetType<int16_t>();
+        case 32:
+          return DataTypeImpl::GetType<int32_t>();
+        case 64:
+          return DataTypeImpl::GetType<int64_t>();
+        default:
+          ORT_THROW("Unsupported kInt bits " + std::to_string(dtype.bits));
+      }
+    case DLDataTypeCode::kDLFloat:
+      switch (dtype.bits) {
+        case 16:
+          return DataTypeImpl::GetType<MLFloat16>();
+        case 32:
+          return DataTypeImpl::GetType<float>();
+        case 64:
+          return DataTypeImpl::GetType<double>();
+        default:
+          ORT_THROW("Unsupported kFloat bits " + std::to_string(dtype.bits));
+      }
+    default:
+      ORT_THROW("Unsupported code " + std::to_string(dtype.code));
+  }
+}
+
+static const char* get_device_name(const OrtDevice& device) {
+  switch (device.Type()) {
+    case OrtDevice::CPU:
+      return CPU;
+    case OrtDevice::GPU:
+      return CUDA;
+    default:
+      ORT_THROW("Unknown device type: ", device.Type());
+  }
+}
+
+OrtValue dlpack_to_ort_value(const DLManagedTensor* src) {
+  OrtDevice device = get_ort_device(src->dl_tensor.ctx);
+  MLDataType data_type = get_ort_value_data_type(src->dl_tensor.dtype);
+  auto deleter = [src](void*) { src->deleter(const_cast<DLManagedTensor*>(src)); };
+
+  ORT_ENFORCE(src->dl_tensor.strides, "Supports tensor without strides for now");
+  OrtMemoryInfo info(get_device_name(device), OrtDeviceAllocator, device, device.Id());
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(
+      data_type, TensorShape(src->dl_tensor.shape, static_cast<size_t>(src->dl_tensor.ndim)), src->dl_tensor.data,
+      info);
+
+  OrtValue ort_value;
+  ort_value.Initialize(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);
+  return ort_value;
+}
+
 }  // namespace python
 }  // namespace onnxruntime
 #endif

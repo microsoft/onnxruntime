@@ -562,3 +562,10 @@ class OrtValue:
         Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
         '''
         return self._ortvalue.to_dlpack()
+
+    @staticmethod
+    def from_dlpack(dlpack_tensor):
+        '''
+        Returns a OrtValue object from DLPack.
+        '''
+        return OrtValue(C.OrtValue.from_dlpack(dlpack_tensor))

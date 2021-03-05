@@ -6,7 +6,7 @@ import onnxruntime
 import torch
 from inspect import signature
 
-from torch.utils.dlpack import from_dlpack
+from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
 
 # Needed to re-implement PyTorch's cpu,cuda,to methods
@@ -160,8 +160,7 @@ class ORTModule(torch.nn.Module):
                         grad_output = grad_outputs[i]
                         if not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
-                        backward_grad_output_ortvalue.append(onnxruntime.OrtValue.ortvalue_from_data_ptr(list(grad_output.size()), _utils.dtype_torch_to_numpy(
-                            grad_output.dtype), grad_output.device.type, _utils.get_device_index(grad_output.device), grad_output.data_ptr()))
+                        backward_grad_output_ortvalue.append(onnxruntime.OrtValue.from_dlpack(to_dlpack(grad_output)))
 
                     # Run and get results
                     run_id = ctx.run_id
