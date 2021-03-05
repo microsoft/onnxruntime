@@ -161,10 +161,6 @@ if(onnxruntime_USE_VALGRIND AND NOT WIN32)
   add_definitions(-DRE2_ON_VALGRIND=1)
 endif()
 
-if(WIN32)
-  string(APPEND CMAKE_CXX_FLAGS " /W3")
-endif()
-
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
 endif()
@@ -962,9 +958,9 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND Onnxruntime_GCOV_COVERAGE)
   string(APPEND CMAKE_C_FLAGS   " -g -O0 --coverage ")
 endif()
 
-set(ORT_WARNING_FLAGS )
 #Adjust warning flags
 if (WIN32)
+    set(ORT_WARNING_FLAGS)
     add_definitions(-DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES)
     if(onnxruntime_ENABLE_MEMLEAK_CHECKER)
       add_definitions(-DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
