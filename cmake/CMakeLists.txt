@@ -149,7 +149,7 @@ option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
 # Enable bitcode for iOS
-option(onnxruntime_ENABLE_BITCODE "Enable bitcode on iOS only" OFF)
+option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
 # using the MSVC compiler and on windows OS.
@@ -1044,10 +1044,10 @@ else()
   add_definitions(-DPLATFORM_POSIX)
     # Enable warning and enable space optimization in Linux
     if (NOT onnxruntime_ENABLE_BITCODE)
-    # Cannot use -ffunction-sections -fdata-sections if we enable bitcode
-    string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
-    string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
-  endif()
+      # Cannot use -ffunction-sections -fdata-sections if we enable bitcode
+      string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+      string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+    endif()
 
   if(onnxruntime_DEV_MODE)
     string(APPEND CMAKE_CXX_FLAGS " -Werror")
