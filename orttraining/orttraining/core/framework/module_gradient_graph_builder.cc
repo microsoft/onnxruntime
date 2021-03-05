@@ -212,8 +212,12 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
     yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
   }
 
-  for (const auto& element : training_graph_info_.backward_output_grad_names_map) {
-    yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(element.first));
+  for (const auto& name : training_graph_info_.user_output_names) {
+    std::string grad_name = name + "_grad";
+    auto element = training_graph_info_.backward_output_grad_names_map.find(grad_name);
+    if (element != training_graph_info_.backward_output_grad_names_map.end()) {
+      yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(element->first));
+    }  
   }
 
   NodeAttributes attributes({{attribute_name, required_grad}});
