@@ -296,24 +296,10 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     '''
     return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
 
-def check_and_install_module(module):
-    import sys
-    import subprocess
-    import pkg_resources
-
-    required = {module}
-    installed = {pkg.key for pkg in pkg_resources.working_set}
-    missing = required - installed
-    if missing:
-        python = sys.executable
-        subprocess.check_call([python, '-m', 'pip', 'install', *missing], stdout=subprocess.DEVNULL)
-
-
 def write_calibration_table(calibration_cache):
     '''
     Helper function to write calibration table to files.   
     '''
-    check_and_install_module('flatbuffers')
 
     import json
     import flatbuffers
