@@ -572,17 +572,17 @@ Implicit Arguments:
         FUNCTION_ENTRY MlasGemmU8U8KernelAvx512Core
 
         mov     eax,1
-        jmp     MlasGemmU8X8KernelAvx512Core
+        jmp     C_UNDERSCORE(MlasGemmU8X8KernelAvx512Core)
 
         FUNCTION_ENTRY MlasGemmU8S8KernelAvx512Core
 
         xor     eax,eax
-        jmp     MlasGemmU8X8KernelAvx512Core
+        jmp     C_UNDERSCORE(MlasGemmU8X8KernelAvx512Core)
 
         FUNCTION_ENTRY MlasGemmU8S8KernelAvx512Vnni
 
         mov     eax,-1
-        jmp     MlasGemmU8X8KernelAvx512Core
+        jmp     C_UNDERSCORE(MlasGemmU8X8KernelAvx512Core)
 
 /*++
 

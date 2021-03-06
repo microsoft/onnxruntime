@@ -733,18 +733,18 @@ Implicit Arguments:
 
         FUNCTION_ENTRY MlasGemmU8S8KernelAvxVnni
 
-        mov      eax,-1
-        jmp     MlasGemmU8X8KernelAvx2
+        mov     eax,-1
+        jmp     C_UNDERSCORE(MlasGemmU8X8KernelAvx2)
 
         FUNCTION_ENTRY MlasGemmU8U8KernelAvx2
 
-        mov      eax,1
-        jmp     MlasGemmU8X8KernelAvx2
+        mov     eax,1
+        jmp     C_UNDERSCORE(MlasGemmU8X8KernelAvx2)
 
         FUNCTION_ENTRY MlasGemmU8S8KernelAvx2
 
         xor     eax,eax
-        jmp     MlasGemmU8X8KernelAvx2
+        jmp     C_UNDERSCORE(MlasGemmU8X8KernelAvx2)
 
 /*++
 
