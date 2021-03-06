@@ -297,9 +297,9 @@ class ORTModule(torch.nn.Module):
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = 2
 
-        self._training_session = onnxruntime.InferenceSession(
-            self._onnx_training.SerializeToString(), session_options, providers=providers, provider_options=provider_options)
-        
+        self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(),
+                                                                    session_options, providers, provider_options)
+
         # Use this global run_options for now
         self._run_options = C.RunOptions()
 
