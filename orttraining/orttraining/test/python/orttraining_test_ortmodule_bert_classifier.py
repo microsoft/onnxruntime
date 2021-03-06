@@ -312,6 +312,49 @@ def format_time(elapsed):
     # Format as hh:mm:ss
     return str(datetime.timedelta(seconds=elapsed_rounded))
 
+def bert_classifier_log_perf_metrics(args, train_dataloader, perf_metrics_start_time):
+    total_train_steps = 0
+    if args.train_steps > 0:
+        total_train_steps = args.train_steps * args.epochs
+    else:
+        total_train_steps = len(train_dataloader) * args.epochs
+
+    perf_metrics = {}
+    perf_metrics['Model'] = 'orttraining_test_ortmodule_bert_classifier'
+    perf_metrics['BatchId'] = 'na'
+    perf_metrics['ModelName'] = 'bert'
+    perf_metrics['DisplayName'] = 'bert'
+    perf_metrics['UseMixedPrecision'] = False
+    perf_metrics['UseAutoCast'] = False
+    perf_metrics['UseDeepSpeed'] = False
+    perf_metrics['Optimizer'] = 'AdamW'
+    perf_metrics['BatchSize'] = args.batch_size
+    perf_metrics['SeqLen'] = 64                 # MAX_LEN = 64
+    perf_metrics['PredictionsPerSeq'] = 0       # NA
+    perf_metrics['NumOfBatches'] = args.epochs * total_train_steps
+    perf_metrics['WeightUpdateSteps'] = args.epochs * total_train_steps
+    perf_metrics['Round'] = 0
+    perf_metrics['GradAccSteps'] = 0
+
+    perf_metrics_duration = datetime.datetime.now() - perf_metrics_start_time
+    perf_metrics['AvgTimePerBatch'] = \
+        perf_metrics_duration.microseconds / total_train_steps
+
+    perf_metrics['Throughput'] = \
+        args.batch_size * total_train_steps / perf_metrics_duration.seconds
+
+    perf_metrics['StabilizedThroughput'] = 0    # TODO
+    perf_metrics['EndToEndThroughput'] = 0      # TODO
+    perf_metrics['TotalTime'] = perf_metrics_duration.seconds
+
+    perf_metrics['AvgCPU'] = 0                  # TODO
+    perf_metrics['Memory'] = 0                  # TODO
+    perf_metrics['RunConfig'] = 'na'
+    perf_metrics['Time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    log_perf_metrics(perf_metrics, args.perf_mysql_server_name, args.perf_power_bi_user_name,
+        args.perf_power_bi_password, args.perf_power_bi_database, args.perf_repo_path)
+
 def main():
     # 1. Basic setup
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -442,42 +485,7 @@ def main():
     print("  Accumulated validation took:              {:.4f}s".format(total_test_time))
 
     if args.log_perf_metrics:
-        perf_metrics = {}
-        perf_metrics['Model'] = 'orttraining_test_ortmodule_bert_classifier'
-        perf_metrics['BatchId'] = 'na'
-        perf_metrics['ModelName'] = 'bert'
-        perf_metrics['DisplayName'] = 'bert'
-        perf_metrics['UseMixedPrecision'] = False
-        perf_metrics['UseAutoCast'] = False
-        perf_metrics['UseDeepSpeed'] = False
-        perf_metrics['Optimizer'] = 'AdamW'
-        perf_metrics['BatchSize'] = args.batch_size
-        perf_metrics['SeqLen'] = 64                 # MAX_LEN = 64
-        perf_metrics['PredictionsPerSeq'] = 0       # NA
-        perf_metrics['NumOfBatches'] = args.epochs * args.train_steps
-        perf_metrics['WeightUpdateSteps'] = args.epochs * args.train_steps
-        perf_metrics['Round'] = 0
-        perf_metrics['GradAccSteps'] = 0
-
-        perf_metrics_duration = datetime.datetime.now() - perf_metrics_start_time
-        perf_metrics['AvgTimePerBatch'] = \
-            perf_metrics_duration.microseconds / args.train_steps
-
-        perf_metrics['Throughput'] = \
-            args.batch_size * args.train_steps / perf_metrics_duration.seconds
-
-        perf_metrics['StabilizedThroughput'] = 0    # TODO
-        perf_metrics['EndToEndThroughput'] = 0      # TODO
-        perf_metrics['TotalTime'] = perf_metrics_duration.seconds
-
-        perf_metrics['AvgCPU'] = 0                  # TODO
-        perf_metrics['Memory'] = 0                  # TODO
-        perf_metrics['RunConfig'] = 'na'
-        perf_metrics['Time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        log_perf_metrics(perf_metrics, args.perf_mysql_server_name, args.perf_power_bi_user_name,
-            args.perf_power_bi_password, args.perf_power_bi_database, args.perf_repo_path)
-
+        bert_classifier_log_perf_metrics(args, train_dataloader, perf_metrics_start_time)
 
 if __name__ == '__main__':
     main()

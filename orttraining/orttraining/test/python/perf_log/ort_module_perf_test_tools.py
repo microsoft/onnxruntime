@@ -72,33 +72,33 @@ insert_table_script = "INSERT INTO onnxruntime.perf_test_training_ort_module_dat
     Memory,\
     RunConfig,\
     Time)\
-VALUES\
-(\
-\"{Model}\",\
-\"{BatchId}\",\
-\"{CommitId}\",\
-\"{ModelName}\",\
-\"{DisplayName}\",\
-{UseMixedPrecision},\
-{UseAutoCast},\
-{UseDeepSpeed},\
-\"{Optimizer}\",\
-{BatchSize},\
-{SeqLen},\
-{PredictionsPerSeq},\
-{NumOfBatches},\
-{WeightUpdateSteps},\
-{Round},\
-{GradAccSteps},\
-{AvgTimePerBatch},\
-{Throughput},\
-{StabilizedThroughput},\
-{EndToEndThroughput},\
-{TotalTime},\
-{AvgCPU},\
-{Memory},\
-\"{RunConfig}\",\
-\"{Time}\")";
+    VALUES\
+    (\
+    %(Model)s,\
+    %(BatchId)s,\
+    %(CommitId)s,\
+    %(ModelName)s,\
+    %(DisplayName)s,\
+    %(UseMixedPrecision)s,\
+    %(UseAutoCast)s,\
+    %(UseDeepSpeed)s,\
+    %(Optimizer)s,\
+    %(BatchSize)s,\
+    %(SeqLen)s,\
+    %(PredictionsPerSeq)s,\
+    %(NumOfBatches)s,\
+    %(WeightUpdateSteps)s,\
+    %(Round)s,\
+    %(GradAccSteps)s,\
+    %(AvgTimePerBatch)s,\
+    %(Throughput)s,\
+    %(StabilizedThroughput)s,\
+    %(EndToEndThroughput)s,\
+    %(TotalTime)s,\
+    %(AvgCPU)s,\
+    %(Memory)s,\
+    %(RunConfig)s,\
+    %(Time)s)"
 
 # Obtain connection string information from the portal
 def ConnectToPerfDashboardDb(mysql_server_name, power_bi_user_name, password, database):
@@ -193,37 +193,12 @@ def parse_arguments():
 
 def ConnectAndInsertPerfMetrics(mysql_server_name, power_bi_user_name, password, database, perf_metrics):
     conn = ConnectToPerfDashboardDb(mysql_server_name, power_bi_user_name, password, database)
-    insert_table_script_values = insert_table_script.format(
-        Model=perf_metrics['Model'],
-        BatchId=perf_metrics['BatchId'],
-        CommitId=perf_metrics['CommitId'],
-        ModelName=perf_metrics['ModelName'],
-        DisplayName=perf_metrics['DisplayName'],
-        UseMixedPrecision=perf_metrics['UseMixedPrecision'],
-        UseAutoCast=perf_metrics['UseAutoCast'],
-        UseDeepSpeed=perf_metrics['UseDeepSpeed'],
-        Optimizer=perf_metrics['Optimizer'],
-        BatchSize=perf_metrics['BatchSize'],
-        SeqLen=perf_metrics['SeqLen'],
-        PredictionsPerSeq=perf_metrics['PredictionsPerSeq'],
-        NumOfBatches=perf_metrics['NumOfBatches'],
-        WeightUpdateSteps=perf_metrics['WeightUpdateSteps'],
-        Round=perf_metrics['Round'],
-        GradAccSteps=perf_metrics['GradAccSteps'],
-        AvgTimePerBatch=perf_metrics['AvgTimePerBatch'],
-        Throughput=perf_metrics['Throughput'], 
-        StabilizedThroughput=perf_metrics['StabilizedThroughput'],
-        EndToEndThroughput=perf_metrics['EndToEndThroughput'],
-        TotalTime=perf_metrics['TotalTime'],
-        AvgCPU=perf_metrics['AvgCPU'],
-        Memory=perf_metrics['Memory'],
-        RunConfig=perf_metrics['RunConfig'],
-        Time=perf_metrics['Time'])
-    conn.cursor().execute(insert_table_script_values)
+    # https://dev.mysql.com/doc/connector-python/en/connector-python-api-mysqlcursor-execute.html
+    conn.cursor().execute(insert_table_script, perf_metrics)
     conn.commit()
     conn.cursor().close()
     conn.close()
-    print("Done.")
+    print("perf_metrics logged into power-bi database.")
 
 if __name__ == '__main__':
     args = parse_arguments()
