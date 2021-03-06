@@ -853,14 +853,16 @@ TEST_F(GraphTransformationTests, TransposeCastMatmulFusion0) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  // ASSERT_TRUE(ret.IsOK());
-  Model::Save(*p_model, "fusion/transformed_transpose_matmul_inference.onnx");
+  ASSERT_TRUE(ret.IsOK());
+  auto uri = MODEL_FOLDER "fusion/transformed_transpose_matmul_inference.onnx";
+  Model::Save(*p_model, uri);
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  // ASSERT_TRUE(op_to_count["Cast"] == 1);
+  ASSERT_TRUE(op_to_count["Cast"] == 3);
   ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 1);
 }
+
 TEST_F(GraphTransformationTests, TransposeCastMatmulFusion1) {
   auto model_uri = MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion.onnx";
   std::shared_ptr<Model> p_model;
@@ -878,6 +880,7 @@ TEST_F(GraphTransformationTests, TransposeCastMatmulFusion1) {
   ASSERT_TRUE(op_to_count["Cast"] == 1);
   ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 1);
 }
+
 TEST_F(GraphTransformationTests, TransposeMatmulFusionOnTwoTranspose) {
   auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_2_transpose.onnx";
   std::shared_ptr<Model> p_model;
