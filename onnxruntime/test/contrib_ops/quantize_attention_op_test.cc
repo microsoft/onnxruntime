@@ -124,10 +124,11 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
     tester.AddOutput<float>("output", output_dims, output_data);
   }
 
-  if (mask_index_data.size() > 0) {  // mask index is optional.
+  if (mask_index_data.size() > 0) {
     tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
-  } else {  // mask index is optional.
-    tester.AddInput<int32_t>("", mask_index_dims, {1});
+  } else {
+    // mask index is optional.
+    tester.AddMissingOptionalInput<int32_t>();
   }
 
   tester.AddInput<QInput>("input_zero_point", {1}, {input_zero_point});
@@ -814,7 +815,7 @@ TEST(QAttentionTest, QAttentionPrunedModel) {
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
 
-  std::vector<int32_t> mask_data = {1, 1, 1, 1};
+  std::vector<int32_t> mask_data = {};
 
   std::vector<float> output_data = {
       11.689527f, 2.769937f, 7.05f, 8.35f,
@@ -823,8 +824,13 @@ TEST(QAttentionTest, QAttentionPrunedModel) {
       14.289073f, 5.370287f, 9.65f, 10.95f
   };
 
+  bool use_special_quantize_parameter = true;
+  bool is_unidirectional = false;
+  bool use_float16 = false;
   RunQAttentionAll(input_data, weight_data, bias_data, mask_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads, input_hidden_size);
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   use_special_quantize_parameter, is_unidirectional, use_float16,
+                   input_hidden_size);
 }
 
 }  // namespace test
