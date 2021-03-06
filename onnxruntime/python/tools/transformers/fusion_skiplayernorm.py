@@ -35,8 +35,13 @@ class FusionSkipLayerNormalization(Fusion):
         if len(self.model.get_parents(add)) != 2:
             return
 
-        if not self.model.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
-            return
+        if self.model.infer_runtime_shape():
+            if not self.model.compare_edge_runtime_shape(add.input[0], add.input[1]):
+                return
+        else:
+            logger.warning(
+                "symbolic shape infer failed. it's safe to ignore this message if there is no issue with optimized model"
+            )
 
         gather_path = self.model.match_parent_path(add, ['Gather'], [None])
         if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:

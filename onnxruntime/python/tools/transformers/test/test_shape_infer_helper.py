@@ -9,7 +9,7 @@ from benchmark_helper import Precision
 from shape_infer_helper import *
 
 
-class SymbolicShapeInferenceHelper(unittest.TestCase):
+class SymbolicShapeInferenceHelperTest(unittest.TestCase):
     def _load_onnx(self, model_name):
         input_names = MODELS[model_name][0]
         base_path = "../onnx_models/"
@@ -25,6 +25,7 @@ class SymbolicShapeInferenceHelper(unittest.TestCase):
     def test_bert_shape_infer_helper(self):
         model = self._load_onnx("bert-base-cased")
         shape_infer_helper = SymbolicShapeInferenceHelper(model)
+        self.assertEqual(shape_infer_helper.infer({"batch_size": 4, "seq_len": 16}), True)
         self.assertEqual(shape_infer_helper.get_edge_shape("802"), [4, 16, 768])
         self.assertEqual(shape_infer_helper.get_edge_shape("804"), [4, 16, 1])
         self.assertEqual(shape_infer_helper.get_edge_shape("1748"), [])
