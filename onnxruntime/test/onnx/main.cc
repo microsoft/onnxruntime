@@ -306,11 +306,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      OrtTensorRTProviderOptions tensorrt_options{
-          0,
-          0,
-          nullptr};
+      //OrtTensorRTProviderOptions tensorrt_options{//slx
+      //    0,
+      //    0,
+      //    nullptr};
 
+      OrtTensorRTProviderOptions tensorrt_options{//slx
+          0,
+          0,
+          nullptr,
+          0,
+          0,
+          nullptr,//"calibration.flatbuffers",
+          0};
+	  
       OrtCUDAProviderOptions cuda_options{
           0,
           OrtCudnnConvAlgoSearch::EXHAUSTIVE,
@@ -320,7 +329,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           0,
           nullptr};
 
+      std::cout << "onnx_test_runner main.cc: sf.AppendExecutionProvider_TensorRT(tensorrt_options)" << std::endl;//slx
       sf.AppendExecutionProvider_TensorRT(tensorrt_options);
+      ///sf.AppendExecutionProvider_TensorRT(OrtTensorRTProviderOptions{});	  //slx ?? initialize in OrtTensorRTProviderOptions??
+      std::cout << "onnx_test_runner main.cc: sf.AppendExecutionProvider_CUDA(cuda_options)" << std::endl;//slx
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "TensorRT is not supported in this build");

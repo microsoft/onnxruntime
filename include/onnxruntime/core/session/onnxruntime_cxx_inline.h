@@ -6,6 +6,7 @@
 //
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
+#include <iostream> //slx
 
 namespace Ort {
 
@@ -491,6 +492,7 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_CUDA(const OrtCUD
 }
 
 inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options) {
+  std::cout << "onnxruntime_cxx_inline.h: SessionOptions::AppendExecutionProvider_TensorRT" << std::endl;//slx
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_TensorRT(p_, &provider_options));
   return *this;
 }

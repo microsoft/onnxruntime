@@ -20,6 +20,7 @@
 #include <memory>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+#include <iostream> //slx
 
 #ifdef _WIN32
 #include <windows.h>
@@ -384,8 +385,9 @@ TensorrtLogger& GetTensorrtLogger() {
 }
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, device_id_(info.device_id) {
-  CUDA_CALL_THROW(cudaSetDevice(device_id_));
+    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, device_id_(info.device_id), fp16_enable_info_(info.fp16_enable), int8_enable_info_(info.int8_enable) {
+  std::cout << "info.device_id: " << info.device_id << ", device_id_: " << device_id_;//slx
+  CUDA_CALL_THROW(cudaSetDevice(device_id_));//slx has_user_compute_stream, user_compute_stream??
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);

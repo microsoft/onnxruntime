@@ -279,9 +279,23 @@ typedef struct OrtCUDAProviderOptions {
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT
 /// </summary>
 typedef struct OrtTensorRTProviderOptions {
-  int device_id;
+
+  int device_id;//slx ?? initialization??
   int has_user_compute_stream;
   void* user_compute_stream;
+
+//slx
+//#ifdef __cplusplus //?????
+//  OrtTensorRTProviderOptions() : trt_fp16_enable{}, trt_int8_enable{}, trt_int8_calibration_table_name{}, trt_int8_use_native_calibration_table{} {}
+//#endif
+  ///unsigned char trt_fp16_enable;  // 0 = false, nonzero = true
+  ///unsigned char trt_int8_enable;  // 0 = false, nonzero = true 
+  ///const char* trt_int8_calibration_table_name;
+  ///unsigned char trt_int8_use_native_calibration_table;  // 0 = false, nonzero = true
+  int trt_fp16_enable;  // 0 = false, nonzero = true //slx no bool in c api!!
+  int trt_int8_enable;  // 0 = false, nonzero = true 
+  const char* trt_int8_calibration_table_name;
+  int trt_int8_use_native_calibration_table;  // 0 = false, nonzero = true  
 } OrtTensorRTProviderOptions;
 
 /// <summary>

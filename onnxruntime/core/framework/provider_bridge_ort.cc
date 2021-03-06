@@ -712,8 +712,11 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
+  std::cout << "provider_bridge_ort.cc: OrtApis::SessionOptionsAppendExecutionProvider_TensorRT:" << std::endl;//slx
+  std::cout << "tensorrt_options->device_id: " << tensorrt_options->device_id << ", tensorrt_options->trt_fp16_enable: " << tensorrt_options->trt_fp16_enable << std::endl;//slx
   auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(tensorrt_options);
   if (!factory) {
+    std::cout << "provider_bridge_ort.cc: OrtApis::SessionOptionsAppendExecutionProvider_TensorRT: Failed to load shared library" << std::endl;//slx
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
   }
 

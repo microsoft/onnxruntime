@@ -4,6 +4,7 @@
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
+#include <iostream> //slx
 
 #ifdef _WIN32
 #define strdup _strdup
@@ -61,8 +62,75 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    //slx
+    bool trt_fp16_enable = false; // Enable TensorRT FP16 precision.
+    bool trt_int8_enable = false; // Enable TensorRT INT8 precision.
+    std::string trt_int8_calibration_table_name = "calibration.flatbuffers"; // Specify INT8 calibration table name.
+    bool trt_int8_use_native_calibration_table = false; // Use Native TensorRT calibration table.
+
+    #ifdef _MSC_VER
+    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+    #else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    #endif
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if(token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [TensorRT] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0,pos);
+      auto value = token.substr(pos+1);
+
+      if (key == "trt_fp16_enable") {
+        if(value == "true" || value == "True"){
+          trt_fp16_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_fp16_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_int8_enable") {
+        if(value == "true" || value == "True"){
+          trt_int8_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_int8_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_int8_calibration_table_name") {
+        trt_int8_calibration_table_name = value;
+      } else if (key == "trt_int8_use_native_calibration_table") {
+        if(value == "true" || value == "True"){
+          trt_int8_use_native_calibration_table = true;
+        } else if (value == "false" || value == "False") {
+          trt_int8_use_native_calibration_table = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else {
+          ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table'] \n");
+      }
+    }
+    OrtTensorRTProviderOptions tensorrt_options;
+	tensorrt_options.device_id = 0; //slx ?? no default value in OrtTensorRTProviderOptions??
+    tensorrt_options.has_user_compute_stream = 0; //slx ?? 
+    tensorrt_options.user_compute_stream = nullptr; //slx ?? 
+    tensorrt_options.trt_fp16_enable = trt_fp16_enable; // To enable FP16 precision
+    tensorrt_options.trt_int8_enable = trt_int8_enable; // To enable INT8 precision
+	tensorrt_options.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str(); // To specify INT8 calibration table name
+    tensorrt_options.trt_int8_use_native_calibration_table = trt_int8_use_native_calibration_table; // To use native TensorRT calibration table
+	std::cout << "tensorrt_options.trt_fp16_enable: " << tensorrt_options.trt_fp16_enable << ", tensorrt_options.trt_int8_enable: " << tensorrt_options.trt_int8_enable << ", tensorrt_options.trt_int8_calibration_table_name: " << ", tensorrt_options.trt_int8_use_native_calibration_table: " << tensorrt_options.trt_int8_use_native_calibration_table << std::endl;
+    session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
+
+
+    ///Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));//slx, still need it?
+    ///Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));//?????
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif

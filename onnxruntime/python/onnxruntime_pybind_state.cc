@@ -490,7 +490,50 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                                           sess->GetSessionOptions().enable_cpu_mem_arena));
     } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-      OrtTensorRTProviderOptions params{0, 0, nullptr};
+      ///OrtTensorRTProviderOptions params{0, 0, nullptr};//slx
+      ///RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params));
+
+      //slx
+      OrtTensorRTProviderOptions params;
+	  params.device_id = 0; //slx ?? should be configurable??
+	  params.has_user_compute_stream = 0;//??
+	  params.user_compute_stream = nullptr;//??
+
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        for (auto option : it->second) {
+          if (option.first == "trt_fp16_enable") {
+            if (option.second == "True") {
+              params.trt_fp16_enable = true;
+            } else if (option.second == "False") {
+              params.trt_fp16_enable = false;
+            } else {
+              ORT_THROW("Invalid value passed for trt_fp16_enable: ", option.second);
+            }
+          } else if (option.first == "trt_int8_enable") {
+            if (option.second == "True") {
+              params.trt_int8_enable = true;
+            } else if (option.second == "False") {
+              params.trt_int8_enable = false;
+            } else {
+              ORT_THROW("Invalid value passed for trt_int8_enable: ", option.second);
+            }
+          } else if (option.first == "trt_int8_calibration_table_name") {
+            params.trt_int8_calibration_table_name = option.second.c_str();//slx ?????
+          } else if (option.first == "trt_int8_use_native_calibration_table") {
+            if (option.second == "True") {
+              params.trt_int8_use_native_calibration_table = true;
+            } else if (option.second == "False") {
+              params.trt_int8_use_native_calibration_table = false;
+            } else {
+              ORT_THROW("Invalid value passed for trt_int8_use_native_calibration_table: ", option.second);
+            }
+          } else {
+            ORT_THROW("Invalid TensorRT EP option: ", option.first);
+          }
+        }
+      }
+
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params));
 #endif
     } else if (type == kMIGraphXExecutionProvider) {
@@ -843,7 +886,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(
                 [&]() {
-                  TensorrtExecutionProviderInfo info{};
+                  TensorrtExecutionProviderInfo info{};//slx ?? TODO
                   return info;
                 }()),
 #endif
