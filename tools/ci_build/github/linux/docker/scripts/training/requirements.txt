@@ -12,5 +12,3 @@ h5py
 wget
 mysql-connector-python
 GitPython
-# PyTorch Lightning (nightly) is used for CI tests only
-https://github.com/PyTorchLightning/pytorch-lightning/archive/master.zip
