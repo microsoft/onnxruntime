@@ -106,12 +106,20 @@ static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
   NodeArg* transpose_input = transpose->MutableInputDefs()[0];
   NodeArg* transpose_output = transpose->MutableOutputDefs()[0];
   ORT_ENFORCE(cast_input == transpose_output);
-  auto* shape = transpose_output->Shape();
-  transpose_output->SetShape(*transpose_input->Shape());
-  cast_output->SetShape(*shape);
+
+  // Create a new NodeArg to feed the output from the new Cast to the new Transpose.
+  // The shape of the new NodeArg is same as the original input to Transport but type
+  // should match that of the output from the original Cast.
+
+  auto new_cast_output_type_proto = *transpose_input->TypeAsProto();
+  const ONNX_NAMESPACE::TensorProto_DataType element_type =
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(cast_output->TypeAsProto()->tensor_type().elem_type());
+  new_cast_output_type_proto.mutable_tensor_type()->set_elem_type(element_type);
+  auto& new_cast_output = graph.GetOrCreateNodeArg(cast_output->Name() + "_transformed", &new_cast_output_type_proto);
+
   const std::vector<NodeArg*> new_cast_input_defs {transpose_input};
-  const std::vector<NodeArg*> new_cast_output_defs {cast_input};
-  const std::vector<NodeArg*> new_transpose_input_defs = {transpose_output};
+  const std::vector<NodeArg*> new_cast_output_defs {&new_cast_output};
+  const std::vector<NodeArg*> new_transpose_input_defs = {&new_cast_output};
   const std::vector<NodeArg*> new_transpose_output_defs = {cast_output};
 
   Node& new_cast = graph.AddNode(graph.GenerateNodeName("New_Cast"),
@@ -165,12 +173,12 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
 
     if (!left && !right) {
       Node* n = graph.GetMutableProducerNode(left_input->Name());
-      if (n->OpType() == "Cast") {
+      if (n && n->OpType() == "Cast") {
           left = GetTransposeNodeFromCast(graph, n);
       }
       if (!left) {
         Node* n = graph.GetMutableProducerNode(right_input->Name());
-        if (n->OpType() == "Cast") {
+        if (n && n->OpType() == "Cast") {
           right = GetTransposeNodeFromCast(graph, n);
         }
       }
