@@ -95,7 +95,6 @@ static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
   */
 
   ORT_ENFORCE(cast != nullptr);
-
   auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0]);
   if (transpose == nullptr || cast->GetOutputEdgesCount() !=1 || transpose->GetOutputEdgesCount() !=1) {
     return nullptr;
@@ -122,24 +121,22 @@ static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
   const std::vector<NodeArg*> new_transpose_input_defs = {&new_cast_output};
   const std::vector<NodeArg*> new_transpose_output_defs = {cast_output};
 
-  Node& new_cast = graph.AddNode(graph.GenerateNodeName("New_Cast"),
-                                      cast->OpType(),
-                                      "Created a new Cast node interchange Cast and Transpose nodes",
-                                      new_cast_input_defs,
-                                      new_cast_output_defs,
-                                      &cast->GetAttributes(),
-                                      cast->Domain());
+  Node& new_cast = graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
+                                 cast->OpType(),
+                                 "Created a new Cast node to interchange Cast and Transpose nodes",
+                                 new_cast_input_defs,
+                                 new_cast_output_defs,
+                                 &cast->GetAttributes(),
+                                 cast->Domain());
 
-  Node& new_transpose = graph.AddNode(graph.GenerateNodeName("New_Transpose"),
-                                          transpose->OpType(),
-                                          "Created a new Transpose node to interchange Cast and Transpose nodes",
-                                          new_transpose_input_defs,
-                                          new_transpose_output_defs,
-                                          &transpose->GetAttributes(),
-                                          transpose->Domain());
+  Node& new_transpose = graph.AddNode(graph.GenerateNodeName(transpose->Name() + "_transformed"),
+                                      transpose->OpType(),
+                                      "Created a new Transpose node to interchange Cast and Transpose nodes",
+                                      new_transpose_input_defs,
+                                      new_transpose_output_defs,
+                                      &transpose->GetAttributes(),
+                                      transpose->Domain());
   (void) new_cast;
-  // graph_utils::FinalizeNodeFusion(graph, new_cast, *cast);
-  // graph_utils::FinalizeNodeFusion(graph, new_transpose, *transpose);
   graph_utils::RemoveNodeOutputEdges(graph, *cast);
   graph_utils::RemoveNodeOutputEdges(graph, *transpose);
   graph.RemoveNode(cast->Index());
