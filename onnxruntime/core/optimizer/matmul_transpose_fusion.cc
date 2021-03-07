@@ -169,14 +169,14 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     auto right = GetTransposeNodeFromOutput(graph, *right_input);
 
     if (!left && !right) {
-      Node* n = graph.GetMutableProducerNode(left_input->Name());
-      if (n && n->OpType() == "Cast") {
-          left = GetTransposeNodeFromCast(graph, n);
+      Node* left_node = graph.GetMutableProducerNode(left_input->Name());
+      if (left_node && left_node->OpType() == "Cast") {
+          left = GetTransposeNodeFromCast(graph, left_node);
       }
       if (!left) {
-        Node* n = graph.GetMutableProducerNode(right_input->Name());
-        if (n && n->OpType() == "Cast") {
-          right = GetTransposeNodeFromCast(graph, n);
+        Node* right_node = graph.GetMutableProducerNode(right_input->Name());
+        if (right_node && right_node->OpType() == "Cast") {
+          right = GetTransposeNodeFromCast(graph, right_node);
         }
       }
     }
