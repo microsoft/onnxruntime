@@ -38,8 +38,9 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
+#include "processthreadsapi.h"
 
-// ORT thread pool overview
+    // ORT thread pool overview
 // ------------------------
 //
 // The ORT thread pool implementation is split into two layers.  This
@@ -141,7 +142,6 @@ class ThreadPoolLoop;
 4. Note LogStart must pair with either LogEnd or LogEndAndStart, otherwise ORT_ENFORCE will fail;
 5. ThreadPoolProfiler is thread-safe.
 */
-
 class ThreadPoolProfiler {
  public:
   enum ThreadPoolEvent {
@@ -152,7 +152,7 @@ class ThreadPoolProfiler {
     WAIT_REVOKE,
     MAX_EVENT
   };
-  ThreadPoolProfiler() = default;
+  ThreadPoolProfiler(int num_threads);
   ~ThreadPoolProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
   using Clock = std::chrono::high_resolution_clock;
@@ -161,10 +161,13 @@ class ThreadPoolProfiler {
   void LogStart();                       //record the starting time point
   void LogEnd(ThreadPoolEvent);          //calculate and save the time elapsed from last start point
   void LogEndAndStart(ThreadPoolEvent);  //same as LogEnd but add a starting point before return
+  void LogRun(int);
+  std::string DumpPerThreadStat();
 
  private:
   static const char* GetEventName(ThreadPoolEvent);
-  struct PerThreadStat {
+  // profiler for each parent thread that calling into the thread pool
+  struct ParentThreadProfiler {
     uint64_t events_[MAX_EVENT] = {};
     std::vector<onnxruntime::TimePoint> points_;
     void LogStart();
@@ -191,16 +194,23 @@ class ThreadPoolProfiler {
       nsync_mu_unlock(lock_);
     }
   };
-  using PerThreadStatMap = std::unordered_map<::std::thread::id, PerThreadStat>;
-  PerThreadStatMap per_thread_stat_map_;
-  inline PerThreadStatMap::iterator GetPerThreadStat() {
+  using ProfilerMap = std::unordered_map<::std::thread::id, ParentThreadProfiler>;
+  ProfilerMap per_thread_stat_map_;
+  inline ProfilerMap::iterator GetPerThreadStat() {
     LockRead lock_read(&shared_lock_);
     return per_thread_stat_map_.find(std::this_thread::get_id());
   }
   inline void SetPerThreadStat() {
     LockWrite lock_write(&shared_lock_);
-    per_thread_stat_map_.insert({std::this_thread::get_id(), {}});
+    per_thread_stat_map_.emplace(std::this_thread::get_id(), ParentThreadProfiler{});
   }
+  // statistics per thread owned by the thread pool
+  int num_threads_;
+  struct ChildThreadStat {
+    uint32_t num_run = 0;
+    uint32_t core = 0;
+  };
+  std::unique_ptr<ChildThreadStat[]> child_thread_stats_;
 };
 
 // Align to avoid false sharing with prior fields.  If required,
@@ -696,7 +706,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         all_coprimes_(num_threads),
         blocked_(0),
         done_(false),
-        cancelled_(false) {
+        cancelled_(false),
+        profiler_(num_threads) {
 
     // Calculate coprimes of all numbers [1, num_threads].
     // Coprimes are used for random walks over all threads in Steal
@@ -1210,7 +1221,6 @@ int CurrentThreadId() const EIGEN_FINAL {
     }
 
     // State transitions, called from other threads
-
     void EnsureAwake() {
       ThreadStatus seen = status;
       if (seen == ThreadStatus::Blocking ||
@@ -1384,6 +1394,7 @@ int CurrentThreadId() const EIGEN_FINAL {
         }
         if (t) {
           td.SetActive();
+          profiler_.LogRun(thread_id);
           t();
           td.SetSpinning();
         }

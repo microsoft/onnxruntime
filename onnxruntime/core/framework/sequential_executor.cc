@@ -372,7 +372,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"output_size", std::to_string(total_output_sizes)},
                                                          {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
                                                      });
-
       sync_time_begin = session_state.Profiler().StartTime();
     }
 

@@ -26,6 +26,10 @@ namespace onnxruntime {
 
 namespace concurrency {
 
+ThreadPoolProfiler::ThreadPoolProfiler(int num_threads) : num_threads_(num_threads) {
+  child_thread_stats_.reset(new ChildThreadStat[num_threads]);
+}
+
 void ThreadPoolProfiler::Start() {
   auto per_thread_number = GetPerThreadStat();
   if (per_thread_number == per_thread_stat_map_.end()) {
@@ -38,7 +42,13 @@ std::string ThreadPoolProfiler::Stop() {
   if (per_thread_number == per_thread_stat_map_.end()) {
     return {};
   } else {
-    return per_thread_number->second.Reset();
+    std::stringstream ss;
+    ss << "{\"main_thread:\": {"
+       << per_thread_number->second.Reset()
+       << "}, \"sub_threads\": {"
+       << DumpPerThreadStat()
+       << "}}";
+    return ss.str();
   }
 }
 
@@ -72,28 +82,28 @@ void ThreadPoolProfiler::LogEndAndStart(ThreadPoolEvent evt) {
   }
 }
 
-void ThreadPoolProfiler::PerThreadStat::LogStart() {
+void ThreadPoolProfiler::ParentThreadProfiler::LogStart() {
   points_.emplace_back(Clock::now());
 }
 
-void ThreadPoolProfiler::PerThreadStat::LogEnd(ThreadPoolEvent evt) {
+void ThreadPoolProfiler::ParentThreadProfiler::LogEnd(ThreadPoolEvent evt) {
   ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
   events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
   points_.pop_back();
 }
 
-void ThreadPoolProfiler::PerThreadStat::LogEndAndStart(ThreadPoolEvent evt) {
+void ThreadPoolProfiler::ParentThreadProfiler::LogEndAndStart(ThreadPoolEvent evt) {
   ORT_ENFORCE(!points_.empty(), "LogStart must pair with LogEnd");
   events_[evt] += TimeDiffMicroSeconds(points_.back(), Clock::now());
   points_.back() = Clock::now();
 }
 
-std::string ThreadPoolProfiler::PerThreadStat::Reset() {
+std::string ThreadPoolProfiler::ParentThreadProfiler::Reset() {
   ORT_ENFORCE(points_.empty(), "LogStart must pair with LogEnd");
   std::stringstream ss;
   for (int i = 0; i < MAX_EVENT; ++i) {
-    ss << ThreadPoolProfiler::GetEventName(static_cast<ThreadPoolEvent>(i))
-       << ": " << events_[i] << ((i == MAX_EVENT - 1) ? std::string{} : ", ");
+    ss << "\"" << ThreadPoolProfiler::GetEventName(static_cast<ThreadPoolEvent>(i))
+       << "\": " << events_[i] << ((i == MAX_EVENT - 1) ? std::string{} : ", ");
   }
   memset(events_, 0, sizeof(uint64_t) * MAX_EVENT);
   return ss.str();
@@ -116,7 +126,35 @@ const char* ThreadPoolProfiler::GetEventName(ThreadPoolEvent event) {
   }
 }
 
-// A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
+void ThreadPoolProfiler::LogRun(int thread_idx) {
+  static const uint32_t mod = (1U << 31) - 1;
+  static const uint32_t mask = (1U << 4) - 1;
+  if (per_thread_stat_map_.empty()) {
+    return;
+  }
+  child_thread_stats_[thread_idx].num_run =
+      (child_thread_stats_[thread_idx].num_run + 1) & mod;
+  if ((child_thread_stats_[thread_idx].num_run & (~mask)) == 0) {
+    child_thread_stats_[thread_idx].core = GetCurrentProcessorNumber();
+  }
+}
+
+std::string ThreadPoolProfiler::DumpPerThreadStat() {
+  if (per_thread_stat_map_.empty()) {
+    return {};
+  } else {
+    std::stringstream ss;
+    for (int i = 0; i < num_threads_; ++i) {
+      ss << "\"" << i << "\": {"
+         << "\"run\":" << child_thread_stats_[i].num_run << ", "
+         << "\"core\":"<< child_thread_stats_[i].core << "}"
+         << (i == num_threads_ - 1 ? "" : ",");
+    }
+    return ss.str();
+  }
+}
+
+  // A sharded loop counter distributes loop iterations between a set of worker threads.  The iteration space of
 // the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
 // to it), and it claims iterations via atomic operations on its home shard.  It then proceeds through the other
 // shards until all of the shards' iterations are complete.  This approach serves two purposes.  First, compared
