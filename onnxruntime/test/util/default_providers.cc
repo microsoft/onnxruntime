@@ -49,7 +49,8 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
   ///  return factory->CreateProvider();
 
   //slx: new
-  OrtTensorRTProviderOptions params{0, 0, nullptr, 0, 0, nullptr, 0};//slx nullptr??
+  ///OrtTensorRTProviderOptions params{0, 0, nullptr, 0, 0, nullptr, 0};//slx nullptr??
+  OrtTensorRTProviderOptions params{0, 0, nullptr, "", "", "", "", ""};//slx !!
   return CreateExecutionProviderFactory_Tensorrt(&params)->CreateProvider();  
 #endif
   return nullptr;

@@ -315,10 +315,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           0,
           0,
           nullptr,
-          0,
-          0,
-          nullptr,//"calibration.flatbuffers",
-          0};
+          "",
+          "",
+          "",
+          "",//"calibration.flatbuffers",
+          ""};//slx ???
 	  
       OrtCUDAProviderOptions cuda_options{
           0,

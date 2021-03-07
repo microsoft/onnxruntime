@@ -385,8 +385,8 @@ TensorrtLogger& GetTensorrtLogger() {
 }
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, device_id_(info.device_id), fp16_enable_info_(info.fp16_enable), int8_enable_info_(info.int8_enable) {
-  std::cout << "info.device_id: " << info.device_id << ", device_id_: " << device_id_;//slx
+    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, device_id_(info.device_id) {
+  std::cout << "info.device_id: " << info.device_id << ", device_id_: " << device_id_ << std::endl;//slx
   CUDA_CALL_THROW(cudaSetDevice(device_id_));//slx has_user_compute_stream, user_compute_stream??
   if (info.has_user_compute_stream) {
     external_stream_ = true;
@@ -406,30 +406,55 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     min_subgraph_size_ = std::stoi(min_subgraph_size_env);
   }
 
-  const std::string max_workspace_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxWorkspaceSize);
-  if (!max_workspace_size_env.empty()) {
-    max_workspace_size_ = std::stoull(max_workspace_size_env);
+  if (info.max_workspace_size.empty()) {//slx
+    const std::string max_workspace_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxWorkspaceSize);
+    if (!max_workspace_size_env.empty()) {
+      max_workspace_size_ = std::stoull(max_workspace_size_env);
+    }
+  } else {
+    max_workspace_size_ = std::stoull(info.max_workspace_size);
+    std::cout << "tensorrt_execution_provider.cc: max_workspace_size_: " << max_workspace_size_ << std::endl;//slx
+  }  
+
+  if (info.fp16_enable.empty()) {
+    const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
+    if (!fp16_enable_env.empty()) {
+      fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+    }
+  } else {
+    fp16_enable_ = (info.fp16_enable == "False" ? false : true); 
+    std::cout << "tensorrt_execution_provider.cc: fp16_enable_: " << fp16_enable_ << std::endl;//slx
   }
 
-  const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
-  if (!fp16_enable_env.empty()) {
-    fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
-  }
-
-  const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
-  if (!int8_enable_env.empty()) {
-    int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
+  if (info.int8_enable.empty()) {
+    const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
+    if (!int8_enable_env.empty()) {
+        int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
+    }
+  } else {
+    int8_enable_ = (info.int8_enable == "False" ? false : true); 
+    std::cout << "tensorrt_execution_provider.cc: int8_enable_: " << int8_enable_ << std::endl;//slx
   }
 
   if (int8_enable_) {
-    const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationTableName);
-    if (!int8_calibration_cache_name_env.empty()) {
-      int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+    if (info.int8_calibration_table_name.empty()) {
+      const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationTableName);
+      if (!int8_calibration_cache_name_env.empty()) {
+        int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+      }
+    } else {
+      int8_calibration_cache_name_ = info.int8_calibration_table_name;
+      std::cout << "tensorrt_execution_provider.cc: int8_calibration_cache_name_: " << int8_calibration_cache_name_ << std::endl;//slx
     }
 
-    const std::string int8_use_native_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseNativeTensorrtCalibrationTable);
-    if (!int8_use_native_tensorrt_calibration_table_env.empty()) {
-      int8_use_native_tensorrt_calibration_table_ = (std::stoi(int8_use_native_tensorrt_calibration_table_env) == 0 ? false : true);
+    if (info.int8_use_native_calibration_table.empty()) {
+      const std::string int8_use_native_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseNativeTensorrtCalibrationTable);
+      if (!int8_use_native_tensorrt_calibration_table_env.empty()) {
+        int8_use_native_tensorrt_calibration_table_ = (std::stoi(int8_use_native_tensorrt_calibration_table_env) == 0 ? false : true);
+      }
+    } else {
+      int8_use_native_tensorrt_calibration_table_ = (info.int8_use_native_calibration_table == "False" ? false : true);
+      std::cout << "tensorrt_execution_provider.cc: int8_use_native_tensorrt_calibration_table_: " << int8_use_native_tensorrt_calibration_table_ << std::endl;//slx
     }
   }
 

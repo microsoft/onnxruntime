@@ -503,28 +503,32 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
       if (it != provider_options_map.end()) {
         for (auto option : it->second) {
           if (option.first == "trt_fp16_enable") {
-            if (option.second == "True") {
-              params.trt_fp16_enable = true;
-            } else if (option.second == "False") {
-              params.trt_fp16_enable = false;
+            if (option.second == "True" || option.second == "False") {
+              params.trt_fp16_enable = option.second.c_str();
+            ///} else if (option.second == "False") {
+            ///  params.trt_fp16_enable = false;
             } else {
               ORT_THROW("Invalid value passed for trt_fp16_enable: ", option.second);
             }
           } else if (option.first == "trt_int8_enable") {
-            if (option.second == "True") {
-              params.trt_int8_enable = true;
-            } else if (option.second == "False") {
-              params.trt_int8_enable = false;
+            if (option.second == "True" || option.second == "False") {
+              params.trt_int8_enable = option.second.c_str();
+            ///} else if (option.second == "False") {
+            ///  params.trt_int8_enable = false;
             } else {
               ORT_THROW("Invalid value passed for trt_int8_enable: ", option.second);
             }
           } else if (option.first == "trt_int8_calibration_table_name") {
-            params.trt_int8_calibration_table_name = option.second.c_str();//slx ?????
+            if (!option.second.empty()) {
+              params.trt_int8_calibration_table_name = option.second.c_str();//slx ?????
+            } else {
+              ORT_THROW("Invalid value passed for trt_int8_calibration_table_name: ", option.second);
+            }
           } else if (option.first == "trt_int8_use_native_calibration_table") {
-            if (option.second == "True") {
-              params.trt_int8_use_native_calibration_table = true;
-            } else if (option.second == "False") {
-              params.trt_int8_use_native_calibration_table = false;
+            if (option.second == "True" || option.second == "False") {
+              params.trt_int8_use_native_calibration_table = option.second.c_str();
+            ///} else if (option.second == "False") {
+            ///  params.trt_int8_use_native_calibration_table = false;
             } else {
               ORT_THROW("Invalid value passed for trt_int8_use_native_calibration_table: ", option.second);
             }

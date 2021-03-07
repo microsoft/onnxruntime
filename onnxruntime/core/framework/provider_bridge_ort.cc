@@ -17,6 +17,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
+#include <iostream> //slx
 
 #ifdef USE_TENSORRT
 #include "core/providers/cuda/cuda_allocator.h"
@@ -603,7 +604,7 @@ struct ProviderLibrary {
   ProviderLibrary(const char* filename) : filename_{filename} {}
   ~ProviderLibrary() { /*assert(!handle_);*/
   }                    // We should already be unloaded at this point (disabled until Python shuts down deterministically)
-
+/*
   Provider* Get() {
     if (provider_)
       return provider_;
@@ -622,6 +623,33 @@ struct ProviderLibrary {
     Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
 
     provider_ = PGetProvider();
+    return provider_;
+  }
+*/
+  Provider* Get() {
+    std::cout << "provider_bridge_ort.cc: ProviderLibrary:Provider* Get(): provider_: " << provider_ << std::endl;//slx
+    if (provider_)
+      return provider_;
+    
+    std::cout << "s_library_shared.Ensure(): " << s_library_shared.Ensure() << std::endl;//slx
+    if (!s_library_shared.Ensure())
+      return nullptr;
+
+    std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
+    std::cout << "full_path: " << full_path << std::endl;//slx
+    auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
+    std::cout << "handle_: " << handle_ << ", error.IsOk(): " << error.IsOK() << std::endl;//slx
+    if (!error.IsOK()) {
+      std::cout << "error.ErrorMessage(): " << error.ErrorMessage() << std::endl;//slx
+      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
+      return nullptr;
+    }
+
+    Provider* (*PGetProvider)();
+    Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+
+    provider_ = PGetProvider();
+    std::cout << "provider_: " << provider_ << std::endl;//slx
     return provider_;
   }
 
@@ -670,8 +698,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
-  if (auto provider = s_library_tensorrt.Get())
+  if (auto provider = s_library_tensorrt.Get()) {//slx
+    std::cout << "CreateExecutionProviderFactory_Tensorrt: provider" << provider << std::endl;//slx
     return provider->CreateExecutionProviderFactory(provider_options);
+  }//slx
 
   return nullptr;
 }

@@ -63,10 +63,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     //slx
-    bool trt_fp16_enable = false; // Enable TensorRT FP16 precision.
-    bool trt_int8_enable = false; // Enable TensorRT INT8 precision.
-    std::string trt_int8_calibration_table_name = "calibration.flatbuffers"; // Specify INT8 calibration table name.
-    bool trt_int8_use_native_calibration_table = false; // Use Native TensorRT calibration table.
+    std::string trt_max_workspace_size = ""; //slx !!!must be initialized to empty string!!
+    std::string trt_fp16_enable = ""; // Enable TensorRT FP16 precision.
+    std::string trt_int8_enable = ""; // Enable TensorRT INT8 precision.
+    std::string trt_int8_calibration_table_name = ""; // Specify INT8 calibration table name.
+    std::string trt_int8_use_native_calibration_table = ""; // Use Native TensorRT calibration table.
 
     #ifdef _MSC_VER
     std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
@@ -86,30 +87,39 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
       auto key = token.substr(0,pos);
       auto value = token.substr(pos+1);
-
-      if (key == "trt_fp16_enable") {
+      if (key == "trt_max_workspace_size") {
+        if(!value.empty()) {
+          trt_max_workspace_size = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number.\n");
+        }
+      } else if (key == "trt_fp16_enable") {
         if(value == "true" || value == "True"){
-          trt_fp16_enable = true;
+          trt_fp16_enable = "True";
         } else if (value == "false" || value == "False") {
-          trt_fp16_enable = false;
+          trt_fp16_enable = "False";
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "trt_int8_enable") {
         if(value == "true" || value == "True"){
-          trt_int8_enable = true;
+          trt_int8_enable = "True";
         } else if (value == "false" || value == "False") {
-          trt_int8_enable = false;
+          trt_int8_enable = "False";
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_enable' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "trt_int8_calibration_table_name") {
-        trt_int8_calibration_table_name = value;
+        if(!value.empty()) {
+          trt_int8_calibration_table_name = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-emtpy string.\n");
+        }
       } else if (key == "trt_int8_use_native_calibration_table") {
         if(value == "true" || value == "True"){
-          trt_int8_use_native_calibration_table = true;
+          trt_int8_use_native_calibration_table = "True";
         } else if (value == "false" || value == "False") {
-          trt_int8_use_native_calibration_table = false;
+          trt_int8_use_native_calibration_table = "False";
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. true or false. Default value is false.\n");
         }
@@ -121,11 +131,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 	tensorrt_options.device_id = 0; //slx ?? no default value in OrtTensorRTProviderOptions??
     tensorrt_options.has_user_compute_stream = 0; //slx ?? 
     tensorrt_options.user_compute_stream = nullptr; //slx ?? 
-    tensorrt_options.trt_fp16_enable = trt_fp16_enable; // To enable FP16 precision
-    tensorrt_options.trt_int8_enable = trt_int8_enable; // To enable INT8 precision
+    tensorrt_options.trt_max_workspace_size = trt_max_workspace_size.c_str();
+    tensorrt_options.trt_fp16_enable = trt_fp16_enable.c_str(); // To enable FP16 precision
+    tensorrt_options.trt_int8_enable = trt_int8_enable.c_str(); // To enable INT8 precision
 	tensorrt_options.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str(); // To specify INT8 calibration table name
-    tensorrt_options.trt_int8_use_native_calibration_table = trt_int8_use_native_calibration_table; // To use native TensorRT calibration table
-	std::cout << "tensorrt_options.trt_fp16_enable: " << tensorrt_options.trt_fp16_enable << ", tensorrt_options.trt_int8_enable: " << tensorrt_options.trt_int8_enable << ", tensorrt_options.trt_int8_calibration_table_name: " << ", tensorrt_options.trt_int8_use_native_calibration_table: " << tensorrt_options.trt_int8_use_native_calibration_table << std::endl;
+    tensorrt_options.trt_int8_use_native_calibration_table = trt_int8_use_native_calibration_table.c_str(); // To use native TensorRT calibration table
+	std::cout << "tensorrt_options.trt_max_workspace_size: " << tensorrt_options.trt_max_workspace_size << ", tensorrt_options.trt_fp16_enable: " << tensorrt_options.trt_fp16_enable << ", tensorrt_options.trt_int8_enable: " << tensorrt_options.trt_int8_enable << ", tensorrt_options.trt_int8_calibration_table_name: " << tensorrt_options.trt_int8_calibration_table_name << ", tensorrt_options.trt_int8_use_native_calibration_table: " << tensorrt_options.trt_int8_use_native_calibration_table << std::endl;
     session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
 
 

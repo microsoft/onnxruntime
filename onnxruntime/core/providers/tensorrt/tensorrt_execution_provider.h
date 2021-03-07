@@ -68,16 +68,22 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 
 // Information needed to construct trt execution providers.
 struct TensorrtExecutionProviderInfo {
-  int device_id{0};
+  int device_id{0};//slx 0 ??
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
   
   //slx
-  bool fp16_enable{false};  // 0 = false, nonzero = true
-  bool int8_enable{false};  // 0 = false, nonzero = true 
-  std::string int8_calibration_table_name{"calibration.flatbuffers"};//"" or "calibration.flatbuffers"??
-  bool int8_use_native_calibration_table{false};  // 0 = false, nonzero = true
+  ///bool fp16_enable{false};  /// 0 = false, nonzero = true
+  ///bool int8_enable{false};  // 0 = false, nonzero = true 
+  ///std::string int8_calibration_table_name{"calibration.flatbuffers"};//"" or "calibration.flatbuffers"??
+  ///bool int8_use_native_calibration_table{false};  /// 0 = false, nonzero = true
 
+  std::string max_workspace_size{""};
+  std::string fp16_enable{""};  ///bool 0 = false, nonzero = true
+  std::string int8_enable{""};  //bool 0 = false, nonzero = true 
+  std::string int8_calibration_table_name{""};//"" or "calibration.flatbuffers"??
+  std::string int8_use_native_calibration_table{""};  ///bool 0 = false, nonzero = true
+  
 /* //slx openvino's way, not necessary
   explicit TensorrtExecutionProviderInfo(bool fp16_enable, bool int8_enable, std::string int8_calibration_table_name, bool int8_use_trt_native_calibration_table)
       : fp16_enable(fp16_enable), int8_enable(int8_enable), int8_calibration_table_name(int8_calibration_table_name), int8_use_trt_native_calibration_table(int8_use_trt_native_calibration_table) {
@@ -161,8 +167,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   nvinfer1::IRuntime* runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
-  bool fp16_enable_info_ = false;//slx test
-  bool int8_enable_info_ = false;//slx test   
+  ///bool fp16_enable_info_ = false;//slx test
+  ///bool int8_enable_info_ = false;//slx test   
   AllocatorPtr allocator_;
   mutable char model_path_[4096]; // Reserved for max path length
   bool engine_decryption_enable_ = false;

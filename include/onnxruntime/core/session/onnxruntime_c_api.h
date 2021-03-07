@@ -292,10 +292,17 @@ typedef struct OrtTensorRTProviderOptions {
   ///unsigned char trt_int8_enable;  // 0 = false, nonzero = true 
   ///const char* trt_int8_calibration_table_name;
   ///unsigned char trt_int8_use_native_calibration_table;  // 0 = false, nonzero = true
-  int trt_fp16_enable;  // 0 = false, nonzero = true //slx no bool in c api!!
-  int trt_int8_enable;  // 0 = false, nonzero = true 
+  
+  ///int trt_fp16_enable;  // 0 = false, nonzero = true //slx no bool in c api!!
+  ///int trt_int8_enable;  // 0 = false, nonzero = true 
+  ///const char* trt_int8_calibration_table_name;
+  ///int trt_int8_use_native_calibration_table;  // 0 = false, nonzero = true  
+
+  const char* trt_max_workspace_size;
+  const char* trt_fp16_enable;  // 0 = false, nonzero = true //slx no bool in c api!!
+  const char* trt_int8_enable;  // 0 = false, nonzero = true 
   const char* trt_int8_calibration_table_name;
-  int trt_int8_use_native_calibration_table;  // 0 = false, nonzero = true  
+  const char* trt_int8_use_native_calibration_table;  // 0 = false, nonzero = true    
 } OrtTensorRTProviderOptions;
 
 /// <summary>
