@@ -99,10 +99,8 @@ static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
   if (transpose == nullptr || cast->GetOutputEdgesCount() !=1 || transpose->GetOutputEdgesCount() !=1) {
     return nullptr;
   }
-  NodeArg* cast_input = cast->MutableInputDefs()[0];
   NodeArg* cast_output = cast->MutableOutputDefs()[0];
   NodeArg* transpose_input = transpose->MutableInputDefs()[0];
-  NodeArg* transpose_output = transpose->MutableOutputDefs()[0];
 
   // Create a new NodeArg to feed the output from the new Cast to the new Transpose.
   // The shape of the new NodeArg is same as the original input to Transport but type
