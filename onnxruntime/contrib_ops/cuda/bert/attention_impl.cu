@@ -24,6 +24,7 @@ limitations under the License.
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "debug_cuda.h"
 #include "attention_impl.h"
 #include "attention_softmax.h"
 
@@ -85,6 +86,10 @@ bool QkvToContext(
   const T* k = q + total_size;
   const T* v = k + total_size;
 
+  Print4DTensor<<<1, 1, 0, stream>>>(q, batch_size, num_heads, sequence_length, head_size, 'Q');  /// DEBUG
+  Print4DTensor<<<1, 1, 0, stream>>>(k, batch_size, num_heads, sequence_length, head_size, 'K');  /// DEBUG
+  Print4DTensor<<<1, 1, 0, stream>>>(v, batch_size, num_heads, sequence_length, head_size, 'V');  /// DEBUG
+
   cublasSetStream(cublas, stream);
   CublasMathModeSetter helper(prop, cublas, CUBLAS_TENSOR_OP_MATH);
 
@@ -141,6 +146,10 @@ bool QkvToContext(
           scratch2, all_sequence_length, temp_matrix_size, 0.f, scratch3, head_size, size_per_batch, batches))) {
     return false;
   }
+
+  Print4DTensor<<<1, 1, 0, stream>>>(scratch1, batch_size, num_heads, sequence_length, sequence_length, 'X');  /// DEBUG
+  Print4DTensor<<<1, 1, 0, stream>>>(scratch2, batch_size, num_heads, sequence_length, sequence_length, 'Y');  /// DEBUG
+  Print4DTensor<<<1, 1, 0, stream>>>(scratch3, batch_size, num_heads, sequence_length, head_size, 'Z');        /// DEBUG
 
   // scratch3 is BxNxSxH, transpose to output BxSxNxH
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, scratch3, output);
