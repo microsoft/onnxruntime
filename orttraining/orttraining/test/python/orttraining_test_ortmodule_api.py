@@ -607,23 +607,25 @@ def test_mixed_nnmodule_ortmodules_training():
 def test_ortmodule_inputs_with_dynamic_shape():
     D_in, H, D_out = 784, 500, 10
 
-    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
-    model = ORTModule(model)
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to('cuda')
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, x):
+        p = model(x)
+        loss = p.sum()
+        loss.backward()
+        return p
 
     for step in range(10):
         N = random.randint(1,100)
         x = torch.randn(N, D_in, device='cuda', requires_grad=True)
         assert x.grad is None
 
-        prediction = model(x)
-        s = prediction.sum()
-        s.backward()
+        pt_p = run_step(pt_model, x)
+        ort_p = run_step(ort_model, x)
 
-        assert x.grad is not None 
-        for param in model.parameters():
-            assert param.grad is not None
-            param.grad = None
-
+        assert torch.allclose(ort_p, pt_p)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_bert_inputs_with_dynamic_shape():
     model = _get_bert_for_sequence_classification_model('cuda')
@@ -633,9 +635,10 @@ def test_bert_inputs_with_dynamic_shape():
         x, y, z = _get_bert_for_sequence_classification_sample_data_with_random_shapes('cuda')
 
         outputs = model(x, y, None, None, None, None, z)
-        s = outputs[0]
-        s.backward()
+        loss = outputs[0]
+        loss.backward()
 
+        assert loss is not None
         for param in model.parameters():
             assert param.grad is not None
             param.grad = None

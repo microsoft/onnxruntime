@@ -59,21 +59,20 @@ void ComputeBroadcastBackwardAxes(
       auto A_dim = A_dims[i].dim_param(),
            B_dim = B_dims[j].dim_param();
       if (A_dim != B_dim) {
-        LOGS_DEFAULT(WARNING) << "Gradient building error for node " << node_name << ": symbolic dimension doesn't match. " <<
-                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims); 
+        LOGS_DEFAULT(WARNING) << "Gradient building for node " << node_name << ": symbolic dimension expects to match. " <<
+                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<   
+                  " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
       }
     } else if (A_dims[i].has_dim_param() && B_dims[j].has_dim_value()) {
       auto A_dim = A_dims[i].dim_param();
       auto B_dim = B_dims[j].dim_value();
 
       if (B_dim != 1) {
-        LOGS_DEFAULT(WARNING) << "Gradient building error for node " << node_name << ": symbolic broadcasting requires the B_dimension to be 1. " <<
-                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims);  
-        --i;
-        --j;            
-        continue;
+        LOGS_DEFAULT(WARNING) << "Gradient building for node " << node_name << ": symbolic broadcasting expects the B_dimension to be 1. " <<
+                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<   
+                  " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";   
       }
-      if (B_axes) {
+      if (B_axes && B_dim == 1) {
         B_axes->push_back(gsl::narrow_cast<int64_t>(k));
       }
     } else if (A_dims[i].has_dim_value() && B_dims[j].has_dim_param()) {
@@ -81,13 +80,11 @@ void ComputeBroadcastBackwardAxes(
       auto B_dim = B_dims[j].dim_param();
 
       if (A_dim != 1) {
-        LOGS_DEFAULT(WARNING) << "Gradient building error for node " << node_name << ": symbolic broadcasting requires the A_dimension to be 1. " <<
-                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims); 
-        --i;
-        --j;            
-        continue;
+        LOGS_DEFAULT(WARNING) << "Gradient building for node " << node_name << ": symbolic broadcasting expects the A_dimension to be 1. " <<
+                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<   
+                  " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
       }
-      if (A_axes) {
+      if (A_axes && A_dim == 1) {
         A_axes->push_back(gsl::narrow_cast<int64_t>(k));
       }
     }

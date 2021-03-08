@@ -176,7 +176,7 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
   std::unordered_set<std::string> user_output_grad_names_set;
   for (const auto& name : training_graph_info_.user_output_names) {
-    user_output_grad_names_set.insert(name + "_grad");
+    user_output_grad_names_set.insert(GradientBuilderBase::GradientName(name));
   }
 
   // If an NodeArg is output of one of nodes, it's not the user output gradient needed by backward graph.
@@ -199,7 +199,7 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   training_graph_info_.backward_output_grad_names_map.clear();
   for (std::size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
     const auto& name = training_graph_info_.user_output_names[i];
-    std::string grad_name = name + "_grad";
+    std::string grad_name = GradientBuilderBase::GradientName(name);
     if (non_backward_user_output_grad_names.find(grad_name) == non_backward_user_output_grad_names.end()) {
       training_graph_info_.backward_output_grad_names_map.insert(std::make_pair(grad_name, i));
       required_grad.add_ints(static_cast<int64_t>(i));
@@ -213,7 +213,7 @@ void ModuleGradientGraphBuilder::AddYieldOp() {
   }
 
   for (const auto& name : training_graph_info_.user_output_names) {
-    std::string grad_name = name + "_grad";
+    std::string grad_name = GradientBuilderBase::GradientName(name);
     auto element = training_graph_info_.backward_output_grad_names_map.find(grad_name);
     if (element != training_graph_info_.backward_output_grad_names_map.end()) {
       yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(element->first));
