@@ -44,8 +44,6 @@
 #include "core/profile/context.h"
 #endif
 
-#include <cstdlib>
-
 namespace onnxruntime {
 namespace training {
 
@@ -587,9 +585,6 @@ Status TrainingSession::ConfigureForTraining(
 
   config_result_out = std::move(config_result);
   is_configured_ = true;
-
-  const char* dump_model_path = std::getenv("DUMP_MODEL_PATH");
-  ORT_IGNORE_RETURN_VALUE(Save(dump_model_path, SaveOption::NO_RELOAD));
 
   return Status::OK();
 }
