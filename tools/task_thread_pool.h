@@ -184,9 +184,11 @@ class TaskThreadPool {
           } else {
             task.no_id();
           }
-        } catch (const std::exception& /*ex*/) {
+        } catch (const std::exception& ex) {
           // LOGS_DEFAULT(ERROR) << "Exception running TaskThreadPool task: " << ex.what();
-          throw;
+          std::cerr << "Exception running TaskThreadPool task: " << ex.what() << "\n";
+        } catch (...) {
+          std::cerr << "Unknown exception running TaskThreadPool task \n";
         }
 
         // Update status of empty, maybe

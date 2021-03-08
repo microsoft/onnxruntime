@@ -164,6 +164,7 @@ struct RequestExecutionFrame {
 
 struct PipelineSession {
   OrtStatus* Run(const std::vector<OrtReq>& req_vec, std::vector<OrtResp>& resp_vec, int num_steps);
+  OrtStatus* HandleAndReturnFailure(const char* error_msg);
   void ParseEnsembleJsonFile(const std::string& ensemble_json_file, PipelineConfig& ens);
   PipelineSession(const std::string& ensemble_json_file, Ort::Env& env);
   PipelineSession(const PipelineConfig& ens, Ort::Env& env);
@@ -176,11 +177,6 @@ struct PipelineSession {
     Ort::MemoryInfo cuda_mem_info;
   };
 
-  struct PipelineSessionOptions {
-    int thread_pool_size;
-    bool use_global;
-  };
-
   struct PipelineStage {
     PipelineStage(int device_id0, int tp_size0 = 1)
         : device_id(device_id0),
@@ -190,6 +186,10 @@ struct PipelineSession {
 
     void ScheduleTask(std::function<void()>&& task) {
       tp.RunTask(std::move(task));
+    }
+
+    void DrainAllInflightRequests() {
+      tp.WaitWorkComplete();
     }
 
     int device_id;

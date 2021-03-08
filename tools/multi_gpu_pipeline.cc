@@ -18,7 +18,7 @@
 #include <cuda_runtime_api.h>
 #include <cuda.h>
 #include "task_thread_pool.h"
-#include "queue.h"
+#include "concurrent_queue.h"
 #include "Eigen/Core"
 #include "Eigen/src/Core/arch/Default/Half.h"
 #include "cxxopts.hpp"
@@ -421,15 +421,23 @@ void GetNewPosnIds(int batch_size, int orig_input_seq_len, int step_id, std::vec
   posn_ids.assign(batch_size, new_posn_id);
 }
 
+OrtStatus* PipelineSession::HandleAndReturnFailure(const char* error_msg) {
+  for (auto& stage : pipeline_stages) {
+    stage->DrainAllInflightRequests();
+  }
+  return g_ort->CreateStatus(ORT_FAIL, error_msg);
+}
+
 // TODO proper error handling
 // TODO - replace all cout with LOG
 // For simplicity even if one req in the batch fails, we consider the full batch to have failed.
 OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector<OrtResp>& resp_list, int num_steps) {
-  ResponseQueue<Token*> resp_queue;
+  using ResponseQueue = ConcurrentQueue<Token*>;
+  ResponseQueue resp_queue;
   std::unordered_map<ReqId, RequestExecutionFrame> req_frame_map;
 
   // code that will run by the threads in the threadpool
-  auto lambda_helper = [](ResponseQueue<Token*>& resp_queue,
+  auto lambda_helper = [](ResponseQueue& resp_queue,
                           RequestProcessor& rp,
                           Token& token,
                           const PipelineConfig::ModelConfig& mcfg,
@@ -453,7 +461,7 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
       out_token_ptr->step_id = token.step_id;
       out_token_ptr->error_msg = error.str();
     }
-    resp_queue.Put(out_token_ptr);
+    resp_queue.Push(out_token_ptr);
   };
 
   // First enqueue the first step and first stage processing for all the requests
@@ -517,14 +525,18 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
   // passing the output of one stage to the next one
   int req_processed = 0;
   while (req_processed < num_reqs) {
-    auto token_ptr = resp_queue.Get();
+    Token* token_ptr = nullptr;
+    auto rc = resp_queue.WaitAndPop(1000 /*TODO make it configurable*/, token_ptr);
+    if (rc != ResponseQueue::Status::kSuccess) {
+      return HandleAndReturnFailure("Request processing timed out after 1000 ms");
+    }
     ReqId req_id = token_ptr->req_id;
     int step_id = token_ptr->step_id;
     auto& exec_frame = req_frame_map.at(req_id);
 
     // fail the whole batch if even one req fails
     if (!token_ptr->error_msg.empty()) {
-      return g_ort->CreateStatus(ORT_FAIL, token_ptr->error_msg.c_str());
+      return HandleAndReturnFailure(token_ptr->error_msg.c_str());
     }
 
     exec_frame.stage_id = (exec_frame.stage_id + 1) % pcfg.num_stages;
@@ -543,7 +555,7 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
             // case when the user requested output was not present in the final output
             std::ostringstream ostr;
             ostr << "Error: Output " << oname << " is not produced by the final stage\n";
-            return g_ort->CreateStatus(ORT_FAIL, ostr.str().c_str());
+            return HandleAndReturnFailure(ostr.str().c_str());
           }
           ++resp_index;
         }
@@ -557,7 +569,7 @@ OrtStatus* PipelineSession::Run(const std::vector<OrtReq>& req_list, std::vector
         // get index of 'logits' output
         auto rc = Contains(token_ptr->ort_value_names, pcfg.logits_name);
         if (!rc.first) {
-          return g_ort->CreateStatus(ORT_FAIL, "Did not get logits in the output");
+          return HandleAndReturnFailure("Did not get logits in the output");
         }
         auto& input_ids = exec_frame.next_step_input_buffer_map[pcfg.input_ids_name].data;
         auto& input_ids_shape = exec_frame.next_step_input_buffer_map[pcfg.input_ids_name].shape;
