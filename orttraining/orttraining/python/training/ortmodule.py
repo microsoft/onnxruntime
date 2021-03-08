@@ -46,9 +46,10 @@ def _onnx_value_info_to_buffer_tensor(value_info, device):
 
 def _check_device(device, argument_str, *args):
     for arg in args:
-        arg_device = _utils.get_device_from_input_args_kwargs(arg)
-        if arg_device != device:
-            raise RuntimeError(f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
+        if arg is not None and isinstance(arg, torch.Tensor):
+            arg_device = torch.device(arg.device)
+            if arg_device != device:
+                raise RuntimeError(f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
 
 # TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
 # and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor

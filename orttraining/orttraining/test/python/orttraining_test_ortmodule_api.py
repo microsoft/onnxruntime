@@ -1236,4 +1236,4 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
     x = torch.randn(N, D_in, device=data_device)
     with pytest.raises(RuntimeError) as runtime_error:
         ort_model(x)
-    assert f"Input argument to forward found on device {_utils.get_device_from_input_args_kwargs(x)}, but expected it to be on module device {ort_model._device}." in str(runtime_error.value)
+    assert f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._device}." in str(runtime_error.value)
