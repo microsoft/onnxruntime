@@ -877,16 +877,11 @@ template <>
 inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   size_t size = 0;
   std::string out;
-  std::string error_string_required("Result buffer is not large enough");
 
+  // Feed nullptr for the data buffer to query the true size of the string attribute
   OrtStatus* status = api_.KernelInfoGetAttribute_string(info, name, nullptr, &size);
 
-  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the attribute array
-  // As an additional safety check, ensure that the error message holds a hint that the buffer is not large enough
-  // to hold the attribute's contents
-  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT &&
-      error_string_required.compare(api_.GetErrorMessage(status)) == 0) {
-    api_.ReleaseStatus(status);
+  if (status == nullptr) {
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
     out.resize(size - 1);  // remove the terminating character '\0'
@@ -900,16 +895,11 @@ template <>
 inline std::vector<float> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   size_t size = 0;
   std::vector<float> out;
-  std::string error_string_required("Result buffer is not large enough");
 
+  // Feed nullptr for the data buffer to query the true size of the attribute
   OrtStatus* status = api_.KernelInfoGetAttributeArray_float(info, name, nullptr, &size);
 
-  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the attribute array
-  // As an additional safety check, ensure that the error message holds a hint that the buffer is not large enough
-  // to hold the attribute's contents
-  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT &&
-      error_string_required.compare(api_.GetErrorMessage(status)) == 0) {
-    api_.ReleaseStatus(status);
+  if (status == nullptr) {
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttributeArray_float(info, name, out.data(), &size));
   } else {
@@ -922,16 +912,11 @@ template <>
 inline std::vector<int64_t> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   size_t size = 0;
   std::vector<int64_t> out;
-  std::string error_string_required("Result buffer is not large enough");
 
+  // Feed nullptr for the data buffer to query the true size of the attribute
   OrtStatus* status = api_.KernelInfoGetAttributeArray_int64(info, name, nullptr, &size);
 
-  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the attribute array
-  // As an additional safety check, ensure that the error message holds a hint that the buffer is not large enough
-  // to hold the attribute's contents
-  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT &&
-      error_string_required.compare(api_.GetErrorMessage(status)) == 0) {
-    api_.ReleaseStatus(status);
+  if (status == nullptr) {
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttributeArray_int64(info, name, out.data(), &size));
   } else {
