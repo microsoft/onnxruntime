@@ -281,7 +281,7 @@ typedef struct OrtCUDAProviderOptions {
 typedef struct OrtTensorRTProviderOptions {
 
   int device_id;//slx ?? initialization??
-  int has_user_compute_stream;
+  int has_user_compute_stream;// ?????? bool in info
   void* user_compute_stream;
 
 //slx

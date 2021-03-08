@@ -498,13 +498,26 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 	  params.device_id = 0; //slx ?? should be configurable??
 	  params.has_user_compute_stream = 0;//??
 	  params.user_compute_stream = nullptr;//??
-
+      params.trt_max_workspace_size = "";
+      params.trt_fp16_enable = "";	  
+      params.trt_int8_enable = "";	  
+      params.trt_int8_calibration_table_name = "";
+      params.trt_int8_use_native_calibration_table = "";
+	  
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         for (auto option : it->second) {
-          if (option.first == "trt_fp16_enable") {
+          if (option.first == "trt_max_workspace_size") {
+            if (!option.second.empty()) {
+              params.trt_max_workspace_size = option.second.c_str();//slx ?????
+              std::cout << "pybind_state.cc: params.trt_max_workspace_size: " << params.trt_max_workspace_size << std::endl;//slx
+            } else {
+              ORT_THROW("Invalid value passed for trt_max_workspace_size: ", option.second);
+            }
+		  } else if (option.first == "trt_fp16_enable") {
             if (option.second == "True" || option.second == "False") {
               params.trt_fp16_enable = option.second.c_str();
+              std::cout << "pybind_state.cc: params.trt_fp16_enable: " << params.trt_fp16_enable << std::endl;//slx
             ///} else if (option.second == "False") {
             ///  params.trt_fp16_enable = false;
             } else {
@@ -513,6 +526,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           } else if (option.first == "trt_int8_enable") {
             if (option.second == "True" || option.second == "False") {
               params.trt_int8_enable = option.second.c_str();
+              std::cout << "pybind_state.cc: params.trt_int8_enable: " << params.trt_int8_enable << std::endl;//slx
             ///} else if (option.second == "False") {
             ///  params.trt_int8_enable = false;
             } else {
@@ -521,12 +535,14 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           } else if (option.first == "trt_int8_calibration_table_name") {
             if (!option.second.empty()) {
               params.trt_int8_calibration_table_name = option.second.c_str();//slx ?????
+              std::cout << "pybind_state.cc: params.trt_int8_calibration_table_name: " << params.trt_int8_calibration_table_name << std::endl;//slx
             } else {
               ORT_THROW("Invalid value passed for trt_int8_calibration_table_name: ", option.second);
             }
           } else if (option.first == "trt_int8_use_native_calibration_table") {
             if (option.second == "True" || option.second == "False") {
               params.trt_int8_use_native_calibration_table = option.second.c_str();
+              std::cout << "pybind_state.cc: params.trt_int8_use_native_calibration_table: " << params.trt_int8_use_native_calibration_table << std::endl;//slx
             ///} else if (option.second == "False") {
             ///  params.trt_int8_use_native_calibration_table = false;
             } else {

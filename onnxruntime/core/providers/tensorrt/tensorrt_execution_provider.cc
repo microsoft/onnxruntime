@@ -413,7 +413,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
   } else {
     max_workspace_size_ = std::stoull(info.max_workspace_size);
-    std::cout << "tensorrt_execution_provider.cc: max_workspace_size_: " << max_workspace_size_ << std::endl;//slx
+    std::cout << "tensorrt_execution_provider.cc: max_workspace_size_: " << max_workspace_size_ << ", info.max_workspace_size: " << info.max_workspace_size << std::endl;//slx
   }  
 
   if (info.fp16_enable.empty()) {
@@ -423,7 +423,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
   } else {
     fp16_enable_ = (info.fp16_enable == "False" ? false : true); 
-    std::cout << "tensorrt_execution_provider.cc: fp16_enable_: " << fp16_enable_ << std::endl;//slx
+    std::cout << "tensorrt_execution_provider.cc: fp16_enable_: " << fp16_enable_ << ", info.fp16_enable: " << info.fp16_enable << std::endl;//slx
   }
 
   if (info.int8_enable.empty()) {
@@ -433,7 +433,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
   } else {
     int8_enable_ = (info.int8_enable == "False" ? false : true); 
-    std::cout << "tensorrt_execution_provider.cc: int8_enable_: " << int8_enable_ << std::endl;//slx
+    std::cout << "tensorrt_execution_provider.cc: int8_enable_: " << int8_enable_ << ", info.int8_enable: " << info.int8_enable << std::endl;//slx
   }
 
   if (int8_enable_) {
@@ -444,7 +444,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       }
     } else {
       int8_calibration_cache_name_ = info.int8_calibration_table_name;
-      std::cout << "tensorrt_execution_provider.cc: int8_calibration_cache_name_: " << int8_calibration_cache_name_ << std::endl;//slx
+      std::cout << "tensorrt_execution_provider.cc: int8_calibration_cache_name_: " << int8_calibration_cache_name_ <<  ", info.int8_calibration_table_name: " << info.int8_calibration_table_name << std::endl;//slx
     }
 
     if (info.int8_use_native_calibration_table.empty()) {
@@ -454,7 +454,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       }
     } else {
       int8_use_native_tensorrt_calibration_table_ = (info.int8_use_native_calibration_table == "False" ? false : true);
-      std::cout << "tensorrt_execution_provider.cc: int8_use_native_tensorrt_calibration_table_: " << int8_use_native_tensorrt_calibration_table_ << std::endl;//slx
+      std::cout << "tensorrt_execution_provider.cc: int8_use_native_tensorrt_calibration_table_: " << int8_use_native_tensorrt_calibration_table_  <<  ", info.int8_use_native_calibration_table: " << info.int8_use_native_calibration_table << std::endl;//slx
     }
   }
 

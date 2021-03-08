@@ -58,6 +58,7 @@ namespace perftest {
       "\t    [OpenVINO only] [num_of_threads]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
       "\t [Example] [For OpenVINO EP] -e openvino -i 'device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5'\n"
+      "\t    [TensorRT only] [trt_max_workspace_size]: Set TensorRT maximum workspace size in byte.\n"	  
       "\t    [TensorRT only] [trt_fp16_enable]: Enable TensorRT FP16 precision.\n"
       "\t    [TensorRT only] [trt_int8_enable]: Enable TensorRT INT8 precision.\n"
       "\t    [TensorRT only] [trt_int8_calibration_table_name]: Specify INT8 calibration table name.\n"

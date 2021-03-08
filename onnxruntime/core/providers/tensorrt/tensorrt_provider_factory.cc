@@ -102,27 +102,26 @@ struct Tensorrt_Provider : Provider {
   }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
-    std::cout << "!!tensorrt_provider_factory.cc: CreateExecutionProviderFactory(const void* provider_options)" << std::endl;//slx
+    std::cout << "!!!!!tensorrt_provider_factory.cc: CreateExecutionProviderFactory(const void* provider_options)" << std::endl;//slx
     auto& options = *reinterpret_cast<const OrtTensorRTProviderOptions*>(provider_options);
     std::cout << "options.device_id: " << options.device_id << std::endl;//slx
     std::cout << "options.has_user_compute_stream: " << options.has_user_compute_stream << std::endl;//slx
-    std::cout << "options.user_compute_stream: " << options.user_compute_stream << std::endl;//slx	
-    std::cout << "options.trt_fp16_enable: " << options.trt_fp16_enable << std::endl;//slx	
-    std::cout << "options.trt_int8_enable: " << options.trt_int8_enable << std::endl;//slx
-    ///std::cout << "options.trt_int8_calibration_table_name: " << options.trt_int8_calibration_table_name << std::endl;//slx !!cause segmentation fault!!!!!!!!	
-    std::cout << "options.trt_int8_use_native_calibration_table: " << options.trt_int8_use_native_calibration_table << std::endl;//slx	
+    std::cout << "options.user_compute_stream: " << options.user_compute_stream << std::endl;//slx: !!!!!ok because it's void*	
+    //std::cout << "options.trt_fp16_enable: " << options.trt_fp16_enable << std::endl;//slx	!!!!!!wrong because it's char*
+
     TensorrtExecutionProviderInfo info;
     info.device_id = options.device_id;
     info.has_user_compute_stream = options.has_user_compute_stream;
     info.user_compute_stream = options.user_compute_stream;
 	
     //slx
-    info.fp16_enable = options.trt_fp16_enable;
-    info.int8_enable = options.trt_int8_enable;
+    info.max_workspace_size = options.trt_max_workspace_size == nullptr ? "" : options.trt_max_workspace_size;//char * to string
+    info.fp16_enable = options.trt_fp16_enable == nullptr ? "" : options.trt_fp16_enable;
+    info.int8_enable = options.trt_int8_enable == nullptr ? "" : options.trt_int8_enable;
     info.int8_calibration_table_name = options.trt_int8_calibration_table_name == nullptr ? "" : options.trt_int8_calibration_table_name;
-    info.int8_use_native_calibration_table = options.trt_int8_use_native_calibration_table;
+    info.int8_use_native_calibration_table = options.trt_int8_use_native_calibration_table == nullptr ? "" : options.trt_int8_use_native_calibration_table;
 
-    std::cout << "info.device_id: " << info.device_id << ", info.fp16_enable: " << info.fp16_enable << std::endl;//slx
+    std::cout << "info.device_id: " << info.device_id << ", info.max_workspace_size: " << info.max_workspace_size << ", info.fp16_enable: " << info.fp16_enable << ", info.int8_enable: " << info.int8_enable <<std::endl;//slx
     std::cout << "info.int8_calibration_table_name: " << info.int8_calibration_table_name << ", info.int8_use_native_calibration_table: " << info.int8_use_native_calibration_table << std::endl;//slx	
     return std::make_shared<TensorrtProviderFactory>(info);
   }
