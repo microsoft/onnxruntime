@@ -579,7 +579,6 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         propagateElemTypeFromInputToOutput(ctx, 0, 1);
-        propagateShapeFromInputToOutput(ctx, 1, 1);
         if (!hasInputShape(ctx, 0))
           return;
 
@@ -600,11 +599,6 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
           fail_shape_inference("batch_sentence_lengthes should have 2 dimensions");
         }
 
-        ONNX_NAMESPACE::TensorShapeProto shape;
-        *shape.add_dim() = batch_input_tensor_dims[0];
-        *shape.add_dim() = batch_sentence_lengthes_dims[1];
-        *shape.add_dim() = batch_input_tensor_dims[2];
-        ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
       });
 }
 
