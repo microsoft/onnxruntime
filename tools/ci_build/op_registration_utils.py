@@ -184,6 +184,11 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
         registration_processor.process_registration(lines_to_process, domain, op_type,
                                                     int(start_version), int(end_version), type)
 
+    else:
+        log.warning("Ignoring unhandled kernel registration variant: {}".format(code_line))
+        for line in lines_to_process:
+            registration_processor.process_other_line(line)
+
     return offset + 1
 
 
