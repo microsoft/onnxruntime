@@ -135,7 +135,12 @@ void ThreadPoolProfiler::LogRun(int thread_idx) {
   child_thread_stats_[thread_idx].num_run =
       (child_thread_stats_[thread_idx].num_run + 1) & mod;
   if ((child_thread_stats_[thread_idx].num_run & (~mask)) == 0) {
+#ifdef _WIN32
     child_thread_stats_[thread_idx].core = GetCurrentProcessorNumber();
+#else
+    uint32_t n = 0;
+    getcpu(&child_thread_stats_[thread_idx].core, &n, nullptr);
+#endif
   }
 }
 
