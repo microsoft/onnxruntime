@@ -201,11 +201,7 @@ else()
     set(mlas_platform_srcs_avx
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelAvx.S
     )
-    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-      set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx -fno-integrated-as")
-    else()
-      set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
-    endif()
+    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
 
     set(mlas_platform_srcs
       ${mlas_platform_srcs_sse2}
