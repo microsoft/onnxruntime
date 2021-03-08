@@ -885,7 +885,7 @@ inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const O
   // As an additional safety check, ensure that the error message holds a hint that the buffer is not large enough
   // to hold the attribute's contents
   if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT &&
-      error_string_required.compare("Result buffer is not large enough") == 0) {
+      error_string_required.compare(api_.GetErrorMessage(status)) == 0) {
     api_.ReleaseStatus(status);
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
@@ -897,7 +897,7 @@ inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const O
 }
 
 template <>
-inline std::vector<float> CustomOpApi::KernelInfoGetAttributeArray(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+inline std::vector<float> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   size_t size = 0;
   std::vector<float> out;
   std::string error_string_required("Result buffer is not large enough");
@@ -908,7 +908,7 @@ inline std::vector<float> CustomOpApi::KernelInfoGetAttributeArray(_In_ const Or
   // As an additional safety check, ensure that the error message holds a hint that the buffer is not large enough
   // to hold the attribute's contents
   if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT &&
-      error_string_required.compare("Result buffer is not large enough") == 0) {
+      error_string_required.compare(api_.GetErrorMessage(status)) == 0) {
     api_.ReleaseStatus(status);
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttributeArray_float(info, name, out.data(), &size));
@@ -919,7 +919,7 @@ inline std::vector<float> CustomOpApi::KernelInfoGetAttributeArray(_In_ const Or
 }
 
 template <>
-inline std::vector<int64_t> CustomOpApi::KernelInfoGetAttributeArray(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+inline std::vector<int64_t> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   size_t size = 0;
   std::vector<int64_t> out;
   std::string error_string_required("Result buffer is not large enough");
@@ -930,7 +930,7 @@ inline std::vector<int64_t> CustomOpApi::KernelInfoGetAttributeArray(_In_ const 
   // As an additional safety check, ensure that the error message holds a hint that the buffer is not large enough
   // to hold the attribute's contents
   if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT &&
-      error_string_required.compare("Result buffer is not large enough") == 0) {
+      error_string_required.compare(api_.GetErrorMessage(status)) == 0) {
     api_.ReleaseStatus(status);
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttributeArray_int64(info, name, out.data(), &size));

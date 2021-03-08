@@ -578,11 +578,8 @@ struct ArenaCfg : Base<OrtArenaCfg> {
 struct CustomOpApi {
   CustomOpApi(const OrtApi& api) : api_(api) {}
 
-  template <typename T>  // T is only implemented for float, int64_t, and string
+  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>, float, int64_t, and string
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
-
-  template <typename T>  // T is only implemented for float, and int64_t
-  std::vector<T> KernelInfoGetAttributeArray(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
   size_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);

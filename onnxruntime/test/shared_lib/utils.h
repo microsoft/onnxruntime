@@ -120,8 +120,8 @@ struct MyCustomKernelWithAttributes {
     int_attr_ = ort_.KernelInfoGetAttribute<int64_t>(info, "int_attr");
     float_attr_ = ort_.KernelInfoGetAttribute<float>(info, "float_attr");
 
-    ints_attr_ = ort_.KernelInfoGetAttributeArray<int64_t>(info, "ints_attr");
-    floats_attr_ = ort_.KernelInfoGetAttributeArray<float>(info, "floats_attr");
+    ints_attr_ = ort_.KernelInfoGetAttribute<std::vector<int64_t>>(info, "ints_attr");
+    floats_attr_ = ort_.KernelInfoGetAttribute<std::vector<float>>(info, "floats_attr");
 
     string_arr_ = ort_.KernelInfoGetAttribute<std::string>(info, "string_attr");
   }
