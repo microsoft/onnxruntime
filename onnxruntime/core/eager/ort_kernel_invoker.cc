@@ -20,7 +20,7 @@ void init_env(){
                                                                                logging::LoggingManager::InstanceType::Default,
                                                                                &default_logger_id);
   std::cout << "Init env" << std::endl;
-  Environment::Create(std::move(default_logging_manager), ort_env);                                                                             
+  Environment::Create(std::move(default_logging_manager), ort_env);
 }
 
 ORTInvoker::ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider) : execution_provider_(std::move(execution_provider)) {
@@ -48,29 +48,23 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
 
   std::vector<onnxruntime::NodeArg*> input_args;
   std::vector<onnxruntime::NodeArg*> output_args;
-  ONNX_NAMESPACE::TypeProto tensor_type;
-  //TODO: set type according to input tensors
-  tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  ONNX_NAMESPACE::TypeProto int64_tensor_type;
-  //TODO: set type according to input tensors
-  int64_tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
 
   Graph& graph = model.MainGraph();
   std::unordered_map<std::string, OrtValue> initializer_map;
   size_t i = 0;
-  
+
   for (auto input : inputs) {
     std::string name = "I" + std::to_string(i++);
     const Tensor& input_tensor = input.Get<Tensor>();
-    auto* type = input_tensor.DataType() == DataTypeImpl::GetType<int64_t>() ? &int64_tensor_type : &tensor_type;
-    auto& arg = graph.GetOrCreateNodeArg(name, type);
+    ONNX_NAMESPACE::TypeProto input_tensor_type;
+    input_tensor_type.mutable_tensor_type()->set_elem_type(input_tensor.GetElementType());
+    auto& arg = graph.GetOrCreateNodeArg(name, &input_tensor_type);
     input_args.push_back(&arg);
     initializer_map[name] = input;
   }
-  
+
   for (i = 0; i < outputs.size(); ++i) {
-    //TODO: set correct output type
-    auto& arg = graph.GetOrCreateNodeArg("O" + std::to_string(i), &tensor_type);
+    auto& arg = graph.GetOrCreateNodeArg("O" + std::to_string(i), nullptr);
     output_args.push_back(&arg);
   }
 
