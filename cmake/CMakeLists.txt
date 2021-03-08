@@ -237,6 +237,13 @@ if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
 endif()
 
+# Enable space optimization for gcc/clang
+# Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
+if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
+  string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
+  string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
+endif()
+
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
 if (onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
@@ -271,10 +278,6 @@ if (onnxruntime_MINIMAL_BUILD)
       string(APPEND CMAKE_SHARED_LINKER_FLAGS " /debug")
     endif()
   else()
-    if (NOT onnxruntime_ENABLE_BITCODE)
-      # Cannot use -ffunction-sections -fdata-sections if we enable bitcode
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
-    endif()
     if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
       add_link_options(-Wl, -dead_strip)
     else()
@@ -1042,12 +1045,9 @@ if (WIN32)
     endforeach()
 else()
   add_definitions(-DPLATFORM_POSIX)
-  # Enable warning and enable space optimization in Linux
-  if (NOT onnxruntime_ENABLE_BITCODE)
-    # Cannot use -ffunction-sections -fdata-sections if we enable bitcode
-    string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
-    string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
-  endif()
+  # Enable warning
+  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra")
+  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra")
 
   if(onnxruntime_DEV_MODE)
     string(APPEND CMAKE_CXX_FLAGS " -Werror")
