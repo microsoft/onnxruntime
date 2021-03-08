@@ -44,6 +44,8 @@
 #include "core/profile/context.h"
 #endif
 
+#include <cstdlib>
+
 namespace onnxruntime {
 namespace training {
 
@@ -585,6 +587,9 @@ Status TrainingSession::ConfigureForTraining(
 
   config_result_out = std::move(config_result);
   is_configured_ = true;
+
+  const char* dump_model_path = std::getenv("DUMP_MODEL_PATH");
+  ORT_IGNORE_RETURN_VALUE(Save(dump_model_path, SaveOption::NO_RELOAD));
 
   return Status::OK();
 }
@@ -1679,7 +1684,7 @@ Status PipelineTrainingSession::BuildLossAndLossScaling(
     std::string& loss_name,
     optional<std::string>& loss_scale_input_name,
     optional<TrainingConfigurationResult::MixedPrecisionConfigurationResult>& mixed_precision_config_result) {
-  const bool last_pipeline_stage = pipeline_stage_id + 1 == distributed_config.value().pipeline_parallel_size;
+  const bool last_pipeline_stage = pipeline_stage_id == -1 || (pipeline_stage_id + 1 == distributed_config.value().pipeline_parallel_size);
   const bool enable_loss_scale = is_mixed_precision_enabled_ &&
                                  mixed_precision_config.value().mixed_precision_type == MixedPrecisionDataType::FP16;
   // Enable loss scale if mixed precision is enabled AND at pipeline's last stage if pipeline is used.
