@@ -9,8 +9,9 @@ from inspect import signature
 from torch.utils.dlpack import from_dlpack
 from torch.utils.cpp_extension import load_inline
 
-# Needed to re-implement PyTorch's cpu,cuda,to methods
-from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
+# Needed to override PyTorch methods
+from typing import TypeVar
+T = TypeVar('T', bound='Module')
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training import register_custom_ops_pytorch_exporter
@@ -18,11 +19,6 @@ from . import _utils, _ortmodule_output_transformation
 
 
 ONNX_OPSET_VERSION = 12
-__TEMP_ENABLE_METHOD_TIMING__ = False
-
-# Needed to re-implement PyTorch's cpu,cuda,to methods
-T = TypeVar('T', bound='Module')
-
 
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
@@ -328,7 +324,6 @@ class ORTModule(torch.nn.Module):
         self._is_training = mode
         self._flattened_output_module.train(mode)
 
-    @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
     def _convert_training_graph_input_to_list(self, *inputs, **kwargs):
         '''Creates forward `*inputs` list from user input and PyTorch initializers
 
