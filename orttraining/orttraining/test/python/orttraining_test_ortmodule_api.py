@@ -667,10 +667,12 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
         y1, _ = model(x1, x2)
         s1 = y1.sum()
         s1.backward()   # y2's gradient will be materialized to full shape.
+        return y1
 
-    run_step0(pt_model, pt_x1, pt_x2)
-    run_step0(ort_model, ort_x1, ort_x2)
+    pt_y1 = run_step0(pt_model, pt_x1, pt_x2)
+    ort_y1 = run_step0(ort_model, ort_x1, ort_x2)
 
+    assert torch.allclose(pt_y1, ort_y1)
     assert torch.allclose(ort_x1.grad, pt_x1.grad)
     assert torch.allclose(ort_x2.grad, pt_x2.grad)
     # backward() is from y1, so grad of fc2.weight and fc2.bias will not be calculated.
@@ -680,10 +682,12 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
         _, y2 = model(x1, x2)
         s2 = y2.sum()
         s2.backward()   # y1's gradient will be materialized to full shape.
+        return y2
 
-    run_step1(pt_model, pt_x1, pt_x2)
-    run_step1(ort_model, ort_x1, ort_x2)
+    pt_y2 = run_step1(pt_model, pt_x1, pt_x2)
+    ort_y2 = run_step1(ort_model, ort_x1, ort_x2)
 
+    assert torch.allclose(pt_y2, ort_y2)
     assert torch.allclose(ort_x1.grad, pt_x1.grad)
     assert torch.allclose(ort_x2.grad, pt_x2.grad)
     # backward() is from y2, so grad of fc1.weight and fc1.bias will not be calculated.
@@ -696,6 +700,7 @@ def test_loss_combines_two_outputs_with_dependency(device):
         y1, y2 = model(x1, x2)
         loss = y1.sum() + y2.sum()
         loss.backward()
+        return y1, y2
 
     N, D_in, H, D_out = 32, 784, 500, 10
     pt_model = NeuralNetMultiplePositionalArgumentsMultiOutputsWithDependency(D_in, H, D_out).to(device)
@@ -707,9 +712,11 @@ def test_loss_combines_two_outputs_with_dependency(device):
     ort_x2 = pt_x2.clone()
 
     # Both y1 and y2's gradients are not None.
-    run_step(pt_model, pt_x1, pt_x2)
-    run_step(ort_model, ort_x1, ort_x2)
+    pt_y1, pt_y2 = run_step(pt_model, pt_x1, pt_x2)
+    ort_y1, ort_y2 = run_step(ort_model, ort_x1, ort_x2)
 
+    assert torch.allclose(pt_y1, ort_y1)
+    assert torch.allclose(pt_y2, ort_y2)
     _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 @pytest.mark.parametrize("x1_requires_grad, x2_requires_grad", [(True, True), (True, False), (False, False), (False, True)])
