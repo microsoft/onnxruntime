@@ -73,7 +73,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
 template <typename T, typename std::enable_if<std::is_fundamental<T>::value, int>::type = 0>
 static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, size_t* size) {
   if (out == nullptr) {  // User is querying the true size of the attribute
-    *size = values.size() + 1;
+    *size = values.size();
     return Status::OK();
   } else if (*size >= values.size()) {
     std::memcpy(out, values.data(), values.size() * sizeof(T));
