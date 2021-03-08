@@ -1218,3 +1218,22 @@ def test_nested_return_value_module(device):
     assert 'd' in output['a']
     assert isinstance(output['a']['d'], tuple)
     assert len(output['a']['d']) == 2
+
+@pytest.mark.parametrize("data_device, model_device", (
+    ['cuda', 'cpu'],
+    ['cpu', 'cuda'])
+)
+def test_forward_data_and_model_on_different_devices(data_device, model_device):
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(model_device)
+    ort_model = ORTModule(model)
+    # When exporting the model, ensure device is same between input data and model (else pytorch will raise while exporting)
+    x = torch.randn(N, D_in, device=model_device)
+    output = ort_model(x)
+
+    # Now that the model has been exported, feed in data from device other than the model device
+    x = torch.randn(N, D_in, device=data_device)
+    with pytest.raises(RuntimeError) as runtime_error:
+        ort_model(x)
+    assert f"Input argument to forward found on device {_utils.get_device_from_input_args_kwargs(x)}, but expected it to be on module device {ort_model._device}." in str(runtime_error.value)
