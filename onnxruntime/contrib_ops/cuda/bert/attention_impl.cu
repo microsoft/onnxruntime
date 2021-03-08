@@ -86,9 +86,9 @@ bool QkvToContext(
   const T* k = q + total_size;
   const T* v = k + total_size;
 
-  Print4DTensor<<<1, 1, 0, stream>>>(q, batch_size, num_heads, sequence_length, head_size, 'Q');  /// DEBUG
-  Print4DTensor<<<1, 1, 0, stream>>>(k, batch_size, num_heads, sequence_length, head_size, 'K');  /// DEBUG
-  Print4DTensor<<<1, 1, 0, stream>>>(v, batch_size, num_heads, sequence_length, head_size, 'V');  /// DEBUG
+  Dump4DTensor(stream, q, batch_size, num_heads, sequence_length, head_size, 'Q', ' '); /// DEBUG
+  Dump4DTensor(stream, k, batch_size, num_heads, sequence_length, head_size, 'K', ' '); /// DEBUG
+  Dump4DTensor(stream, v, batch_size, num_heads, sequence_length, head_size, 'V', ' '); /// DEBUG
 
   cublasSetStream(cublas, stream);
   CublasMathModeSetter helper(prop, cublas, CUBLAS_TENSOR_OP_MATH);
@@ -147,9 +147,9 @@ bool QkvToContext(
     return false;
   }
 
-  Print4DTensor<<<1, 1, 0, stream>>>(scratch1, batch_size, num_heads, sequence_length, sequence_length, 'X');  /// DEBUG
-  Print4DTensor<<<1, 1, 0, stream>>>(scratch2, batch_size, num_heads, sequence_length, sequence_length, 'Y');  /// DEBUG
-  Print4DTensor<<<1, 1, 0, stream>>>(scratch3, batch_size, num_heads, sequence_length, head_size, 'Z');        /// DEBUG
+  Dump4DTensor(stream, scratch1, batch_size, num_heads, sequence_length, sequence_length, 'X', ' '); /// DEBUG
+  Dump4DTensor(stream, scratch2, batch_size, num_heads, sequence_length, sequence_length, 'Y', ' '); /// DEBUG
+  Dump4DTensor(stream, scratch3, batch_size, num_heads, sequence_length, head_size, 'Z', ' '); /// DEBUG
 
   // scratch3 is BxNxSxH, transpose to output BxSxNxH
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, scratch3, output);

@@ -212,28 +212,28 @@ void DumpTensor2D(cudaStream_t stream, const T* tensor, int dim0, int dim1, cons
   }
 }
 
-  template <typename T>
-void Dump2DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, char title, char subtitle = ' ') {
+template <typename T>
+void Dump2DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, char title, char subtitle) {
   cudaDeviceSynchronize();
   Print2DTensor<<<1, 1, 0, stream>>>(tensor, dim0, dim1, title, subtitle);
   cudaDeviceSynchronize();
   }
 
 template <typename T>
-void Dump3DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, int dim2, char title, char subtitle = ' ') {
+void Dump3DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, int dim2, char title, char subtitle) {
   cudaDeviceSynchronize();
   Print3DTensor<<<1, 1, 0, stream>>>(tensor, dim0, dim1, dim2, title, subtitle);
   cudaDeviceSynchronize();
 }
 
 template <typename T>
-void Dump4DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle = ' ') {
+void Dump4DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle) {
   cudaDeviceSynchronize();
   Print4DTensor<<<1, 1, 0, stream>>>(tensor, dim0, dim1, dim2, dim3, title, subtitle);
   cudaDeviceSynchronize();
 }
 
-inline void Dump4DTensor2(bool is_float16, cudaStream_t stream, const void* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle = ' ') {
+void Dump4DTensor2(bool is_float16, cudaStream_t stream, const void* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle) {
   if (is_float16) {
     Print4DTensorSub2<<<1, 1, 0, stream>>>(reinterpret_cast<const float*>(tensor), dim0, dim1, dim2, dim3, title, subtitle);
   } else {
@@ -241,7 +241,7 @@ inline void Dump4DTensor2(bool is_float16, cudaStream_t stream, const void* tens
   }
 }
 
-inline void Dump4DTensor3(bool is_float16, cudaStream_t stream, const void* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle = ' ') {
+void Dump4DTensor3(bool is_float16, cudaStream_t stream, const void* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle) {
   if (is_float16) {
     Print4DTensorSub3<<<1, 1, 0, stream>>>(reinterpret_cast<const float*>(tensor), dim0, dim1, dim2, dim3, title, subtitle);
   } else {
@@ -249,7 +249,7 @@ inline void Dump4DTensor3(bool is_float16, cudaStream_t stream, const void* tens
   }
 }
 
-inline void Dump4DTensor4(bool is_float16, cudaStream_t stream, const void* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle = ' ') {
+void Dump4DTensor4(bool is_float16, cudaStream_t stream, const void* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle) {
   if (is_float16) {
     Dump4DTensor(stream, reinterpret_cast<const float*>(tensor), dim0, dim1, dim2, dim3, title, subtitle);
   } else {
