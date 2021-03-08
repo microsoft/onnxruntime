@@ -181,12 +181,29 @@ static const char* get_device_name(const OrtDevice& device) {
   }
 }
 
+static bool is_contiguous_tensor(const DLTensor& tensor) {
+  if (!tensor.strides) {
+    return true;
+  }
+
+  int64_t running_size = 1;
+  for (int i = tensor.ndim - 1; i >= 0; i--) {
+    if (tensor.strides[i] != running_size) {
+      return false;
+    }
+
+    running_size *= tensor.shape[i];
+  }
+
+  return true;
+}
+
 OrtValue dlpack_to_ort_value(const DLManagedTensor* src) {
+  // ORT only supports contiguous tensor for now.
+  ORT_ENFORCE(is_contiguous_tensor(src->dl_tensor), "ORT only supports contiguous tensor for now.");
   OrtDevice device = get_ort_device(src->dl_tensor.ctx);
   MLDataType data_type = get_ort_value_data_type(src->dl_tensor.dtype);
   auto deleter = [src](void*) { src->deleter(const_cast<DLManagedTensor*>(src)); };
-
-  ORT_ENFORCE(src->dl_tensor.strides, "Supports tensor without strides for now");
   OrtMemoryInfo info(get_device_name(device), OrtDeviceAllocator, device, device.Id());
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(
       data_type, TensorShape(src->dl_tensor.shape, static_cast<size_t>(src->dl_tensor.ndim)), src->dl_tensor.data,
