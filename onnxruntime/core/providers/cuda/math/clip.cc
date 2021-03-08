@@ -38,7 +38,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(1)
         .InputMemoryType<OrtMemTypeCPUInput>(2)
-        .TypeConstraint("T", BuildKernelDefConstraints<float, double, int8_t, uint8_t, int64_t, uint64_t>()),
+        .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16, int8_t, uint8_t, int64_t, uint64_t>()),
     Clip);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -49,7 +49,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(1)
         .InputMemoryType<OrtMemTypeCPUInput>(2)
-        .TypeConstraint("T", BuildKernelDefConstraints<float, double, int8_t, uint8_t, int64_t, uint64_t>()),
+        .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16, int8_t, uint8_t, int64_t, uint64_t>()),
     Clip);
 
 
@@ -97,12 +97,12 @@ struct Clip::ComputeImpl {
 
     // 1-2 Input on CPU
     if (min) {
-      ORT_ENFORCE(min->Shape().NumDimensions() == 0, "min should be a scalar.");
+      ORT_ENFORCE(min->Shape().Size() == 1, "min should be a scalar.");
       min_val = *(min->template Data<T>());
     }
 
     if (max) {
-      ORT_ENFORCE(max->Shape().NumDimensions() == 0, "max should be a scalar.");
+      ORT_ENFORCE(max->Shape().Size() == 1, "max should be a scalar.");
       max_val = *(max->template Data<T>());
     }
 
@@ -121,7 +121,7 @@ Status Clip::ComputeInternal(OpKernelContext* ctx) const {
   const auto* max = ctx->Input<Tensor>(2);
   Tensor* Y = ctx->Output(0, X->Shape());
 
-  utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t, int64_t, uint64_t>
+  utils::MLTypeCallDispatcher<float, double, MLFloat16, int8_t, uint8_t, int64_t, uint64_t>
       t_disp(X->GetElementType());
 
   t_disp.Invoke<ComputeImpl>(Stream(), X, min, max, Y);
