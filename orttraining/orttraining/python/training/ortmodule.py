@@ -124,7 +124,7 @@ class ORTModule(torch.nn.Module):
             # gradient implementation for self.forward_graph.
             class _ORTModuleFunction(torch.autograd.Function):
                 @staticmethod
-                def forward(ctx, *inputs, **kwargs):
+                def forward(ctx, *inputs):
                     '''Performs forward pass based on user input and PyTorch initializer
 
                     Autograd Function's apply() doesn't support keyword arguments,
