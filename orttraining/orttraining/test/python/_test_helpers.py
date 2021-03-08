@@ -146,7 +146,9 @@ def _get_name(name):
         return res
     raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
 
-def assert_gradients_match_and_reset_gradient(ort_model, pt_model, reset_gradient=True, rtol=1e-05, atol=1e-06):
+# Depending on calling backward() from which outputs, it's possible that grad of some weights are not calculated.
+# none_pt_params is to tell what these weights are, so we will not compare the tensors.
+def assert_gradients_match_and_reset_gradient(ort_model, pt_model, none_pt_params=[], reset_gradient=True, rtol=1e-05, atol=1e-06):
     ort_named_params = list(ort_model.named_parameters())
     pt_named_params = list(pt_model.named_parameters())
     assert len(ort_named_params) == len(pt_named_params)
@@ -156,7 +158,11 @@ def assert_gradients_match_and_reset_gradient(ort_model, pt_model, reset_gradien
         pt_name, pt_param = pt_named_param
 
         assert pt_name in ort_name
-        assert torch.allclose(ort_param.grad, pt_param.grad, rtol=rtol, atol=atol)
+        if pt_name in none_pt_params:
+            assert pt_param.grad is None
+            assert not torch.is_nonzero(torch.count_nonzero(ort_param.grad))
+        else:
+            assert torch.allclose(ort_param.grad, pt_param.grad, rtol=rtol, atol=atol)
 
         if reset_gradient:
             ort_param.grad = None
