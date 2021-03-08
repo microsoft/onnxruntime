@@ -11,8 +11,14 @@ namespace contrib {
 
 class YieldOp final : public OpKernel {
  public:
-  YieldOp(const OpKernelInfo& info) : OpKernel(info) {}
+  YieldOp(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_ENFORCE(info.GetAttrs<int64_t>("full_shape_outputs", full_shape_outputs_).IsOK());
+  }
+
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  std::vector<int64_t> full_shape_outputs_;
 };
 
 }  // namespace contrib

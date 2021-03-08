@@ -514,7 +514,7 @@ py::class_<TrainingAgent>(m, "TrainingAgent", R"pbdoc(This is the main class use
       .def_readwrite("initializer_names_to_train", &TrainingGraphInfo::initializer_names_to_train)
       .def_readwrite("initializer_grad_names_to_train", &TrainingGraphInfo::initializer_grad_names_to_train)
       .def_readwrite("user_output_names", &TrainingGraphInfo::user_output_names)
-      .def_readwrite("backward_output_grad_names_map", &TrainingGraphInfo::backward_output_grad_names_map);
+      .def_readwrite("output_grad_indices_require_full_shape", &TrainingGraphInfo::output_grad_indices_require_full_shape);
 
   py::class_<ModuleGradientGraphBuilder> module_gradient_graph_builder(m, "ModuleGradientGraphBuilder");
   module_gradient_graph_builder.def(py::init([]() { return onnxruntime::make_unique<ModuleGradientGraphBuilder>(); }))
