@@ -216,9 +216,14 @@ def generate_files(list, args):
         copy_command = "cp"
         runtimes_target = '" target="runtimes\\linux-'
 
+    if is_windowsai_package:
+        runtimes_native_folder = '_native'
+    else:
+        runtimes_native_folder = 'native'
+
     runtimes = '{}{}\\{}"'.format(runtimes_target,
                                   args.target_architecture,
-                                  'lib\\uap10.0' if args.is_store_build else '_native')
+                                  'lib\\uap10.0' if args.is_store_build else runtimes_native_folder)
 
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
