@@ -143,8 +143,8 @@ void ThreadPoolProfiler::LogRun(int thread_idx) {
 #ifdef _WIN32
     child_thread_stats_[thread_idx].core = GetCurrentProcessorNumber();
 #else
-    uint32_t numa = 0;
-    getcpu(&child_thread_stats_[thread_idx].core, &n);
+    uint32_t node = 0;
+    getcpu(&child_thread_stats_[thread_idx].core, &node);
 #endif
   }
 }
