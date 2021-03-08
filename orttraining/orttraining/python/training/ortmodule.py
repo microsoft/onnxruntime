@@ -44,7 +44,9 @@ def _onnx_value_info_to_buffer_tensor(value_info, device):
     dtype = _utils.dtype_onnx_to_torch(value_info.type.tensor_type.elem_type)
     return torch.zeros(shape, device=device, dtype=dtype)
 
-def _check_device(device, argument_str, *args):
+def _check_same_device(device, argument_str, *args):
+    '''Check that all tensor arguments in *args reside on the same device as the input device'''
+
     for arg in args:
         if arg is not None and isinstance(arg, torch.Tensor):
             arg_device = torch.device(arg.device)
@@ -142,7 +144,7 @@ class ORTModule(torch.nn.Module):
                     '''
 
                     # Assert that the input and model device match
-                    _check_device(self._device, "Input argument to forward", *inputs)
+                    _check_same_device(self._device, "Input argument to forward", *inputs)
 
                     # Use IO binding
                     _create_iobinding(self._training_io_binding, inputs, self._onnx_training, self._device)
@@ -158,7 +160,7 @@ class ORTModule(torch.nn.Module):
                     ctx.output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
 
                     # Assert that the outputs and model device match
-                    _check_device(self._device, "Output argument from forward", *user_outputs)
+                    _check_same_device(self._device, "Output argument from forward", *user_outputs)
 
                     return user_outputs
 
@@ -168,7 +170,7 @@ class ORTModule(torch.nn.Module):
                     '''
 
                     # Assert that the grad_outputs and model device match
-                    _check_device(self._device, "Input argument to backward", *grad_outputs)
+                    _check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
                     # Use IO binding
                     # Push user output grads to ONNX backend.
