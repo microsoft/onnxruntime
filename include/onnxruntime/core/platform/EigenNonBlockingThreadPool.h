@@ -38,11 +38,6 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
-#ifdef _WIN32
-#include "processthreadsapi.h"
-#else
-#include <linux/getcpu.h>
-#endif
 
     // ORT thread pool overview
 // ------------------------

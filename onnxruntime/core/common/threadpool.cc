@@ -21,6 +21,11 @@ limitations under the License.
 #include "core/common/eigen_common_wrapper.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
+#ifdef _WIN32
+#include "processthreadsapi.h"
+#else
+#include <sched.h>
+#endif
 
 namespace onnxruntime {
 
@@ -138,8 +143,8 @@ void ThreadPoolProfiler::LogRun(int thread_idx) {
 #ifdef _WIN32
     child_thread_stats_[thread_idx].core = GetCurrentProcessorNumber();
 #else
-    uint32_t n = 0;
-    getcpu(&child_thread_stats_[thread_idx].core, &n, nullptr);
+    uint32_t numa = 0;
+    getcpu(&child_thread_stats_[thread_idx].core, &n);
 #endif
   }
 }
