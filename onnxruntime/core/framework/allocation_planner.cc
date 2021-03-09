@@ -526,11 +526,8 @@ class PlannerImpl {
         if (!node_output->Exists()) continue;
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
-        ++UseCount(index);
-        if (external_outputs) {
-          // Ensures external outputs will not be reused.
-          ++UseCount(index);
-        }
+        // Ensures external outputs will not be reused.
+        UseCount(index) += (external_outputs ? 2 : 1);
         auto allocator = exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i));
         ORT_ENFORCE(allocator);
         plan_.SetLocation(static_cast<size_t>(index),
