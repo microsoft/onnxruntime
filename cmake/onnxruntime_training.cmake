@@ -176,6 +176,7 @@ target_link_libraries(onnxruntime_training_pipeline_poc PRIVATE onnxruntime_trai
 set_target_properties(onnxruntime_training_pipeline_poc PROPERTIES FOLDER "ONNXRuntimeTest")
 
 # GPT-2
+#[[
 file(GLOB_RECURSE training_gpt2_src
     "${ORTTRAINING_SOURCE_DIR}/models/gpt2/*.h"
     "${ORTTRAINING_SOURCE_DIR}/models/gpt2/*.cc"
@@ -191,8 +192,10 @@ target_include_directories(onnxruntime_training_gpt2 PUBLIC ${CMAKE_CURRENT_BINA
 
 target_link_libraries(onnxruntime_training_gpt2 PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_gpt2 PROPERTIES FOLDER "ONNXRuntimeTest")
+]]
 
 # FL Model Prep
+#[[
 file(GLOB_RECURSE training_fl_model_prep_src
     "${ORTTRAINING_SOURCE_DIR}/models/fl_model_prep/main.cc"
 )
@@ -207,3 +210,20 @@ if(UNIX AND NOT APPLE)
 endif()
 target_link_libraries(onnxruntime_training_fl_model_prep PRIVATE onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_fl_model_prep PROPERTIES FOLDER "ONNXRuntimeTest")
+]]
+
+# ALPS Custom Language ONNX training
+file(GLOB_RECURSE alps_model_prep_src
+    "${ORTTRAINING_SOURCE_DIR}/models/alps_model_prep/main.cc"
+)
+add_executable(onnxruntime_training_alps_model_prep ${alps_model_prep_src})
+onnxruntime_add_include_to_target(onnxruntime_training_alps_model_prep onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
+target_include_directories(onnxruntime_training_alps_model_prep PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
+
+if(UNIX AND NOT APPLE)
+  if (HAS_NO_MAYBE_UNINITIALIZED)
+    target_compile_options(onnxruntime_training_alps_model_prep PUBLIC "-Wno-maybe-uninitialized")
+  endif()
+endif()
+target_link_libraries(onnxruntime_training_alps_model_prep PRIVATE onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
+set_target_properties(onnxruntime_training_alps_model_prep PROPERTIES FOLDER "ONNXRuntimeTest")
