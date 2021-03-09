@@ -9,14 +9,8 @@ namespace onnxruntime {
 namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
-    YieldOp,
-    kMSDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .ExternalOutputs(),
-    YieldOp);
+    YieldOp, kMSDomain, 1, kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).ExternalOutputs(), YieldOp);
 
 Status YieldOp::Compute(OpKernelContext* ctx) const {
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
@@ -39,6 +33,10 @@ Status YieldOp::Compute(OpKernelContext* ctx) const {
   } else {
     ORT_ENFORCE(backward_inputs.second.size() == static_cast<size_t>(ctx->OutputCount()));
     for (int i = 0; i < ctx->OutputCount(); ++i) {
+      if (std::find(full_shape_outputs_.begin(), full_shape_outputs_.end(), static_cast<int64_t>(i)) !=
+          full_shape_outputs_.end()) {
+        ORT_ENFORCE(ctx->Input<Tensor>(i)->Shape() == backward_inputs.second[i].Get<Tensor>().Shape());
+      }
       ctx_internal->SetOutputMLValue(i, backward_inputs.second[i]);
     }
   }

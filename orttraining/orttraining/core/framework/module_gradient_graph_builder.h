@@ -41,9 +41,9 @@ struct TrainingGraphInfo {
   std::vector<std::string> initializer_grad_names_to_train{};
   // The user outputs.
   std::vector<std::string> user_output_names{};
-  // The user output grad names that are actually required by the backward graph 
-  // mapped to the index of the correspoinding output of inference graph.
-  std::unordered_map<std::string, size_t> backward_output_grad_names_map{};
+  // Indices of output grads that need to be materialized to full size all-0 tensor.
+  // Otherwise, we can use scalar-0 tensor.
+  std::vector<size_t> output_grad_indices_require_full_shape{};
 };
 
 class ModuleGradientGraphBuilder {
@@ -83,8 +83,8 @@ class ModuleGradientGraphBuilder {
   // Build gradient graph.
   Status BuildGradientGraph();
 
-  // Add Yield Op.
-  void AddYieldOp();
+  // Handle user outputs and output grads.
+  void HandleOutputsAndGrads();
 
   // Reorder gradient graph outputs.
   void ReorderOutputs();
