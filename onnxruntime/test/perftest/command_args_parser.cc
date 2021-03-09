@@ -79,7 +79,7 @@ namespace perftest {
         } catch (...) {
           return false;
         }
-        test_config.run_config.free_dim_overrides.emplace_back(std::make_tuple(dim_name, override_val));
+        test_config.run_config.free_dim_overrides.insert_or_assign(dim_name, override_val);
         break;
       }
       case 'm':

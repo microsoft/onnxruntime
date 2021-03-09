@@ -25,7 +25,7 @@ class OnnxRuntimeTestSession : public TestSession {
     test_inputs_[test_data_id][input_id] = std::move(value);
   }
 
-  bool PopulateGeneratedInputTestData();
+  bool PopulateGeneratedInputTestData(std::map<std::string, int64_t> free_dim_overrides);
 
   ~OnnxRuntimeTestSession() override {
     for (char* p : input_names_) {

@@ -204,8 +204,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   if (performance_test_config.run_config.set_denormal_as_zero)
     session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
   if (!performance_test_config.run_config.free_dim_overrides.empty()) {
-    for (auto dim_override : performance_test_config.run_config.free_dim_overrides) {
-      g_ort->AddFreeDimensionOverrideByName(session_options, std::get<0>(dim_override).c_str(), std::get<1>(dim_override));
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_overrides) {
+      g_ort->AddFreeDimensionOverrideByName(session_options, dim_override.first.c_str(), dim_override.second);
     }
   }
 
@@ -231,19 +231,29 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   }
 }
 
-bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
+bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(std::map<std::string, int64_t> free_dim_overrides) {
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
-      // free dimensions are treated as 1
+      std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+      std::vector<char*> free_dims(input_node_dim.size(), 0);
+      tensor_info.GetSymbolicDimensions(const_cast<const char**>(free_dims.data()), input_node_dim.size());
+
+      int free_dim_counter = 0;
+      // free dimensions are treated as 1 if not overriden
       for (int64_t& dim : input_node_dim) {
         if (dim == -1) {
-          dim = 1;
+          char * curr_free_dim = free_dims.at(free_dim_counter);
+          free_dim_counter++;
+          if (free_dim_overrides.find(curr_free_dim) != free_dim_overrides.end()) {
+            dim = free_dim_overrides.at(curr_free_dim);
+          } else {
+            dim = 1;
+          }
         }
       }
       // default allocator doesn't have to be freed by user
