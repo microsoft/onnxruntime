@@ -10,12 +10,12 @@
 namespace onnxruntime {
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, EyeLike, Output, 0,
     float, double, uint64_t, int64_t, int32_t);
 }
 
-using EyeLikeDataTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+using EyeLikeDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, EyeLike, Output, 0);
 using EnabledEyeLikeDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, EyeLike, Output, 0);

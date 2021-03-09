@@ -30,9 +30,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(kCpuExecutionProvider, kOnnxDomain, Min
                                          int64_t);
 
 // Mod
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0,
-                                                     float, double, int64_t, uint64_t, int32_t, uint32_t,
-                                                     int16_t, uint16_t, int8_t, uint8_t, MLFloat16);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0,
+                                                   float, double, int64_t, uint64_t, int32_t, uint32_t,
+                                                   int16_t, uint16_t, int8_t, uint8_t, MLFloat16);
 
 // Pow
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0, float, double);

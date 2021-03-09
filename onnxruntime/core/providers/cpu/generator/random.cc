@@ -38,48 +38,48 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormal, Output, 0,
     float, double);
 
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomUniform, Output, 0,
     float, double);
 
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormalLike, Output, 0,
     float, double);
 
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomUniformLike, Output, 0,
     float, double);
 
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0,
     int32_t, int64_t);
 }
 
-using RandomNormalOutputTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+using RandomNormalOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormal, Output, 0);
 using EnabledRandomNormalOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormal, Output, 0);
 
-using RandomUniformOutputTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+using RandomUniformOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomUniform, Output, 0);
 using EnabledRandomUniformOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomUniform, Output, 0);
 
-using RandomNormalLikeOutputTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+using RandomNormalLikeOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormalLike, Output, 0);
 using EnabledRandomNormalLikeOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormalLike, Output, 0);
 
-using RandomUniformLikeOutputTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+using RandomUniformLikeOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomUniformLike, Output, 0);
 using EnabledRandomUniformLikeOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomUniformLike, Output, 0);
 
-using MultinomialOutputTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+using MultinomialOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0);
 using EnabledMultinomialOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0);
