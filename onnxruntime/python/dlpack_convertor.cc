@@ -84,7 +84,11 @@ DLContext get_dlpack_context(const OrtValue& ort_value, const int64_t& device_id
       ctx.device_type = DLDeviceType::kDLCPU;
       break;
     case OrtDevice::GPU:
+#ifdef USE_ROCM
+      ctx.device_type = DLDeviceType::kDLROCM;
+#else
       ctx.device_type = DLDeviceType::kDLGPU;
+#endif
       break;
     default:
       ORT_THROW("Cannot pack tensors on this device.");
