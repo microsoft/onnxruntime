@@ -9,7 +9,7 @@ namespace cuda {
 
 bool LaunchSequencePoolingKernel(
     void* output,
-    void* masks,
+    //void* masks,
     const void* input,
     const void* sentence_lengthes,
     const int batch_size,

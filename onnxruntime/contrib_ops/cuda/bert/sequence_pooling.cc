@@ -50,14 +50,14 @@ Status SequencePooling<T>::ComputeInternal(OpKernelContext* context) const {
 
   // initialize outputs
   TensorShape output_shape({batch_size, num_sequences_max, hidden_size});
-  TensorShape masks_shape({batch_size, num_sequences_max});
+  //TensorShape masks_shape({batch_size, num_sequences_max});
   Tensor* output_tensor(context->Output(0, output_shape));
-  Tensor* masks_tensor(context->Output(1, masks_shape));
+  //Tensor* masks_tensor(context->Output(1, masks_shape));
 
   size_t element_size = sizeof(T);
   if (!LaunchSequencePoolingKernel(
           output_tensor->template MutableData<T>(),
-          masks_tensor->template MutableData<T>(),
+          //masks_tensor->template MutableData<T>(),
           input_tensor->template Data<T>(),
           sentence_lengthes_tensor->template Data<int64_t>(),
           batch_size,

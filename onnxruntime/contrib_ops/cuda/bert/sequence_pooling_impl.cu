@@ -24,7 +24,7 @@ __device__ inline void PrefixSumLinear(const InputIt* first, const InputIt* last
 }
 
 template <typename T>
-__global__ void SequencePoolingKernel(const T* input, const int64_t* sentence_lengthes, const int num_sequences, T* output, T* masks) {
+__global__ void SequencePoolingKernel(const T* input, const int64_t* sentence_lengthes, const int num_sequences, T* output) {
   // blockDim.x -> num_sequences
   // gridDim.x -> hidden_size
   // gridDim.y -> batch_size
@@ -42,11 +42,11 @@ __global__ void SequencePoolingKernel(const T* input, const int64_t* sentence_le
   __syncthreads();
 
   const int seq_id_per_batch = threadIdx.x;
-  if (seq_id_per_batch < num_sequences) {
-    *(masks + blockIdx.y * num_sequences_max + seq_id_per_batch) = 1;
-  } else {
-    *(masks + blockIdx.y * num_sequences_max + seq_id_per_batch) = 0;
-  }
+  //if (seq_id_per_batch < num_sequences) {
+  //  *(masks + blockIdx.y * num_sequences_max + seq_id_per_batch) = 1;
+  //} else {
+  //  *(masks + blockIdx.y * num_sequences_max + seq_id_per_batch) = 0;
+  //}
 
   const int sequence_length_for_split = sentence_lengthes_prefixsum[num_sequences - 1];
   const int past_sequence_length = (seq_id_per_batch == 0) ? 0 : sentence_lengthes_prefixsum[seq_id_per_batch - 1];
@@ -79,21 +79,21 @@ bool SequencePooling(
   const int num_sequences,
   const T* input,
   const int64_t* sentence_lengthes,
-  T* output,
-  T* masks) {
+  T* output) {
+  //T* masks) {
   const int num_sequences_max = 256;
 
   const dim3 grid(hidden_size, batch_size, 1);
   const dim3 block(num_sequences_max, 1, 1);
 
-  SequencePoolingKernel<T><<<grid, block, 0, stream>>>(input, sentence_lengthes, num_sequences, output, masks);
+  SequencePoolingKernel<T><<<grid, block, 0, stream>>>(input, sentence_lengthes, num_sequences, output);
 
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
 bool LaunchSequencePoolingKernel(
   void* output,
-  void* masks,
+  //void* masks,
   const void* input,
   const void* sentence_lengthes,
   const int batch_size,
@@ -111,8 +111,8 @@ bool LaunchSequencePoolingKernel(
       num_sequences,
       reinterpret_cast<const half*>(input),
       reinterpret_cast<const int64_t*>(sentence_lengthes),
-      reinterpret_cast<half*>(output),
-      reinterpret_cast<half*>(masks)
+      reinterpret_cast<half*>(output)
+      //reinterpret_cast<half*>(masks)
     );
   } else {
     return SequencePooling<float>(
@@ -122,8 +122,8 @@ bool LaunchSequencePoolingKernel(
       num_sequences,
       reinterpret_cast<const float*>(input),
       reinterpret_cast<const int64_t*>(sentence_lengthes),
-      reinterpret_cast<float*>(output),
-      reinterpret_cast<float*>(masks)
+      reinterpret_cast<float*>(output)
+      //reinterpret_cast<float*>(masks)
     );
   }
 }
