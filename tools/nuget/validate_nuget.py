@@ -119,7 +119,7 @@ def main():
 
         # Check if the relevant dlls are present in the Nuget/Zip
         print('Checking if the Nuget contains relevant dlls')
-        is_windows_ai_package = os.path.basename(full_nuget_path).startswith('Microsoft')
+        is_windows_ai_package = os.path.basename(full_nuget_path).startswith('Microsoft.AI.MachineLearning')
         check_if_dlls_are_present(is_windows_ai_package, args.platforms_supported, zip_file)
 
         # Check if the Nuget has been signed

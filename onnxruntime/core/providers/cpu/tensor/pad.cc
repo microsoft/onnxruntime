@@ -38,12 +38,12 @@ ONNX_OPERATOR_KERNEL_EX(Pad,
 #endif
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 2, Input, 0,
     float,
     double);
 
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0,
     float,
     double,
@@ -55,11 +55,11 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
     uint8_t);
 }  // namespace op_kernel_type_control
 
-using Pad2Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(
+using Pad2Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 2, Input, 0);
 using EnabledPad2Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 2, Input, 0);
-using Pad11Types = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(
+using Pad11Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0);
 using EnabledPad11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0);
