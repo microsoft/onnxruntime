@@ -99,7 +99,7 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
 *                         |__________|
 *                              |
 *                              |
-*                         _____|______
+*                         _____V______
 *                         |  Cast    |
 *                         |__________|
 *                              |
@@ -112,7 +112,7 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
 *                         |__________|
 *                              |
 *                              |
-*                         _____|______
+*                         _____V______
 *                         | Transpose|
 *                         |__________|
 *                              |
@@ -176,16 +176,16 @@ Case I: The followin is a scenario where Transpose output feeds MatMul. The Tran
                               |                                      |
                               |                                      |
                               |                                      |
-                         _____|______                                |
+                         _____V______                                |
                          |Transpose |                                |
                          |__________|                                |
                               |                                      |
                               |                                      |
-                              |____________               ___________|
-                                          |               |
-                                          |               |
-                                          |               |
-                                          |_______________|
+                              |______________           _____________|
+                                            |           |
+                                            |           |
+                                            |           |
+                                          __V___________V__
                                           |    MatMul     |
                                           |_______________|
                                                   |
@@ -202,7 +202,7 @@ Case I: The followin is a scenario where Transpose output feeds MatMul. The Tran
                                             |           |
                                             |           |
                                             |           |
-                                          __|___________|__
+                                          __V___________V__
                                           |  FusedMatMul  |
                                           |_______________|
                                                   |
@@ -214,21 +214,21 @@ Case II: The output of Tanspose feeds Cast and the output from the Cast feeds Ma
                          | input0 |                             | input1 |
                          |________|                             |________|
                               |                                      |
-                         _____|______                                |
+                              |                                      |
+                         _____V______                                |
                          |Transpose |                                |
                          |__________|                                |
                               |                                      |
                               |                                      |
-                              |                                      |
-                         _____|______                                |
+                         _____V______                                |
                          |  Cast    |                                |
                          |__________|                                |
                               |                                      |
-                              |____________               ___________|
-                                          |               |
-                                          |               |
-                                          |               |
-                                          |_______________|
+                              |______________           _____________|
+                                            |           |
+                                            |           |
+                                            |           |
+                                          __V___________V__
                                           |    MatMul     |
                                           |_______________|
                                                   |
@@ -241,15 +241,15 @@ Case II: The output of Tanspose feeds Cast and the output from the Cast feeds Ma
                               |                                      |
                               |                                      |
                               |                                      |
-                         _____|______                                |
+                         _____V______                                |
                          |  Cast    |                                |
                          |__________|                                |
                               |                                      |
-                              |____________               ___________|
-                                          |               |
-                                          |               |
-                                          |               |
-                                          |_______________|
+                              |______________           _____________|
+                                            |           |
+                                            |           |
+                                            |           |
+                                          __V___________V__
                                           |  FusedMatMul  |
                                           |_______________|
                                                   |
