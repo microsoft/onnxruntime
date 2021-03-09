@@ -53,7 +53,7 @@ http://<your_ip_address>:<port>/v1/models/<your-model-name>/versions/<your-versi
 
 ### Request and Response Payload
 
-The request and response need to be a protobuf message. The Protobuf definition can be found [here](../onnxruntime/server/protobuf/predict.proto).
+The request and response need to be a protobuf message. The Protobuf definition can be found [here](../server/protobuf/predict.proto).
 
 A protobuf message could have two formats: binary and JSON. Usually the binary payload has better latency, in the meanwhile the JSON format is easy for human readability. 
 
