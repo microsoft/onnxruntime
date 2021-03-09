@@ -16,8 +16,6 @@ from collections import OrderedDict
 from collections import namedtuple
 from inspect import signature
 
-import numpy as np
-from onnxruntime import set_seed
 from onnxruntime.training import _utils, ORTModule
 import _test_helpers
 
