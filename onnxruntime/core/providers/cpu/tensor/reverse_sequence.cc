@@ -47,16 +47,15 @@ ONNX_OPERATOR_KERNEL_EX(ReverseSequence,
                                             BuildKernelDefConstraintsFromTypeList<EnabledReverseSequenceDataTypes>()),
                         ReverseSequenceOp);
 
-namespace {
 template <typename T>
-struct ReverseSequenceImplDispatchTarget {
-  void operator()(const Tensor& X, Tensor& Y, gsl::span<const int64_t> sequence_lengths,
-                  int64_t max_seq_len, int64_t batch_size, int64_t input_size, bool time_major) const;
-};
-}  // namespace
+static Status ReverseSequenceImpl(const Tensor& X, Tensor& Y, gsl::span<const int64_t> sequence_lengths,
+                                  int64_t max_seq_len, int64_t batch_size, int64_t input_size, bool time_major);
 
 Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
+  Status status = Status::OK();
+
   const auto& X = *context->Input<Tensor>(0);
+  const auto data_type = X.DataType();
   const auto& dims = X.Shape();
 
   const auto batch_size = time_major_ ? dims[1] : dims[0];
@@ -73,61 +72,62 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
 
   auto& Y = *context->Output(0, dims);
 
-  utils::MLTypeCallDispatcherFromTypeList<EnabledReverseSequenceDataTypes> dispatcher{X.GetElementType()};
-  dispatcher.Invoke<ReverseSequenceImplDispatchTarget>(
-      X, Y, seq_lengths.DataAsSpan<int64_t>(), max_seq_len, batch_size, input_size, time_major_);
+  DispatchOnTensorTypeWithReturn(data_type, status, ReverseSequenceImpl, X, Y, seq_lengths.DataAsSpan<int64_t>(),
+                                 max_seq_len, batch_size, input_size, time_major_);
 
-  return Status::OK();
+  return status;
 }
 
-namespace {
-int64_t TimeMajorInputOffset(const int64_t max_seq_len,
-                             const int64_t batch_size,
-                             const int64_t input_size,
-                             const int64_t batch_num,
-                             const int64_t seq_num) {
+static int64_t TimeMajorInputOffset(const int64_t max_seq_len,
+                                    const int64_t batch_size,
+                                    const int64_t input_size,
+                                    const int64_t batch_num,
+                                    const int64_t seq_num) {
   ORT_UNUSED_PARAMETER(max_seq_len);
   return seq_num * batch_size * input_size + batch_num * input_size;
 }
 
-int64_t BatchMajorInputOffset(const int64_t max_seq_len,
-                              const int64_t batch_size,
-                              const int64_t input_size,
-                              const int64_t batch_num,
-                              const int64_t seq_num) {
+static int64_t BatchMajorInputOffset(const int64_t max_seq_len,
+                                     const int64_t batch_size,
+                                     const int64_t input_size,
+                                     const int64_t batch_num,
+                                     const int64_t seq_num) {
   ORT_UNUSED_PARAMETER(batch_size);
   return batch_num * max_seq_len * input_size + seq_num * input_size;
 }
 
-int64_t TimeMajorOutputOffset(const int64_t max_seq_len,
-                              const int64_t batch_size,
-                              const int64_t input_size,
-                              const int64_t batch_num,
-                              const int64_t seq_num,
-                              const int64_t seq_len) {
+static int64_t TimeMajorOutputOffset(const int64_t max_seq_len,
+                                     const int64_t batch_size,
+                                     const int64_t input_size,
+                                     const int64_t batch_num,
+                                     const int64_t seq_num,
+                                     const int64_t seq_len) {
   ORT_UNUSED_PARAMETER(max_seq_len);
   return (seq_len - seq_num - 1) * batch_size * input_size + batch_num * input_size;
 }
 
-int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
-                               const int64_t batch_size,
-                               const int64_t input_size,
-                               const int64_t batch_num,
-                               const int64_t seq_num,
-                               const int64_t seq_len) {
+static int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
+                                      const int64_t batch_size,
+                                      const int64_t input_size,
+                                      const int64_t batch_num,
+                                      const int64_t seq_num,
+                                      const int64_t seq_len) {
   ORT_UNUSED_PARAMETER(batch_size);
   return batch_num * max_seq_len * input_size + (seq_len - seq_num - 1) * input_size;
 }
 
 template <typename T>
-void ReverseSequenceImplDispatchTarget<T>::operator()(
-    const Tensor& X,
-    Tensor& Y,
-    gsl::span<const int64_t> sequence_lengths,
-    const int64_t max_seq_len,
-    const int64_t batch_size,
-    const int64_t input_size,
-    bool time_major) const {
+static Status ReverseSequenceImpl(const Tensor& X,
+                                  Tensor& Y,
+                                  gsl::span<const int64_t> sequence_lengths,
+                                  const int64_t max_seq_len,
+                                  const int64_t batch_size,
+                                  const int64_t input_size,
+                                  bool time_major) {
+  if (!utils::HasType<EnabledReverseSequenceDataTypes, T>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type is not supported in this build.");
+  }
+
   gsl::span<const T> inputs = X.DataAsSpan<T>();
   gsl::span<T> inputs_reverse = Y.MutableDataAsSpan<T>();
 
@@ -159,7 +159,8 @@ void ReverseSequenceImplDispatchTarget<T>::operator()(
       gsl::copy(src, dest);
     }
   }
+
+  return Status::OK();
 }
-}  // namespace
 
 }  // namespace onnxruntime
