@@ -65,3 +65,54 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   }
 #endif
 }
+
+void MyCustomKernelWithOptionalInput::Compute(OrtKernelContext* context) {
+  // Setup inputs
+  const OrtValue* input_X1 = ort_.KernelContext_GetInput(context, 0);
+  const OrtValue* input_X2 = ort_.KernelContext_GetInput(context, 1);
+  const OrtValue* input_X3 = ort_.KernelContext_GetInput(context, 2);
+
+  const float* X1 = ort_.GetTensorData<float>(input_X1);
+  // The second input may or may not be present
+  const float* X2 = (input_X2 != nullptr) ? ort_.GetTensorData<float>(input_X2) : nullptr;
+  const float* X3 = ort_.GetTensorData<float>(input_X3);
+
+  // Setup output
+  int64_t output_dim_value = 1;
+  OrtValue* output = ort_.KernelContext_GetOutput(context, 0, &output_dim_value, 1);
+  float* out = ort_.GetTensorMutableData<float>(output);
+
+  // Only CPU EP is supported in this kernel
+  for (int64_t i = 0; i < output_dim_value; i++) {
+    out[i] = X1[i] + (X2 != nullptr ? X2[i] : 0) + X3[i];
+  }
+}
+
+void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
+  // Setup inputs
+  const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+  const float* X = ort_.GetTensorData<float>(input_X);
+
+  // Setup output
+  OrtTensorDimensions dimensions(ort_, input_X);
+  OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
+  float* out = ort_.GetTensorMutableData<float>(output);
+
+  OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
+  int64_t size = ort_.GetTensorShapeElementCount(output_info);
+  ort_.ReleaseTensorTypeAndShapeInfo(output_info);
+
+  // This kernel only supports CPU EP
+  if (string_arr_ == "add") {  // Test that the string attribute parsing went correctly
+    for (int64_t i = 0; i < size; i++) {
+      out[i] = X[i] +
+               float_attr_ + static_cast<float>(int_attr_) +
+               floats_attr_[0] + floats_attr_[1] +
+               static_cast<float>(ints_attr_[0]) + static_cast<float>(ints_attr_[1]);
+    }
+  } else {  // if the string attribute parsing had not gone correctly - it will trigger this path and fail the test due to result mis-match
+    for (int64_t i = 0; i < size; i++) {
+      out[i] = 0.f;
+    }
+  }
+}

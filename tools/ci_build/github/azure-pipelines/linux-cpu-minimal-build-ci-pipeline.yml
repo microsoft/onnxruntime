@@ -130,7 +130,9 @@ jobs:
     displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
     inputs:
       script: |
-        echo "!globally_allowed_types;bool,float,int8_t,uint8_t" \
+        printf "%s\n%s\n" \
+          "!globally_allowed_types;bool,float,int8_t,uint8_t" \
+          "!no_ops_specified_means_all_ops_are_required" \
           > $(test_data_directory)/globally_allowed_types.config && \
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -166,6 +168,7 @@ jobs:
           -e BUILD_SOURCEVERSION=$(Build.SourceVersion) \
           -e BUILD_ID=$(Build.BuildId) \
           -e BUILD_REASON=$(Build.Reason) \
+          -e BUILD_BRANCH=$(Build.SourceBranch) \
           -e DASHBOARD_MYSQL_ORT_PASSWORD=$(dashboard-mysql-ort-password) \
           onnxruntimecentoscpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh

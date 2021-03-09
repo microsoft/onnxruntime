@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include <vector>
 
 struct Input {
   const char* name = nullptr;
@@ -70,6 +71,84 @@ struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDyn
     // homogeneous
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+
+ private:
+  const char* provider_;
+};
+
+struct MyCustomKernelWithOptionalInput {
+  MyCustomKernelWithOptionalInput(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
+  }
+  void Compute(OrtKernelContext* context);
+
+ private:
+  Ort::CustomOpApi ort_;
+};
+
+struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInput, MyCustomKernelWithOptionalInput> {
+  explicit MyCustomOpWithOptionalInput(const char* provider) : provider_(provider) {}
+
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernelMultipleDynamicInputs(api, info); };
+  const char* GetName() const { return "FooBar"; };
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 3; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t index) const {
+    // The second input (index == 1) is optional
+    if (index == 1)
+      return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL;
+
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+  }
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+  }
+
+ private:
+  const char* provider_;
+};
+
+struct MyCustomKernelWithAttributes {
+  MyCustomKernelWithAttributes(Ort::CustomOpApi ort, const OrtKernelInfo* info) : ort_(ort) {
+    int_attr_ = ort_.KernelInfoGetAttribute<int64_t>(info, "int_attr");
+    float_attr_ = ort_.KernelInfoGetAttribute<float>(info, "float_attr");
+
+    ints_attr_ = ort_.KernelInfoGetAttribute<std::vector<int64_t>>(info, "ints_attr");
+    floats_attr_ = ort_.KernelInfoGetAttribute<std::vector<float>>(info, "floats_attr");
+
+    string_arr_ = ort_.KernelInfoGetAttribute<std::string>(info, "string_attr");
+  }
+
+  void Compute(OrtKernelContext* context);
+
+ private:
+  Ort::CustomOpApi ort_;
+
+  int64_t int_attr_;
+  float float_attr_;
+
+  std::vector<int64_t> ints_attr_;
+  std::vector<float> floats_attr_;
+
+  std::string string_arr_;
+};
+
+struct MyCustomOpWithAttributes : Ort::CustomOpBase<MyCustomOpWithAttributes, MyCustomKernelWithAttributes> {
+  explicit MyCustomOpWithAttributes(const char* provider) : provider_(provider) {}
+
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernelWithAttributes(api, info); };
+  const char* GetName() const { return "FooBar_Attr"; };
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };

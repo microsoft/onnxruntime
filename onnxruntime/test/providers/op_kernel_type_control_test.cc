@@ -8,23 +8,12 @@
 #include "boost/mp11.hpp"
 
 #include "core/common/type_list.h"
+#include "core/common/type_set_utils.h"
 
 namespace onnxruntime {
 namespace test {
 
-template <typename A, typename B>
-struct TypeSetsEqual {
- private:
-  static_assert(boost::mp11::mp_is_set<A>::value && boost::mp11::mp_is_set<B>::value,
-                "A and B must both be sets.");
-  using ABIntersection = boost::mp11::mp_set_intersection<A, B>;
-
- public:
-  static constexpr bool value =
-      (boost::mp11::mp_size<A>::value == boost::mp11::mp_size<B>::value) &&
-      (boost::mp11::mp_size<ABIntersection>::value == boost::mp11::mp_size<A>::value);
-};
-
+namespace {
 // test types to match op_kernel_type_control::TypesHolder
 template <typename... T>
 struct TestTypesHolder {
@@ -33,39 +22,115 @@ struct TestTypesHolder {
 
 struct TestTypesHolderUnspecified {
 };
+}  // namespace
 
-// supported + allowed for Op
+// default
 static_assert(
-    TypeSetsEqual<
+    utils::type_set::IsEqual<
         op_kernel_type_control::EnabledTypes<
             TestTypesHolder<int32_t, int64_t, float, double>,
-            TypeList<
-                TestTypesHolder<float, int64_t, char>,
-                TestTypesHolderUnspecified>>::types,
-        TypeList<int64_t, float>>::value,
-    "unexpected enabled types: supported + allowed + unspecified allowed");
-
-// supported + allowed for Op + allowed globally
-static_assert(
-    TypeSetsEqual<
-        op_kernel_type_control::EnabledTypes<
-            TestTypesHolder<int32_t, int64_t, float, double>,
-            TypeList<
-                TestTypesHolder<float, int64_t, char>,
-                TestTypesHolder<int64_t>>>::types,
-        TypeList<int64_t>>::value,
-    "unexpected enabled types: supported + allowed + allowed");
-
-// supported
-static_assert(
-    TypeSetsEqual<
-        op_kernel_type_control::EnabledTypes<
-            TestTypesHolder<int32_t, int64_t, float, double>,
+            TestTypesHolderUnspecified,
             TypeList<
                 TestTypesHolderUnspecified,
                 TestTypesHolderUnspecified>>::types,
         TypeList<int32_t, int64_t, float, double>>::value,
-    "unexpected enabled types: supported + unspecified allowed + unspecified allowed");
+    "unexpected enabled types");
+
+// default + allowed for Op
+static_assert(
+    utils::type_set::IsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TestTypesHolderUnspecified,
+            TypeList<
+                TestTypesHolder<float, int64_t>,
+                TestTypesHolderUnspecified>>::types,
+        TypeList<int64_t, float>>::value,
+    "unexpected enabled types");
+
+// default + allowed for Op, all enabled
+static_assert(
+    utils::type_set::IsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TestTypesHolderUnspecified,
+            TypeList<
+                TestTypesHolder<float, double, int32_t, int64_t>,
+                TestTypesHolderUnspecified>>::types,
+        TypeList<int32_t, int64_t, float, double>>::value,
+    "unexpected enabled types");
+
+// default + allowed for Op, allowed not subset of default
+static_assert(
+    utils::type_set::IsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TestTypesHolderUnspecified,
+            TypeList<
+                TestTypesHolder<double, int64_t, char>,
+                TestTypesHolderUnspecified>>::types,
+        TypeList<int64_t, double>>::value,
+    "unexpected enabled types");
+
+// default + allowed for Op, all disabled
+static_assert(
+    utils::type_set::IsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TestTypesHolderUnspecified,
+            TypeList<
+                TestTypesHolder<>,
+                TestTypesHolderUnspecified>>::types,
+        TypeList<>>::value,
+    "unexpected enabled types");
+
+// default + allowed for Op + allowed globally
+static_assert(
+    utils::type_set::IsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TestTypesHolderUnspecified,
+            TypeList<
+                TestTypesHolder<float, int64_t>,
+                TestTypesHolder<int64_t>>>::types,
+        TypeList<int64_t>>::value,
+    "unexpected enabled types");
+
+// default + required + allowed for Op
+static_assert(
+    utils::type_set::IsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TestTypesHolder<int64_t>,
+            TypeList<
+                TestTypesHolder<int32_t, double>,
+                TestTypesHolderUnspecified>>::types,
+        TypeList<int32_t, int64_t, double>>::value,
+    "unexpected enabled types");
+
+// default + required + allowed for Op, only required enabled
+static_assert(
+    utils::type_set::IsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TestTypesHolder<int64_t>,
+            TypeList<
+                TestTypesHolder<>,
+                TestTypesHolderUnspecified>>::types,
+        TypeList<int64_t>>::value,
+    "unexpected enabled types");
+
+// default + required + allowed for Op + allowed globally
+static_assert(
+    utils::type_set::IsEqual<
+        op_kernel_type_control::EnabledTypes<
+            TestTypesHolder<int32_t, int64_t, float, double>,
+            TestTypesHolder<int64_t>,
+            TypeList<
+                TestTypesHolder<int32_t, double>,
+                TestTypesHolder<double>>>::types,
+        TypeList<int64_t, double>>::value,
+    "unexpected enabled types");
 
 }  // namespace test
 }  // namespace onnxruntime

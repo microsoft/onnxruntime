@@ -13,19 +13,19 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Transpose, Input, 0,
     ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
 }  // namespace op_kernel_type_control
 
 namespace {
 // reduce the supported types with any global or op specific lists
-using SupportedDataTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                            Transpose, Input, 0);
+using DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                 Transpose, Input, 0);
 using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                         Transpose, Input, 0);
 
-const auto supported_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedDataTypes>();
+const auto type_constraints = BuildKernelDefConstraintsFromTypeList<DataTypes>();
 const auto enabled_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>();
 }  // namespace
 
@@ -728,13 +728,13 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     1,
     12,
-    KernelDefBuilder().TypeConstraint("T", supported_type_constraints, enabled_type_constraints),
+    KernelDefBuilder().TypeConstraint("T", type_constraints, enabled_type_constraints),
     Transpose);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Transpose,
     13,
-    KernelDefBuilder().TypeConstraint("T", supported_type_constraints, enabled_type_constraints),
+    KernelDefBuilder().TypeConstraint("T", type_constraints, enabled_type_constraints),
     Transpose);
 
 }  // namespace onnxruntime
