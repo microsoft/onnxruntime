@@ -37,7 +37,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 namespace {
 template <typename T>
 struct ComputeDispatchTarget {
-  Status operator()(const int64_t k, Tensor& output) {
+  void operator()(const int64_t k, Tensor& output) {
     const auto& output_shape = output.Shape();
     auto output_mat = EigenMatrixMapRowMajor<T>(
         output.template MutableData<T>(),
@@ -47,12 +47,10 @@ struct ComputeDispatchTarget {
     output_mat.setZero();
 
     if ((k >= 0 && k >= output_shape[1]) || (k < 0 && std::abs(k) >= output_shape[0])) {
-      return Status::OK();
+      return;
     }
 
     output_mat.diagonal(k).array() = static_cast<T>(1);
-
-    return Status::OK();
   }
 };
 }  // namespace
@@ -72,7 +70,9 @@ Status EyeLike::Compute(OpKernelContext* context) const {
       has_dtype_ ? static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype_) : T1.GetElementType();
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledEyeLikeDataTypes> dispatcher{output_tensor_dtype};
-  return dispatcher.InvokeRet<Status, ComputeDispatchTarget>(k_, T2);
+  dispatcher.Invoke<ComputeDispatchTarget>(k_, T2);
+
+  return Status::OK();
 }
 
 }  // namespace onnxruntime
