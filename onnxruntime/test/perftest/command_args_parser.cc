@@ -63,8 +63,25 @@ namespace perftest {
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:AMPIvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:AMPIvhsqz"))) != -1) {
     switch (ch) {
+      case 'f': {
+        std::wstring free_dim_str = optarg;
+        size_t delimiter_location = free_dim_str.find(L":");
+        if (delimiter_location >= free_dim_str.size() - 1) {
+          return false;
+        }
+        std::string dim_name = ToMBString(free_dim_str.substr(0, delimiter_location));
+        std::wstring override_val_str = free_dim_str.substr(delimiter_location + 1, std::wstring::npos);
+        int64_t override_val;
+        try {
+          override_val = _wtoi64(override_val_str.c_str());
+        } catch (...) {
+          return false;
+        }
+        test_config.run_config.free_dim_overrides.emplace_back(std::make_tuple(dim_name, override_val));
+        break;
+      }
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
           test_config.run_config.test_mode = TestMode::kFixDurationMode;

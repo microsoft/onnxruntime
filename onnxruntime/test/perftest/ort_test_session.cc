@@ -1,6 +1,7 @@
 #include "ort_test_session.h"
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/common/common.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -8,6 +9,7 @@
 #ifdef _WIN32
 #define strdup _strdup
 #endif
+extern const OrtApi* g_ort;
 
 namespace onnxruntime {
 namespace perftest {
@@ -201,6 +203,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
   if (performance_test_config.run_config.set_denormal_as_zero)
     session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  if (!performance_test_config.run_config.free_dim_overrides.empty()) {
+    for (auto dim_override : performance_test_config.run_config.free_dim_overrides) {
+      g_ort->AddFreeDimensionOverrideByName(session_options, std::get<0>(dim_override).c_str(), std::get<1>(dim_override));
+    }
+  }
 
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
 
