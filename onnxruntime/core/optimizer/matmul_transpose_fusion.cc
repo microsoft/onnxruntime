@@ -91,6 +91,32 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
 *  1. Both Cast and Transpose are one-output nodes (assuming both have one-input only)
 *  2. Transpose only feeds the Cast node (and no other node)
 *  3. Cast only feeds the MalMul node (and no other node)
+*
+*  Transform the following pattern
+*                              |
+*                         _____|______
+*                         |Transpose |
+*                         |__________|
+*                              |
+*                              |
+*                         _____|______
+*                         |  Cast    |
+*                         |__________|
+*                              |
+*                              V
+*
+*  to
+*                              |
+*                         _____|______
+*                         |  Cast    |
+*                         |__________|
+*                              |
+*                              |
+*                         _____|______
+*                         | Transpose|
+*                         |__________|
+*                              |
+*                              V
 */
 static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
 
