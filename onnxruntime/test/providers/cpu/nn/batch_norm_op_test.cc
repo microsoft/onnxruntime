@@ -733,9 +733,11 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
   test.AddOutput<MLFloat16>("output", input_shape, f_output);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+#endif
 
-// TODO fix flaky test
-TEST(BatchNormTest, DISABLED_ForwardTrainingTest) {
+
+// TODO fix flaky test for CUDA
+TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputs) {
   OpTester test("BatchNormalization");
   float epsilon = 1e-05f;
   float momentum = 0.1f;
@@ -750,19 +752,18 @@ TEST(BatchNormTest, DISABLED_ForwardTrainingTest) {
   test.AddInput<float>("B", channel_dims, {0.0f, 0.0f});
   test.AddInput<float>("mean", channel_dims, {1.0f, 2.0f});
   test.AddInput<float>("var", channel_dims, {1.0f, 2.0f});
-  // values from PyTorch with affine=False, track_running_stats=True flags
-  test.AddOutput<float>("Y", input_output_dims, {0.0131f, 0.5210f, 1.7244f, 0.1387f, -0.2708f, -0.1191f, 1.2089f, -0.0922f, -0.9548f, -1.5203f, 0.9077f, -0.8298f, 0.5796f, -0.4501f, -2.0921f, 1.2358f});
-  // in PyTorch, running_mean and running_var should be initialized to [0.0, 0.0]
-  test.AddOutput<float>("running_mean", channel_dims, {-0.0306f, 0.0115f});
-  test.AddOutput<float>("running_var", channel_dims, {0.0757f, 0.1541f});
-  // mean and variance of X across channel dimension
-  test.AddOutput<float>("saved_mean", channel_dims, {-0.306f, 0.115f});
-  test.AddOutput<float>("saved_var", channel_dims, {1.229f, 0.861f});
 
-  // exclude CPU Execution Provider so that test is run with CUDA with ForwardTraining mode
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+  test.AddOutput<float>("Y", input_output_dims, {0.0131f, 0.5210f, 1.7244f, 0.1387f, -0.2708f, -0.1191f, 1.2089f, -0.0922f, -0.9548f, -1.5203f, 0.9077f, -0.8298f, 0.5796f, -0.4501f, -2.0921f, 1.2358f});
+
+  test.AddOutput<float>("running_mean", channel_dims, {-0.1754, 0.303106});
+  test.AddOutput<float>("running_var", channel_dims, {0.696052, 1.41316});
+  // mean and variance of X across channel dimension
+  test.AddOutput<float>("saved_mean", channel_dims, {-0.306f, 0.114562f});
+  test.AddOutput<float>("saved_inv_std", channel_dims, {1.2288, 0.861317});
+
+  // exclude CUDA Execution Provider due to flakiness
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime
