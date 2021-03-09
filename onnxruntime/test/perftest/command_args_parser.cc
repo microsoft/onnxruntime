@@ -75,7 +75,7 @@ namespace perftest {
         std::wstring override_val_str = free_dim_str.substr(delimiter_location + 1, std::wstring::npos);
         int64_t override_val;
         try {
-          override_val = _wtoi64(override_val_str.c_str());
+          override_val = std::stoul(override_val_str.c_str());
         } catch (...) {
           return false;
         }

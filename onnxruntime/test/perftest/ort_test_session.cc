@@ -240,20 +240,11 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(std::map<std::string
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
 
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
-      std::vector<char*> free_dims(input_node_dim.size(), 0);
-      tensor_info.GetSymbolicDimensions(const_cast<const char**>(free_dims.data()), input_node_dim.size());
 
-      int free_dim_counter = 0;
       // free dimensions are treated as 1 if not overriden
       for (int64_t& dim : input_node_dim) {
         if (dim == -1) {
-          char * curr_free_dim = free_dims.at(free_dim_counter);
-          free_dim_counter++;
-          if (free_dim_overrides.find(curr_free_dim) != free_dim_overrides.end()) {
-            dim = free_dim_overrides.at(curr_free_dim);
-          } else {
-            dim = 1;
-          }
+          dim = 1;
         }
       }
       // default allocator doesn't have to be freed by user
