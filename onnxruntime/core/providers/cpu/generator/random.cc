@@ -25,13 +25,28 @@ limitations under the License.
 #include <chrono>
 #include <random>
 
-#include "core/common/safeint.h"
-#include "core/util/math_cpuonly.h"
-#include "core/common/eigen_common_wrapper.h"
 #include "gsl/gsl"
+
+#include "core/common/eigen_common_wrapper.h"
+#include "core/common/safeint.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
+#include "core/util/math_cpuonly.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0,
+    int32_t, int64_t);
+}
+
+using MultinomialOutputTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0);
+using EnabledMultinomialOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0);
 
 ONNX_CPU_OPERATOR_KERNEL(
     RandomNormal,
@@ -65,7 +80,11 @@ ONNX_CPU_OPERATOR_KERNEL(
 ONNX_CPU_OPERATOR_KERNEL(
     Multinomial,
     7,
-    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()).TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2",
+                        BuildKernelDefConstraintsFromTypeList<MultinomialOutputTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledMultinomialOutputTypes>()),
     Multinomial);
 
 template <typename T, typename TDistribution>
@@ -156,6 +175,10 @@ static Status MultinomialCompute(OpKernelContext* ctx,
                                  const int64_t num_samples,
                                  std::default_random_engine& generator,
                                  Tensor& Y) {
+  if (!utils::HasType<EnabledMultinomialOutputTypes, OutputType>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output type not supported in this build.");
+  }
+
   // implementation copied from Tensorflow with some changes such as using the std::uniform_real_distribution
   // instead of the Philox RNG.
   Eigen::array<int64_t, 2> X_dims = {{batch_size, num_classes}};
