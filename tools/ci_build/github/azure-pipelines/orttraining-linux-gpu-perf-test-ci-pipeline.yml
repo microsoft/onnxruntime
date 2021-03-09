@@ -33,6 +33,24 @@ jobs:
     displayName: 'Map gpt2 test data'
     condition: succeededOrFailed() # ensure all tests are run
 
+  - script: |
+      docker run --gpus all --rm --name onnxruntime-gpu-perf \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build  \
+        --volume /bert_data/bert_models:/build/bert_models:ro \
+        --volume /bert_data:/build/bert_data:ro \
+        -e NIGHTLY_BUILD onnxruntime_perf_test_image \
+        /usr/bin/python3.6 /build/RelWithDebInfo/orttraining_test_ortmodule_bert_classifier.py \
+          --log_perf_metrics \
+          --perf_mysql_server_name onnxruntimedashboard.mysql.database.azure.com \
+          --perf_power_bi_user_name powerbi@onnxruntimedashboard \
+          --perf_power_bi_password  $(ortperf) \
+          --perf_power_bi_database onnxruntime \
+          --perf_repo_path /onnxruntime_src \
+    displayName: 'Run orttraining_test_ortmodule_bert_classifier.py'
+    condition: succeededOrFailed() # ensure all tests are run
+    timeoutInMinutes: 10
+
   - script: >
       docker run --gpus all --rm --name onnxruntime-gpu-perf
       --volume $(Build.SourcesDirectory):/onnxruntime_src
