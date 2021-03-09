@@ -83,6 +83,21 @@ class NeuralNetMultiplePositionalArguments(torch.nn.Module):
         out = self.fc2(out)
         return out
 
+class NeuralNetMultiplePositionalArgumentsVarKeyword(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(NeuralNetMultiplePositionalArgumentsVarKeyword, self).__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+    def forward(self, input1, input2, **kwargs):
+        model_input = input1 + input2
+        out = self.fc1(model_input)
+        out = self.relu(out)
+        out = self.fc2(out)
+        return out
+
 class NeuralNetPositionalArguments(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNetPositionalArguments, self).__init__()
@@ -209,6 +224,25 @@ def test_forward_call_multiple_positional_arguments():
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetMultiplePositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
     ort_model = ORTModule(model)
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
+    x = torch.randn(N, D_in, device=device)
+    y = torch.randn(N, D_in, device=device)
+
+    # Make sure model runs without any exception
+    output = ort_model(x, y)
+    assert output is not None
+
+def test_forward_call_multiple_positional_arguments_var_keyword():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetMultiplePositionalArgumentsVarKeyword(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
+    with pytest.warns(UserWarning) as warning_context_manager:
+        ort_model = ORTModule(model)
+    assert len(warning_context_manager) == 1
+    assert "**kwargs" in str(warning_context_manager[0].message)
+
     # Check that the original forward signature is preserved.
     assert signature(model.forward) == signature(ort_model.forward)
     x = torch.randn(N, D_in, device=device)
