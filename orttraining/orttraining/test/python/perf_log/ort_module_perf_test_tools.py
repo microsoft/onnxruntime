@@ -128,7 +128,7 @@ def log_perf_metrics(perf_metrics,
     else:
         perf_metrics['CommitId'] = get_repo_commit(os.path.realpath(__file__))
 
-    ConnectAndInsertPerfMetrics(
+    connect_and_insert_perf_metrics(
         mysql_server_name,
         power_bi_user_name,
         power_bi_password,
@@ -191,7 +191,7 @@ def parse_arguments():
     parser.add_argument('--database', help='The dashboard database')
     return parser.parse_args()
 
-def ConnectAndInsertPerfMetrics(mysql_server_name, power_bi_user_name, password, database, perf_metrics):
+def connect_and_insert_perf_metrics(mysql_server_name, power_bi_user_name, password, database, perf_metrics):
     conn = ConnectToPerfDashboardDb(mysql_server_name, power_bi_user_name, password, database)
     # https://dev.mysql.com/doc/connector-python/en/connector-python-api-mysqlcursor-execute.html
     conn.cursor().execute(insert_table_script, perf_metrics)

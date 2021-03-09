@@ -27,11 +27,11 @@ jobs:
         -u
       DisplayName: 'Build performance tests'
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh $(orttrainingtestdata-storage-key)
     displayName: 'Map bert test data'
     condition: succeededOrFailed() # ensure all tests are run
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/gpt2-data" -d "/gpt2_data"
+  - bash: bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_gpt2_test_data.sh $(orttrainingtestdata-storage-key)
     displayName: 'Map gpt2 test data'
     condition: succeededOrFailed() # ensure all tests are run
 
