@@ -113,7 +113,7 @@ void NhwcTransformerImpl::InsertReorderInput(Node& node, int rank) {
     std::string input_reorder_def_name = graph_.GenerateNodeArgName("reorder");
     auto* input_nhwc_arg = &graph_.GetOrCreateNodeArg(input_reorder_def_name, nullptr);
     reorder_inputs_[input_original_arg] = input_nhwc_arg;
-    Node& reorder_input_node = graph_.AddNode(graph_.GenerateNodeName("ReorderInput"),
+    Node& reorder_input_node = graph_.AddNode(graph_.GenerateNodeName("ReorderInput") + node.Name(),
                                               "Transpose",
                                               "ReorderInput",
                                               {input_original_arg},
@@ -182,6 +182,10 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node) {
 }
 
 void NhwcTransformerImpl::TransformConvIntegerToFloat(Node& node) {
+  auto& attributes = node.GetAttributes();
+  auto it = attributes.find("channels_last");
+  if (it != attributes.end() && it->second.i()) return;
+
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
@@ -195,14 +199,6 @@ void NhwcTransformerImpl::TransformConvIntegerToFloat(Node& node) {
   // If the output is immediately dequantized, then skip wrapping QLinearConv
   // with Transpose nodes and use the NCHW variant that does this internally.
   auto* nhwc_input = LookupNhwcArgument(input_defs[0]);
-  //if (nhwc_input == nullptr) {
-  //    if (optimizer_utils::CheckOutputEdges(graph_, node, 1)) {
-  //        const auto& next_node = *node.OutputNodesBegin();
-  //        if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "DequantizeLinear", { 10, 13 })) {
-  //            return;
-  //        }
-  //    }
-  //}
 
   // Create the replacement node.
   std::string nhwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_nhwc");
@@ -420,7 +416,7 @@ void NhwcTransformerImpl::Transform(Node& node) {
     TransformConvIntegerToFloat(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearAdd", {1}, kMSDomain) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearMul", {1}, kMSDomain)) {
-             //graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13})) {
+    //graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13})) {
     TransformQLinearBinary(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearLeakyRelu", {1}, kMSDomain) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearSigmoid", {1}, kMSDomain)) {

@@ -49,7 +49,7 @@ class NhwcInferenceContext : public InferenceContext {
       if (rank < 2) {
         fail_shape_inference("Output tensor must have at least 2 dimensions");
       }
-      // Convert output shape from {N, C, H, W} to {N, H, w, C}.
+      // Convert output shape from {N, C, H, W} to {N, H, W, C}.
       auto* nhwc_shape = ctx_.getOutputType(0)->mutable_tensor_type()->mutable_shape();
       *nhwc_shape->add_dim() = nchw_shape.dim(0);
       for (int i = 2; i < rank; i++) {
