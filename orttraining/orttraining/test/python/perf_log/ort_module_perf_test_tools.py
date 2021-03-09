@@ -101,7 +101,7 @@ insert_table_script = "INSERT INTO onnxruntime.perf_test_training_ort_module_dat
     %(Time)s)"
 
 # Obtain connection string information from the portal
-def ConnectToPerfDashboardDb(mysql_server_name, power_bi_user_name, password, database):
+def connect_to_perf_dashboard_db(mysql_server_name, power_bi_user_name, password, database):
     config = {
         'host': mysql_server_name,
         'user': power_bi_user_name,
@@ -192,7 +192,7 @@ def parse_arguments():
     return parser.parse_args()
 
 def connect_and_insert_perf_metrics(mysql_server_name, power_bi_user_name, password, database, perf_metrics):
-    conn = ConnectToPerfDashboardDb(mysql_server_name, power_bi_user_name, password, database)
+    conn = connect_to_perf_dashboard_db(mysql_server_name, power_bi_user_name, password, database)
     # https://dev.mysql.com/doc/connector-python/en/connector-python-api-mysqlcursor-execute.html
     conn.cursor().execute(insert_table_script, perf_metrics)
     conn.commit()
@@ -202,5 +202,5 @@ def connect_and_insert_perf_metrics(mysql_server_name, power_bi_user_name, passw
 
 if __name__ == '__main__':
     args = parse_arguments()
-    conn = ConnectToPerfDashboardDb(args.mysql_server_name, args.power_bi_user_name, args.password, args.database)
+    conn = connect_to_perf_dashboard_db(args.mysql_server_name, args.power_bi_user_name, args.password, args.database)
     conn.cursor().execute(create_table_script)
