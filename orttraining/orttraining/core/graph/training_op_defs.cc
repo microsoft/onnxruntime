@@ -3,6 +3,7 @@
 
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/providers/common.h"
 #include "orttraining/core/graph/training_op_defs.h"
 #include "orttraining/core/framework/distributed_run_context.h"
@@ -343,7 +344,7 @@ void RegisterTrainingOpSchemas() {
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
-      .Input(1, "X", "Input tensor", "T")
+      .Input(1, "Y", "Input tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T")
       .Attr(
           "axis",
@@ -356,7 +357,58 @@ void RegisterTrainingOpSchemas() {
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            // SoftmaxGrad computes dX = Y * ( dY - dot(Y, dY))
+            // ONNX does not have a dot product, which can be simulated as a pointwise-multiplication ("Mul"),
+            // followed by a "ReduceSum". Unfortunately, the treatment of "axis" is different in "SoftmaxGrad"
+            // and "ReduceSum". If axis=k for SoftmaxGrad, we need to specify [k, ..., n-1] as the axes of
+            // reduction for "ReduceSum", after accounting for negative-axis specification.
+            // An alternative solution would be to Flatten inputs to 2D and then reshape output back to original shape.
+            // Hopefully, many of these ops can be optimized away in the common-case of statically-known shapes.
+
+            auto* axis_attr = ctx.getAttribute("axis");
+            int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : 1;
+            auto zero1d = ToTensor(std::vector<int64_t>({0}));
+            zero1d.add_dims(1);
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                // nodes: {outputs, op, inputs, attributes}
+                // Convert axis specification k to reduction axes [k, k+1, ..., n-1]
+                FunctionBodyHelper::Const<int64_t>("one", 1),
+                FunctionBodyHelper::Const<int64_t>("k", axis),
+                {{"axis_zero"}, "Constant", {}, {{"value", zero1d}}},
+                {{"shape"}, "Shape", {"dY"}},
+                {{"n_as_vector"}, "Shape", {"shape"}},
+                {{"n"}, "Squeeze", {"n_as_vector", "axis_zero"}},
+            };
+
+            if (axis >= 0) {
+              body.push_back({{"reduction_axes"}, "Range", {"k", "n", "one"}});
+            } else {
+              body.push_back({{"n_plus_k"}, "Add", {"n", "k"}});
+              body.push_back({{"reduction_axes"}, "Range", {"n_plus_k", "n", "one"}});
+            }
+
+            // compute dX = Y * ( dY - dot(Y, dY)) = Y * ( dY - ReduceSum(Y * dY))
+            body.push_back({{"a"}, "Mul", {"Y", "dY"}});
+            body.push_back({{"b"}, "ReduceSum", {"a", "reduction_axes"}}); // {{"keepdims", int64_t(0)}}
+            body.push_back({{"c"}, "Sub", {"dY", "b"}});
+            body.push_back({{"dX"}, "Mul", {"Y", "c"}});
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body);
+          });
+  /* 
+      
+
+      zero = Constant(0)
+      one = Constant(1)
+      k = Constant(axis)
+      axes = Range(zero, k, one)
+      a = Mul(Y, dY)
+      b = ReduceSum(a, axes)
+      c = Sub(dY, b)
+      dX = Mul(Y, c)
+      */
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
       .SetDomain(kMSDomain)
