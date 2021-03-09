@@ -86,17 +86,17 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
   }
 }
 
+/* GetTransposeNodeFromCast: Interchange Cast and Transpose nodes in the graph and return Transpose node if possible
+*  Requirements to interchange Cast and Transpose nodes changing the order of the operations.
+*  1. Both Cast and Transpose are one-output nodes (assuming both have one-input only)
+*  2. Transpose only feeds the Cast node (and no other node)
+*  3. Cast only feeds the MalMul node (and no other node)
+*/
 static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
-  /* Interchange Cast and Transpose nodes in the graph and return Transpose node if possible
-  *  Requirements to interchange Cast and Transpose nodes changing the order of the operations.
-  *  1. Both Cast and Transpose are one-output nodes (assuming both have one-input only)
-  *  2. Transpose only feeds the Cast node (and no other node)
-  *  3. Cast only feeds the MalMul node (and no other node)
-  */
 
   ORT_ENFORCE(cast != nullptr);
   auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0]);
-  if (transpose == nullptr || cast->GetOutputEdgesCount() !=1 || transpose->GetOutputEdgesCount() !=1) {
+  if (transpose == nullptr || cast->GetOutputEdgesCount() != 1 || transpose->GetOutputEdgesCount() != 1) {
     return nullptr;
   }
   NodeArg* cast_output = cast->MutableOutputDefs()[0];
@@ -117,7 +117,7 @@ static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
   const std::vector<NodeArg*> new_transpose_input_defs = {&new_cast_output};
   const std::vector<NodeArg*> new_transpose_output_defs = {cast_output};
 
-  Node& new_cast = graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
+  (void) graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
                                  cast->OpType(),
                                  "Created a new Cast node to interchange Cast and Transpose nodes",
                                  new_cast_input_defs,
@@ -132,7 +132,7 @@ static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
                                       new_transpose_output_defs,
                                       &transpose->GetAttributes(),
                                       transpose->Domain());
-  (void) new_cast;
+
   graph_utils::RemoveNodeOutputEdges(graph, *cast);
   graph_utils::RemoveNodeOutputEdges(graph, *transpose);
   graph.RemoveNode(cast->Index());
