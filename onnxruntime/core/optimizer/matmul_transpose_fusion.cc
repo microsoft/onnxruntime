@@ -140,6 +140,97 @@ static Node* GetTransposeNodeFromCast(Graph& graph, Node* cast) {
   return &new_transpose;
 }
 
+/*********************************************************************************************
+
+Case I: The followin is a scenario where Transpose output feeds MatMul. The Transpose input can be either on the left or right.
+   The input graph
+                         __________                             __________
+                         | input0 |                             | input1 |
+                         |________|                             |________|
+                              |                                      |
+                              |                                      |
+                              |                                      |
+                         _____|______                                |
+                         |Transpose |                                |
+                         |__________|                                |
+                              |                                      |
+                              |                                      |
+                              |____________               ___________|
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |_______________|
+                                          |    MatMul     |
+                                          |_______________|
+                                                  |
+                                                  V
+    is transformed to the following
+
+                         __________                             __________
+                         | input0 |                             | input1 |
+                         |________|                             |________|
+                              |                                      |
+                              |                                      |
+                              |                                      |
+                              |_____________            _____________|
+                                            |           |
+                                            |           |
+                                            |           |
+                                          __|___________|__
+                                          |  FusedMatMul  |
+                                          |_______________|
+                                                  |
+                                                  V
+
+Case II: The output of Tanspose feeds Cast and the output from the Cast feeds MatMul
+   The input graph
+                         __________                             __________
+                         | input0 |                             | input1 |
+                         |________|                             |________|
+                              |                                      |
+                         _____|______                                |
+                         |Transpose |                                |
+                         |__________|                                |
+                              |                                      |
+                              |                                      |
+                              |                                      |
+                         _____|______                                |
+                         |  Cast    |                                |
+                         |__________|                                |
+                              |                                      |
+                              |____________               ___________|
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |_______________|
+                                          |    MatMul     |
+                                          |_______________|
+                                                  |
+                                                  V
+    is transformed to the following
+
+                         __________                             __________
+                         | input0 |                             | input1 |
+                         |________|                             |________|
+                              |                                      |
+                              |                                      |
+                              |                                      |
+                         _____|______                                |
+                         |  Cast    |                                |
+                         |__________|                                |
+                              |                                      |
+                              |____________               ___________|
+                                          |               |
+                                          |               |
+                                          |               |
+                                          |_______________|
+                                          |  FusedMatMul  |
+                                          |_______________|
+                                                  |
+                                                  V
+
+********************************************************************************************************************/
+
 Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
