@@ -297,9 +297,6 @@ add_custom_command(
       ${REPO_ROOT}/LICENSE
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_perf_log_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/perf_log/
-  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_backend_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -355,6 +352,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_dhp_parallel_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_perf_log_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/perf_log/
   )
 endif()
 
