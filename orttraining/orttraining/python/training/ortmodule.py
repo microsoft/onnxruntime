@@ -114,7 +114,7 @@ class ORTModule(torch.nn.Module):
                 self._input_names_require_grad = input_names_require_grad
                 self._initialize_module_gradient_graph_builder()
 
-            if self._current_input_shape is None or self._current_input_shape != new_input_shape:
+            if self._current_input_shape is None:
                 self._current_input_shape = new_input_shape
                 self._build_training_graph()
                 self._create_training_session()
