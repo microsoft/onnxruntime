@@ -1,7 +1,6 @@
 #include "ort_test_session.h"
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/common/common.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -231,14 +230,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   }
 }
 
-bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(std::map<std::string, int64_t> free_dim_overrides) {
+bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
       // free dimensions are treated as 1 if not overriden
