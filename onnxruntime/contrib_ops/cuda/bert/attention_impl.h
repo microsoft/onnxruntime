@@ -91,6 +91,14 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const half* past,
                                const half* k_v,
                                half* present);
+template <typename T>
+void Dump2DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, char title, char subtitle);
+
+template <typename T>
+void Dump3DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, int dim2, char title, char subtitle);
+
+template <typename T>
+void Dump4DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle);
 
 }  // namespace cuda
 }  // namespace contrib

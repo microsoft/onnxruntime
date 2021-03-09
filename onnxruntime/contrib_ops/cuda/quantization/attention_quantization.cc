@@ -152,6 +152,11 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   } else {
     dequant_scale = input_scale * weight_scale;
   }
+
+  Dump3DTensor(Stream(), input->template Data<int8_t>(), batch_size, sequence_length, input_hidden_size, 'I', ' ');
+  Dump2DTensor(Stream(), weights->template Data<int8_t>(), input_hidden_size, 3*hidden_size, 'W', ' ');
+  Dump3DTensor(Stream(), gemm_buffer_quantized.get(), batch_size, sequence_length, 3*hidden_size, 'G', 'Q');
+
   // scale back and bias
   CudaDequantizeWithBias(
       Stream(),
@@ -161,6 +166,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
       dequant_scale,
       m,
       n);
+
+  Dump3DTensor(Stream(), reinterpret_cast<CudaT*>(gemm_buffer.get()), batch_size, sequence_length, 3*hidden_size, 'D', 'Q');
 
   int past_sequence_length = 0;
   Tensor* present_tensor = GetPresent(context, past_tensor, batch_size, head_size, sequence_length, past_sequence_length);

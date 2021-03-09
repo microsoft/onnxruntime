@@ -219,12 +219,24 @@ void Dump2DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, char
   cudaDeviceSynchronize();
   }
 
+// template instantiation
+template void Dump2DTensor<float>(cudaStream_t, const float*, int, int, char, char);
+template void Dump2DTensor<half>(cudaStream_t, const half*, int, int, char, char);
+template void Dump2DTensor<int8_t>(cudaStream_t, const int8_t*, int, int, char, char);
+
 template <typename T>
 void Dump3DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, int dim2, char title, char subtitle) {
   cudaDeviceSynchronize();
   Print3DTensor<<<1, 1, 0, stream>>>(tensor, dim0, dim1, dim2, title, subtitle);
   cudaDeviceSynchronize();
-}
+  }
+
+// template instantiation
+template void Dump3DTensor<float>(cudaStream_t, const float*, int, int, int, char, char);
+template void Dump3DTensor<half>(cudaStream_t, const half*, int, int, int, char, char);
+template void Dump3DTensor<int8_t>(cudaStream_t, const int8_t*, int, int, int, char, char);
+template void Dump3DTensor<int32_t>(cudaStream_t, const int32_t*, int, int, int, char, char);
+
 
 template <typename T>
 void Dump4DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle) {
@@ -232,6 +244,10 @@ void Dump4DTensor(cudaStream_t stream, const T* tensor, int dim0, int dim1, int 
   Print4DTensor<<<1, 1, 0, stream>>>(tensor, dim0, dim1, dim2, dim3, title, subtitle);
   cudaDeviceSynchronize();
 }
+
+// template instantiation
+template void Dump4DTensor<float>(cudaStream_t, const float*, int, int, int, int, char, char);
+template void Dump4DTensor<half>(cudaStream_t, const half*, int, int, int, int, char, char);
 
 void Dump4DTensor2(bool is_float16, cudaStream_t stream, const void* tensor, int dim0, int dim1, int dim2, int dim3, char title, char subtitle) {
   if (is_float16) {
