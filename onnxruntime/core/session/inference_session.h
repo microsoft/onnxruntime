@@ -6,11 +6,6 @@
 #include <string>
 #include <unordered_map>
 
-#ifdef ENABLE_TRAINING
-#include <thread>
-#include <future>
-#endif
-
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
@@ -302,17 +297,6 @@ class InferenceSession {
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
-#ifdef ENABLE_TRAINING
-  // For ORTModule.forward()
-  virtual common::Status RunInBackgroundAndWaitForYield(const RunOptions& run_options, IOBinding& io_binding,
-                                                        std::vector<OrtValue>& user_outputs,
-                                                        int64_t& run_id) ORT_MUST_USE_RESULT;
-
-  // For ORTModule.backward()
-  common::Status ContinueRunInBackground(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
-
-  void CancelBackgroundTask(int64_t run_id);
-#endif
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
@@ -676,14 +660,6 @@ class InferenceSession {
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
   std::vector<uint8_t> ort_format_model_bytes_;
-
-#ifdef ENABLE_TRAINING
-  // mutex for accessing bg_threads_
-  std::mutex bg_threads_mutex_;
-
-  // background threads for RunInBackgroundAndWaitForYield and ContinueRunInBackground
-  std::unordered_map<int64_t, std::thread> bg_threads_;
-#endif
 
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };

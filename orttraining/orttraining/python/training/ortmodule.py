@@ -9,8 +9,9 @@ from inspect import signature
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch.utils.cpp_extension import load_inline
 
-# Needed to re-implement PyTorch's cpu,cuda,to methods
-from typing import Union, Tuple, Any, Callable, Iterator, Set, Optional, overload, TypeVar, Mapping, Dict
+# Needed to override PyTorch methods
+from typing import TypeVar
+T = TypeVar('T', bound='Module')
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training import register_custom_ops_pytorch_exporter
@@ -18,11 +19,6 @@ from . import _utils, _ortmodule_output_transformation
 
 
 ONNX_OPSET_VERSION = 12
-__TEMP_ENABLE_METHOD_TIMING__ = False
-
-# Needed to re-implement PyTorch's cpu,cuda,to methods
-T = TypeVar('T', bound='Module')
-
 
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
@@ -43,6 +39,15 @@ def _onnx_value_info_to_buffer_tensor(value_info, device):
     shape = [dim.dim_value for dim in value_info.type.tensor_type.shape.dim]
     dtype = _utils.dtype_onnx_to_torch(value_info.type.tensor_type.elem_type)
     return torch.zeros(shape, device=device, dtype=dtype)
+
+def _check_same_device(device, argument_str, *args):
+    '''Check that all tensor arguments in *args reside on the same device as the input device'''
+
+    for arg in args:
+        if arg is not None and isinstance(arg, torch.Tensor):
+            arg_device = torch.device(arg.device)
+            if arg_device != device:
+                raise RuntimeError(f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
 
 # TODO: PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
 # and convert the config to torch.uint8 tensor duing from_dlpack(). So a boolean tensor
@@ -109,7 +114,7 @@ class ORTModule(torch.nn.Module):
                 self._input_names_require_grad = input_names_require_grad
                 self._initialize_module_gradient_graph_builder()
 
-            if self._current_input_shape is None or self._current_input_shape != new_input_shape:
+            if self._current_input_shape is None:
                 self._current_input_shape = new_input_shape
                 self._build_training_graph()
                 self._create_training_session()
@@ -134,6 +139,9 @@ class ORTModule(torch.nn.Module):
                     Module outputs are returned to the user
                     '''
 
+                    # Assert that the input and model device match
+                    _check_same_device(self._device, "Input argument to forward", *inputs)
+
                     # Use IO binding
                     _create_iobinding(self._training_io_binding, inputs, self._onnx_training, self._device)
 
@@ -142,6 +150,14 @@ class ORTModule(torch.nn.Module):
                     user_outputs = tuple(_ort_output_to_torch_tensor(forward_output) for forward_output in forward_outputs)
                     ctx.run_id = run_id
 
+                    # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
+                    # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
+                    ctx.set_materialize_grads(False)
+                    ctx.output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
+
+                    # Assert that the outputs and model device match
+                    _check_same_device(self._device, "Output argument from forward", *user_outputs)
+
                     return user_outputs
 
                 @staticmethod
@@ -149,17 +165,24 @@ class ORTModule(torch.nn.Module):
                     '''Performs backward pass based on grad wrt module output
                     '''
 
+                    # Assert that the grad_outputs and model device match
+                    _check_same_device(self._device, "Input argument to backward", *grad_outputs)
+
                     # Use IO binding
                     # Push user output grads to ONNX backend.
                     backward_grad_output_ortvalue = []
-
-                    # backward_output_grad_names_map only contains the subset of module outputs that need a gradient,
-                    # we filter out the invalid entries in grad_outputs, accessing using the mapped index.
-
-                    for _, i in self._onnx_graphs_info.backward_output_grad_names_map.items():
-                        grad_output = grad_outputs[i]
-                        if not grad_output.is_contiguous():
+                    contiguous_grad_outputs = []
+                    for idx, grad_output in enumerate(grad_outputs):
+                        if grad_output is None:
+                            shape, device, dtype = ctx.output_info[idx]
+                            if idx in self._onnx_graphs_info.output_grad_indices_require_full_shape:
+                                grad_output = torch.zeros(shape, device=device, dtype=dtype)
+                            else:
+                                grad_output = torch.tensor(0., device=device, dtype=dtype)
+                        elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
+                        contiguous_grad_outputs.append(grad_output)
+                    for grad_output in contiguous_grad_outputs:
                         backward_grad_output_ortvalue.append(onnxruntime.OrtValue.from_dlpack(to_dlpack(grad_output)))
 
                     # Run and get results
@@ -219,6 +242,9 @@ class ORTModule(torch.nn.Module):
 
         # Related to training graph shape inference
         self._current_input_shape = None
+        # default execution order is priority-based for both dynamic/static shape input for now
+        # if we observe benefit of static shape, we can expose this flag to user       
+        self._use_static_shape = False 
         self._module_gradient_graph_builder = None
         self._input_names_require_grad = None
         self._original_module_output_schema = None
@@ -281,12 +307,14 @@ class ORTModule(torch.nn.Module):
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False
         session_options.use_deterministic_compute = False
+        # default to PRIORITY_BASED execution order
+        session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = 2
 
-        self._training_session = onnxruntime.InferenceSession(
-            self._onnx_training.SerializeToString(), session_options, providers=providers, provider_options=provider_options)
-        
+        self._training_session = onnxruntime.training.TrainingAgent(self._onnx_training.SerializeToString(),
+                                                                    session_options, providers, provider_options)
+
         # Use this global run_options for now
         self._run_options = C.RunOptions()
 
@@ -295,7 +323,10 @@ class ORTModule(torch.nn.Module):
         self._training_io_binding = self._training_session.io_binding()
 
     def _build_training_graph(self, *inputs, **kwargs):
-        self._module_gradient_graph_builder.build(self._current_input_shape)
+        if self._use_static_shape:
+            self._module_gradient_graph_builder.build(self._current_input_shape)
+        else:
+            self._module_gradient_graph_builder.build()
         self._onnx_training = onnx.load_model_from_string(self._module_gradient_graph_builder.get_training_model())
         self._onnx_graphs_info = self._module_gradient_graph_builder.get_training_graph_info()
 
@@ -310,7 +341,6 @@ class ORTModule(torch.nn.Module):
         self._is_training = mode
         self._flattened_output_module.train(mode)
 
-    @_utils.timeit(enabled=__TEMP_ENABLE_METHOD_TIMING__)
     def _convert_training_graph_input_to_list(self, *inputs, **kwargs):
         '''Creates forward `*inputs` list from user input and PyTorch initializers
 

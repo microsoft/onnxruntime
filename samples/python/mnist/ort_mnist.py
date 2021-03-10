@@ -1,14 +1,6 @@
 # This code is from https://github.com/pytorch/examples/blob/master/mnist/main.py
 # with modification to do training using onnxruntime as backend on cuda device.
 
-# To print nodes from ORT backend
-# Add --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1 to build.sh
-# export ORT_DEBUG_NODE_IO_NAME_FILTER="SoftmaxCrossEntropyLoss_3_Grad/SoftmaxCrossEntropyLossGrad_0"
-# export ORT_DEBUG_NODE_IO_NAME_FILTER="SoftmaxCrossEntropyLoss_3"
-# export ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA=1
-# export ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
-# See https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/debug_node_inputs_outputs_utils.h
-
 import argparse
 import os
 import torch

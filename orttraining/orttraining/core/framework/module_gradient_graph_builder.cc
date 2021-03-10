@@ -41,7 +41,7 @@ Status ModuleGradientGraphBuilder::Initialize(std::istream& model_istream,
   }
 
   training_graph_info_.initializer_names_to_train.assign(config.initializer_names_to_train.begin(),
-                                                       config.initializer_names_to_train.end());
+                                                         config.initializer_names_to_train.end());
 
   std::vector<const NodeArg*> input_args;
   for (const auto& input_name : training_graph_info_.user_input_names) {
@@ -78,8 +78,8 @@ Status ModuleGradientGraphBuilder::Build(const std::vector<std::vector<int64_t>>
   // Build the gradient graph.
   ORT_RETURN_IF_ERROR(BuildGradientGraph());
 
-  // Add Yield Op.
-  AddYieldOp();
+  // Handle user outputs and output grads.
+  HandleOutputsAndGrads();
 
   // Reorder outputs.
   ReorderOutputs();
@@ -170,55 +170,70 @@ Status ModuleGradientGraphBuilder::BuildGradientGraph() {
   return Status::OK();
 }
 
-void ModuleGradientGraphBuilder::AddYieldOp() {
+void ModuleGradientGraphBuilder::HandleOutputsAndGrads() {
   Graph& gradient_graph = gradient_model_->MainGraph();
   GraphViewer gradient_graph_viewer(gradient_graph);
   const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
   std::unordered_set<std::string> user_output_grad_names_set;
   for (const auto& name : training_graph_info_.user_output_names) {
-    user_output_grad_names_set.insert(name + "_grad");
+    user_output_grad_names_set.insert(GradientBuilderBase::GradientName(name));
   }
 
-  // If an NodeArg is output of one of nodes, it's not the user output gradient needed by backward graph.
-  std::unordered_set<std::string> non_backward_user_output_grad_names;
+  // If an output gradient is output of one of nodes, need to add this output to PT's output gradient.
+  std::unordered_set<std::string> internal_output_grad_names;
   for (auto node_index : gradient_node_topology_list) {
     auto& node = *gradient_graph.GetNode(node_index);
     for (const auto& node_arg : node.OutputDefs()) {
       if (user_output_grad_names_set.find(node_arg->Name()) != user_output_grad_names_set.end()) {
-        non_backward_user_output_grad_names.insert(node_arg->Name());
+        internal_output_grad_names.insert(node_arg->Name());
       }
     }
   }
 
-  // YieldOps required_grad attribute specifies the indices of the required gradients.
-  ONNX_NAMESPACE::AttributeProto required_grad;
-  const std::string attribute_name = "required_grad";
-  required_grad.set_name(attribute_name);
-  required_grad.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
-
-  training_graph_info_.backward_output_grad_names_map.clear();
-  for (std::size_t i = 0; i < training_graph_info_.user_output_names.size(); ++i) {
-    const auto& name = training_graph_info_.user_output_names[i];
-    std::string grad_name = name + "_grad";
-    if (non_backward_user_output_grad_names.find(grad_name) == non_backward_user_output_grad_names.end()) {
-      training_graph_info_.backward_output_grad_names_map.insert(std::make_pair(grad_name, i));
-      required_grad.add_ints(static_cast<int64_t>(i));
-    }
+  for (const auto& output_grad_name : internal_output_grad_names) {
+    Node* producer_node = gradient_graph.GetMutableProducerNode(output_grad_name);
+    int producer_node_arg_index = graph_utils::GetNodeOutputIndexFromOutputName(*producer_node, output_grad_name);
+    const TypeProto* type_info = producer_node->MutableOutputDefs()[producer_node_arg_index]->TypeAsProto();
+    auto& external_node_arg = gradient_graph.GetOrCreateNodeArg(
+        gradient_graph.GenerateNodeArgName(GradientBuilderBase::ExternalOutputName(output_grad_name)), type_info);
+    auto& output_node_arg = gradient_graph.GetOrCreateNodeArg(
+        gradient_graph.GenerateNodeArgName(output_grad_name + "_add_output"), type_info);
+    Node& add_node = gradient_graph.AddNode(
+        output_grad_name + "_add", "Add", "",
+        {&external_node_arg, producer_node->MutableOutputDefs()[producer_node_arg_index]}, {&output_node_arg});
+    graph_utils::ReplaceDownstreamNodeInput(gradient_graph, *producer_node, producer_node_arg_index, add_node, 0);
   }
+
+  // YieldOps full_shape_outputs attribute specifies the indices of outputs that must be full shape.
+  // We need this info to set make TypeAndShapeInferenceFunction work properly.
+  ONNX_NAMESPACE::AttributeProto full_shape_outputs;
+  const std::string attribute_name = "full_shape_outputs";
+  full_shape_outputs.set_name(attribute_name);
+  full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
 
   std::vector<NodeArg*> yield_input_node_args;
   std::vector<NodeArg*> yield_output_node_args;
-  for (const auto& name : training_graph_info_.user_output_names) {
+  training_graph_info_.output_grad_indices_require_full_shape.clear();
+  for (size_t i = 0; i < training_graph_info_.user_output_names.size(); i++) {
+    std::string name = training_graph_info_.user_output_names[i];
     yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
+    std::string grad_name = GradientBuilderBase::GradientName(name);
+    if (internal_output_grad_names.find(grad_name) != internal_output_grad_names.end()) {
+      grad_name = GradientBuilderBase::ExternalOutputName(grad_name);
+    } else {
+      // If output grad is the direct input of backward graph, we need to materialize it
+      // to a all-0 tensor with same shape of output, otherwise, since it will be an input of
+      // Add node, it's OK to use scalar-0 tensor to save memory.
+      training_graph_info_.output_grad_indices_require_full_shape.emplace_back(i);
+      full_shape_outputs.add_ints(static_cast<int64_t>(i));
+    }
+
+    yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
   }
 
-  for (const auto& element : training_graph_info_.backward_output_grad_names_map) {
-    yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(element.first));
-  }
-
-  NodeAttributes attributes({{attribute_name, required_grad}});
-
-  gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes, kMSDomain);
+  NodeAttributes attributes({{attribute_name, full_shape_outputs}});
+  gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes,
+                         kMSDomain);
 }
 
 void ModuleGradientGraphBuilder::ReorderOutputs() {
@@ -239,7 +254,7 @@ void ModuleGradientGraphBuilder::ReorderOutputs() {
   training_graph_info_.user_input_grad_names.clear();
   for (const auto& input_name : training_graph_info_.user_input_names) {
     if (user_input_require_grad_set.find(input_name) != user_input_require_grad_set.end()) {
-      std::string input_gradient_name = input_name + "_grad";
+      std::string input_gradient_name = GradientBuilderBase::GradientName(input_name);
       ORT_ENFORCE(gradient_output_arg_map.find(input_gradient_name) != gradient_output_arg_map.end(),
                   "Required user input grad is not found on gradient graph.");
       training_graph_info_.user_input_grad_names[input_name] = input_gradient_name;
@@ -250,7 +265,7 @@ void ModuleGradientGraphBuilder::ReorderOutputs() {
   // Add initializer gradients to graph outputs.
   training_graph_info_.initializer_grad_names_to_train.clear();
   for (const auto& initializer_name : training_graph_info_.initializer_names_to_train) {
-    std::string initializer_gradient_name = initializer_name + "_grad";
+    std::string initializer_gradient_name = GradientBuilderBase::GradientName(initializer_name);
     ORT_ENFORCE(gradient_output_arg_map.find(initializer_gradient_name) != gradient_output_arg_map.end(),
                 "Trainable initializer grad is not found on gradient graph.");
     training_graph_info_.initializer_grad_names_to_train.emplace_back(initializer_gradient_name);

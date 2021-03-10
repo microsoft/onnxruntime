@@ -266,16 +266,15 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  onnxruntime::NodeArg input_def("X", &tensor_float),
-      yield_out_def("T", &tensor_float),
+  onnxruntime::NodeArg input_def("X", &tensor_float), yield_out_def("T", &tensor_float),
       gemm_out_def("Y", &tensor_float);
 
-  ONNX_NAMESPACE::AttributeProto required_grad;
-  const std::string attribute_name = "required_grad";
-  required_grad.set_name(attribute_name);
-  required_grad.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
-  required_grad.add_ints(static_cast<int64_t>(0));
-  NodeAttributes attributes({{attribute_name, required_grad}});
+  ONNX_NAMESPACE::AttributeProto full_shape_outputs;
+  const std::string attribute_name = "full_shape_outputs";
+  full_shape_outputs.set_name(attribute_name);
+  full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
+  full_shape_outputs.add_ints(static_cast<int64_t>(0));
+  NodeAttributes attributes({{attribute_name, full_shape_outputs}});
   graph.AddNode("node1", "YieldOp", "yield", ArgMap{&input_def}, ArgMap{&yield_out_def}, &attributes, kMSDomain)
       .SetExecutionProviderType(xp_type);
   // Add another node after YieldOp as YieldOp should not be graph output.
@@ -292,8 +291,8 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
-  SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm,
-                     DefaultLoggingManager().DefaultLogger(), profiler);
+  SessionState state(graph, execution_providers, true, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(),
+                     profiler);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
@@ -307,12 +306,8 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   auto cpu_allocator = execution_providers.Get(xp_type)->GetAllocator(0, OrtMemTypeDefault);
 
   OrtValue x_value, t_value;
-  CreateMLValue<float>(cpu_allocator,
-                       std::vector<int64_t>{2, 2},
-                       std::vector<float>(4, 2.0f), &x_value);
-  CreateMLValue<float>(cpu_allocator,
-                       std::vector<int64_t>{2, 2},
-                       std::vector<float>(4, 1.0f), &t_value);
+  CreateMLValue<float>(cpu_allocator, std::vector<int64_t>{2, 2}, std::vector<float>(4, 2.0f), &x_value);
+  CreateMLValue<float>(cpu_allocator, std::vector<int64_t>{2, 2}, std::vector<float>(4, 1.0f), &t_value);
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({x_idx}, {x_value}, {y_idx}, outputs, {}, state);
@@ -322,10 +317,8 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   ASSERT_TRUE(frame.GetMutableNodeInputOrOutputMLValue(t_idx)->IsTensor());
 
   OrtValue& y_value = *frame.GetMutableNodeInputOrOutputMLValue(y_idx);
-  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(y_value, y_idx,
-                                                            DataTypeImpl::GetType<float>(),
-                                                            cpu_allocator->Info(),
-                                                            TensorShape(std::vector<int64_t>{2, 2})));
+  ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(
+      y_value, y_idx, DataTypeImpl::GetType<float>(), cpu_allocator->Info(), TensorShape(std::vector<int64_t>{2, 2})));
 
   MemoryPatternGroup pattern;
   ASSERT_STATUS_OK(frame.GeneratePatterns(&pattern));
