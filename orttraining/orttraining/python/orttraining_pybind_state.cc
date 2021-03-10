@@ -97,7 +97,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     LOGS(*(sess->GetLogger()), WARNING) << msg;
   }
 
-  training::TrainingSession::TrainingConfiguration config{};
+  training::PipelineTrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;

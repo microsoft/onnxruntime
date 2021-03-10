@@ -732,7 +732,7 @@ def _recompute_data():
             (False, False, True, 1, expected_loss),     # transformer_layer recompute with 1 layer
         ]
     elif device_capability_major == 5:  # M60 for CI machines
-        expected_loss = [10.56341 , 10.456358, 10.355879, 10.285801, 10.234793]
+        expected_loss = [10.5445, 10.4389, 10.3480, 10.2627, 10.2113]
         return [
             (False, False, False, 0, expected_loss),    # no recompute
             (True, False, False, 0, expected_loss),     # attn_dropout recompute
