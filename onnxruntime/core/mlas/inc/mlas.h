@@ -365,6 +365,10 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
+#if defined(MLAS_TARGET_WASM)
+    MlasConvAlgorithmDepthwise,
+    MlasConvAlgorithmDirectConv,
+#endif
 };
 
 struct MLAS_CONV_PARAMETERS {
@@ -769,3 +773,26 @@ MlasQLinearMul(
     size_t N,
     bool IsScalarB
     );
+
+#if defined(MLAS_TARGET_WASM)
+void
+MLASCALL
+MlasConvDepthwiseFloat_CHW(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    const float* Zeros
+    );
+
+void
+MLASCALL
+MlasConvDirectFloat_CHW(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    const float* Zeros
+    );
+
+#endif

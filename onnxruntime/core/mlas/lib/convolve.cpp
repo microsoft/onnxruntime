@@ -910,10 +910,17 @@ Return Value:
         return;
     }
 
+#if defined(MLAS_TARGET_WASM)
+
+    if (Algorithm == MlasConvAlgorithmDepthwise || Algorithm == MlasConvAlgorithmDirectConv) {
+        std::fill_n(WorkingBuffer, Parameters->InputShape[1] + 2, 0.0f);
+    }
+
+#endif
+
     //
     // Iterate over each batch and group.
     //
-
     for (size_t batch = 0; batch < BatchCount; batch++) {
 
         const float* filter = Filter;
@@ -972,6 +979,24 @@ Return Value:
 
                     break;
                 }
+
+#if defined(MLAS_TARGET_WASM)
+
+                case MlasConvAlgorithmDepthwise:
+                {
+                    MlasConvDepthwiseFloat_CHW(Parameters, Input, filter, Output, WorkingBuffer);
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
+                    break;
+                }
+
+                case MlasConvAlgorithmDirectConv:
+                {
+                    MlasConvDirectFloat_CHW(Parameters, Input, filter, Output, WorkingBuffer);
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
+                    break;
+                }
+
+#endif
 
                 case MlasConvAlgorithmExpandThenGemmSegmented:
                 {
@@ -1203,6 +1228,28 @@ Return Value:
         *WorkingBufferSize = OutputSize * K;
 
     } else {
+
+#if defined(MLAS_TARGET_WASM) && !defined(MLAS_TARGET_WASMSIMD)
+
+        // Fast scalar direct conv for wasm without SIMD.
+
+        if (Dimensions == 2
+                && Parameters->KernelShape[0] == 3 && Parameters->KernelShape[1] == 3
+                && Parameters->Padding[0] <= 1 && Parameters->Padding[1] <= 1
+                && Parameters->Padding[2] <= 1 && Parameters->Padding[3] <= 1
+                && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
+
+            *WorkingBufferSize = Parameters->InputShape[1] + 2;
+            if (Parameters->FilterCount == 1 && Parameters->InputChannels == 1) {
+                Parameters->Algorithm = MlasConvAlgorithmDepthwise;
+            } else {
+                Parameters->Algorithm = MlasConvAlgorithmDirectConv;
+            }
+            return;
+
+        }
+
+#endif
 
         //
         // Segment the operation across multiple threads by slicing the N

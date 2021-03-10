@@ -27,6 +27,8 @@ set(mlas_common_srcs
 if (onnxruntime_BUILD_WEBASSEMBLY)
   list(APPEND mlas_common_srcs
     ${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/sgemmc.cpp
+    ${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/sgemmv.cpp
+    ${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/direct_conv_chw.cpp
   )
 elseif(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
