@@ -72,9 +72,13 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.test_output.ort");
 
 #ifdef USE_CUDA
-  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
+  // It is okay to use the default stream for the custom op as it is the only op in the model
+  // where it is being used.
+  // If interleaved with other ORT CUDA kernels, create a compute stream and pass it via session options
+  // and use the same stream to launch the custom kernel too.
+  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider, nullptr};
 #else
-  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
 #endif
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);

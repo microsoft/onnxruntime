@@ -6,7 +6,10 @@
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
 template <typename T1, typename T2, typename T3>
-void cuda_add(int64_t, T3*, const T1*, const T2*);
+void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
+
+template <typename T>
+void cuda_slice(const T*, int64_t, int64_t, T*, cudaStream_t compute_stream);
 #endif
 
 void MyCustomKernel::Compute(OrtKernelContext* context) {
@@ -27,8 +30,8 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
 
   // Do computation
 #ifdef USE_CUDA
-  cuda_add(size, out, X, Y);
-  cudaStreamSynchronize(nullptr);
+  // Launch on stream 0 or user provided stream
+  cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : compute_stream_);
 #else
   for (int64_t i = 0; i < size; i++) {
     out[i] = X[i] + Y[i];
@@ -57,8 +60,8 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
 
   // Do computation
 #ifdef USE_CUDA
-  cuda_add(size, out, X, Y);
-  cudaStreamSynchronize(nullptr);
+  // Launch on stream 0 or user provided stream
+  cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : compute_stream_);
 #else
   for (int64_t i = 0; i < size; i++) {
     out[i] = static_cast<float>(X[i] + Y[i]);
@@ -114,5 +117,51 @@ void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
     for (int64_t i = 0; i < size; i++) {
       out[i] = 0.f;
     }
+  }
+}
+
+template <typename T>
+static void custom_slice(const T* X, int64_t from, int64_t to, T* Y, cudaStream_t compute_stream) {
+#ifdef USE_CUDA
+  cuda_slice(X, from, to, Y, compute_stream == nullptr ? 0 : compute_stream);
+#else
+  for (auto i = from; i < to; i++) {
+    Y[i - from] = X[i];
+  }
+#endif
+}
+
+void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
+  // Setup inputs and outputs
+  const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+  const OrtValue* input_from = ort_.KernelContext_GetInput(context, 1);
+  const OrtValue* input_to = ort_.KernelContext_GetInput(context, 2);
+  OrtTensorTypeAndShapeInfo* input_X_info = ort_.GetTensorTypeAndShape(input_X);
+  ONNXTensorElementDataType input_X_type = ort_.GetTensorElementType(input_X_info);
+  ort_.ReleaseTensorTypeAndShapeInfo(input_X_info);
+#if USE_CUDA
+  int64_t slice_from = 0;
+  int64_t slice_to = 0;
+  cudaMemcpy(&slice_from, ort_.GetTensorData<int64_t>(input_from), sizeof(int64_t), cudaMemcpyDeviceToHost);
+  cudaMemcpy(&slice_to, ort_.GetTensorData<int64_t>(input_to), sizeof(int64_t), cudaMemcpyDeviceToHost);
+#else
+  int64_t slice_from = *ort_.GetTensorData<int64_t>(input_from);
+  int64_t slice_to = *ort_.GetTensorData<int64_t>(input_to);
+#endif
+  std::vector<int64_t> output_dims = {slice_to - slice_from};
+  OrtValue* output = ort_.KernelContext_GetOutput(context, 0, output_dims.data(), output_dims.size());
+  // do slice
+  switch (input_X_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+
+      custom_slice(ort_.GetTensorData<float>(input_X), slice_from, slice_to,
+                   ort_.GetTensorMutableData<float>(output), compute_stream_);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      custom_slice(ort_.GetTensorData<double>(input_X), slice_from, slice_to,
+                   ort_.GetTensorMutableData<double>(output), compute_stream_);
+      break;
+    default:
+      throw std::exception("Unsupported input type");
   }
 }

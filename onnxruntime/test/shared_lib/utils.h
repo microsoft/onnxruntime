@@ -4,6 +4,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include <vector>
 
+#ifdef USE_CUDA
+#include <cuda_runtime.h>
+#endif
+
 struct Input {
   const char* name = nullptr;
   std::vector<int64_t> dims;
@@ -19,19 +23,21 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 };
 
 struct MyCustomKernel {
-  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
+  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/, cudaStream_t compute_stream)
+      : ort_(ort), compute_stream_(compute_stream) {
   }
 
   void Compute(OrtKernelContext* context);
 
  private:
   Ort::CustomOpApi ort_;
+  cudaStream_t compute_stream_;
 };
 
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
-  explicit MyCustomOp(const char* provider) : provider_(provider) {}
+  explicit MyCustomOp(const char* provider, cudaStream_t compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
 
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info, compute_stream_); };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -46,22 +52,25 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
 
  private:
   const char* provider_;
+  cudaStream_t compute_stream_;
 };
 
 struct MyCustomKernelMultipleDynamicInputs {
-  MyCustomKernelMultipleDynamicInputs(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
+  MyCustomKernelMultipleDynamicInputs(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/, cudaStream_t compute_stream)
+      : ort_(ort), compute_stream_(compute_stream) {
   }
 
   void Compute(OrtKernelContext* context);
 
  private:
   Ort::CustomOpApi ort_;
+  cudaStream_t compute_stream_;
 };
 
 struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDynamicInputs, MyCustomKernelMultipleDynamicInputs> {
-  explicit MyCustomOpMultipleDynamicInputs(const char* provider) : provider_(provider) {}
+  explicit MyCustomOpMultipleDynamicInputs(const char* provider, cudaStream_t compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
 
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernelMultipleDynamicInputs(api, info); };
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernelMultipleDynamicInputs(api, info, compute_stream_); };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -77,6 +86,7 @@ struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDyn
 
  private:
   const char* provider_;
+  cudaStream_t compute_stream_;
 };
 
 struct MyCustomKernelWithOptionalInput {
@@ -91,7 +101,7 @@ struct MyCustomKernelWithOptionalInput {
 struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInput, MyCustomKernelWithOptionalInput> {
   explicit MyCustomOpWithOptionalInput(const char* provider) : provider_(provider) {}
 
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernelMultipleDynamicInputs(api, info); };
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernelWithOptionalInput(api, info); };
   const char* GetName() const { return "FooBar"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -155,4 +165,59 @@ struct MyCustomOpWithAttributes : Ort::CustomOpBase<MyCustomOpWithAttributes, My
 
  private:
   const char* provider_;
+};
+
+//Slice array of floats or doubles between [from, to) and save to output
+struct SliceCustomOpKernel {
+  SliceCustomOpKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/, cudaStream_t compute_stream)
+      : ort_(ort), compute_stream_(compute_stream) {
+  }
+
+  void Compute(OrtKernelContext* context);
+
+ private:
+  Ort::CustomOpApi ort_;
+  cudaStream_t compute_stream_;
+};
+
+struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
+  explicit SliceCustomOp(const char* provider, cudaStream_t compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const {
+    return new SliceCustomOpKernel(api, info, compute_stream_);
+  };
+
+  const char* GetName() const { return "Slice"; };
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 3; };
+  ONNXTensorElementDataType GetInputType(size_t index) const {
+    switch (index) {
+      case 0:
+        return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;  // input array of float or double
+        break;
+      case 1:
+        return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;  // slice from
+        break;
+      case 2:
+        return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;  // slice to
+        break;
+      default:
+        throw std::exception("Invalid input index");
+    }
+  };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t index) const {
+    switch (index) {
+      case 0:
+        return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+        break;
+      default:
+        throw std::exception("Invalid output index");
+    }
+  }
+
+ private:
+  const char* provider_;
+  cudaStream_t compute_stream_;
 };
