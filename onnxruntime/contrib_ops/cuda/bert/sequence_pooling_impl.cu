@@ -6,6 +6,14 @@
 #include <cuda_fp16.h>
 #include <stdio.h>
 
+// An example
+// In: input: [1, 4096, 768]
+// In: sen_lens: [1, 47]     contains like [30, 40, 20, ....., 96] and sum up to 4096
+// Out: output: [1, 256, 768]
+//      where [0, 0:46, 768] is the max pooling result of input along axis=1 by sen_lens
+//      and [0, 47:256, 768] part is all zeros
+
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
