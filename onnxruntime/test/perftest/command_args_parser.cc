@@ -61,25 +61,45 @@ namespace perftest {
       "\t-h: help\n");
 }
 
+static bool ParseDimensionOverride(std::string &dim_identifier, int64_t &override_val) {
+  std::wstring free_dim_str = optarg;
+  size_t delimiter_location = free_dim_str.find(L":");
+  if (delimiter_location >= free_dim_str.size() - 1) {
+    return false;
+  }
+  dim_identifier = ToMBString(free_dim_str.substr(0, delimiter_location));
+  std::wstring override_val_str = free_dim_str.substr(delimiter_location + 1, std::wstring::npos);
+  try {
+    override_val = _wtoi64(override_val_str.c_str());
+    if (override_val <= 0) {
+      return false;
+    }
+  } catch (...) {
+    return false;
+  }
+  return true;
+}
+
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:AMPIvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:AMPIvhsqz"))) != -1) {
     switch (ch) {
       case 'f': {
-        std::wstring free_dim_str = optarg;
-        size_t delimiter_location = free_dim_str.find(L":");
-        if (delimiter_location >= free_dim_str.size() - 1) {
-          return false;
-        }
-        std::string dim_name = ToMBString(free_dim_str.substr(0, delimiter_location));
-        std::wstring override_val_str = free_dim_str.substr(delimiter_location + 1, std::wstring::npos);
+        std::string dim_name;
         int64_t override_val;
-        try {
-          override_val = std::stoul(override_val_str.c_str());
-        } catch (...) {
+        if (!ParseDimensionOverride(dim_name, override_val)) {
           return false;
         }
-        test_config.run_config.free_dim_overrides.insert_or_assign(dim_name, override_val);
+        test_config.run_config.free_dim_name_overrides.insert_or_assign(dim_name, override_val);
+        break;
+      }
+      case 'F': {
+        std::string dim_denotation;
+        int64_t override_val;
+        if (!ParseDimensionOverride(dim_denotation, override_val)) {
+          return false;
+        }
+        test_config.run_config.free_dim_denotation_overrides.insert_or_assign(dim_denotation, override_val);
         break;
       }
       case 'm':

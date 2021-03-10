@@ -202,9 +202,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
   if (performance_test_config.run_config.set_denormal_as_zero)
     session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
-  if (!performance_test_config.run_config.free_dim_overrides.empty()) {
-    for (auto const& dim_override : performance_test_config.run_config.free_dim_overrides) {
+  if (!performance_test_config.run_config.free_dim_name_overrides.empty()) {
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_name_overrides) {
       g_ort->AddFreeDimensionOverrideByName(session_options, dim_override.first.c_str(), dim_override.second);
+    }
+  }
+  if (!performance_test_config.run_config.free_dim_denotation_overrides.empty()) {
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_denotation_overrides) {
+      g_ort->AddFreeDimensionOverride(session_options, dim_override.first.c_str(), dim_override.second);
     }
   }
 
