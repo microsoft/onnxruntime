@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/eager/ort_kernel_invoker.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/common/logging/logging.h"
@@ -6,34 +9,22 @@
 #include "core/framework/op_kernel.h"
 #include "core/session/ort_env.h"
 
-#include <mutex>
-
 namespace onnxruntime {
 
 std::once_flag init_flag;
 std::unique_ptr<Environment> ort_env;
 
-void init_env(){
-  std::string default_logger_id{"Default"};
-  std::unique_ptr<logging::LoggingManager> default_logging_manager = onnxruntime::make_unique<logging::LoggingManager>(std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
-                                                                               logging::Severity::kWARNING, false,
-                                                                               logging::LoggingManager::InstanceType::Default,
-                                                                               &default_logger_id);
-  std::cout << "Init env" << std::endl;
-  Environment::Create(std::move(default_logging_manager), ort_env);
-}
-
-ORTInvoker::ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider) : execution_provider_(std::move(execution_provider)) {
-  std::string default_logger_id{"Default"};
-  logging_manager_ = onnxruntime::make_unique<logging::LoggingManager>(std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
-                                                                               logging::Severity::kWARNING, false,
-                                                                               logging::LoggingManager::InstanceType::Temporal,
-                                                                               &default_logger_id);
-  std::call_once(init_flag, init_env);
-}
-
-IExecutionProvider& ORTInvoker::GetCurrentExecutionProvider() {
-  return *execution_provider_;
+ORTInvoker::ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider)
+  : execution_provider_(std::move(execution_provider)) {
+  std::call_once(init_flag, [&]{
+    std::string logger_id{"ORTInvoker"};
+    auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
+      logging::Severity::kVERBOSE, false,
+      logging::LoggingManager::InstanceType::Default,
+      &logger_id);
+    Environment::Create(std::move(logging_manager), ort_env);
+  });
 }
 
 common::Status ORTInvoker::Invoke(const std::string& op_name,

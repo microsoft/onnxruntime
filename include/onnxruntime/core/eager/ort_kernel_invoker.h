@@ -22,7 +22,9 @@ class ORTInvoker {
  public:
   ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider);
 
-  IExecutionProvider& GetCurrentExecutionProvider();
+  IExecutionProvider& GetCurrentExecutionProvider() {
+    return *execution_provider_;
+  }
 
   common::Status Invoke(const std::string& op_name,
                         //optional inputs / outputs?
@@ -33,9 +35,7 @@ class ORTInvoker {
                         const int version = -1);
 
  private:
-
   std::unique_ptr<IExecutionProvider> execution_provider_;
-  std::unique_ptr<logging::LoggingManager> logging_manager_;
 };
 
 #ifdef __GNUC__
