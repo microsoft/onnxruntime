@@ -66,16 +66,16 @@ namespace perftest {
 }
 
 static const wchar_t* overrideDelimiter = L":";
-static bool ParseDimensionOverride(std::string &dim_identifier, int64_t &override_val) {
-  std::wstring free_dim_str = optarg;
+static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val) {
+  std::wstring free_dim_str(optarg);
   size_t delimiter_location = free_dim_str.find(overrideDelimiter);
   if (delimiter_location >= free_dim_str.size() - 1) {
     return false;
   }
-  dim_identifier = ToMBString(free_dim_str.substr(0, delimiter_location));
+  dim_identifier = free_dim_str.substr(0, delimiter_location);
   std::wstring override_val_str = free_dim_str.substr(delimiter_location + 1, std::wstring::npos);
   try {
-    override_val = _wtoi64(override_val_str.c_str());
+    override_val = std::stoll(override_val_str.c_str());
     if (override_val <= 0) {
       return false;
     }
@@ -90,21 +90,21 @@ static bool ParseDimensionOverride(std::string &dim_identifier, int64_t &overrid
   while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:AMPIvhsqz"))) != -1) {
     switch (ch) {
       case 'f': {
-        std::string dim_name;
+        std::basic_string<ORTCHAR_T> dim_name;
         int64_t override_val;
         if (!ParseDimensionOverride(dim_name, override_val)) {
           return false;
         }
-        test_config.run_config.free_dim_name_overrides.insert_or_assign(dim_name, override_val);
+        test_config.run_config.free_dim_name_overrides[dim_name] = override_val;
         break;
       }
       case 'F': {
-        std::string dim_denotation;
+        std::basic_string<ORTCHAR_T> dim_denotation;
         int64_t override_val;
         if (!ParseDimensionOverride(dim_denotation, override_val)) {
           return false;
         }
-        test_config.run_config.free_dim_denotation_overrides.insert_or_assign(dim_denotation, override_val);
+        test_config.run_config.free_dim_denotation_overrides[dim_denotation] = override_val;
         break;
       }
       case 'm':
