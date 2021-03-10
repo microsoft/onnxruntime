@@ -14,11 +14,11 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0,
     float,
     double);
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0,
     double,
     float,
@@ -26,11 +26,11 @@ ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
     uint8_t);
 }  // namespace op_kernel_type_control
 
-using MaxPool8DataTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(
+using MaxPool8DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0);
 using EnabledMaxPool8DataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0);
-using MaxPool12DataTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST(
+using MaxPool12DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0);
 using EnabledMaxPool12DataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0);
