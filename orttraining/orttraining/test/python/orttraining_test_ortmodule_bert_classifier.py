@@ -484,8 +484,8 @@ def main():
     print("  Accumulated training took:                {:.4f}s".format(total_training_time))
     print("  Accumulated validation took:              {:.4f}s".format(total_test_time))
 
-    if args.log_perf_metrics:
-        bert_classifier_log_perf_metrics(args, train_dataloader, perf_metrics_start_time)
+    # if args.log_perf_metrics:
+    #     bert_classifier_log_perf_metrics(args, train_dataloader, perf_metrics_start_time)
 
 if __name__ == '__main__':
     main()
