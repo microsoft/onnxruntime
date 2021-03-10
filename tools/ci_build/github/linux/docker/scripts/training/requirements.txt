@@ -9,3 +9,5 @@ torchvision==0.7.0+cu101
 torchtext==0.7.0
 tensorboard==v2.0.0
 h5py
+mysql-connector-python
+GitPython
