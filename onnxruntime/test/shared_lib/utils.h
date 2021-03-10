@@ -191,30 +191,21 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
 
   size_t GetInputTypeCount() const { return 3; };
   ONNXTensorElementDataType GetInputType(size_t index) const {
-    switch (index) {
-      case 0:
-        return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;  // input array of float or double
-        break;
-      case 1:
-        return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;  // slice from
-        break;
-      case 2:
-        return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;  // slice to
-        break;
-      default:
-        throw std::exception("Invalid input index");
-    }
+    if (index == 0)
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;  // input array of float or double
+    else if (index == 1)
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;  // slice from
+    else if (index == 2)
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;  // slice to
+    throw std::exception("Invalid input index");
   };
 
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t index) const {
-    switch (index) {
-      case 0:
-        return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-        break;
-      default:
-        throw std::exception("Invalid output index");
+    if (index == 0) {
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
     }
+    throw std::exception("Invalid output index");
   }
 
  private:
