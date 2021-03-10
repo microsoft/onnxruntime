@@ -1004,21 +1004,21 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   MemoryInfo::GenerateTensorMap(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
 
-  // NCCL kernels require initializers to be allocated continously. mem pattern
-  // planner is used to utilize this, where it allocates one single buffer for
-  // all initializers.
+  // Memory pattern tracer allocates all initializers on a single continous
+  // buffer. This has the effect of reducing memory fragementation. 
+  // Further more, NCCL kernels require initializers to be allocated
+  // continously. 
   //
   // In inferencing scenarios, however, we often want to pre-process and then
   // release some initializers. See OpKernel::PrePack(). Letting all initializers
   // sharing a single buffer makes it hard to release individual ones, leading
   // to memory waste.
   //
-  // TODO!! remove the #if #else #endif and combine the two branches!
-  // We should only trace tensors that are in initializer_allocation_order.
-  // Unfortunately, allocating some tensors individually leads to out of memory
-  // error in test case:
-  // 'build/RelWithDebInfo/onnxruntime_training_bert', '--model_name', 'training_e2e_test_data/models/nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12', '--train_batch_size', '201', '--mode', 'perf', '--max_seq_length', '128', '--num_train_steps', '10', '--display_loss_steps', '5', '--optimizer', 'adam', '--learning_rate', '5e-4', '--warmup_ratio', '0.1', '--warmup_mode', 'Linear', '--gradient_accumulation_steps', '1', '--max_predictions_per_seq=20', '--allreduce_in_fp16', '--lambda', '0', '--use_nccl', '--seed', '42', '--enable_grad_norm_clip=false', '', '--use_mixed_precision']'
-#if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
+  // TODO!! disabling memory pattern tracer increases fragementation, leading to
+  //  out of memory error in some training tests. Need to create kernel first,
+  //  and let the kernel tells us whether the initalizer needs to be traced.
+  //
+#if defined(ENABLE_TRAINING)
   std::unique_ptr<ITensorAllocator> tensor_allocator(
       ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
 #else
