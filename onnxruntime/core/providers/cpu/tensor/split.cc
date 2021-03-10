@@ -96,6 +96,7 @@ Status Split::Compute(OpKernelContext* context) const {
 
   Status status;
 
+  // Note: The non-string implementations can probably be based on data type size.
   if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context, input);
   else if (input.IsDataType<int32_t>())

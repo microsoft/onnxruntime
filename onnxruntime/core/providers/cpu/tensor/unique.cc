@@ -93,6 +93,7 @@ Status Unique::Compute(OpKernelContext* context) const {
 
   Status status;
   // arbitrary set of types to support initially
+  // Note: The non-string implementations can probably be based on data type size.
   if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context);
   else if (input.IsDataType<int64_t>())
