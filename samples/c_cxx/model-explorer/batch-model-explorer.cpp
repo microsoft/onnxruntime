@@ -61,8 +61,13 @@ int main(int argc, char** argv) {
     return -1;
   }
   std::string str = argv[1];
+  std::basic_string<ORTCHAR_T> model_file;
+#ifdef _WIN32
   std::wstring wide_string = std::wstring(str.begin(), str.end());
-  std::basic_string<ORTCHAR_T> model_file = std::basic_string<ORTCHAR_T>(wide_string);
+  model_file = std::basic_string<ORTCHAR_T>(wide_string);
+#else
+  model_file = std::basic_string<ORTCHAR_T>(str.c_str());
+#endif
 
   // onnxruntime setup
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "batch-model-explorer");
