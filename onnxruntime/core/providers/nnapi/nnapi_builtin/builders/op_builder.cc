@@ -685,7 +685,8 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
 
   size_t scale_idx, zero_point_idx;
   if (qlinear_op_type == QLinearOpType::DequantizeLinear ||
-      qlinear_op_type == QLinearOpType::QLinearSigmoid) {
+      qlinear_op_type == QLinearOpType::QLinearSigmoid ||
+      qlinear_op_type == QLinearOpType::QLinearAveragePool) {
     scale_idx = 1;
     zero_point_idx = 2;
   } else if (IsQLinearBinaryOp(qlinear_op_type)) {
@@ -1240,9 +1241,9 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& op_type = node.OpType();
 
   int32_t op_code;
-  bool is_average_pool = op_type == "AveragePool";
   bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
-  if (is_average_pool || is_qlinear_average_pool || op_type == "GlobalAveragePool")
+  bool is_average_pool = op_type == "AveragePool" || is_qlinear_average_pool;
+  if (is_average_pool || op_type == "GlobalAveragePool")
     op_code = ANEURALNETWORKS_AVERAGE_POOL_2D;
   else  // (op_type == "MaxPool" || op_type == "GlobalMaxPool")
     op_code = ANEURALNETWORKS_MAX_POOL_2D;

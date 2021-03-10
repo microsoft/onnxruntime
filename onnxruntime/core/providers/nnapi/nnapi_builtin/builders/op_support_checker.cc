@@ -503,6 +503,7 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
 
 bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                                              const OpSupportCheckParams& params) const {
+  const auto& op_name = node.Name();
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
   Shape input_shape;
@@ -517,7 +518,8 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     return false;
   }
 
-  if (op_type == "AveragePool" || op_type == "MaxPool") {
+  bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
+  if (op_type == "AveragePool" || op_type == "MaxPool" || is_qlinear_average_pool) {
     NodeAttrHelper helper(node);
 
     const auto count_include_pad = helper.Get("count_include_pad", 0);
@@ -552,13 +554,13 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
       LOGS_DEFAULT(VERBOSE) << "Argmax in maxpooling is not supported";
       return false;
     }
-  } else if (op_type != "GlobalAveragePool" && op_type != "GlobalMaxPool" && op_type != "QLinearAveragePool") {
+  } else if (op_type != "GlobalAveragePool" && op_type != "GlobalMaxPool") {
     LOGS_DEFAULT(VERBOSE) << "PoolOpBuilder, unknown op: " << op_type;
     return false;
   }
 
   // We need to check if we have valid scales and zero points for QLinearAveragePool
-  if (op_type == "QLinearAveragePool") {
+  if (is_qlinear_average_pool) {
     if (input_defs.size() < 4)
       return false;
 
@@ -572,6 +574,43 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
                                         has_output_zp
                                             ? std::vector<size_t>{2}
                                             : std::vector<size_t>{2, 4})) {
+      return false;
+    }
+
+    // NNAPI requires Quantized Average Pool has same scale and zero point for both input and output
+    auto input_scale = GetQuantizationScale(initializers, node, 1);
+    auto output_scale = GetQuantizationScale(initializers, node, 3);
+    if (input_scale != output_scale) {
+      LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
+                            << "] has different input_scale: " << input_scale
+                            << " than the output_scale: " << output_scale;
+      return false;
+    }
+
+    int32_t input_zp = 0;
+    int32_t output_zp = 0;
+    auto status = GetQuantizationZeroPoint(initializers, node, 2, input_zp);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                          << "] GetQuantizationZeroPoint for input_zp failed, message: "
+                          << status.ErrorMessage();
+      return false;
+    }
+
+    if (has_output_zp) {
+      status = GetQuantizationZeroPoint(initializers, node, 4, output_zp);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                            << "] GetQuantizationZeroPoint for output_zp failed, message: "
+                            << status.ErrorMessage();
+        return false;
+      }
+    }
+
+    if (input_zp != output_zp) {
+      LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
+                            << "] has different input_zp: " << input_zp
+                            << " than the output_zp: " << output_zp;
       return false;
     }
   }
