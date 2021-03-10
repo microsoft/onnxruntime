@@ -64,8 +64,11 @@ namespace perftest {
       "\t [Example] [For OpenVINO EP] -e openvino -i 'device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5'\n"
       "\t-h: help\n");
 }
-
+#ifdef _WIN32
 static const ORTCHAR_T* overrideDelimiter = L":";
+#else
+static const ORTCHAR_T* overrideDelimiter = ":";
+#endif
 static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val) {
   std::basic_string<ORTCHAR_T> free_dim_str(optarg);
   size_t delimiter_location = free_dim_str.find(overrideDelimiter);
