@@ -238,19 +238,21 @@ def test_forward_call_multiple_positional_arguments_var_keyword():
 
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetMultiplePositionalArgumentsVarKeyword(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
-    with pytest.warns(UserWarning) as warning_context_manager:
+
+    # TODO: remove exception check and uncomment the rest of the test when
+    # PyTorch ONNX exporter supports **kwargs.
+    with pytest.raises(NotImplementedError) as runtime_error:
         ort_model = ORTModule(model)
-    assert len(warning_context_manager) == 1
-    assert "**kwargs" in str(warning_context_manager[0].message)
+    assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
 
-    # Check that the original forward signature is preserved.
-    assert signature(model.forward) == signature(ort_model.forward)
-    x = torch.randn(N, D_in, device=device)
-    y = torch.randn(N, D_in, device=device)
+    # # Check that the original forward signature is preserved.
+    # assert signature(model.forward) == signature(ort_model.forward)
+    # x = torch.randn(N, D_in, device=device)
+    # y = torch.randn(N, D_in, device=device)
 
-    # Make sure model runs without any exception
-    output = ort_model(x, y)
-    assert output is not None
+    # # Make sure model runs without any exception
+    # output = ort_model(x, y)
+    # assert output is not None
 
 def test_forward_call_positional_arguments():
     device = 'cuda'
