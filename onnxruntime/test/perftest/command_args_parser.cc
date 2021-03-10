@@ -67,13 +67,13 @@ namespace perftest {
 
 static const wchar_t* overrideDelimiter = L":";
 static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val) {
-  std::wstring free_dim_str(optarg);
+  std::basic_string<ORTCHAR_T> free_dim_str(optarg);
   size_t delimiter_location = free_dim_str.find(overrideDelimiter);
   if (delimiter_location >= free_dim_str.size() - 1) {
     return false;
   }
   dim_identifier = free_dim_str.substr(0, delimiter_location);
-  std::wstring override_val_str = free_dim_str.substr(delimiter_location + 1, std::wstring::npos);
+  std::basic_string<ORTCHAR_T> override_val_str = free_dim_str.substr(delimiter_location + 1, std::wstring::npos);
   try {
     override_val = std::stoll(override_val_str.c_str());
     if (override_val <= 0) {
