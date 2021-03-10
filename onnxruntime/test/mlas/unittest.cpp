@@ -202,10 +202,10 @@ public:
 };
 
 template<typename T, bool Packed>
-class MlasFgemmTestBase;
+class FgemmPackedContext;
 
 template<typename T>
-class MlasFgemmTestBase<T, false> : public MlasTestBase
+class FgemmPackedContext<T, false>
 {
 public:
     void
@@ -230,7 +230,7 @@ public:
 };
 
 template<typename T>
-class MlasFgemmTestBase<T, true> : public MlasTestBase
+class FgemmPackedContext<T, true>
 {
 public:
     void
@@ -261,7 +261,7 @@ private:
 };
 
 template<typename T, bool Packed>
-class MlasFgemmTest : public MlasFgemmTestBase<T, Packed>
+class MlasFgemmTest : public MlasTestBase
 {
 private:
     void
@@ -273,6 +273,14 @@ private:
         float beta
         )
     {
+        //
+        // Skip the test if the B buffer cannot be packed.
+        //
+
+        if (Packed && (N == 0 || K == 0)) {
+            return;
+        }
+
         const T* A = BufferA.GetBuffer(K * M);
         const T* B = BufferB.GetBuffer(N * K);
         T* C = BufferC.GetBuffer(N * M);
@@ -305,7 +313,7 @@ private:
         std::fill_n(C, M * N, -0.5f);
         std::fill_n(CReference, M * N, -0.5f);
 
-        this->TestGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+        PackedContext.TestGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
         ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -430,6 +438,7 @@ private:
     MatrixGuardBuffer<T> BufferB;
     MatrixGuardBuffer<T> BufferC;
     MatrixGuardBuffer<T> BufferCReference;
+    FgemmPackedContext<T, Packed> PackedContext;
 
 public:
     void
@@ -437,7 +446,7 @@ public:
         void
         ) override
     {
-        for (size_t b = 1; b < 16; b++) {
+        for (size_t b = 0; b < 16; b++) {
             Test(b, b, b, 1.0f, 0.0f);
         }
         for (size_t b = 16; b <= 256; b <<= 1) {
@@ -504,9 +513,9 @@ public:
             }
         }
 
-        for (size_t M = 1; M < 160; M++) {
-            for (size_t N = 1; N < 160; N++) {
-                for (size_t K = 1; K < 160; K++) {
+        for (size_t M = 0; M < 160; M++) {
+            for (size_t N = 0; N < 160; N++) {
+                for (size_t K = 0; K < 160; K++) {
                     Test(M, N, K, 1.0f, 0.0f);
                 }
             }
@@ -515,7 +524,7 @@ public:
 
         for (size_t M = 160; M < 320; M += 24) {
             for (size_t N = 112; N < 320; N += 24) {
-                for (size_t K = 1; K < 16; K++) {
+                for (size_t K = 0; K < 16; K++) {
                     Test(M, N, K, 1.0f, 0.0f);
                 }
                 for (size_t K = 16; K < 160; K += 32) {
@@ -527,60 +536,8 @@ public:
     }
 };
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-
 template<bool Packed>
-class MlasQgemmU8X8U8X8TestBase;
-
-template<>
-class MlasQgemmU8X8U8X8TestBase<false> : public MlasTestBase
-{
-protected:
-    void
-    TestGemm(
-        size_t M,
-        size_t N,
-        size_t K,
-        const uint8_t* A,
-        size_t lda,
-        uint8_t offa,
-        const uint8_t* B,
-        size_t ldb,
-        uint8_t offb,
-        bool BIsSigned,
-        int32_t* C,
-        size_t ldc
-        )
-    {
-        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, threadpool);
-    }
-
-    void
-    TestGemm(
-        size_t M,
-        size_t N,
-        size_t K,
-        const uint8_t* A,
-        size_t lda,
-        uint8_t offa,
-        const uint8_t* B,
-        size_t ldb,
-        uint8_t offb,
-        bool BIsSigned,
-        float* C,
-        size_t ldc,
-        float CScale,
-        const float* Bias
-        )
-    {
-        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, &CScale, Bias, threadpool);
-    }
-};
-
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-
-template<>
-class MlasQgemmU8X8U8X8TestBase<true> : public MlasTestBase
+class MlasQgemmU8X8U8X8TestBase : public MlasTestBase
 {
 private:
     void*
@@ -615,8 +572,69 @@ protected:
         size_t ldc
         )
     {
-        const void* PackedB = PackB(N, K, B, ldb, BIsSigned);
-        MlasGemm(M, N, K, A, lda, offa, PackedB, offb, BIsSigned, C, ldc, threadpool);
+        MLAS_GEMM_U8X8_PARAMETERS GemmParameters;
+
+        GemmParameters.M = M;
+        GemmParameters.N = N;
+        GemmParameters.K = K;
+        GemmParameters.A = A;
+        GemmParameters.lda = lda;
+        GemmParameters.ZeroPointA = offa;
+        GemmParameters.ZeroPointB = &offb;
+        GemmParameters.BIsSigned = BIsSigned;
+        GemmParameters.C = C;
+        GemmParameters.ldc = ldc;
+
+        if (Packed) {
+            GemmParameters.B = PackB(N, K, B, ldb, BIsSigned);
+            GemmParameters.BIsPacked = true;
+        } else {
+            GemmParameters.B = B;
+            GemmParameters.ldb = ldb;
+        }
+
+        MlasGemm(&GemmParameters, threadpool);
+    }
+
+    void
+    TestGemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const uint8_t* B,
+        size_t ldb,
+        const uint8_t* offb,
+        bool BIsSigned,
+        int32_t* C,
+        size_t ldc
+        )
+    {
+        MLAS_GEMM_U8X8_PARAMETERS GemmParameters;
+
+        GemmParameters.M = M;
+        GemmParameters.N = N;
+        GemmParameters.K = K;
+        GemmParameters.A = A;
+        GemmParameters.lda = lda;
+        GemmParameters.ZeroPointA = offa;
+        GemmParameters.ZeroPointB = offb;
+        GemmParameters.BIsSigned = BIsSigned;
+        GemmParameters.PerColumnZeroPoints = true;
+        GemmParameters.C = C;
+        GemmParameters.ldc = ldc;
+
+        if (Packed) {
+            GemmParameters.B = PackB(N, K, B, ldb, BIsSigned);
+            GemmParameters.BIsPacked = true;
+        } else {
+            GemmParameters.B = B;
+            GemmParameters.ldb = ldb;
+        }
+
+        MlasGemm(&GemmParameters, threadpool);
     }
 
     void
@@ -637,15 +655,36 @@ protected:
         const float* Bias
         )
     {
-        const void* PackedB = PackB(N, K, B, ldb, BIsSigned);
-        MlasGemm(M, N, K, A, lda, offa, PackedB, offb, BIsSigned, C, ldc, &CScale, Bias, threadpool);
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR ScaleBiasProcessor(C, ldc, &CScale, Bias);
+
+        MLAS_GEMM_U8X8_PARAMETERS GemmParameters;
+
+        GemmParameters.M = M;
+        GemmParameters.N = N;
+        GemmParameters.K = K;
+        GemmParameters.A = A;
+        GemmParameters.lda = lda;
+        GemmParameters.ZeroPointA = offa;
+        GemmParameters.ZeroPointB = &offb;
+        GemmParameters.BIsSigned = BIsSigned;
+        GemmParameters.C = reinterpret_cast<int32_t*>(C);
+        GemmParameters.ldc = ldc;
+        GemmParameters.OutputProcessor = &ScaleBiasProcessor;
+
+        if (Packed) {
+            GemmParameters.B = PackB(N, K, B, ldb, BIsSigned);
+            GemmParameters.BIsPacked = true;
+        } else {
+            GemmParameters.B = B;
+            GemmParameters.ldb = ldb;
+        }
+
+        MlasGemm(&GemmParameters, threadpool);
     }
 
 private:
     MatrixGuardBuffer<uint8_t> BufferBPacked;
 };
-
-#endif
 
 template<typename xint8_t, typename OutputType, bool Packed>
 class MlasQgemmU8X8Test;
@@ -676,6 +715,23 @@ private:
         size_t M,
         size_t N,
         size_t K,
+        uint8_t offa
+        )
+    {
+        const uint8_t* A = BufferA.GetBuffer(K * M);
+        const uint8_t* B = BufferB.GetBuffer(N * K);
+        const uint8_t* ZeroPointB = BufferZeroPointB.GetBuffer(N);
+        int32_t* C = BufferC.GetBuffer(N * M);
+        int32_t* CReference = BufferCReference.GetBuffer(N * M);
+
+        Test(M, N, K, A, K, offa, B, N, ZeroPointB, C, CReference, N);
+    }
+
+    void
+    Test(
+        size_t M,
+        size_t N,
+        size_t K,
         const uint8_t* A,
         size_t lda,
         uint8_t offa,
@@ -695,7 +751,37 @@ private:
 
         for (size_t f = 0; f < M * N; f++) {
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, offa, offb);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, int(offa), int(offb));
+                break;
+            }
+        }
+    }
+
+    void
+    Test(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const uint8_t* B,
+        size_t ldb,
+        const uint8_t *offb,
+        int32_t* C,
+        int32_t* CReference,
+        size_t ldc
+        )
+    {
+        std::fill_n(C, M * N, -1);
+        std::fill_n(CReference, M * N, -1);
+
+        this->TestGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc);
+        ReferenceQgemm(M, N, K, A, lda, offa, (const xint8_t*)B, ldb, (const xint8_t*)offb, CReference, ldc);
+
+        for (size_t f = 0; f < M * N; f++) {
+            if (C[f] != CReference[f]) {
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d!\n", M, N, K, int(offa));
                 break;
             }
         }
@@ -736,8 +822,44 @@ private:
         }
     }
 
+    void
+    ReferenceQgemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const xint8_t* B,
+        size_t ldb,
+        const xint8_t* offb,
+        int32_t* C,
+        size_t ldc
+        )
+    {
+        for (size_t m = 0; m < M; m++) {
+
+            for (size_t n = 0; n < N; n++) {
+
+                const uint8_t* a = A + (m * lda);
+                const xint8_t* b = B + n;
+                int32_t* c = C + (m * ldc) + n;
+                int32_t sum = 0;
+
+                for (size_t k = 0; k < K; k++) {
+                    sum += ((int32_t(*b) - offb[n]) * (int32_t(*a) - offa));
+                    b += ldb;
+                    a += 1;
+                }
+
+                *c = sum;
+            }
+        }
+    }
+
     MatrixGuardBuffer<uint8_t> BufferA;
     MatrixGuardBuffer<uint8_t> BufferB;
+    MatrixGuardBuffer<uint8_t> BufferZeroPointB;
     MatrixGuardBuffer<int32_t> BufferC;
     MatrixGuardBuffer<int32_t> BufferCReference;
     const bool BIsSigned = std::is_signed<xint8_t>::value;
@@ -750,12 +872,15 @@ public:
     {
         for (size_t b = 1; b < 16; b++) {
             Test(b, b, b, 14, 211);
+            Test(b, b, b, 21);
         }
         for (size_t b = 1; b < 16; b++) {
             Test(b, b, b, 14, 211);
+            Test(b, b, b, 17);
         }
         for (size_t b = 16; b <= 256; b <<= 1) {
             Test(b, b, b, 34, 1);
+            Test(b, b, b, 1);
         }
         for (size_t b = 256; b < 320; b += 32) {
             Test(b, b, b, 85, 173);
@@ -767,6 +892,7 @@ public:
         }
         Test(43, 500, 401, 183, 223);
         Test(1023, 1023, 1023, 5, 8);
+        Test(1023, 1023, 1023, 7);
     }
 
     void
@@ -902,7 +1028,7 @@ private:
         for (size_t f = 0; f < M * N; f++) {
             // Sensitive to comparing positive/negative zero.
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, offa, offb, C[f], CReference[f]);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, int(offa), int(offb), C[f], CReference[f]);
                 break;
             }
         }
@@ -954,8 +1080,6 @@ public:
         Test(1024, 1024, 256, 13, 15);
     }
 };
-
-#endif
 
 class MlasConv2DTest : public MlasTestBase
 {
@@ -2703,6 +2827,180 @@ public:
     }
 };
 
+class MlasQLinearGlobalAveragePoolU8Test : public MlasTestBase {
+private:
+    MatrixGuardBuffer<uint8_t> BufferInput;
+    MatrixGuardBuffer<uint8_t> BufferOutput;
+    MatrixGuardBuffer<uint8_t> BufferOutputReference;
+
+    static
+    void
+    CalculateGlobalAvgPoolU8(
+        const uint8_t* x, int64_t batch, int64_t channel, int64_t hw, bool channel_last,
+        uint8_t* y, int32_t x_zero_point, float x_scale, int32_t y_zero_point, float y_scale
+        )
+    {
+        int32_t bias = -x_zero_point * gsl::narrow_cast<int32_t>(hw);
+        int64_t stride_image = channel_last ? channel : 1;
+        int64_t stride_channel = channel_last ? 1 : hw;
+
+        for (int64_t b = 0; b < batch; ++b) {
+            const uint8_t* bx = x + b * hw * channel;
+            uint8_t* by = y + b * channel;
+            for (int64_t c = 0; c < channel; ++c) {
+                const uint8_t* ix = bx + c * stride_channel;
+                int32_t sum = 0;
+                for (int64_t i = 0; i < hw; ++i) {
+                    sum += static_cast<int32_t>(*ix);
+                    ix += stride_image;
+                }
+                sum += bias;
+                int32_t r = static_cast<int32_t>(std::nearbyintf(x_scale * sum / static_cast<float>(hw) / y_scale));
+                r += y_zero_point;
+                r = std::min(255, r);
+                r = std::max(0, r);
+                by[c] = static_cast<uint8_t>(r);
+            }
+        }
+    }
+
+    static
+    void
+    CompareResultWithGold(
+        size_t Batch, size_t Channel,
+        uint8_t* Output, uint8_t* OutputReference, std::string& info
+        )
+    {
+        size_t n = 0;
+        for (size_t b =0; b < Batch; ++b) {
+            for (size_t c = 0; c < Channel; c++) {
+                int diff = abs((int)Output[n] - (int)OutputReference[n]);
+                if (diff > 1) {
+                    printf("Diff got %d @[%d,%d], Test:%s\n", diff, (int)b, (int)c, info.c_str());
+                }
+            }
+        }
+    }
+
+    static
+    std::string
+    GetTestInfo(
+        bool channel_last,
+        size_t Batch,
+        size_t Stride,
+        size_t Channel,
+        size_t ImageSize,
+        float InputScale,
+        uint8_t InputZeroPoint,
+        float OutputScale,
+        uint8_t OutputZeroPoint
+        )
+    {
+        std::stringstream ss;
+        ss << (channel_last ? "Nhwc_" : "Nchw_");
+        ss << Batch << "x [C=" << Stride << "-" << Channel << "] x" << ImageSize << "-";
+        ss << "(" << (int)InputZeroPoint << "," << InputScale << "," << (int)OutputZeroPoint << "," << OutputScale << ")";
+        return ss.str();
+    }
+
+    void
+    Test(
+        bool channel_last,
+        size_t Batch,
+        size_t Stride,
+        size_t Channel,
+        size_t ImageSize,
+        float InputScale,
+        uint8_t InputZeroPoint,
+        float OutputScale,
+        uint8_t OutputZeroPoint,
+        int32_t UnalignedOffset = 0
+        )
+    {
+        size_t N = Batch * Stride * ImageSize;
+        size_t ResultLen = Batch * Stride;
+        uint8_t* Input = BufferInput.GetBuffer(N);
+        uint8_t* Output = BufferOutput.GetBuffer(ResultLen);
+        uint8_t* Gold = BufferOutputReference.GetBuffer(ResultLen);
+        std::string test_info = GetTestInfo(
+            channel_last, Batch, Stride, Channel, ImageSize,
+            InputScale, InputZeroPoint, OutputScale, OutputZeroPoint);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+        std::uniform_int_distribution<int> distribution(0, 255);
+        for (size_t n = 0; n < N; n++) {
+            Input[n] = static_cast<uint8_t>(distribution(generator));
+        }
+        CalculateGlobalAvgPoolU8(
+            Input, Batch, Stride, ImageSize, channel_last,
+            Gold, InputZeroPoint, InputScale, OutputZeroPoint, OutputScale);
+
+        if (!channel_last) {
+          std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), ResultLen + UnalignedOffset));
+          MlasQLinearGlobalAveragePoolNchw(
+              Input, InputScale, InputZeroPoint, Output,
+              OutputScale, OutputZeroPoint, ResultLen, ImageSize, acc.data() + UnalignedOffset);
+        } else {
+          std::vector<int32_t> acc(MlasQLinearSafePaddingElementCount(sizeof(int32_t), Channel + UnalignedOffset));
+          std::vector<uint8_t> zero(MlasQLinearSafePaddingElementCount(sizeof(uint8_t), Channel + UnalignedOffset));
+          if (Stride == Channel) {
+            MlasQLinearGlobalAveragePoolNhwc(
+                Input, InputScale, InputZeroPoint, Output,
+                OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, Channel,
+                acc.data() + UnalignedOffset, zero.data() + UnalignedOffset);
+            } else {
+                for (size_t tc = 0; tc < Stride; tc += Channel) {
+                    size_t cg = ((tc + Channel <= Stride) ? Channel : (Stride - tc));
+                    MlasQLinearGlobalAveragePoolNhwc(
+                        Input + tc, InputScale, InputZeroPoint, Output + tc,
+                        OutputScale, OutputZeroPoint, Batch, ImageSize, Stride, cg,
+                        acc.data() + UnalignedOffset, zero.data() + UnalignedOffset);
+                }
+            }
+        }
+
+        CompareResultWithGold(Batch, Channel, Output, Gold, test_info);
+    }
+
+ public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        static const uint8_t zero_points[] = {0, 18, 128, 231, 255};
+        static const float scales[] = {18.0f, 90.0f};
+        static const size_t Batch[] = {1, 3};
+        static const size_t Stride[] = {7, 8, 63, 256 };
+        static const size_t ImageSize[] = {7, 8, 64};
+        static int unalign_offset = 0;
+
+        for (int channel_last = 0; channel_last <= 1; ++channel_last) {
+            for (size_t b = 0; b < _countof(Batch); b++) {
+                for (size_t xzp = 0; xzp < _countof(zero_points); xzp++) {
+                    for (size_t yzp = 0; yzp < _countof(zero_points); yzp++) {
+                        for (size_t xs = 0; xs < _countof(scales); ++xs) {
+                            for (size_t ys = 0; ys < _countof(scales); ++ys) {
+                                for (size_t i = 0; i < _countof(ImageSize); i++) {
+                                    for (size_t s = 0; s < _countof(Stride); s++) {
+                                        Test(channel_last, Batch[b], Stride[s], Stride[s], ImageSize[i],
+                                             scales[xs], zero_points[xzp], scales[ys], zero_points[yzp], unalign_offset);
+                                        if (channel_last == 1 && Stride[s] > 32) {
+                                            Test(channel_last, Batch[b], Stride[s], 32, ImageSize[i],
+                                                 scales[xs], zero_points[xzp], scales[ys], zero_points[yzp], unalign_offset);
+                                        }
+                                        unalign_offset = (unalign_offset + 1) & 3;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+};
+
 class MlasFindMinMaxElementsTest : public MlasTestBase
 {
 private:
@@ -2756,6 +3054,166 @@ public:
     }
 };
 
+class MlasScaleOutputTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<int32_t> BufferInput;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutputRef;
+    MatrixGuardBuffer<float> BufferScale;
+
+    void
+    Test(
+        size_t M,
+        size_t N,
+        bool PerColumn,
+        bool AccumulateMode
+        )
+    {
+        int32_t* Input = BufferInput.GetBuffer(M * N);
+        float* Output = BufferOutput.GetBuffer(M * N);
+        float* OutputRef = BufferOutputRef.GetBuffer(M * N);
+        float* Scale = BufferScale.GetBuffer(PerColumn ? N : 1);
+
+        std::default_random_engine generator(static_cast<unsigned>(M * N));
+        std::uniform_real_distribution<float> real_distribution(-1.0f, 1.0f);
+        std::uniform_int_distribution<int32_t> int_distribution(std::numeric_limits<int16_t>::min(),
+                                                                std::numeric_limits<int16_t>::max());
+
+        for (size_t s = 0; s < M * N; s++) {
+
+            Input[s] = int_distribution(generator);
+            Output[s] = OutputRef[s] = real_distribution(generator);
+        }
+
+        for (size_t s = 0; s < (PerColumn ? N : 1); s++) {
+            Scale[s] = real_distribution(generator);
+        }
+
+        // Compute Reference Value
+        for (size_t m = 0; m < M; m++) {
+            for (size_t n = 0; n < N; n++) {
+
+                float current_scale = PerColumn ? Scale[n] : Scale[0];
+                if (AccumulateMode) {
+                    OutputRef[m * N + n] += Input[m * N + n] * current_scale;
+                } else {
+                    OutputRef[m * N + n] = Input[m * N + n] * current_scale;
+                }
+            }
+        }
+
+        // Compute Output with MLAS
+        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR OutputProcessor(Output, N, Scale, nullptr,
+                                                               AccumulateMode ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+                                                               PerColumn ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+        OutputProcessor.Process(Input, 0, 0, M, N, N);
+
+        constexpr float epsilon = 1e-6f;
+
+        for (size_t n = 0; n < M * N; n++) {
+
+            float diff = std::fabs(Output[n] - OutputRef[n]);
+            if (diff > epsilon) {
+                printf("MlasScaleOutputTest: Output[%zu][%zu]:%.8f, OutputRef[%zu][%zu]:%.8f, for case M=%zu, N=%zu\n",
+                       n / N, n % N, Output[n], n / N, n % N, OutputRef[n], M, N);
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t m = 1; m < 18; m++) {
+
+            for (size_t n = 1; n < 18; n++) {
+
+                Test(m, n, true, true);
+                Test(m, n, true, false);
+                Test(m, n, false, true);
+                Test(m, n, false, false);
+            }
+        }
+    }
+};
+
+template<typename OutputType>
+class MlasQuantizeLinearTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<OutputType> BufferOutput;
+    MatrixGuardBuffer<OutputType> BufferOutputReference;
+
+    void
+    GenerateReference(
+        const float* Input,
+        OutputType* OutputReference,
+        size_t N,
+        float Scale,
+        OutputType ZeroPoint
+        )
+    {
+        for (size_t n = 0; n < N; n++) {
+            float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
+            FloatValue = std::max(FloatValue, float(std::numeric_limits<OutputType>::min()));
+            FloatValue = std::min(FloatValue, float(std::numeric_limits<OutputType>::max()));
+            OutputReference[n] = (OutputType)FloatValue;
+        }
+    }
+
+    void
+    Test(
+        size_t N
+        )
+    {
+        float* Input = BufferInput.GetBuffer(N);
+        OutputType* Output = BufferOutput.GetBuffer(N);
+        OutputType* OutputReference = BufferOutputReference.GetBuffer(N);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+
+        std::uniform_real_distribution<float> min_gen(-10.f, -10e-3f);
+        float MinimumValue = min_gen(generator);
+
+        std::uniform_real_distribution<float> max_gen(10e-3f, 10.f);
+        float MaximumValue = max_gen(generator);
+
+        float Scale = (MaximumValue - MinimumValue) / 512.f;
+
+        std::uniform_int_distribution<int32_t> zp_distribution(std::numeric_limits<OutputType>::min(), std::numeric_limits<OutputType>::max());
+        OutputType ZeroPoint = static_cast<OutputType>(zp_distribution(generator));
+
+        std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
+        for (size_t n = 0; n < N; n++) {
+            Input[n] = distribution(generator);
+        }
+
+        GenerateReference(Input, OutputReference, N, Scale, ZeroPoint);
+        MlasQuantizeLinear(Input, Output, N, Scale, ZeroPoint);
+
+        for (size_t n = 0; n < N; n++) {
+            if (Output[n] != OutputReference[n]) {
+                printf("exp difference: size=%u, index=%u, output=%d, expected=%d\n", unsigned(N), unsigned(n), Output[n], OutputReference[n]);
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t n = 1; n <= 512; n++) {
+            Test(n);
+        }
+    }
+};
+
 void
 RunThreadedTests(
     void
@@ -2770,7 +3228,6 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasFgemmTest<double, false>>()->ExecuteShort();
 #endif
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
     printf("QGEMM U8S8=int32_t tests.\n");
     onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8S8=float tests.\n");
@@ -2779,9 +3236,7 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8U8=float tests.\n");
     onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float, false>>()->ExecuteShort();
-#endif
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
     if (MlasGemmPackBSize(128, 128, true) > 0) {
         printf("QGEMM U8S8=int32_t packed tests.\n");
         onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t, true>>()->ExecuteShort();
@@ -2794,7 +3249,6 @@ RunThreadedTests(
         printf("QGEMM U8U8=float packed tests.\n");
         onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float, true>>()->ExecuteShort();
     }
-#endif
 
     printf("Conv2D tests.\n");
     onnxruntime::make_unique<MlasConv2DTest>()->ExecuteShort();
@@ -2868,7 +3322,17 @@ main(
 
     printf("QLinearMul tests.\n");
     onnxruntime::make_unique<MlasQLinearBinaryOpTest>(
-        [] (float a, float b) { return a * b; }, "*", MlasQLinearMul<int8_t>, MlasQLinearMul<uint8_t>)->ExecuteShort();
+        [](float a, float b) { return a * b; }, "*", MlasQLinearMul<int8_t>, MlasQLinearMul<uint8_t>)->ExecuteShort();
+
+    printf("MlasScaleOutput tests.\n");
+    onnxruntime::make_unique<MlasScaleOutputTest>()->ExecuteShort();
+
+    printf("MlasGlobalAveragePool tests.\n");
+    onnxruntime::make_unique<MlasQLinearGlobalAveragePoolU8Test>()->ExecuteShort();
+
+    printf("MlasQuantizeLinear tests.\n");
+    onnxruntime::make_unique<MlasQuantizeLinearTest<int8_t>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQuantizeLinearTest<uint8_t>>()->ExecuteShort();
 
     printf("Done.\n");
 

@@ -160,7 +160,7 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   }
   // Load input and output node args
   auto add_node_args = [&](const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>* fbs_node_args,
-                           std::vector<ONNX_NAMESPACE::ValueInfoProto> node_args) -> Status {
+                           std::vector<ONNX_NAMESPACE::ValueInfoProto>& node_args) -> Status {
     if (fbs_node_args != nullptr) {
       node_args.reserve(fbs_node_args->size());
       for (const auto* fbs_node_arg_name : *fbs_node_args) {

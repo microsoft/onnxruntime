@@ -186,12 +186,6 @@ class PosixEnv : public Env {
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override {
     return new PosixThread(name_prefix, index, start_address, param, thread_options);
   }
-  Task CreateTask(std::function<void()> f) override {
-    return Task{std::move(f)};
-  }
-  void ExecuteTask(const Task& t) override {
-    t.f();
-  }
 
   int GetNumCpuCores() const override {
     // TODO if you need the number of physical cores you'll need to parse
@@ -261,9 +255,9 @@ class PosixEnv : public Env {
 
   Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                             gsl::span<char> buffer) const override {
-    ORT_RETURN_IF_NOT(file_path);
-    ORT_RETURN_IF_NOT(offset >= 0);
-    ORT_RETURN_IF_NOT(length <= buffer.size());
+    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+    ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
+    ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
 
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
     if (!file_descriptor.IsValid()) {
@@ -306,8 +300,8 @@ class PosixEnv : public Env {
 
   Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                            MappedMemoryPtr& mapped_memory) const override {
-    ORT_RETURN_IF_NOT(file_path);
-    ORT_RETURN_IF_NOT(offset >= 0);
+    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+    ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
 
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
     if (!file_descriptor.IsValid()) {
@@ -383,8 +377,7 @@ class PosixEnv : public Env {
   common::Status DeleteFolder(const PathString& path) const override {
     const auto result = nftw(
         path.c_str(), &nftw_remove, 32, FTW_DEPTH | FTW_PHYS);
-    ORT_RETURN_IF_NOT(
-        result == 0, "DeleteFolder(): nftw() failed with error: ", result);
+    ORT_RETURN_IF_NOT(result == 0, "DeleteFolder(): nftw() failed with error: ", result);
     return Status::OK();
   }
 

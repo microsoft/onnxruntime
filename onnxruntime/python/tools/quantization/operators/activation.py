@@ -1,5 +1,6 @@
 import onnx
 from .base_operator import QuantOperatorBase
+from .qdq_base_operator import QDQOperatorBase
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from onnx import onnx_pb as onnx_proto
 
@@ -46,17 +47,28 @@ class QLinearActivation(QuantOperatorBase):
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
 
-        qlinear_activation_inputs = [quantized_input_names[0], scale_names[0], zero_point_names[0], output_scale_name, output_zp_name]
+        qlinear_activation_inputs = [
+            quantized_input_names[0], scale_names[0], zero_point_names[0], output_scale_name, output_zp_name
+        ]
 
-        qlinear_activation_node = onnx.helper.make_node(
-            "QLinear" + node.op_type, qlinear_activation_inputs,
-            [qlinear_activation_output], qlinear_activation_name, **kwargs)
+        qlinear_activation_node = onnx.helper.make_node("QLinear" + node.op_type, qlinear_activation_inputs,
+                                                        [qlinear_activation_output], qlinear_activation_name, **kwargs)
 
         # Create an entry for this quantized value
-        q_output = QuantizedValue(node.output[0], qlinear_activation_output, output_scale_name,
-                                  output_zp_name, QuantizedValueType.Input)
+        q_output = QuantizedValue(node.output[0], qlinear_activation_output, output_scale_name, output_zp_name,
+                                  QuantizedValueType.Input)
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
         nodes.append(qlinear_activation_node)
         self.quantizer.new_nodes += nodes
 
+
+class QDQRemovableActivation(QDQOperatorBase):
+    def __init__(self, onnx_quantizer, onnx_node):
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def quantize(self):
+        node = self.node
+
+        if self.quantizer.try_replacing_upstream_output(node.input[0], node.output[0]):
+            self.quantizer.remove_node(self.node)

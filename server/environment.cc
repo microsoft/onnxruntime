@@ -11,12 +11,6 @@
 
 #endif
 
-#ifdef USE_NGRAPH
-
-#include "core/providers/ngraph/ngraph_provider_factory.h"
-
-#endif
-
 #ifdef USE_NUPHAR
 
 #include "core/providers/nuphar/nuphar_provider_factory.h"
@@ -69,10 +63,6 @@ ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_ini
 void ServerEnvironment::RegisterExecutionProviders(){
   #ifdef USE_DNNL
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(options_, 1));
-  #endif
-
-  #ifdef USE_NGRAPH
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(options_, "CPU"));
   #endif
 
   #ifdef USE_NUPHAR

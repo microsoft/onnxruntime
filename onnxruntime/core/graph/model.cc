@@ -93,7 +93,8 @@ Model::Model(const ModelProto& model_proto, const PathString& model_path,
     : Model(ModelProto(model_proto), model_path, local_registries, logger) {
 }
 
-Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+Model::Model(ModelProto&& model_proto, const PathString& model_path,
+             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
              const logging::Logger& logger)
     : model_path_(Path::Parse(model_path)) {
   if (!utils::HasGraph(model_proto)) {
@@ -181,24 +182,33 @@ Version Model::IrVersion() const {
   return kNoVersion;
 }
 
-const std::string& Model::ProducerName() const {
-  return model_proto_.producer_name();
+const std::string Model::ProducerName() const {
+  if (model_proto_.has_producer_name()) {
+    return model_proto_.producer_name();
+  }
+  return std::string();
 }
 
 void Model::SetProducerName(const std::string& producer_name) {
   model_proto_.set_producer_name(producer_name);
 }
 
-const std::string& Model::ProducerVersion() const {
-  return model_proto_.producer_version();
+const std::string Model::ProducerVersion() const {
+  if (model_proto_.has_producer_version()) {
+    return model_proto_.producer_version();
+  }
+  return std::string();
 }
 
 void Model::SetProducerVersion(const std::string& producer_version) {
   model_proto_.set_producer_version(producer_version);
 }
 
-const std::string& Model::Domain() const {
-  return model_proto_.domain();
+const std::string Model::Domain() const {
+  if (model_proto_.has_domain()) {
+    return model_proto_.domain();
+  }
+  return std::string();
 }
 
 void Model::SetDomain(const std::string& domain) {
@@ -216,12 +226,22 @@ void Model::SetModelVersion(onnxruntime::Version version) {
   model_proto_.set_model_version(version);
 }
 
-const std::string& Model::DocString() const {
-  return model_proto_.doc_string();
+const std::string Model::DocString() const {
+  if (model_proto_.has_doc_string()) {
+    return model_proto_.doc_string();
+  }
+  return std::string();
 }
 
 void Model::SetDocString(const std::string& doc_string) {
   model_proto_.set_doc_string(doc_string);
+}
+
+const std::string Model::GraphDocString() const {
+  if (model_proto_.has_graph() && model_proto_.graph().has_doc_string()) {
+    return model_proto_.graph().doc_string();
+  }
+  return std::string();
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -240,8 +260,15 @@ const Graph& Model::MainGraph() const noexcept {
 
 #if !defined(ORT_MINIMAL_BUILD)
 ModelProto Model::ToProto() {
-  *(model_proto_.mutable_graph()) = graph_->ToGraphProto();
-  return model_proto_;
+  // We want to return back the original proto
+  // To that end invoke const overload of ToGraphProto()
+  // that returns by value and, therefore, allows us to filter
+  // out dense duplicates of sparse initializers and leave the original
+  // proto intact.
+  ModelProto result(model_proto_);
+  const auto& graph = *graph_;
+  *(result.mutable_graph()) = graph.ToGraphProto();
+  return result;
 }
 
 Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
@@ -551,6 +578,8 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto domain = builder.CreateSharedString(model_proto_.domain());
   auto doc_string = experimental::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_doc_string(), model_proto_.doc_string());
+  auto graph_doc_string = experimental::utils::SaveStringToOrtFormat(
+      builder, model_proto_.has_graph() && model_proto_.graph().has_doc_string(), model_proto_.graph().doc_string());
 
   std::vector<flatbuffers::Offset<fbs::OperatorSetId>> op_set_ids_vec;
   op_set_ids_vec.reserve(model_proto_.opset_import().size());
@@ -574,6 +603,7 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   mb.add_domain(domain);
   mb.add_model_version(model_proto_.model_version());
   mb.add_doc_string(doc_string);
+  mb.add_graph_doc_string(graph_doc_string);
   mb.add_graph(fbs_graph);
 
   // add graph
@@ -589,6 +619,9 @@ Model::Model() : model_path_{} {
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
+#if !defined(ORT_MINIMAL_BUILD)
+                                        const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+#endif
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
   model.reset(new Model());
@@ -598,13 +631,24 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, producer_version, fbs_model.producer_version());
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, domain, fbs_model.domain());
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, doc_string, fbs_model.doc_string());
+  if (fbs_model.graph_doc_string()) {
+    model->model_proto_.mutable_graph()->set_doc_string(fbs_model.graph_doc_string()->c_str());
+  }
   model->model_proto_.set_model_version(fbs_model.model_version());
   model->model_proto_.set_ir_version(fbs_model.ir_version());
+
+  auto schema_registry = std::make_shared<SchemaRegistryManager>();
+  if (local_registries != nullptr) {
+    for (const auto& schema_collection : *local_registries) {
+      schema_registry->RegisterRegistry(schema_collection);
+    }
+  }
 #else
   experimental::utils::LoadStringFromOrtFormat(model->producer_name_, fbs_model.producer_name());
   experimental::utils::LoadStringFromOrtFormat(model->producer_version_, fbs_model.producer_version());
   experimental::utils::LoadStringFromOrtFormat(model->domain_, fbs_model.domain());
   experimental::utils::LoadStringFromOrtFormat(model->doc_string_, fbs_model.doc_string());
+  experimental::utils::LoadStringFromOrtFormat(model->graph_doc_string_, fbs_model.graph_doc_string());
   model->model_version_ = fbs_model.model_version();
   model->ir_version_ = fbs_model.ir_version();
 #endif
@@ -615,10 +659,14 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   auto fbs_graph = fbs_model.graph();
   ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");
 
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry, logger,
+                                               model->graph_));
+#else
   ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, logger, model->graph_));
-
+#endif
   return Status::OK();
 }
-#endif
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace onnxruntime

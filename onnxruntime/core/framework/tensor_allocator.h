@@ -14,6 +14,7 @@ namespace onnxruntime {
 class ExecutionPlanBase;
 class SessionState;
 class MemBuffer;
+struct MemoryPatternGroup;
 
 class ITensorAllocator {
  public:
@@ -34,15 +35,22 @@ class ITensorAllocator {
   virtual common::Status FinalizePlan(std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) = 0;
 
   /**
-   *
-   * \param ort_value_index The index in planner
-   * \param name Tensor name. Only for logging purpose
-   * \param out The allocated buffer
-   *
-   * When it succeeded, p could be NULL if the tensor with 'ort_value_index' will not have any element
-   */
+   * Handing out buffers reserved in @see #Trace() via parameter buf_out,
+   * or, in the case of not reserved tensor, returns an allocator so that
+   * the caller can take care of the dynamic buffer allocation.
+   * buf_out and alloc_out, one and only one can be non-null
+   * 
+   * @param ort_value_index [In]   int id of the tensor 
+   * @param name            [In]   name of the tensor
+   * @param buf_out         [Out]  pre reserved buffer, if not null
+   * @param alloc_out       [Out]  allocator based on tensor's location, if not null
+   * @return 
+  */
   virtual common::Status GetPreallocatedBuffer(int ort_value_index, const char* name,
-                                               std::unique_ptr<MemBuffer>& out) = 0;
+                                               std::unique_ptr<MemBuffer>& buf_out,
+                                               AllocatorPtr& alloc_out) = 0;
+
+  virtual const MemoryPatternGroup& GetMemPatterns() = 0;
   /**
    * Reserve memory for ort_value_index
    */

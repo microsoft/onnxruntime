@@ -20,6 +20,7 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/session_options.h"
+#include "core/framework/allocatormgr.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -39,7 +40,7 @@ class ModelProto;
 
 struct OrtCustomOpDomain {
   std::string domain_;
-  std::vector<OrtCustomOp*> custom_ops_;
+  std::vector<const OrtCustomOp*> custom_ops_;
 };
 
 namespace onnxruntime {
@@ -57,9 +58,7 @@ class LoggingManager;
   */
 struct ModelMetadata {
   ModelMetadata() = default;
-  ModelMetadata(const ModelMetadata& other)
-      : producer_name(other.producer_name), graph_name(other.graph_name), domain(other.domain), description(other.description), version(other.version), custom_metadata_map(other.custom_metadata_map) {
-  }
+  ModelMetadata(const ModelMetadata&) = default;
   ~ModelMetadata() = default;
   ModelMetadata& operator=(const ModelMetadata&) = delete;
 
@@ -67,6 +66,7 @@ struct ModelMetadata {
   std::string graph_name;
   std::string domain;
   std::string description;
+  std::string graph_description;
   int64_t version = 0;
   std::unordered_map<std::string, std::string> custom_metadata_map;
 };
@@ -185,6 +185,9 @@ class InferenceSession {
     */
   common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) ORT_MUST_USE_RESULT;
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   /**
     * Add custom ops. This API is not thread safe.
     */
@@ -200,8 +203,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) ORT_MUST_USE_RESULT;
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
   /**
     * Load an ONNX or ORT format model.
@@ -386,6 +388,10 @@ class InferenceSession {
     */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
 
+  std::shared_ptr<onnxruntime::AllocatorManager> GetAllocatorManager() {
+    return allocator_manager_;
+  }
+
   /**
     *Get InferenceSession logger.
     */
@@ -531,7 +537,8 @@ class InferenceSession {
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                 const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
                                 const InsertCastTransformer& insert_cast_transformer,
-                                SessionState& session_state) ORT_MUST_USE_RESULT;
+                                SessionState& session_state,
+                                bool saving_model_in_ort_format) ORT_MUST_USE_RESULT;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
@@ -541,6 +548,11 @@ class InferenceSession {
   // will be run regardless of the level set.
   // .i.e This list overrides both SessionOptions.graph_optimization_level and predefined transformers.
   std::vector<std::string> transformers_to_enable_;
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  Status PartitionOrtFormatModel(onnxruntime::Graph& graph, const ExecutionProviders& providers,
+                                 KernelRegistryManager& kernel_registry_manager, SessionState& session_state) const;
 #endif
 
   SessionOptions session_options_;
@@ -577,6 +589,9 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
@@ -645,6 +660,8 @@ class InferenceSession {
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
   std::vector<uint8_t> ort_format_model_bytes_;
+
+  std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };
 
 struct SessionIOBinding {

@@ -20,7 +20,8 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
 #include "single_include/nlohmann/json.hpp"
@@ -67,9 +68,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
       params_(params),
       session_options_(session_options),
       session_(session_options, env),
-      input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()),
-      pipeline_schedule_(params.gradient_accumulation_steps, params_.pipeline_parallel_size),
-      pipeline_worker_pool_(params_.pipeline_parallel_size) {
+      input_allocator_(params.input_allocator ? params.input_allocator : TrainingUtil::GetCpuAllocator()) {
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
     ORT_ENFORCE(params.weights_not_to_train.empty());
@@ -175,6 +174,7 @@ Status TrainingRunner::Initialize() {
     pipe.do_partition = params_.pipeline_stage_paths.empty() ? true : false;
     pipe.fetch_names = params_.fetch_names;
     pipe.cut_list = params_.pipeline_partition_cut_list;
+    pipe.op_id_to_stage = params_.op_id_to_stage;
     pipe.partitioned_model_path = params_.pipeline_partitioned_model_path;
     // Do not assign value to config.pipeline_config if pipeline is not used.
     config.pipeline_config = pipe;
@@ -213,6 +213,14 @@ Status TrainingRunner::Initialize() {
   // Retrieve pipeline information from configuration result.
   VectorString fetch_names;
   if (params_.pipeline_parallel_size > 1) {
+    // Instead of inside constructor, we initialize pipeline_schedule_ and pipeline_worker_pool_ here
+    // because they dependent on the result of TraningSession::ConfigureForTraining(...).
+    pipeline_schedule_ = pipeline::PipelineScheduler(
+        params_.gradient_accumulation_steps,
+        params_.pipeline_parallel_size,
+        DistributedRunContext::GetRanks(WorkerGroupType::PipelineParallel));
+    pipeline_worker_pool_ = pipeline::PipelineWorkerPool(params_.pipeline_parallel_size);
+
     fetch_names = config_result.pipeline_config_result.value().fetch_names;
 
     // Set tensor names for event IDs and outputs of event ops.
@@ -235,7 +243,7 @@ Status TrainingRunner::Initialize() {
     pipeline_context_.fetch_names = fetch_names;
 
     pipeline_context_.pipeline_stage_id = config_result.pipeline_config_result.value().pipeline_stage_id;
-    pipeline_context_.num_pipeline_batches = params_.gradient_accumulation_steps;
+    pipeline_context_.num_pipeline_micro_batches = params_.gradient_accumulation_steps;
   } else {
     fetch_names = params_.fetch_names;
     pipeline_context_.pipeline_stage_id = 0;
@@ -369,7 +377,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Add event IDs to feeds.
   if (params_.pipeline_parallel_size > 1) {
-    const auto batch_id = static_cast<int>(step_) % pipeline_context_.num_pipeline_batches;
+    const auto batch_id = static_cast<int>(step_) % pipeline_context_.num_pipeline_micro_batches;
     const auto stage_id = pipeline_context_.pipeline_stage_id;
 
     int64_t id = -1;
@@ -450,7 +458,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
           ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
           fetch_names.push_back(it->second);
         }
-        if (params_.use_adasum) {
+        if (params_.enable_adasum) {
           auto it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
           ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
           fetch_names.push_back(it->second);
@@ -549,15 +557,15 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 
     pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
       try {
-  #ifdef ENABLE_NVTX_PROFILE
+#ifdef ENABLE_NVTX_PROFILE
         // Store the tag for the thread which runs session_.Run(...).
         // It will be used to name range in Nvidia's visual profiler.
         auto& profile_context = profile::Context::GetInstance();
         profile_context.SetThreadTag(
             std::this_thread::get_id(), std::to_string(step));
-  #else
+#else
         ORT_UNUSED_PARAMETER(step);
-  #endif
+#endif
         RunOptions run_options;
         auto status = session_.Run(
             run_options,
@@ -572,7 +580,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
         pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
       }
     },
-                                                          worker_id, step_);
+                                                           worker_id, step_);
 
     // Wait all workers to finish this round of pipeline parallelism.
     // The last batch in a pipeline collects gradient and update the model.
@@ -585,8 +593,8 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 
     fetches = pipeline_worker_pool_.worker_states[worker_id].fetches;
   } else {
-    // Entering this branch means we will run graph without multi-threading.
-    // This branch is only hit in pipeline parallel.
+// Entering this branch means we will run graph without multi-threading.
+// This branch is only hit in pipeline parallel.
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
@@ -628,13 +636,6 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     }
   }
 
-  // Wait all workers to finish this around of pipeline parallism.
-  // The last batch in a pipeline collects gradient and update the model.
-  pipeline_worker_pool_.JoinAll();
-  for (auto& status : pipeline_worker_pool_.worker_states) {
-    CheckWorkerException(status.execution_exception);
-  }
-
   // TODO: move this to an operator in graph.
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
 
@@ -670,15 +671,15 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
     // Async launch of a session.
     pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
       try {
-  #ifdef ENABLE_NVTX_PROFILE
+#ifdef ENABLE_NVTX_PROFILE
         // Store the tag for the thread which runs session_.Run(...).
         // It will be used to name range in Nvidia's visual profiler.
         auto& profile_context = profile::Context::GetInstance();
         profile_context.SetThreadTag(
             std::this_thread::get_id(), std::to_string(step));
-  #else
+#else
         ORT_UNUSED_PARAMETER(step);
-  #endif
+#endif
         RunOptions run_options;
         run_options.only_execute_path_to_fetches = true;
         run_options.training_mode = true;
@@ -693,9 +694,9 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
         pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
       }
     },
-                                                          worker_id, step_);
+                                                           worker_id, step_);
   } else {
-    // Pipeline is not enabled, so we run session using the main thread.
+// Pipeline is not enabled, so we run session using the main thread.
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
@@ -758,7 +759,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   // Create communication plan.
   auto& nccl_service = cuda::NcclService::GetInstance();
 
@@ -804,6 +805,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+        MemoryInfo::SetIteration(step_);
+#endif
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
 
         const bool stablized_perf_measurement_started = step_ >= stabilized_perf_start_step;
@@ -832,7 +836,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                           fetch_names,
                                           fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
           nccl_service.Reset();
 #endif
         } else {
@@ -905,7 +909,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         }
       }  // end of one file/shard
 
-      pipeline_worker_pool_.JoinAll();
+      if (params_.pipeline_parallel_size > 1) {
+        pipeline_worker_pool_.JoinAll();
+      }
       if (step_ < params_.num_train_steps) {
         training_data_loader.MoveToNextDataSet();
       }
@@ -957,7 +963,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
-#if defined(USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   nccl_service.Terminate();
 #endif
   return Status::OK();
@@ -1068,18 +1074,23 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.output_dir));
   }
 
-  printf("\nSaving the trained model.\n");
-  const PathString model_base_name = GetLastComponent(params_.model_path);
+  // We only want to save with WITH_UPDATED_WEIGHTS or WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC
+  // if the Loss function is in the graph, or otherwise saving will fail.
+  // Assuming here that the Loss function will be assigned to the last device of the pipeline.
+  if (MPIContext::GetInstance().GetWorldRank() == params_.pipeline_parallel_size - 1) {
+    printf("\nSaving the trained model.\n");
+    const PathString model_base_name = GetLastComponent(params_.model_path);
 
-  const PathString trained_model_path =
-      params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_trained.onnx");
-  ORT_RETURN_IF_ERROR(session_.Save(
-      trained_model_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS));
+    const PathString trained_model_path =
+        params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_trained.onnx");
+    ORT_RETURN_IF_ERROR(session_.Save(
+        trained_model_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS));
 
-  const PathString trained_model_with_loss_func_path =
-      params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_with_cost_trained.onnx");
-  ORT_RETURN_IF_ERROR(session_.Save(
-      trained_model_with_loss_func_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
+    const PathString trained_model_with_loss_func_path =
+        params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_with_cost_trained.onnx");
+    ORT_RETURN_IF_ERROR(session_.Save(
+        trained_model_with_loss_func_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
+  }
 
   return Status::OK();
 }
@@ -1153,42 +1164,16 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
                                 fetch_names,
                                 fetches);
 
-    if (params_.pipeline_parallel_size == 1) {
-      auto status = Status::OK();
-      // When there is no pipeline, we always use the first thread
-      // to launch session_.Run(...) to avoid multiple activation allocations.
-
-      // Always use the first thread to evaluate.
-      const size_t worker_id = 0;
-      // Wait for the previous work to finish its job.
-      // Its resource cannot be overrided when it's still working.
-      pipeline_worker_pool_.Join(worker_id);
-      // Declare Run(...)'s status in thread.
-      // Launch Run(...).
-      pipeline_worker_pool_.workers[worker_id] = std::thread([&]() {
-        RunOptions run_options;
-        run_options.only_execute_path_to_fetches = true;
-        run_options.training_mode = false;
-        status = session.Run(
-            run_options,
-            feed_names,
-            feeds,
-            fetch_names,
-            &fetches);
-      });
-      // Wait Run(...) to finish.
-      pipeline_worker_pool_.Join(worker_id);
-      ORT_RETURN_IF_ERROR(status);
-    } else {
-      // Training threads are fully used by pipeline stages.
-      // Pipeline cannot reuse training threads to do evaluation.
-      // Otherwise, deadlock may happens.
-      ORT_RETURN_IF_ERROR(session.Run(run_options,
-                                      feed_names,
-                                      feeds,
-                                      fetch_names,
-                                      &fetches));
-    }
+    run_options.only_execute_path_to_fetches = true;
+    run_options.training_mode = false;
+    // Training threads are fully used by pipeline stages.
+    // Pipeline cannot reuse training threads to do evaluation.
+    // Otherwise, deadlock may happens.
+    ORT_RETURN_IF_ERROR(session.Run(run_options,
+                                    feed_names,
+                                    feeds,
+                                    fetch_names,
+                                    &fetches));
 
     // Assume that user-specified fetches are avaliable only on the last pipeline stage.
     // When there is no pipeline, all pipeline_context_.pipeline_stage_id should be 0 and
@@ -1240,7 +1225,6 @@ Status WithOrtValuesFromTensorProtos(
 
   NameMLValMap name_to_ort_value{};
   std::vector<std::vector<char>> tensor_buffers{};
-  std::vector<ScopedOrtCallbackInvoker> tensor_deleters{};
 
   for (const auto& tensor_proto : tensor_protos) {
     const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type());
@@ -1254,16 +1238,13 @@ Status WithOrtValuesFromTensorProtos(
     const MemBuffer mem_buffer{tensor_buffer.data(), tensor_buffer.size(), cpu_alloc_info};
 
     OrtValue ort_value;
-    OrtCallback callback;
 
     ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
         Env::Default(), model_location.c_str(), tensor_proto, mem_buffer,
-        ort_value, callback));
-    ScopedOrtCallbackInvoker callback_invoker{callback};
+        ort_value));
 
     name_to_ort_value.emplace(tensor_proto.name(), ort_value);
     tensor_buffers.emplace_back(std::move(tensor_buffer));
-    tensor_deleters.emplace_back(std::move(callback_invoker));
   }
 
   ORT_RETURN_IF_ERROR(use_name_to_ort_value_fn(name_to_ort_value));
@@ -1303,7 +1284,7 @@ constexpr const char* k_loss_scaler_state = "loss_scaler_state";
 template <typename T>
 Status FromString(const std::string& s, T& t) {
   std::istringstream i{s};
-  ORT_RETURN_IF_NOT(i >> t && i.eof());
+  ORT_RETURN_IF_NOT(i >> t && i.eof(), "i >> t && i.eof() was false");
   return Status::OK();
 }
 }  // namespace
@@ -1330,7 +1311,7 @@ Status TrainingRunner::LoadCheckpointProperties(
     const std::unordered_map<std::string, std::string>& properties) {
   auto load_property = [&properties](const char* name, auto& val) {
     auto prop_it = properties.find(name);
-    ORT_RETURN_IF_NOT(prop_it != properties.end());
+    ORT_RETURN_IF_NOT(prop_it != properties.end(), "prop_it == properties.end()");
     ORT_RETURN_IF_ERROR(FromString(prop_it->second, val));
     return Status::OK();
   };
@@ -1344,7 +1325,7 @@ Status TrainingRunner::LoadCheckpointProperties(
 
   if (loss_scaler_) {
     auto prop_it = properties.find(property_names::k_loss_scaler_state);
-    ORT_RETURN_IF_NOT(prop_it != properties.end());
+    ORT_RETURN_IF_NOT(prop_it != properties.end(), "prop_it == properties.end()");
     ORT_RETURN_IF_ERROR(loss_scaler_->LoadFromString(prop_it->second));
   }
 

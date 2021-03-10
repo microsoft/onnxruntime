@@ -1,6 +1,5 @@
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
-
 #pragma once
 
 #include <memory>
@@ -15,7 +14,7 @@ namespace openvino_ep {
 
 class VADMBackend : public IBackend {
  public:
-  VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
+  VADMBackend(const Provider_ModelProto& model_proto,
               GlobalContext& global_context,
               const SubGraphContext& subgraph_context);
 
@@ -24,14 +23,11 @@ class VADMBackend : public IBackend {
  private:
   void StartAsyncInference(Ort::CustomOpApi& ort,
                            OrtKernelContext* context,
-                           size_t batch_slice_idx, size_t infer_req_idx,
-                           std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
-                           std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
+                           size_t batch_slice_idx, size_t infer_req_idx);
 
-  void CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors,
+  void CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context,
                               size_t batch_slice_idx, size_t infer_req_idx,
-                              std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
-                              std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
+                              size_t batch_size);
 
   GlobalContext& global_context_;
   SubGraphContext subgraph_context_;

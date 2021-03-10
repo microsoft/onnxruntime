@@ -31,6 +31,9 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+#include "core/framework/memory_info.h"
+#endif
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -52,6 +55,9 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+class MemoryInfo;
+#endif
 
 /**
  * SessionState should be modified by the inference session class only.
@@ -119,8 +125,8 @@ class SessionState {
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
 
   /**
-  Get the allocator for the given OrtMemoryInfo location
-  */
+    Get the allocator for the given OrtMemoryInfo location
+    */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& location) const noexcept;
 
   /** Get the allocator for a given OrtDevice. The first allocator that matches will be returned. */
@@ -129,44 +135,44 @@ class SessionState {
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
   /**
-   * Adds an initialized tensor (weight) so that it can be used by the
-   * execution frame to setup the appropriate OrtValue vectors.
-   * This function will take a shallow copy of d if d is not NULL.
-   * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
-   */
+     * Adds an initialized tensor (weight) so that it can be used by the
+     * execution frame to setup the appropriate OrtValue vectors.
+     * This function will take a shallow copy of d if d is not NULL.
+     * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
+     */
   Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d, bool constant);
 
   /**
-   * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
-   * execution frame to setup the appropriate OrtValue vectors.
-   * The lifetime of returned OrtValues are limited by this SessionState object.
-   */
+     * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
+     * execution frame to setup the appropriate OrtValue vectors.
+     * The lifetime of returned OrtValues are limited by this SessionState object.
+     */
   const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
   /**
-   * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
-   * and cannot be overridden at runtime.
-   * The lifetime of returned OrtValues are limited by this SessionState object.
-   */
+     * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
+     * and cannot be overridden at runtime.
+     * The lifetime of returned OrtValues are limited by this SessionState object.
+     */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
 #ifdef ENABLE_TRAINING
   /**
-  Get some initialized tensors (weights).
-  @param interested_weights The names of the weights to retrieve.
-  @param allow_missing_weights Whether to allow names in interested_weights
-         with no corresponding weight.
-  @param[out] retrieved_weights The retrieved weights.
-  @return The status of the operation.
-  */
+    Get some initialized tensors (weights).
+    @param interested_weights The names of the weights to retrieve.
+    @param allow_missing_weights Whether to allow names in interested_weights
+           with no corresponding weight.
+    @param[out] retrieved_weights The retrieved weights.
+    @return The status of the operation.
+    */
   Status GetInitializedTensors(
       const std::unordered_set<std::string>& interested_weights,
       bool allow_missing_weights, NameMLValMap& retrieved_weights) const;
 
   /**
-  Get some initialized tensors (weights).
-  Any names in interested_weights with no corresponding weight are ignored.
-  */
+    Get some initialized tensors (weights).
+    Any names in interested_weights with no corresponding weight are ignored.
+    */
   NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
 #endif
 
@@ -269,6 +275,10 @@ class SessionState {
 #endif
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
+  void SetCompiledKernelHashes(std::unordered_map<std::string, uint64_t>&& compiled_kernel_hashes) {
+    compiled_kernel_hashes_ = std::move(compiled_kernel_hashes);
+  }
+
   Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::SessionState& fbs_session_state,
                            const KernelRegistryManager& kernel_registry_manager);
 #endif
@@ -277,7 +287,12 @@ class SessionState {
                               KernelRegistryManager& kernel_registry_manager,
                               const SessionOptions& session_options = {},
                               const onnxruntime::experimental::fbs::SessionState* serialized_session_state = nullptr,
-                              bool remove_initializers = true);
+                              bool remove_initializers = true,
+                              bool saving_ort_format = false);
+
+  SessionState* Parent() {
+    return parent_;
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -298,7 +313,7 @@ class SessionState {
   * Prepack the constant initialized tensors for better performance.
   * The original constant initialized tensors will be removed to save memory.
   */
-  Status PrepackInitializedConstantTensors();
+  Status PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
@@ -308,14 +323,15 @@ class SessionState {
                                std::unique_ptr<SessionState> session_state);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager);
+  Status PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager, bool saving_ort_format);
 #endif
 
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                   KernelRegistryManager& kernel_registry_manager,
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
-                                  bool remove_initializers);
+                                  bool remove_initializers,
+                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count);
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
@@ -325,8 +341,17 @@ class SessionState {
       std::unordered_map<int, TensorShape>& inferred_shapes) const;
 #endif
 
+  // the SessionState for the main Graph contains the compiled kernel hashes for the entire model
+  const std::unordered_map<std::string, uint64_t>& GetCompiledKernelHashes() const {
+    return parent_ ? parent_->GetCompiledKernelHashes() : compiled_kernel_hashes_;
+  }
+
   // KernelCreateInfo for each node so we do kernel lookup once
   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>> kernel_create_info_map_;
+
+  // If we compile kernels in a minimal build we need a way to find the kernel using the hash.
+  // We populate this map when doing the kernel compilation in GraphPartitioner, and use it in LoadFromOrtFormat.
+  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes_;
 
   // cache of the constructed kernels to avoid spending construction time per executor
   std::vector<OpKernel*> session_kernels_;
@@ -421,9 +446,9 @@ class SessionState {
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
 #endif
 
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   SessionState* parent_ = nullptr;
   //Assign each graph in each session an unique id.
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   int graph_id_ = 0;
   int next_graph_id_ = 1;
 

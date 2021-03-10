@@ -46,24 +46,24 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
 }
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_LAMB_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP)                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                        \
-      LambOptimizer,                                                                                    \
-      kMSDomain,                                                                                        \
-      1,                                                                                                \
-      T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                                 \
-      kCudaExecutionProvider,                                                                           \
-      KernelDefBuilder()                                                                                \
-          .Alias(GenerateLambExtraAliasMapping())                                                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(0)  /* Keep do_update in CPU */                          \
-          .InputMemoryType<OrtMemTypeCPUInput>(4)  /* Keep iteration_count in CPU */                    \
-          .OutputMemoryType<OrtMemTypeCPUOutput>(0)  /* Keep iteration_count in CPU */                  \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                      \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                      \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                      \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                                      \
-          .TypeConstraint("T_MIXED_PRECISION_FP", DataTypeImpl::GetTensorType<T_MIXED_PRECISION_FP>())  \
-          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()),                   \
+#define REGISTER_LAMB_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP)                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                       \
+      LambOptimizer,                                                                                   \
+      kMSDomain,                                                                                       \
+      1,                                                                                               \
+      T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                                \
+      kCudaExecutionProvider,                                                                          \
+      KernelDefBuilder()                                                                               \
+          .Alias(GenerateLambExtraAliasMapping())                                                      \
+          .InputMemoryType<OrtMemTypeCPUInput>(0)   /* Keep do_update in CPU */                        \
+          .InputMemoryType<OrtMemTypeCPUInput>(4)   /* Keep iteration_count in CPU */                  \
+          .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep iteration_count in CPU */                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                     \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                     \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                     \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                                     \
+          .TypeConstraint("T_MIXED_PRECISION_FP", DataTypeImpl::GetTensorType<T_MIXED_PRECISION_FP>()) \
+          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()),                  \
       LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>);
 
 REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, MLFloat16, MLFloat16)
@@ -74,6 +74,17 @@ REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, MLFloat16, ML
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float, MLFloat16)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16, MLFloat16)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, float, MLFloat16)
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+REGISTER_LAMB_KERNEL_TYPED(float, float, BFloat16, float, BFloat16, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(float, float, BFloat16, float, float, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(float, float, float, float, float, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(double, double, double, double, double, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, BFloat16, BFloat16, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, BFloat16, float, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, float, BFloat16, BFloat16)
+REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, float, float, BFloat16)
+#endif
 
 void check_inputs_and_outputs(
     const Tensor* w,
@@ -106,13 +117,13 @@ void check_inputs_and_outputs(
 
 template <typename TWeight, typename TGradient, typename TMomentum, typename TMixedPrecision>
 Status copy_inputs_to_outputs(
+    cudaStream_t stream,
     OpKernelContext* ctx,
     const int non_grouped_input_count,
     const int non_grouped_output_count,
     const int group_count,
     const int input_group_size,
     const int output_group_size) {
-
   const Tensor* step_tensor = ctx->Input<Tensor>(4);
   if (step_tensor) {
     const int64_t* step_data = step_tensor->template Data<int64_t>();
@@ -145,16 +156,16 @@ Status copy_inputs_to_outputs(
       w_mixed_precision_new->SetByteOffset(w_mixed_precision->ByteOffset());
 
     if (w_new) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(w, *w_new));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(stream, w, *w_new));
     }
     if (g_new) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TGradient>(g, *g_new));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TGradient>(stream, g, *g_new));
     }
-    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m1, m1_new));
-    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m2, m2_new));
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(stream, m1, m1_new));
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(stream, m2, m2_new));
 
     if (w_mixed_precision_new) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMixedPrecision>(*w_mixed_precision, *w_mixed_precision_new));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMixedPrecision>(stream, *w_mixed_precision, *w_mixed_precision_new));
     }
   }
 
@@ -163,6 +174,7 @@ Status copy_inputs_to_outputs(
 
 template <typename CudaT2, typename CudaT3, typename CudaT4, typename CudaT_GRAD_NORM>
 Status launch_lamb_compute_direction(
+    cudaStream_t stream,
     const int64_t update_count,
     const int group_count,
     const CudaT2* p_loss_scale,
@@ -179,6 +191,7 @@ Status launch_lamb_compute_direction(
     const std::vector<float>& betas,
     const std::vector<float>& lambdas,
     const std::vector<float>& epsilons,
+    const std::vector<float>& max_norms,
     const int64_t do_bias_correction) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
@@ -199,17 +212,18 @@ Status launch_lamb_compute_direction(
   const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
-  std::map<std::tuple<float, float, float, float>, std::vector<std::vector<void*>>> buckets;
-  std::map<std::tuple<float, float, float, float>, std::vector<int>> tensor_sizes_in_buckets;
+  std::map<std::tuple<float, float, float, float, float>, std::vector<std::vector<void*>>> buckets;
+  std::map<std::tuple<float, float, float, float, float>, std::vector<int>> tensor_sizes_in_buckets;
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       // For the first iteration (indexed by 0), the update count should be 2.
-      const float alpha_correction = do_bias_correction ?
-        onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
-      const float beta_correction = do_bias_correction ?
-        onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
+      const float alpha_correction =
+          do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alphas[i], update_count) : 1.f;
+      const float beta_correction =
+          do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
 
       LambComputeDirection(
+          stream,
           p_ws[i],
           p_gs[i],
           p_m1s[i],
@@ -220,6 +234,7 @@ Status launch_lamb_compute_direction(
           CudaT4(betas[i]),
           CudaT2(lambdas[i]),
           CudaT4(epsilons[i]),
+          CudaT2(max_norms[i]),
           CudaT4(alpha_correction),
           CudaT4(beta_correction),
           p_ds[i],
@@ -235,7 +250,7 @@ Status launch_lamb_compute_direction(
       ptrs[4] = p_m1_news[i];                   // new 1st momentum
       ptrs[5] = p_m2_news[i];                   // new 2nd momentum
 
-      auto key = std::make_tuple(alphas[i], betas[i], lambdas[i], epsilons[i]);
+      auto key = std::make_tuple(alphas[i], betas[i], lambdas[i], epsilons[i], max_norms[i]);
       buckets[key].push_back(ptrs);
       tensor_sizes_in_buckets[key].push_back(tensor_sizes[i]);
     }
@@ -243,24 +258,25 @@ Status launch_lamb_compute_direction(
 
   for (auto& pair : buckets) {
     const auto key = pair.first;
-    float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f;
-    std::tie(alpha, beta, lambda, epsilon) = key;
+    float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f, max_norm = 0.f;
+    std::tie(alpha, beta, lambda, epsilon, max_norm) = key;
 
     // For the first iteration (indexed by 0), the update count should be 1.
     const float alpha_correction =
-      do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
+        do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
     const float beta_correction =
-      do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
+        do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
 
     typedef LambMultiTensorComputeDirectionFunctor<CudaT2, CudaT3, CudaT4, CudaT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;
 
-    launch_multi_tensor_functor<tensor_count_per_group, LambStage1, const CudaT2*, const CudaT_GRAD_NORM*, float, float, float, float>(
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage1>(
+        stream,
         2048 * 32,
         tensor_sizes_in_buckets[key],
         buckets[key],
         lamb_stage1,
-        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, alpha_correction, beta_correction);
+        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, CudaT2(max_norm), alpha_correction, beta_correction);
   }
 
   return Status::OK();
@@ -268,13 +284,15 @@ Status launch_lamb_compute_direction(
 
 template <typename CudaTNorm, typename CudaTIn1, typename CudaTIn2>
 Status launch_lamb_reduction(
+    const CudaKernel& kernel,
     const int group_count,
     std::vector<int>& tensor_sizes,
     std::vector<CudaTNorm*>& p_w_norms,
     std::vector<CudaTNorm*>& p_d_norms,
     std::vector<const CudaTIn1*>& p_ws,
     std::vector<CudaTIn2*>& p_ds,
-    CudaTNorm* reduction_buffer) {
+    void* reduction_buffer,
+    size_t reduction_buffer_size) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
   ORT_ENFORCE(group_count == static_cast<int>(p_w_norms.size()));
@@ -285,6 +303,7 @@ Status launch_lamb_reduction(
 
   constexpr int tensor_count_per_group = 4;
 
+  cudaStream_t stream = kernel.Stream();
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::vector<std::vector<void*>> buckets;
@@ -292,16 +311,20 @@ Status launch_lamb_reduction(
   const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
-      reduce_square_sum(
+      ORT_RETURN_IF_ERROR(reduce_square_sum(
+          stream,
           p_ws[i],
           p_w_norms[i],
           tensor_sizes[i],
-          reduction_buffer);
-      reduce_square_sum(
+          reduction_buffer,
+          reduction_buffer_size));
+      ORT_RETURN_IF_ERROR(reduce_square_sum(
+          stream,
           p_ds[i],
           p_d_norms[i],
           tensor_sizes[i],
-          reduction_buffer);
+          reduction_buffer,
+          reduction_buffer_size));
     } else {
       std::vector<void*> ptrs(tensor_count_per_group);
       ptrs[0] = const_cast<CudaTIn1*>(p_ws[i]);  // weight tensor
@@ -327,10 +350,14 @@ Status launch_lamb_reduction(
     typedef LambMultiTensorReductionFunctor<CudaTIn1, CudaTIn2, CudaTNorm, CudaTNorm, CudaTNorm> TReducer;
     TReducer reducer;
     launch_multi_tensor_functor<tensor_count_per_group, TReducer>(
+        stream,
         2048 * 32,
         tensor_sizes_in_buckets,
         buckets,
-        reducer);
+        reducer,
+        kernel,
+        reduction_buffer,
+        reduction_buffer_size);
   }
 
   return Status::OK();
@@ -338,6 +365,7 @@ Status launch_lamb_reduction(
 
 template <typename CudaT1, typename CudaT2, typename CudaT3, typename CudaT_MIXED_PRECISION_FP>
 Status launch_lamb_update(
+    cudaStream_t stream,
     const int group_count,
     const CudaT1* eta,
     const float ratio_min,
@@ -370,6 +398,7 @@ Status launch_lamb_update(
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       LambUpdate(
+          stream,
           eta,
           ratio_min,
           ratio_max,
@@ -406,12 +435,12 @@ Status launch_lamb_update(
   // Only launch multi-tensor function if we have at least one tensor in the buckets.
   if (tensor_sizes_in_bucket.size() > 0 && buckets.size() > 0) {
     typedef LambMultiTensorUpdateFunctor<
-      CudaT1, CudaT2, CudaT3, CudaT_MIXED_PRECISION_FP> LambStage2;
+        CudaT1, CudaT2, CudaT3, CudaT_MIXED_PRECISION_FP>
+        LambStage2;
     LambStage2 lamb_stage2;
 
-    launch_multi_tensor_functor<
-      tensor_count_per_group, LambStage2,
-      const CudaT1*, const float, const float>(
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage2>(
+        stream,
         2048 * 32,
         tensor_sizes_in_bucket,
         buckets,
@@ -485,6 +514,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     auto update_signal = *update_signal_tensor->template Data<bool>();
     if (!update_signal) {
       return copy_inputs_to_outputs<T2, T3, T4, T_MIXED_PRECISION_FP>(
+          Stream(),
           ctx,
           non_grouped_input_count,
           non_grouped_output_count,
@@ -521,14 +551,14 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   // and T2=float.
   IAllocatorUniquePtr<T2> d_norm_buffer = GetScratchBuffer<T2>(group_count);
   CudaT2* d_norm_data = reinterpret_cast<CudaT2*>(d_norm_buffer.get());
-  ORT_ENFORCE(cudaMemset(d_norm_data, 0, group_count * sizeof(T2)) == cudaSuccess);
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(d_norm_data, 0, group_count * sizeof(T2), Stream()));
 
   // Allocate buffer for reduction computation of weight tensor.
   // The i-th weight's norm is stored at the i-th element.
   // We reduce type T2 tensor to type T2 scalar. An example is that T2=float.
   IAllocatorUniquePtr<T2> w_norm_buffer = GetScratchBuffer<T2>(group_count);
   CudaT2* w_norm_data = reinterpret_cast<CudaT2*>(w_norm_buffer.get());
-  ORT_ENFORCE(cudaMemset(w_norm_data, 0, group_count * sizeof(T2)) == cudaSuccess);
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(w_norm_data, 0, group_count * sizeof(T2), Stream()));
 
   // Find the max size of updated weight tensors.
   int max_tensor_size = 0;
@@ -539,14 +569,21 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     max_tensor_size = std::max(max_tensor_size, static_cast<int>(w.Shape().Size()));
   }
 
-  // Allocate a buffer in byte for reduction API calls.
-  const auto buffer_size = static_cast<size_t>(
-      compute_reduction_buffer_size(
-          static_cast<int>(sizeof(T2)), max_tensor_size));
+  const size_t reduction_buffer_size = [&]() {
+    // Allocate a buffer in byte for reduction API calls.
+    size_t rbs = compute_reduction_buffer_size<CudaT2>(max_tensor_size);
 
-  // Allocate reduction buffer whose size is buffer_size bytes.
-  IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(buffer_size);
-  CudaT2* reduction_data = reinterpret_cast<CudaT2*>(reduction_buffer.get());
+    // Enlarge reduction buffer to accomodate multi-tensor reduction kernel as well
+    const int tensor_group_size = 4;  // w, d, w_norm, d_norm
+    const int max_blocks = ChunkGroup<tensor_group_size>::max_block_count;
+    const size_t multitensor_block_reduce_buffer_size = 2 * max_blocks * sizeof(CudaT2);
+    rbs = std::max(rbs, multitensor_block_reduce_buffer_size);
+
+    return rbs;
+  }();
+
+  // Allocate reduction buffer whose size is reduction_buffer_size bytes.
+  IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size);
 
   // Input tensors' pointers.
   std::vector<const CudaT2*> p_ws(group_count);
@@ -626,8 +663,8 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     p_w_mixed_precision_news[group_index] = w_mixed_precision_new != nullptr ? reinterpret_cast<CudaT_MIXED_PRECISION_FP*>(w_mixed_precision_new->template MutableData<T_MIXED_PRECISION_FP>()) : nullptr;
   }
 
-
-  launch_lamb_compute_direction(
+  ORT_RETURN_IF_ERROR(launch_lamb_compute_direction(
+      Stream(),
       step_data ? *step_data : 0,
       group_count,
       loss_scale_data,
@@ -636,19 +673,22 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       p_ws, p_gs, p_m1s, p_m2s,
       p_ds,
       p_m1_news, p_m2_news,
-      alpha_, beta_, lambda_, epsilon_,
-      do_bias_correction_);
+      alpha_, beta_, lambda_, epsilon_, max_norm_clip_,
+      do_bias_correction_));
 
-  launch_lamb_reduction(
+  ORT_RETURN_IF_ERROR(launch_lamb_reduction(
+      *this,
       group_count,
       tensor_sizes,
       p_w_norms,
       p_d_norms,
       p_ws,
       p_ds,
-      reduction_data);
+      reduction_buffer.get(),
+      reduction_buffer_size));
 
-  launch_lamb_update(
+  ORT_RETURN_IF_ERROR(launch_lamb_update(
+      Stream(),
       group_count,
       eta_data,
       ratio_min_,
@@ -660,7 +700,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       p_ds,
       p_w_news,
       p_g_news,
-      p_w_mixed_precision_news);
+      p_w_mixed_precision_news));
 
   if (step_tensor) {
     Tensor* step_tensor_new = ctx->Output(0, step_tensor->Shape());

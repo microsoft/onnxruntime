@@ -184,7 +184,7 @@ class OutputIterator {
 };
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
-                    std::vector<int64_t>& directions, int64_t num_entries);
+                    std::vector<int64_t>& directions, size_t num_entries);
 
 Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
                       int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,

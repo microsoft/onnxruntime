@@ -88,6 +88,9 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // valid bias_shapes are (N) or (1, N) or (M, 1) or (M, N) as
     // GEMM only supports unidirectional broadcast on the bias input C
+    if (!gemm_input_defs.back()->Shape()) {
+        continue;
+    }
     const auto& bias_shape = *gemm_input_defs.back()->Shape();
     const auto& M = matmul_output.Shape()->dim()[0];
     const auto& N = matmul_output.Shape()->dim()[1];

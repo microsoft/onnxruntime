@@ -2,14 +2,14 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Text;
 using System.Runtime.InteropServices;
-using System.IO;
+using System.Text;
 
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// TODO Add documentation about which optimizations are enabled for each value.
+    /// Graph optimization level to use with SessionOptions
+    ///  [https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md]
     /// </summary>
     public enum GraphOptimizationLevel
     {
@@ -36,7 +36,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public class SessionOptions : SafeHandle
     {
-        // Delayloaded CUDA or cuDNN DLLs. Currently, delayload is disabled. See cmake/CMakeLists.txt for more information.
+        // Delay-loaded CUDA or cuDNN DLLs. Currently, delayload is disabled. See cmake/CMakeLists.txt for more information.
         private static string[] cudaDelayLoadedLibs = { };
 
         #region Constructor and Factory methods
@@ -84,13 +84,23 @@ namespace Microsoft.ML.OnnxRuntime
         public static SessionOptions MakeSessionOptionWithNupharProvider(String settings = "")
         {
             SessionOptions options = new SessionOptions();
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options.Handle, 1, settings));
+
+            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options.Handle, 1, pinnedSettingsName.Pointer));
+            }
+
             return options;
         }
 
         #endregion
 
         #region ExecutionProviderAppends
+        /// <summary>
+        /// Appends CPU EP to a list of available execution providers for the session.
+        /// </summary>
+        /// <param name="useArena">1 - use arena, 0 - do not use arena</param>
         public void AppendExecutionProvider_CPU(int useArena)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(handle, useArena));
@@ -99,6 +109,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
+        /// <param name="useArena">1 - use allocation arena, 0 - otherwise</param>
         public void AppendExecutionProvider_Dnnl(int useArena)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(handle, useArena));
@@ -107,6 +118,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
+        /// <param name="deviceId">integer device ID</param>
         public void AppendExecutionProvider_CUDA(int deviceId)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(handle, deviceId));
@@ -115,30 +127,30 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
+        /// <param name="deviceId">device identification</param>
         public void AppendExecutionProvider_DML(int deviceId)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_DML(handle, deviceId));
         }
 
-        /// <summary>
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        public void AppendExecutionProvider_NGraph(string nGraphBackendType)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_NGraph(handle, nGraphBackendType));
-        }
 
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
+        /// <param name="deviceId">device identification, default empty string</param>
         public void AppendExecutionProvider_OpenVINO(string deviceId = "")
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, deviceId));
+            var deviceIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(deviceId), GCHandleType.Pinned);
+            using (var pinnedDeviceIdName = new PinnedGCHandle(deviceIdPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, pinnedDeviceIdName.Pointer));
+            }
         }
 
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
+        /// <param name="deviceId">device identification</param>
         public void AppendExecutionProvider_Tensorrt(int deviceId)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(handle, deviceId));
@@ -147,6 +159,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
+        /// <param name="deviceId">device identification</param>
         public void AppendExecutionProvider_MIGraphX(int deviceId)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_MIGraphX(handle, deviceId));
@@ -155,25 +168,65 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        public void AppendExecutionProvider_Nnapi()
+        /// <param name="nnapi_flags">nnapi specific flag mask</param>
+        public void AppendExecutionProvider_Nnapi(uint nnapi_flags)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle, nnapi_flags));
         }
 
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
+        /// <param name="settings">string with Nuphar specific settings</param>
         public void AppendExecutionProvider_Nuphar(string settings = "")
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, settings));
+            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, pinnedSettingsName.Pointer));
+            }
         }
         #endregion //ExecutionProviderAppends
 
         #region Public Methods
+
+        /// <summary>
+        /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
+        /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+        /// It then passes in the provided session options to this function along with the api base.
+        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle 
+        /// to release when all sessions relying on it are destroyed
+        /// </summary>
+        /// <param name="libraryPath">path to the custom op library</param>
+        [ObsoleteAttribute("RegisterCustomOpLibrary(...) is obsolete. Use RegisterCustomOpLibraryV2(...) instead.", false)]
         public void RegisterCustomOpLibrary(string libraryPath)
         {
             IntPtr libraryHandle = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, libraryPath, out libraryHandle));
+            var libraryPathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath), GCHandleType.Pinned);
+            using (var pinnedlibraryPath = new PinnedGCHandle(libraryPathPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, pinnedlibraryPath.Pointer, out libraryHandle));
+            }
+        }
+
+        /// <summary>
+        /// Loads a DLL named 'libraryPath' and looks for this entry point:
+        /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+        /// It then passes in the provided session options to this function along with the api base.
+        /// The handle to the loaded library is returned in 'libraryHandle'.
+        /// It can be unloaded by the caller after all sessions using the passed in
+        /// session options are destroyed, or if an error occurs and it is non null.
+        /// Hint: .NET Core 3.1 has a 'NativeLibrary' class that can be used to free the library handle
+        /// </summary>
+        /// <param name="libraryPath">Custom op library path</param>
+        /// <param name="libraryHandle">out parameter, library handle</param>
+        public void RegisterCustomOpLibraryV2(string libraryPath, out IntPtr libraryHandle)
+        {
+            var libraryPathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath), GCHandleType.Pinned);
+            using (var pinnedlibraryPath = new PinnedGCHandle(libraryPathPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, pinnedlibraryPath.Pointer, out libraryHandle));
+            }
         }
 
         /// <summary>
@@ -181,19 +234,63 @@ namespace Microsoft.ML.OnnxRuntime
         /// that is same as the name passed to this API call, ORT will use this initializer instance
         /// instead of deserializing one from the model file. This is useful when you want to share
         /// the same initializer across sessions.
-        /// \param name name of the initializer
-        /// \param val OrtValue containing the initializer. Lifetime of 'val' and the underlying initializer buffer must be
-        /// managed by the user (created using the CreateTensorWithDataAsOrtValue API) and it must outlive the session object
-        /// to which it is added.
         /// </summary>
-        public void AddInitializer(string name, OrtValue ort_value)
+        /// <param name="name">name of the initializer</param>
+        /// <param name="ortValue">OrtValue containing the initializer. Lifetime of 'val' and the underlying initializer buffer must be
+        /// managed by the user (created using the CreateTensorWithDataAsOrtValue API) and it must outlive the session object</param>
+        public void AddInitializer(string name, OrtValue ortValue)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, name, ort_value.Handle));
+            var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
+            using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddInitializer(handle, pinnedName.Pointer, ortValue.Handle));
+            }
         }
 
+        /// <summary>
+        /// Set a single session configuration entry as a pair of strings
+        /// If a configuration with same key exists, this will overwrite the configuration with the given configValue
+        /// </summary>
+        /// <param name="configKey">config key name</param>
+        /// <param name="configValue">config key value</param>
         public void AddSessionConfigEntry(string configKey, string configValue)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle, configKey, configValue));
+            using (var pinnedConfigKeyName = new PinnedGCHandle(GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configKey), GCHandleType.Pinned)))
+            using (var pinnedConfigValueName = new PinnedGCHandle(GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(configValue), GCHandleType.Pinned)))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddSessionConfigEntry(handle,
+                                              pinnedConfigKeyName.Pointer, pinnedConfigValueName.Pointer));
+            }
+        }
+
+        /// <summary>
+        /// Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable
+        /// optimizations that can take advantage of fixed values (such as memory planning, etc)
+        /// </summary>
+        /// <param name="dimDenotation">denotation name</param>
+        /// <param name="dimValue">denotation value</param>
+        public void AddFreeDimensionOverride(string dimDenotation, long dimValue)
+        {
+            var utf8DimDenotationPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimDenotation), GCHandleType.Pinned);
+            using (var pinnedDimDenotation = new PinnedGCHandle(utf8DimDenotationPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverride(handle, pinnedDimDenotation.Pointer, dimValue));
+            }
+        }
+
+        /// <summary>
+        /// Override symbolic dimensions (by specific name strings) with actual values if known at session initialization time to enable
+        /// optimizations that can take advantage of fixed values (such as memory planning, etc)
+        /// </summary>
+        /// <param name="dimName">dimension name</param>
+        /// <param name="dimValue">dimension value</param>
+        public void AddFreeDimensionOverrideByName(string dimName, long dimValue)
+        {
+            var utf8DimNamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(dimName), GCHandleType.Pinned);
+            using (var pinnedDimName = new PinnedGCHandle(utf8DimNamePinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, pinnedDimName.Pointer, dimValue));
+            }
         }
         #endregion
 
@@ -206,11 +303,16 @@ namespace Microsoft.ML.OnnxRuntime
         }
         #region Public Properties
 
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
         /// Enables the use of the memory allocation patterns in the first Run() call for subsequent runs. Default = true.
         /// </summary>
+        /// <value>returns enableMemoryPattern flag value</value>
         public bool EnableMemoryPattern
         {
             get
@@ -246,6 +348,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Enables profiling of InferenceSession.Run() calls. Default is false
         /// </summary>
+        /// <value>returns _enableProfiling flag value</value>
         public bool EnableProfiling
         {
             get
@@ -271,6 +374,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         ///  Set filepath to save optimized model after graph level transformations. Default is empty, which implies saving is disabled.
         /// </summary>
+        /// <value>returns _optimizedModelFilePath flag value</value>
         public string OptimizedModelFilePath
         {
             get
@@ -293,6 +397,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Enables Arena allocator for the CPU memory allocations. Default is true.
         /// </summary>
+        /// <value>returns _enableCpuMemArena flag value</value>
         public bool EnableCpuMemArena
         {
             get
@@ -318,8 +423,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Log Id to be used for the session. Default is empty string.
-        /// TODO: Should it be named LogTag as in RunOptions?
         /// </summary>
+        /// <value>returns _logId value</value>
         public string LogId
         {
             get
@@ -329,7 +434,12 @@ namespace Microsoft.ML.OnnxRuntime
 
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(handle, value));
+                var logIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(value), GCHandleType.Pinned);
+                using (var pinnedlogIdName = new PinnedGCHandle(logIdPinned))
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(handle, pinnedlogIdName.Pointer));
+                }
+
                 _logId = value;
             }
         }
@@ -338,6 +448,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Log Severity Level for the session logs. Default = ORT_LOGGING_LEVEL_WARNING
         /// </summary>
+        /// <value>returns _logSeverityLevel value</value>
         public OrtLoggingLevel LogSeverityLevel
         {
             get
@@ -356,6 +467,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Log Verbosity Level for the session logs. Default = 0. Valid values are >=0.
         /// This takes into effect only when the LogSeverityLevel is set to ORT_LOGGING_LEVEL_VERBOSE.
         /// </summary>
+        /// <value>returns _logVerbosityLevel value</value>
         public int LogVerbosityLevel
         {
             get
@@ -375,6 +487,7 @@ namespace Microsoft.ML.OnnxRuntime
         // Sets the number of threads used to parallelize the execution within nodes
         // A value of 0 means ORT will pick a default
         /// </summary>
+        /// <value>returns _intraOpNumThreads value</value>
         public int IntraOpNumThreads
         {
             get
@@ -394,6 +507,7 @@ namespace Microsoft.ML.OnnxRuntime
         // If sequential execution is enabled this value is ignored
         // A value of 0 means ORT will pick a default
         /// </summary>
+        /// <value>returns _interOpNumThreads value</value>
         public int InterOpNumThreads
         {
             get
@@ -411,6 +525,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Sets the graph optimization level for the session. Default is set to ORT_ENABLE_ALL.
         /// </summary>
+        /// <value>returns _graphOptimizationLevel value</value>
         public GraphOptimizationLevel GraphOptimizationLevel
         {
             get
@@ -429,6 +544,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Sets the execution mode for the session. Default is set to ORT_SEQUENTIAL.
         /// See [ONNX_Runtime_Perf_Tuning.md] for more details.
         /// </summary>
+        /// <value>returns _executionMode value</value>
         public ExecutionMode ExecutionMode
         {
             get
@@ -478,7 +594,11 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
         #region SafeHandle
-
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of SessionOptions
+        /// </summary>
+        /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
             NativeMethods.OrtReleaseSessionOptions(handle);

@@ -15,6 +15,10 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
                                        const std::string& domain = kOnnxDomainAlias);
+bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                       const char* op_type,
+                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
+                                       const char* domain = kOnnxDomainAlias);
 
 /** Checks if the node has the same operator since version as the given one. */
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions);
@@ -92,9 +96,9 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 }
 
 /** Find the first child of the specified op type. */
-const Node* FirstChildByType(Node& node, const std::string& child_type);
+const Node* FirstChildByType(const Node& node, const std::string& child_type);
 /** Find the first parent of the specified op type. */
-const Node* FirstParentByType(Node& node, const std::string& parent_type);
+const Node* FirstParentByType(const Node& node, const std::string& parent_type);
 
 /** Tests if we can remove a node and merge its input edge (if any) with its output edges.
 Conditions:
@@ -143,6 +147,9 @@ bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement);
 /** Removes all output edges from the given Node of the Graph.
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
+
+/** Removes output edges from the specific output_idx for the given Node of the Graph. */
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx);
 
 /** Replaces the input to nodes that are downstream from 'node', which was being provided by an output of 'node',
     with an output from a different node. Moves the output edges from 'node' for 'output_idx' to the replacement node.

@@ -33,6 +33,7 @@
 
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
+#include "core/common/make_string.h"
 #include "core/common/make_unique.h"
 #include "core/common/status.h"
 
@@ -192,19 +193,16 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
                                 ::onnxruntime::MakeString(__VA_ARGS__))
 
 // Check condition. if met, return status.
-#define ORT_RETURN_IF(condition, ...)                                                     \
-  if (condition) {                                                                        \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,                                             \
-                           "Satisfied, but should not be: " #condition "\n",              \
-                           ORT_WHERE.ToString(), ::onnxruntime::MakeString(__VA_ARGS__)); \
+#define ORT_RETURN_IF(condition, ...)                                                                        \
+  if (condition) {                                                                                           \
+    return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,                                 \
+                                         ::onnxruntime::common::FAIL,                                        \
+                                         ::onnxruntime::MakeString(ORT_WHERE.ToString(), " ", __VA_ARGS__)); \
   }
 
 // Check condition. if not met, return status.
-#define ORT_RETURN_IF_NOT(condition, ...)                                                 \
-  if (!(condition)) {                                                                     \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not satisfied: " #condition "\n",          \
-                           ORT_WHERE.ToString(), ::onnxruntime::MakeString(__VA_ARGS__)); \
-  }
+#define ORT_RETURN_IF_NOT(condition, ...) \
+  ORT_RETURN_IF(!(condition), __VA_ARGS__)
 
 // Macros to disable the copy and/or move ctor and assignment methods
 // These are usually placed in the private: declarations for a class.
@@ -260,36 +258,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #else
 #define GSL_SUPPRESS(tag)
 #endif
-
-inline void MakeStringInternal(std::ostringstream& /*ss*/) noexcept {
-}
-
-template <typename T>
-inline void MakeStringInternal(std::ostringstream& ss, const T& t) noexcept {
-  ss << t;
-}
-
-template <typename T, typename... Args>
-inline void MakeStringInternal(std::ostringstream& ss, const T& t, const Args&... args) noexcept {
-  ::onnxruntime::MakeStringInternal(ss, t);
-  ::onnxruntime::MakeStringInternal(ss, args...);
-}
-
-template <typename... Args>
-std::string MakeString(const Args&... args) {
-  std::ostringstream ss;
-  ::onnxruntime::MakeStringInternal(ss, args...);
-  return std::string(ss.str());
-}
-
-// Specializations for already-a-string types.
-template <>
-inline std::string MakeString(const std::string& str) {
-  return str;
-}
-inline std::string MakeString(const char* p_str) {
-  return p_str;
-}
 
 inline long long TimeDiffMicroSeconds(TimePoint start_time) {
   auto end_time = std::chrono::high_resolution_clock::now();

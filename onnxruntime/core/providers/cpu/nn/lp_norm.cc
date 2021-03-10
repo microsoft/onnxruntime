@@ -6,26 +6,34 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-ONNX_CPU_OPERATOR_KERNEL(
-    LpNormalization,
-    1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    LpNorm<float>);
+#define REGISTER_LPNORMALISATION_KERNEL(type, sinceVersion)                        \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+      LpNormalization, sinceVersion, type,                                         \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+      LpNorm<type>);
+
+REGISTER_LPNORMALISATION_KERNEL(float, 1)
+REGISTER_LPNORMALISATION_KERNEL(double, 1)
 
 using InnerStride = Eigen::InnerStride<Eigen::Dynamic>;
-using StridedVec = Eigen::Map<Eigen::Matrix<float, 1, Eigen::Dynamic>, 0, InnerStride>;
-using ConstStridedVec = Eigen::Map<const Eigen::Matrix<float, 1, Eigen::Dynamic>, 0, InnerStride>;
 
+template <typename T>
+using StridedVec = Eigen::Map<Eigen::Matrix<T, 1, Eigen::Dynamic>, 0, InnerStride>;
+
+template <typename T>
+using ConstStridedVec = Eigen::Map<const Eigen::Matrix<T, 1, Eigen::Dynamic>, 0, InnerStride>;
+
+template <typename T>
 void DoNormalizeP2(
-    const float* xData,
-    float* yData,
+    const T* xData,
+    T* yData,
     const int64_t m,
     const int64_t n,
     const int64_t sf) {
   for (int i = 0; i < n; ++i) {
     auto base = (i / sf) * sf * m + (i % sf);
-    ConstStridedVec xVec(xData + base, 1, m, InnerStride(sf));
-    StridedVec yVec(yData + base, 1, m, InnerStride(sf));
+    ConstStridedVec<T> xVec(xData + base, 1, m, InnerStride(sf));
+    StridedVec<T> yVec(yData + base, 1, m, InnerStride(sf));
 
     auto norm = xVec.template lpNorm<2>();
     if (norm != 0) {
@@ -37,16 +45,17 @@ void DoNormalizeP2(
   }
 };
 
+template <typename T>
 void DoNormalizeP1(
-    const float* xData,
-    float* yData,
+    const T* xData,
+    T* yData,
     const int64_t m,
     const int64_t n,
     const int64_t sf) {
   for (int i = 0; i < n; ++i) {
     auto base = (i / sf) * sf * m + (i % sf);
-    ConstStridedVec xVec(xData + base, 1, m, InnerStride(sf));
-    StridedVec yVec(yData + base, 1, m, InnerStride(sf));
+    ConstStridedVec<T> xVec(xData + base, 1, m, InnerStride(sf));
+    StridedVec<T> yVec(yData + base, 1, m, InnerStride(sf));
 
     auto norm = xVec.template lpNorm<1>();
     if (norm != 0) {
@@ -58,8 +67,8 @@ void DoNormalizeP1(
   }
 };
 
-template <>
-Status LpNorm<float>::Compute(OpKernelContext* p_op_kernel_context) const {
+template <typename T>
+Status LpNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* input = p_op_kernel_context->Input<Tensor>(0);
   const TensorShape& input_shape = input->Shape();
   Tensor* output = p_op_kernel_context->Output(0, input_shape);
@@ -70,9 +79,9 @@ Status LpNorm<float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const int64_t sf = input_shape.SizeFromDimension(canonical_axis + 1);
 
   if (p_ == 1) {
-    DoNormalizeP1(input->template Data<float>(), output->template MutableData<float>(), m, n, sf);
+    DoNormalizeP1(input->template Data<T>(), output->template MutableData<T>(), m, n, sf);
   } else if (p_ == 2) {
-    DoNormalizeP2(input->template Data<float>(), output->template MutableData<float>(), m, n, sf);
+    DoNormalizeP2(input->template Data<T>(), output->template MutableData<T>(), m, n, sf);
   }
 
   return Status::OK();

@@ -2,48 +2,100 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+
+#include "core/common/optional.h"
+#include "core/util/math.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/util/math.h"
+#include "test/util/include/test_random_seed.h"
 
 namespace onnxruntime {
 namespace test {
 
-const std::vector<MLFloat16> FloatToMLFloat16(const std::vector<float>& float_data) {
-  std::vector<MLFloat16> new_data;
-  for (const auto& f : float_data) {
-    new_data.push_back(MLFloat16(math::floatToHalf(f)));
-  }
-  return new_data;
-}
-
+namespace {
 template <typename T>
-void CalculateOutput(const int64_t stride, const int64_t num_input_before_gather_axis,
-                     const int64_t num_input_from_gather_axis, const std::vector<T>& grad, const std::vector<int64_t>& indices, std::vector<T>& output) {
-  std::map<int64_t, std::vector<T> > indices_grad;
-  for (int64_t t = 0; t < num_input_before_gather_axis; ++t) {
-    auto offset1 = t * num_input_from_gather_axis;
+std::vector<T> CalculateOutput(
+    int64_t axis,
+    const TensorShape& output_shape,
+    const std::vector<T>& grad,
+    const std::vector<int64_t>& indices) {
+  const int64_t num_batches = output_shape.SizeToDimension(axis);
+  const int64_t gather_dimension_size = output_shape[axis];
+  const int64_t num_gathered_per_index = output_shape.SizeFromDimension(axis + 1);
+  std::vector<T> output(output_shape.Size());
+  for (int64_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
+    const auto output_batch_offset =
+        batch_idx * gather_dimension_size * num_gathered_per_index;
+    const auto grad_batch_offset =
+        batch_idx * indices.size() * num_gathered_per_index;
     for (size_t i = 0; i < indices.size(); ++i) {
-      auto offset2 = (t * indices.size() + i) * stride;
-      auto index = offset1 + indices[i];
-      if (indices_grad.count(index)) {
-        for (int64_t j = 0; j < stride; ++j) {
-          indices_grad[index][j] += grad[offset2 + j];
-        }
-      } else {
-        for (int64_t j = 0; j < stride; ++j) {
-          indices_grad[index].push_back(grad[offset2 + j]);
-        }
+      const auto grad_row_offset =
+          grad_batch_offset + i * num_gathered_per_index;
+      const auto output_row_offset =
+          output_batch_offset + indices[i] * num_gathered_per_index;
+      for (int64_t j = 0; j < num_gathered_per_index; ++j) {
+        output[output_row_offset + j] += grad[grad_row_offset + j];
       }
     }
   }
-  for (auto& itr : indices_grad) {
-    for (int64_t i = 0; i < stride; ++i) {
-      output[itr.first * stride + i] = itr.second[i];
-    }
-  }
+  return output;
 }
+
+template <typename T>
+void ConfigureGatherGradRandomDataOpTester(
+    int64_t axis,
+    const TensorShape& X_shape,
+    const TensorShape& indices_shape,
+    optional<RandomValueGenerator::RandomSeedType> random_seed,
+    OpTester& test) {
+  ASSERT_LE(0, axis);
+  ASSERT_LT(static_cast<size_t>(axis), X_shape.NumDimensions());
+
+  const TensorShape dY_shape = [&]() {
+    std::vector<int64_t> dY_dims = X_shape.GetDims();
+    auto it = dY_dims.erase(dY_dims.begin() + axis);
+    dY_dims.insert(
+        it, indices_shape.GetDims().begin(), indices_shape.GetDims().end());
+    return TensorShape(dY_dims);
+  }();
+
+  RandomValueGenerator random{random_seed};
+  const auto grad = random.Uniform<T>(dY_shape.GetDims(), T{1}, T{10});
+  const auto indices = random.Uniform<int64_t>(indices_shape.GetDims(), 0, X_shape[axis]);
+  const auto output = CalculateOutput(axis, X_shape, grad, indices);
+
+  test.AddAttribute<int64_t>("axis", axis);
+  test.AddInput<int64_t>(
+      "shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.GetDims());
+  test.AddInput<int64_t>("indices", indices_shape.GetDims(), indices);
+  test.AddInput<T>("grad", dY_shape.GetDims(), grad);
+  test.AddOutput<T>("output", X_shape.GetDims(), output);
+}
+
+template <typename T>
+void ConfigureGatherGradRandomDataOpTester(
+    int64_t axis,
+    const TensorShape& X_shape,
+    const TensorShape& indices_shape,
+    OpTester& test) {
+  ConfigureGatherGradRandomDataOpTester<T>(axis, X_shape, indices_shape, {}, test);
+}
+
+template <typename T>
+void RunGatherGradTestWithRandomData(
+    int64_t axis,
+    const TensorShape& X_shape,
+    const TensorShape& indices_shape,
+    optional<float> absolute_error = {}) {
+  OpTester test("GatherGrad", 1, kMSDomain);
+  ConfigureGatherGradRandomDataOpTester<T>(axis, X_shape, indices_shape, test);
+  if (absolute_error.has_value()) {
+    test.SetOutputAbsErr("output", absolute_error.value());
+  }
+  test.Run();
+}
+}  // namespace
 
 #ifdef USE_CUDA
 //TODO: Currently this cannot pass CI, due to GPU architecture problem
@@ -55,15 +107,15 @@ TEST(GatherOpTest, Gather_axis0_indices2d_half) {
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<MLFloat16>("data", {3, 3},
-                           FloatToMLFloat16({0.0f, 0.1f, 0.2f,
-                                             1.0f, 1.1f, 1.2f,
-                                             2.0f, 2.1f, 2.2f}));
+                           FloatsToMLFloat16s({0.0f, 0.1f, 0.2f,
+                                               1.0f, 1.1f, 1.2f,
+                                               2.0f, 2.1f, 2.2f}));
   test.AddInput<int64_t>("indices", {2LL, 2LL},
                          {1LL, 0LL,
                           2LL, 1LL});
   test.AddOutput<MLFloat16>("output", {2, 2, 3},
-                            FloatToMLFloat16({1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
-                                              2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f}));
+                            FloatsToMLFloat16s({1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
+                                                2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f}));
   test.Run();
 }
 
@@ -81,9 +133,9 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_half) {
                           0LL, 1LL});
 
   test.AddInput<MLFloat16>("grad", {2, 2, 3},
-                           FloatToMLFloat16({0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}));
+                           FloatsToMLFloat16s({0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}));
   test.AddOutput<MLFloat16>("output", {3, 3},
-                            FloatToMLFloat16({0, 2, 4, 6, 8, 10, 0, 0, 0}));
+                            FloatsToMLFloat16s({0, 2, 4, 6, 8, 10, 0, 0, 0}));
   test.Run();
 }
 #endif
@@ -105,58 +157,67 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_float) {
 }
 
 TEST(GatherGradOpTest, Gather_axis1_float_impl2) {
-  OpTester test("GatherGrad", 1, kMSDomain);
-  int64_t axis_0 = 3;
-  int64_t axis_1 = 6;
-  int64_t axis_2 = 128;
-  int64_t output_shape = 4;
-  RandomValueGenerator random{};
-  std::vector<float> grad(random.Uniform<float>({axis_0 * axis_1 * axis_2}, 1.0f, 1.0f));
-  std::vector<int64_t> indices(random.Uniform<int64_t>({axis_1 * axis_2}, 0, 3));
-
-  std::vector<int64_t> shape{axis_0, output_shape};
-  std::vector<float> output(axis_0 * output_shape);
-
-  CalculateOutput(1, axis_0, 4, grad, indices, output);
-
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<int64_t>("shape", {2},
-                         shape);
-  test.AddInput<int64_t>("indices", {axis_1, axis_2},
-                         indices);
-  test.AddInput<float>("grad", {axis_0, axis_1, axis_2},
-                       grad);
-  test.AddOutput<float>("output", shape,
-                        output);
-  test.Run();
+  RunGatherGradTestWithRandomData<float>(1, {3, 4}, {6, 128});
 }
 
 TEST(GatherGradOpTest, Gather_axis0_float_impl2) {
-  OpTester test("GatherGrad", 1, kMSDomain);
-  int64_t axis_0 = 3;
-  int64_t axis_1 = 6;
-  int64_t axis_2 = 128;
-  int64_t output_shape = 4;
-  RandomValueGenerator random{};
-  std::vector<float> grad(random.Uniform<float>({axis_1 * axis_2 * output_shape}, 1.0f, 1.0f));
-  std::vector<int64_t> indices(random.Uniform<int64_t>({axis_1 * axis_2}, 0, 3));
-
-  std::vector<int64_t> shape{axis_0, output_shape};
-  std::vector<float> output(axis_0 * output_shape);
-
-  CalculateOutput(output_shape, 1, 12, grad, indices, output);
-
-  test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<int64_t>("shape", {2},
-                         shape);
-  test.AddInput<int64_t>("indices", {axis_1, axis_2},
-                         indices);
-  test.AddInput<float>("grad", {axis_1, axis_2, output_shape},
-                       grad);
-  test.AddOutput<float>("output", shape,
-                        output);
-  test.Run();
+  RunGatherGradTestWithRandomData<float>(0, {3, 4}, {6, 128});
 }
+
+TEST(GatherGradOpTest, GatherFewDistinctIndices) {
+  // account for error from adding longer sequences of floats in different orders
+  optional<float> absolute_error{5e-3f};
+  RunGatherGradTestWithRandomData<float>(0, {2, 32}, {6, 128}, absolute_error);
+}
+
+#ifdef USE_CUDA
+namespace {
+void RunGatherGradConsistentOutputTest(
+    int64_t axis,
+    const TensorShape& X_shape,
+    const TensorShape& indices_shape) {
+  const auto random_seed = static_cast<RandomValueGenerator::RandomSeedType>(GetTestRandomSeed());
+  std::map<std::string, std::vector<std::vector<float>>> provider_outputs;
+  for (int i = 0; i < 2; ++i) {
+    OpTester test("GatherGrad", 1, kMSDomain);
+    ConfigureGatherGradRandomDataOpTester<float>(axis, X_shape, indices_shape, random_seed, test);
+
+    auto output_handler =
+        [&provider_outputs](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+          ASSERT_EQ(fetches.size(), 1);
+          const Tensor& output_tensor = FetchTensor(fetches[0]);
+          const auto output_size = output_tensor.Shape().Size();
+          std::vector<float> output;
+          output.reserve(output_size);
+          std::copy_n(output_tensor.Data<float>(), output_size, std::back_inserter(output));
+          provider_outputs[provider_type].emplace_back(std::move(output));
+        };
+
+    test.SetCustomOutputVerifier(output_handler);
+
+    // current CPU implementation is non-deterministic
+    const std::unordered_set<std::string> excluded_providers{kCpuExecutionProvider};
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+  }
+
+  for (const auto& kvp : provider_outputs) {
+    SCOPED_TRACE(kvp.first);
+    const auto& outputs = kvp.second;
+    ASSERT_EQ(outputs.size(), 2);
+    ASSERT_EQ(outputs[0], outputs[1]);
+  }
+}
+}  // namespace
+
+TEST(GatherGradOpTest, ConsistentOutput) {
+  RunGatherGradConsistentOutputTest(0, {256 * 1024}, {1024 * 1024});
+}
+
+TEST(GatherGradOpTest, ConsistentOutputFewDistinctIndices) {
+  RunGatherGradConsistentOutputTest(0, {2}, {1024 * 1024});
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

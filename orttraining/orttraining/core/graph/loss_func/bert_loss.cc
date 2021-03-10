@@ -4,6 +4,7 @@
 #include <vector>
 #include "orttraining/core/graph/loss_func/bert_loss.h"
 #include "onnx/defs/attr_proto_util.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -74,14 +75,34 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                                                  ONNX_NAMESPACE::TensorProto_DataType_INT64,
                                                                  graph_defs);
 
-    new_nodes.emplace_back(NodeDef("Unsqueeze",
-                                   {ArgDef(masked_lm_positions, masked_lm_int64_type_proto)},
-                                   {ArgDef("masked_lm_positions_unsqueezed")},
-                                   {ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(2)})},
-                                   "Mask_LM_Positions_Unsqueezed"));
+    int onnx_opset_version = -1;
+    if (graph.DomainToVersionMap().find(kOnnxDomain) != graph.DomainToVersionMap().end()) {
+      onnx_opset_version = graph.DomainToVersionMap().at(kOnnxDomain);
+    }
+
+    if (onnx_opset_version < 13) {
+      new_nodes.emplace_back(NodeDef("Unsqueeze",
+                                     {ArgDef(masked_lm_positions, masked_lm_int64_type_proto)},
+                                     {ArgDef("masked_lm_positions_unsqueezed")},
+                                     {ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(2)})},
+                                     "Mask_LM_Positions_Unsqueezed"));
+    } else {
+      auto t_proto = ONNX_NAMESPACE::ToTensor<int64_t>(std::vector<int64_t>{static_cast<int64_t>(2)});
+      t_proto.add_dims(1);
+      new_nodes.emplace_back(NodeDef("Constant",
+                                     {},
+                                     {ArgDef("Mask_LM_Positions_Axes")},
+                                     {ONNX_NAMESPACE::MakeAttribute("value", t_proto)},
+                                     "Mask_LM_Positions_Axes_Constant"));
+      new_nodes.emplace_back(NodeDef("Unsqueeze",
+                                     {ArgDef(masked_lm_positions, masked_lm_int64_type_proto), ArgDef("Mask_LM_Positions_Axes")},
+                                     {ArgDef("masked_lm_positions_unsqueezed")},
+                                     NodeAttributes(),
+                                     "Mask_LM_Positions_Unsqueezed"));
+    }
     TypeProto* gathered_prediction_type_proto = GetGatheredPredictionTypeProto(prediction_arg,
                                                                                graph_defs);
-    new_nodes.emplace_back(NodeDef(OpDef{"GatherND", kOnnxDomain, 12},
+    new_nodes.emplace_back(NodeDef(OpDef{"GatherND", kOnnxDomain, onnx_opset_version != -1 ? onnx_opset_version : 12},
                                    {ArgDef(prediction_masked_lm), ArgDef("masked_lm_positions_unsqueezed")},
                                    {ArgDef("gathered_prediction", gathered_prediction_type_proto)},
                                    {ONNX_NAMESPACE::MakeAttribute("batch_dims", static_cast<int64_t>(1))},

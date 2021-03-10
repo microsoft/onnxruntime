@@ -9,6 +9,7 @@
 #include <mlas.h>
 
 using namespace onnxruntime;
+using namespace onnxruntime::concurrency;
 
 //naive implementation of Gelu
 static void BM_GeluSingleThreadPlainLoop(benchmark::State& state) {
@@ -72,7 +73,7 @@ static void BM_GeluParallelFor(benchmark::State& state) {
   std::unique_ptr<concurrency::ThreadPool> tp(
       concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP));
   for (auto _ : state) {
-    tp->ParallelFor(batch_size, cost, [data, output](ptrdiff_t first, ptrdiff_t last) {
+    ThreadPool::TryParallelFor(tp.get(), batch_size, cost, [data, output](ptrdiff_t first, ptrdiff_t last) {
       ptrdiff_t len = last - first;
       float* output_ptr = output + first;
       onnxruntime::ConstEigenVectorArrayMap<float> xm(data + first, len);
@@ -138,7 +139,8 @@ static void BM_ScaledTanhParallelFor(benchmark::State& state) {
   const float alpha_ = 0.3f;
   const float beta_ = 0.6f;
   for (auto _ : state) {
-    tp->ParallelFor(batch_size, cost, [alpha_, beta_, data, output](ptrdiff_t first, ptrdiff_t last) {
+    ThreadPool::TryParallelFor(tp.get(), batch_size, cost,
+                            [alpha_, beta_, data, output](ptrdiff_t first, ptrdiff_t last) {
       ptrdiff_t len = last - first;
       float* output_ptr = output + first;
       onnxruntime::ConstEigenVectorArrayMap<float> xm(data + first, len);
@@ -207,7 +209,7 @@ static void BM_GeluBatchParallelFor(benchmark::State& state) {
       concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP));
   const int num_batches = 4;
   for (auto _ : state) {
-    tp->SimpleParallelFor(num_batches, [&](std::ptrdiff_t batch_index) {
+    ThreadPool::TrySimpleParallelFor(tp.get(), num_batches, [&](std::ptrdiff_t batch_index) {
       std::ptrdiff_t start, work_remaining;
       TestPartitionWork(batch_index, num_batches, batch_size, &start, &work_remaining);
       float* output_ptr = output + start;

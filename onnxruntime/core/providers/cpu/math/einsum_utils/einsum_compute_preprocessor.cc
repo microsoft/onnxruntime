@@ -369,13 +369,12 @@ Status EinsumComputePreprocessor::CalculateOutputShape() {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Found '.' not part of an ellipsis in the output subscript provided");
       }
 
-      if (!(subscript_label >= 'a' && subscript_label <= 'z')) {
+      auto letter_index = EinsumOp::LetterToIndex(subscript_label);
+      if (letter_index == -1) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The only subscript labels allowed in the output subscript "
-                               "are lowercase letters (a-z)");
+                              "The only subscript labels allowed are lower-cased letters (a-z) and "
+                              "upper-cased letters (A-Z)");
       }
-
-      auto letter_index = static_cast<int64_t>(subscript_label - 'a');
 
       if (output_letter_to_count[letter_index] != 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -441,7 +440,7 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
         preprocessed = device_diagonal_func_(preprocessed ? *preprocessed : *inputs_[input_iter],
                                              subscript_indices_to_input_index[subscript_index],
                                              dim_index_in_preprocessed_input,
-                                             allocator_);
+                                             allocator_, einsum_ep_assets_);
       }
       ++dim_index_in_original_input;
     }

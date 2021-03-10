@@ -1,25 +1,25 @@
 jobs:
 - job: Linux_Build
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
   workspace:
     clean: all
-  pool: Linux-GPU-CUDA10
+  pool: Onnxruntime-Linux-GPU
   steps:
   - checkout: self
     clean: true
     submodules: recursive
 
-  - task: Docker@2
-    displayName: login
-    inputs:
-      containerRegistry: onnxruntimeregistry
-      command: login
-      addPipelineData: false
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda10_2
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimegpubuild
   - task: CmdLine@2
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        docker run --gpus all --rm \
+        docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-g -O3" -e CXXFLAGS="-g -O3" --rm \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
@@ -28,25 +28,18 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecuda11build:ch5j \
+          onnxruntimegpubuild \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
-              --config Debug Release \
+              --config Release \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --use_openmp \
-              --enable_onnx_tests --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0 \
-              --use_mklml --enable_pybind --build_java --build_nodejs \
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so CMAKE_CUDA_ARCHITECTURES=52
+              --enable_onnx_tests --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2 \
+              --enable_pybind --build_java --build_nodejs \
+              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so CMAKE_CUDA_ARCHITECTURES=52
       workingDirectory: $(Build.SourcesDirectory)
-  - task: Docker@2
-    displayName: logout
-    inputs:
-      containerRegistry: onnxruntimeregistry
-      command: logout
-      addPipelineData: false
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:

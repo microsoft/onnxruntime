@@ -60,6 +60,26 @@ arm_compute::Status ACLImportMemory(arm_compute::TensorAllocator* allocator, voi
 }
 
 template <typename T>
+void importDataToTensor(arm_compute::Tensor* tensor, const T* data){
+
+  arm_compute::Window aclInpuWindow;
+  aclInpuWindow.use_tensor_dimensions(tensor->info()->tensor_shape());
+
+  arm_compute::Iterator aclInputIt(tensor, aclInpuWindow);
+  int index = 0;
+
+  // copy input tensor into the larger buffer
+  arm_compute::execute_window_loop(
+      aclInpuWindow,
+      [&](const arm_compute::Coordinates& co) {
+        *reinterpret_cast<float*>(aclInputIt.ptr()) = data[index];
+        index++;
+      },
+      aclInputIt);
+}
+template void importDataToTensor<float>(arm_compute::Tensor*, const float*);
+
+template <typename T>
 void importDataFromTensor(arm_compute::Tensor* tensor, T* data){
 
   arm_compute::Window aclInpuWindow;

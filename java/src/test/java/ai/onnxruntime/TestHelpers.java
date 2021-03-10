@@ -166,6 +166,7 @@ class TestHelpers {
     }
   }
 
+  @SuppressWarnings("unchecked")
   static void flattenBase(Object input, List output, Class<?> primitiveClass) {
     if (primitiveClass.equals(boolean.class)) {
       flattenBooleanBase((boolean[]) input, output);

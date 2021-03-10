@@ -246,14 +246,6 @@ void
 typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE;
 
 typedef
-void
-(MLASCALL MLAS_GEMM_U8X8_OPERATION)(
-    const struct MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
-    );
-
-typedef MLAS_GEMM_U8X8_OPERATION* PMLAS_GEMM_U8X8_OPERATION;
-
-typedef
 size_t
 (MLASCALL MLAS_GEMM_U8S8_KERNEL)(
     const uint8_t* A,
@@ -265,7 +257,7 @@ size_t
     size_t ldc,
     const int32_t* RowSumVector,
     const int32_t* ColumnSumVector,
-    int32_t DepthValue,
+    const int32_t* ZeroPointB,
     bool ZeroMode
     );
 
@@ -296,7 +288,7 @@ size_t
     size_t ldc,
     const int32_t* RowSumVector,
     const int32_t* ColumnSumVector,
-    int32_t DepthValue,
+    const int32_t* ZeroPointB,
     bool ZeroMode
     );
 
@@ -489,6 +481,47 @@ void
 
 typedef MLAS_QLINEAR_BINARY_OP_U8_KERNEL* PMLAS_QLINEAR_BINARY_OP_U8_KERNEL;
 
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_U8_KERNEL)(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    );
+
+typedef MLAS_QUANTIZE_LINEAR_U8_KERNEL* PMLAS_QUANTIZE_LINEAR_U8_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_S8_KERNEL)(
+    const float* Input,
+    int8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    );
+
+typedef MLAS_QUANTIZE_LINEAR_S8_KERNEL* PMLAS_QUANTIZE_LINEAR_S8_KERNEL;
+
+template<typename FilterType>
+struct MLAS_U8X8_KERNEL
+{
+    typedef
+    void
+    (MLASCALL DepthwiseKernel)(
+        const uint8_t* const* Input,
+        uint8_t InputZeroPoint,
+        const FilterType* Filter,
+        FilterType FilterZeroPoint,
+        int32_t* Output,
+        size_t Channels,
+        size_t OutputCount,
+        size_t KernelSize
+        );
+};
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -530,6 +563,8 @@ extern "C" {
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Core;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Vnni;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvxVnni;
+    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvxVnni;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Core;
 #endif
@@ -579,6 +614,8 @@ extern "C" {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32Kernel;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8Kernel;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8Kernel;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
@@ -591,6 +628,8 @@ extern "C" {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelAvx;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8KernelAvx2;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8KernelAvx2;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
 #endif
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
@@ -650,25 +689,48 @@ MlasSgemmOperation(
     );
 
 //
-// Quantized integer matrix/matrix multiply operation.
+// Quantized integer matrix/matrix dispatch structure.
 //
 
-struct MLAS_GEMM_U8X8_KERNEL_SSE;
-struct MLAS_GEMM_U8S8_KERNEL_AVX2;
-struct MLAS_GEMM_U8U8_KERNEL_AVX2;
+struct MLAS_GEMM_U8X8_DISPATCH;
 
-template<typename KernelType>
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
+
+//
+// Quantized depthwise convolution kernels.
+//
+
+template<typename FilterType>
 void
 MLASCALL
-MlasGemmU8X8Operation(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
+MlasConvDepthwiseKernel(
+    const uint8_t* const* Input,
+    uint8_t InputZeroPoint,
+    const FilterType* Filter,
+    FilterType FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
     );
 
-template<typename KernelType>
+template<typename FilterType>
 void
 MLASCALL
-MlasGemmU8X8PackedOperation(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
+MlasConvDepthwiseKernelAvx2(
+    const uint8_t* const* Input,
+    uint8_t InputZeroPoint,
+    const FilterType* Filter,
+    FilterType FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
     );
 
 //
@@ -688,12 +750,10 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
     PMLAS_GEMM_DOUBLE_KERNEL GemmDoubleKernel;
-    PMLAS_GEMM_U8X8_OPERATION GemmU8S8Operation;
-    PMLAS_GEMM_U8X8_OPERATION GemmU8S8PackedOperation;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
     PMLAS_GEMM_U8S8_KERNEL GemmU8S8Kernel;
     PMLAS_GEMV_U8S8_KERNEL GemvU8S8Kernel;
-    PMLAS_GEMM_U8X8_OPERATION GemmU8U8Operation;
-    PMLAS_GEMM_U8X8_OPERATION GemmU8U8PackedOperation;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
     PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
@@ -703,6 +763,8 @@ struct MLAS_PLATFORM {
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ErfKernelRoutine;
     PMLAS_QLINEAR_BINARY_OP_S8_KERNEL QLinearAddS8Kernel;
     PMLAS_QLINEAR_BINARY_OP_U8_KERNEL QLinearAddU8Kernel;
+    MLAS_U8X8_KERNEL<int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
+    MLAS_U8X8_KERNEL<uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ComputeExpF32Kernel;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL LogisticKernelRoutine;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL TanhKernelRoutine;
@@ -711,8 +773,17 @@ struct MLAS_PLATFORM {
     PMLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL ComputeLogSoftmaxOutputF32Kernel;
     PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL ReduceMaximumF32Kernel;
     PMLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL ReduceMinimumMaximumF32Kernel;
+    PMLAS_QUANTIZE_LINEAR_S8_KERNEL QuantizeLinearS8Kernel;
+    PMLAS_QUANTIZE_LINEAR_U8_KERNEL QuantizeLinearU8Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
+    uint32_t MaximumThreadCount;
+#else
+    static constexpr uint32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+#endif
+
+#if defined(MLAS_TARGET_ARM64)
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
 #endif
 };
 
@@ -778,6 +849,47 @@ MlasPartitionWork(
         *WorkIndex = WorkPerThread * ThreadId + WorkPerThreadExtra;
         *WorkRemaining = WorkPerThread;
     }
+}
+
+//
+// Define the minimum floating point value (and its bit value equivalent) that
+// has no fractional bits. This number can be used for fast rounding of floating
+// point numbers to integers.
+//
+
+#define MLAS_ROUNDING_BIAS_MAGIC                    12582912.f
+#define MLAS_ROUNDING_BIAS_MAGIC_BITS               0x4B400000
+
+//
+// Helpers to cast a floating point type to and from an integer bit format.
+//
+
+MLAS_FORCEINLINE
+uint32_t
+MlasBitsOfFp32(
+    float FloatValue
+    )
+{
+    union {
+        uint32_t IntegerValue;
+        float FloatValue;
+    } u;
+    u.FloatValue = FloatValue;
+    return u.IntegerValue;
+}
+
+MLAS_FORCEINLINE
+float
+MlasFp32FromBits(
+    uint32_t IntegerValue
+    )
+{
+    union {
+        uint32_t IntegerValue;
+        float FloatValue;
+    } u;
+    u.IntegerValue = IntegerValue;
+    return u.FloatValue;
 }
 
 //

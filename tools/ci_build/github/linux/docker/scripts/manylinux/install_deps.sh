@@ -38,7 +38,7 @@ function GetFile {
 if [ ! -d "/opt/python/cp35-cp35m" ]; then
   PYTHON_EXES=("/usr/bin/python3")
 else
-  PYTHON_EXES=("/opt/python/cp35-cp35m/bin/python3.5" "/opt/python/cp36-cp36m/bin/python3.6" "/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8")
+  PYTHON_EXES=("/opt/python/cp35-cp35m/bin/python3.5" "/opt/python/cp36-cp36m/bin/python3.6" "/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9")
 fi
 
 os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
@@ -100,8 +100,6 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
-  cd /tmp  
-  ${PYTHON_EXE} -m onnx.backend.test.cmd_tools generate-data -o /data/onnx/onnxtip
 done
 
 cd /tmp/src

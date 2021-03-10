@@ -11,24 +11,26 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-struct DnnlProviderFactory : Provider_IExecutionProviderFactory {
+void Shutdown_DeleteRegistry();
+
+struct DnnlProviderFactory : IExecutionProviderFactory {
   DnnlProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~DnnlProviderFactory() override {}
 
-  std::unique_ptr<Provider_IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   bool create_arena_;
 };
 
-std::unique_ptr<Provider_IExecutionProvider> DnnlProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
   DNNLExecutionProviderInfo info;
   info.create_arena = create_arena_;
   return onnxruntime::make_unique<DNNLExecutionProvider>(info);
 }
 
 struct Dnnl_Provider : Provider {
-  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int use_arena) override {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int use_arena) override {
 #if defined(_WIN32) && !defined(_OPENMP)
     {
       // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads
@@ -47,9 +49,10 @@ struct Dnnl_Provider : Provider {
     return std::make_shared<DnnlProviderFactory>(use_arena != 0);
   }
 
-  void SetProviderHost(ProviderHost& host) {
-    onnxruntime::SetProviderHost(host);
+  void Shutdown() override {
+    Shutdown_DeleteRegistry();
   }
+
 } g_provider;
 
 }  // namespace onnxruntime

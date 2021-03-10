@@ -3,6 +3,7 @@
 
 #include "core/providers/cuda/controlflow/loop.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_fwd.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -23,9 +24,24 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                   Loop);
 
 // zero variadic argument support was added in opset 11. using same implementation as for previous version
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
+                                  kOnnxDomain,
+                                  11, 12,
+                                  kCudaExecutionProvider,
+                                  KernelDefBuilder()
+                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'M' needs to be on CPU
+                                      .InputMemoryType<OrtMemTypeCPUInput>(1)  // 'cond' needs to be on CPU
+                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Loop);
+
+// sequence tensors were also supported in addition to existing support for tensors in opset-13,
+// but we do not support sequence tensors in the cuda Loop kernel because there are no ops that handle
+// sequence tensors on CUDA and supporting it for Loop doesn't add value while that is the case
 ONNX_OPERATOR_KERNEL_EX(Loop,
                         kOnnxDomain,
-                        11,
+                        13,
                         kCudaExecutionProvider,
                         KernelDefBuilder()
                             .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'M' needs to be on CPU
@@ -35,7 +51,7 @@ ONNX_OPERATOR_KERNEL_EX(Loop,
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Loop);
 
-static Status ConcatenateGpuOutput(std::vector<OrtValue>& per_iteration_output,
+static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iteration_output,
                                    void* output, ptrdiff_t output_size_in_bytes) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
@@ -52,8 +68,8 @@ static Status ConcatenateGpuOutput(std::vector<OrtValue>& per_iteration_output,
                              " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(cur_output, iteration_data.DataRaw(), bytes_per_iteration,
-                                    cudaMemcpyDeviceToDevice));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cur_output, iteration_data.DataRaw(), bytes_per_iteration,
+                                    cudaMemcpyDeviceToDevice, static_cast<cudaStream_t>(stream)));
 
     cur_output = static_cast<void*>((static_cast<gsl::byte*>(cur_output) + bytes_per_iteration));
   }
@@ -66,6 +82,7 @@ static Status ConcatenateGpuOutput(std::vector<OrtValue>& per_iteration_output,
 
 Loop::Loop(const OpKernelInfo& info) : onnxruntime::Loop(info) {
   SetConcatOutputFunc(ConcatenateGpuOutput);
+  SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
 }
 
 Status Loop::Compute(OpKernelContext* ctx) const {

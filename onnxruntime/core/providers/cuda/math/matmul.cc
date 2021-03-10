@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul.h"
+#include "core/providers/cuda/math/matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -41,6 +41,9 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+REGISTER_KERNEL_TYPED(BFloat16)
+#endif
 
 // StridedBatchedGemm can be used for the following GEMM computation
 // C[pnm] = A[pnk]*B[km] or C[pnm] = A[pnk]*B[pkm]

@@ -28,6 +28,10 @@ struct TypeToTensorType;
 template <>
 struct TypeToTensorType<float> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 template <>
+struct TypeToTensorType<Float16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
+template <>
+struct TypeToTensorType<BFloat16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16; };
+template <>
 struct TypeToTensorType<double> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE; };
 template <>
 struct TypeToTensorType<int8_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8; };
@@ -286,6 +290,10 @@ inline void IoBinding::ClearBoundOutputs() {
   GetApi().ClearBoundOutputs(p_);
 }
 
+inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
+  ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
+}
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -477,12 +485,20 @@ inline SessionOptions& SessionOptions::AddInitializer(const char* name, const Or
   return *this;
 }
 
- #ifdef USE_CUDA
-inline OrtStatus* SessionOptions::OrtSessionOptionsAppendExecutionProvider_CUDA(OrtSessionOptions * options, OrtCUDAProviderOptions * cuda_options) {
-    ThrowOnError(GetApi().OrtSessionOptionsAppendExecutionProvider_CUDA(options, cuda_options));
-    return nullptr;
+inline SessionOptions& SessionOptions::AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CUDA(p_, &provider_options));
+  return *this;
 }
-#endif
+
+inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_TensorRT(p_, &provider_options));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpenVINO(p_, &provider_options));
+  return *this;
+}
 
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
@@ -558,7 +574,7 @@ inline char* Session::EndProfiling(OrtAllocator* allocator) const {
 inline uint64_t Session::GetProfilingStartTimeNs() const {
   uint64_t out;
   ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(p_, &out));
-  return out;  
+  return out;
 }
 
 inline ModelMetadata Session::GetModelMetadata() const {
@@ -588,6 +604,12 @@ inline char* ModelMetadata::GetDomain(OrtAllocator* allocator) const {
 inline char* ModelMetadata::GetDescription(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetDescription(p_, allocator, &out));
+  return out;
+}
+
+inline char* ModelMetadata::GetGraphDescription(OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().ModelMetadataGetGraphDescription(p_, allocator, &out));
   return out;
 }
 
@@ -855,11 +877,11 @@ template <>
 inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   size_t size = 0;
   std::string out;
+
+  // Feed nullptr for the data buffer to query the true size of the string attribute
   OrtStatus* status = api_.KernelInfoGetAttribute_string(info, name, nullptr, &size);
 
-  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the string
-  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT) {
-    api_.ReleaseStatus(status);
+  if (status == nullptr) {
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
     out.resize(size - 1);  // remove the terminating character '\0'
@@ -869,6 +891,39 @@ inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const O
   return out;
 }
 
+template <>
+inline std::vector<float> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+  size_t size = 0;
+  std::vector<float> out;
+
+  // Feed nullptr for the data buffer to query the true size of the attribute
+  OrtStatus* status = api_.KernelInfoGetAttributeArray_float(info, name, nullptr, &size);
+
+  if (status == nullptr) {
+    out.resize(size);
+    ThrowOnError(api_.KernelInfoGetAttributeArray_float(info, name, out.data(), &size));
+  } else {
+    ThrowOnError(status);
+  }
+  return out;
+}
+
+template <>
+inline std::vector<int64_t> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+  size_t size = 0;
+  std::vector<int64_t> out;
+
+  // Feed nullptr for the data buffer to query the true size of the attribute
+  OrtStatus* status = api_.KernelInfoGetAttributeArray_int64(info, name, nullptr, &size);
+
+  if (status == nullptr) {
+    out.resize(size);
+    ThrowOnError(api_.KernelInfoGetAttributeArray_int64(info, name, out.data(), &size));
+  } else {
+    ThrowOnError(status);
+  }
+  return out;
+}
 inline OrtTensorTypeAndShapeInfo* CustomOpApi::GetTensorTypeAndShape(_In_ const OrtValue* value) {
   OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(api_.GetTensorTypeAndShape(value, &out));
@@ -941,7 +996,8 @@ inline size_t CustomOpApi::KernelContext_GetOutputCount(const OrtKernelContext* 
   return out;
 }
 
-inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
+inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index,
+                                                      _In_ const int64_t* dim_values, size_t dim_count) {
   OrtValue* out;
   ThrowOnError(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
   return out;

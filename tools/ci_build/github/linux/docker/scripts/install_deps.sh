@@ -2,13 +2,16 @@
 set -e -x
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
+INSTALL_DEPS_TRAINING=false
+INSTALL_DEPS_DISTRIBUTED_SETUP=false
 
-while getopts p:d:x: parameter_Option
+while getopts p:d:tm parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
-x) BUILD_EXTR_PAR=${OPTARG};;
+t) INSTALL_DEPS_TRAINING=true;;
+m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
 esac
 done
 
@@ -58,6 +61,8 @@ elif [[ "$PYTHON_VER" = "3.7" && -d "/opt/python/cp37-cp37m"  ]]; then
    PYTHON_EXE="/opt/python/cp37-cp37m/bin/python3.7"
 elif [[ "$PYTHON_VER" = "3.8" && -d "/opt/python/cp38-cp38"  ]]; then
    PYTHON_EXE="/opt/python/cp38-cp38/bin/python3.8"
+elif [[ "$PYTHON_VER" = "3.9" && -d "/opt/python/cp39-cp39"  ]]; then
+   PYTHON_EXE="/opt/python/cp39-cp39/bin/python3.9"
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi
@@ -110,13 +115,12 @@ export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
 if [ $DEVICE_TYPE = "gpu" ]; then
-    if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-      ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/requirements.txt}
-
-      if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* || $BUILD_EXTR_PAR = *enable_training_pipeline_e2e_tests* ]]; then
-        source ${0/%install_deps.sh/install_openmpi.sh}
-      fi
-    fi
+  if [[ $INSTALL_DEPS_TRAINING = true ]]; then
+    ${PYTHON_EXE} -m pip install -r ${0/%install_deps.sh/training\/requirements.txt}
+  fi
+  if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
+    source ${0/%install_deps.sh/install_openmpi.sh}
+  fi
 fi
 
 cd /

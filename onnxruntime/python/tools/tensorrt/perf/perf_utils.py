@@ -4,9 +4,29 @@ import pprint
 import logging
 import coloredlogs
 import re
+import sys
 
 debug = False
 debug_verbose = False 
+
+def get_output(command):
+    p = subprocess.run(command, check=True, stdout=subprocess.PIPE)
+    output = p.stdout.decode("ascii").strip()
+    return output
+
+def find(regex_string): 
+    import glob
+    results = glob.glob(regex_string)
+    results.sort()
+    return results
+
+def pretty_print(pp, json_object):
+    pp.pprint(json_object)
+    sys.stdout.flush()
+
+def get_latest_commit_hash():
+    commit = get_output(["git", "rev-parse", "--short", "HEAD"])
+    return commit
 
 def parse_single_file(f):
 
@@ -140,6 +160,15 @@ def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
 
     return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt)
 
+def get_total_ops(op_map):
+    total_ops = 0
+
+    for ep in ["CUDAExecutionProvider", "CPUExecutionProvider"]:
+        if ep in op_map:
+            total_ops += len(op_map[ep])
+
+    return total_ops
+
 
 ##########################################
 # Return: total TRT execution time,
@@ -179,14 +208,14 @@ def calculate_trt_latency_percentage(trt_op_map):
 
 
 
-def get_profile_metrics(path, profile_already_parsed):
-    print("Parsing/Analyzing profiling files in {} ...".format(path))
+def get_profile_metrics(path, profile_already_parsed, logger=None):
+    logger.info("Parsing/Analyzing profiling files in {} ...".format(path))
     p1 = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*", "-printf", "%T+\t%p\n"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
     profiling_files = stdout.split("\n")
-    print(profiling_files)
+    logger.info(profiling_files)
 
     data = []
     for profile in profiling_files:
@@ -195,14 +224,14 @@ def get_profile_metrics(path, profile_already_parsed):
             continue
         profile_already_parsed.add(profile)
 
-        print("start to parse {} ...".format(profile))
+        logger.info("start to parse {} ...".format(profile))
         with open(profile) as f:
             op_map = parse_single_file(f)
             if op_map:
                 data.append(op_map)
 
     if len(data) == 0:
-        print("No profile metrics got.")
+        logger.info("No profile metrics got.")
         return None
 
     return data[-1]

@@ -9,11 +9,31 @@
 namespace onnxruntime {
 namespace training {
 
+std::string ToString(const std::vector<Dimension>& dims) {
+  std::stringstream output;
+  output << "[";
+  if (!dims.empty()) {
+    for (auto& dim : dims) {
+      if (dim.has_dim_value()) {
+        output << dim.dim_value() << ",";
+      }
+      if (dim.has_dim_param()) {
+        output << dim.dim_param() << ",";
+      }
+    }
+    output.seekp(-1, output.cur);
+  }
+  output << "]";
+
+  return output.str();
+}
+
 void ComputeBroadcastBackwardAxes(
     const std::vector<Dimension>& A_dims,
     const std::vector<Dimension>& B_dims,
     std::vector<int64_t>* A_axes,
-    std::vector<int64_t>* B_axes) {
+    std::vector<int64_t>* B_axes,
+    const std::string& node_name) {
   if (A_axes) A_axes->clear();
   if (B_axes) B_axes->clear();
 
@@ -39,16 +59,16 @@ void ComputeBroadcastBackwardAxes(
       auto A_dim = A_dims[i].dim_param(),
            B_dim = B_dims[j].dim_param();
       if (A_dim != B_dim) {
-        ORT_THROW("Error: symbolic dimension doesn't match. Expect the same symbolic but got \"",
-                  A_dim, "\" and \"", B_dim, "\".");
+        ORT_THROW("Gradient building error for node ", node_name, ": symbolic dimension doesn't match. ",
+                  "A_dims:", ToString(A_dims), ", B_dims:", ToString(B_dims));
       }
     } else if (A_dims[i].has_dim_param() && B_dims[j].has_dim_value()) {
       auto A_dim = A_dims[i].dim_param();
       auto B_dim = B_dims[j].dim_value();
 
       if (B_dim != 1) {
-        ORT_THROW("Error: symbolic broadcasting requires the corresponding dimension to be 1. ",
-                  "Actually got ", B_dim);
+        ORT_THROW("Gradient building error for node ", node_name, ": symbolic broadcasting requires the B_dimension to be 1. ",
+                  "A_dims:", ToString(A_dims), ", B_dims:", ToString(B_dims));
       }
       if (B_axes) {
         B_axes->push_back(gsl::narrow_cast<int64_t>(k));
@@ -58,8 +78,8 @@ void ComputeBroadcastBackwardAxes(
       auto B_dim = B_dims[i].dim_param();
 
       if (A_dim != 1) {
-        ORT_THROW("Error: symbolic broadcasting requires the corresponding dimension to be 1. ",
-                  "Actually got ", A_dim);
+        ORT_THROW("Gradient building error for node ", node_name, ": symbolic broadcasting requires the A_dimension to be 1. ",
+                  "A_dims:", ToString(A_dims), ", B_dims:", ToString(B_dims));
       }
       if (A_axes) {
         A_axes->push_back(gsl::narrow_cast<int64_t>(k));
@@ -123,6 +143,32 @@ void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
               {a_op, b_op}));
 }
 
+void GradientBuilderBase::AddReduceSumNode(const ArgDef& input_arg_def,
+                                           const ArgDef& output_arg_def,
+                                           const std::vector<int64_t>& reduce_axes,
+                                           bool keep_dims,
+                                           std::vector<NodeDef>& output) const {
+  // Use the graph ONNX OpSet version instead of the node since version for non-onnx-domain Ops.
+  int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
+  if (opset_version < 13) {
+    output.emplace_back(
+        NodeDef("ReduceSum",
+                {input_arg_def},
+                {output_arg_def},
+                {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", static_cast<int64_t>(keep_dims))},
+                {"axes", ONNX_NAMESPACE::MakeAttribute("axes", reduce_axes)}}));
+    return;
+  }
+
+  ArgDef reduce_axes_arg_def = IA("ReduceAxes_for_" + output_arg_def.name);
+  output.emplace_back(ConstantVectorNode(reduce_axes, reduce_axes_arg_def.name));
+  output.emplace_back(
+      NodeDef(OpDef{"ReduceSum", kOnnxDomain, opset_version},
+              {input_arg_def, reduce_axes_arg_def},
+              {output_arg_def},
+              {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", static_cast<int64_t>(keep_dims))}}));
+}
+
 void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
                                              const ArgDef& target,
                                              const ArgDef& output_grad,
@@ -162,21 +208,10 @@ void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
   }
 
   if (skip_reshape) {
-    output.push_back(
-        NodeDef("ReduceSum",
-                {input_grad},
-                {output_grad},
-                {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", static_cast<int64_t>(keep_dims))},
-                 {"axes", ONNX_NAMESPACE::MakeAttribute("axes", reduce_axes)}}));
+    AddReduceSumNode(input_grad, output_grad, reduce_axes, keep_dims, output);
   } else {
     ArgDef reduce_grad_arg = IA("ReduceSum_" + input_grad.name + "_for_" + target.name);
-    output.push_back(
-        NodeDef("ReduceSum",
-                {input_grad},
-                {reduce_grad_arg},
-                {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(1))},
-                 {"axes", ONNX_NAMESPACE::MakeAttribute("axes", reduce_axes)}}));
-
+    AddReduceSumNode(input_grad, reduce_grad_arg, reduce_axes, true, output);
     ArgDef target_shape_arg = IA(target.name + "_shape");
     output.push_back(
         NodeDef("Shape",
@@ -196,9 +231,10 @@ void GradientBuilderBase::HandleBroadcastingDynamic(const ArgDef& input_grad,
                                                     const ArgDef& output_grad,
                                                     const ArgDef& reduce_axes,
                                                     std::vector<NodeDef>& output) const {
-  ArgDef reduce_grad_arg = IA("ReduceSumTraining_" + input_grad.name + "_for_" + target.name);
+  ArgDef reduce_grad_arg = IA("ReduceSum_" + input_grad.name + "_for_" + target.name);
+  int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
   output.push_back(
-      NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
+      NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
               {input_grad,
                reduce_axes},
               {reduce_grad_arg},
@@ -209,6 +245,45 @@ void GradientBuilderBase::HandleBroadcastingDynamic(const ArgDef& input_grad,
       NodeDef("Reshape",
               {reduce_grad_arg, target_shape},
               {output_grad}));
+}
+
+std::vector<NodeDef> GradientBuilderBase::GetBiasGeluGradNodes(
+    bool use_approximation,
+    const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
+    const ArgDef& dX, const ArgDef& dB,                  // outputs
+    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
+    const std::string& node_name) const {
+  std::vector<Dimension> B_shape, X_shape;
+  std::vector<NodeDef> result;
+  if (GetShape(B, B_shape).IsOK() && GetShape(X, X_shape).IsOK()) {
+    ORT_ENFORCE(B_shape.size() == 1, "B must have exactly one dimension.");
+
+    const std::vector<int64_t> B_axes = [&B_shape, &X_shape, &node_name]() {
+      std::vector<int64_t> result{};
+      ComputeBroadcastBackwardAxes(B_shape, X_shape, &result, nullptr, node_name);
+      return result;
+    }();
+
+    result.push_back(
+        NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
+                {dY, X, B},
+                {dX}));
+    AddReduceSumNode(dX, dB, B_axes, false, result);
+  } else {
+    ComputeBroadcastBackwardAxesDynamic(B, X, b_shape, x_shape, &b_axes, nullptr, result);
+    result.push_back(
+        NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
+                {dY, X, B},
+                {dX}));
+    int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
+    result.push_back(
+        NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
+                {dX, b_axes},
+                {dB},
+                {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{0})}}));
+  }
+
+  return result;
 }
 
 }  // namespace training

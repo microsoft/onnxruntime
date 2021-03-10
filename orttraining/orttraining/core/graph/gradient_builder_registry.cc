@@ -56,6 +56,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("ReduceMean", GetReduceMeanGradient);
   REGISTER_GRADIENT_BUILDER("ReduceSum", GetReduceSumGradient);
   REGISTER_GRADIENT_BUILDER("ReduceLogSumExp", GetReduceLogSumExpGradient);
+  REGISTER_GRADIENT_BUILDER("ReduceL2", GetReduceL2Gradient);
   REGISTER_GRADIENT_BUILDER("Add", GetAddSubGradient);
   REGISTER_GRADIENT_BUILDER("Sub", GetAddSubGradient);
   REGISTER_GRADIENT_BUILDER("Mul", GetMulGradient);
@@ -80,7 +81,6 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("GlobalAveragePool", GetGlobalAveragePoolGradient);
   REGISTER_GRADIENT_BUILDER("AveragePool", GetAveragePoolGradient);
   REGISTER_GRADIENT_BUILDER("Dropout", GetDropoutGradient)
-  REGISTER_GRADIENT_BUILDER("TrainableDropout", GetTrainableDropoutGradient)
   REGISTER_GRADIENT_BUILDER("GatherND", GetGatherNDGradient)
   REGISTER_GRADIENT_BUILDER("GatherElements", GetGatherElementsGradient)
   REGISTER_GRADIENT_BUILDER("Gelu", GetGeluGradient)
@@ -97,6 +97,10 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Recv", GetRecvGradient);
   REGISTER_GRADIENT_BUILDER("Expand", GetExpandGradient);
   REGISTER_GRADIENT_BUILDER("Exp", GetExpGradient);
+  REGISTER_GRADIENT_BUILDER("Flatten", GetFlattenGradient);
+  REGISTER_GRADIENT_BUILDER("TopK", GetTopKGradient);
+  REGISTER_GRADIENT_BUILDER("Clip", GetClipGradient);
+  REGISTER_GRADIENT_BUILDER("Abs", GetAbsGradient);
 };
 
 }  // namespace training

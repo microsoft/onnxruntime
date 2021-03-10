@@ -4,6 +4,7 @@
 #include <core/common/logging/logging.h>
 
 #include "model.h"
+#include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 
@@ -38,6 +39,14 @@ void Model::AddOutput(const std::string& onnx_output_name,
   output_names_.push_back(onnx_output_name);
   onnx_to_nnapi_output_map_.emplace(onnx_output_name, nnapi_output_name);
   operand_types_.emplace(nnapi_output_name, operand_type);
+}
+
+bool Model::IsScalarOutput(const std::string& output_name) const {
+  return Contains(scalar_outputs_, output_name);
+}
+
+void Model::AddScalarOutput(const std::string& output_name) {
+  scalar_outputs_.insert(output_name);
 }
 
 const std::vector<std::string>& Model::GetInputs() const {
@@ -78,7 +87,7 @@ size_t Model::GetMappedOutputIdx(const std::string& name) const {
 }
 
 bool Model::SupportsDynamicOutputShape() const {
-  // dynamic output shape is only supported on Android API levle 29+
+  // dynamic output shape is only supported on Android API level 29+
   return GetAndroidSdkVer() >= 29 && dynamic_output_buffer_size_ > 0;
 }
 
@@ -121,7 +130,7 @@ Model::NNMemory::~NNMemory() {
     munmap(data_ptr_, byte_size_);
   }
 
-  if (fd_ > 0) close(fd_);
+  if (fd_ >= 0) close(fd_);
 }
 #else
 Model::NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size) {

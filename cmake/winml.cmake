@@ -9,6 +9,7 @@ include(precompiled_header.cmake)
 include(target_delayload.cmake)
 include(winml_sdk_helpers.cmake)
 include(winml_cppwinrt.cmake)
+include(nuget_helpers.cmake)
 
 # get the current nuget sdk kit directory
 get_sdk(sdk_folder sdk_version)
@@ -25,6 +26,22 @@ set(winml_lib_api_image_dir ${REPO_ROOT}/winml/lib/api.image)
 set(winml_lib_api_ort_dir ${REPO_ROOT}/winml/lib/api.ort)
 set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
+
+# Retrieve the version of cppwinrt nuget
+package_version(
+  Microsoft.Windows.CppWinRT
+  CppWinRT_version
+  ${PROJECT_SOURCE_DIR}/../packages.config
+)
+
+# Override and use the the cppwinrt from NuGet package as opposed to the one in the SDK.
+set(winml_CPPWINRT_EXE_PATH_OVERRIDE ${CMAKE_CURRENT_BINARY_DIR}/../packages/Microsoft.Windows.CppWinRT.${CppWinRT_version}/bin/cppwinrt.exe)
+
+# add custom target to fetch the nugets
+add_fetch_nuget_target(
+  RESTORE_NUGET_PACKAGES # target name
+  winml_CPPWINRT_EXE_PATH_OVERRIDE # cppwinrt is the target package
+  )
 
 set(winml_is_inbox OFF)
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
@@ -68,6 +85,7 @@ get_filename_component(winrt_idl "${winml_api_root}/Windows.AI.MachineLearning.i
 get_filename_component(winrt_experimental_idl "${winml_api_root}/Microsoft.AI.MachineLearning.Experimental.idl" ABSOLUTE)
 get_filename_component(idl_native "${winml_api_root}/windows.ai.machineLearning.native.idl" ABSOLUTE)
 get_filename_component(idl_native_internal "${winml_api_root}/windows.ai.machineLearning.native.internal.idl" ABSOLUTE)
+get_filename_component(winrt_winmd "${CMAKE_CURRENT_BINARY_DIR}/${winml_root_ns}.AI.MachineLearning.winmd" ABSOLUTE)
 
 # generate cppwinrt sdk
 add_generate_cppwinrt_sdk_headers_target(
@@ -77,6 +95,7 @@ add_generate_cppwinrt_sdk_headers_target(
   ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include  # output folder relative to CMAKE_BINARY_DIR where the generated sdk will be placed in the
   ${target_folder}                                        # folder where this target will be placed
 )
+add_dependencies(winml_sdk_cppwinrt RESTORE_NUGET_PACKAGES)
 
 # generate winml headers from idl
 target_cppwinrt(winml_api
@@ -88,20 +107,24 @@ target_cppwinrt(winml_api
   ${target_folder}           # the folder this target will be placed under
   "${winml_midl_defines}"    # the midl compiler defines
   ${winml_api_use_ns_prefix} # set ns_prefix
+  ""                         # set additional cppwinrt ref path
 )
+add_dependencies(winml_api RESTORE_NUGET_PACKAGES)
 
 # generate winml.experimental headers from idl
 target_cppwinrt(winml_api_experimental
-  ${winrt_experimental_idl}                    # winml winrt idl to compile
-  ${experimental_output_name}                  # outputs name
-  ${winml_lib_api_dir}                         # location for cppwinrt generated component sources
-  ${sdk_folder}                                # location of sdk folder
-  ${sdk_version}                               # sdk version
-  ${target_folder}                             # the folder this target will be placed under
-  ${winml_midl_defines}                        # the midl compiler defines
-  ${winml_api_use_ns_prefix}                   # set ns_prefix
+  ${winrt_experimental_idl}   # winml winrt idl to compile
+  ${experimental_output_name} # outputs name
+  ${winml_lib_api_dir}        # location for cppwinrt generated component sources
+  ${sdk_folder}               # location of sdk folder
+  ${sdk_version}              # sdk version
+  ${target_folder}            # the folder this target will be placed under
+  ${winml_midl_defines}       # the midl compiler defines
+  ${winml_api_use_ns_prefix}  # set ns_prefix
+  ${winrt_winmd}              # set additional cppwinrt ref path
 )
-
+add_dependencies(winml_api_experimental RESTORE_NUGET_PACKAGES)
+add_dependencies(winml_api_experimental winml_api)
 
 target_midl(winml_api_native
   ${idl_native}             # winml native idl to compile
@@ -111,6 +134,7 @@ target_midl(winml_api_native
   ${target_folder}          # the folder this target will be placed under
   "${winml_midl_defines}"   # the midl compiler defines
 )
+add_dependencies(winml_api_native RESTORE_NUGET_PACKAGES)
 
 target_midl(winml_api_native_internal
   ${idl_native_internal}             # winml internal native idl to compile
@@ -120,6 +144,7 @@ target_midl(winml_api_native_internal
   ${target_folder}                   # the folder this target will be placed under
   "${winml_midl_defines}"            # the midl compiler defines
 )
+add_dependencies(winml_api_native_internal RESTORE_NUGET_PACKAGES)
 
 ###########################
 # Add winml_lib_telemetry
@@ -318,6 +343,7 @@ add_library(winml_lib_image STATIC
   ${winml_lib_api_image_dir}/inc/ConverterResourceStore.h
   ${winml_lib_api_image_dir}/inc/D3DDeviceCache.h
   ${winml_lib_api_image_dir}/inc/DeviceHelpers.h
+  ${winml_lib_api_image_dir}/inc/DisjointBufferHelpers.h
   ${winml_lib_api_image_dir}/inc/ImageConversionHelpers.h
   ${winml_lib_api_image_dir}/inc/ImageConversionTypes.h
   ${winml_lib_api_image_dir}/inc/ImageConverter.h
@@ -330,6 +356,7 @@ add_library(winml_lib_image STATIC
   ${winml_lib_api_image_dir}/ConverterResourceStore.cpp
   ${winml_lib_api_image_dir}/D3DDeviceCache.cpp
   ${winml_lib_api_image_dir}/DeviceHelpers.cpp
+  ${winml_lib_api_image_dir}/DisjointBufferHelpers.cpp
   ${winml_lib_api_image_dir}/ImageConversionHelpers.cpp
   ${winml_lib_api_image_dir}/ImageConverter.cpp
   ${winml_lib_api_image_dir}/TensorToVideoFrameConverter.cpp
@@ -369,6 +396,8 @@ target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/o
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
+target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
+target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 
 # Properties
 set_target_properties(winml_lib_image
@@ -399,15 +428,18 @@ endif(onnxruntime_USE_DML)
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/impl/FeatureCompatibility.h
+  ${winml_lib_api_dir}/impl/IData.h
   ${winml_lib_api_dir}/impl/IMapFeatureValue.h
   ${winml_lib_api_dir}/impl/ISequenceFeatureValue.h
   ${winml_lib_api_dir}/impl/MapBase.h
+  ${winml_lib_api_dir}/impl/NumericData.h
   ${winml_lib_api_dir}/impl/SequenceBase.h
+  ${winml_lib_api_dir}/impl/StringData.h
   ${winml_lib_api_dir}/impl/Tensor.h
   ${winml_lib_api_dir}/impl/TensorBase.h
-  ${winml_lib_api_dir}/impl/TensorBuffer.h
   ${winml_lib_api_dir}/impl/TensorKindFrom.h
   ${winml_lib_api_dir}/impl/TensorMemoryBufferReference.h
+  ${winml_lib_api_dir}/NumericData.cpp
   ${winml_lib_api_dir}/ImageFeatureDescriptor.cpp
   ${winml_lib_api_dir}/ImageFeatureDescriptor.h
   ${winml_lib_api_dir}/ImageFeatureValue.cpp
@@ -428,8 +460,11 @@ add_library(winml_lib_api STATIC
   ${winml_lib_api_dir}/MapFeatureDescriptor.h
   ${winml_lib_api_dir}/SequenceFeatureDescriptor.cpp
   ${winml_lib_api_dir}/SequenceFeatureDescriptor.h
+  ${winml_lib_api_dir}/StringData.cpp
   ${winml_lib_api_dir}/TensorFeatureDescriptor.cpp
   ${winml_lib_api_dir}/TensorFeatureDescriptor.h
+  ${winml_lib_api_dir}/VectorBackedBuffer.h
+  ${winml_lib_api_dir}/VectorBackedBuffer.cpp
   ${winml_lib_api_dir}/pch/pch.h
 )
 
@@ -452,7 +487,6 @@ target_precompiled_header(winml_lib_api pch.h)
 # Includes
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
-target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated) # windows machine learning generated component headers
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_dir})
@@ -478,6 +512,8 @@ target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/pro
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
+target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
+target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 
 # Properties
 set_target_properties(winml_lib_api
@@ -505,8 +541,20 @@ endif(onnxruntime_USE_DML)
 
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_api_experimental STATIC
-  ${winml_lib_api_experimental_dir}/Dummy.cpp
-  ${winml_lib_api_experimental_dir}/Dummy.h
+  ${winml_lib_api_experimental_dir}/LearningModelBuilder.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelBuilder.h
+  ${winml_lib_api_experimental_dir}/LearningModelInputs.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelInputs.h
+  ${winml_lib_api_experimental_dir}/LearningModelOutputs.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOutputs.h
+  ${winml_lib_api_experimental_dir}/LearningModelOperator.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOperator.h
+  ${winml_lib_api_experimental_dir}/LearningModelOperatorSet.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOperatorSet.h
+  ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.h
+  ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.h
 )
 
 # Compiler options
@@ -528,6 +576,7 @@ target_precompiled_header(winml_lib_api_experimental pch.h)
 # Includes
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental)      # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api_experimental/comp_generated) # windows machine learning generated component headers
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 
@@ -554,6 +603,8 @@ target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
+target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
+target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 
 # Properties
 set_target_properties(winml_lib_api_experimental
@@ -667,6 +718,10 @@ target_compile_definitions(winml_dll PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART}
 target_compile_definitions(winml_dll PRIVATE VER_STRING=\"${VERSION_STRING}\")
 target_compile_definitions(winml_dll PRIVATE BINARY_NAME=\"${BINARY_NAME}\")
 
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+  target_compile_definitions(winml_dll PRIVATE "BUILD_INBOX=1")
+endif()
+
 # Specify the usage of a precompiled header
 target_precompiled_header(winml_dll pch.h)
 
@@ -679,7 +734,9 @@ target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/s
 target_include_directories(winml_dll PRIVATE ${winml_dll_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_dir}/impl)
-target_include_directories(winml_dll PRIVATE ${winml_lib_api_experimental_dir})
+if (NOT winml_is_inbox)
+  target_include_directories(winml_dll PRIVATE ${winml_lib_api_experimental_dir})
+endif()
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_ort_dir}/inc)
 target_include_directories(winml_dll PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_image_dir}/inc)
@@ -701,6 +758,8 @@ target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/gsl/inc
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/eigen)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
+target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
+target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 
 # Properties
 set_target_properties(winml_dll
@@ -731,7 +790,9 @@ add_dependencies(winml_dll winml_api_native_internal)
 target_link_libraries(winml_dll PRIVATE re2)
 target_link_libraries(winml_dll PRIVATE wil)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
-target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)
+if (NOT winml_is_inbox)
+  target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)
+endif()
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)

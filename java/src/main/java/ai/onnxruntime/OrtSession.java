@@ -4,10 +4,14 @@
  */
 package ai.onnxruntime;
 
+import ai.onnxruntime.providers.CoreMLFlags;
+import ai.onnxruntime.providers.NNAPIFlags;
+import ai.onnxruntime.providers.OrtFlags;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -316,6 +320,16 @@ public class OrtSession implements AutoCloseable {
   }
 
   /**
+   * Returns the timestamp that profiling started in nanoseconds.
+   *
+   * @return the profiling start time in ns.
+   * @throws OrtException If the native call failed.
+   */
+  public long getProfilingStartTimeInNs() throws OrtException {
+    return getProfilingStartTimeInNs(OnnxRuntime.ortApiHandle, nativeHandle);
+  }
+
+  /**
    * Ends the profiling session and returns the output of the profiler.
    *
    * <p>Profiling should be enabled in the {@link SessionOptions} used to construct this {@code
@@ -412,6 +426,9 @@ public class OrtSession implements AutoCloseable {
       String[] outputNamesArray,
       long numOutputs,
       long runOptionsHandle)
+      throws OrtException;
+
+  private native long getProfilingStartTimeInNs(long apiHandle, long nativeHandle)
       throws OrtException;
 
   private native String endProfiling(long apiHandle, long nativeHandle, long allocatorHandle)
@@ -680,6 +697,32 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Sets the value of a symbolic dimension. Fixed dimension computations may have more
+     * optimizations applied to them.
+     *
+     * @param dimensionName The name of the symbolic dimension.
+     * @param dimensionValue The value to set that dimension to.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setSymbolicDimensionValue(String dimensionName, long dimensionValue)
+        throws OrtException {
+      checkClosed();
+      addFreeDimensionOverrideByName(
+          OnnxRuntime.ortApiHandle, nativeHandle, dimensionName, dimensionValue);
+    }
+
+    /**
+     * Disables the per session thread pools. Must be used in conjunction with an environment
+     * containing global thread pools.
+     *
+     * @throws OrtException If there was an error in native code.
+     */
+    public void disablePerSessionThreads() throws OrtException {
+      checkClosed();
+      disablePerSessionThreads(OnnxRuntime.ortApiHandle, nativeHandle);
+    }
+
+    /**
      * Adds a single session configuration entry as a pair of strings.
      *
      * @param configKey The config key string.
@@ -708,7 +751,6 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addCUDA() throws OrtException {
-      checkClosed();
       addCUDA(0);
     }
 
@@ -749,19 +791,6 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds NGraph as an execution backend.
-     *
-     * <p>See the documentation for the supported backend types.
-     *
-     * @param ngBackendType The NGraph backend type.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addNGraph(String ngBackendType) throws OrtException {
-      checkClosed();
-      addNGraph(OnnxRuntime.ortApiHandle, nativeHandle, ngBackendType);
-    }
-
-    /**
      * Adds OpenVINO as an execution backend.
      *
      * @param deviceId The id of the OpenVINO execution device.
@@ -784,13 +813,23 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Android's NNAPI as an execution backend.
+     * Adds Android's NNAPI as an execution backend. Uses the default empty flag.
      *
      * @throws OrtException If there was an error in native code.
      */
     public void addNnapi() throws OrtException {
+      addNnapi(EnumSet.noneOf(NNAPIFlags.class));
+    }
+
+    /**
+     * Adds Android's NNAPI as an execution backend.
+     *
+     * @param flags The flags which control the NNAPI configuration.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addNnapi(EnumSet<NNAPIFlags> flags) throws OrtException {
       checkClosed();
-      addNnapi(OnnxRuntime.ortApiHandle, nativeHandle);
+      addNnapi(OnnxRuntime.ortApiHandle, nativeHandle, OrtFlags.aggregateToInt(flags));
     }
 
     /**
@@ -825,6 +864,49 @@ public class OrtSession implements AutoCloseable {
     public void addACL(boolean useArena) throws OrtException {
       checkClosed();
       addACL(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+    }
+
+    /**
+     * Adds the ARM Neural Net library as an execution backend.
+     *
+     * @param useArena If true use the arena memory allocator.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addArmNN(boolean useArena) throws OrtException {
+      checkClosed();
+      addArmNN(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+    }
+
+    /**
+     * Adds ROCM as an execution backend.
+     *
+     * @param deviceID The ROCM device ID.
+     * @param memLimit The maximum amount of memory available.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addROCM(int deviceID, long memLimit) throws OrtException {
+      checkClosed();
+      addROCM(OnnxRuntime.ortApiHandle, nativeHandle, deviceID, memLimit);
+    }
+
+    /**
+     * Adds Apple's CoreML as an execution backend. Uses the default empty flag.
+     *
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addCoreML() throws OrtException {
+      addCoreML(EnumSet.noneOf(CoreMLFlags.class));
+    }
+
+    /**
+     * Adds Apple's CoreML as an execution backend.
+     *
+     * @param flags The flags which control the CoreML configuration.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addCoreML(EnumSet<CoreMLFlags> flags) throws OrtException {
+      checkClosed();
+      addCoreML(OnnxRuntime.ortApiHandle, nativeHandle, OrtFlags.aggregateToInt(flags));
     }
 
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
@@ -871,6 +953,13 @@ public class OrtSession implements AutoCloseable {
 
     private native void closeOptions(long apiHandle, long nativeHandle);
 
+    private native void addFreeDimensionOverrideByName(
+        long apiHandle, long nativeHandle, String dimensionName, long dimensionValue)
+        throws OrtException;
+
+    private native void disablePerSessionThreads(long apiHandle, long nativeHandle)
+        throws OrtException;
+
     private native void addConfigEntry(
         long apiHandle, long nativeHandle, String configKey, String configValue)
         throws OrtException;
@@ -895,16 +984,14 @@ public class OrtSession implements AutoCloseable {
     private native void addDnnl(long apiHandle, long nativeHandle, int useArena)
         throws OrtException;
 
-    private native void addNGraph(long apiHandle, long nativeHandle, String ngBackendType)
-        throws OrtException;
-
     private native void addOpenVINO(long apiHandle, long nativeHandle, String deviceId)
         throws OrtException;
 
     private native void addTensorrt(long apiHandle, long nativeHandle, int deviceNum)
         throws OrtException;
 
-    private native void addNnapi(long apiHandle, long nativeHandle) throws OrtException;
+    private native void addNnapi(long apiHandle, long nativeHandle, int nnapiFlags)
+        throws OrtException;
 
     private native void addNuphar(
         long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)
@@ -914,6 +1001,15 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
+
+    private native void addArmNN(long apiHandle, long nativeHandle, int useArena)
+        throws OrtException;
+
+    private native void addROCM(long apiHandle, long nativeHandle, int deviceID, long memLimit)
+        throws OrtException;
+
+    private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
+        throws OrtException;
   }
 
   /** Used to control logging and termination of a call to {@link OrtSession#run}. */

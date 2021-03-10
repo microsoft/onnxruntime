@@ -87,7 +87,8 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
     if ((target_str == "avx512" && !cpu_id_info.HasAVX512f()) ||
         (target_str == "avx2" && !cpu_id_info.HasAVX2()) ||
         (target_str == "avx" && !cpu_id_info.HasAVX())) {
-      LOGS_DEFAULT(WARNING) << "NUPHAR_CODEGEN_TARGET is not compatible with host machine."
+      LOGS_DEFAULT(WARNING) << "NUPHAR_CODEGEN_TARGET " << target_str
+                            << " is not compatible with host machine. "
                                "Target code will be generated, but execution will fail!";
     }
     // For CPU, use target as host since the tvm_host_target_ is the one used to generate code in TVM

@@ -5,7 +5,7 @@ parameters:
 jobs:
 - template: test_win.yml
   parameters:
-    AgentPool : 'Win-CPU-2019'
+    AgentPool : 'Win-CPU-2021'
     Skipx86Tests : ${{ parameters.Skipx86Tests }}
 - template: test_linux.yml
   parameters:

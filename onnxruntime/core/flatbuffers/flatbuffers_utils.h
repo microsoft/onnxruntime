@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cctype>
 #include <unordered_map>
 #include <core/common/status.h>
 

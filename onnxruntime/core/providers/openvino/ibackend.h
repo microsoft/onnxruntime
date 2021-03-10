@@ -6,8 +6,8 @@
 #include <memory>
 #include <inference_engine.hpp>
 
+#define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -20,7 +20,7 @@ class IBackend {
 class BackendFactory {
  public:
   static std::shared_ptr<IBackend>
-  MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
+  MakeBackend(const Provider_ModelProto& model_proto,
               GlobalContext& global_context,
               const SubGraphContext& subgraph_context);
 };

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/matmul.h"
+#include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -125,44 +126,15 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-#if !defined(USE_MKLML_FOR_BLAS)
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
   is_packed = false;
 
   // only pack Matrix B
   if (input_idx == 1) {
-    // Only handle the common case of a 2D weight matrix. Additional matrices
-    // could be handled by stacking the packed buffers.
-    b_shape_ = tensor.Shape();
-    if (b_shape_.NumDimensions() != 2) {
-      return Status::OK();
-    }
-
-    const bool trans_b = trans_b_attr_ && b_shape_.NumDimensions() != 1;
-    const size_t K = trans_b ? static_cast<size_t>(b_shape_[1])
-                             : static_cast<size_t>(b_shape_[0]);
-    const size_t N = trans_b ? static_cast<size_t>(b_shape_[0])
-                             : static_cast<size_t>(b_shape_[1]);
-
-    const size_t packed_b_size = MlasGemmPackBSize(N, K);
-    if (packed_b_size == 0) {
-      return Status::OK();
-    }
-
-    auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
-    auto* packed_b_data = alloc->Alloc(packed_b_size);
-    packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
-    MlasGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
-                  N,
-                  K,
-                  tensor.Data<float>(),
-                  static_cast<int>(trans_b ? K : N),
-                  packed_b_data);
-    is_packed = true;
+    is_packed = GemmPackBFp32(Info(), tensor, trans_b_attr_, packed_b_, b_shape_);
   }
   return Status::OK();
 }
-#endif
 
 Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
@@ -190,7 +162,6 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
   size_t max_len = helper.OutputOffsets().size();
   for (size_t i = 0; i < max_len; i++) {
-#if !defined(USE_MKLML_FOR_BLAS)
     if (packed_b_) {
       MlasGemm(
           trans_a ? CblasTrans : CblasNoTrans,
@@ -207,7 +178,6 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
           thread_pool);
       continue;
     }
-#endif
     math::Gemm<float, concurrency::ThreadPool>(
         trans_a ? CblasTrans : CblasNoTrans,
         trans_b ? CblasTrans : CblasNoTrans,

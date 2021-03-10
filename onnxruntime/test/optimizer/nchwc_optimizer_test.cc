@@ -1,66 +1,37 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/graph/onnx_protobuf.h"
 
-#include "core/session/inference_session.h"
 #include "core/graph/model.h"
-#include "test/test_environment.h"
-#include "test/framework/test_utils.h"
-#include "test/compare_ortvalue.h"
-#include "gtest/gtest.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/environment.h"
+#include "core/session/inference_session.h"
+#include "test/compare_ortvalue.h"
+#include "test/test_environment.h"
+#include "test/framework/test_utils.h"
+#include "test/util/include/inference_session_wrapper.h"
+
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {
-
-// InferenceSession wrapper in order to gain access to the loaded graph.
-class NchwcInferenceSession : public InferenceSession {
- public:
-  explicit NchwcInferenceSession(const SessionOptions& session_options,
-                                 const Environment& env) : InferenceSession(session_options, env) {
-  }
-
-  std::unordered_map<std::string, int> CountOpsInGraph() {
-    std::unordered_map<std::string, int> op_to_count;
-    if (model_.get() != nullptr) {
-      for (auto& node : model_->MainGraph().Nodes()) {
-        std::string key = node.OpType();
-        if (node.Domain() == kMSNchwcDomain) {
-          key = "nchwc." + key;
-        }
-        op_to_count[key] = op_to_count[key] + 1;
-      }
-    }
-    return op_to_count;
-  }
-
-  const Graph& GetGraph() {
-    return model_->MainGraph();
-  }
-};
 
 struct NchwcTestHelper {
   NchwcTestHelper(Graph& graph) : graph_(graph), fill_value_(0), per_sample_tolerance_(0.0) {
   }
 
-  template<typename T>
+  template <typename T>
   NodeArg* MakeInput(const std::vector<int64_t>& shape, const ONNX_NAMESPACE::TypeProto& type_proto) {
-    int64_t num_elements = 1;
-    for (auto& dim : shape) {
-      num_elements *= dim;
-    }
-
     OrtValue input_value;
     CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), shape,
-                     FillRandomData<T>(static_cast<size_t>(num_elements)), &input_value);
+                     FillRandomData<T>(shape), &input_value);
     std::string name = graph_.GenerateNodeArgName("input");
     feeds_.insert(std::make_pair(name, input_value));
 
     return &graph_.GetOrCreateNodeArg(name, &type_proto);
   }
 
-  template<typename T>
+  template <typename T>
   NodeArg* MakeInput(const std::vector<int64_t>& shape) {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
@@ -94,7 +65,7 @@ struct NchwcTestHelper {
     }
 
     tensor_proto.mutable_float_data()->Resize(static_cast<int>(data.size()), 0.f);
-    memcpy(tensor_proto.mutable_float_data()->mutable_data(), data.data(), data.size() * sizeof(float));
+    std::copy_n(data.data(), data.size(), tensor_proto.mutable_float_data()->mutable_data());
 
     graph_.AddInitializedTensor(tensor_proto);
 
@@ -102,8 +73,7 @@ struct NchwcTestHelper {
   }
 
   NodeArg* MakeInitializer(const std::vector<int64_t>& shape) {
-    int64_t num_elements = std::accumulate(shape.begin(), shape.end(), int64_t(1), std::multiplies<int64_t>{});
-    return MakeInitializer(shape, FillRandomData<float>(static_cast<size_t>(num_elements)));
+    return MakeInitializer(shape, FillRandomData<float>(shape));
   }
 
   NodeArg* Make1DInitializer(const std::vector<float>& data) {
@@ -163,7 +133,7 @@ struct NchwcTestHelper {
     return AddTransposeNode(input_arg, output_arg, {1, 0, 2, 3});
   }
 
-  template<typename T>
+  template <typename T>
   std::vector<T> FillRandomData(size_t count) {
     constexpr int min_fill_value = -23;
     constexpr int max_fill_value = 23;
@@ -180,6 +150,12 @@ struct NchwcTestHelper {
     return random_data;
   }
 
+  template <typename T>
+  std::vector<T> FillRandomData(const std::vector<int64_t>& shape) {
+    int64_t num_elements = std::accumulate(shape.begin(), shape.end(), int64_t(1), std::multiplies<int64_t>{});
+    return FillRandomData<T>(static_cast<size_t>(num_elements));
+  }
+
   Graph& graph_;
   NameMLValMap feeds_;
   std::vector<std::string> output_names_;
@@ -188,7 +164,7 @@ struct NchwcTestHelper {
 };
 
 void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& build_test_case,
-                          const std::function<void(NchwcInferenceSession& session)>& check_nchwc_graph,
+                          const std::function<void(InferenceSessionWrapper& session)>& check_nchwc_graph,
                           int opset_version = 12) {
   // Ignore the test if NCHWc is not supported by the platform.
   if (MlasNchwcGetBlockSize() <= 1) {
@@ -212,7 +188,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
     SessionOptions session_options;
     session_options.graph_optimization_level = level;
     session_options.session_logid = "NchwcOptimizerTests";
-    NchwcInferenceSession session{session_options, GetEnvironment()};
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_TRUE(session.Load(model_data.data(), static_cast<int>(model_data.size())).IsOK());
     ASSERT_TRUE(session.Initialize().IsOK());
 
@@ -272,11 +248,11 @@ TEST(NchwcOptimizerTests, ConvNchw) {
       conv_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       if (!activation_op_type.empty()) {
         EXPECT_EQ(op_to_count[activation_op_type], 0);
       }
@@ -310,11 +286,11 @@ TEST(NchwcOptimizerTests, ConvNchwc) {
       helper.AddConvNode(input_arg, conv_output_arg, {127, 64, 3, 3});
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       if (!activation_op_type.empty()) {
         EXPECT_EQ(op_to_count[activation_op_type], 0);
       }
@@ -345,11 +321,11 @@ TEST(NchwcOptimizerTests, ConvNchwcGrouped) {
       conv_node.AddAttribute("group", static_cast<int64_t>(3));
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       if (!activation_op_type.empty()) {
         EXPECT_EQ(op_to_count[activation_op_type], 0);
       }
@@ -380,11 +356,11 @@ TEST(NchwcOptimizerTests, ConvDepthwise) {
       conv_node.AddAttribute("group", static_cast<int64_t>(96));
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       if (!activation_op_type.empty()) {
         EXPECT_EQ(op_to_count[activation_op_type], 0);
       }
@@ -414,11 +390,11 @@ TEST(NchwcOptimizerTests, ConvPointwise) {
       helper.AddConvNode(input_arg, conv_output_arg, {128, 64, 1, 1});
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       if (!activation_op_type.empty()) {
         EXPECT_EQ(op_to_count[activation_op_type], 0);
       }
@@ -446,12 +422,12 @@ TEST(NchwcOptimizerTests, ConvMaxPool) {
     pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{5, 5});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-    EXPECT_EQ(op_to_count["nchwc.MaxPool"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.MaxPool"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
   };
 
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
@@ -470,12 +446,12 @@ TEST(NchwcOptimizerTests, ConvMaxPoolDilations) {
     pool_node.AddAttribute("dilations", std::vector<int64_t>{2, 2});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-    EXPECT_EQ(op_to_count["nchwc.MaxPool"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.MaxPool"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
   };
 
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
@@ -498,12 +474,12 @@ TEST(NchwcOptimizerTests, ConvAveragePool) {
       }
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-      EXPECT_EQ(op_to_count["nchwc.AveragePool"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.AveragePool"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
     };
 
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
@@ -526,12 +502,12 @@ TEST(NchwcOptimizerTests, ConvGlobalPool) {
       helper.AddNode(op_type, {conv_output_arg}, {output_arg});
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-      EXPECT_EQ(op_to_count["nchwc." + op_type], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc." + op_type], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
     };
 
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
@@ -563,11 +539,11 @@ TEST(NchwcOptimizerTests, ConvAddFusion) {
       }
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       EXPECT_EQ(op_to_count[op_type], 0);
       EXPECT_EQ(op_to_count["Relu"], 0);
     };
@@ -599,11 +575,11 @@ TEST(NchwcOptimizerTests, ConvNoBiasAddFusion) {
     helper.AddNode("Add", {conv1_output_arg, conv2_output_arg}, {output_arg});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
     EXPECT_EQ(op_to_count["Add"], 0);
   };
 
@@ -637,11 +613,11 @@ TEST(NchwcOptimizerTests, FusedConvAddFusion) {
       helper.AddNode("Add", {add1_input_arg, add2_input_arg}, {output_arg});
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       EXPECT_EQ(op_to_count["Add"], add_count);
       EXPECT_EQ(op_to_count["Relu"], 0);
     };
@@ -677,11 +653,11 @@ TEST(NchwcOptimizerTests, ConvBinary) {
       helper.AddNode(op_type, {relu1_output_arg, relu2_output_arg}, {output_arg});
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       EXPECT_EQ(op_to_count[op_type], 1);
       EXPECT_EQ(op_to_count["Relu"], 0);
     };
@@ -714,11 +690,11 @@ TEST(NchwcOptimizerTests, ConvConcat) {
       concat_node.AddAttribute("axis", static_cast<int64_t>(axis));
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 3);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], reorder_output_count);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 3);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], reorder_output_count);
     };
 
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
@@ -750,11 +726,11 @@ TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBiBo) {
     helper.AddNode("Conv", {input_arg, weights_arg, biases_arg}, {output3_arg});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 3);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 3);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 3);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 3);
 
     // Verify that the weights and biases were converted once and reused.
     std::unordered_set<const NodeArg*> weight_args;
@@ -800,11 +776,11 @@ TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBo) {
     helper.AddNode("Conv", {input4_arg, weights_arg, biases_arg}, {output4_arg});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 4);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 2);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 4);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 4);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 4);
 
     // Verify that the weights and biases were converted once and reused.
     std::unordered_set<const NodeArg*> weight_args;
@@ -864,12 +840,12 @@ TEST(NchwcOptimizerTests, ShapeInferencing) {
     helper.AddNode("Add", {conv3a_output_arg, conv3b_output_arg}, {output_arg});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 3);
-    EXPECT_EQ(op_to_count["nchwc.MaxPool"], 2);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 3);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.MaxPool"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
     EXPECT_EQ(op_to_count["Add"], 0);
   };
 
@@ -912,11 +888,11 @@ TEST(NchwcOptimizerTests, ShapeInferencing2) {
     helper.AddNode("Add", {conv2a_output_arg, conv2b_output_arg}, {output_arg});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 4);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 4);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
     EXPECT_EQ(op_to_count["Add"], 0);
   };
 
@@ -946,11 +922,11 @@ TEST(NchwcOptimizerTests, MixedOutputUsage) {
     helper.AddNode("Add", {conv2_output_arg, neg_output_arg}, {output_arg});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 2);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 2);
   };
 
   // Verify that mixed NCHWc/NCHW usages of NCHWc nodes.
@@ -983,14 +959,14 @@ TEST(NchwcOptimizerTests, TensorAlignment) {
     pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
     EXPECT_EQ(op_to_count["Conv"], 3);
     EXPECT_EQ(op_to_count["MaxPool"], 1);
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 0);
-    EXPECT_EQ(op_to_count["nchwc.MaxPool"], 0);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.MaxPool"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
   };
 
   // Verify that convolutions with unaligned inputs are not transformed.
@@ -1015,12 +991,12 @@ TEST(NchwcOptimizerTests, IntermediatesAsGraphOutputs) {
     helper.graph_.SetOutputs({output_arg, conv_output_arg});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-    EXPECT_EQ(op_to_count["nchwc.MaxPool"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 2);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.MaxPool"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 2);
   };
 
   // Verify that intermediates used inside the graph but that are also graph
@@ -1079,19 +1055,19 @@ TEST(NchwcOptimizerTests, BatchNormalization) {
       helper.per_sample_tolerance_ = .00025;
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
       if (training_outputs) {
-        EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
+        EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
         EXPECT_EQ(op_to_count["BatchNormalization"], 1);
         EXPECT_EQ(op_to_count["Relu"], 1);
       } else {
-        EXPECT_EQ(op_to_count["nchwc.Conv"], 3);
+        EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 3);
         EXPECT_EQ(op_to_count["BatchNormalization"], 0);
         EXPECT_EQ(op_to_count["Relu"], 0);
       }
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
     };
 
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
@@ -1115,11 +1091,11 @@ TEST(NchwcOptimizerTests, ConvReorderOutputNhwc) {
     helper.AddTransposeToNhwcNode(conv_output_arg, nhwc_output_arg);
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
     EXPECT_EQ(op_to_count["Transpose"], 0);
   };
 
@@ -1139,11 +1115,11 @@ TEST(NchwcOptimizerTests, ConvReorderOutputBoth) {
     helper.AddNode("Neg", {conv_output_arg}, {nchw_output_arg});
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 2);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 2);
     EXPECT_EQ(op_to_count["Transpose"], 0);
   };
 
@@ -1162,11 +1138,11 @@ TEST(NchwcOptimizerTests, ConvReorderOutputCnhw) {
     helper.AddTransposeToCnhwNode(conv_output_arg, nhwc_output_arg);
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
     EXPECT_EQ(op_to_count["Transpose"], 1);
   };
 
@@ -1200,12 +1176,12 @@ TEST(NchwcOptimizerTests, Upsample) {
       }
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.Upsample"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Upsample"], 1);
       EXPECT_EQ(op_to_count["Resize"] + op_to_count["Upsample"], 0);
     };
 
@@ -1237,11 +1213,11 @@ TEST(NchwcOptimizerTests, Activation) {
       helper.AddConvNode(mul_output_arg, output_arg, {16, 32, 1, 1});
     };
 
-    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-      auto op_to_count = session.CountOpsInGraph();
-      EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
-      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       EXPECT_EQ(op_to_count[activation_op_type], 1);
       EXPECT_EQ(op_to_count["Add"], 1);
     };
@@ -1271,12 +1247,12 @@ TEST(NchwcOptimizerTests, MaxPoolTypeCheck) {
     add_pool_node(helper, helper.MakeInput<uint8_t>(input_shape));
   };
 
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
     EXPECT_EQ(op_to_count["MaxPool"], 1);
-    EXPECT_EQ(op_to_count["nchwc.MaxPool"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.MaxPool"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
   };
 
   // Verify that the optimizer checks the type of the MaxPool node.

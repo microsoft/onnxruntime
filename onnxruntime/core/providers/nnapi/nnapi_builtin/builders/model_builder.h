@@ -8,6 +8,7 @@
 #include <core/graph/graph_viewer.h>
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
+#include "op_support_checker.h"
 #include "shaper.h"
 
 namespace onnxruntime {
@@ -21,17 +22,18 @@ class ModelBuilder {
 
   enum class TargetDeviceOption : int8_t {
     ALL_DEVICES,  // use all avaliable target devices
-    /* TODO support this option
-    SINGLE_DEVICE,  // use a single target device, must be given
+
+    /* TODO support these options
+    PREFERRED_DEVICES,  // Use one or more preferred devices (must be given)
+    EXCLUDED_DEVICES,   // Exclude one or more devices (must be given)
      */
+
     CPU_DISABLED,  // use all avaliable target devices except CPU
     CPU_ONLY,      // use CPU only
   };
 
   ModelBuilder(const GraphViewer& graph_viewer);
   ~ModelBuilder() = default;
-
-  std::vector<std::vector<int>> GetSupportedNodes();
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
 
@@ -75,6 +77,8 @@ class ModelBuilder {
   // It is off by default
   void SetUseFp16(bool use_fp16) { use_fp16_ = use_fp16; }
 
+  void SetTargetDeviceOption(TargetDeviceOption option) { target_device_option_ = option; }
+
   // Set NNAPI execution preference
   // Default preference is PREFER_SUSTAINED_SPEED
   void ExecutePreference(
@@ -92,13 +96,12 @@ class ModelBuilder {
   const std::unordered_set<std::string>&
   GetFusedActivations() const { return fused_activations_; }
 
-  const std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>&
-  GetInitializerTensors() const { return initializers_; }
+  const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
 
-  const Graph& GetOnnxGraph() const { return graph_viewer_.GetGraph(); }
+  const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
   void RegisterNHWCOperand(const std::string& name);
-  bool IsOperandNHWC(const std::string& name);
+  bool IsOperandNHWC(const std::string& name) const;
 
   // Get the operand transposed to nchw/nhwc from given nhwc/nchw operand, if it exists
   bool GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name);
@@ -129,10 +132,12 @@ class ModelBuilder {
   std::unordered_set<std::string> operands_;
   std::unordered_set<std::string> fused_activations_;
 
-  std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&> initializers_;
   std::unordered_set<std::string> skipped_initializers_;
 
-  std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_builders_;
+  // All activation nodes (Relu, Relu1, Relu6) as a map <NodeIndex, activation_code>
+  std::unordered_map<NodeIndex, int32_t> activation_nodes_;
+
+  std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_support_checkers_;
 
   // Operands in nhwc
   std::unordered_set<std::string> nhwc_operands_;
@@ -148,21 +153,27 @@ class ModelBuilder {
 
   TargetDeviceOption target_device_option_{TargetDeviceOption::ALL_DEVICES};
   std::vector<ANeuralNetworksDevice*> nnapi_target_devices_;
+  std::string nnapi_target_devices_detail_;  // Debug info for target devices
 
+  // The number of nnapi operations in this model
+  size_t num_nnapi_ops_ = 0;
   uint32_t next_index_ = 0;
-
-  bool IsNodeSupported(const Node& node);
 
   // Convert the onnx model to ANeuralNetworksModel
   Status Prepare() ORT_MUST_USE_RESULT;
 
   Status GetTargetDevices() ORT_MUST_USE_RESULT;
-  void GetAllInitializers();
+
+  // If a NNAPI operation will use initializers directly, we will add the initializers to the skip list
   void PreprocessInitializers();
+  // Preprocess all the activation nodes (Relu/Relu1/Relu6) for easy query later
+  void PreprocessActivations();
+  // Copy and process all the initializers to NNAPI model
   Status RegisterInitializers() ORT_MUST_USE_RESULT;
   Status RegisterModelInputs() ORT_MUST_USE_RESULT;
   Status AddOperations() ORT_MUST_USE_RESULT;
   Status RegisterModelOutputs() ORT_MUST_USE_RESULT;
+  // After constructing the NNAPI model, will set the shape inferencing record to the Model
   void RegisterModelShaper();
 
   Status SetOperandValue(uint32_t index, Model::NNMemory* memory,
@@ -174,7 +185,7 @@ class ModelBuilder {
                        bool is_nhwc,
                        uint32_t& index) ORT_MUST_USE_RESULT;
 
-  IOpBuilder* GetOpBuilder(const Node& node);
+  static const IOpBuilder* GetOpBuilder(const Node& node);
 };
 
 }  // namespace nnapi

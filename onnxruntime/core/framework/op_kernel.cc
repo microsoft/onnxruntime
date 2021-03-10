@@ -9,6 +9,22 @@
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
+  return onnxruntime::make_unique<OpKernelInfo>(info);
+}
+
+const onnxruntime::Node& OpKernel::Node() const {
+  return op_kernel_info_->node();
+}
+
+const onnxruntime::KernelDef& OpKernel::KernelDef() const {
+  return op_kernel_info_->GetKernelDef();
+}
+
+const OrtMemoryInfo& OpKernel::Allocator(int id, OrtMemType mem_type) const {
+  return op_kernel_info_->GetMemoryInfo(id, mem_type);
+}
+
 OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
     : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger) {
@@ -33,12 +49,10 @@ Tensor* OpKernelContext::Output(int index, const std::initializer_list<int64_t>&
   return Output(index, TensorShape(shape));
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 SparseTensor* OpKernelContext::Output(int index, size_t nnz, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape, nnz);
   return p_ml_value ? p_ml_value->GetMutable<SparseTensor>() : nullptr;
 }
-#endif
 
 bool OpKernelContext::TryGetInferredInputShape(int index, TensorShape& shape) const {
   return execution_frame_->TryGetInferredShape(GetInputArgIndex(index), shape);
@@ -141,8 +155,16 @@ onnxruntime::NodeIndex OpKernelContext::GetNodeIndex() const {
   return kernel_->Node().Index();
 }
 
+const std::string& OpKernelContext::GetNodeName() const {
+  return kernel_->Node().Name();
+}
+
 const std::string& OpKernelContext::GetOpDomain() const {
   return kernel_->KernelDef().Domain();
+}
+
+const std::string& OpKernelContext::GetOpType() const {
+  return kernel_->Node().OpType();
 }
 
 const OrtValue* OpKernelContext::GetInputMLValue(int index) const {

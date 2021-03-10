@@ -17,6 +17,16 @@ Abstract:
 
 #include "mlasi.h"
 
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+// N.B. Support building with older versions of asm/hwcap.h that do not define
+// this capability bit.
+#ifndef HWCAP_ASIMDDP
+#define HWCAP_ASIMDDP (1 << 20)
+#endif
+#endif
+
 //
 // Stores the platform information.
 //
@@ -68,7 +78,7 @@ inline
 uint64_t
 MlasReadExtendedControlRegister(
     unsigned int ext_ctrl_reg
-    )
+)
 {
 #if defined(_WIN32)
     return _xgetbv(ext_ctrl_reg);
@@ -120,8 +130,8 @@ Return Value:
 
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->GemmDoubleKernel = MlasGemmDoubleKernelSse;
-    this->GemmU8S8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>;
-    this->GemmU8U8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>;
+    this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchSse;
+    this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchSse;
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
@@ -140,9 +150,15 @@ Return Value:
     this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
     this->QLinearAddS8Kernel = MlasQLinearAddS8Kernel;
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
+    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
+    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+    this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernel<int8_t>;
+    this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t>;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
+
+    this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 
 #endif
 
@@ -200,12 +216,10 @@ Return Value:
 
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
-                this->GemmU8S8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
-                this->GemmU8S8PackedOperation = MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
+                this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAvx2;
                 this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx2;
                 this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx2;
-                this->GemmU8U8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8U8_KERNEL_AVX2>;
-                this->GemmU8U8PackedOperation = MlasGemmU8X8PackedOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>;
+                this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
@@ -220,7 +234,35 @@ Return Value:
                 this->ErfKernelRoutine = MlasErfKernelFma3;
                 this->QLinearAddS8Kernel = MlasQLinearAddS8KernelAvx2;
                 this->QLinearAddU8Kernel = MlasQLinearAddU8KernelAvx2;
+                this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t>;
+                this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernelAvx2<uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
+
+                //
+                // Check if the processor supports Hybrid core architecture.
+                //
+
+                if ((Cpuid7[3] & 0x8000) != 0) {
+                    this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT * 4;
+                }
+
+                //
+                // Check if the processor supports AVXVNNI features.
+                //
+
+                unsigned Cpuid7_1[4];
+#if defined(_WIN32)
+                __cpuidex((int*)Cpuid7_1, 7, 1);
+#else
+                __cpuid_count(7, 1, Cpuid7_1[0], Cpuid7_1[1], Cpuid7_1[2], Cpuid7_1[3]);
+#endif
+
+                if ((Cpuid7_1[0] & 0x10) != 0) {
+
+                    this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
+                    this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
+                    this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
+                }
 
 #if !defined(MLAS_AVX512F_UNSUPPORTED)
 
@@ -245,6 +287,11 @@ Return Value:
                     this->NchwcBlockSize = 16;
                     this->PreferredBufferAlignment = 64;
 
+#if !defined(MLAS_AVX512F_INTRINSICS_UNSUPPORTED)
+                    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
+                    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
+#endif
+
                     //
                     // Check if the processor supports AVX512 core features
                     // (AVX512BW/AVX512DQ/AVX512VL).
@@ -264,8 +311,7 @@ Return Value:
 
                         if ((Cpuid7[2] & 0x800) != 0) {
 
-                            this->GemmU8U8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
-                            this->GemmU8U8PackedOperation = MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
+                            this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                         }
@@ -285,6 +331,24 @@ Return Value:
     }
 
 #endif // MLAS_TARGET_AMD64_IX86
+
+#if defined(MLAS_TARGET_ARM64)
+
+    this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+
+#if defined(__linux__)
+
+    //
+    // Check if the processor supports ASIMD dot product instructions.
+    //
+
+    if ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0) {
+        this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
+    }
+
+#endif
+
+#endif
 
 }
 

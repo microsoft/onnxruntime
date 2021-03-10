@@ -22,6 +22,7 @@
 #include <variant>
 #include <vector>
 #include <thread>
+#include <tuple>
 
 // WIL
 #include <wil/cppwinrt.h>

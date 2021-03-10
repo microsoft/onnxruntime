@@ -1,5 +1,6 @@
 #include "ort_test_session.h"
 #include <core/session/onnxruntime_cxx_api.h>
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -7,6 +8,7 @@
 #ifdef _WIN32
 #define strdup _strdup
 #endif
+extern const OrtApi* g_ort;
 
 namespace onnxruntime {
 namespace perftest {
@@ -38,12 +40,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kNGraphExecutionProvider) {
-#ifdef USE_NGRAPH
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(session_options, "CPU"));
-#else
-    ORT_THROW("nGraph is not supported in this build");
-#endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
     OrtCUDAProviderOptions cuda_options{
@@ -51,9 +47,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
         std::numeric_limits<size_t>::max(),
         0,
-        !performance_test_config.run_config.do_cuda_copy_in_separate_stream
-    };
-  Ort::ThrowOnError(session_options.OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, &cuda_options));
+        !performance_test_config.run_config.do_cuda_copy_in_separate_stream,
+        0,
+        nullptr};
+    session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
@@ -70,17 +67,80 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
- } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+  } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, ""));
+    std::string device_type = ""; // [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.
+    bool enable_vpu_fast_compile = false; // [device_id]: Selects a particular hardware device for inference.
+    std::string device_id = ""; // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
+    size_t num_of_threads = 8; // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
+
+    #ifdef _MSC_VER
+    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+    #else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    #endif
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if(token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [OpenVINO] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0,pos);
+      auto value = token.substr(pos+1);
+
+      if (key == "device_type") {
+        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"};
+        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+          device_type = value;
+        }
+        else {
+          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. select from 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from Hetero/Multi options available. \n");
+        }
+      } else if (key == "device_id") {
+        device_id = value;
+      } else if (key == "enable_vpu_fast_compile") {
+        if(value == "true" || value == "True"){
+          enable_vpu_fast_compile = true;
+        } else if (value == "false" || value == "False") {
+          enable_vpu_fast_compile = false;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "num_of_threads") {
+        std::stringstream sstream(value);
+        sstream >> num_of_threads;
+        if ((int)num_of_threads <=0) {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
+        }
+      } else {
+          ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads'] \n");
+      }
+    }
+    OrtOpenVINOProviderOptions options;
+    options.device_type = device_type.c_str(); //To set the device_type
+    options.device_id = device_id.c_str(); // To set the device_id
+    options.enable_vpu_fast_compile = enable_vpu_fast_compile; // To enable_vpu_fast_compile, default is false
+    options.num_of_threads = num_of_threads; // To set number of free InferRequests, default is 8
+    session_options.AppendExecutionProvider_OpenVINO(options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kCoreMLExecutionProvider) {
+#ifdef USE_COREML
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, 0));
+#else
+    ORT_THROW("COREML is not supported in this build\n");
 #endif
   } else if (provider_name == onnxruntime::kDmlExecutionProvider) {
 #ifdef USE_DML
@@ -99,7 +159,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
-                                                                   performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+                                                                     performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
@@ -124,8 +184,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.DisableMemPattern();
   session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
 
-  if(performance_test_config.run_config.intra_op_num_threads > 0){
-    fprintf(stdout, "Setting intra_op_num_threads to %d\n",   performance_test_config.run_config.intra_op_num_threads);
+  if (performance_test_config.run_config.intra_op_num_threads > 0) {
+    fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
     session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
   }
 
@@ -140,6 +200,27 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.EnableProfiling(performance_test_config.run_config.profile_file.c_str());
   if (!performance_test_config.run_config.optimized_model_path.empty())
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
+  if (performance_test_config.run_config.set_denormal_as_zero)
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  if (!performance_test_config.run_config.free_dim_name_overrides.empty()) {
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_name_overrides) {
+      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToMBString(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int) dim_override.second);
+      }
+    }
+  }
+  if (!performance_test_config.run_config.free_dim_denotation_overrides.empty()) {
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_denotation_overrides) {
+      if (g_ort->AddFreeDimensionOverride(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToMBString(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int) dim_override.second);
+      }
+    }
+  }
+
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
 
   size_t output_count = session_.GetOutputCount();
@@ -171,7 +252,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
-      // free dimensions are treated as 1
+      // free dimensions are treated as 1 if not overriden
       for (int64_t& dim : input_node_dim) {
         if (dim == -1) {
           dim = 1;

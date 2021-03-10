@@ -2,9 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "cuda_common.h"
-#include "core/framework/tensor.h"
+
 #include <cfloat>
+
+#include "core/common/logging/logging.h"
+#include "core/framework/tensor.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -122,6 +125,14 @@ struct Consts<half> {
   static const float Zero;
   static const float One;
 };
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+template<>
+struct Consts<nv_bfloat16> {
+  static const float Zero;
+  static const float One;
+};
+#endif
 
 inline double ClampCudnnBatchNormEpsilon(double epsilon) {
   if (epsilon < CUDNN_BN_MIN_EPSILON) {

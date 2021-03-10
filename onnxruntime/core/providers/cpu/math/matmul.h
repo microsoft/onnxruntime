@@ -24,9 +24,7 @@ class MatMul<float> final : public OpKernel {
     info.GetAttrOrDefault<float>("alpha", &alpha_attr_, 1.0);
   }
 
-#if !defined(USE_MKLML_FOR_BLAS)
   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
-#endif
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -34,7 +32,7 @@ class MatMul<float> final : public OpKernel {
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
 
-  // For FusedMatMul and TransposeMatMul contrib ops
+  // For FusedMatMul contrib ops
   float alpha_attr_;
   int64_t trans_a_attr_;
   int64_t trans_b_attr_;

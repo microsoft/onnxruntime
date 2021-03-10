@@ -4,22 +4,27 @@ jobs:
   workspace:
     clean: all
   pool: Linux-Multi-GPU
+  variables:
+    PythonVersion: "3.7"
   steps:
   - checkout: self
     clean: true
     submodules: recursive
 
-  - task: Docker@2
-    displayName: login
-    inputs:
-      containerRegistry: onnxruntimeregistry
-      command: login
-      addPipelineData: false
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda10_2
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimegpubuild
+
+  - template: templates/set-python-manylinux-variables-step.yml
+
   - task: CmdLine@2
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        docker run --gpus all --rm \
+        docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-g -O3" -e CXXFLAGS="-g -O3" --rm \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
@@ -27,23 +32,19 @@ jobs:
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecentosgpubuild:ch5h \
-            python3 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimegpubuild \
+            $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
-              --config Debug Release \
+              --config Release \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
               --build_wheel \
               --enable_onnx_tests --use_cuda --cuda_version=10.2 --cuda_home=/usr/local/cuda-10.2 --cudnn_home=/usr/local/cuda-10.2 \
-              --enable_pybind --build_java --build_nodejs --enable_multi_device_test
+              --enable_pybind --build_java --build_nodejs --enable_multi_device_test \
+              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so
       workingDirectory: $(Build.SourcesDirectory)
-  - task: Docker@2
-    displayName: logout
-    inputs:
-      containerRegistry: onnxruntimeregistry
-      command: logout
-      addPipelineData: false
+
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:

@@ -20,6 +20,26 @@ class CUDAAllocator : public IAllocator {
 
  private:
   void CheckDevice(bool throw_when_fail) const;
+  void SetDevice(bool throw_when_fail) const;
+};
+
+class CUDAExternalAllocator : public CUDAAllocator {
+  typedef void* (*ExternalAlloc)(size_t size);
+  typedef void (*ExternalFree)(void* p);
+
+ public:
+  CUDAExternalAllocator(OrtDevice::DeviceId device_id, const char* name, const void* alloc, const void* free)
+      : CUDAAllocator(device_id, name) {
+    alloc_ = reinterpret_cast<ExternalAlloc>(alloc);
+    free_ = reinterpret_cast<ExternalFree>(free);
+  }
+
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
+
+ private:
+  ExternalAlloc alloc_;
+  ExternalFree free_;
 };
 
 //TODO: add a default constructor

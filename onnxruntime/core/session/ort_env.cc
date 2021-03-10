@@ -10,6 +10,7 @@
 #include "core/session/environment.h"
 #include "core/session/allocator_impl.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/provider_shutdown.h"
 #ifdef __ANDROID__
 #include "core/platform/android/logging/android_log_sink.h"
 #else
@@ -36,6 +37,13 @@ void LoggingWrapper::SendImpl(const onnxruntime::logging::Timestamp& /*timestamp
 
 OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
     : value_(std::move(value1)) {
+}
+
+OrtEnv::~OrtEnv() {
+// We don't support any shared providers in the minimal build yet
+#if !defined(ORT_MINIMAL_BUILD)
+  UnloadSharedProviders();
+#endif
 }
 
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
@@ -103,7 +111,13 @@ void OrtEnv::SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingMana
   value_->SetLoggingManager(std::move(logging_manager));
 }
 
-onnxruntime::Status OrtEnv::RegisterAllocator(AllocatorPtr allocator) {
+onnxruntime::common::Status OrtEnv::RegisterAllocator(AllocatorPtr allocator) {
   auto status = value_->RegisterAllocator(allocator);
+  return status;
+}
+
+onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
+                                                               const OrtArenaCfg* arena_cfg) {
+  auto status = value_->CreateAndRegisterAllocator(mem_info, arena_cfg);
   return status;
 }

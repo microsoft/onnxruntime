@@ -50,6 +50,7 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
     UnaryElementwisePreparation p;                                                                         \
     ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));                                           \
     Impl_##x(                                                                                              \
+        Stream(),                                                                                          \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->template MutableData<T>()), \
         p.output_tensor->Shape().Size());                                                                  \
@@ -57,7 +58,7 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
     return Status::OK();                                                                                   \
   }
 
-#define UNARY_OP_VERSIONED_TYPED(name, startver, endver, T)               \
+#define UNARY_OP_VERSIONED_TYPED(name, startver, endver, T) \
   UNARY_ELEMENTWISE_REGISTER_VERSIONED_KERNEL(name, startver, endver, T)
 
 #define UNARY_OP_TYPED(name, ver, T)              \
@@ -142,6 +143,8 @@ UNARY_OP_HFD(Erf, 13)
 
 UNARY_LOGICALOP_TYPED(Not, 1, bool)
 UNARY_OP_HFD(Round, 11)
+UNARY_OP_HFD(Cos, 7)
+UNARY_OP_HFD(Sin, 7)
 
 }  // namespace cuda
 }  // namespace onnxruntime

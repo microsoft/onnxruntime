@@ -12,6 +12,7 @@ namespace training {
 
 using FileInputStream = google::protobuf::io::FileInputStream;
 using CodedInputStream = google::protobuf::io::CodedInputStream;
+using ThreadPool = onnxruntime::concurrency::ThreadPool;
 
 static std::vector<PathString> GetAllDataFiles(const PathString& dir_path) {
   std::vector<PathString> data_files;
@@ -74,8 +75,8 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
 Status DataLoader::InitializeDataSetIndex(size_t initial_data_set_index) {
   if (initial_data_set_index == active_file_index_) return Status::OK();
 
-  ORT_RETURN_IF_NOT(!is_preloaded_);
-  ORT_RETURN_IF_NOT(initial_data_set_index < NumShards());
+  ORT_RETURN_IF(is_preloaded_, "is_preloaded_ was true");
+  ORT_RETURN_IF_NOT(initial_data_set_index < NumShards(), "initial_data_set_index >= NumShards()");
 
   active_file_index_ = initial_data_set_index;
 
@@ -98,7 +99,7 @@ std::shared_ptr<DataSet> DataLoader::MoveToNextDataSet() {
 }
 
 Status DataLoader::InitialPreLoadAsync() {
-  ORT_RETURN_IF_NOT(!is_preloaded_);
+  ORT_RETURN_IF(is_preloaded_, "is_preloaded_ was true");
 
   for (size_t i = 0; i < std::min(max_num_files_preload_, NumShards()); ++i) {
     const auto data_set_index = (active_file_index_ + i) % NumShards();
@@ -117,7 +118,7 @@ void DataLoader::EnsurePreloadedOrThrow() {
 }
 
 void DataLoader::LoadAndRemoveInternalAsync(size_t index_to_load, bool need_remove, size_t index_to_remove) {
-  data_loader_thread_pool_->Schedule([this, index_to_load, need_remove, index_to_remove]() {
+  ThreadPool::Schedule(data_loader_thread_pool_.get(), [this, index_to_load, need_remove, index_to_remove]() {
     std::shared_ptr<DataSet> data_set = std::make_shared<DataSet>(input_tensor_names_);
     if (index_to_load >= NumShards()) {
       LOGS_DEFAULT(WARNING)

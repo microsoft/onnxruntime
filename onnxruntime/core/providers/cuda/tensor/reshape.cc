@@ -31,7 +31,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Reshape);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Reshape_1,
+    Reshape,
     kOnnxDomain,
     1,
     4,

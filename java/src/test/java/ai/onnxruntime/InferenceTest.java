@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -33,6 +33,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -51,6 +52,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 /** Tests for the onnx-runtime Java interface. */
 public class InferenceTest {
@@ -393,6 +395,76 @@ public class InferenceTest {
   }
 
   @Test
+  public void environmentThreadPoolTest() throws OrtException {
+    Path squeezeNet = getResourcePath("/squeezenet.onnx");
+    String modelPath = squeezeNet.toString();
+    float[] inputData = loadTensorFromFile(getResourcePath("/bench.in"));
+    float[] expectedOutput = loadTensorFromFile(getResourcePath("/bench.expected_out"));
+    Map<String, OnnxTensor> container = new HashMap<>();
+
+    OrtEnvironment.ThreadingOptions threadOpts = new OrtEnvironment.ThreadingOptions();
+    threadOpts.setGlobalInterOpNumThreads(2);
+    threadOpts.setGlobalIntraOpNumThreads(2);
+    threadOpts.setGlobalDenormalAsZero();
+    threadOpts.setGlobalSpinControl(true);
+    try (OrtEnvironment env =
+            OrtEnvironment.getEnvironment(
+                OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL, "environmentThreadPoolTest", threadOpts);
+        OrtSession.SessionOptions options = new SessionOptions();
+        OrtSession.SessionOptions disableThreadOptions = new SessionOptions()) {
+      disableThreadOptions.disablePerSessionThreads();
+
+      // Check that the regular session executes
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
+        long[] inputShape = ((TensorInfo) inputMeta.getInfo()).shape;
+        Object tensorData = OrtUtil.reshape(inputData, inputShape);
+        OnnxTensor tensor = OnnxTensor.createTensor(env, tensorData);
+        container.put(inputMeta.getName(), tensor);
+        try (OrtSession.Result result = session.run(container)) {
+          OnnxValue resultTensor = result.get(0);
+          float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
+          assertEquals(expectedOutput.length, resultArray.length);
+          assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        }
+        container.clear();
+        tensor.close();
+      }
+
+      // Check that the session using the env thread pool executes
+      try (OrtSession session = env.createSession(modelPath, disableThreadOptions)) {
+        NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
+        long[] inputShape = ((TensorInfo) inputMeta.getInfo()).shape;
+        Object tensorData = OrtUtil.reshape(inputData, inputShape);
+        OnnxTensor tensor = OnnxTensor.createTensor(env, tensorData);
+        container.put(inputMeta.getName(), tensor);
+        try (OrtSession.Result result = session.run(container)) {
+          OnnxValue resultTensor = result.get(0);
+          float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
+          assertEquals(expectedOutput.length, resultArray.length);
+          assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        }
+        container.clear();
+        tensor.close();
+      }
+    }
+
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment("test")) {
+      try {
+        OrtEnvironment newEnv =
+            OrtEnvironment.getEnvironment(
+                OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL, "fail", threadOpts);
+        // fail as we can't recreate environments with different threading options
+        fail("Should have thrown IllegalStateException");
+      } catch (IllegalStateException e) {
+        // pass
+      }
+    }
+
+    threadOpts.close();
+  }
+
+  @Test
   public void inferenceTest() throws OrtException {
     canRunInferenceOnAModel(OptLevel.NO_OPT, ExecutionMode.PARALLEL);
     canRunInferenceOnAModel(OptLevel.NO_OPT, ExecutionMode.SEQUENTIAL);
@@ -576,28 +648,70 @@ public class InferenceTest {
   }
 
   @Test
-  public void testCUDA() throws OrtException {
-    if (System.getProperty("USE_CUDA") != null) {
-      SqueezeNetTuple tuple = openSessionSqueezeNet(0);
-      try (OrtEnvironment env = tuple.env;
-          OrtSession session = tuple.session) {
-        float[] inputData = tuple.inputData;
-        float[] expectedOutput = tuple.outputData;
-        NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
-        Map<String, OnnxTensor> container = new HashMap<>();
-        long[] inputShape = ((TensorInfo) inputMeta.getInfo()).shape;
-        Object tensor = OrtUtil.reshape(inputData, inputShape);
-        container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
-        try (OrtSession.Result result = session.run(container)) {
-          OnnxValue resultTensor = result.get(0);
-          float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
-          assertEquals(expectedOutput.length, resultArray.length);
-          assertArrayEquals(expectedOutput, resultArray, 1e-6f);
-        } catch (OrtException e) {
-          throw new IllegalStateException("Failed to execute a scoring operation", e);
+  public void testProviders() {
+    EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
+    int providersSize = providers.size();
+    assertTrue(providersSize > 0);
+    assertTrue(providers.contains(OrtProvider.CPU));
+
+    // Check that the providers are a copy of the original, note this does not enable the DNNL
+    // provider
+    providers.add(OrtProvider.DNNL);
+    assertEquals(providersSize, OrtEnvironment.getAvailableProviders().size());
+  }
+
+  @Test
+  public void testSymbolicDimensionAssignment() throws OrtException {
+    // model takes 1x5 input of fixed type, echoes back
+    String modelPath = getResourcePath("/capi_symbolic_dims.onnx").toString();
+
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment("testSymbolicDimensionAssignment")) {
+      // Check the dimension is symbolic
+      try (SessionOptions options = new SessionOptions()) {
+        try (OrtSession session = env.createSession(modelPath, options)) {
+          Map<String, NodeInfo> infoMap = session.getInputInfo();
+          TensorInfo aInfo = (TensorInfo) infoMap.get("A").getInfo();
+          assertArrayEquals(new long[] {-1, 2}, aInfo.shape);
         }
-        OnnxValue.close(container.values());
       }
+      // Check that when the options are assigned it overrides the symbolic dimension
+      try (SessionOptions options = new SessionOptions()) {
+        options.setSymbolicDimensionValue("n", 5);
+        try (OrtSession session = env.createSession(modelPath, options)) {
+          Map<String, NodeInfo> infoMap = session.getInputInfo();
+          TensorInfo aInfo = (TensorInfo) infoMap.get("A").getInfo();
+          assertArrayEquals(new long[] {5, 2}, aInfo.shape);
+        }
+      }
+    }
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_CUDA", matches = "1")
+  public void testCUDA() throws OrtException {
+    EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
+    assertTrue(providers.size() > 1);
+    assertTrue(providers.contains(OrtProvider.CPU));
+    assertTrue(providers.contains(OrtProvider.CUDA));
+    SqueezeNetTuple tuple = openSessionSqueezeNet(0);
+    try (OrtEnvironment env = tuple.env;
+        OrtSession session = tuple.session) {
+      float[] inputData = tuple.inputData;
+      float[] expectedOutput = tuple.outputData;
+      NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      long[] inputShape = ((TensorInfo) inputMeta.getInfo()).shape;
+      Object tensor = OrtUtil.reshape(inputData, inputShape);
+      container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
+      try (OrtSession.Result result = session.run(container)) {
+        OnnxValue resultTensor = result.get(0);
+        float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
+        assertEquals(expectedOutput.length, resultArray.length);
+        assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+      } catch (OrtException e) {
+        throw new IllegalStateException("Failed to execute a scoring operation", e);
+      }
+      OnnxValue.close(container.values());
     }
   }
 
@@ -926,6 +1040,10 @@ public class InferenceTest {
             boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
             assertArrayEquals(flatInput, resultArray);
           }
+          // Check that the profiling start time doesn't throw
+          long profilingStartTime = session.getProfilingStartTimeInNs();
+
+          // Check the profiling output doesn't throw
           String profilingOutput = session.endProfiling();
           File profilingOutputFile = new File(profilingOutput);
           profilingOutputFile.deleteOnExit();
@@ -1208,6 +1326,7 @@ public class InferenceTest {
         assertEquals(OnnxJavaType.FLOAT, sequenceInfo.mapInfo.valueType);
 
         // try-cast first element in sequence to map/dictionary type
+        @SuppressWarnings("unchecked")
         Map<Long, Float> map = (Map<Long, Float>) ((List<Object>) secondOutput.getValue()).get(0);
         assertEquals(0.25938290, map.get(0L), 1e-6);
         assertEquals(0.40904793, map.get(1L), 1e-6);
@@ -1274,6 +1393,7 @@ public class InferenceTest {
         assertEquals(OnnxJavaType.FLOAT, sequenceInfo.mapInfo.valueType);
 
         // try-cast first element in sequence to map/dictionary type
+        @SuppressWarnings("unchecked")
         Map<String, Float> map =
             (Map<String, Float>) ((List<Object>) secondOutput.getValue()).get(0);
         assertEquals(0.25938290, map.get("0"), 1e-6);

@@ -7,13 +7,18 @@ namespace onnxruntime {
 
 class FuncManager {
  public:
-  FuncManager() : fused_funcs_(std::make_shared<std::unordered_map<std::string, FuncInfo> >()), lib_loader_(onnxruntime::make_unique<ExLibLoader>()) {}
+  FuncManager()
+      : fused_funcs_(std::make_shared<std::unordered_map<std::string, FuncInfo> >()),
+        lib_loader_(onnxruntime::make_unique<ExLibLoader>()) {
+  }
 
   Status AddFuncInfo(const std::string& name, const std::string& dll_path);
 
-  Status AddFuncInfo(const std::string& name, ComputeFunc compute, CreateFunctionStateFunc create, DestroyFunctionStateFunc release);
+  Status AddFuncInfo(const std::string& name, NodeComputeInfo&& compute_info);
 
-  Status GetFuncs(const std::string& name, ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const;
+  Status GetFuncs(const std::string& name, NodeComputeInfo*& compute_info) const;
+
+  size_t NumFuncs() const { return fused_funcs_->size(); }
 
   void SetFusedFuncs(const FuncManager& func_mgr) {
     fused_funcs_ = func_mgr.fused_funcs_;
@@ -21,9 +26,7 @@ class FuncManager {
 
   struct FuncInfo {
     std::string dso_path;
-    ComputeFunc compute_func;
-    CreateFunctionStateFunc create_state_func;
-    DestroyFunctionStateFunc release_state_func;
+    NodeComputeInfo compute_info;
   };
 
  private:

@@ -6,10 +6,12 @@
 #include "core/framework/debug_node_inputs_outputs_utils.h"
 
 #include <iomanip>
+#include <cctype>
 
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -89,14 +91,14 @@ void DumpTensorToStdOut(const Tensor& tensor) {
   std::cout << std::endl;
 }
 
-PathString MakeTensorFileName(const std::string& tensor_name) {
+PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOptions& dump_options) {
   auto make_valid_name = [](std::string name) {
     std::replace_if(
         name.begin(), name.end(), [](char c) { return !std::isalnum(c); }, '_');
     return name;
   };
 
-  return path_utils::MakePathString(make_valid_name(tensor_name), ".tensorproto");
+  return path_utils::MakePathString(make_valid_name(tensor_name), dump_options.file_suffix, ".tensorproto");
 }
 
 void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, const Path& file_path) {
@@ -124,7 +126,7 @@ void DumpCpuTensor(
       break;
     }
     case NodeDumpOptions::DataDestination::TensorProtoFiles: {
-      const Path tensor_file = dump_options.output_dir / Path::Parse(MakeTensorFileName(tensor_name));
+      const Path tensor_file = dump_options.output_dir / Path::Parse(MakeTensorFileName(tensor_name, dump_options));
       DumpTensorToFile(tensor, tensor_name, tensor_file);
       break;
     }
@@ -139,7 +141,6 @@ void DumpTensor(
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
-  const auto data_type = tensor.DataType();
   if (tensor_location.device.Type() == OrtDevice::CPU ||
       tensor_location.mem_type == OrtMemTypeCPUInput ||
       tensor_location.mem_type == OrtMemTypeCPUOutput) {
@@ -147,7 +148,8 @@ void DumpTensor(
   } else {
     std::cout << tensor_location << "\n";
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
+    const auto data_type = tensor.DataType();
     // Dumping GPU only when cuda is enabled.
     if (tensor_location.device.Type() == OrtDevice::GPU) {
       const auto& execution_providers = session_state.GetExecutionProviders();
@@ -174,42 +176,49 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
   static const NodeDumpOptions node_dump_options = []() {
     namespace env_vars = debug_node_inputs_outputs_env_vars;
 
-    auto get_bool_env_var = [](const char* env_var) {
-      const auto val = Env::Default().GetEnvironmentVar(env_var);
-      if (val.empty()) return false;
-      std::istringstream s{val};
-      int i;
-      ORT_ENFORCE(
-          s >> i && s.eof(),
-          "Failed to parse environment variable ", env_var, ": ", val);
-      return i != 0;
-    };
-
     NodeDumpOptions opts{};
 
-    opts.dump_flags = NodeDumpOptions::DumpFlags::ShapeOnly;
-    if (get_bool_env_var(env_vars::kDumpInputData)) {
+    // Preserve existing behavior of printing the shapes by default. Turn it off only if the user has requested so
+    // explicitly by setting the value of the env variable to 0.
+    opts.dump_flags = NodeDumpOptions::DumpFlags::None;
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpShapeData, true)) {
+      opts.dump_flags |= NodeDumpOptions::DumpFlags::Shape;
+    }
+
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpInputData, false)) {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::InputData;
     }
-    if (get_bool_env_var(env_vars::kDumpOutputData)) {
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpOutputData, false)) {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::OutputData;
     }
 
     opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
     opts.filter.op_type_pattern = Env::Default().GetEnvironmentVar(env_vars::kOpTypeFilter);
 
-    if (get_bool_env_var(env_vars::kDumpDataToFiles)) {
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpDataToFiles, false)) {
       opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
+    }
+
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kAppendRankToFileName, false)) {
+      std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
+      if (rank.empty()) {
+        opts.file_suffix = "_default_rank_0";
+      } else {
+        opts.file_suffix = "_rank_" + rank;
+      }
     }
 
     opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));
 
     // check for confirmation for dumping data to files for all nodes
-    if (opts.dump_flags != NodeDumpOptions::DumpFlags::ShapeOnly &&
+    const bool is_input_or_output_requested = ((opts.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) ||
+                                              ((opts.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0);
+
+    if (is_input_or_output_requested &&
         opts.data_destination == NodeDumpOptions::DataDestination::TensorProtoFiles &&
         opts.filter.name_pattern.empty() && opts.filter.op_type_pattern.empty()) {
       ORT_ENFORCE(
-          get_bool_env_var(env_vars::kDumpingDataToFilesForAllNodesIsOk),
+          ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpingDataToFilesForAllNodesIsOk, false),
           "The current environment variable configuration will dump node input or output data to files for every node. "
           "This may cause a lot of files to be generated. Set the environment variable ",
           env_vars::kDumpingDataToFilesForAllNodesIsOk, " to confirm this is what you want.");
@@ -221,9 +230,24 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
   return node_dump_options;
 }
 
+static bool IsAnyOutputDumped(const NodeDumpOptions& dump_options) {
+  return dump_options.dump_flags != NodeDumpOptions::DumpFlags::None;
+}
+
+static void PrintIf(bool boolean_expression, const std::string& message) {
+  if (boolean_expression) {
+    std::cout << message;
+  }
+}
+
 void DumpNodeInputs(
     const NodeDumpOptions& dump_options,
     const OpKernelContext& context, const Node& node, const SessionState& session_state) {
+  const bool is_any_output_dumped = IsAnyOutputDumped(dump_options);
+  if (!is_any_output_dumped) {
+    return;
+  }
+
   if (!FilterNode(dump_options, node)) return;
 
   std::cout << "-----------\n";
@@ -242,7 +266,8 @@ void DumpNodeInputs(
           const auto& tensor = *context.Input<Tensor>(i);
           const auto& shape = tensor.Shape();
 
-          std::cout << " Shape: " << shape << "\n";
+          const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
+          PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
           if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
             DumpTensor(dump_options, tensor, input_defs[i]->Name(), session_state);
@@ -266,6 +291,11 @@ void DumpNodeInputs(
 }
 
 void DumpNodeOutputs(const NodeDumpOptions& dump_options, OpKernelContext& context, const Node& node, const SessionState& session_state) {
+  const bool is_any_output_dumped = IsAnyOutputDumped(dump_options);
+  if (!is_any_output_dumped) {
+    return;
+  }
+
   if (!FilterNode(dump_options, node)) return;
 
   std::cout << "-----------\n";
@@ -281,7 +311,8 @@ void DumpNodeOutputs(const NodeDumpOptions& dump_options, OpKernelContext& conte
           const auto& tensor = *context.Output<Tensor>(i);
           const auto& shape = tensor.Shape();
 
-          std::cout << " Shape: " << shape << "\n";
+          const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
+          PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
           if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0) {
             DumpTensor(dump_options, tensor, output_defs[i]->Name(), session_state);

@@ -324,20 +324,24 @@ class OpTester {
 
   template <typename T>
   void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& expected_values,
-                 bool sort_output = false) {
-    AddData(output_data_, name, dims, expected_values.begin(), expected_values.size(), false, sort_output);
+                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddData(output_data_, name, dims, expected_values.begin(), expected_values.size(), false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
   // This function doesn't work for vector<bool> because const vector<bool> cannot invoke its data().
   template <typename T>
   void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& expected_values,
-                 bool sort_output = false) {
-    AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false, sort_output);
+                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
   template <typename T>
-  void AddOutput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size) {
-    AddData(output_data_, name, dims, p_values, size);
+  void AddOutput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size,
+                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddData(output_data_, name, dims, p_values, size, false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
   template <typename T>
@@ -401,6 +405,13 @@ class OpTester {
     num_run_calls_ = n;
   }
 
+  using CustomOutputVerifierFn =
+      std::function<void(const std::vector<OrtValue>& /*fetches*/, const std::string& /*provider_type*/)>;
+
+  void SetCustomOutputVerifier(CustomOutputVerifierFn custom_output_verifier) {
+    custom_output_verifier_ = custom_output_verifier;
+  }
+
   template <typename T>
   void AddAttribute(std::string name, T value) {
     // Generate a the proper AddAttribute call for later
@@ -412,15 +423,11 @@ class OpTester {
   enum class ExpectResult { kExpectSuccess,
                             kExpectFailure };
 
-  using CustomOutputVerifierFn =
-      std::function<void(const std::vector<OrtValue>& /*fetches*/, const std::string& /*provider_type*/)>;
-
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
            ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL,
-           const CustomOutputVerifierFn& custom_output_verifier = {},
            const Graph::ResolveOptions& resolve_options = {});
 
   void Run(SessionOptions session_options,
@@ -429,7 +436,6 @@ class OpTester {
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-           const CustomOutputVerifierFn& custom_output_verifier = {},
            const Graph::ResolveOptions& resolve_options = {});
 
   std::vector<MLValue> GetFetches() { return fetches_; }
@@ -501,8 +507,7 @@ class OpTester {
                                     const RunOptions* run_options,
                                     const std::unordered_map<std::string, OrtValue>& feeds,
                                     const std::vector<std::string>& output_names,
-                                    const std::string& provider_type,
-                                    const CustomOutputVerifierFn& custom_output_verifier);
+                                    const std::string& provider_type);
 
   const char* op_;
   std::vector<Data> input_data_;
@@ -520,7 +525,8 @@ class OpTester {
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
-               const std::vector<std::string>* dim_params = nullptr) {
+               const std::vector<std::string>* dim_params = nullptr,
+               float rel_error = 0.0f, float abs_error = 0.0f) {
     ORT_TRY {
       TensorShape shape{dims};
       ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
@@ -564,7 +570,19 @@ class OpTester {
         }
         node_arg.SetShape(new_shape);
       }
-      data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>(), sort_output));
+
+      optional<float> rel;
+      optional<float> abs;
+
+      if (rel_error != 0.0f) {
+        rel = rel_error;
+      }
+
+      if (abs_error != 0.0f) {
+        abs = abs_error;
+      }
+
+      data.push_back(Data(std::move(node_arg), std::move(value), std::move(rel), std::move(abs), sort_output));
       if (is_initializer) initializer_index_.push_back(data.size() - 1);
     }
     ORT_CATCH(const std::exception& ex) {
@@ -625,6 +643,8 @@ class OpTester {
   bool verify_output_;
 
   bool use_determinism_ = false;
+
+  CustomOutputVerifierFn custom_output_verifier_;
 };
 
 template <typename TException>
@@ -646,6 +666,13 @@ void DebugTrap();
 
 void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type);
 
+inline const Tensor& FetchTensor(const OrtValue& ort_value) {
+  if (ort_value.Fence()) {
+    ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
+  }
+  return ort_value.Get<Tensor>();
+}
+
 inline void ConvertFloatToMLFloat16(const float* f_datat, MLFloat16* h_data, int input_size) {
   auto in_vector = ConstEigenVectorMap<float>(f_datat, input_size);
   auto output_vector = EigenVectorMap<Eigen::half>(static_cast<Eigen::half*>(static_cast<void*>(h_data)), input_size);
@@ -657,6 +684,12 @@ inline void ConvertMLFloat16ToFloat(const MLFloat16* h_data, float* f_data, int 
       ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(h_data)), input_size);
   auto output_vector = EigenVectorMap<float>(f_data, input_size);
   output_vector = in_vector.template cast<float>();
+}
+
+inline std::vector<MLFloat16> FloatsToMLFloat16s(const std::vector<float>& f) {
+  std::vector<MLFloat16> m(f.size());
+  ConvertFloatToMLFloat16(f.data(), m.data(), static_cast<int>(f.size()));
+  return m;
 }
 
 }  // namespace test

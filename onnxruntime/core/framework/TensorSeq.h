@@ -28,6 +28,9 @@ class TensorSeq {
   }
 
   void SetElements(std::vector<Tensor>&& tensors) {
+    // The caller of this method ensures that :
+    // (1) `elem_type` is set before invoking this method
+    // (2) All tensors contain elements of the same primitive data type
     assert(tensors_.empty());
     tensors_ = std::move(tensors);
   }
@@ -38,7 +41,7 @@ class TensorSeq {
     return elem_type_ == o.elem_type_;
   }
 
-  bool IsSameDataType (const Tensor& o) const noexcept {
+  bool IsSameDataType(const Tensor& o) const noexcept {
     return elem_type_ == o.DataType()->AsPrimitiveDataType();
   }
 

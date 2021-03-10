@@ -7,6 +7,7 @@
 #include "core/optimizer/utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "float.h"
+#include "core/common/safeint.h"
 
 #define DEBUG_LOG(x) LOGS(logger, VERBOSE) << x
 
@@ -111,10 +112,10 @@ static bool MatchInputToConcatSubgraph(
     const logging::Logger& logger,
     const NodeIndex expected_gather_node_1_index) {
   std::vector<graph_utils::EdgeEndToMatch> expand_parent_path1{
-      {0, index, "Concat", {4, 11}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Gather", {1, 11}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain},
+      {0, index, "Concat", {4, 11, 13}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain},
   };
 
   std::vector<const Node::EdgeEnd*> edges;
@@ -144,9 +145,9 @@ static bool MatchInputToConcatSubgraph(
   }
 
   std::vector<graph_utils::EdgeEndToMatch> concat_parent_path{
-      {0, 1, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Gather", {1, 11}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain}};
+      {0, 1, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(concat_node, true, concat_parent_path, edges, logger)) {
     DEBUG_LOG("Failed to find path 2 of position shape.");
@@ -315,7 +316,7 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
 
     // Match Shape --> Expand path.
     std::vector<const Node::EdgeEnd*> pg_edges_2;
-    if (!graph_utils::FindPath(expand_node, true, {{0, 1, "Shape", {1}, kOnnxDomain}}, pg_edges_2, logger)) {
+    if (!graph_utils::FindPath(expand_node, true, {{0, 1, "Shape", {1, 13}, kOnnxDomain}}, pg_edges_2, logger)) {
       DEBUG_LOG("Failed to match Shape node. ");
       return false;
     }
@@ -427,8 +428,8 @@ static bool MatchPositionEmbeddingSubgraph(
 template <typename T>
 bool CheckEmbeddingData(const T* data, int64_t batch_size, int64_t element_count) {
   // check that all batches has same data.
-  size_t data_length = batch_size * element_count;
-  for (size_t i = element_count; i < data_length; i++) {
+  size_t data_length = SafeInt<size_t>(batch_size) * element_count;
+  for (size_t i = gsl::narrow<size_t>(element_count); i < data_length; i++) {
     if (data[i] != data[i % element_count]) {
       return false;
     }
@@ -463,14 +464,14 @@ static NodeArg* ExtractEmbedding(Graph& graph,
       return nullptr;
     }
 
-    initializer.set_raw_data(data, element_count * sizeof(float));
+    initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* data = old_initializer.data<MLFloat16>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
 
-    initializer.set_raw_data(data, element_count * sizeof(MLFloat16));
+    initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   NodeArg& node_arg = graph_utils::AddInitializer(graph, initializer);

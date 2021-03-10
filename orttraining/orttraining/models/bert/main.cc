@@ -8,29 +8,53 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
 #include "core/session/environment.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/random_seed.h"
+#include "core/providers/cpu/cpu_provider_factory_creator.h"
+#ifdef USE_CUDA
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_allocator.h"
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
+#endif
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/models/runner/constant.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
-
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
-                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-                                                                               bool do_copy_in_default_stream = true);
-}
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
+
+static SessionOptions session_options = {
+    ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+    ExecutionOrder::PRIORITY_BASED,    //execution_order
+    false,                             //enable_profiling
+    ORT_TSTR(""),                      //optimized_model_filepath
+    true,                              //enable_mem_pattern
+    true,                              //enable_cpu_mem_arena
+    ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
+    "",                                //session_logid
+    -1,                                //session_log_severity_level
+    0,                                 //session_log_verbosity_level
+    5,                                 //max_num_graph_transformation_steps
+    TransformerLevel::Level1,          //graph_optimization_level
+    {},                                //intra_op_param
+    {},                                //inter_op_param
+    {},                                //free_dimension_overrides
+    true,                              //use_per_session_threads
+    true,                              //thread_pool_allow_spinning
+    false,                             //use_deterministic_compute
+    {},                                //session_configurations
+    {},                                // initializers_to_share_map
+}; 
 
 struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
@@ -41,7 +65,7 @@ struct BertParameters : public TrainingRunner::Parameters {
   size_t num_train_steps_phase2;
   float warmup_ratio_phase2;
   float cuda_mem_limit_in_gb = -1;
-
+  bool debug_break = false;
   PathString train_data_dir_phase2;
   PathString test_data_dir_phase2;
 
@@ -108,8 +132,10 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("seed", "Random seed.", cxxopts::value<int64_t>()->default_value("-1"))
+      ("use_deterministic_compute", "Whether to enable deterministic compute.", cxxopts::value<bool>()->default_value("false"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
-      ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
+      ("use_bfloat16", "Whether to use BFloat16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("enable_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
       ("loss_scale", "Loss scaling, positive power of 2 values can improve fp16 convergence. "
         "Set it 0 to uses dynamic scaling; Other none-zero value will used as static scale",
@@ -178,6 +204,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("number_recompute_layers", "Number of layers to apply recompute.",
         cxxopts::value<int>()->default_value("0"))
       ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
+        cxxopts::value<bool>()->default_value("false"))
+      ("debug_break", "Specify whether to break at app start, useful for multi-gpu debugging.",
         cxxopts::value<bool>()->default_value("false"));
   options
     .add_options("ORT configuration")
@@ -191,6 +219,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     auto flags = options.parse(argc, argv);
 
     params.model_name = flags["model_name"].as<std::string>();
+    params.debug_break = flags["debug_break"].as<bool>();
     float lr = flags["learning_rate"].as<float>();
     if (lr > 1.f || lr < 0.f) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "learning_rate is not in valid range [0.0, 1.0]");
@@ -249,7 +278,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.max_num_checkpoints = flags["max_num_checkpoints"].as<size_t>();
 
     params.use_nccl = flags["use_nccl"].as<bool>();
-    params.use_adasum = flags["use_adasum"].as<bool>();
+    params.enable_adasum = flags["enable_adasum"].as<bool>();
     params.use_profiler = flags.count("use_profiler") > 0;
     ort_params.max_num_profiling_events = flags["max_profile_records"].as<size_t>();
 
@@ -285,6 +314,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
+    params.use_bfloat16 = flags["use_bfloat16"].as<bool>();
     params.allreduce_in_mixed_precision_type = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
@@ -463,6 +493,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       std::cout << "Random seed is set to: " << seed << std::endl;
     }
 
+    session_options.use_deterministic_compute = flags["use_deterministic_compute"].as<bool>();
+
     params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
     params.attn_dropout_recompute = flags["attn_dropout_recompute"].as<bool>();
     params.gelu_recompute = flags["gelu_recompute"].as<bool>();
@@ -537,7 +569,7 @@ void setup_training_params(BertParameters& params) {
   params.model_with_training_graph_path = model_name_base + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = model_name_base + ORT_TSTR("_bw_running.onnx");
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_MPI)
   if (params.pipeline_parallel_size > 1) {
     auto pipeline_model_name_base = model_name_base + ToPathString(std::to_string(MPIContext::GetInstance().GetWorldRank()));
     params.pipeline_partitioned_model_path = pipeline_model_name_base + ORT_TSTR("_partitioned.onnx");
@@ -560,19 +592,33 @@ void setup_training_params(BertParameters& params) {
     params.data_parallel_size = data_group_size;
   }
 
-  params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
-  if (params.use_adasum)
-    std::cout << "Use Adsum for allreduce." << std::endl;
+  params.enable_adasum = params.enable_adasum && (params.data_parallel_size > 1);
+  if (params.enable_adasum)
+    std::cout << "Use Adasum for allreduce." << std::endl;
 #endif
 
 #ifdef USE_CUDA
-  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
-  size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
-  if (params.cuda_mem_limit_in_gb > 0)
-    cuda_mem_limit = static_cast<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
-  params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id, OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                                                                                       cuda_mem_limit));
-  params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+  {
+    CUDAExecutionProviderInfo info{};
+    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    if (params.cuda_mem_limit_in_gb > 0) {
+      info.cuda_mem_limit = gsl::narrow<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
+    }
+    info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+
+    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(info));
+    params.input_allocator = std::make_shared<CUDAPinnedAllocator>(info.device_id, CUDA_PINNED);
+  }
+#endif
+
+#ifdef USE_ROCM
+  {
+    ROCMExecutionProviderInfo info{};
+    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+
+    params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_ROCM(info));
+    params.input_allocator = std::make_shared<ROCMPinnedAllocator>(info.device_id, CUDA_PINNED);
+  }
 #endif
 
   params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
@@ -726,7 +772,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
   auto random_perf_data_loader = onnxruntime::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
 
-  TrainingRunner runner{params, env};
+  TrainingRunner runner{params, env, session_options};
   ORT_RETURN_IF_ERROR(runner.Initialize());
   ORT_RETURN_IF_ERROR(runner.Run(random_perf_data_loader.get(), random_perf_data_loader.get()));
 
@@ -736,7 +782,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
 static Status RunTraining(const BertParameters& params, const Environment& env) {
   const size_t max_num_files_preload = 2;
 
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env);
+  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env, session_options);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
   BertParameters params_for_phase;
@@ -781,6 +827,8 @@ int main(int argc, char* argv[]) {
   BertParameters params;
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
+  bool keep_looping = params.debug_break;
+  while(keep_looping);
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};
@@ -816,7 +864,7 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 #ifdef _WIN32
   // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
   // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction

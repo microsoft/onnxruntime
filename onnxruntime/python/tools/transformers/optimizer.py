@@ -119,17 +119,23 @@ def _parse_arguments():
                         choices=list(MODEL_CLASSES.keys()),
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
 
-    parser.add_argument('--num_heads',
-                        required=False,
-                        type=int,
-                        default=12,
-                        help="number of attention heads. 12 for bert-base model and 16 for bert-large")
+    parser.add_argument(
+        '--num_heads',
+        required=False,
+        type=int,
+        default=12,
+        help=
+        "number of attention heads. 12 for bert-base model and 16 for bert-large. For BERT, set it to 0 to detect automatically."
+    )
 
-    parser.add_argument('--hidden_size',
-                        required=False,
-                        type=int,
-                        default=768,
-                        help="bert model hidden size. 768 for bert-base model and 1024 for bert-large")
+    parser.add_argument(
+        '--hidden_size',
+        required=False,
+        type=int,
+        default=768,
+        help=
+        "bert model hidden size. 768 for bert-base model and 1024 for bert-large. For BERT, set it to 0 to detect automatically."
+    )
 
     parser.add_argument('--input_int32',
                         required=False,
@@ -214,6 +220,12 @@ def _parse_arguments():
                         default=0,
                         help="onnxruntime optimization level. 0 will disable onnxruntime.")
 
+    parser.add_argument('--use_external_data_format',
+                        required=False,
+                        action='store_true',
+                        help="use external data format")
+    parser.set_defaults(use_external_data_format=False)
+
     args = parser.parse_args()
 
     return args
@@ -247,8 +259,8 @@ def _get_optimization_options(args):
 
 def optimize_model(input,
                    model_type='bert',
-                   num_heads=12,
-                   hidden_size=768,
+                   num_heads=0,
+                   hidden_size=0,
                    optimization_options=None,
                    opt_level=0,
                    use_gpu=False,
@@ -263,8 +275,8 @@ def optimize_model(input,
     Args:
         input (str): input model path.
         model_type (str): model type - like bert, bert_tf, bert_keras or gpt2.
-        num_heads (int): number of attention heads.
-        hidden_size (int): hidden size.
+        num_heads (int): number of attention heads. Default is 0 to allow detect the parameter from graph automatically (for model_type "bert" only).
+        hidden_size (int): hidden size. Default is 0 to allow detect the parameter from graph automatically (for model_type "bert" only).
         optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
         opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool): use gpu or not for onnxruntime.
@@ -303,8 +315,9 @@ def optimize_model(input,
         os.remove(temp_model_path)
         logger.debug("Remove tempoary model: {}".format(temp_model_path))
 
-    optimizer.model.producer_name = "onnxruntime_tools"
-    optimizer.model.producer_version = "1.5.2"
+    optimizer.model.producer_name = "onnxruntime.transformers"
+    from onnxruntime import __version__ as onnxruntime_version
+    optimizer.model.producer_version = onnxruntime_version
 
     return optimizer
 
@@ -320,6 +333,9 @@ def main():
     args = _parse_arguments()
 
     _setup_logger(args.verbose)
+
+    if os.path.realpath(args.input) == os.path.realpath(args.output):
+        logger.warning(f"Specified the same input and output path. Note that this may overwrite the original model")
 
     optimization_options = _get_optimization_options(args)
 
@@ -338,7 +354,7 @@ def main():
     if args.input_int32:
         optimizer.change_input_to_int32()
 
-    optimizer.save_model_to_file(args.output)
+    optimizer.save_model_to_file(args.output, args.use_external_data_format)
 
     if optimizer.is_fully_optimized():
         logger.info("The model has been fully optimized.")

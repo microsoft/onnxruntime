@@ -36,8 +36,9 @@ ORT_API_STATUS(ModelGetOutputDescription, _In_ const OrtModel* model, _In_ size_
 ORT_API_STATUS(ModelGetInputTypeInfo, _In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info);
 ORT_API_STATUS(ModelGetOutputTypeInfo, _In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info);
 ORT_API_STATUS(ModelGetMetadataCount, _In_ const OrtModel* model, _Out_ size_t* count);
-ORT_API_STATUS(ModelGetMetadata, _In_ const OrtModel* model, _Out_ size_t count, _Out_ const char** const key, _Out_ size_t* key_len, _Out_ const char** const value, _Out_ size_t* value_len);
+ORT_API_STATUS(ModelGetMetadata, _In_ const OrtModel* model, _In_ size_t count, _Out_ const char** const key, _Out_ size_t* key_len, _Out_ const char** const value, _Out_ size_t* value_len);
 ORT_API_STATUS(ModelEnsureNoFloat16, _In_ const OrtModel* model);
+ORT_API_STATUS(SaveModel, _In_ const OrtModel* in, _In_ const wchar_t* const file_name, _In_ size_t len);
 
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options, _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* cmd_queue, bool metacommands_enabled);
 
@@ -45,7 +46,7 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOp
 ORT_API_STATUS(CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session);
 
 //Do not release provider... as there is no release method available
-ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, size_t index, _Out_ OrtExecutionProvider** provider);
+ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, _In_ size_t index, _Out_ OrtExecutionProvider** provider);
 ORT_API_STATUS(SessionInitialize, _In_ OrtSession* session);
 ORT_API_STATUS(SessionLoadAndPurloinModel, _In_ OrtSession* session, _In_ OrtModel* model);
 
@@ -55,6 +56,7 @@ ORT_API_STATUS(SessionRegisterGraphTransformers, _In_ OrtSession* session);
 ORT_API_STATUS(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry);
 ORT_API_STATUS(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ OrtValue* orig_value, _Outptr_ OrtValue** new_value);
 ORT_API_STATUS(SessionGetNumberOfIntraOpThreads, _In_ OrtSession* session, _Out_ uint32_t* num_threads);
+ORT_API_STATUS(SessionGetNamedDimensionsOverrides, _In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& overrides);
 
 // Dml methods (TODO need to figure out how these need to move to session somehow...)
 ORT_API_STATUS(DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled);
@@ -78,6 +80,55 @@ ORT_API_STATUS(CreateCustomRegistry, _Out_ IMLOperatorRegistry** registry);
 
 ORT_API_STATUS(ValueGetDeviceId, _In_ OrtValue* ort_value, _Out_ int16_t* device_id);
 ORT_API_STATUS(SessionGetInputRequiredDeviceId, _In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id);
+
+// Model Building
+ORT_API_STATUS(CreateTensorTypeInfo, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type, _Out_ OrtTypeInfo** type_info);
+ORT_API_STATUS(CreateSequenceTypeInfo, _Out_ OrtTypeInfo** type_info);
+ORT_API_STATUS(CreateMapTypeInfo, _Out_ OrtTypeInfo** type_info);
+ORT_API_STATUS(CreateModel, _In_ int64_t opset, _Outptr_ OrtModel** out);
+ORT_API_STATUS(ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info);
+ORT_API_STATUS(ModelAddConstantInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value);
+ORT_API_STATUS(ModelAddOutput, _In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info);
+ORT_API_STATUS(ModelAddOperator, 
+    _In_ OrtModel* model,
+    _In_ const char* const op_type,
+    _In_ const char* const op_name,
+    _In_ int64_t opset,
+    _In_ const char* const op_domain,
+    _In_ const char* const* input_names, _In_ size_t num_inputs,
+    _In_ const char* const* output_names, _In_ size_t num_outputs,
+    _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes);
+
+ORT_API_STATUS(ModelGetOpsetVersion, _In_ OrtModel* model, _In_ const char* const domain, _Out_ int32_t* version);
+
+ORT_API_STATUS(OperatorGetNumInputs,
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain, 
+      _Out_ size_t* num_inputs);
+
+ORT_API_STATUS(OperatorGetInputName,
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _In_ size_t index,
+      _Out_ const char** const name);
+
+ORT_API_STATUS(OperatorGetNumOutputs,
+               _In_ const char* const op_type,
+               _In_ int64_t opset,
+               _In_ const char* const op_domain,
+               _Out_ size_t* num_inputs);
+
+ORT_API_STATUS(OperatorGetOutputName,
+               _In_ const char* const op_type,
+               _In_ int64_t opset,
+               _In_ const char* const op_domain,
+               _In_ size_t index,
+               _Out_ const char** const name);
+
+// maps and sequences???
+//ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second
 
 }  // namespace Adapter
 }  // namespace MachineLearning

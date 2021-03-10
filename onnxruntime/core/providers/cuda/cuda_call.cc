@@ -78,7 +78,7 @@ const char* CudaErrString<cufftResult>(cufftResult e) {
   }
 }
 
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
 template <>
 const char* CudaErrString<ncclResult_t>(ncclResult_t e) {
   cudaDeviceSynchronize();
@@ -141,7 +141,7 @@ template bool CudaCall<curandStatus_t, true>(curandStatus_t retCode, const char*
 template bool CudaCall<cufftResult, false>(cufftResult retCode, const char* exprString, const char* libName, cufftResult successCode, const char* msg);
 template bool CudaCall<cufftResult, true>(cufftResult retCode, const char* exprString, const char* libName, cufftResult successCode, const char* msg);
 
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
 template bool CudaCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg);
 #endif
 }  // namespace onnxruntime

@@ -29,26 +29,24 @@ struct TensorResources {
       *capacity = 0;
 
       // Lazily allocate the cpu resource on call to GetBuffer
-      if (CpuResource == nullptr) {
-        CpuResource = std::make_shared<_winml::Tensor<T>>(shape);
+      if (cpu_resource_ == nullptr) {
+        cpu_resource_ = std::make_shared<_winml::Tensor<T>>(shape);
       }
 
       // Get the data pointer and size
-      T* data;
-      uint32_t size;
-      std::tie(size, data) = CpuResource->buffer();
+      auto buffer = cpu_resource_->buffer();
 
       // Set out parameters
-      *capacity = static_cast<UINT32>(size * sizeof(T));
-      *value = (BYTE*)data;
+      *capacity = static_cast<uint32_t>(buffer.size_bytes());
+      *value = reinterpret_cast<byte*>(buffer.data());
       return S_OK;
     }
     WINML_CATCH_ALL_COM
   }
 
   // Theses are access directly by TensorMemoryBufferReference<T> and TensorBase
-  std::shared_ptr<_winml::Tensor<T>> CpuResource;
-  winrt::com_ptr<ID3D12Resource> GpuResource;
+  std::shared_ptr<_winml::Tensor<T>> cpu_resource_;
+  winrt::com_ptr<ID3D12Resource> gpu_resource_;
 };
 
 // This class holds onto the lifetime of TensorResources<T> so that they can be kept alive by TensorBase AND its active MBRs.
@@ -60,6 +58,7 @@ template <typename T>
 class TensorMemoryBufferReference : public winrt::implements<
                                         TensorMemoryBufferReference<T>,
                                         wf::IMemoryBufferReference,
+                                        wf::IClosable,
                                         Windows::Foundation::IMemoryBufferByteAccess> {
   using ClosedDelegate = wf::TypedEventHandler<wf::IMemoryBufferReference, wf::IInspectable>;
 

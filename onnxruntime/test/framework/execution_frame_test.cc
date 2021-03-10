@@ -11,6 +11,7 @@
 #include "test_utils.h"
 #include "test/test_environment.h"
 #include "test/framework/TestAllocatorManager.h"
+#include "test/util/include/inference_session_wrapper.h"
 #include "asserts.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -137,7 +138,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
                      DefaultLoggingManager().DefaultLogger(), profiler);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
-  
+
   const OrtValueNameIdxMap& mlvalue_name_idx_map = state.GetOrtValueNameIdxMap();
   int x_idx = -1, y_idx = -1;
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X", x_idx).IsOK());
@@ -248,9 +249,9 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
   ASSERT_EQ(pattern.patterns.size(), 1u);
   auto p = pattern.GetPatterns(cpu_allocator->Info());
-  ASSERT_EQ(p->PeakSize(), 2u * 64u);  // each allocation is 64-byte aligned
+  ASSERT_EQ(p->PeakSize(), 2u * kAllocAlignment);  // each allocation is kAllocAlignment-byte aligned
   ASSERT_EQ(p->GetBlock(3)->offset_, 0u);
-  ASSERT_EQ(p->GetBlock(4)->offset_, 64u);
+  ASSERT_EQ(p->GetBlock(4)->offset_, kAllocAlignment);
 }
 
 TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
@@ -323,17 +324,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
   // test that if no pre-allocated fetch is provided a new OrtValue is allocated for the results
   {
-    class TestInferenceSesssion : public InferenceSession {
-     public:
-      TestInferenceSesssion(const SessionOptions& session_options,
-                            const Environment& session_env)
-          : InferenceSession(session_options, session_env) {
-      }
-
-      const SessionState& GetSessionState() const { return InferenceSession::GetSessionState(); }
-    };
-
-    TestInferenceSesssion session(so, GetEnvironment());
+    InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/initializer_as_output.onnx")));
     ASSERT_STATUS_OK(session.Initialize());
 

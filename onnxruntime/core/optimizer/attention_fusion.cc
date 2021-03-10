@@ -120,25 +120,25 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     const float* k_weight = k_initializer.data<float>();
     const float* v_weight = v_initializer.data<float>();
     std::vector<float> result;
-    result.reserve(element_count);
+    result.reserve(gsl::narrow<size_t>(element_count));
     if (is_matmul) {
       MergeMatMulWeights<float>(q_weight, k_weight, v_weight, result, hidden_size);
     } else {
       MergeWeights<float>(q_weight, k_weight, v_weight, result, hidden_size);
     }
-    initializer.set_raw_data(result.data(), element_count * sizeof(float));
+    initializer.set_raw_data(result.data(), gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* q_weight = q_initializer.data<MLFloat16>();
     const MLFloat16* k_weight = k_initializer.data<MLFloat16>();
     const MLFloat16* v_weight = v_initializer.data<MLFloat16>();
     std::vector<MLFloat16> result;
-    result.reserve(element_count);
+    result.reserve(gsl::narrow<size_t>(element_count));
     if (is_matmul) {
       MergeMatMulWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
     } else {
       MergeWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
     }
-    initializer.set_raw_data(result.data(), element_count * sizeof(MLFloat16));
+    initializer.set_raw_data(result.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   return graph_utils::AddInitializer(graph, initializer);
@@ -208,7 +208,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if ((node.GetOutputEdgesCount() >= 4 && node.GetOutputEdgesCount() <= 6) &&  // Add node.GetOutputEdgesCount() == 5/6 for distilbert
+    if ((node.GetOutputEdgesCount() >= 2 && node.GetOutputEdgesCount() <= 6) &&  // Add node.GetOutputEdgesCount() == 5/6 for distilbert
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1}, kOnnxDomain) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       // Get hidden size from layer norm bias tensor shape.
@@ -236,13 +236,14 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           reshape_count++;
         }
       }
+
       if (add_count == 1 && matmul_count == 3 && shape_count == node.GetOutputEdgesCount() - 4) {  // BERT or DistilBert
         if (AttentionFusion::FuseSubGraph(node, *add_node, graph, hidden_size, mask_int32_map, logger)) {
           fused_count++;
           modified = true;
         }
-      } else if (reshape_count == 1 && shape_count == 3) {  // GPT
-        if (AttentionFusionHelper::FuseGptAttention(node, graph, hidden_size, mask_int32_map, logger)) {
+      } else if (reshape_count == 1 && (shape_count == 1 || shape_count == 3) && (reshape_count + shape_count) == node.GetOutputEdgesCount()) {  // GPT
+        if (AttentionFusionHelper::FuseGptAttention(node, graph, hidden_size, mask_int32_map, shape_count == 1, logger)) {
           fused_count++;
           modified = true;
         }

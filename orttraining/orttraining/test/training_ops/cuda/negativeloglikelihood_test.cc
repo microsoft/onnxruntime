@@ -8,6 +8,12 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+#if USE_CUDA
+constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
+#elif USE_ROCM
+constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#endif
+
 static void TestNegativeLogLikelihoodLoss(const std::vector<int64_t>* X_dims,
                                           const std::vector<int64_t>* index_dims,
                                           const std::vector<int64_t>* weight_dims,
@@ -39,7 +45,7 @@ static void TestNegativeLogLikelihoodLoss(const std::vector<int64_t>* X_dims,
 
   test.AddOutput<float>("output", *Y_dims, Y_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider);
+  test.CompareWithCPU(kGpuExecutionProvider);
 }
 
 TEST(CudaKernelTest, NegativeLogLikelihoodLoss_TinySizeTensor) {

@@ -118,12 +118,6 @@ class WindowsEnv : public Env {
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     return new WindowsThread(name_prefix, index, start_address, param, thread_options);
   }
-  Task CreateTask(std::function<void()> f) {
-    return Task{std::move(f)};
-  }
-  void ExecuteTask(const Task& t) {
-    t.f();
-  }
 
   void SleepForMicroseconds(int64_t micros) const override {
     Sleep(static_cast<DWORD>(micros) / 1000);
@@ -237,9 +231,9 @@ class WindowsEnv : public Env {
 
   Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
                             const gsl::span<char> buffer) const override {
-    ORT_RETURN_IF_NOT(file_path);
-    ORT_RETURN_IF_NOT(offset >= 0);
-    ORT_RETURN_IF_NOT(length <= buffer.size());
+    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+    ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
+    ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
 #if WINVER >= _WIN32_WINNT_WIN8
     wil::unique_hfile file_handle{
         CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
